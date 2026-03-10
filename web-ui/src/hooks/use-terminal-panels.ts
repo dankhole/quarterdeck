@@ -65,6 +65,18 @@ interface PrepareTerminalForShortcutResult {
 	message?: string;
 }
 
+interface DetailTerminalPanelState {
+	isExpanded: boolean;
+	isOpen: boolean;
+	paneHeight: number | undefined;
+}
+
+const DEFAULT_DETAIL_TERMINAL_PANEL_STATE: DetailTerminalPanelState = {
+	isExpanded: false,
+	isOpen: false,
+	paneHeight: undefined,
+};
+
 export interface UseTerminalPanelsResult {
 	homeTerminalTaskId: string;
 	isHomeTerminalOpen: boolean;
@@ -108,12 +120,28 @@ export function useTerminalPanels({
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
 	const [homeTerminalPaneHeight, setHomeTerminalPaneHeight] = useState<number | undefined>(undefined);
-	const [isDetailTerminalOpen, setIsDetailTerminalOpen] = useState(false);
+	const [detailTerminalPanelStateByTaskId, setDetailTerminalPanelStateByTaskId] = useState<
+		Record<string, DetailTerminalPanelState>
+	>({});
 	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
-	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(undefined);
 	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
-	const [isDetailTerminalExpanded, setIsDetailTerminalExpanded] = useState(false);
 	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
+	const currentDetailTerminalPanelState = detailTerminalTaskId
+		? detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE
+		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
+	const isDetailTerminalOpen = currentDetailTerminalPanelState.isOpen;
+	const detailTerminalPaneHeight = currentDetailTerminalPanelState.paneHeight;
+	const isDetailTerminalExpanded = currentDetailTerminalPanelState.isExpanded;
+
+	const updateDetailTerminalPanelState = useCallback(
+		(taskId: string, updater: (previous: DetailTerminalPanelState) => DetailTerminalPanelState) => {
+			setDetailTerminalPanelStateByTaskId((previous) => ({
+				...previous,
+				[taskId]: updater(previous[taskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE),
+			}));
+		},
+		[],
+	);
 
 	const closeHomeTerminal = useCallback(() => {
 		setIsHomeTerminalOpen(false);
@@ -123,11 +151,24 @@ export function useTerminalPanels({
 	}, []);
 
 	const closeDetailTerminal = useCallback(() => {
-		setIsDetailTerminalOpen(false);
-		setIsDetailTerminalExpanded(false);
-		setDetailTerminalPaneHeight(undefined);
+		if (detailTerminalTaskId) {
+			updateDetailTerminalPanelState(detailTerminalTaskId, () => DEFAULT_DETAIL_TERMINAL_PANEL_STATE);
+		}
 		detailTerminalSelectionKeyRef.current = null;
-	}, []);
+	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
+
+	const setDetailTerminalPaneHeight = useCallback(
+		(height: number | undefined) => {
+			if (!detailTerminalTaskId) {
+				return;
+			}
+			updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => ({
+				...previous,
+				paneHeight: height,
+			}));
+		},
+		[detailTerminalTaskId, updateDetailTerminalPanelState],
+	);
 
 	const handleToggleExpandHomeTerminal = useCallback(() => {
 		setIsHomeTerminalExpanded((prev) => {
@@ -137,11 +178,18 @@ export function useTerminalPanels({
 	}, []);
 
 	const handleToggleExpandDetailTerminal = useCallback(() => {
-		setIsDetailTerminalExpanded((prev) => {
-			setDetailTerminalPaneHeight(prev ? undefined : 99999);
-			return !prev;
+		if (!detailTerminalTaskId) {
+			return;
+		}
+		updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => {
+			const isExpanded = !previous.isExpanded;
+			return {
+				...previous,
+				isExpanded,
+				paneHeight: isExpanded ? 99999 : undefined,
+			};
 		});
-	}, []);
+	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
 
 	const startHomeTerminalSession = useCallback(async (): Promise<boolean> => {
 		if (!currentProjectId) {
@@ -235,11 +283,15 @@ export function useTerminalPanels({
 		if (!selectedCard) {
 			return;
 		}
+		const targetTaskId = getDetailTerminalTaskId(selectedCard.card);
 		if (isDetailTerminalOpen) {
 			closeDetailTerminal();
 			return;
 		}
-		setIsDetailTerminalOpen(true);
+		updateDetailTerminalPanelState(targetTaskId, (previous) => ({
+			...previous,
+			isOpen: true,
+		}));
 		void (async () => {
 			const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
 			detailTerminalSelectionKeyRef.current = selectionKey;
@@ -248,7 +300,13 @@ export function useTerminalPanels({
 				detailTerminalSelectionKeyRef.current = null;
 			}
 		})();
-	}, [closeDetailTerminal, isDetailTerminalOpen, selectedCard, startDetailTerminalForCard]);
+	}, [
+		closeDetailTerminal,
+		isDetailTerminalOpen,
+		selectedCard,
+		startDetailTerminalForCard,
+		updateDetailTerminalPanelState,
+	]);
 
 	useEffect(() => {
 		if (!isDetailTerminalOpen || !selectedCard) {
@@ -311,7 +369,10 @@ export function useTerminalPanels({
 					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(targetTaskId);
 				}
 				detailTerminalSelectionKeyRef.current = selectionKey;
-				setIsDetailTerminalOpen(true);
+				updateDetailTerminalPanelState(targetTaskId, (previous) => ({
+					...previous,
+					isOpen: true,
+				}));
 				const started = await startDetailTerminalForCard(activeSelection.card, { showLoading: true });
 				if (!started) {
 					if (detailTerminalSelectionKeyRef.current === selectionKey) {
@@ -358,6 +419,7 @@ export function useTerminalPanels({
 			selectedCard,
 			startDetailTerminalForCard,
 			startHomeTerminalSession,
+			updateDetailTerminalPanelState,
 		],
 	);
 
@@ -365,9 +427,10 @@ export function useTerminalPanels({
 		closeHomeTerminal();
 		setIsHomeTerminalStarting(false);
 		setHomeTerminalShellBinary(null);
-		closeDetailTerminal();
+		setDetailTerminalPanelStateByTaskId({});
+		detailTerminalSelectionKeyRef.current = null;
 		setIsDetailTerminalStarting(false);
-	}, [closeDetailTerminal, closeHomeTerminal]);
+	}, [closeHomeTerminal]);
 
 	return {
 		homeTerminalTaskId: HOME_TERMINAL_TASK_ID,
