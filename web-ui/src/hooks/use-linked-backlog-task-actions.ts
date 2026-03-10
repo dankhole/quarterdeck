@@ -14,6 +14,7 @@ import {
 } from "@/state/board-state";
 import { trackTaskDependencyCreated, trackTasksAutoStartedFromDependency } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
@@ -166,7 +167,7 @@ export function useLinkedBacklogTaskActions({
 				}
 			}
 
-			await stopTaskSession(task.id);
+			await Promise.all([stopTaskSession(task.id), stopTaskSession(getDetailTerminalTaskId(task.id))]);
 			await cleanupTaskWorkspace(task.id);
 		},
 		[

@@ -19,8 +19,8 @@ function estimateShellTerminalCols(): number {
 	return Math.max(MIN_TERMINAL_COLS, Math.floor(Math.max(0, window.innerWidth - 96) / APPROX_TERMINAL_CELL_WIDTH_PX));
 }
 
-function getDetailTerminalTaskId(card: BoardCard): string {
-	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
+export function getDetailTerminalTaskId(taskId: string): string {
+	return `${DETAIL_TERMINAL_TASK_PREFIX}${taskId}`;
 }
 
 async function resolveShellTerminalGeometry(taskId: string): Promise<{ cols: number; rows: number }> {
@@ -125,7 +125,7 @@ export function useTerminalPanels({
 	>({});
 	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
 	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
-	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
+	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card.id) : null;
 	const currentDetailTerminalPanelState = detailTerminalTaskId
 		? detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE
 		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
@@ -251,7 +251,7 @@ export function useTerminalPanels({
 				setIsDetailTerminalStarting(true);
 			}
 			try {
-				const targetTaskId = getDetailTerminalTaskId(card);
+				const targetTaskId = getDetailTerminalTaskId(card.id);
 				const geometry = await resolveShellTerminalGeometry(targetTaskId);
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.startShellSession.mutate({
@@ -283,7 +283,7 @@ export function useTerminalPanels({
 		if (!selectedCard) {
 			return;
 		}
-		const targetTaskId = getDetailTerminalTaskId(selectedCard.card);
+		const targetTaskId = getDetailTerminalTaskId(selectedCard.card.id);
 		if (isDetailTerminalOpen) {
 			closeDetailTerminal();
 			return;
@@ -349,7 +349,7 @@ export function useTerminalPanels({
 		if (!agentCommand || !selectedCard) {
 			return;
 		}
-		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card);
+		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card.id);
 		void sendTaskSessionInput(terminalTaskId, agentCommand, { appendNewline: true });
 	}, [agentCommand, selectedCard, sendTaskSessionInput]);
 
@@ -360,7 +360,7 @@ export function useTerminalPanels({
 			let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
 			const activeSelection = selectedCard;
 			if (activeSelection) {
-				targetTaskId = getDetailTerminalTaskId(activeSelection.card);
+				targetTaskId = getDetailTerminalTaskId(activeSelection.card.id);
 				const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef}`;
 				const detailWasAlreadyOpenForSelection =
 					isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;

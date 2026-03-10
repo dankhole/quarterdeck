@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
+import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import type { BoardCard, BoardData, BoardDependency } from "@/types";
 
 const trackTaskDependencyCreatedMock = vi.hoisted(() => vi.fn());
@@ -69,6 +70,7 @@ function HookHarness({
 	boardFactory,
 	onSnapshot,
 	kickoffTaskInProgress,
+	stopTaskSession,
 }: {
 	boardFactory?: () => BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
@@ -78,6 +80,7 @@ function HookHarness({
 		fromColumnId: "backlog" | "in_progress" | "review" | "trash",
 		options?: { optimisticMove?: boolean },
 	) => Promise<boolean>;
+	stopTaskSession?: (taskId: string) => Promise<void>;
 }): null {
 	const [board, setBoard] = useState<BoardData>(() => (boardFactory ? boardFactory() : createBoard()));
 	const actions = useLinkedBacklogTaskActions({
@@ -85,7 +88,7 @@ function HookHarness({
 		setBoard,
 		setSelectedTaskId: () => {},
 		setPendingTrashWarning: () => {},
-		stopTaskSession: async () => {},
+		stopTaskSession: stopTaskSession ?? (async () => {}),
 		cleanupTaskWorkspace: async () => null,
 		fetchTaskWorkingChangeCount: async () => null,
 		fetchTaskWorkspaceInfo: async () => null,
@@ -204,6 +207,39 @@ describe("useLinkedBacklogTaskActions", () => {
 
 		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(2);
 		expect(trackTasksAutoStartedFromDependencyMock).toHaveBeenCalledWith(2);
+	});
+
+	it("stops the main task session and its detail terminal shell when a task is trashed", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const stopTaskSession = vi.fn(async (_taskId: string) => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					stopTaskSession={stopTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const initialSnapshot = latestSnapshot as HookSnapshot;
+		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
+		if (!reviewTask) {
+			throw new Error("Expected a review task.");
+		}
+
+		await act(async () => {
+			await initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
+		});
+
+		expect(stopTaskSession).toHaveBeenCalledTimes(2);
+		expect(stopTaskSession).toHaveBeenNthCalledWith(1, reviewTask.id);
+		expect(stopTaskSession).toHaveBeenNthCalledWith(2, getDetailTerminalTaskId(reviewTask.id));
 	});
 
 	it("starts dependency-unblocked tasks one-at-a-time to avoid concurrent kickoff races", async () => {
