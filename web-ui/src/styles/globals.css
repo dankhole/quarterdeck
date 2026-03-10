@@ -513,15 +513,15 @@ body.kb-dependency-link-mode {
 	color: var(--bp-palette-light-gray-5) !important;
 }
 
-/* -- Terminal viewport (hide gutter while keeping wheel scroll) -- */
+/* -- Terminal scrollbar (xterm 6 custom scrollable element) -- */
 
-.kb-terminal-container .xterm-viewport {
-	overflow-y: auto;
-	background-color: transparent;
-	scrollbar-width: none;
+.kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical {
+	width: 10px !important;
+	right: 1px !important;
 }
 
-.kb-terminal-container .xterm-viewport::-webkit-scrollbar {
-	width: 0;
-	height: 0;
+.kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+	left: 2px !important;
+	width: 6px !important;
+	border-radius: 999px;
 }

@@ -234,7 +234,7 @@ export function ColumnContextPanel({
 			}}
 		>
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
-				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
 							key={column.id}
