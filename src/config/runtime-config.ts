@@ -70,7 +70,8 @@ Steps:
 7. If a stash was created, restore it with: git -C P stash pop
 8. If stash pop conflicts, resolve them while preserving pre-existing user edits.
 9. Report:
-   - Final commit hash on {{base_ref}}
+   - Final commit hash
+   - Final commit message
    - Whether stash was used
    - Whether conflicts were resolved
    - Any remaining manual follow-up needed`;
@@ -88,7 +89,7 @@ Steps:
 5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
 6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
 7. Report:
-   - PR URL
+   - PR title: PR URL
    - Base branch
    - Head branch
    - Any follow-up needed`;
