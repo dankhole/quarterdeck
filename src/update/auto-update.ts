@@ -21,6 +21,7 @@ interface AutoUpdateInstallationInfo {
 	packageManager: AutoUpdatePackageManager;
 	npmTag: string;
 	updateCommand: AutoUpdateInstallCommand | null;
+	updateTiming: "startup" | "shutdown";
 }
 
 interface FetchLatestVersionInput {
@@ -37,6 +38,7 @@ export interface AutoUpdateStartupOptions {
 	resolveRealPath?: (path: string) => string;
 	fetchLatestVersion?: (input: FetchLatestVersionInput) => Promise<string | null>;
 	spawnUpdate?: (command: string, args: string[]) => void;
+	scheduleShutdownUpdate?: (update: PendingShutdownAutoUpdate) => void;
 }
 
 interface ParsedVersion {
@@ -44,8 +46,35 @@ interface ParsedVersion {
 	prerelease: Array<number | string> | null;
 }
 
+interface PendingShutdownAutoUpdate {
+	command: string;
+	args: string[];
+	latestVersion: string;
+}
+
+const DELETE_DIRECTORY_AFTER_DELAY_SCRIPT = `
+const { rmSync } = require("node:fs");
+
+const targetDirectory = process.argv[1];
+if (!targetDirectory) {
+	process.exit(0);
+}
+
+setTimeout(() => {
+	try {
+		rmSync(targetDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+	} catch {}
+}, 750);
+`.trim();
+
+let pendingShutdownAutoUpdate: PendingShutdownAutoUpdate | null = null;
+
 function toPosixLowerPath(path: string): string {
 	return path.replaceAll("\\", "/").toLowerCase();
+}
+
+function toPosixPath(path: string): string {
+	return path.replaceAll("\\", "/");
 }
 
 function isPathInside(targetPath: string, containerPath: string): boolean {
@@ -82,6 +111,168 @@ function parseVersion(version: string): ParsedVersion {
 		core,
 		prerelease,
 	};
+}
+
+function buildShutdownCacheRefreshCommand(cacheDirectory: string): AutoUpdateInstallCommand {
+	return {
+		command: process.execPath,
+		args: ["-e", DELETE_DIRECTORY_AFTER_DELAY_SCRIPT, cacheDirectory],
+	};
+}
+
+function splitResolvedPath(path: string): {
+	hasLeadingSlash: boolean;
+	segments: string[];
+	normalizedSegments: string[];
+} {
+	const resolvedPath = toPosixPath(resolve(path));
+	const hasLeadingSlash = resolvedPath.startsWith("/");
+	const segments = resolvedPath.split("/").filter((_segment, index) => !(hasLeadingSlash && index === 0));
+	return {
+		hasLeadingSlash,
+		segments,
+		normalizedSegments: segments.map((segment) => segment.toLowerCase()),
+	};
+}
+
+function buildDirectoryFromSegments(segments: string[], hasLeadingSlash: boolean, endIndex: number): string | null {
+	if (endIndex <= 0 || segments.length < endIndex) {
+		return null;
+	}
+	const directory = segments.slice(0, endIndex).join("/");
+	if (directory.length === 0) {
+		return null;
+	}
+	return hasLeadingSlash ? `/${directory}` : directory;
+}
+
+function findSegmentSequence(segments: string[], sequence: string[]): number {
+	if (sequence.length === 0 || segments.length < sequence.length) {
+		return -1;
+	}
+
+	for (let index = 0; index <= segments.length - sequence.length; index += 1) {
+		let matches = true;
+		for (let offset = 0; offset < sequence.length; offset += 1) {
+			if (segments[index + offset] !== sequence[offset]) {
+				matches = false;
+				break;
+			}
+		}
+		if (matches) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
+function extractDirectoryForSegmentSequence(
+	entrypointPath: string,
+	sequences: string[][],
+	trailingSegmentCount: number,
+): string | null {
+	const { hasLeadingSlash, segments, normalizedSegments } = splitResolvedPath(entrypointPath);
+
+	for (const sequence of sequences) {
+		const sequenceIndex = findSegmentSequence(normalizedSegments, sequence);
+		if (sequenceIndex < 0) {
+			continue;
+		}
+		const endIndex = sequenceIndex + sequence.length + trailingSegmentCount;
+		const requiredSegments = normalizedSegments.slice(sequenceIndex + sequence.length, endIndex);
+		if (
+			requiredSegments.length !== trailingSegmentCount ||
+			requiredSegments.some(
+				(segment) => segment.length === 0 || segment === "." || segment === ".." || segment === "node_modules",
+			)
+		) {
+			continue;
+		}
+		const directory = buildDirectoryFromSegments(segments, hasLeadingSlash, endIndex);
+		if (directory) {
+			return directory;
+		}
+	}
+
+	return null;
+}
+
+function extractDirectoryForSegmentPattern(entrypointPath: string, pattern: RegExp): string | null {
+	const { hasLeadingSlash, segments, normalizedSegments } = splitResolvedPath(entrypointPath);
+	const matchingIndex = normalizedSegments.findIndex((segment) => pattern.test(segment));
+	return buildDirectoryFromSegments(segments, hasLeadingSlash, matchingIndex + 1);
+}
+
+function looksLikeTransientCachePath(path: string): boolean {
+	const normalizedPath = toPosixLowerPath(path);
+	return (
+		normalizedPath.includes("/.npm/_npx/") ||
+		normalizedPath.includes("/npm/_npx/") ||
+		normalizedPath.includes("/.npx/") ||
+		normalizedPath.includes("/pnpm/dlx/") ||
+		normalizedPath.includes("/.yarn/cache/") ||
+		normalizedPath.includes("/bunx-")
+	);
+}
+
+function detectTransientAutoUpdateInstallation(options: {
+	currentVersion: string;
+	packageName: string;
+	entrypointPath: string;
+}): AutoUpdateInstallationInfo | null {
+	const npmTag = getNpmTag(options.currentVersion);
+	const normalizedPath = toPosixLowerPath(options.entrypointPath);
+
+	if (!normalizedPath.includes(`/node_modules/${options.packageName.toLowerCase()}/`)) {
+		return null;
+	}
+
+	const npxCacheDirectory = extractDirectoryForSegmentSequence(
+		options.entrypointPath,
+		[[".npm", "_npx"], ["npm", "_npx"], [".npx"]],
+		1,
+	);
+	if (npxCacheDirectory) {
+		return {
+			packageManager: AutoUpdatePackageManager.NPX,
+			npmTag,
+			updateCommand: buildShutdownCacheRefreshCommand(npxCacheDirectory),
+			updateTiming: "shutdown",
+		};
+	}
+
+	const pnpmDlxCacheDirectory = extractDirectoryForSegmentSequence(options.entrypointPath, [["pnpm", "dlx"]], 2);
+	if (pnpmDlxCacheDirectory) {
+		return {
+			packageManager: AutoUpdatePackageManager.PNPM,
+			npmTag,
+			updateCommand: buildShutdownCacheRefreshCommand(pnpmDlxCacheDirectory),
+			updateTiming: "shutdown",
+		};
+	}
+
+	const yarnDlxDirectory = extractDirectoryForSegmentPattern(options.entrypointPath, /^dlx-\d+$/u);
+	if (yarnDlxDirectory) {
+		return {
+			packageManager: AutoUpdatePackageManager.YARN,
+			npmTag,
+			updateCommand: buildShutdownCacheRefreshCommand(yarnDlxDirectory),
+			updateTiming: "shutdown",
+		};
+	}
+
+	const bunxDirectory = extractDirectoryForSegmentPattern(options.entrypointPath, /^bunx-/u);
+	if (bunxDirectory) {
+		return {
+			packageManager: AutoUpdatePackageManager.BUN,
+			npmTag,
+			updateCommand: buildShutdownCacheRefreshCommand(bunxDirectory),
+			updateTiming: "shutdown",
+		};
+	}
+
+	return null;
 }
 
 function comparePrereleaseParts(left: Array<number | string> | null, right: Array<number | string> | null): number {
@@ -151,19 +342,30 @@ export function detectAutoUpdateInstallation(options: {
 	const normalizedPath = toPosixLowerPath(options.entrypointPath);
 	const npmTag = getNpmTag(options.currentVersion);
 
-	if (normalizedPath.includes("/.npm/_npx/") || normalizedPath.includes("/npm/_npx/")) {
-		return {
-			packageManager: AutoUpdatePackageManager.NPX,
-			npmTag,
-			updateCommand: null,
-		};
-	}
-
 	if (isPathInside(options.entrypointPath, options.cwd)) {
 		return {
 			packageManager: AutoUpdatePackageManager.LOCAL,
 			npmTag,
 			updateCommand: null,
+			updateTiming: "startup",
+		};
+	}
+
+	const transientInstallation = detectTransientAutoUpdateInstallation({
+		currentVersion: options.currentVersion,
+		packageName: options.packageName,
+		entrypointPath: options.entrypointPath,
+	});
+	if (transientInstallation) {
+		return transientInstallation;
+	}
+
+	if (looksLikeTransientCachePath(options.entrypointPath)) {
+		return {
+			packageManager: AutoUpdatePackageManager.UNKNOWN,
+			npmTag,
+			updateCommand: null,
+			updateTiming: "startup",
 		};
 	}
 
@@ -175,6 +377,7 @@ export function detectAutoUpdateInstallation(options: {
 				command: "pnpm",
 				args: ["add", "-g", `${options.packageName}@${npmTag}`],
 			},
+			updateTiming: "startup",
 		};
 	}
 
@@ -186,6 +389,7 @@ export function detectAutoUpdateInstallation(options: {
 				command: "yarn",
 				args: ["global", "add", `${options.packageName}@${npmTag}`],
 			},
+			updateTiming: "startup",
 		};
 	}
 
@@ -197,6 +401,7 @@ export function detectAutoUpdateInstallation(options: {
 				command: "bun",
 				args: ["add", "-g", `${options.packageName}@${npmTag}`],
 			},
+			updateTiming: "startup",
 		};
 	}
 
@@ -208,6 +413,7 @@ export function detectAutoUpdateInstallation(options: {
 				command: "npm",
 				args: ["install", "-g", `${options.packageName}@${npmTag}`],
 			},
+			updateTiming: "startup",
 		};
 	}
 
@@ -219,6 +425,7 @@ export function detectAutoUpdateInstallation(options: {
 				command: "npm",
 				args: ["install", "-g", `${options.packageName}@${npmTag}`],
 			},
+			updateTiming: "startup",
 		};
 	}
 
@@ -226,6 +433,7 @@ export function detectAutoUpdateInstallation(options: {
 		packageManager: AutoUpdatePackageManager.UNKNOWN,
 		npmTag,
 		updateCommand: null,
+		updateTiming: "startup",
 	};
 }
 
@@ -275,6 +483,28 @@ function spawnDetachedUpdate(command: string, args: string[]): void {
 	child.unref();
 }
 
+function schedulePendingShutdownAutoUpdate(update: PendingShutdownAutoUpdate): void {
+	pendingShutdownAutoUpdate = update;
+}
+
+export function runPendingAutoUpdateOnShutdown(options?: {
+	spawnUpdate?: (command: string, args: string[]) => void;
+	log?: (message: string) => void;
+}): void {
+	if (!pendingShutdownAutoUpdate) {
+		return;
+	}
+
+	const pendingUpdate = pendingShutdownAutoUpdate;
+	pendingShutdownAutoUpdate = null;
+
+	const log = options?.log ?? console.log;
+	log(`New version ${pendingUpdate.latestVersion} detected. Refreshing cached Kanban for next launch.`);
+
+	const spawnUpdate = options?.spawnUpdate ?? spawnDetachedUpdate;
+	spawnUpdate(pendingUpdate.command, pendingUpdate.args);
+}
+
 export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Promise<void> {
 	const env = options.env ?? process.env;
 	if (isAutoUpdateDisabled(env)) {
@@ -307,6 +537,7 @@ export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Pro
 
 	const fetchLatestVersion = options.fetchLatestVersion ?? fetchLatestVersionFromRegistry;
 	const spawnUpdate = options.spawnUpdate ?? spawnDetachedUpdate;
+	const scheduleShutdownUpdate = options.scheduleShutdownUpdate ?? schedulePendingShutdownAutoUpdate;
 
 	try {
 		const latestVersion = await fetchLatestVersion({
@@ -315,6 +546,15 @@ export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Pro
 		});
 
 		if (!latestVersion || compareVersions(options.currentVersion, latestVersion) >= 0) {
+			return;
+		}
+
+		if (installation.updateTiming === "shutdown") {
+			scheduleShutdownUpdate({
+				command: installation.updateCommand.command,
+				args: installation.updateCommand.args,
+				latestVersion,
+			});
 			return;
 		}
 

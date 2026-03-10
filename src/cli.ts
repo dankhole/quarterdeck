@@ -7,35 +7,27 @@ import packageJson from "../package.json" with { type: "json" };
 
 import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
 import { isMcpSubcommand, runMcpSubcommand } from "./commands/mcp.js";
-import type {
-	RuntimeAgentId,
-	RuntimeCommandRunResponse,
-} from "./core/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
+import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
-import { resolveProjectInputPath } from "./projects/project-path.js";
 import {
 	buildKanbanRuntimeUrl,
 	DEFAULT_KANBAN_RUNTIME_PORT,
-	getKanbanRuntimePort,
 	getKanbanRuntimeOrigin,
+	getKanbanRuntimePort,
 	parseRuntimePort,
 	setKanbanRuntimePort,
 } from "./core/runtime-endpoint.js";
+import { resolveProjectInputPath } from "./projects/project-path.js";
 import { openInBrowser } from "./server/browser.js";
-import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { createRuntimeServer } from "./server/runtime-server.js";
-import { shutdownRuntimeServer } from "./server/shutdown-coordinator.js";
+import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { resolveInteractiveShellCommand } from "./server/shell.js";
-import {
-	loadWorkspaceContext,
-} from "./state/workspace-state.js";
-import {
-	collectProjectWorktreeTaskIdsForRemoval,
-	createWorkspaceRegistry,
-} from "./server/workspace-registry.js";
+import { shutdownRuntimeServer } from "./server/shutdown-coordinator.js";
+import { collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry } from "./server/workspace-registry.js";
+import { loadWorkspaceContext } from "./state/workspace-state.js";
 import type { TerminalSessionManager } from "./terminal/session-manager.js";
-import { autoUpdateOnStartup } from "./update/auto-update.js";
+import { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown } from "./update/auto-update.js";
 
 interface CliOptions {
 	help: boolean;
@@ -251,7 +243,6 @@ function pickDirectoryPathFromSystemDialog(): string | null {
 
 	return null;
 }
-
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	return (
@@ -503,7 +494,11 @@ async function run(): Promise<void> {
 	try {
 		runtime = await startServerWithAutoPortRetry(options);
 	} catch (error) {
-		if (options.port?.mode !== "auto" && isAddressInUseError(error) && (await tryOpenExistingServer(options.noOpen))) {
+		if (
+			options.port?.mode !== "auto" &&
+			isAddressInUseError(error) &&
+			(await tryOpenExistingServer(options.noOpen))
+		) {
 			return;
 		}
 		throw error;
@@ -526,6 +521,7 @@ async function run(): Promise<void> {
 			return;
 		}
 		isShuttingDown = true;
+		runPendingAutoUpdateOnShutdown();
 		const forceExitTimer = setTimeout(() => {
 			console.error(`Forced exit after ${signal} timeout.`);
 			process.exit(130);
