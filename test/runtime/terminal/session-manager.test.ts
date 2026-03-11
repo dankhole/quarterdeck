@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 import { buildShellCommandLine } from "../../../src/core/shell.js";
@@ -16,6 +16,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		lastOutputAt: Date.now(),
 		reviewReason: null,
 		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
 		...overrides,
 	};
 }
@@ -47,5 +49,23 @@ describe("TerminalSessionManager", () => {
 		expect(commandLine).toContain("cline");
 		expect(commandLine).toContain("--auto-approve-all");
 		expect(commandLine).toContain("hello world");
+	});
+
+	it("stores hook activity metadata on sessions", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running" }),
+		});
+
+		const updated = manager.applyHookActivity("task-1", {
+			source: "claude",
+			activityText: "Using Read",
+			toolName: "Read",
+		});
+
+		expect(updated?.latestHookActivity?.source).toBe("claude");
+		expect(updated?.latestHookActivity?.activityText).toBe("Using Read");
+		expect(updated?.latestHookActivity?.toolName).toBe("Read");
+		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 });

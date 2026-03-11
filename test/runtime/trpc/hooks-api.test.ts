@@ -16,6 +16,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		lastOutputAt: Date.now(),
 		reviewReason: null,
 		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
 		...overrides,
 	};
 }
@@ -26,6 +28,7 @@ describe("createHooksApi", () => {
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
 		} as unknown as TerminalSessionManager;
 
 		const api = createHooksApi({
@@ -44,5 +47,39 @@ describe("createHooksApi", () => {
 		expect(response).toEqual({ ok: true });
 		expect(manager.transitionToRunning).not.toHaveBeenCalled();
 		expect(manager.transitionToReview).not.toHaveBeenCalled();
+	});
+
+	it("stores activity metadata without changing session state", async () => {
+		const manager = {
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
+		} as unknown as TerminalSessionManager;
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "activity",
+			metadata: {
+				source: "claude",
+				activityText: "Using Read",
+			},
+		});
+
+		expect(response).toEqual({ ok: true });
+		expect(manager.transitionToRunning).not.toHaveBeenCalled();
+		expect(manager.transitionToReview).not.toHaveBeenCalled();
+		expect(manager.applyHookActivity).toHaveBeenCalledWith("task-1", {
+			source: "claude",
+			activityText: "Using Read",
+		});
 	});
 });

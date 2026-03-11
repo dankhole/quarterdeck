@@ -16,6 +16,9 @@ export interface CreateHooksApiDependencies {
 }
 
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
+	if (event === "activity") {
+		return false;
+	}
 	if (event === "to_review") {
 		return summary.state === "running";
 	}
@@ -52,6 +55,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				if (!canTransitionTaskForHookEvent(summary, event)) {
+					if (body.metadata) {
+						manager.applyHookActivity(taskId, body.metadata);
+					}
 					return {
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
@@ -64,6 +70,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						ok: false,
 						error: `Task "${taskId}" transition failed`,
 					} satisfies RuntimeHookIngestResponse;
+				}
+
+				if (body.metadata) {
+					manager.applyHookActivity(taskId, body.metadata);
 				}
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);

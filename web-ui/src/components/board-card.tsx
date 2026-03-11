@@ -12,6 +12,61 @@ import { formatPathForDisplay } from "@/utils/path-display";
 import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
 
+interface CardSessionActivity {
+	dotColor: string;
+	text: string;
+}
+
+function formatToolLabel(toolName: string, activityText: string): string {
+	const marker = `${toolName}: `;
+	const markerIndex = activityText.indexOf(marker);
+	if (markerIndex >= 0) {
+		const detail = activityText.slice(markerIndex + marker.length);
+		return `${toolName}(${detail})`;
+	}
+	return toolName;
+}
+
+function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
+	if (!summary) {
+		return null;
+	}
+	const hookActivity = summary.latestHookActivity;
+	const activityText = hookActivity?.activityText?.trim();
+	const toolName = hookActivity?.toolName?.trim() ?? null;
+	const finalMessage = hookActivity?.finalMessage?.trim();
+	if (summary.state === "awaiting_review" && finalMessage) {
+		return { dotColor: Colors.GREEN4, text: finalMessage };
+	}
+	if (activityText) {
+		let dotColor = Colors.BLUE4;
+		let text = activityText;
+		if (text.startsWith("Final: ")) {
+			dotColor = Colors.GREEN4;
+			text = text.slice(7);
+		} else if (text.startsWith("Waiting for approval")) {
+			dotColor = Colors.GOLD4;
+		} else if (text.startsWith("Waiting for review")) {
+			dotColor = Colors.GREEN4;
+		} else if (text.startsWith("Failed ")) {
+			dotColor = Colors.RED4;
+		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
+			return { dotColor: Colors.BLUE4, text: "Thinking..." };
+		}
+		if (toolName && (text.startsWith("Using ") || text.startsWith("Completed ") || text.startsWith("Failed "))) {
+			text = formatToolLabel(toolName, activityText);
+		}
+		return { dotColor, text };
+	}
+	if (summary.state === "awaiting_review") {
+		return { dotColor: Colors.GREEN4, text: "Waiting for review" };
+	}
+	if (summary.state === "running") {
+		return { dotColor: Colors.BLUE4, text: "Thinking..." };
+	}
+	return null;
+}
+
 export function BoardCard({
 	card,
 	index,
@@ -115,6 +170,7 @@ export function BoardCard({
 		: null;
 	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
+	const sessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -278,6 +334,39 @@ export function BoardCard({
 								>
 									{displayPromptSplit.description}
 								</p>
+							) : null}
+							{sessionActivity ? (
+								<div
+									style={{
+										display: "flex",
+										gap: 6,
+										alignItems: "flex-start",
+										marginTop: 6,
+										color: isTrashCard ? Colors.GRAY2 : undefined,
+									}}
+								>
+									<span
+										style={{
+											display: "inline-block",
+											width: 8,
+											height: 8,
+											borderRadius: "50%",
+											backgroundColor: isTrashCard ? Colors.GRAY2 : sessionActivity.dotColor,
+											flexShrink: 0,
+											marginTop: 4,
+										}}
+									/>
+									<span
+										className={Classes.MONOSPACE_TEXT}
+										style={{
+											fontSize: "var(--bp-typography-size-body-small)",
+											whiteSpace: "normal",
+											overflowWrap: "anywhere",
+										}}
+									>
+										{sessionActivity.text}
+									</span>
+								</div>
 							) : null}
 							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
 								<p

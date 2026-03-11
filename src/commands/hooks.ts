@@ -5,21 +5,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
-import type { RuntimeHookEvent } from "../core/api-contract.js";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
-const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress"]);
+const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 const CODEX_LOG_WAIT_ATTEMPTS = 200;
 const CODEX_LOG_WAIT_DELAY_MS = 50;
 const CODEX_LOG_POLL_INTERVAL_MS = 200;
+const MAX_ACTIVITY_TEXT_LENGTH = 200;
+const MAX_FINAL_MESSAGE_LENGTH = 600;
 
 interface HooksIngestArgs {
 	event: RuntimeHookEvent;
 	taskId: string;
 	workspaceId: string;
+	metadata?: Partial<RuntimeTaskHookActivity>;
 }
 
 interface CodexWrapperArgs {
@@ -31,6 +34,7 @@ interface CodexWatcherState {
 	lastTurnId: string;
 	lastApprovalId: string;
 	lastExecCallId: string;
+	lastActivityFingerprint: string;
 	approvalFallbackSeq: number;
 	offset: number;
 	remainder: string;
@@ -42,12 +46,17 @@ interface CodexEventPayload {
 	id?: unknown;
 	approval_id?: unknown;
 	call_id?: unknown;
+	last_agent_message?: unknown;
+	message?: unknown;
+	command?: unknown;
+	item?: unknown;
 }
 
 interface CodexSessionLogLine {
 	dir?: unknown;
 	kind?: unknown;
 	msg?: unknown;
+	payload?: unknown;
 	turn_id?: unknown;
 	id?: unknown;
 	approval_id?: unknown;
@@ -109,13 +118,338 @@ function parseEventArg(argv: string[]): RuntimeHookEvent {
 	return event as RuntimeHookEvent;
 }
 
-function parseHooksIngestArgs(argv: string[]): HooksIngestArgs {
+function normalizeWhitespace(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateText(value: string, maxLength: number): string {
+	if (value.length <= maxLength) {
+		return value;
+	}
+	return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	return value as Record<string, unknown>;
+}
+
+function readStringField(record: Record<string, unknown>, key: string): string | null {
+	const value = record[key];
+	if (typeof value !== "string") {
+		return null;
+	}
+	const normalized = normalizeWhitespace(value);
+	return normalized.length > 0 ? normalized : null;
+}
+
+function readNestedString(record: Record<string, unknown>, path: string[]): string | null {
+	let current: unknown = record;
+	for (const key of path) {
+		const candidate = asRecord(current);
+		if (!candidate || !(key in candidate)) {
+			return null;
+		}
+		current = candidate[key];
+	}
+	if (typeof current !== "string") {
+		return null;
+	}
+	const normalized = normalizeWhitespace(current);
+	return normalized.length > 0 ? normalized : null;
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+	try {
+		return asRecord(JSON.parse(value));
+	} catch {
+		return null;
+	}
+}
+
+function parseArgValue(argv: string[], key: string): string | null {
+	for (let i = 0; i < argv.length; i += 1) {
+		const arg = argv[i];
+		if (arg === key) {
+			const next = argv[i + 1];
+			if (!next) {
+				return null;
+			}
+			return next;
+		}
+		if (arg.startsWith(`${key}=`)) {
+			return arg.slice(`${key}=`.length);
+		}
+	}
+	return null;
+}
+
+function parseMetadataFromFlags(argv: string[]): Partial<RuntimeTaskHookActivity> {
+	const metadata: Partial<RuntimeTaskHookActivity> = {};
+	const activityText = parseArgValue(argv, "--activity-text");
+	const toolName = parseArgValue(argv, "--tool-name");
+	const finalMessage = parseArgValue(argv, "--final-message");
+	const hookEventName = parseArgValue(argv, "--hook-event-name");
+	const notificationType = parseArgValue(argv, "--notification-type");
+	const source = parseArgValue(argv, "--source");
+
+	if (activityText) {
+		metadata.activityText = truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH);
+	}
+	if (toolName) {
+		metadata.toolName = truncateText(normalizeWhitespace(toolName), 120);
+	}
+	if (finalMessage) {
+		metadata.finalMessage = truncateText(normalizeWhitespace(finalMessage), MAX_FINAL_MESSAGE_LENGTH);
+	}
+	if (hookEventName) {
+		metadata.hookEventName = truncateText(normalizeWhitespace(hookEventName), 120);
+	}
+	if (notificationType) {
+		metadata.notificationType = truncateText(normalizeWhitespace(notificationType), 120);
+	}
+	if (source) {
+		metadata.source = truncateText(normalizeWhitespace(source), 64);
+	}
+
+	return metadata;
+}
+
+function parseMetadataFromBase64Flag(argv: string[]): Record<string, unknown> | null {
+	const encoded = parseArgValue(argv, "--metadata-base64");
+	if (!encoded) {
+		return null;
+	}
+	try {
+		return asRecord(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
+	} catch {
+		return null;
+	}
+}
+
+function parseMetadataFromArgPayload(argv: string[]): Record<string, unknown> | null {
+	for (let i = argv.length - 1; i >= 0; i -= 1) {
+		const arg = argv[i];
+		if (!arg || (!arg.startsWith("{") && !arg.startsWith("["))) {
+			continue;
+		}
+		const parsed = parseJsonObject(arg);
+		if (parsed) {
+			return parsed;
+		}
+	}
+	return null;
+}
+
+function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> | null {
+	const direct = asRecord(payload.tool_input);
+	if (direct) {
+		return direct;
+	}
+	const preTool = asRecord(payload.preToolUse);
+	const preParams = preTool ? asRecord(preTool.parameters) : null;
+	if (preParams) {
+		return preParams;
+	}
+	const postTool = asRecord(payload.postToolUse);
+	const postParams = postTool ? asRecord(postTool.parameters) : null;
+	if (postParams) {
+		return postParams;
+	}
+	const output = asRecord(payload.output);
+	const outputArgs = output ? asRecord(output.args) : null;
+	return outputArgs;
+}
+
+function describeToolOperation(toolName: string | null, toolInput: Record<string, unknown> | null): string | null {
+	if (!toolName || !toolInput) {
+		return null;
+	}
+
+	const command =
+		readStringField(toolInput, "command") ??
+		readStringField(toolInput, "cmd") ??
+		readStringField(toolInput, "query") ??
+		readStringField(toolInput, "description");
+	if (command) {
+		return `${toolName}: ${truncateText(command, 120)}`;
+	}
+
+	const filePath =
+		readStringField(toolInput, "file_path") ??
+		readStringField(toolInput, "filePath") ??
+		readStringField(toolInput, "path");
+	if (filePath) {
+		return `${toolName}: ${truncateText(filePath, 120)}`;
+	}
+
+	return toolName;
+}
+
+function inferActivityText(
+	event: RuntimeHookEvent,
+	payload: Record<string, unknown> | null,
+	toolName: string | null,
+	finalMessage: string | null,
+	notificationType: string | null,
+): string | null {
+	const hookEventName = payload
+		? readStringField(payload, "hook_event_name") ??
+			readStringField(payload, "hookEventName") ??
+			readStringField(payload, "hookName")
+		: null;
+	const normalizedHookEvent = hookEventName?.toLowerCase() ?? "";
+	const codexType = payload ? readStringField(payload, "type") : null;
+	const normalizedCodexType = codexType?.toLowerCase() ?? "";
+	const toolInput = payload ? extractToolInput(payload) : null;
+	const toolOperation = describeToolOperation(toolName, toolInput);
+
+	if (normalizedCodexType === "task_started") {
+		return "Working on task";
+	}
+	if (normalizedCodexType === "exec_command_begin") {
+		return "Running command";
+	}
+	if (normalizedCodexType.endsWith("_approval_request")) {
+		return "Waiting for approval";
+	}
+
+	if (normalizedHookEvent === "pretooluse" || normalizedHookEvent === "beforetool") {
+		return toolOperation ? `Using ${toolOperation}` : "Using tool";
+	}
+	if (normalizedHookEvent === "posttooluse" || normalizedHookEvent === "aftertool") {
+		return toolOperation ? `Completed ${toolOperation}` : "Completed tool";
+	}
+	if (normalizedHookEvent === "posttoolusefailure") {
+		const error = payload ? readStringField(payload, "error") : null;
+		if (toolOperation && error) {
+			return `Failed ${toolOperation}: ${truncateText(error, 100)}`;
+		}
+		if (toolOperation) {
+			return `Failed ${toolOperation}`;
+		}
+		return error ? `Tool failed: ${truncateText(error, 100)}` : "Tool failed";
+	}
+	if (normalizedHookEvent === "permissionrequest") {
+		return "Waiting for approval";
+	}
+	if (normalizedHookEvent === "userpromptsubmit" || normalizedHookEvent === "beforeagent") {
+		return "Resumed after user input";
+	}
+	if (normalizedHookEvent === "stop" || normalizedHookEvent === "subagentstop" || normalizedHookEvent === "afteragent") {
+		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review";
+	}
+	if (normalizedHookEvent === "taskcomplete") {
+		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review";
+	}
+
+	if (notificationType === "permission_prompt" || notificationType === "permission.asked") {
+		return "Waiting for approval";
+	}
+	if (notificationType === "user_attention") {
+		return "Waiting for review";
+	}
+
+	if (event === "to_review") {
+		return "Waiting for review";
+	}
+	if (event === "to_in_progress") {
+		return "Agent active";
+	}
+	return null;
+}
+
+function normalizeHookMetadata(
+	event: RuntimeHookEvent,
+	payload: Record<string, unknown> | null,
+	flagMetadata: Partial<RuntimeTaskHookActivity>,
+): Partial<RuntimeTaskHookActivity> | undefined {
+	const hookEventName = payload
+		? readStringField(payload, "hook_event_name") ??
+			readStringField(payload, "hookEventName") ??
+			readStringField(payload, "hookName")
+		: null;
+	const toolName = payload
+		? readStringField(payload, "tool_name") ??
+			readNestedString(payload, ["preToolUse", "tool"]) ??
+			readNestedString(payload, ["preToolUse", "toolName"]) ??
+			readNestedString(payload, ["postToolUse", "tool"]) ??
+			readNestedString(payload, ["postToolUse", "toolName"]) ??
+			readNestedString(payload, ["input", "tool"])
+		: null;
+	const notificationType = payload
+		? readStringField(payload, "notification_type") ??
+			readNestedString(payload, ["event", "type"]) ??
+			readNestedString(payload, ["notification", "event"])
+		: null;
+	const finalMessage = payload
+		? readStringField(payload, "last_assistant_message") ??
+			readStringField(payload, "last-assistant-message") ??
+			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
+			readNestedString(payload, ["taskComplete", "result"])
+		: null;
+
+	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
+	let inferredSource: string | null = null;
+	if (transcriptPath?.includes("/.claude/")) {
+		inferredSource = "claude";
+	} else if (transcriptPath?.includes("/.factory/")) {
+		inferredSource = "droid";
+	} else if (payload && readStringField(payload, "type") === "agent-turn-complete") {
+		inferredSource = "codex";
+	}
+
+	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
+	const merged: Partial<RuntimeTaskHookActivity> = {
+		source: flagMetadata.source ?? inferredSource ?? null,
+		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
+		toolName: flagMetadata.toolName ?? toolName ?? null,
+		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
+		finalMessage:
+			flagMetadata.finalMessage ??
+			(finalMessage ? truncateText(normalizeWhitespace(finalMessage), MAX_FINAL_MESSAGE_LENGTH) : null),
+		activityText:
+			flagMetadata.activityText ??
+			(activityText ? truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH) : null),
+	};
+
+	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);
+	if (!hasValue) {
+		return undefined;
+	}
+
+	if (typeof merged.source === "string") {
+		merged.source = truncateText(merged.source, 64);
+	}
+	if (typeof merged.hookEventName === "string") {
+		merged.hookEventName = truncateText(merged.hookEventName, 120);
+	}
+	if (typeof merged.toolName === "string") {
+		merged.toolName = truncateText(merged.toolName, 120);
+	}
+	if (typeof merged.notificationType === "string") {
+		merged.notificationType = truncateText(merged.notificationType, 120);
+	}
+
+	return merged;
+}
+
+function parseHooksIngestArgs(argv: string[], stdinPayload: string): HooksIngestArgs {
 	const event = parseEventArg(argv);
 	const context = parseHookRuntimeContextFromEnv();
+	const flagMetadata = parseMetadataFromFlags(argv);
+	const payloadFromBase64 = parseMetadataFromBase64Flag(argv);
+	const payloadFromStdin = parseJsonObject(stdinPayload.trim());
+	const payloadFromArg = parseMetadataFromArgPayload(argv);
+	const payload = payloadFromBase64 ?? payloadFromStdin ?? payloadFromArg;
+	const metadata = normalizeHookMetadata(event, payload, flagMetadata);
 	return {
 		event,
 		taskId: context.taskId,
 		workspaceId: context.workspaceId,
+		metadata,
 	};
 }
 
@@ -133,6 +467,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 			taskId: args.taskId,
 			workspaceId: args.workspaceId,
 			event: args.event,
+			metadata: args.metadata,
 		}),
 		3000,
 		"kanban hooks ingest",
@@ -154,6 +489,31 @@ function spawnDetachedKanban(args: string[]): void {
 	} catch {
 		// Best effort: hook notification failures should never block agents.
 	}
+}
+
+function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookActivity>): string[] {
+	if (!metadata) {
+		return args;
+	}
+	if (metadata.source) {
+		args.push("--source", metadata.source);
+	}
+	if (metadata.activityText) {
+		args.push("--activity-text", metadata.activityText);
+	}
+	if (metadata.toolName) {
+		args.push("--tool-name", metadata.toolName);
+	}
+	if (metadata.finalMessage) {
+		args.push("--final-message", metadata.finalMessage);
+	}
+	if (metadata.hookEventName) {
+		args.push("--hook-event-name", metadata.hookEventName);
+	}
+	if (metadata.notificationType) {
+		args.push("--notification-type", metadata.notificationType);
+	}
+	return args;
 }
 
 function getString(value: unknown): string {
@@ -198,7 +558,14 @@ function parseCodexWrapperArgs(argv: string[]): CodexWrapperArgs {
 function parseCodexSessionLogLine(line: string): CodexSessionLogLine | null {
 	try {
 		const parsed = JSON.parse(line) as CodexSessionLogLine;
-		if (getString(parsed.dir) !== "to_tui" || getString(parsed.kind) !== "codex_event") {
+		const dir = getString(parsed.dir);
+		const kind = getString(parsed.kind);
+		const hasStructuredMsg = Boolean(parsed.msg && typeof parsed.msg === "object" && !Array.isArray(parsed.msg));
+		const isCodexEventLine =
+			(kind === "codex_event" && (dir === "to_tui" || dir === "")) ||
+			(kind === "" && hasStructuredMsg) ||
+			(dir === "to_tui" && hasStructuredMsg);
+		if (!isCodexEventLine) {
 			return null;
 		}
 		return parsed;
@@ -208,10 +575,63 @@ function parseCodexSessionLogLine(line: string): CodexSessionLogLine | null {
 }
 
 function parseCodexEventPayload(line: CodexSessionLogLine): CodexEventPayload | null {
-	if (!line.msg || typeof line.msg !== "object" || Array.isArray(line.msg)) {
+	const payload = asRecord(line.payload);
+	if (payload) {
+		const payloadMsg = asRecord(payload.msg);
+		if (payloadMsg) {
+			return payloadMsg as CodexEventPayload;
+		}
+		if (typeof payload.type === "string") {
+			return payload as CodexEventPayload;
+		}
+	}
+
+	if (line.msg && typeof line.msg === "object" && !Array.isArray(line.msg)) {
+		return line.msg as CodexEventPayload;
+	}
+	if (typeof line === "object" && line !== null && "type" in line) {
+		return line as CodexEventPayload;
+	}
+	return null;
+}
+
+function parseJsonString(value: string): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return asRecord(parsed);
+	} catch {
 		return null;
 	}
-	return line.msg as CodexEventPayload;
+}
+
+function extractCodexCommandSnippet(message: CodexEventPayload, line: string): string | null {
+	const directCommand = pickFirstString([
+		extractJsonStringField(line, "command"),
+		extractJsonStringField(line, "cmd"),
+		message.command,
+	]);
+	if (directCommand) {
+		return directCommand;
+	}
+
+	if (Array.isArray(message.command)) {
+		const commandText = message.command.filter((part): part is string => typeof part === "string").join(" ").trim();
+		if (commandText) {
+			return commandText;
+		}
+	}
+
+	const item = asRecord(message.item);
+	if (item?.type === "function_call") {
+		const argsRaw = typeof item.arguments === "string" ? item.arguments : "";
+		const args = argsRaw ? parseJsonString(argsRaw) : null;
+		const cmd = args ? readStringField(args, "cmd") : null;
+		if (cmd) {
+			return cmd;
+		}
+	}
+
+	return null;
 }
 
 function pickFirstString(values: unknown[]): string {
@@ -236,32 +656,107 @@ function extractJsonStringField(line: string, field: string): string {
 	}
 }
 
-function parseCodexEventLine(line: string, state: CodexWatcherState): RuntimeHookEvent | null {
+function parseCodexEventLine(
+	line: string,
+	state: CodexWatcherState,
+): { event: RuntimeHookEvent; metadata?: Partial<RuntimeTaskHookActivity> } | null {
 	const parsed = parseCodexSessionLogLine(line);
 	if (!parsed) {
 		return null;
 	}
 	const message = parseCodexEventPayload(parsed);
+	if (!message) {
+		return null;
+	}
 	const type = getString(message?.type);
 	if (!type) {
 		return null;
 	}
+	const normalizedType = type.toLowerCase();
+	const command = extractCodexCommandSnippet(message, line);
+	const messageText = typeof message.message === "string" ? normalizeWhitespace(message.message) : "";
+	const lastAgentMessage = typeof message.last_agent_message === "string" ? normalizeWhitespace(message.last_agent_message) : "";
 
-	if (type === "task_started") {
+	if (normalizedType === "task_started" || normalizedType === "turn_started" || normalizedType === "turn_begin") {
 		const turnId = pickFirstString([
 			extractJsonStringField(line, "turn_id"),
 			message?.turn_id,
 			parsed.turn_id,
-			"task_started",
+			normalizedType,
 		]);
 		if (turnId !== state.lastTurnId) {
 			state.lastTurnId = turnId;
-			return "to_in_progress";
+			return {
+				event: "to_in_progress",
+				metadata: {
+					source: "codex",
+					activityText: command ? `Working on task: ${truncateText(command, 120)}` : "Working on task",
+					hookEventName: type,
+				},
+			};
 		}
 		return null;
 	}
 
-	if (type.endsWith("_approval_request")) {
+	if (normalizedType === "raw_response_item") {
+		const item = asRecord(message.item);
+		if (item?.type === "function_call") {
+			const callId = readStringField(item, "call_id") ?? pickFirstString([message.call_id, parsed.call_id]);
+			const name = readStringField(item, "name") ?? "tool";
+			const fingerprint = callId || `${name}:${command ?? ""}`;
+			if (fingerprint === state.lastActivityFingerprint) {
+				return null;
+			}
+			state.lastActivityFingerprint = fingerprint;
+			return {
+				event: "activity",
+				metadata: {
+					source: "codex",
+					hookEventName: type,
+					activityText: command
+						? `Calling ${name}: ${truncateText(command, 120)}`
+						: `Calling ${truncateText(name, 48)}`,
+				},
+			};
+		}
+		return null;
+	}
+
+	if (normalizedType === "agent_message" && messageText) {
+		const fingerprint = `${normalizedType}:${truncateText(messageText, 120)}`;
+		if (fingerprint === state.lastActivityFingerprint) {
+			return null;
+		}
+		state.lastActivityFingerprint = fingerprint;
+		return {
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: type,
+				activityText: `Agent: ${truncateText(messageText, 140)}`,
+			},
+		};
+	}
+
+	if (normalizedType === "task_complete") {
+		const finalText = lastAgentMessage || messageText;
+		return {
+			event: "to_review",
+			metadata: {
+				source: "codex",
+				hookEventName: type,
+				activityText: finalText ? `Final: ${truncateText(finalText, 140)}` : "Waiting for review",
+				finalMessage: finalText || undefined,
+			},
+		};
+	}
+
+	if (
+		normalizedType.endsWith("_approval_request") ||
+		normalizedType === "approval_request" ||
+		normalizedType === "permission_request" ||
+		normalizedType === "approval_requested"
+	) {
 		let approvalId = pickFirstString([
 			extractJsonStringField(line, "id"),
 			extractJsonStringField(line, "approval_id"),
@@ -279,17 +774,79 @@ function parseCodexEventLine(line: string, state: CodexWatcherState): RuntimeHoo
 		}
 		if (approvalId !== state.lastApprovalId) {
 			state.lastApprovalId = approvalId;
-			return "to_review";
+			return {
+				event: "to_review",
+				metadata: {
+					source: "codex",
+					activityText: "Waiting for approval",
+					hookEventName: type,
+				},
+			};
 		}
 		return null;
 	}
 
-	if (type === "exec_command_begin") {
+	if (normalizedType === "exec_command_begin" || normalizedType === "exec_command_start") {
 		const callId = pickFirstString([extractJsonStringField(line, "call_id"), message?.call_id, parsed.call_id]);
 		if (!callId || callId !== state.lastExecCallId) {
 			state.lastExecCallId = callId;
-			return "to_in_progress";
+			return {
+				event: "activity",
+				metadata: {
+					source: "codex",
+					activityText: command ? `Running command: ${truncateText(command, 120)}` : "Running command",
+					hookEventName: type,
+				},
+			};
 		}
+		return null;
+	}
+
+	if (normalizedType === "exec_command_end") {
+		const callId = pickFirstString([extractJsonStringField(line, "call_id"), message.call_id, parsed.call_id]);
+		const status = pickFirstString([extractJsonStringField(line, "status"), (message as Record<string, unknown>).status]);
+		const failed = status.toLowerCase() === "failed";
+		const fingerprint = `${normalizedType}:${callId}:${status}`;
+		if (fingerprint === state.lastActivityFingerprint) {
+			return null;
+		}
+		state.lastActivityFingerprint = fingerprint;
+		return {
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: type,
+				activityText: failed
+					? command
+						? `Command failed: ${truncateText(command, 120)}`
+						: "Command failed"
+					: command
+						? `Command finished: ${truncateText(command, 120)}`
+						: "Command finished",
+			},
+		};
+	}
+
+	if (normalizedType.includes("tool") || normalizedType.includes("exec") || normalizedType.includes("command")) {
+		const fingerprint = pickFirstString([
+			extractJsonStringField(line, "call_id"),
+			extractJsonStringField(line, "id"),
+			type,
+		]);
+		if (fingerprint === state.lastActivityFingerprint) {
+			return null;
+		}
+		state.lastActivityFingerprint = fingerprint;
+		return {
+			event: "activity",
+			metadata: {
+				source: "codex",
+				activityText: command
+					? `Codex ${type}: ${truncateText(command, 120)}`
+					: `Codex activity: ${truncateText(type, 64)}`,
+				hookEventName: type,
+			},
+		};
 	}
 
 	return null;
@@ -312,6 +869,7 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 		lastTurnId: "",
 		lastApprovalId: "",
 		lastExecCallId: "",
+		lastActivityFingerprint: "",
 		approvalFallbackSeq: 0,
 		offset: 0,
 		remainder: "",
@@ -343,9 +901,11 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 			const lines = combined.split(/\r?\n/);
 			state.remainder = lines.pop() ?? "";
 			for (const line of lines) {
-				const event = parseCodexEventLine(line, state);
-				if (event) {
-					spawnDetachedKanban(["hooks", "notify", "--event", event]);
+				const mapped = parseCodexEventLine(line, state);
+				if (mapped) {
+					spawnDetachedKanban(
+						appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata),
+					);
 				}
 			}
 		} catch {
@@ -366,7 +926,8 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 
 async function runHooksNotify(argv: string[]): Promise<void> {
 	try {
-		const args = parseHooksIngestArgs(argv.slice(2));
+		const stdinPayload = await readStdinText();
+		const args = parseHooksIngestArgs(argv.slice(2), stdinPayload);
 		await ingestHookEvent(args);
 	} catch {
 		// Best effort only.
@@ -374,6 +935,9 @@ async function runHooksNotify(argv: string[]): Promise<void> {
 }
 
 async function readStdinText(): Promise<string> {
+	if (process.stdin.isTTY) {
+		return "";
+	}
 	const chunks: string[] = [];
 	process.stdin.setEncoding("utf8");
 	for await (const chunk of process.stdin) {
@@ -386,8 +950,11 @@ function mapGeminiHookEvent(eventName: string): RuntimeHookEvent | null {
 	if (eventName === "AfterAgent") {
 		return "to_review";
 	}
-	if (eventName === "BeforeAgent" || eventName === "AfterTool") {
+	if (eventName === "BeforeAgent") {
 		return "to_in_progress";
+	}
+	if (eventName === "AfterTool" || eventName === "BeforeTool" || eventName === "Notification") {
+		return "activity";
 	}
 	return null;
 }
@@ -401,11 +968,19 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	}
 
 	let hookEventName = "";
+	let payloadRecord: Record<string, unknown> | null = null;
 	try {
 		const parsed = JSON.parse(payload || "{}") as { hook_event_name?: unknown };
-		hookEventName = typeof parsed.hook_event_name === "string" ? parsed.hook_event_name : "";
+		payloadRecord = asRecord(parsed);
+		hookEventName =
+			typeof parsed.hook_event_name === "string"
+				? parsed.hook_event_name
+				: payloadRecord && typeof payloadRecord.hookEventName === "string"
+					? payloadRecord.hookEventName
+					: "";
 	} catch {
 		hookEventName = "";
+		payloadRecord = null;
 	}
 
 	process.stdout.write("{}\n");
@@ -414,7 +989,11 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	if (!mappedEvent) {
 		return;
 	}
-	spawnDetachedKanban(["hooks", "notify", "--event", mappedEvent]);
+	const metadata = normalizeHookMetadata(mappedEvent, payloadRecord, {
+		source: "gemini",
+		hookEventName: hookEventName || undefined,
+	});
+	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
 async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
@@ -462,7 +1041,14 @@ async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
 		}
 	}
 
-	const reviewNotifyCommandParts = buildKanbanCommandParts(["hooks", "notify", "--event", "to_review"]);
+	const reviewNotifyCommandParts = buildKanbanCommandParts([
+		"hooks",
+		"notify",
+		"--event",
+		"to_review",
+		"--source",
+		"codex",
+	]);
 	const notifyConfig = `notify=${JSON.stringify(reviewNotifyCommandParts)}`;
 	const child = spawn(wrapperArgs.realBinary, ["-c", notifyConfig, ...wrapperArgs.agentArgs], {
 		stdio: "inherit",
@@ -513,7 +1099,8 @@ export function isHooksSubcommand(argv: string[]): boolean {
 export async function runHooksIngest(argv: string[]): Promise<void> {
 	let args: HooksIngestArgs;
 	try {
-		args = parseHooksIngestArgs(argv.slice(2));
+		const stdinPayload = await readStdinText();
+		args = parseHooksIngestArgs(argv.slice(2), stdinPayload);
 	} catch (error) {
 		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;

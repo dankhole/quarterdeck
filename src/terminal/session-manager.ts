@@ -1,4 +1,5 @@
 import type {
+	RuntimeTaskHookActivity,
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
@@ -88,6 +89,8 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		lastOutputAt: null,
 		reviewReason: null,
 		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
 	};
 }
 
@@ -367,6 +370,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				lastOutputAt: null,
 				reviewReason: "error",
 				exitCode: null,
+				lastHookAt: null,
+				latestHookActivity: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatSpawnFailure(commandBinary, error));
@@ -401,6 +406,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			lastOutputAt: null,
 			reviewReason: request.resumeFromTrash ? "attention" : null,
 			exitCode: null,
+			lastHookAt: null,
+			latestHookActivity: null,
 		});
 		this.emitSummary(entry.summary);
 
@@ -499,6 +506,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				lastOutputAt: null,
 				reviewReason: "error",
 				exitCode: null,
+				lastHookAt: null,
+				latestHookActivity: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatShellSpawnFailure(request.binary, error));
@@ -527,6 +536,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			lastOutputAt: null,
 			reviewReason: null,
 			exitCode: null,
+			lastHookAt: null,
+			latestHookActivity: null,
 		});
 		this.emitSummary(entry.summary);
 
@@ -597,6 +608,62 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}
 			this.emitSummary(summary);
 		}
+		return cloneSummary(summary);
+	}
+
+	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+
+		const hasActivityUpdate =
+			typeof activity.activityText === "string" ||
+			typeof activity.toolName === "string" ||
+			typeof activity.finalMessage === "string" ||
+			typeof activity.hookEventName === "string" ||
+			typeof activity.notificationType === "string" ||
+			typeof activity.source === "string";
+		if (!hasActivityUpdate) {
+			return cloneSummary(entry.summary);
+		}
+
+		const previous = entry.summary.latestHookActivity;
+		const next: RuntimeTaskHookActivity = {
+			activityText: typeof activity.activityText === "string" ? activity.activityText : previous?.activityText ?? null,
+			toolName: typeof activity.toolName === "string" ? activity.toolName : previous?.toolName ?? null,
+			finalMessage:
+				typeof activity.finalMessage === "string" ? activity.finalMessage : previous?.finalMessage ?? null,
+			hookEventName:
+				typeof activity.hookEventName === "string" ? activity.hookEventName : previous?.hookEventName ?? null,
+			notificationType:
+				typeof activity.notificationType === "string"
+					? activity.notificationType
+					: previous?.notificationType ?? null,
+			source: typeof activity.source === "string" ? activity.source : previous?.source ?? null,
+		};
+
+		const didChange =
+			next.activityText !== (previous?.activityText ?? null) ||
+			next.toolName !== (previous?.toolName ?? null) ||
+			next.finalMessage !== (previous?.finalMessage ?? null) ||
+			next.hookEventName !== (previous?.hookEventName ?? null) ||
+			next.notificationType !== (previous?.notificationType ?? null) ||
+			next.source !== (previous?.source ?? null);
+		if (!didChange) {
+			return cloneSummary(entry.summary);
+		}
+
+		const summary = updateSummary(entry, {
+			lastHookAt: now(),
+			latestHookActivity: next,
+		});
+		if (entry.active) {
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
 		return cloneSummary(summary);
 	}
 

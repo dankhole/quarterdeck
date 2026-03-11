@@ -46,6 +46,13 @@ interface HookContext {
 	workspaceId: string;
 }
 
+interface HookCommandMetadata {
+	source?: string;
+	activityText?: string;
+	hookEventName?: string;
+	notificationType?: string;
+}
+
 interface AgentSessionAdapter {
 	prepare(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch>;
 }
@@ -69,8 +76,20 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: RuntimeHookEvent): string {
+function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
+	if (metadata?.source) {
+		parts.push("--source", metadata.source);
+	}
+	if (metadata?.activityText) {
+		parts.push("--activity-text", metadata.activityText);
+	}
+	if (metadata?.hookEventName) {
+		parts.push("--hook-event-name", metadata.hookEventName);
+	}
+	if (metadata?.notificationType) {
+		parts.push("--notification-type", metadata.notificationType);
+	}
 	return parts.map(quoteShellArg).join(" ");
 }
 
@@ -94,7 +113,7 @@ function hasCliOption(args: string[], optionName: string): boolean {
 
 function getClineHookScriptPath(
 	hooksDir: string,
-	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit",
+	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse",
 ): string {
 	if (process.platform === "win32") {
 		return join(hooksDir, `${hookName}.ps1`);
@@ -103,11 +122,12 @@ function getClineHookScriptPath(
 }
 
 function buildClineHookScriptContent(event: RuntimeHookEvent): string {
-	const commandParts = buildHooksCommandParts(["notify", "--event", event]);
+	const commandParts = buildHooksCommandParts(["notify", "--event", event, "--source", "cline"]);
 	if (process.platform === "win32") {
 		const command = commandParts.map(powerShellQuote).join(" ");
-		return `try {
-  & ${command} | Out-Null
+ 		return `$inputText = [Console]::In.ReadToEnd()
+try {
+  $inputText | & ${command} | Out-Null
 } catch {
 }
 Write-Output '{"cancel":false}'
@@ -116,13 +136,14 @@ exit 0
 	}
 	const command = commandParts.map(quoteShellArg).join(" ");
 	return `#!/usr/bin/env bash
-${command} >/dev/null 2>&1 || true
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${command} >/dev/null 2>&1 || true
 echo '{"cancel":false}'
 `;
 }
 
 function buildClineNotificationHookScriptContent(): string {
-	const commandParts = buildHooksCommandParts(["notify", "--event", "to_review"]);
+	const commandParts = buildHooksCommandParts(["notify", "--event", "to_review", "--source", "cline"]);
 	if (process.platform === "win32") {
 		const command = commandParts.map(powerShellQuote).join(" ");
 		return `$inputText = [Console]::In.ReadToEnd()
@@ -131,7 +152,7 @@ if (
   $inputText -notmatch '"source"\\s*:\\s*"completion_result"'
 ) {
   try {
-    & ${command} | Out-Null
+    $inputText | & ${command} | Out-Null
   } catch {
   }
 }
@@ -144,7 +165,7 @@ exit 0
 INPUT="$(cat || true)"
 if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"user_attention"' &&
   ! printf '%s' "$INPUT" | grep -Eq '"source"[[:space:]]*:[[:space:]]*"completion_result"'; then
-  ${command} >/dev/null 2>&1 || true
+  printf '%s' "$INPUT" | ${command} >/dev/null 2>&1 || true
 fi
 echo '{"cancel":false}'
 `;
@@ -324,23 +345,40 @@ const claudeAdapter: AgentSessionAdapter = {
 			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
 			const hooksSettings = {
 				hooks: {
-					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("to_review") }] }],
+					Stop: [
+						{ hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] },
+					],
+					SubagentStop: [
+						{ hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
+					],
+					PreToolUse: [
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
+					],
 					PermissionRequest: [
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_review") }] },
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] },
 					],
 					PostToolUse: [
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] },
+						{
+							matcher: "*",
+							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
+						},
 					],
 					PostToolUseFailure: [
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] },
+						{
+							matcher: "*",
+							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
+						},
 					],
 					Notification: [
 						{
 							matcher: "permission_prompt",
-							hooks: [{ type: "command", command: buildHookCommand("to_review") }],
+							hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }],
 						},
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
 					],
-					UserPromptSubmit: [{ hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] }],
+					UserPromptSubmit: [
+						{ hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }] },
+					],
 				},
 			};
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
@@ -472,6 +510,11 @@ const geminiAdapter: AgentSessionAdapter = {
 
 			const config = {
 				hooks: {
+					BeforeTool: [
+						{
+							hooks: [{ type: "command", command: geminiHookCommand }],
+						},
+					],
 					AfterTool: [
 						{
 							hooks: [{ type: "command", command: geminiHookCommand }],
@@ -483,6 +526,11 @@ const geminiAdapter: AgentSessionAdapter = {
 						},
 					],
 					BeforeAgent: [
+						{
+							hooks: [{ type: "command", command: geminiHookCommand }],
+						},
+					],
+					Notification: [
 						{
 							hooks: [{ type: "command", command: geminiHookCommand }],
 						},
@@ -773,8 +821,8 @@ const opencodeAdapter: AgentSessionAdapter = {
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
 			const pluginContent = buildOpenCodePluginContent(
-				buildHookCommand("to_review"),
-				buildHookCommand("to_in_progress"),
+				buildHookCommand("to_review", { source: "opencode", activityText: "Waiting for review" }),
+				buildHookCommand("to_in_progress", { source: "opencode", activityText: "Agent active" }),
 			);
 			await ensureTextFile(pluginPath, pluginContent);
 			const pluginFileUrl = pathToFileURL(pluginPath).href;
@@ -835,13 +883,36 @@ const droidAdapter: AgentSessionAdapter = {
 			};
 
 			if (hooks) {
-				const reviewNotifyCommand = buildHooksCommand(["notify", "--event", "to_review"]);
-				const inProgressNotifyCommand = buildHooksCommand(["notify", "--event", "to_in_progress"]);
+				const reviewNotifyCommand = buildHooksCommand([
+					"notify",
+					"--event",
+					"to_review",
+					"--source",
+					"droid",
+				]);
+				const inProgressNotifyCommand = buildHooksCommand([
+					"notify",
+					"--event",
+					"to_in_progress",
+					"--source",
+					"droid",
+				]);
+				const activityNotifyCommand = buildHooksCommand([
+					"notify",
+					"--event",
+					"activity",
+					"--source",
+					"droid",
+				]);
 				settings.hooks = {
 					Stop: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
-					Notification: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
-					PreToolUse: [{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] }],
-					PostToolUse: [{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] }],
+					Notification: [
+						{ hooks: [{ type: "command", command: activityNotifyCommand }] },
+						{ hooks: [{ type: "command", command: reviewNotifyCommand }] },
+					],
+					PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
+					PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
+					PostToolUseFailure: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
 					UserPromptSubmit: [{ hooks: [{ type: "command", command: inProgressNotifyCommand }] }],
 				};
 
@@ -894,11 +965,15 @@ const clineAdapter: AgentSessionAdapter = {
 			const notificationHookPath = getClineHookScriptPath(hooksDir, "Notification");
 			const taskCompleteHookPath = getClineHookScriptPath(hooksDir, "TaskComplete");
 			const userPromptSubmitHookPath = getClineHookScriptPath(hooksDir, "UserPromptSubmit");
+			const preToolUseHookPath = getClineHookScriptPath(hooksDir, "PreToolUse");
+			const postToolUseHookPath = getClineHookScriptPath(hooksDir, "PostToolUse");
 			const executable = process.platform !== "win32";
 
 			await ensureTextFile(notificationHookPath, buildClineNotificationHookScriptContent(), executable);
 			await ensureTextFile(taskCompleteHookPath, buildClineHookScriptContent("to_review"), executable);
 			await ensureTextFile(userPromptSubmitHookPath, buildClineHookScriptContent("to_in_progress"), executable);
+			await ensureTextFile(preToolUseHookPath, buildClineHookScriptContent("activity"), executable);
+			await ensureTextFile(postToolUseHookPath, buildClineHookScriptContent("activity"), executable);
 
 			if (!hasCliOption(args, "--hooks-dir")) {
 				args.push("--hooks-dir", hooksDir);

@@ -42,11 +42,23 @@ describe("parseHookIngestRequest", () => {
 			taskId: "  task-123  ",
 			workspaceId: "  workspace-456  ",
 			event: "to_review",
+			metadata: {
+				source: " claude ",
+				activityText: " Using Read ",
+			},
 		});
 		expect(parsed).toEqual({
 			taskId: "task-123",
 			workspaceId: "workspace-456",
 			event: "to_review",
+			metadata: {
+				source: "claude",
+				activityText: "Using Read",
+				hookEventName: undefined,
+				toolName: undefined,
+				finalMessage: undefined,
+				notificationType: undefined,
+			},
 		});
 	});
 

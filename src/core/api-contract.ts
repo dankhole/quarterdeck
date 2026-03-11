@@ -176,6 +176,16 @@ export const runtimeTaskSessionReviewReasonSchema = z
 	.nullable();
 export type RuntimeTaskSessionReviewReason = z.infer<typeof runtimeTaskSessionReviewReasonSchema>;
 
+export const runtimeTaskHookActivitySchema = z.object({
+	activityText: z.string().nullable().default(null),
+	toolName: z.string().nullable().default(null),
+	finalMessage: z.string().nullable().default(null),
+	hookEventName: z.string().nullable().default(null),
+	notificationType: z.string().nullable().default(null),
+	source: z.string().nullable().default(null),
+});
+export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
+
 export const runtimeTaskSessionSummarySchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
@@ -187,6 +197,8 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	lastOutputAt: z.number().nullable(),
 	reviewReason: runtimeTaskSessionReviewReasonSchema,
 	exitCode: z.number().nullable(),
+	lastHookAt: z.number().nullable().default(null),
+	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
@@ -639,13 +651,14 @@ export const runtimeGitRefsResponseSchema = z.object({
 });
 export type RuntimeGitRefsResponse = z.infer<typeof runtimeGitRefsResponseSchema>;
 
-export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress"]);
+export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress", "activity"]);
 export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 
 export const runtimeHookIngestRequestSchema = z.object({
 	taskId: z.string(),
 	workspaceId: z.string(),
 	event: runtimeHookEventSchema,
+	metadata: runtimeTaskHookActivitySchema.partial().optional(),
 });
 export type RuntimeHookIngestRequest = z.infer<typeof runtimeHookIngestRequestSchema>;
 

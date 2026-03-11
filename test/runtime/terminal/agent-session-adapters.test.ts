@@ -71,6 +71,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			hooks?: Record<string, unknown>;
 		};
 		expect(settings.hooks?.PermissionRequest).toBeDefined();
+		expect(settings.hooks?.PreToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
 	});
@@ -145,11 +146,12 @@ describe("prepareAgentLaunch hook strategies", () => {
 		};
 		expect(settings.autonomyMode).toBe("auto-high");
 		expect(settings.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.Notification?.[0]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("AskUser");
-		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("AskUser");
-		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.Notification?.[0]?.hooks?.[0]?.command).toContain("activity");
+		expect(settings.hooks?.Notification?.[1]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
+		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
+		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("*");
+		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
 	});
 
@@ -172,6 +174,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 			process.platform === "win32" ? join(hooksDir, "TaskComplete.ps1") : join(hooksDir, "TaskComplete");
 		const userPromptSubmitHookPath =
 			process.platform === "win32" ? join(hooksDir, "UserPromptSubmit.ps1") : join(hooksDir, "UserPromptSubmit");
+		const preToolUseHookPath =
+			process.platform === "win32" ? join(hooksDir, "PreToolUse.ps1") : join(hooksDir, "PreToolUse");
+		const postToolUseHookPath =
+			process.platform === "win32" ? join(hooksDir, "PostToolUse.ps1") : join(hooksDir, "PostToolUse");
 
 		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
@@ -183,6 +189,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(existsSync(notificationHookPath)).toBe(true);
 		expect(existsSync(taskCompleteHookPath)).toBe(true);
 		expect(existsSync(userPromptSubmitHookPath)).toBe(true);
+		expect(existsSync(preToolUseHookPath)).toBe(true);
+		expect(existsSync(postToolUseHookPath)).toBe(true);
 
 		const notificationScript = readFileSync(notificationHookPath, "utf8");
 		expect(notificationScript).toContain("hooks");
@@ -200,6 +208,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(userPromptSubmitScript).toContain("hooks");
 		expect(userPromptSubmitScript).toContain("to_in_progress");
 		expect(userPromptSubmitScript).toContain('{"cancel":false}');
+
+		const preToolUseScript = readFileSync(preToolUseHookPath, "utf8");
+		expect(preToolUseScript).toContain("hooks");
+		expect(preToolUseScript).toContain("activity");
+
+		const postToolUseScript = readFileSync(postToolUseHookPath, "utf8");
+		expect(postToolUseScript).toContain("hooks");
+		expect(postToolUseScript).toContain("activity");
 	});
 
 	it("adds resume flags for each agent", async () => {

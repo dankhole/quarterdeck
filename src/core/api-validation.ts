@@ -257,10 +257,21 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 	if (!workspaceId) {
 		throw new Error("Missing workspaceId");
 	}
+	const metadata = parsed.metadata
+		? {
+				activityText: parsed.metadata.activityText?.trim(),
+				toolName: parsed.metadata.toolName?.trim(),
+				finalMessage: parsed.metadata.finalMessage?.trim(),
+				hookEventName: parsed.metadata.hookEventName?.trim(),
+				notificationType: parsed.metadata.notificationType?.trim(),
+				source: parsed.metadata.source?.trim(),
+			}
+		: undefined;
 	return {
 		...parsed,
 		taskId,
 		workspaceId,
+		metadata,
 	};
 }
 
