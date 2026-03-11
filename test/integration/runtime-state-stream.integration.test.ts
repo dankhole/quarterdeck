@@ -750,6 +750,8 @@ describe.sequential("runtime state stream integration", () => {
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
+		runGit(projectPath, ["config", "user.name", "Test User"]);
+		runGit(projectPath, ["config", "user.email", "test@example.com"]);
 		writeFileSync(join(projectPath, "README.md"), "seed\n", "utf8");
 		commitAll(projectPath, "seed project");
 
