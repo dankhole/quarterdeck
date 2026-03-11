@@ -13,7 +13,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
-import type { BoardCard, ReviewTaskWorkspaceSnapshot } from "@/types";
+import type { BoardCard } from "@/types";
 
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
@@ -54,7 +54,6 @@ export interface UseTaskSessionsResult {
 	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
-	fetchReviewWorkspaceSnapshot: (task: BoardCard) => Promise<ReviewTaskWorkspaceSnapshot | null>;
 }
 
 export function useTaskSessions({
@@ -262,55 +261,6 @@ export function useTaskSessions({
 		[currentProjectId],
 	);
 
-	const fetchReviewWorkspaceSnapshot = useCallback(
-		async (task: BoardCard): Promise<ReviewTaskWorkspaceSnapshot | null> => {
-			if (!currentProjectId) {
-				return null;
-			}
-
-			let workspaceInfo: RuntimeTaskWorkspaceInfoResponse;
-			try {
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				workspaceInfo = await trpcClient.workspace.getTaskContext.query({
-					taskId: task.id,
-					baseRef: task.baseRef,
-				});
-			} catch {
-				return null;
-			}
-
-			let changedFiles: number | null = null;
-			let additions: number | null = null;
-			let deletions: number | null = null;
-			try {
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const summaryPayload = await trpcClient.workspace.getGitSummary.query({
-					taskId: task.id,
-					baseRef: task.baseRef,
-				});
-				if (summaryPayload.ok) {
-					changedFiles = summaryPayload.summary.changedFiles;
-					additions = summaryPayload.summary.additions;
-					deletions = summaryPayload.summary.deletions;
-				}
-			} catch {
-				// Swallow errors: this snapshot is informational and should never block review cards.
-			}
-
-			return {
-				taskId: task.id,
-				path: workspaceInfo.path,
-				branch: workspaceInfo.branch,
-				isDetached: workspaceInfo.isDetached,
-				headCommit: workspaceInfo.headCommit,
-				changedFiles,
-				additions,
-				deletions,
-			};
-		},
-		[currentProjectId],
-	);
-
 	return {
 		upsertSession,
 		ensureTaskWorkspace,
@@ -320,6 +270,5 @@ export function useTaskSessions({
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 		fetchTaskWorkingChangeCount,
-		fetchReviewWorkspaceSnapshot,
 	};
 }

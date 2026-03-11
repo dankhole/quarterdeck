@@ -26,6 +26,7 @@ interface UseGitHistoryDataOptions {
 	workspaceId: string | null;
 	taskScope?: GitHistoryTaskScope | null;
 	gitSummary: RuntimeGitSyncSummary | null;
+	changeRevision?: number | null;
 	enabled?: boolean;
 }
 
@@ -64,6 +65,7 @@ export function useGitHistoryData({
 	workspaceId,
 	taskScope,
 	gitSummary,
+	changeRevision,
 	enabled = true,
 }: UseGitHistoryDataOptions): UseGitHistoryDataResult {
 	const [viewMode, setViewMode] = useState<GitHistoryViewMode>("commit");
@@ -356,6 +358,28 @@ export function useGitHistoryData({
 		queryFn: workingCopyQueryFn,
 		retainDataOnError: true,
 	});
+
+	const previousChangeRevisionRef = useRef<number | null>(changeRevision ?? null);
+	useEffect(() => {
+		if (!enabled || !workspaceId) {
+			previousChangeRevisionRef.current = changeRevision ?? null;
+			return;
+		}
+		const previous = previousChangeRevisionRef.current;
+		const current = changeRevision ?? null;
+		if (previous === current) {
+			return;
+		}
+		if (!hasWorkingCopy) {
+			previousChangeRevisionRef.current = current;
+			return;
+		}
+		if (workingCopyQuery.isLoading) {
+			return;
+		}
+		previousChangeRevisionRef.current = current;
+		void workingCopyQuery.refetch();
+	}, [changeRevision, enabled, hasWorkingCopy, workingCopyQuery.isLoading, workingCopyQuery.refetch, workspaceId]);
 
 	const selectWorkingCopy = useCallback(() => {
 		setViewMode("working-copy");

@@ -19,6 +19,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamWorkspaceGitStatusMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskWorkspaceInfoResponse,
@@ -659,6 +660,73 @@ describe.sequential("runtime state stream integration", () => {
 			}
 			await server.stop();
 			cleanupRoot();
+			cleanupHome();
+		}
+	}, 30_000);
+
+	it("streams workspace_git_status_updated revisions for filesystem changes", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-git-status-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-git-status-stream-");
+
+		initGitRepository(projectPath);
+
+		const port = await getAvailablePort();
+		const server = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			stream = await connectRuntimeStream(
+				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceId)}`,
+			);
+			await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			);
+
+			const initialGitStatus = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamWorkspaceGitStatusMessage =>
+					message.type === "workspace_git_status_updated" && message.workspaceId === workspaceId,
+			)) as RuntimeStateStreamWorkspaceGitStatusMessage;
+			const initialRevision = initialGitStatus.homeChangeRevision;
+
+			writeFileSync(join(projectPath, "watch-change.txt"), `change-${Date.now()}\n`, "utf8");
+
+			const updatedGitStatus = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamWorkspaceGitStatusMessage =>
+					message.type === "workspace_git_status_updated" &&
+					message.workspaceId === workspaceId &&
+					message.homeChangeRevision > initialRevision,
+			)) as RuntimeStateStreamWorkspaceGitStatusMessage;
+
+			expect(updatedGitStatus.homeSummary.changedFiles).toBeGreaterThanOrEqual(1);
+
+			const firstDirtyRevision = updatedGitStatus.homeChangeRevision;
+			const firstDirtySummary = updatedGitStatus.homeSummary;
+			writeFileSync(join(projectPath, "watch-change.txt"), `other-${Date.now()}\n`, "utf8");
+
+			const sameSummaryNewRevision = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamWorkspaceGitStatusMessage =>
+					message.type === "workspace_git_status_updated" &&
+					message.workspaceId === workspaceId &&
+					message.homeChangeRevision > firstDirtyRevision,
+			)) as RuntimeStateStreamWorkspaceGitStatusMessage;
+
+			expect(sameSummaryNewRevision.homeSummary.changedFiles).toBe(firstDirtySummary.changedFiles);
+			expect(sameSummaryNewRevision.homeSummary.additions).toBe(firstDirtySummary.additions);
+			expect(sameSummaryNewRevision.homeSummary.deletions).toBe(firstDirtySummary.deletions);
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupProject();
 			cleanupHome();
 		}
 	}, 30_000);

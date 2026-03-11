@@ -6,6 +6,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamWorkspaceGitStatusMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
@@ -26,6 +27,9 @@ export interface CreateRuntimeStateHubDependencies {
 		WorkspaceRegistry,
 		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
 	>;
+	onWorkspaceStreamSubscribed?: (workspaceId: string, workspacePath: string) => void | Promise<void>;
+	onWorkspaceStreamUnsubscribed?: (workspaceId: string) => void | Promise<void>;
+	onWorkspaceStateUpdated?: (workspaceId: string) => void | Promise<void>;
 }
 
 export interface RuntimeStateHub {
@@ -35,6 +39,7 @@ export interface RuntimeStateHub {
 	}) => void;
 	disposeWorkspace: (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions) => void;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void>;
+	broadcastWorkspaceGitStatusUpdated: (payload: RuntimeStateStreamWorkspaceGitStatusMessage) => void;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void>;
 	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
 	close: () => Promise<void>;
@@ -132,6 +137,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				clients.delete(client);
 				if (clients.size === 0) {
 					runtimeStateClientsByWorkspaceId.delete(workspaceId);
+					void deps.onWorkspaceStreamUnsubscribed?.(workspaceId);
 				}
 			}
 		}
@@ -181,6 +187,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const broadcastRuntimeWorkspaceStateUpdated = async (workspaceId: string, workspacePath: string): Promise<void> => {
 		const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 		if (!clients || clients.size === 0) {
+			void deps.onWorkspaceStateUpdated?.(workspaceId);
 			return;
 		}
 		try {
@@ -193,8 +200,19 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			for (const client of clients) {
 				sendRuntimeStateMessage(client, payload);
 			}
+			void deps.onWorkspaceStateUpdated?.(workspaceId);
 		} catch {
 			// Ignore transient state read failures; next update will resync.
+		}
+	};
+
+	const broadcastWorkspaceGitStatusUpdated = (payload: RuntimeStateStreamWorkspaceGitStatusMessage) => {
+		const clients = runtimeStateClientsByWorkspaceId.get(payload.workspaceId);
+		if (!clients || clients.size === 0) {
+			return;
+		}
+		for (const client of clients) {
+			sendRuntimeStateMessage(client, payload);
 		}
 	};
 
@@ -245,9 +263,13 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			runtimeStateClients.add(client);
 			if (workspace.workspaceId) {
 				const workspaceClients = runtimeStateClientsByWorkspaceId.get(workspace.workspaceId) ?? new Set<WebSocket>();
+				const isFirstWorkspaceClient = workspaceClients.size === 0;
 				workspaceClients.add(client);
 				runtimeStateClientsByWorkspaceId.set(workspace.workspaceId, workspaceClients);
 				runtimeStateWorkspaceIdByClient.set(client, workspace.workspaceId);
+				if (isFirstWorkspaceClient && workspace.workspacePath) {
+					void deps.onWorkspaceStreamSubscribed?.(workspace.workspaceId, workspace.workspacePath);
+				}
 			}
 
 			try {
@@ -311,6 +333,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		},
 		disposeWorkspace,
 		broadcastRuntimeWorkspaceStateUpdated,
+		broadcastWorkspaceGitStatusUpdated,
 		broadcastRuntimeProjectsUpdated,
 		broadcastTaskReadyForReview,
 		close: async () => {
@@ -327,7 +350,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			terminalSummaryUnsubscribeByWorkspaceId.clear();
-			for (const client of runtimeStateClients) {
+			for (const client of Array.from(runtimeStateClients)) {
+				cleanupRuntimeStateClient(client);
 				try {
 					client.terminate();
 				} catch {

@@ -20,6 +20,7 @@ import {
 } from "./core/runtime-endpoint.js";
 import { resolveProjectInputPath } from "./projects/project-path.js";
 import { openInBrowser } from "./server/browser.js";
+import { createWorkspaceGitWatchService } from "./server/workspace-git-watch-service.js";
 import { createRuntimeServer } from "./server/runtime-server.js";
 import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { resolveInteractiveShellCommand } from "./server/shell.js";
@@ -364,6 +365,7 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 
 async function startServer(): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	let runtimeStateHub: ReturnType<typeof createRuntimeStateHub> | undefined;
+	let workspaceGitWatchService: ReturnType<typeof createWorkspaceGitWatchService> | null = null;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadRuntimeConfig,
@@ -375,8 +377,26 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 	});
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
+		onWorkspaceStreamSubscribed: (workspaceId, workspacePath) => {
+			void workspaceGitWatchService?.subscribeWorkspace(workspaceId, workspacePath);
+		},
+		onWorkspaceStreamUnsubscribed: (workspaceId) => {
+			void workspaceGitWatchService?.unsubscribeWorkspace(workspaceId);
+		},
+		onWorkspaceStateUpdated: (workspaceId) => {
+			workspaceGitWatchService?.requestRefresh(workspaceId, {
+				full: true,
+				home: true,
+			});
+		},
 	});
 	const runtimeHub = runtimeStateHub;
+	workspaceGitWatchService = createWorkspaceGitWatchService({
+		broadcastWorkspaceGitStatusUpdated: runtimeHub.broadcastWorkspaceGitStatusUpdated,
+		warn: (message) => {
+			console.warn(`[kanban] ${message}`);
+		},
+	});
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeHub.trackTerminalManager(workspaceId, terminalManager);
 	}
@@ -390,6 +410,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		const disposed = workspaceRegistry.disposeWorkspace(workspaceId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
+		void workspaceGitWatchService?.disposeWorkspace(workspaceId);
 		runtimeHub.disposeWorkspace(workspaceId);
 		return disposed;
 	};
@@ -412,6 +433,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 	});
 
 	const close = async () => {
+		await workspaceGitWatchService?.close();
 		await runtimeServer.close();
 	};
 

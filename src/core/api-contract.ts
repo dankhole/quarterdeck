@@ -244,6 +244,32 @@ export const runtimeStateStreamWorkspaceStateMessageSchema = z.object({
 });
 export type RuntimeStateStreamWorkspaceStateMessage = z.infer<typeof runtimeStateStreamWorkspaceStateMessageSchema>;
 
+export const runtimeTaskGitStatusSchema = z.object({
+	taskId: z.string(),
+	baseRef: z.string(),
+	path: z.string(),
+	exists: z.boolean(),
+	branch: z.string().nullable(),
+	isDetached: z.boolean(),
+	headCommit: z.string().nullable(),
+	changedFiles: z.number(),
+	additions: z.number(),
+	deletions: z.number(),
+	changeRevision: z.number().int().nonnegative(),
+});
+export type RuntimeTaskGitStatus = z.infer<typeof runtimeTaskGitStatusSchema>;
+
+export const runtimeStateStreamWorkspaceGitStatusMessageSchema = z.object({
+	type: z.literal("workspace_git_status_updated"),
+	workspaceId: z.string(),
+	homeSummary: runtimeGitSyncSummarySchema,
+	homeChangeRevision: z.number().int().nonnegative(),
+	tasks: z.array(runtimeTaskGitStatusSchema),
+});
+export type RuntimeStateStreamWorkspaceGitStatusMessage = z.infer<
+	typeof runtimeStateStreamWorkspaceGitStatusMessageSchema
+>;
+
 export const runtimeStateStreamTaskSessionsMessageSchema = z.object({
 	type: z.literal("task_sessions_updated"),
 	workspaceId: z.string(),
@@ -277,6 +303,7 @@ export type RuntimeStateStreamErrorMessage = z.infer<typeof runtimeStateStreamEr
 export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamSnapshotMessageSchema,
 	runtimeStateStreamWorkspaceStateMessageSchema,
+	runtimeStateStreamWorkspaceGitStatusMessageSchema,
 	runtimeStateStreamTaskSessionsMessageSchema,
 	runtimeStateStreamProjectsMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,

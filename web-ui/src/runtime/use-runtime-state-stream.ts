@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
+import { applyWorkspaceGitStatusUpdate } from "@/stores/workspace-metadata-store";
 
 const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
@@ -294,6 +295,17 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						dispatch({
 							type: "task_ready_for_review",
 							payload,
+						});
+						return;
+					}
+					if (payload.type === "workspace_git_status_updated") {
+						if (payload.workspaceId !== activeWorkspaceId) {
+							return;
+						}
+						applyWorkspaceGitStatusUpdate({
+							homeSummary: payload.homeSummary,
+							homeChangeRevision: payload.homeChangeRevision,
+							tasks: payload.tasks,
 						});
 						return;
 					}

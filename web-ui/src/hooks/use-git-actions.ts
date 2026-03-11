@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useGitHistoryData, type UseGitHistoryDataResult } from "@/components/git-history/use-git-history-data";
 import { showAppToast } from "@/components/app-toaster";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { useInterval } from "@/utils/react-use";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import {
-	getHomeGitSummary,
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
 	setHomeGitSummary,
 	setTaskWorkspaceInfo,
+	useHomeGitChangeRevisionValue,
+	useHomeGitSummaryValue,
+	useTaskWorkspaceChangeRevisionValue,
+	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type {
@@ -20,8 +22,6 @@ import type {
 } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
-
-const GIT_HISTORY_POLL_INTERVAL_MS = 3000;
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -42,9 +42,7 @@ interface UseGitActionsInput {
 	) => Promise<{ ok: boolean; message?: string }>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	isGitHistoryOpen: boolean;
-	isDocumentVisible: boolean;
 	refreshWorkspaceState: () => Promise<void>;
-	workspaceRevision: number | null;
 }
 
 export interface UseGitActionsResult {
@@ -93,9 +91,7 @@ export function useGitActions({
 	sendTaskSessionInput,
 	fetchTaskWorkspaceInfo,
 	isGitHistoryOpen,
-	isDocumentVisible,
 	refreshWorkspaceState,
-	workspaceRevision,
 }: UseGitActionsInput): UseGitActionsResult {
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
 	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] = useState<
@@ -118,15 +114,38 @@ export function useGitActions({
 			baseRef: selectedCard.card.baseRef,
 		};
 	}, [selectedCard?.card.baseRef, selectedCard?.card.id]);
+	const homeGitSummary = useHomeGitSummaryValue();
+	const homeGitChangeRevision = useHomeGitChangeRevisionValue();
+	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id ?? null);
+	const selectedTaskChangeRevision = useTaskWorkspaceChangeRevisionValue(selectedCard?.card.id ?? null);
+	const selectedTaskGitSummary = useMemo(() => {
+		if (!selectedTaskWorkspaceSnapshot) {
+			return null;
+		}
+		return {
+			currentBranch: selectedTaskWorkspaceSnapshot.branch,
+			upstreamBranch: null,
+			changedFiles: selectedTaskWorkspaceSnapshot.changedFiles ?? 0,
+			additions: selectedTaskWorkspaceSnapshot.additions ?? 0,
+			deletions: selectedTaskWorkspaceSnapshot.deletions ?? 0,
+			aheadCount: 0,
+			behindCount: 0,
+		};
+	}, [
+		selectedTaskWorkspaceSnapshot?.additions,
+		selectedTaskWorkspaceSnapshot?.branch,
+		selectedTaskWorkspaceSnapshot?.changedFiles,
+		selectedTaskWorkspaceSnapshot?.deletions,
+	]);
 
 	const gitHistory = useGitHistoryData({
 		workspaceId: currentProjectId,
 		taskScope: gitHistoryTaskScope,
-		gitSummary: selectedCard ? null : getHomeGitSummary(),
+		gitSummary: selectedCard ? selectedTaskGitSummary : homeGitSummary,
+		changeRevision: selectedCard ? selectedTaskChangeRevision : homeGitChangeRevision,
 		enabled: isGitHistoryOpen,
 	});
 	const refreshGitHistory = gitHistory.refresh;
-	const homeGitSummaryRef = useRef(getHomeGitSummary());
 
 	const setTaskGitActionLoading = useCallback(
 		(taskId: string, action: TaskGitAction, source: TaskGitActionSource | null) => {
@@ -327,45 +346,6 @@ export function useGitActions({
 		[runTaskGitAction],
 	);
 
-	const refreshGitSummary = useCallback(async () => {
-		if (!currentProjectId) {
-			homeGitSummaryRef.current = null;
-			setHomeGitSummary(null);
-			return;
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.getGitSummary.query(null);
-			if (!payload.ok || !payload.summary) {
-				throw new Error(payload.error ?? "Git summary request failed.");
-			}
-			homeGitSummaryRef.current = payload.summary;
-			setHomeGitSummary(payload.summary);
-		} catch {
-			// Keep the last known summary; transient failures should not synthesize fake git state.
-		}
-	}, [currentProjectId]);
-
-	useInterval(
-		() => {
-			if (
-				!isGitHistoryOpen ||
-				!currentProjectId ||
-				!isDocumentVisible ||
-				runningGitAction !== null ||
-				isSwitchingHomeBranch ||
-				isDiscardingHomeWorkingChanges
-			) {
-				return;
-			}
-			void (async () => {
-				await refreshGitSummary();
-				refreshGitHistory({ background: true });
-			})();
-		},
-		isGitHistoryOpen && currentProjectId && isDocumentVisible ? GIT_HISTORY_POLL_INTERVAL_MS : null,
-	);
-
 	const runGitAction = useCallback(
 		async (action: RuntimeGitSyncAction) => {
 			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
@@ -380,7 +360,6 @@ export function useGitActions({
 					const output = payload.output ?? "";
 					const fallbackSummary = payload.summary ?? null;
 					if (fallbackSummary) {
-						homeGitSummaryRef.current = fallbackSummary;
 						setHomeGitSummary(fallbackSummary);
 					}
 					setGitActionError({
@@ -390,7 +369,6 @@ export function useGitActions({
 					});
 					return;
 				}
-				homeGitSummaryRef.current = payload.summary;
 				setHomeGitSummary(payload.summary);
 				refreshGitHistory();
 			} catch (error) {
@@ -410,7 +388,7 @@ export function useGitActions({
 	const switchHomeBranch = useCallback(
 		async (branch: string) => {
 			const normalizedBranch = branch.trim();
-			const currentBranch = getHomeGitSummary()?.currentBranch ?? null;
+			const currentBranch = homeGitSummary?.currentBranch ?? null;
 			if (!currentProjectId || isSwitchingHomeBranch || !normalizedBranch || normalizedBranch === currentBranch) {
 				return;
 			}
@@ -424,7 +402,6 @@ export function useGitActions({
 					const errorMessage = payload.error ?? "Switch branch failed.";
 					const fallbackSummary = payload.summary ?? null;
 					if (fallbackSummary) {
-						homeGitSummaryRef.current = fallbackSummary;
 						setHomeGitSummary(fallbackSummary);
 					}
 					showAppToast({
@@ -435,7 +412,6 @@ export function useGitActions({
 					});
 					return;
 				}
-				homeGitSummaryRef.current = payload.summary;
 				setHomeGitSummary(payload.summary);
 				refreshGitHistory();
 				await refreshWorkspaceState();
@@ -451,7 +427,7 @@ export function useGitActions({
 				setIsSwitchingHomeBranch(false);
 			}
 		},
-		[currentProjectId, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState],
+		[currentProjectId, homeGitSummary?.currentBranch, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState],
 	);
 
 	const discardHomeWorkingChanges = useCallback(async () => {
@@ -464,7 +440,6 @@ export function useGitActions({
 			const payload = await trpcClient.workspace.discardGitChanges.mutate(null);
 			if (!payload.ok) {
 				if (payload.summary) {
-					homeGitSummaryRef.current = payload.summary;
 					setHomeGitSummary(payload.summary);
 				}
 				showAppToast({
@@ -475,7 +450,6 @@ export function useGitActions({
 				});
 				return;
 			}
-			homeGitSummaryRef.current = payload.summary;
 			setHomeGitSummary(payload.summary);
 			refreshGitHistory();
 			showAppToast({
@@ -497,13 +471,6 @@ export function useGitActions({
 		}
 	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
-	useEffect(() => {
-		if (!currentProjectId || !isDocumentVisible || selectedCard || isGitHistoryOpen) {
-			return;
-		}
-		void refreshGitSummary();
-	}, [currentProjectId, isDocumentVisible, isGitHistoryOpen, refreshGitSummary, selectedCard, workspaceRevision]);
-
 	const runAutoReviewGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction) => {
 			return await runTaskGitAction(taskId, action, "card");
@@ -512,7 +479,6 @@ export function useGitActions({
 	);
 
 	const resetGitActionState = useCallback(() => {
-		homeGitSummaryRef.current = null;
 		setHomeGitSummary(null);
 		setRunningGitAction(null);
 		setTaskGitActionLoadingByTaskId({});
