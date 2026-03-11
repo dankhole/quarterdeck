@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.6]
+
+- Show live hook activity (tool calls, file edits, command runs) on task cards as agents work
+- Auto-confirm Codex workspace trust prompts so tasks start without manual intervention
+- Show working copy changes in the detail panel's git history
+- Fix terminal pane state bleeding across tasks when switching between them
+- Fix duplicate paste events in agent terminals
+- Stop detail terminals when trashing tasks to free resources
+- Automatically pick up new versions when launching with `npx kanban`
+- Fix git metadata not updating reliably when switching projects
+- Stabilize workspace metadata stream startup
+
 ## [0.1.5]
 
 - Added Droid CLI agent support alongside Claude and Codex
