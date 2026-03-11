@@ -24,8 +24,11 @@ interface RuntimeWorkspaceMutationResult<T> {
 }
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review"] as const;
-const KANBAN_MCP_INSTRUCTIONS =
-	"Kanban is a web-based multi-agent orchestration GUI that launches after running kanban or npx kanban in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, ask kb, kanban, says go bananas, says banana mode, says bannana mode, or says add tasks without other context, they likely want to add tasks in Kanban. Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start. Tasks can also enable automatic review actions: auto-commit, auto-open-PR, or auto-move-to-trash once they reach review.";
+const KANBAN_MCP_INSTRUCTIONS = `Kanban is a web-based multi-agent orchestration GUI that launches after running kanban or npx kanban in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. 
+- If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. Kanban also supports linking tasks. 
+- Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start. 
+- Tasks can also enable automatic review actions: auto-commit, auto-open-PR, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks.
+- There is a special case to handle where the user may create a Kanban task to create new Kanban tasks. So if told to create tasks and your current working directory contains .kanban/worktrees/ in its path, you are running inside an ephemeral Kanban worktree. In this case, pass the main worktree path as projectPath so the new tasks are created under the correct workspace, not the ephemeral worktree path.`
 
 async function resolveWorkspaceRepoPath(
 	projectPath: string | undefined,
@@ -261,7 +264,7 @@ export function createMcpServer(cwd: string): McpServer {
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git. If pwd contains .kanban/worktrees/, do not add tasks to cwd and instead add to main worktree path.",
 					),
 				baseRef: z
 					.string()
