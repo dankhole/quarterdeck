@@ -267,19 +267,46 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				return;
 			}
 
+			/*
+				Connection setup for workspace-scoped runtime streams is intentionally split into two phases.
+
+				We need the initial snapshot to already contain the first workspace metadata payload, but we do not want
+				the client to receive a separate "workspace_metadata_updated" event before that snapshot arrives.
+
+				That race can happen if we register the websocket in runtimeStateClientsByWorkspaceId first and then call
+				workspaceMetadataMonitor.connectWorkspace(...). connectWorkspace() performs an immediate refresh, and that
+				refresh may broadcast "workspace_metadata_updated" to every currently registered workspace client. In that
+				old ordering, a newly connected client could observe:
+
+				1. workspace_metadata_updated
+				2. snapshot
+
+				which makes the initial load look wrong and forces the UI to process the same logical data twice in the
+				opposite order from what readers expect.
+
+				To avoid that, we:
+
+				1. add the socket only to the global runtimeStateClients set so project-wide broadcasts still work
+				2. build workspace state and connect the metadata monitor to get the initial metadata snapshot
+				3. send the combined "snapshot" message
+				4. only then register the socket in runtimeStateClientsByWorkspaceId so future incremental
+				   workspace_metadata_updated events can flow normally
+
+				The extra readyState checks and monitor cleanup below are paired with this delayed registration. If the
+				socket closes while we are still assembling or sending the initial snapshot, we must disconnect the
+				temporary metadata monitor subscription before returning, otherwise we would leave behind subscriber count
+				state for a client that never finished the handshake.
+			*/
 			runtimeStateClients.add(client);
-			if (workspace.workspaceId) {
-				const workspaceClients = runtimeStateClientsByWorkspaceId.get(workspace.workspaceId) ?? new Set<WebSocket>();
-				workspaceClients.add(client);
-				runtimeStateClientsByWorkspaceId.set(workspace.workspaceId, workspaceClients);
-				runtimeStateWorkspaceIdByClient.set(client, workspace.workspaceId);
-			}
+			let monitorWorkspaceId: string | null = null;
+			let didConnectWorkspaceMonitor = false;
 
 			try {
 				let projectsPayload: { currentProjectId: string | null; projects: RuntimeStateStreamProjectsMessage["projects"] };
 				let workspaceState: RuntimeStateStreamSnapshotMessage["workspaceState"];
 				let workspaceMetadata: RuntimeStateStreamSnapshotMessage["workspaceMetadata"];
 				if (workspace.workspaceId && workspace.workspacePath) {
+					monitorWorkspaceId = workspace.workspaceId;
 					[projectsPayload, workspaceState] = await Promise.all([
 						deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
 						deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
@@ -289,10 +316,18 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 						workspacePath: workspace.workspacePath,
 						board: workspaceState.board,
 					});
+					didConnectWorkspaceMonitor = true;
 				} else {
 					projectsPayload = await deps.workspaceRegistry.buildProjectsPayload(null);
 					workspaceState = null;
 					workspaceMetadata = null;
+				}
+				if (client.readyState !== WebSocket.OPEN) {
+					if (monitorWorkspaceId) {
+						workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
+					}
+					cleanupRuntimeStateClient(client);
+					return;
 				}
 				sendRuntimeStateMessage(client, {
 					type: "snapshot",
@@ -301,6 +336,19 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					workspaceState,
 					workspaceMetadata,
 				} satisfies RuntimeStateStreamSnapshotMessage);
+				if (client.readyState !== WebSocket.OPEN) {
+					if (monitorWorkspaceId) {
+						workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
+					}
+					cleanupRuntimeStateClient(client);
+					return;
+				}
+				if (monitorWorkspaceId) {
+					const workspaceClients = runtimeStateClientsByWorkspaceId.get(monitorWorkspaceId) ?? new Set<WebSocket>();
+					workspaceClients.add(client);
+					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
+					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);
+				}
 				if (workspace.removedRequestedWorkspacePath) {
 					sendRuntimeStateMessage(client, {
 						type: "error",
@@ -311,6 +359,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
 				}
 			} catch (error) {
+				if (didConnectWorkspaceMonitor && monitorWorkspaceId) {
+					workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
+				}
 				const message = error instanceof Error ? error.message : String(error);
 				sendRuntimeStateMessage(client, {
 					type: "error",

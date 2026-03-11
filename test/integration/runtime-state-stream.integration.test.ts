@@ -776,13 +776,19 @@ describe.sequential("runtime state stream integration", () => {
 			expect(stateResponse.status).toBe(200);
 
 			const taskId = "metadata-stream-task";
+			const trashTaskId = "metadata-trash-task";
 			const baseRef = runGit(projectPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
-			const board = createReviewBoard(taskId, "Metadata stream task");
+			const board = createReviewBoard(taskId, "Metadata stream task", trashTaskId);
 			const reviewColumn = board.columns.find((column) => column.id === "review");
+			const trashColumn = board.columns.find((column) => column.id === "trash");
 			if (!reviewColumn || !reviewColumn.cards[0]) {
 				throw new Error("Expected seeded review card.");
 			}
 			reviewColumn.cards[0].baseRef = baseRef;
+			if (!trashColumn || !trashColumn.cards[0]) {
+				throw new Error("Expected seeded trash card.");
+			}
+			trashColumn.cards[0].baseRef = baseRef;
 
 			const saveResponse = await requestJson<RuntimeWorkspaceStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
@@ -823,6 +829,11 @@ describe.sequential("runtime state stream integration", () => {
 			const initialTaskMetadata = snapshot.workspaceMetadata?.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
 			expect(initialTaskMetadata).not.toBeNull();
 			expect(initialTaskMetadata?.changedFiles ?? 0).toBe(0);
+			expect(snapshot.workspaceMetadata?.taskWorkspaces.some((task) => task.taskId === trashTaskId)).toBe(false);
+			const messagesAfterInitialSnapshot = await stream.collectFor(250);
+			expect(messagesAfterInitialSnapshot.some((message) => message.type === "workspace_metadata_updated")).toBe(
+				false,
+			);
 
 			writeFileSync(join(ensureResponse.payload.path, "task-change.txt"), "updated\n", "utf8");
 

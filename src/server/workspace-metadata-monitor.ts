@@ -58,7 +58,7 @@ export interface WorkspaceMetadataMonitor {
 function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorkspace[] {
 	const tracked: TrackedTaskWorkspace[] = [];
 	for (const column of board.columns) {
-		if (column.id === "backlog") {
+		if (column.id === "backlog" || column.id === "trash") {
 			continue;
 		}
 		for (const card of column.cards) {
