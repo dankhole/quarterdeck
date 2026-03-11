@@ -27,6 +27,7 @@ export interface UseProjectNavigationResult {
 	currentProjectId: string | null;
 	projects: ReturnType<typeof useRuntimeStateStream>["projects"];
 	workspaceState: ReturnType<typeof useRuntimeStateStream>["workspaceState"];
+	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -56,6 +57,7 @@ export function useProjectNavigation({
 		currentProjectId,
 		projects,
 		workspaceState,
+		workspaceMetadata,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -207,6 +209,7 @@ export function useProjectNavigation({
 		currentProjectId,
 		projects,
 		workspaceState,
+		workspaceMetadata,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,

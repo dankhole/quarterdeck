@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -21,6 +21,25 @@ interface GitCommandResult {
 	stderr: string;
 	output: string;
 	error: string | null;
+}
+
+interface GitPathFingerprint {
+	path: string;
+	size: number | null;
+	mtimeMs: number | null;
+	ctimeMs: number | null;
+}
+
+export interface GitWorkspaceProbe {
+	repoRoot: string;
+	headCommit: string | null;
+	currentBranch: string | null;
+	upstreamBranch: string | null;
+	aheadCount: number;
+	behindCount: number;
+	changedFiles: number;
+	untrackedPaths: string[];
+	stateToken: string;
 }
 
 function countLines(text: string): number {
@@ -60,6 +79,136 @@ function parseAheadBehindCounts(output: string): { aheadCount: number; behindCou
 	return {
 		aheadCount: Number.isFinite(ahead) ? ahead : 0,
 		behindCount: Number.isFinite(behind) ? behind : 0,
+	};
+}
+
+function buildFingerprintToken(fingerprints: GitPathFingerprint[]): string {
+	return fingerprints
+		.map((entry) => `${entry.path}\t${entry.size ?? "null"}\t${entry.mtimeMs ?? "null"}\t${entry.ctimeMs ?? "null"}`)
+		.join("\n");
+}
+
+async function buildPathFingerprints(repoRoot: string, paths: string[]): Promise<GitPathFingerprint[]> {
+	const uniqueSortedPaths = Array.from(new Set(paths)).sort((left, right) => left.localeCompare(right));
+	return await Promise.all(
+		uniqueSortedPaths.map(async (path) => {
+			try {
+				const fileStat = await stat(join(repoRoot, path));
+				return {
+					path,
+					size: fileStat.size,
+					mtimeMs: fileStat.mtimeMs,
+					ctimeMs: fileStat.ctimeMs,
+				} satisfies GitPathFingerprint;
+			} catch {
+				return {
+					path,
+					size: null,
+					mtimeMs: null,
+					ctimeMs: null,
+				} satisfies GitPathFingerprint;
+			}
+		}),
+	);
+}
+
+function parseStatusPath(line: string): string | null {
+	const trimmed = line.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const parts = trimmed.split("\t");
+	const metadata = parts[0]?.trim() ?? "";
+	const tokens = metadata.split(/\s+/);
+	return tokens[tokens.length - 1] ?? null;
+}
+
+export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceProbe> {
+	const repoRoot = await resolveRepoRoot(cwd);
+	const [statusResult, headCommitResult] = await Promise.all([
+		runGitCommand(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
+		runGitCommand(repoRoot, ["rev-parse", "--verify", "HEAD"]),
+	]);
+
+	if (!statusResult.ok) {
+		throw new Error(statusResult.error ?? "Git status command failed.");
+	}
+
+	let currentBranch: string | null = null;
+	let upstreamBranch: string | null = null;
+	let aheadCount = 0;
+	let behindCount = 0;
+	const fingerprintPaths: string[] = [];
+	const untrackedPaths: string[] = [];
+	let changedFiles = 0;
+
+	for (const rawLine of statusResult.stdout.split("\n")) {
+		const line = rawLine.trim();
+		if (!line) {
+			continue;
+		}
+		if (line.startsWith("# branch.head ")) {
+			const branchName = line.slice("# branch.head ".length).trim();
+			currentBranch = branchName && branchName !== "(detached)" ? branchName : null;
+			continue;
+		}
+		if (line.startsWith("# branch.upstream ")) {
+			upstreamBranch = line.slice("# branch.upstream ".length).trim() || null;
+			continue;
+		}
+		if (line.startsWith("# branch.ab ")) {
+			const counts = parseAheadBehindCounts(line.slice("# branch.ab ".length));
+			aheadCount = counts.aheadCount;
+			behindCount = counts.behindCount;
+			continue;
+		}
+		if (line.startsWith("? ")) {
+			const path = line.slice(2).trim();
+			if (!path) {
+				continue;
+			}
+			changedFiles += 1;
+			untrackedPaths.push(path);
+			fingerprintPaths.push(path);
+			continue;
+		}
+		if (line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u ")) {
+			const path = parseStatusPath(line);
+			if (!path) {
+				continue;
+			}
+			changedFiles += 1;
+			fingerprintPaths.push(path);
+			const renameParts = line.split("\t");
+			const previousPath = renameParts[1]?.trim();
+			if (previousPath) {
+				fingerprintPaths.push(previousPath);
+			}
+		}
+	}
+
+	const headCommit = headCommitResult.ok && headCommitResult.stdout ? headCommitResult.stdout : null;
+	const fingerprints = await buildPathFingerprints(repoRoot, fingerprintPaths);
+
+	return {
+		repoRoot,
+		headCommit,
+		currentBranch,
+		upstreamBranch,
+		aheadCount,
+		behindCount,
+		changedFiles,
+		untrackedPaths,
+		stateToken: [
+			repoRoot,
+			headCommit ?? "no-head",
+			currentBranch ?? "detached",
+			upstreamBranch ?? "no-upstream",
+			String(aheadCount),
+			String(behindCount),
+			statusResult.stdout,
+			buildFingerprintToken(fingerprints),
+		].join("\n--\n"),
 	};
 }
 
@@ -123,58 +272,23 @@ async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
 	return result.ok;
 }
 
-export async function getGitSyncSummary(cwd: string): Promise<RuntimeGitSyncSummary> {
-	const repoRoot = await resolveRepoRoot(cwd);
-
-	const [currentBranchResult, statusResult, diffResult, upstreamResult] = await Promise.all([
-		runGitCommand(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
-		runGitCommand(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"]),
-		runGitCommand(repoRoot, ["diff", "--numstat", "HEAD", "--"]),
-		runGitCommand(repoRoot, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
-	]);
-
-	const currentBranch = currentBranchResult.ok && currentBranchResult.stdout ? currentBranchResult.stdout : null;
-	const upstreamBranch = upstreamResult.ok && upstreamResult.stdout ? upstreamResult.stdout : null;
-
-	let aheadCount = 0;
-	let behindCount = 0;
-	if (upstreamBranch) {
-		const aheadBehindResult = await runGitCommand(repoRoot, [
-			"rev-list",
-			"--left-right",
-			"--count",
-			`HEAD...${upstreamBranch}`,
-		]);
-		if (aheadBehindResult.ok) {
-			const parsed = parseAheadBehindCounts(aheadBehindResult.stdout);
-			aheadCount = parsed.aheadCount;
-			behindCount = parsed.behindCount;
-		}
-	}
-
-	const statusLines = statusResult.ok
-		? statusResult.stdout
-				.split("\n")
-				.map((line) => line.trim())
-				.filter(Boolean)
-		: [];
-	const changedFiles = statusLines.length;
-	const untrackedPaths = statusLines
-		.filter((line) => line.startsWith("?? "))
-		.map((line) => line.slice(3).trim())
-		.filter(Boolean);
-
+export async function getGitSyncSummary(
+	cwd: string,
+	options?: { probe?: GitWorkspaceProbe },
+): Promise<RuntimeGitSyncSummary> {
+	const probe = options?.probe ?? (await probeGitWorkspaceState(cwd));
+	const diffResult = await runGitCommand(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
 	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
-	const untrackedAdditions = await countUntrackedAdditions(repoRoot, untrackedPaths);
+	const untrackedAdditions = await countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths);
 
 	return {
-		currentBranch,
-		upstreamBranch,
-		changedFiles,
+		currentBranch: probe.currentBranch,
+		upstreamBranch: probe.upstreamBranch,
+		changedFiles: probe.changedFiles,
 		additions: trackedTotals.additions + untrackedAdditions,
 		deletions: trackedTotals.deletions,
-		aheadCount,
-		behindCount,
+		aheadCount: probe.aheadCount,
+		behindCount: probe.behindCount,
 	};
 }
 

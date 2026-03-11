@@ -433,39 +433,56 @@ export async function resolveTaskCwd(options: {
 	throw new Error(`Task worktree not found for task "${options.taskId}".`);
 }
 
-export async function getTaskWorkspaceInfo(options: {
+export async function getTaskWorkspacePathInfo(options: {
 	cwd: string;
 	taskId: string;
 	baseRef: string;
-}): Promise<RuntimeTaskWorkspaceInfoResponse> {
-	const context = await loadWorkspaceContext(options.cwd);
+}): Promise<Pick<RuntimeTaskWorkspaceInfoResponse, "taskId" | "path" | "exists" | "baseRef">> {
 	const taskId = normalizeTaskId(options.taskId);
 	const normalizedBaseRef = options.baseRef.trim();
+	const repoPath = options.cwd.trim();
+
+	if (!repoPath) {
+		throw new Error("Task workspace root is required for task workspace info.");
+	}
 
 	if (!normalizedBaseRef) {
 		throw new Error("Task base branch is required for task workspace info.");
 	}
 
-	const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
-	const exists = await pathExists(worktreePath);
-	if (!exists) {
+	const worktreePath = getTaskWorktreePath(repoPath, taskId);
+	return {
+		taskId,
+		path: worktreePath,
+		exists: await pathExists(worktreePath),
+		baseRef: normalizedBaseRef,
+	};
+}
+
+export async function getTaskWorkspaceInfo(options: {
+	cwd: string;
+	taskId: string;
+	baseRef: string;
+}): Promise<RuntimeTaskWorkspaceInfoResponse> {
+	const workspacePathInfo = await getTaskWorkspacePathInfo(options);
+	if (!workspacePathInfo.exists) {
 		return {
-			taskId,
-			path: worktreePath,
+			taskId: workspacePathInfo.taskId,
+			path: workspacePathInfo.path,
 			exists: false,
-			baseRef: normalizedBaseRef,
+			baseRef: workspacePathInfo.baseRef,
 			branch: null,
 			isDetached: false,
 			headCommit: null,
 		};
 	}
 
-	const headInfo = await readGitHeadInfo(worktreePath);
+	const headInfo = await readGitHeadInfo(workspacePathInfo.path);
 	return {
-		taskId,
-		path: worktreePath,
+		taskId: workspacePathInfo.taskId,
+		path: workspacePathInfo.path,
 		exists: true,
-		baseRef: normalizedBaseRef,
+		baseRef: workspacePathInfo.baseRef,
 		branch: headInfo.branch,
 		isDetached: headInfo.isDetached,
 		headCommit: headInfo.headCommit,

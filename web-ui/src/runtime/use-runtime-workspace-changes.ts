@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkspaceChangesResponse } from "@/runtime/types";
@@ -15,6 +15,8 @@ export function useRuntimeWorkspaceChanges(
 	taskId: string | null,
 	workspaceId: string | null,
 	baseRef: string | null,
+	stateVersion = 0,
+	pollIntervalMs: number | null = null,
 ): UseRuntimeWorkspaceChangesResult {
 	const hasWorkspaceScope = taskId !== null && workspaceId !== null && baseRef !== null;
 	const queryFn = useCallback(async () => {
@@ -38,6 +40,31 @@ export function useRuntimeWorkspaceChanges(
 		}
 		await changesQuery.refetch();
 	}, [changesQuery.refetch, hasWorkspaceScope]);
+	const previousStateVersionRef = useRef(stateVersion);
+
+	useEffect(() => {
+		if (!hasWorkspaceScope) {
+			previousStateVersionRef.current = stateVersion;
+			return;
+		}
+		if (previousStateVersionRef.current === stateVersion) {
+			return;
+		}
+		previousStateVersionRef.current = stateVersion;
+		void changesQuery.refetch();
+	}, [changesQuery.refetch, hasWorkspaceScope, stateVersion]);
+
+	useEffect(() => {
+		if (!hasWorkspaceScope || pollIntervalMs == null) {
+			return;
+		}
+		const interval = window.setInterval(() => {
+			void changesQuery.refetch();
+		}, pollIntervalMs);
+		return () => {
+			window.clearInterval(interval);
+		};
+	}, [changesQuery.refetch, hasWorkspaceScope, pollIntervalMs]);
 
 	if (!taskId) {
 		return {

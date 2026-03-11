@@ -89,7 +89,6 @@ function HookHarness({
 		isDocumentVisible: false,
 		setBoard,
 		setSessions,
-		resetWorkspaceSnapshots: () => {},
 		setCanPersistWorkspaceState,
 		onWorktreeError: () => {},
 	});

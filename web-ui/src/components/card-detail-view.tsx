@@ -12,11 +12,16 @@ import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
+import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import {
 	type BoardCard,
 	type CardSelection,
 	getTaskAutoReviewActionLabel,
 } from "@/types";
+
+// We still poll the open detail diff because line content can change without changing
+// the overall file or line counts that drive the shared workspace metadata stream.
+const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -148,6 +153,7 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand,
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
+	isDocumentVisible = true,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -191,14 +197,21 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand?: () => void;
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
+	isDocumentVisible?: boolean;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
+	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const {
 		changes: workspaceChanges,
 		isRuntimeAvailable,
-		refresh,
-	} = useRuntimeWorkspaceChanges(selection.card.id, currentProjectId, selection.card.baseRef);
+	} = useRuntimeWorkspaceChanges(
+		selection.card.id,
+		currentProjectId,
+		selection.card.baseRef,
+		taskWorkspaceStateVersion,
+		isDocumentVisible && !gitHistoryPanel ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
+	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
@@ -273,10 +286,6 @@ export function CardDetailView({
 	useEffect(() => {
 		setDiffComments(new Map());
 	}, [selection.card.id]);
-
-	useEffect(() => {
-		void refresh();
-	}, [refresh, sessionSummary?.state]);
 
 	return (
 		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>

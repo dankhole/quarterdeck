@@ -18,7 +18,6 @@ interface UseWorkspaceSyncInput {
 	isDocumentVisible: boolean;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	resetWorkspaceSnapshots: () => void;
 	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
 	onWorktreeError: (message: string | null) => void;
 }
@@ -42,7 +41,6 @@ export function useWorkspaceSync({
 	isDocumentVisible,
 	setBoard,
 	setSessions,
-	resetWorkspaceSnapshots,
 	setCanPersistWorkspaceState,
 	onWorktreeError,
 }: UseWorkspaceSyncInput): UseWorkspaceSyncResult {
@@ -78,7 +76,6 @@ export function useWorkspaceSync({
 				setWorkspacePath(null);
 				setWorkspaceGit(null);
 				setAppliedWorkspaceProjectId(null);
-				resetWorkspaceSnapshots();
 				setBoard(createInitialBoardData());
 				setSessions({});
 				setWorkspaceRevision(null);
@@ -101,9 +98,6 @@ export function useWorkspaceSync({
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
-				if (!isSameProject) {
-					resetWorkspaceSnapshots();
-				}
 				setWorkspaceHydrationNonce((current) => current + 1);
 			}
 			setWorkspaceRevision(nextWorkspaceState.revision);
@@ -114,7 +108,7 @@ export function useWorkspaceSync({
 			setAppliedWorkspaceProjectId(currentProjectId);
 			setCanPersistWorkspaceState(true);
 		},
-		[currentProjectId, resetWorkspaceSnapshots, setBoard, setCanPersistWorkspaceState, setSessions],
+		[currentProjectId, setBoard, setCanPersistWorkspaceState, setSessions],
 	);
 
 	const refreshWorkspaceState = useCallback(async () => {

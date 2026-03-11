@@ -229,11 +229,34 @@ export const runtimeProjectSummarySchema = z.object({
 });
 export type RuntimeProjectSummary = z.infer<typeof runtimeProjectSummarySchema>;
 
+export const runtimeTaskWorkspaceMetadataSchema = z.object({
+	taskId: z.string(),
+	path: z.string(),
+	exists: z.boolean(),
+	baseRef: z.string(),
+	branch: z.string().nullable(),
+	isDetached: z.boolean(),
+	headCommit: z.string().nullable(),
+	changedFiles: z.number().nullable(),
+	additions: z.number().nullable(),
+	deletions: z.number().nullable(),
+	stateVersion: z.number().int().nonnegative(),
+});
+export type RuntimeTaskWorkspaceMetadata = z.infer<typeof runtimeTaskWorkspaceMetadataSchema>;
+
+export const runtimeWorkspaceMetadataSchema = z.object({
+	homeGitSummary: runtimeGitSyncSummarySchema.nullable(),
+	homeGitStateVersion: z.number().int().nonnegative(),
+	taskWorkspaces: z.array(runtimeTaskWorkspaceMetadataSchema),
+});
+export type RuntimeWorkspaceMetadata = z.infer<typeof runtimeWorkspaceMetadataSchema>;
+
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 	workspaceState: runtimeWorkspaceStateResponseSchema.nullable(),
+	workspaceMetadata: runtimeWorkspaceMetadataSchema.nullable(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 
@@ -258,6 +281,15 @@ export const runtimeStateStreamProjectsMessageSchema = z.object({
 });
 export type RuntimeStateStreamProjectsMessage = z.infer<typeof runtimeStateStreamProjectsMessageSchema>;
 
+export const runtimeStateStreamWorkspaceMetadataMessageSchema = z.object({
+	type: z.literal("workspace_metadata_updated"),
+	workspaceId: z.string(),
+	workspaceMetadata: runtimeWorkspaceMetadataSchema,
+});
+export type RuntimeStateStreamWorkspaceMetadataMessage = z.infer<
+	typeof runtimeStateStreamWorkspaceMetadataMessageSchema
+>;
+
 export const runtimeStateStreamTaskReadyForReviewMessageSchema = z.object({
 	type: z.literal("task_ready_for_review"),
 	workspaceId: z.string(),
@@ -279,6 +311,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamWorkspaceStateMessageSchema,
 	runtimeStateStreamTaskSessionsMessageSchema,
 	runtimeStateStreamProjectsMessageSchema,
+	runtimeStateStreamWorkspaceMetadataMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
 ]);

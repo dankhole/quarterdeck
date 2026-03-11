@@ -8,11 +8,13 @@ import type {
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
+	RuntimeStateStreamWorkspaceMetadataMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor.js";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 
@@ -48,6 +50,22 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
+	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
+		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
+			const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+			if (!clients || clients.size === 0) {
+				return;
+			}
+			const payload: RuntimeStateStreamWorkspaceMetadataMessage = {
+				type: "workspace_metadata_updated",
+				workspaceId,
+				workspaceMetadata,
+			};
+			for (const client of clients) {
+				sendRuntimeStateMessage(client, payload);
+			}
+		},
+	});
 
 	const sendRuntimeStateMessage = (client: WebSocket, payload: RuntimeStateStreamMessage) => {
 		if (client.readyState !== WebSocket.OPEN) {
@@ -127,6 +145,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const cleanupRuntimeStateClient = (client: WebSocket) => {
 		const workspaceId = runtimeStateWorkspaceIdByClient.get(client);
 		if (workspaceId) {
+			workspaceMetadataMonitor.disconnectWorkspace(workspaceId);
 			const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 			if (clients) {
 				clients.delete(client);
@@ -150,6 +169,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
+		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
 
 		if (!options?.disconnectClients) {
 			return;
@@ -193,6 +213,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			for (const client of clients) {
 				sendRuntimeStateMessage(client, payload);
 			}
+			await workspaceMetadataMonitor.updateWorkspaceState({
+				workspaceId,
+				workspacePath,
+				board: workspaceState.board,
+			});
 		} catch {
 			// Ignore transient state read failures; next update will resync.
 		}
@@ -253,20 +278,28 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			try {
 				let projectsPayload: { currentProjectId: string | null; projects: RuntimeStateStreamProjectsMessage["projects"] };
 				let workspaceState: RuntimeStateStreamSnapshotMessage["workspaceState"];
+				let workspaceMetadata: RuntimeStateStreamSnapshotMessage["workspaceMetadata"];
 				if (workspace.workspaceId && workspace.workspacePath) {
 					[projectsPayload, workspaceState] = await Promise.all([
 						deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
 						deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
 					]);
+					workspaceMetadata = await workspaceMetadataMonitor.connectWorkspace({
+						workspaceId: workspace.workspaceId,
+						workspacePath: workspace.workspacePath,
+						board: workspaceState.board,
+					});
 				} else {
 					projectsPayload = await deps.workspaceRegistry.buildProjectsPayload(null);
 					workspaceState = null;
+					workspaceMetadata = null;
 				}
 				sendRuntimeStateMessage(client, {
 					type: "snapshot",
 					currentProjectId: projectsPayload.currentProjectId,
 					projects: projectsPayload.projects,
 					workspaceState,
+					workspaceMetadata,
 				} satisfies RuntimeStateStreamSnapshotMessage);
 				if (workspace.removedRequestedWorkspacePath) {
 					sendRuntimeStateMessage(client, {
@@ -327,6 +360,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			terminalSummaryUnsubscribeByWorkspaceId.clear();
+			workspaceMetadataMonitor.close();
 			for (const client of runtimeStateClients) {
 				try {
 					client.terminate();
