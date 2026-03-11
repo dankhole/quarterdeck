@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { RuntimeAgentId } from "../core/api-contract.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 
-export const CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
+export const WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
 
 function normalizeTerminalText(input: string): string {
 	return input.toLowerCase().replace(/\s+/gu, " ");
@@ -76,11 +76,11 @@ export function shouldAutoConfirmClaudeWorkspaceTrust(agentId: RuntimeAgentId, c
 	return agentId === "claude" && isTaskWorktreePath(cwd);
 }
 
-export function stopClaudeWorkspaceTrustTimers(state: {
-	claudeWorkspaceTrustConfirmTimer: NodeJS.Timeout | null;
+export function stopWorkspaceTrustTimers(state: {
+	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 }): void {
-	if (state.claudeWorkspaceTrustConfirmTimer) {
-		clearTimeout(state.claudeWorkspaceTrustConfirmTimer);
-		state.claudeWorkspaceTrustConfirmTimer = null;
+	if (state.workspaceTrustConfirmTimer) {
+		clearTimeout(state.workspaceTrustConfirmTimer);
+		state.workspaceTrustConfirmTimer = null;
 	}
 }

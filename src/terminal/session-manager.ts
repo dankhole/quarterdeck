@@ -11,31 +11,32 @@ import {
 	prepareAgentLaunch,
 } from "./agent-session-adapters.js";
 import {
-	CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS,
+	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 	hasClaudeWorkspaceTrustPrompt,
 	shouldAutoConfirmClaudeWorkspaceTrust,
-	stopClaudeWorkspaceTrustTimers,
+	stopWorkspaceTrustTimers,
 } from "./claude-workspace-trust.js";
+import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust.js";
 import { PtySession } from "./pty-session.js";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
-const MAX_CLAUDE_TRUST_BUFFER_CHARS = 16_384;
+const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 // Some interactive shells can start without emitting prompt output immediately.
 // Fallback ensures the initial command is still sent if onData does not fire quickly.
 const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
 
 interface ActiveProcessState {
 	session: PtySession;
-	claudeTrustBuffer: string | null;
+	workspaceTrustBuffer: string | null;
 	cols: number;
 	rows: number;
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	awaitingCodexPromptAfterEnter: boolean;
-	autoConfirmedClaudeWorkspaceTrust: boolean;
-	claudeWorkspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	autoConfirmedWorkspaceTrust: boolean;
+	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 }
 
 interface SessionEntry {
@@ -182,7 +183,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		if (entry.active) {
-			stopClaudeWorkspaceTrustTimers(entry.active);
+			stopWorkspaceTrustTimers(entry.active);
 			entry.active.session.stop();
 			entry.active = null;
 		}
@@ -216,6 +217,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).
 		const commandBinary = launch.binary ?? request.binary;
 		const commandArgs = [...launch.args];
+		const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) => part.toLowerCase().includes("codex"));
 		const kickoffShellCommand = buildShellCommandLine(commandBinary, commandArgs);
 		const shell = resolveInteractiveShellCommand();
 		const spawnBinary = shell.binary;
@@ -260,30 +262,36 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 
 					const needsDecodedOutput =
-						entry.active.claudeTrustBuffer !== null ||
+						entry.active.workspaceTrustBuffer !== null ||
 						(entry.active.detectOutputTransition !== null &&
 							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
 					const data = needsDecodedOutput ? chunk.toString("utf8") : "";
 
-					if (entry.active.claudeTrustBuffer !== null) {
-						entry.active.claudeTrustBuffer += data;
-						if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
-							entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
+					if (entry.active.workspaceTrustBuffer !== null) {
+						entry.active.workspaceTrustBuffer += data;
+						if (entry.active.workspaceTrustBuffer.length > MAX_WORKSPACE_TRUST_BUFFER_CHARS) {
+							entry.active.workspaceTrustBuffer = entry.active.workspaceTrustBuffer.slice(
+								-MAX_WORKSPACE_TRUST_BUFFER_CHARS,
+							);
 						}
 						if (
-							!entry.active.autoConfirmedClaudeWorkspaceTrust &&
-							entry.active.claudeWorkspaceTrustConfirmTimer === null &&
-							hasClaudeWorkspaceTrustPrompt(entry.active.claudeTrustBuffer)
+							!entry.active.autoConfirmedWorkspaceTrust &&
+							entry.active.workspaceTrustConfirmTimer === null
 						) {
-							entry.active.autoConfirmedClaudeWorkspaceTrust = true;
-							entry.active.claudeWorkspaceTrustConfirmTimer = setTimeout(() => {
-								const activeEntry = this.entries.get(request.taskId)?.active;
-								if (!activeEntry || !activeEntry.autoConfirmedClaudeWorkspaceTrust) {
-									return;
-								}
-								activeEntry.session.write("\r");
-								activeEntry.claudeWorkspaceTrustConfirmTimer = null;
-							}, CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS);
+							const hasClaudePrompt = hasClaudeWorkspaceTrustPrompt(entry.active.workspaceTrustBuffer);
+							const hasCodexPrompt = hasCodexWorkspaceTrustPrompt(entry.active.workspaceTrustBuffer);
+							if (hasClaudePrompt || hasCodexPrompt) {
+								entry.active.autoConfirmedWorkspaceTrust = true;
+								const trustConfirmDelayMs = WORKSPACE_TRUST_CONFIRM_DELAY_MS;
+								entry.active.workspaceTrustConfirmTimer = setTimeout(() => {
+									const activeEntry = this.entries.get(request.taskId)?.active;
+									if (!activeEntry || !activeEntry.autoConfirmedWorkspaceTrust) {
+										return;
+									}
+									activeEntry.session.write("\r");
+									activeEntry.workspaceTrustConfirmTimer = null;
+								}, trustConfirmDelayMs);
+							}
 						}
 					}
 					updateSummary(entry, { lastOutputAt: now() });
@@ -319,7 +327,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (!currentActive) {
 						return;
 					}
-					stopClaudeWorkspaceTrustTimers(currentActive);
+					stopWorkspaceTrustTimers(currentActive);
 					clearKickoffShellTimer();
 
 					const summary = this.applySessionEvent(currentEntry, {
@@ -366,15 +374,20 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		const active: ActiveProcessState = {
 			session,
-			claudeTrustBuffer: shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd) ? "" : null,
+			workspaceTrustBuffer:
+				shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd) ||
+				shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
+				hasCodexLaunchSignature
+					? ""
+					: null,
 			cols,
 			rows,
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
-			autoConfirmedClaudeWorkspaceTrust: false,
-			claudeWorkspaceTrustConfirmTimer: null,
+			autoConfirmedWorkspaceTrust: false,
+			workspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
 
@@ -408,7 +421,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		if (entry.active) {
-			stopClaudeWorkspaceTrustTimers(entry.active);
+			stopWorkspaceTrustTimers(entry.active);
 			entry.active.session.stop();
 			entry.active = null;
 		}
@@ -436,10 +449,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 
-					if (entry.active.claudeTrustBuffer !== null) {
-						entry.active.claudeTrustBuffer += chunk.toString("utf8");
-						if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
-							entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
+					if (entry.active.workspaceTrustBuffer !== null) {
+						entry.active.workspaceTrustBuffer += chunk.toString("utf8");
+						if (entry.active.workspaceTrustBuffer.length > MAX_WORKSPACE_TRUST_BUFFER_CHARS) {
+							entry.active.workspaceTrustBuffer = entry.active.workspaceTrustBuffer.slice(
+								-MAX_WORKSPACE_TRUST_BUFFER_CHARS,
+							);
 						}
 					}
 					updateSummary(entry, { lastOutputAt: now() });
@@ -457,7 +472,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (!currentActive) {
 						return;
 					}
-					stopClaudeWorkspaceTrustTimers(currentActive);
+					stopWorkspaceTrustTimers(currentActive);
 
 					const summary = updateSummary(currentEntry, {
 						state: currentActive.session.wasInterrupted() ? "interrupted" : "idle",
@@ -491,15 +506,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		const active: ActiveProcessState = {
 			session,
-			claudeTrustBuffer: null,
+			workspaceTrustBuffer: null,
 			cols,
 			rows,
 			onSessionCleanup: null,
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
 			awaitingCodexPromptAfterEnter: false,
-			autoConfirmedClaudeWorkspaceTrust: false,
-			claudeWorkspaceTrustConfirmTimer: null,
+			autoConfirmedWorkspaceTrust: false,
+			workspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
 
@@ -608,7 +623,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
-		stopClaudeWorkspaceTrustTimers(entry.active);
+		stopWorkspaceTrustTimers(entry.active);
 		entry.active.session.stop();
 		if (cleanupFn) {
 			cleanupFn().catch(() => {
@@ -624,7 +639,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			if (!entry.active) {
 				continue;
 			}
-			stopClaudeWorkspaceTrustTimers(entry.active);
+			stopWorkspaceTrustTimers(entry.active);
 			entry.active.session.stop({ interrupted: true });
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
@@ -636,8 +651,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return entry.summary;
 		}
 		if (transition.clearAttentionBuffer && entry.active) {
-			if (entry.active.claudeTrustBuffer !== null) {
-				entry.active.claudeTrustBuffer = "";
+			if (entry.active.workspaceTrustBuffer !== null) {
+				entry.active.workspaceTrustBuffer = "";
 			}
 		}
 		if (entry.active && transition.changed && transition.patch.state === "awaiting_review") {

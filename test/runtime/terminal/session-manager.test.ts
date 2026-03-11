@@ -26,7 +26,7 @@ describe("TerminalSessionManager", () => {
 		const entry = {
 			summary: createSummary({ state: "running", reviewReason: null }),
 			active: {
-				claudeTrustBuffer: "trust this folder",
+				workspaceTrustBuffer: "trust this folder",
 				awaitingCodexPromptAfterEnter: true,
 			},
 			listenerIdCounter: 1,
@@ -39,7 +39,7 @@ describe("TerminalSessionManager", () => {
 		).applySessionEvent;
 		const nextSummary = applySessionEvent(entry, { type: "hook.to_review" });
 		expect(nextSummary.state).toBe("awaiting_review");
-		expect(entry.active.claudeTrustBuffer).toBe("");
+		expect(entry.active.workspaceTrustBuffer).toBe("");
 	});
 
 	it("builds shell kickoff command lines with quoted arguments", () => {
