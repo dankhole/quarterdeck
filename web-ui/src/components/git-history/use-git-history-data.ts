@@ -339,8 +339,7 @@ export function useGitHistoryData({
 		queryFn: diffQueryFn,
 	});
 
-	const workingCopyFileCount = gitSummary?.changedFiles ?? 0;
-	const hasWorkingCopy = workingCopyFileCount > 0;
+	const summaryWorkingCopyFileCount = gitSummary?.changedFiles ?? null;
 
 	const workingCopyQueryFn = useCallback(async () => {
 		if (!workspaceId) {
@@ -352,12 +351,17 @@ export function useGitHistoryData({
 		}
 		return await trpc.workspace.getWorkspaceChanges.query();
 	}, [taskScope, workspaceId]);
+	const shouldLoadWorkingCopyChanges =
+		enabled && workspaceId !== null && (taskScope != null || (summaryWorkingCopyFileCount ?? 0) > 0);
 
 	const workingCopyQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
-		enabled: enabled && workspaceId !== null && hasWorkingCopy,
+		enabled: shouldLoadWorkingCopyChanges,
 		queryFn: workingCopyQueryFn,
 		retainDataOnError: true,
 	});
+
+	const workingCopyFileCount = summaryWorkingCopyFileCount ?? workingCopyQuery.data?.files.length ?? 0;
+	const hasWorkingCopy = workingCopyFileCount > 0;
 
 	const previousChangeRevisionRef = useRef<number | null>(changeRevision ?? null);
 	useEffect(() => {
@@ -455,7 +459,7 @@ export function useGitHistoryData({
 						silent: true,
 					});
 				}
-				if (hasWorkingCopy && !workingCopyQuery.isLoading) {
+				if (shouldLoadWorkingCopyChanges && !workingCopyQuery.isLoading) {
 					void workingCopyQuery.refetch();
 				}
 				return;
@@ -465,18 +469,18 @@ export function useGitHistoryData({
 			refreshCommits({
 				silent: false,
 			});
-			if (hasWorkingCopy) {
+			if (shouldLoadWorkingCopyChanges) {
 				void workingCopyQuery.refetch();
 			}
 		},
 		[
 			enabled,
-			hasWorkingCopy,
 			isLoadingMoreCommits,
 			isLogLoading,
 			refsQuery,
 			refsQueryFn,
 			refreshCommits,
+			shouldLoadWorkingCopyChanges,
 			workingCopyQuery,
 			workingCopyQueryFn,
 		],
