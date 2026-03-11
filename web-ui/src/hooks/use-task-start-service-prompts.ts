@@ -24,27 +24,15 @@ export interface TaskStartServicePromptContent {
 	installCommandDescription?: string;
 }
 
-interface ServicePromptDetectionMatch {
-	id: TaskStartSetupKind;
-	matchIndex: number;
-}
-
 type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
 
 const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
-const KANBAN_TASK_CREATION_PATTERN = /\b(?:create|make|add)\s+(?:an?\s+)?(?:task|ticket|card)s?\b/i;
+const KANBAN_ACTION_WORDS = /\b(?:create|make|add|start|break|split|decompose|turn|convert)\b/i;
+const KANBAN_NOUN_WORDS = /\b(?:tasks?|tickets?|cards?|projects?)\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND =
 	"claude mcp add --transport http --scope user linear-server https://mcp.linear.app/mcp";
 const DEFAULT_KANBAN_INSTALL_COMMAND = "claude mcp add --transport stdio --scope user kanban -- kanban mcp";
-
-function getMatchIndex(input: string, pattern: RegExp): number {
-	const match = pattern.exec(input);
-	if (!match || typeof match.index !== "number") {
-		return -1;
-	}
-	return match.index;
-}
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -121,32 +109,21 @@ export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupK
 		return [];
 	}
 
-	const matches: ServicePromptDetectionMatch[] = [];
-	const linearMatchIndex = getMatchIndex(normalizedPrompt, LINEAR_WORD_PATTERN);
-	if (linearMatchIndex >= 0) {
-		matches.push({
-			id: "linear_mcp",
-			matchIndex: linearMatchIndex,
-		});
+	const results: TaskStartSetupKind[] = [];
+
+	if (LINEAR_WORD_PATTERN.test(normalizedPrompt)) {
+		results.push("linear_mcp");
 	}
 
-	const githubMatchIndex = getMatchIndex(normalizedPrompt, GITHUB_WORD_PATTERN);
-	if (githubMatchIndex >= 0) {
-		matches.push({
-			id: "github_cli",
-			matchIndex: githubMatchIndex,
-		});
+	if (GITHUB_WORD_PATTERN.test(normalizedPrompt)) {
+		results.push("github_cli");
 	}
 
-	const kanbanTaskCreationMatchIndex = getMatchIndex(normalizedPrompt, KANBAN_TASK_CREATION_PATTERN);
-	if (kanbanTaskCreationMatchIndex >= 0) {
-		matches.push({
-			id: "kanban_mcp",
-			matchIndex: kanbanTaskCreationMatchIndex,
-		});
+	if (KANBAN_ACTION_WORDS.test(normalizedPrompt) && KANBAN_NOUN_WORDS.test(normalizedPrompt)) {
+		results.push("kanban_mcp");
 	}
 
-	return matches.sort((left, right) => left.matchIndex - right.matchIndex).map((match) => match.id);
+	return results;
 }
 
 export function buildTaskStartServicePromptContent(

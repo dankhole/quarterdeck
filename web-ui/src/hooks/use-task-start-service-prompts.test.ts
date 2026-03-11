@@ -48,19 +48,44 @@ describe("detectTaskStartServicePromptIds", () => {
 		expect(detectTaskStartServicePromptIds("Create card for release blockers")).toEqual(["kanban_mcp"]);
 	});
 
-	it("orders github and kanban detections by appearance", () => {
-		expect(detectTaskStartServicePromptIds("Make a task, then check github issue details")).toEqual([
-			"kanban_mcp",
-			"github_cli",
-		]);
+	it("detects numbered task creation", () => {
+		expect(detectTaskStartServicePromptIds("create 3 tasks for the migration")).toEqual(["kanban_mcp"]);
+		expect(detectTaskStartServicePromptIds("add three tasks")).toEqual(["kanban_mcp"]);
 	});
 
-	it("orders multiple detections by first appearance", () => {
-		expect(
-			detectTaskStartServicePromptIds(
-				"Investigate https://github.com/cline/kanban/issues/42 and then check LINEAR-12",
-			),
-		).toEqual(["github_cli", "linear_mcp"]);
+	it("detects break down into tasks", () => {
+		expect(detectTaskStartServicePromptIds("break down into tasks")).toEqual(["kanban_mcp"]);
+		expect(detectTaskStartServicePromptIds("break this up into tasks")).toEqual(["kanban_mcp"]);
+	});
+
+	it("detects split/decompose/turn into tasks", () => {
+		expect(detectTaskStartServicePromptIds("split this into tasks")).toEqual(["kanban_mcp"]);
+		expect(detectTaskStartServicePromptIds("decompose into tasks")).toEqual(["kanban_mcp"]);
+		expect(detectTaskStartServicePromptIds("turn this project into tasks")).toEqual(["kanban_mcp"]);
+		expect(detectTaskStartServicePromptIds("convert this spec into tickets")).toEqual(["kanban_mcp"]);
+	});
+
+	it("detects start tasks", () => {
+		expect(detectTaskStartServicePromptIds("start a task for the bug fix")).toEqual(["kanban_mcp"]);
+	});
+
+	it("does not trigger kanban for unrelated task mentions", () => {
+		expect(detectTaskStartServicePromptIds("this is a difficult task")).toEqual([]);
+		expect(detectTaskStartServicePromptIds("finish the remaining tasks")).toEqual([]);
+	});
+
+	it("detects both github and kanban when both present", () => {
+		const result = detectTaskStartServicePromptIds("Make a task, then check github issue details");
+		expect(result).toContain("kanban_mcp");
+		expect(result).toContain("github_cli");
+	});
+
+	it("detects both linear and github when both present", () => {
+		const result = detectTaskStartServicePromptIds(
+			"Investigate https://github.com/cline/kanban/issues/42 and then check LINEAR-12",
+		);
+		expect(result).toContain("github_cli");
+		expect(result).toContain("linear_mcp");
 	});
 });
 
