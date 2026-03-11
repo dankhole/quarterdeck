@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.7]
+
+- When a task prompt mentions creating tasks (e.g. "break down into tasks", "create 3 tickets", "split into cards"), Kanban now shows a setup dialog offering to install the Kanban MCP before the task starts
+- Similar setup dialogs appear for Linear and GitHub CLI when task prompts reference those services
+- MCP server instructions now guide agents to detect the ephemeral worktree path and pass the main worktree as projectPath, so "add tasks in kanban" tasks correctly create tasks in the main workspace instead of the ephemeral task worktree
+
 ## [0.1.6]
 
 - Show live hook activity (tool calls, file edits, command runs) on task cards as agents work
