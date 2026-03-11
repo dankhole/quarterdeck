@@ -10,7 +10,7 @@ import {
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumn, findCardSelection, updateTask } from "@/state/board-state";
-import { trackTaskCreated } from "@/telemetry/events";
+import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 
@@ -264,7 +264,7 @@ export function useTaskEditor({
 			}),
 		);
 		trackTaskCreated({
-			selected_agent_id: selectedAgentId ?? "unknown",
+			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
 			...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
 			prompt_character_count: prompt.length,

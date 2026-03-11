@@ -12,6 +12,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
+import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
@@ -29,6 +30,7 @@ import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { RuntimeStatusBanners } from "@/components/runtime-status-banners";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
+import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { createInitialBoardData } from "@/data/board-data";
@@ -481,6 +483,24 @@ export default function App(): ReactElement {
 		runAutoReviewGitAction,
 	});
 
+	const {
+		handleStartTaskWithServiceSetupPrompt,
+		taskStartServicePromptDialogOpen,
+		taskStartServicePromptDialogPrompt,
+		taskStartServicePromptDoNotShowAgain,
+		setTaskStartServicePromptDoNotShowAgain,
+		handleCloseTaskStartServicePrompt,
+		handleRunTaskStartServiceInstallCommand,
+	} = useTaskStartServicePrompts({
+		board,
+		currentProjectId,
+		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
+		handleStartTask,
+		prepareTerminalForShortcut,
+		prepareWaitForTerminalConnectionReady,
+		sendTaskSessionInput,
+	});
+
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
@@ -766,7 +786,7 @@ export default function App(): ReactElement {
 											taskSessions={sessions}
 											onCardSelect={handleCardSelect}
 											onCreateTask={handleOpenCreateTask}
-											onStartTask={handleStartTask}
+											onStartTask={handleStartTaskWithServiceSetupPrompt}
 											onClearTrash={handleOpenClearTrash}
 											inlineTaskCreator={inlineTaskCreator}
 											editingTaskId={editingTaskId}
@@ -842,7 +862,7 @@ export default function App(): ReactElement {
 								onCardSelect={handleCardSelect}
 								onTaskDragEnd={handleDetailTaskDragEnd}
 								onCreateTask={handleOpenCreateTask}
-								onStartTask={handleStartTask}
+								onStartTask={handleStartTaskWithServiceSetupPrompt}
 								onClearTrash={handleOpenClearTrash}
 								inlineTaskCreator={inlineTaskCreator}
 								editingTaskId={editingTaskId}
@@ -913,6 +933,14 @@ export default function App(): ReactElement {
 				taskCount={trashTaskCount}
 				onCancel={() => setIsClearTrashDialogOpen(false)}
 				onConfirm={handleConfirmClearTrash}
+			/>
+			<TaskStartServicePromptDialog
+				open={taskStartServicePromptDialogOpen}
+				prompt={taskStartServicePromptDialogPrompt}
+				doNotShowAgain={taskStartServicePromptDoNotShowAgain}
+				onDoNotShowAgainChange={setTaskStartServicePromptDoNotShowAgain}
+				onClose={handleCloseTaskStartServicePrompt}
+				onRunInstallCommand={handleRunTaskStartServiceInstallCommand}
 			/>
 			<TaskTrashWarningDialog
 				open={pendingTrashWarning !== null}

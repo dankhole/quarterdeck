@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	toTelemetrySelectedAgentId,
 	trackTaskCreated,
 	trackTaskDependencyCreated,
 	trackTasksAutoStartedFromDependency,
 	trackTaskResumedFromTrash,
+	trackTaskStartSetupPromptViewed,
+	trackTaskStartSetupInstallCommandClicked,
 } from "@/telemetry/events";
 
 const captureMock = vi.hoisted(() => vi.fn());
@@ -69,11 +72,37 @@ describe("telemetry events", () => {
 		expect(captureMock).toHaveBeenNthCalledWith(3, "task_resumed_from_trash", {});
 	});
 
+	it("captures task start setup modal telemetry events", () => {
+		trackTaskStartSetupPromptViewed({
+			setup_kind: "linear_mcp",
+			selected_agent_id: "codex",
+		});
+		trackTaskStartSetupInstallCommandClicked({
+			setup_kind: "kanban_mcp",
+			selected_agent_id: "claude",
+		});
+
+		expect(captureMock).toHaveBeenNthCalledWith(1, "task_start_setup_prompt_viewed", {
+			setup_kind: "linear_mcp",
+			selected_agent_id: "codex",
+		});
+		expect(captureMock).toHaveBeenNthCalledWith(2, "task_start_setup_install_command_clicked", {
+			setup_kind: "kanban_mcp",
+			selected_agent_id: "claude",
+		});
+	});
+
 	it("skips capture when telemetry is disabled", () => {
 		isTelemetryEnabledMock.mockReturnValue(false);
 
 		trackTaskDependencyCreated();
 
 		expect(captureMock).not.toHaveBeenCalled();
+	});
+
+	it("normalizes nullable agent ids for telemetry", () => {
+		expect(toTelemetrySelectedAgentId("codex")).toBe("codex");
+		expect(toTelemetrySelectedAgentId(null)).toBe("unknown");
+		expect(toTelemetrySelectedAgentId(undefined)).toBe("unknown");
 	});
 });
