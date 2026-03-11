@@ -604,11 +604,8 @@ export async function removeWorkspaceStateFiles(workspaceId: string): Promise<vo
 	});
 }
 
-export async function loadWorkspaceState(
-	cwd: string,
-	options: LoadWorkspaceContextOptions = {},
-): Promise<RuntimeWorkspaceStateResponse> {
-	const context = await loadWorkspaceContext(cwd, options);
+export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
+	const context = await loadWorkspaceContext(cwd);
 	const board = await readWorkspaceBoard(context.workspaceId);
 	const sessions = await readWorkspaceSessions(context.workspaceId);
 	const meta = await readWorkspaceMeta(context.workspaceId);

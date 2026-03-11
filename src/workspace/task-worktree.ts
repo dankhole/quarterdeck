@@ -439,18 +439,6 @@ export async function getTaskWorkspaceInfo(options: {
 	baseRef: string;
 }): Promise<RuntimeTaskWorkspaceInfoResponse> {
 	const context = await loadWorkspaceContext(options.cwd);
-	return await getTaskWorkspaceInfoForRepoPath({
-		repoPath: context.repoPath,
-		taskId: options.taskId,
-		baseRef: options.baseRef,
-	});
-}
-
-export async function getTaskWorkspaceInfoForRepoPath(options: {
-	repoPath: string;
-	taskId: string;
-	baseRef: string;
-}): Promise<RuntimeTaskWorkspaceInfoResponse> {
 	const taskId = normalizeTaskId(options.taskId);
 	const normalizedBaseRef = options.baseRef.trim();
 
@@ -458,7 +446,7 @@ export async function getTaskWorkspaceInfoForRepoPath(options: {
 		throw new Error("Task base branch is required for task workspace info.");
 	}
 
-	const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+	const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 	const exists = await pathExists(worktreePath);
 	if (!exists) {
 		return {

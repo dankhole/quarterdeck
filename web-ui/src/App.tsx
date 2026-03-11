@@ -9,6 +9,7 @@ import { useGitActions } from "@/hooks/use-git-actions";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { useSelectedTaskWorkspaceInfo } from "@/hooks/use-selected-task-workspace-info";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
@@ -16,6 +17,7 @@ import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
+import { useTaskWorkspaceSnapshots } from "@/hooks/use-task-workspace-snapshots";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
@@ -127,6 +129,7 @@ export default function App(): ReactElement {
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 		fetchTaskWorkingChangeCount,
+		fetchReviewWorkspaceSnapshot,
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
@@ -139,6 +142,31 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+	useSelectedTaskWorkspaceInfo({
+		currentProjectId,
+		selectedCard,
+		sessions,
+		isDocumentVisible,
+		fetchTaskWorkspaceInfo,
+	});
+	const reviewCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "review")?.cards ?? [];
+	}, [board.columns]);
+	const inProgressCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+	}, [board.columns]);
+	const trashCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "trash")?.cards ?? [];
+	}, [board.columns]);
+	const { resetWorkspaceSnapshots } = useTaskWorkspaceSnapshots({
+		currentProjectId,
+		reviewCards,
+		inProgressCards,
+		trashCards,
+		sessions,
+		isDocumentVisible,
+		fetchReviewWorkspaceSnapshot,
+	});
 	const {
 		workspacePath,
 		workspaceGit,
@@ -156,7 +184,7 @@ export default function App(): ReactElement {
 		isDocumentVisible,
 		setBoard,
 		setSessions,
-		resetWorkspaceSnapshots: resetWorkspaceMetadataStore,
+		resetWorkspaceSnapshots,
 		setCanPersistWorkspaceState,
 		onWorktreeError: setWorktreeError,
 	});
@@ -277,7 +305,9 @@ export default function App(): ReactElement {
 		sendTaskSessionInput,
 		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
+		isDocumentVisible,
 		refreshWorkspaceState,
+		workspaceRevision,
 	});
 	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
 	const {
@@ -400,6 +430,7 @@ export default function App(): ReactElement {
 		resetGitActionState();
 		resetProjectNavigationState();
 		resetTerminalPanelsState();
+		resetWorkspaceSnapshots();
 	}, [
 		currentProjectId,
 		resetGitActionState,
@@ -407,6 +438,7 @@ export default function App(): ReactElement {
 		resetProjectNavigationState,
 		resetTaskEditorState,
 		resetTerminalPanelsState,
+		resetWorkspaceSnapshots,
 	]);
 
 	useEffect(() => {

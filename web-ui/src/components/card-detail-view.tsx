@@ -12,7 +12,6 @@ import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
-import { useTaskWorkspaceChangeRevisionValue } from "@/stores/workspace-metadata-store";
 import {
 	type BoardCard,
 	type CardSelection,
@@ -200,7 +199,6 @@ export function CardDetailView({
 		isRuntimeAvailable,
 		refresh,
 	} = useRuntimeWorkspaceChanges(selection.card.id, currentProjectId, selection.card.baseRef);
-	const taskWorkspaceChangeRevision = useTaskWorkspaceChangeRevisionValue(selection.card.id);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
@@ -278,7 +276,7 @@ export function CardDetailView({
 
 	useEffect(() => {
 		void refresh();
-	}, [refresh, selection.card.id, taskWorkspaceChangeRevision]);
+	}, [refresh, sessionSummary?.state]);
 
 	return (
 		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>
