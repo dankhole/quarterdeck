@@ -42,16 +42,6 @@ function isCopyShortcut(event: KeyboardEvent): boolean {
 	);
 }
 
-function isPasteShortcut(event: KeyboardEvent): boolean {
-	return (
-		event.type === "keydown" &&
-		((isMacPlatform && event.metaKey && !event.shiftKey && event.key.toLowerCase() === "v") ||
-			(!isMacPlatform &&
-				((event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") ||
-					(event.shiftKey && event.key === "Insert"))))
-	);
-}
-
 interface UseTerminalSessionInput {
 	taskId: string;
 	workspaceId: string | null;
@@ -174,19 +164,6 @@ export function useTerminalSession({
 				void navigator.clipboard.writeText(terminal.getSelection()).catch(() => {
 					// Ignore clipboard write failures.
 				});
-				return false;
-			}
-			if (isPasteShortcut(event)) {
-				void navigator.clipboard
-					.readText()
-					.then((text) => {
-						if (text.length > 0) {
-							terminal.paste(text);
-						}
-					})
-					.catch(() => {
-						// Ignore clipboard read failures.
-					});
 				return false;
 			}
 			return true;
