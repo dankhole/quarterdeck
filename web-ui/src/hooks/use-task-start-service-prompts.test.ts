@@ -124,7 +124,7 @@ describe("buildTaskStartServicePromptContent", () => {
 	it("returns claude default linear install command", () => {
 		const content = buildTaskStartServicePromptContent("linear_mcp");
 		expect(content.installCommand).toBe(
-			"claude mcp add --transport http --scope user linear-server https://mcp.linear.app/mcp",
+			"claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp",
 		);
 	});
 

@@ -32,7 +32,7 @@ const GITHUB_WORD_PATTERN = /\bgithub\b/i;
 const KANBAN_ACTION_WORDS = /\b(?:create|make|add|start|break|split|decompose|turn|convert)\b/i;
 const KANBAN_NOUN_WORDS = /\b(?:tasks?|tickets?|cards?|projects?)\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND =
-	"claude mcp add --transport http --scope user linear-server https://mcp.linear.app/mcp";
+	"claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
 const DEFAULT_KANBAN_INSTALL_COMMAND = "claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
