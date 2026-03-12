@@ -68,11 +68,13 @@ export default function App(): ReactElement {
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		taskEditorResetRef.current();
 	}, []);
 	const {
 		currentProjectId,
@@ -240,6 +242,10 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 		onClearWorktreeError: () => setWorktreeError(null),
 	});
+
+	useEffect(() => {
+		taskEditorResetRef.current = resetTaskEditorState;
+	}, [resetTaskEditorState]);
 
 	useEffect(() => {
 		if (!isProjectSwitching) {
