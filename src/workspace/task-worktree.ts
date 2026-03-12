@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, lstat, mkdir, readdir, rm, symlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { access, lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 import type {
@@ -14,6 +14,8 @@ import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-sta
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const WORKTREES_DIR = "worktrees";
+const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
+const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".git",
@@ -134,16 +136,7 @@ function isPathWithinRoot(path: string, root: string): boolean {
 	return path === root || path.startsWith(`${root}/`);
 }
 
-function isPathWithinAnyRoot(path: string, roots: Set<string>): boolean {
-	for (const root of roots) {
-		if (isPathWithinRoot(path, root)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-function getRootIgnoredPaths(relativePaths: string[]): string[] {
+function getUniquePaths(relativePaths: string[]): string[] {
 	const uniquePaths = Array.from(new Set(relativePaths.map((path) => toPlatformRelativePath(path)).filter(Boolean)));
 	uniquePaths.sort((left, right) => {
 		const leftDepth = left.split("/").length;
@@ -181,86 +174,69 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		.filter((line) => line.length > 0);
 }
 
-function isIgnoredByOwnNestedRule(ignoredPath: string, ignoreSourcePath: string): boolean {
-	const normalizedIgnoredPath = toPlatformRelativePath(ignoredPath);
-	const normalizedIgnoreSourcePath = toPlatformRelativePath(ignoreSourcePath);
-	if (!normalizedIgnoredPath || !normalizedIgnoreSourcePath) {
-		return false;
-	}
-	return normalizedIgnoreSourcePath.startsWith(`${normalizedIgnoredPath}/`);
+function escapeGitIgnoreLiteral(path: string): string {
+	const normalized = toPlatformRelativePath(path);
+	return normalized
+		.replace(/\\/g, "\\\\")
+		.replace(/^([#!])/u, "\\$1")
+		.replace(/([*?\[])/g, "\\$1");
 }
 
-function parseCheckIgnoreVerboseLine(line: string): { ignoredPath: string; ignoreSourcePath: string } | null {
-	const [sourceMetadata, ignoredPathRaw] = line.split("\t");
-	if (!sourceMetadata || !ignoredPathRaw) {
-		return null;
+function stripManagedExcludeBlock(content: string): string {
+	const lines = content.split("\n");
+	const nextLines: string[] = [];
+	let insideManagedBlock = false;
+	for (const line of lines) {
+		if (line === KANBAN_MANAGED_EXCLUDE_BLOCK_START) {
+			insideManagedBlock = true;
+			continue;
+		}
+		if (line === KANBAN_MANAGED_EXCLUDE_BLOCK_END) {
+			insideManagedBlock = false;
+			continue;
+		}
+		if (!insideManagedBlock) {
+			nextLines.push(line);
+		}
 	}
-
-	const sourceMatch = sourceMetadata.match(/^(.*):(\d+):(.*)$/u);
-	if (!sourceMatch) {
-		return null;
-	}
-
-	const ignoreSourcePath = toPlatformRelativePath(sourceMatch[1] ?? "");
-	const ignoredPath = toPlatformRelativePath(ignoredPathRaw);
-	if (!ignoreSourcePath || !ignoredPath) {
-		return null;
-	}
-
-	return {
-		ignoredPath,
-		ignoreSourcePath,
-	};
+	return nextLines.join("\n").replace(/\n+$/g, "");
 }
 
-async function listSelfIgnoredPaths(repoPath: string, relativePaths: string[]): Promise<Set<string>> {
-	// Some tool-managed directories are ignored by nested rules inside the directory itself,
-	// e.g. Husky's `.husky/_/.gitignore` with `*` ignores `.husky/_/`.
-	// If we symlink those directories into a worktree, git won't apply the nested ignore rule
-	// through the symlink boundary and the path shows up as untracked (`?? .husky/_`).
-	// We detect those root paths and skip symlinking them.
-	const rootIgnoredPaths = getRootIgnoredPaths(relativePaths);
-	if (rootIgnoredPaths.length === 0) {
-		return new Set<string>();
+async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: string[]): Promise<void> {
+	const excludePathOutput = (await runGit(["-C", repoPath, "rev-parse", "--git-path", "info/exclude"])).trim();
+	if (!excludePathOutput) {
+		return;
+	}
+	const excludePath = isAbsolute(excludePathOutput) ? excludePathOutput : join(repoPath, excludePathOutput);
+
+	const existingContent = await readFile(excludePath, "utf8").catch(() => "");
+	const preservedContent = stripManagedExcludeBlock(existingContent);
+	const managedPaths = getUniquePaths(relativePaths);
+	const managedBlock =
+		managedPaths.length === 0
+			? ""
+			: [
+					KANBAN_MANAGED_EXCLUDE_BLOCK_START,
+					"# Keep symlinked ignored paths ignored inside Kanban task worktrees.",
+					...managedPaths.map((relativePath) => `/${escapeGitIgnoreLiteral(relativePath)}`),
+					KANBAN_MANAGED_EXCLUDE_BLOCK_END,
+				].join("\n");
+
+	const nextContent = [preservedContent, managedBlock].filter(Boolean).join("\n\n").replace(/\n+$/g, "");
+	const normalizedNextContent = nextContent ? `${nextContent}\n` : "";
+	if (normalizedNextContent === existingContent) {
+		return;
 	}
 
-	const selfIgnoredPaths = new Set<string>();
-	for (const relativePath of rootIgnoredPaths) {
-		const sourcePath = join(repoPath, relativePath);
-		const sourceStat = await lstat(sourcePath).catch(() => null);
-		if (!sourceStat?.isDirectory()) {
-			continue;
-		}
-
-		const output = await tryRunGit(["-C", repoPath, "check-ignore", "-v", "--", `${relativePath}/`]);
-		if (!output) {
-			continue;
-		}
-
-		const parsed = parseCheckIgnoreVerboseLine(output.split("\n")[0] ?? "");
-		if (!parsed) {
-			continue;
-		}
-		if (parsed.ignoredPath !== relativePath) {
-			continue;
-		}
-		if (isIgnoredByOwnNestedRule(relativePath, parsed.ignoreSourcePath)) {
-			selfIgnoredPaths.add(relativePath);
-		}
-	}
-
-	return selfIgnoredPaths;
+	await mkdir(dirname(excludePath), { recursive: true });
+	await writeFile(excludePath, normalizedNextContent, "utf8");
 }
 
-async function symlinkIgnoredPaths(repoPath: string, worktreePath: string): Promise<void> {
-	const ignoredPaths = await listIgnoredPaths(repoPath);
-	const selfIgnoredRootPaths = await listSelfIgnoredPaths(repoPath, ignoredPaths);
+async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: string): Promise<void> {
+	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter((relativePath) => !shouldSkipSymlink(relativePath));
+	await syncManagedIgnoredPathExcludes(repoPath, ignoredPaths);
 	for (const relativePath of ignoredPaths) {
 		if (shouldSkipSymlink(relativePath)) {
-			continue;
-		}
-
-		if (isPathWithinAnyRoot(relativePath, selfIgnoredRootPaths)) {
 			continue;
 		}
 
@@ -318,6 +294,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// worktrees are now treated as authoritative and only missing worktrees are created.
 		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
 		if (existingCommit) {
+			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 			return {
 				ok: true,
 				path: worktreePath,
@@ -356,7 +333,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 
 		await mkdir(dirname(worktreePath), { recursive: true });
 		await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
-		await symlinkIgnoredPaths(context.repoPath, worktreePath);
+		await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 
 		return {
 			ok: true,
