@@ -333,6 +333,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		onConnectionReady: props.onConnectionReady,
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
+		sessionStartedAt: props.summary?.startedAt ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? Colors.DARK_GRAY1,
 		cursorColor: props.cursorColor ?? Colors.LIGHT_GRAY5,
 	});
