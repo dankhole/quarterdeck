@@ -1,4 +1,4 @@
-import { Button, Checkbox, Classes, Dialog, DialogBody, DialogFooter, Pre } from "@blueprintjs/core";
+import { Button, Callout, Checkbox, Classes, Dialog, DialogBody, DialogFooter, Pre } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
 import type { TaskStartServicePromptContent } from "@/hooks/use-task-start-service-prompts";
@@ -48,6 +48,11 @@ export function TaskStartServicePromptDialog({
 						</p>
 						<Pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{installCommand}</Pre>
 					</div>
+				) : null}
+				{prompt?.authenticationNote ? (
+					<Callout intent="warning" icon="warning-sign" compact style={{ marginTop: 12 }}>
+						{prompt.authenticationNote}
+					</Callout>
 				) : null}
 			</DialogBody>
 			<DialogFooter

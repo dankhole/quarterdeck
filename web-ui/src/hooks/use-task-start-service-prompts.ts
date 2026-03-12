@@ -22,6 +22,7 @@ export interface TaskStartServicePromptContent {
 	installCommand?: string;
 	installButtonLabel?: string;
 	installCommandDescription?: string;
+	authenticationNote?: string;
 }
 
 type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
@@ -138,14 +139,17 @@ export function buildTaskStartServicePromptContent(
 				id: promptId,
 				title: "Set up Linear MCP before starting this task?",
 				description: isOpenCode
-					? "This task looks like it references Linear. In OpenCode, run the command below, then use name: linear, server URL: https://mcp.linear.app/mcp, and complete OAuth authentication if prompted. You may also need to run OpenCode and use /mcp to authenticate."
-					: "This task looks like it references Linear. Connecting the Linear MCP gives the agent direct issue context while it works. You may also need to run your agent and use /mcp to authenticate.",
+					? "This task looks like it references Linear. In OpenCode, run the command below, then use name: linear, server URL: https://mcp.linear.app/mcp, and complete OAuth authentication if prompted."
+					: "This task looks like it references Linear. Connecting the Linear MCP gives the agent direct issue context while it works.",
 				learnMoreUrl: "https://linear.app/docs/mcp",
 				installCommand,
 				installButtonLabel: "Run install command",
 				installCommandDescription: isOpenCode
 					? "Run this first, then follow OpenCode prompts:"
 					: "Install command:",
+				authenticationNote: isOpenCode
+					? "After installing, run OpenCode and use /mcp to complete authentication."
+					: "After installing, run your agent and use /mcp to complete authentication.",
 			};
 		}
 		case "github_cli": {
