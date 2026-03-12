@@ -1,6 +1,7 @@
 import { Button, Card, Classes, Colors, Icon, NonIdealState, TextArea } from "@blueprintjs/core";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
@@ -26,6 +27,9 @@ interface FileDiffGroup {
 	added: number;
 	removed: number;
 }
+
+const isMacPlatform =
+	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 export interface DiffLineComment {
 	filePath: string;
@@ -484,6 +488,26 @@ export function DiffViewerPanel({
 
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
+	const sendShortcutModifierIcon = isMacPlatform ? "key-command" : "key-control";
+
+	useHotkeys(
+		"meta+enter,ctrl+enter",
+		(event) => {
+			if (!onSendToTerminal || nonEmptyCount === 0) {
+				return;
+			}
+			event.preventDefault();
+			handleSendComments();
+		},
+		{
+			enabled: Boolean(onSendToTerminal),
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			ignoreEventWhen: (event) => event.defaultPrevented,
+			preventDefault: true,
+		},
+		[handleSendComments, nonEmptyCount, onSendToTerminal],
+	);
 
 	return (
 		<div
@@ -611,7 +635,23 @@ export function DiffViewerPanel({
 								) : null}
 								{onSendToTerminal ? (
 									<Button
-										text="Send"
+										text={
+											<span style={{ display: "inline-flex", alignItems: "center" }}>
+												<span>Send</span>
+												<span
+													style={{
+														display: "inline-flex",
+														alignItems: "center",
+														gap: 2,
+														marginLeft: 6,
+													}}
+													aria-hidden
+												>
+													<Icon icon={sendShortcutModifierIcon} size={12} />
+													<Icon icon="key-enter" size={12} />
+												</span>
+											</span>
+										}
 										intent="primary"
 										variant="solid"
 										size="small"
