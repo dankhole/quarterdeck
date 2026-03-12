@@ -55,7 +55,7 @@ export function KeyboardShortcutsDialog({
 	onClose: () => void;
 }): React.ReactElement {
 	return (
-		<Dialog isOpen={isOpen} onClose={onClose} title="Keyboard shortcuts" icon="key" style={{ width: 480 }}>
+		<Dialog isOpen={isOpen} onClose={onClose} title="Keyboard shortcuts" icon="key-command" style={{ width: 480 }}>
 			<DialogBody>
 				{SHORTCUT_GROUPS.map((group) => (
 					<div key={group.title} style={{ marginBottom: 16 }}>
