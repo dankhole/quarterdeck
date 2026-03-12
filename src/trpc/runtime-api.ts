@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 
-import type { RuntimeCommandRunResponse, RuntimeSlashCommandsResponse } from "../core/api-contract.js";
+import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
 	parseCommandRunRequest,
 	parseRuntimeConfigSaveRequest,
@@ -13,7 +13,6 @@ import type { RuntimeConfigState } from "../config/runtime-config.js";
 import { updateRuntimeConfig } from "../config/runtime-config.js";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { discoverRuntimeSlashCommands } from "../terminal/slash-commands.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
 
@@ -24,23 +23,6 @@ export interface CreateRuntimeApiDependencies {
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
-}
-
-function normalizeOptionalTaskWorkspaceScopeInput(
-	input: { taskId: string; baseRef: string } | null,
-): { taskId: string; baseRef: string } | null {
-	if (!input) {
-		return null;
-	}
-	const taskId = input.taskId.trim();
-	const baseRef = input.baseRef.trim();
-	if (!taskId || !baseRef) {
-		throw new Error("baseRef query parameter requires taskId.");
-	}
-	return {
-		taskId,
-		baseRef,
-	};
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
@@ -56,41 +38,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				deps.setActiveRuntimeConfig(nextRuntimeConfig);
 			}
 			return buildRuntimeConfigResponse(nextRuntimeConfig);
-		},
-		loadSlashCommands: async (workspaceScope, input) => {
-			try {
-				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
-				if (!resolved) {
-					return {
-						agentId: null,
-						commands: [],
-						error: "No runnable agent command is configured.",
-					} satisfies RuntimeSlashCommandsResponse;
-				}
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
-				let commandCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					commandCwd = await resolveTaskCwd({
-						cwd: workspaceScope.workspacePath,
-						taskId: taskScope.taskId,
-						baseRef: taskScope.baseRef,
-						ensure: false,
-					});
-				}
-				const discovered = await discoverRuntimeSlashCommands(resolved, commandCwd);
-				return {
-					agentId: resolved.agentId,
-					commands: discovered.commands,
-					error: discovered.error,
-				} satisfies RuntimeSlashCommandsResponse;
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				throw new TRPCError({
-					code: "INTERNAL_SERVER_ERROR",
-					message,
-				});
-			}
 		},
 		startTaskSession: async (workspaceScope, input) => {
 			try {

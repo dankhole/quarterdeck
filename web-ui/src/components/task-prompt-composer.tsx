@@ -1,19 +1,16 @@
-import { Classes, Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blueprintjs/core";
+import { Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blueprintjs/core";
 import { Classes as SelectClasses } from "@blueprintjs/select";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDebouncedEffect } from "@/utils/react-use";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeSlashCommandDescription } from "@/runtime/types";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
 
-const DEFAULT_SLASH_COMMANDS: RuntimeSlashCommandDescription[] = [];
-
 interface ActivePromptToken {
-	kind: "slash" | "mention";
+	kind: "mention";
 	start: number;
 	end: number;
 	query: string;
@@ -21,9 +18,8 @@ interface ActivePromptToken {
 
 interface PromptSuggestion {
 	id: string;
-	kind: "slash" | "mention";
+	kind: "mention";
 	text: string;
-	detail?: string;
 	insertText: string;
 }
 
@@ -38,7 +34,6 @@ interface TaskPromptComposerProps {
 	enabled?: boolean;
 	autoFocus?: boolean;
 	workspaceId?: string | null;
-	disallowedSlashCommands?: string[];
 }
 
 function detectActivePromptToken(value: string, cursorIndex: number): ActivePromptToken | null {
@@ -52,27 +47,15 @@ function detectActivePromptToken(value: string, cursorIndex: number): ActiveProm
 		tokenStart -= 1;
 	}
 	const token = head.slice(tokenStart);
-	if (!token.startsWith("@") && !token.startsWith("/")) {
+	if (!token.startsWith("@")) {
 		return null;
 	}
-	const tokenEnd = cursorIndex;
-	if (token.startsWith("@")) {
-		return {
-			kind: "mention",
-			start: tokenStart,
-			end: tokenEnd,
-			query: token.slice(1),
-		};
-	}
-	if (token.startsWith("/")) {
-		return {
-			kind: "slash",
-			start: tokenStart,
-			end: tokenEnd,
-			query: token.slice(1),
-		};
-	}
-	return null;
+	return {
+		kind: "mention",
+		start: tokenStart,
+		end: cursorIndex,
+		query: token.slice(1),
+	};
 }
 
 function applyTokenReplacement(
@@ -92,24 +75,6 @@ function applyTokenReplacement(
 	};
 }
 
-function sortSlashSuggestions(query: string, commands: RuntimeSlashCommandDescription[]): PromptSuggestion[] {
-	const normalizedQuery = query.trim().toLowerCase();
-	const filtered = commands.filter((entry) => {
-		const normalizedName = entry.name.startsWith("/") ? entry.name.slice(1) : entry.name;
-		if (!normalizedQuery) {
-			return true;
-		}
-		return normalizedName.includes(normalizedQuery) || normalizedName.startsWith(normalizedQuery);
-	});
-	return filtered.map((entry) => ({
-		id: entry.name,
-		kind: "slash",
-		text: entry.name.startsWith("/") ? entry.name : `/${entry.name}`,
-		detail: entry.description ?? "Agent command",
-		insertText: entry.name.startsWith("/") ? entry.name : `/${entry.name}`,
-	}));
-}
-
 export function TaskPromptComposer({
 	id,
 	value,
@@ -121,7 +86,6 @@ export function TaskPromptComposer({
 	enabled = true,
 	autoFocus = false,
 	workspaceId = null,
-	disallowedSlashCommands = [],
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const popoverRef = useRef<InstanceType<typeof Popover> | null>(null);
@@ -131,72 +95,18 @@ export function TaskPromptComposer({
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [mentionSuggestions, setMentionSuggestions] = useState<PromptSuggestion[]>([]);
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
-	const [slashCommands, setSlashCommands] = useState<RuntimeSlashCommandDescription[]>(DEFAULT_SLASH_COMMANDS);
-	const [isSlashCommandsLoading, setIsSlashCommandsLoading] = useState(false);
-	const [slashCommandError, setSlashCommandError] = useState<string | null>(null);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
 	const [isSuggestionPickerOpen, setIsSuggestionPickerOpen] = useState(true);
 
 	const activeToken = useMemo(() => detectActivePromptToken(value, cursorIndex), [cursorIndex, value]);
-	const disallowedSlashCommandSet = useMemo(
-		() =>
-			new Set(
-				disallowedSlashCommands
-					.map((command) => command.trim().toLowerCase())
-					.filter((command) => command.length > 0),
-			),
-		[disallowedSlashCommands],
-	);
 
 	useEffect(() => {
 		if (!enabled) {
+			mentionSearchRequestIdRef.current += 1;
+			setMentionSuggestions([]);
+			setIsMentionSearchLoading(false);
 			return;
 		}
-		let cancelled = false;
-		setIsSlashCommandsLoading(true);
-		void (async () => {
-			try {
-				if (!workspaceId) {
-					throw new Error("No workspace selected.");
-				}
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const payload = await trpcClient.runtime.getSlashCommands.query(null);
-				if (cancelled) {
-					return;
-				}
-				const resolvedCommands =
-					Array.isArray(payload.commands) && payload.commands.length > 0
-						? payload.commands
-						: DEFAULT_SLASH_COMMANDS;
-				const allowedCommands = resolvedCommands.filter((command) => {
-					const normalizedName = command.name.replace(/^\//, "").trim().toLowerCase();
-					return normalizedName && !disallowedSlashCommandSet.has(normalizedName);
-				});
-				setSlashCommands(allowedCommands);
-				setSlashCommandError(payload.error);
-			} catch (error) {
-				if (cancelled) {
-					return;
-				}
-				setSlashCommands(
-					DEFAULT_SLASH_COMMANDS.filter((command) => {
-						const normalizedName = command.name.replace(/^\//, "").trim().toLowerCase();
-						return normalizedName && !disallowedSlashCommandSet.has(normalizedName);
-					}),
-				);
-				setSlashCommandError(error instanceof Error ? error.message : String(error));
-			} finally {
-				if (!cancelled) {
-					setIsSlashCommandsLoading(false);
-				}
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [disallowedSlashCommandSet, enabled, workspaceId]);
-
-	useEffect(() => {
 		if (!activeToken || activeToken.kind !== "mention") {
 			mentionSearchRequestIdRef.current += 1;
 			setMentionSuggestions([]);
@@ -208,6 +118,9 @@ export function TaskPromptComposer({
 
 	useDebouncedEffect(
 		() => {
+			if (!enabled) {
+				return;
+			}
 			if (!activeToken || activeToken.kind !== "mention") {
 				return;
 			}
@@ -248,25 +161,12 @@ export function TaskPromptComposer({
 			})();
 		},
 		MENTION_QUERY_DEBOUNCE_MS,
-		[activeToken, workspaceId],
+		[activeToken, enabled, workspaceId],
 	);
 
-	const slashSuggestions = useMemo<PromptSuggestion[]>(() => {
-		if (!activeToken || activeToken.kind !== "slash") {
-			return [];
-		}
-		return sortSlashSuggestions(activeToken.query, slashCommands);
-	}, [activeToken, slashCommands]);
-
 	const suggestions = useMemo(() => {
-		if (!activeToken) {
-			return [] as PromptSuggestion[];
-		}
-		if (activeToken.kind === "slash") {
-			return slashSuggestions;
-		}
-		return mentionSuggestions;
-	}, [activeToken, mentionSuggestions, slashSuggestions]);
+		return enabled && activeToken ? mentionSuggestions : ([] as PromptSuggestion[]);
+	}, [activeToken, enabled, mentionSuggestions]);
 
 	useEffect(() => {
 		setSelectedSuggestionIndex(0);
@@ -363,10 +263,9 @@ export function TaskPromptComposer({
 		[applySuggestion, isSuggestionPickerOpen, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
 	);
 
-	const showMentionLoading = Boolean(activeToken && activeToken.kind === "mention" && isMentionSearchLoading);
-	const showSlashLoading = Boolean(activeToken && activeToken.kind === "slash" && isSlashCommandsLoading);
+	const showMentionLoading = Boolean(enabled && activeToken && isMentionSearchLoading);
 	const showSuggestions = Boolean(
-		isSuggestionPickerOpen && activeToken && (showMentionLoading || showSlashLoading || suggestions.length > 0),
+		enabled && isSuggestionPickerOpen && activeToken && (showMentionLoading || suggestions.length > 0),
 	);
 
 	useEffect(() => {
@@ -376,7 +275,7 @@ export function TaskPromptComposer({
 		window.requestAnimationFrame(() => {
 			void popoverRef.current?.reposition();
 		});
-	}, [activeToken?.query, showMentionLoading, showSlashLoading, showSuggestions, suggestions.length]);
+	}, [activeToken?.query, showMentionLoading, showSuggestions, suggestions.length]);
 
 	useEffect(() => {
 		if (!showSuggestions) {
@@ -430,10 +329,6 @@ export function TaskPromptComposer({
 					<Menu>
 						<MenuItem disabled text="Loading files..." roleStructure="listoption" />
 					</Menu>
-				) : showSlashLoading ? (
-					<Menu>
-						<MenuItem disabled text="Loading commands..." roleStructure="listoption" />
-					</Menu>
 				) : (
 					<Menu ulRef={menuRef} style={{ overflowX: "hidden", overflowY: "auto" }}>
 						{suggestions.map((suggestion, index) => {
@@ -444,42 +339,21 @@ export function TaskPromptComposer({
 									ref={(node) => setSuggestionItemRef(suggestionKey, node)}
 									active={index === selectedSuggestionIndex}
 									roleStructure="listoption"
-									style={
-										suggestion.kind === "mention"
-											? {
-													paddingLeft: 6,
-													paddingRight: 6,
-												}
-											: undefined
-									}
+									style={{ paddingLeft: 6, paddingRight: 6 }}
 									text={
-										suggestion.kind === "mention" ? (
-											<span
-												style={{
-													display: "block",
-													fontSize: "var(--bp-typography-size-body-small)",
-													lineHeight: 1.15,
-													maxWidth: "100%",
-													overflowWrap: "anywhere",
-													wordBreak: "break-word",
-													whiteSpace: "normal",
-												}}
-											>
-												{suggestion.text}
-											</span>
-										) : (
-											<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-												<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{suggestion.text}</span>
-												{suggestion.detail ? (
-													<span
-														className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-														style={{ fontSize: "var(--bp-typography-size-body-small)" }}
-													>
-														{suggestion.detail}
-													</span>
-												) : null}
-											</div>
-										)
+										<span
+											style={{
+												display: "block",
+												fontSize: "var(--bp-typography-size-body-small)",
+												lineHeight: 1.15,
+												maxWidth: "100%",
+												overflowWrap: "anywhere",
+												wordBreak: "break-word",
+												whiteSpace: "normal",
+											}}
+										>
+											{suggestion.text}
+										</span>
 									}
 									onMouseDown={(event) => {
 										event.preventDefault();
@@ -489,13 +363,6 @@ export function TaskPromptComposer({
 								/>
 							);
 						})}
-						{activeToken?.kind === "slash" && slashCommandError ? (
-							<MenuItem
-								disabled
-								roleStructure="listoption"
-								text="Using fallback commands while discovery is unavailable."
-							/>
-						) : null}
 					</Menu>
 				)
 			}

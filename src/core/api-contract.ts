@@ -54,21 +54,8 @@ export const runtimeWorkspaceFileSearchResponseSchema = z.object({
 });
 export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
 
-export const runtimeSlashCommandDescriptionSchema = z.object({
-	name: z.string(),
-	description: z.string().nullable(),
-});
-export type RuntimeSlashCommandDescription = z.infer<typeof runtimeSlashCommandDescriptionSchema>;
-
 export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
-
-export const runtimeSlashCommandsResponseSchema = z.object({
-	agentId: runtimeAgentIdSchema.nullable(),
-	commands: z.array(runtimeSlashCommandDescriptionSchema),
-	error: z.string().nullable(),
-});
-export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
 
 export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
 export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;

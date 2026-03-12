@@ -1,5 +1,3 @@
-export const DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS = ["help", "compact", "init", "status", "plan", "mcp"] as const;
-
 export interface TaskPromptSplit {
 	title: string;
 	description: string;

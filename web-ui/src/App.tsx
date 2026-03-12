@@ -54,7 +54,6 @@ import {
 import type {
 	BoardData,
 } from "@/types";
-import { DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS } from "@/utils/task-prompt";
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
@@ -606,7 +605,6 @@ export default function App(): ReactElement {
 			branchRef={newTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setNewTaskBranchRef}
-			disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
 			mode="create"
 			idPrefix="inline-create-task"
 		/>
@@ -628,7 +626,6 @@ export default function App(): ReactElement {
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
-			disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
 			mode="edit"
 			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>

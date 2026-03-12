@@ -28,7 +28,6 @@ import type {
 	RuntimeCommandRunResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
-	RuntimeSlashCommandsResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
@@ -74,7 +73,6 @@ import {
 	runtimeCommandRunResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
-	runtimeSlashCommandsResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -106,10 +104,6 @@ export interface RuntimeTrpcContext {
 	runtimeApi: {
 		loadConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigResponse>;
 		saveConfig: (scope: RuntimeTrpcWorkspaceScope, input: RuntimeConfigSaveRequest) => Promise<RuntimeConfigResponse>;
-		loadSlashCommands: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
-		) => Promise<RuntimeSlashCommandsResponse>;
 		startTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionStartRequest,
@@ -265,12 +259,6 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeConfigResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.saveConfig(ctx.workspaceScope, input);
-			}),
-		getSlashCommands: workspaceProcedure
-			.input(optionalTaskWorkspaceInfoRequestSchema)
-			.output(runtimeSlashCommandsResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.loadSlashCommands(ctx.workspaceScope, input ?? null);
 			}),
 		startTaskSession: workspaceProcedure
 			.input(runtimeTaskSessionStartRequestSchema)

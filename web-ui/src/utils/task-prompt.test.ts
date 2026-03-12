@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
 	splitPromptToTitleDescriptionByWidth,
 	truncateTaskPromptLabel,
 } from "@/utils/task-prompt";
@@ -48,9 +47,3 @@ describe("splitPromptToTitleDescriptionByWidth", () => {
 	});
 });
 
-describe("DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS", () => {
-	it("still includes known disallowed slash commands", () => {
-		expect(DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS).toContain("plan");
-		expect(DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS).toContain("mcp");
-	});
-});

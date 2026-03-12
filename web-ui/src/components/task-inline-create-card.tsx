@@ -34,7 +34,6 @@ export function TaskInlineCreateCard({
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
-	disallowedSlashCommands,
 	enabled = true,
 	mode = "create",
 	idPrefix = "inline-task",
@@ -55,7 +54,6 @@ export function TaskInlineCreateCard({
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
 	onBranchRefChange: (value: string) => void;
-	disallowedSlashCommands: string[];
 	enabled?: boolean;
 	mode?: TaskInlineCardMode;
 	idPrefix?: string;
@@ -106,7 +104,6 @@ export function TaskInlineCreateCard({
 					enabled={enabled}
 					autoFocus
 					workspaceId={workspaceId}
-					disallowedSlashCommands={disallowedSlashCommands}
 				/>
 			</FormGroup>
 
