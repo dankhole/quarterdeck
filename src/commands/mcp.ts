@@ -21,12 +21,12 @@ function parseMcpCliOptions(args: string[]): McpCliOptions {
 }
 
 function printMcpHelp(): void {
-	process.stdout.write("kanban mcp\n");
+	process.stdout.write("npx -y kanban mcp\n");
 	process.stdout.write("Run Kanban as a local MCP stdio server.\n");
 	process.stdout.write("\n");
 	process.stdout.write("Usage:\n");
-	process.stdout.write("  kanban mcp\n");
-	process.stdout.write("  kanban mcp --help\n");
+	process.stdout.write("  npx -y kanban mcp\n");
+	process.stdout.write("  npx -y kanban mcp --help\n");
 }
 
 export async function runMcpSubcommand(argv: string[]): Promise<void> {

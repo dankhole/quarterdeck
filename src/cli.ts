@@ -135,7 +135,7 @@ function printHelp(): void {
 	console.log("");
 	console.log("Usage:");
 	console.log("  kanban [--agent <id>] [--port <number|auto>] [--no-open] [--help] [--version]");
-	console.log("  kanban mcp");
+	console.log("  npx -y kanban mcp");
 	console.log("");
 	console.log(`Runtime URL: ${getKanbanRuntimeOrigin()}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);

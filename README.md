@@ -45,7 +45,7 @@ npx kanban
 Use MCP to let the agent add and start tasks on the kanban board itself, decomposing large work into parallelizable linked tasks in clever ways to get work done quicker.
 
 ```bash
-claude mcp add --transport stdio --scope user kanban -- kanban mcp
+claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp
 ```
 
 <details>
@@ -57,8 +57,8 @@ Add this to your `~/.cline/data/settings/cline_mcp_settings.json`:
 {
   "mcpServers": {
     "kanban": {
-      "command": "kanban",
-      "args": ["mcp"],
+      "command": "npx",
+      "args": ["-y", "kanban", "mcp"],
       "transportType": "stdio"
     }
   }

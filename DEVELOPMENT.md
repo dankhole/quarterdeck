@@ -110,7 +110,7 @@ kanban
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. Without this, `kanban mcp` will serve a stale build from a different worktree.
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. For MCP setup instructions, prefer `npx -y kanban mcp`.
 
 Remove the global link:
 

@@ -33,7 +33,7 @@ const KANBAN_ACTION_WORDS = /\b(?:create|make|add|start|break|split|decompose|tu
 const KANBAN_NOUN_WORDS = /\b(?:tasks?|tickets?|cards?|projects?)\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND =
 	"claude mcp add --transport http --scope user linear-server https://mcp.linear.app/mcp";
-const DEFAULT_KANBAN_INSTALL_COMMAND = "claude mcp add --transport stdio --scope user kanban -- kanban mcp";
+const DEFAULT_KANBAN_INSTALL_COMMAND = "claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -55,15 +55,15 @@ function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | und
 function getKanbanMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
 		case "codex":
-			return "codex mcp add kanban -- kanban mcp";
+			return "codex mcp add kanban -- npx -y kanban mcp";
 		case "gemini":
-				return "gemini mcp add kanban kanban mcp --scope user";
+				return "gemini mcp add kanban npx -y kanban mcp --scope user";
 		case "opencode":
 			return "opencode mcp add";
 		case "droid":
-			return "droid mcp add kanban -- kanban mcp";
+			return "droid mcp add kanban -- npx -y kanban mcp";
 		case "cline":
-			return "droid mcp add kanban -- kanban mcp";
+			return "droid mcp add kanban -- npx -y kanban mcp";
 		default:
 			return DEFAULT_KANBAN_INSTALL_COMMAND;
 	}
@@ -177,7 +177,7 @@ export function buildTaskStartServicePromptContent(
 				id: promptId,
 				title: "Set up Kanban MCP before starting this task?",
 				description: isOpenCode
-					? "This prompt looks like task-creation work. In OpenCode, run the command below, then use name: kanban, server type: Local MCP server, and command: kanban mcp."
+					? "This prompt looks like task-creation work. In OpenCode, run the command below, then use name: kanban, server type: Local MCP server, and command: npx -y kanban mcp."
 					: "This prompt looks like task-creation work. Connecting the Kanban MCP helps the agent create and manage tasks directly.",
 				learnMoreUrl: "https://github.com/cline/kanban",
 				installCommand,

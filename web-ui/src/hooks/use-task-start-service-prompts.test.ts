@@ -152,7 +152,7 @@ describe("buildTaskStartServicePromptContent", () => {
 
 	it("returns kanban mcp install command", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp");
-		expect(content.installCommand).toBe("claude mcp add --transport stdio --scope user kanban -- kanban mcp");
+		expect(content.installCommand).toBe("claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp");
 		expect(content.learnMoreUrl).toBe("https://github.com/cline/kanban");
 	});
 
@@ -160,7 +160,7 @@ describe("buildTaskStartServicePromptContent", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp", {
 			selectedAgentId: "codex",
 		});
-		expect(content.installCommand).toBe("codex mcp add kanban -- kanban mcp");
+		expect(content.installCommand).toBe("codex mcp add kanban -- npx -y kanban mcp");
 	});
 
 	it("returns opencode-specific kanban mcp install command", () => {
@@ -169,28 +169,28 @@ describe("buildTaskStartServicePromptContent", () => {
 		});
 		expect(content.installCommand).toBe("opencode mcp add");
 		expect(content.description).toContain("server type: Local MCP server");
-		expect(content.description).toContain("command: kanban mcp");
+		expect(content.description).toContain("command: npx -y kanban mcp");
 	});
 
 	it("returns droid-specific kanban mcp install command", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp", {
 			selectedAgentId: "droid",
 		});
-		expect(content.installCommand).toBe("droid mcp add kanban -- kanban mcp");
+		expect(content.installCommand).toBe("droid mcp add kanban -- npx -y kanban mcp");
 	});
 
 	it("returns cline-specific kanban mcp install command", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp", {
 			selectedAgentId: "cline",
 		});
-		expect(content.installCommand).toBe("droid mcp add kanban -- kanban mcp");
+		expect(content.installCommand).toBe("droid mcp add kanban -- npx -y kanban mcp");
 	});
 
 	it("returns gemini kanban mcp install command with user scope", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp", {
 			selectedAgentId: "gemini",
 		});
-		expect(content.installCommand).toBe("gemini mcp add kanban kanban mcp --scope user");
+		expect(content.installCommand).toBe("gemini mcp add kanban npx -y kanban mcp --scope user");
 	});
 
 	it("returns opencode-specific linear guidance with oauth", () => {
