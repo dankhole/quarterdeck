@@ -79,8 +79,8 @@ export function useRuntimeConfig(
 	);
 
 	return {
-		config: workspaceId ? configQuery.data : null,
-		isLoading: open ? configQuery.isLoading : false,
+		config: workspaceId ? (configQuery.data ?? initialConfig) : null,
+		isLoading: open ? configQuery.isLoading && configQuery.data === null && initialConfig === null : false,
 		isSaving,
 		save,
 	};
