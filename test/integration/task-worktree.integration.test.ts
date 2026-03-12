@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -91,8 +91,10 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(false);
+				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
+				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
+				expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
 
 				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
@@ -101,7 +103,51 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(ensuredAgain.ok).toBe(true);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(false);
+				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
+				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("keeps symlinked directory-only ignored paths ignored in task worktrees", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-root-ignore-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				writeFileSync(join(repoPath, ".gitignore"), "/.next/\n/node_modules/\n", "utf8");
+				mkdirSync(join(repoPath, ".next"), { recursive: true });
+				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
+				writeFileSync(join(repoPath, ".next", "BUILD_ID"), "build\n", "utf8");
+				writeFileSync(join(repoPath, "node_modules", "package.json"), "{\n  \"name\": \"fixture\"\n}\n", "utf8");
+
+				runGit(repoPath, ["add", "README.md", ".gitignore"]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-2",
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				expect(lstatSync(join(ensured.path, ".next")).isSymbolicLink()).toBe(true);
+				expect(lstatSync(join(ensured.path, "node_modules")).isSymbolicLink()).toBe(true);
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
+				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
+				expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
+				expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
 			} finally {
 				cleanup();
 			}
