@@ -215,7 +215,21 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
 	const prompt = draft.prompt.trim();
-	if (!prompt) return board;
+	if (!prompt) {
+		return board;
+	}
+	return addTaskToColumnWithResult(board, columnId, draft).board;
+}
+
+export function addTaskToColumnWithResult(
+	board: BoardData,
+	columnId: BoardColumnId,
+	draft: TaskDraft,
+): { board: BoardData; task: BoardCard } {
+	const prompt = draft.prompt.trim();
+	if (!prompt) {
+		throw new Error("Task prompt is required.");
+	}
 	const result = runtimeTaskState.addTaskToColumn(
 		board,
 		columnId,
@@ -228,7 +242,10 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 		},
 		() => crypto.randomUUID(),
 	);
-	return result.board;
+	return {
+		board: result.board,
+		task: result.task,
+	};
 }
 
 export interface AddTaskDependencyResult {

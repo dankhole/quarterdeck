@@ -32,6 +32,7 @@ interface TaskPromptComposerProps {
 	value: string;
 	onValueChange: (value: string) => void;
 	onSubmit?: () => void;
+	onSubmitAndStart?: () => void;
 	placeholder?: string;
 	disabled?: boolean;
 	enabled?: boolean;
@@ -114,6 +115,7 @@ export function TaskPromptComposer({
 	value,
 	onValueChange,
 	onSubmit,
+	onSubmitAndStart,
 	placeholder,
 	disabled,
 	enabled = true,
@@ -317,6 +319,12 @@ export function TaskPromptComposer({
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 				event.preventDefault();
+				if (event.shiftKey) {
+					if (onSubmitAndStart) {
+						onSubmitAndStart();
+						return;
+					}
+				}
 				onSubmit?.();
 				return;
 			}
@@ -352,7 +360,7 @@ export function TaskPromptComposer({
 				setIsSuggestionPickerOpen(false);
 			}
 		},
-		[applySuggestion, isSuggestionPickerOpen, onSubmit, selectedSuggestionIndex, suggestions],
+		[applySuggestion, isSuggestionPickerOpen, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
 	);
 
 	const showMentionLoading = Boolean(activeToken && activeToken.kind === "mention" && isMentionSearchLoading);

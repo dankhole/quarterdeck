@@ -211,6 +211,7 @@ interface UseTaskStartServicePromptsInput {
 	board: BoardData;
 	currentProjectId: string | null;
 	selectedAgentId: RuntimeAgentId | null | undefined;
+	handleCreateTask: () => string | null;
 	handleStartTask: (taskId: string) => void;
 	prepareTerminalForShortcut: (input: {
 		prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
@@ -224,6 +225,7 @@ interface UseTaskStartServicePromptsInput {
 }
 
 export interface UseTaskStartServicePromptsResult {
+	handleCreateAndStartTask: () => void;
 	handleStartTaskWithServiceSetupPrompt: (taskId: string) => void;
 	taskStartServicePromptDialogOpen: boolean;
 	taskStartServicePromptDialogPrompt: TaskStartServicePromptContent | null;
@@ -237,6 +239,7 @@ export function useTaskStartServicePrompts({
 	board,
 	currentProjectId,
 	selectedAgentId,
+	handleCreateTask,
 	handleStartTask,
 	prepareTerminalForShortcut,
 	prepareWaitForTerminalConnectionReady,
@@ -251,6 +254,7 @@ export function useTaskStartServicePrompts({
 	const [pendingTaskStartServicePromptQueue, setPendingTaskStartServicePromptQueue] = useState<
 		PendingTaskStartServicePromptState[]
 	>([]);
+	const [pendingTaskStartAfterCreateId, setPendingTaskStartAfterCreateId] = useState<string | null>(null);
 	const [taskStartServicePromptDoNotShowAgain, setTaskStartServicePromptDoNotShowAgain] = useState(false);
 	const [taskStartServicePromptAcknowledgements, setTaskStartServicePromptAcknowledgements] = useState<
 		Record<string, true>
@@ -258,6 +262,7 @@ export function useTaskStartServicePrompts({
 
 	useEffect(() => {
 		setPendingTaskStartServicePromptQueue([]);
+		setPendingTaskStartAfterCreateId(null);
 		setTaskStartServicePromptDoNotShowAgain(false);
 		setTaskStartServicePromptAcknowledgements({});
 	}, [currentProjectId]);
@@ -502,7 +507,28 @@ export function useTaskStartServicePrompts({
 		],
 	);
 
+	const handleCreateAndStartTask = useCallback(() => {
+		const taskId = handleCreateTask();
+		if (!taskId) {
+			return;
+		}
+		setPendingTaskStartAfterCreateId(taskId);
+	}, [handleCreateTask]);
+
+	useEffect(() => {
+		if (!pendingTaskStartAfterCreateId) {
+			return;
+		}
+		const selection = findCardSelection(board, pendingTaskStartAfterCreateId);
+		if (!selection || selection.column.id !== "backlog") {
+			return;
+		}
+		handleStartTaskWithServiceSetupPrompt(pendingTaskStartAfterCreateId);
+		setPendingTaskStartAfterCreateId(null);
+	}, [board, handleStartTaskWithServiceSetupPrompt, pendingTaskStartAfterCreateId]);
+
 	return {
+		handleCreateAndStartTask,
 		handleStartTaskWithServiceSetupPrompt,
 		taskStartServicePromptDialogOpen: pendingTaskStartServicePromptQueue.length > 0,
 		taskStartServicePromptDialogPrompt,

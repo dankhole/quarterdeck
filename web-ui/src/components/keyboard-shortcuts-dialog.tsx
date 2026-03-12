@@ -32,7 +32,10 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 	},
 	{
 		title: "Task prompt",
-		shortcuts: [{ combo: "mod+enter", description: "Submit prompt" }],
+		shortcuts: [
+			{ combo: "mod+enter", description: "Create or save task" },
+			{ combo: "mod+shift+enter", description: "Create and play task" },
+		],
 	},
 	{
 		title: "Git history",

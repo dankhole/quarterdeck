@@ -498,6 +498,7 @@ export default function App(): ReactElement {
 	});
 
 	const {
+		handleCreateAndStartTask,
 		handleStartTaskWithServiceSetupPrompt,
 		taskStartServicePromptDialogOpen,
 		taskStartServicePromptDialogPrompt,
@@ -509,6 +510,7 @@ export default function App(): ReactElement {
 		board,
 		currentProjectId,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
+		handleCreateTask,
 		handleStartTask,
 		prepareTerminalForShortcut,
 		prepareWaitForTerminalConnectionReady,
@@ -591,6 +593,7 @@ export default function App(): ReactElement {
 			prompt={newTaskPrompt}
 			onPromptChange={setNewTaskPrompt}
 			onCreate={handleCreateTask}
+			onCreateAndStart={handleCreateAndStartTask}
 			onCancel={handleCancelCreateTask}
 			startInPlanMode={newTaskStartInPlanMode}
 			onStartInPlanModeChange={setNewTaskStartInPlanMode}

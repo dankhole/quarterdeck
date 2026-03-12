@@ -9,7 +9,7 @@ import {
 } from "@/hooks/app-utils";
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 import type { RuntimeAgentId } from "@/runtime/types";
-import { addTaskToColumn, findCardSelection, updateTask } from "@/state/board-state";
+import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -58,7 +58,7 @@ export interface UseTaskEditorResult {
 	handleOpenEditTask: (task: BoardCard, options?: OpenEditTaskOptions) => void;
 	handleCancelEditTask: () => void;
 	handleSaveEditedTask: () => void;
-	handleCreateTask: () => void;
+	handleCreateTask: () => string | null;
 	resetTaskEditorState: () => void;
 }
 
@@ -245,24 +245,27 @@ export function useTaskEditor({
 		setBoard,
 	]);
 
-	const handleCreateTask = useCallback(() => {
+	const handleCreateTask = useCallback((): string | null => {
 		const prompt = newTaskPrompt.trim();
 		if (!prompt) {
-			return;
+			return null;
 		}
 		if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
-			return;
+			return null;
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
-		setBoard((currentBoard) =>
-			addTaskToColumn(currentBoard, "backlog", {
+		let createdTaskId: string | null = null;
+		setBoard((currentBoard) => {
+			const created = addTaskToColumnWithResult(currentBoard, "backlog", {
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
 				autoReviewEnabled: newTaskAutoReviewEnabled,
 				autoReviewMode: newTaskAutoReviewMode,
 				baseRef,
-			}),
-		);
+			});
+			createdTaskId = created.task.id;
+			return created.board;
+		});
 		trackTaskCreated({
 			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
@@ -279,6 +282,7 @@ export function useTaskEditor({
 		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
 		onClearWorktreeError();
+		return createdTaskId;
 	}, [
 		currentProjectId,
 		newTaskAutoReviewEnabled,

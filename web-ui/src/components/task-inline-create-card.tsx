@@ -21,6 +21,7 @@ export function TaskInlineCreateCard({
 	prompt,
 	onPromptChange,
 	onCreate,
+	onCreateAndStart,
 	onCancel,
 	startInPlanMode,
 	onStartInPlanModeChange,
@@ -41,6 +42,7 @@ export function TaskInlineCreateCard({
 	prompt: string;
 	onPromptChange: (value: string) => void;
 	onCreate: () => void;
+	onCreateAndStart?: () => void;
 	onCancel: () => void;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
@@ -99,6 +101,7 @@ export function TaskInlineCreateCard({
 					value={prompt}
 					onValueChange={onPromptChange}
 					onSubmit={onCreate}
+					onSubmitAndStart={mode === "create" ? onCreateAndStart : undefined}
 					placeholder="Describe the task"
 					enabled={enabled}
 					autoFocus
