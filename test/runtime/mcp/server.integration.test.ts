@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -7,6 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 
+import { getKanbanRuntimePort, setKanbanRuntimePort } from "../../../src/core/runtime-endpoint.js";
 import { createMcpServer } from "../../../src/mcp/server.js";
 import { loadWorkspaceContext } from "../../../src/state/workspace-state.js";
 import { createGitTestEnv } from "../../utilities/git-env.js";
@@ -55,6 +57,40 @@ async function withConnectedMcpClient<T>(cwd: string, fn: (client: Client) => Pr
 	} finally {
 		await client.close();
 		await server.close();
+	}
+}
+
+async function getUnavailableRuntimePort(): Promise<number> {
+	const server = createServer();
+	await new Promise<void>((resolveListen, rejectListen) => {
+		server.once("error", rejectListen);
+		server.listen(0, "127.0.0.1", () => resolveListen());
+	});
+	const address = server.address();
+	const port = typeof address === "object" && address ? address.port : null;
+	await new Promise<void>((resolveClose, rejectClose) => {
+		server.close((error) => {
+			if (error) {
+				rejectClose(error);
+				return;
+			}
+			resolveClose();
+		});
+	});
+	if (!port) {
+		throw new Error("Could not allocate a test port.");
+	}
+	return port;
+}
+
+async function withUnavailableRuntimePort<T>(fn: () => Promise<T>): Promise<T> {
+	const originalRuntimePort = getKanbanRuntimePort();
+	const unavailableRuntimePort = await getUnavailableRuntimePort();
+	setKanbanRuntimePort(unavailableRuntimePort);
+	try {
+		return await fn();
+	} finally {
+		setKanbanRuntimePort(originalRuntimePort);
 	}
 }
 
@@ -118,20 +154,22 @@ describe.sequential("mcp server integration", () => {
 	});
 
 	it("returns structured runtime error for list_tasks when runtime is unavailable", async () => {
-		await withTemporaryHome(async (homePath) => {
-			const repoPath = join(homePath, "repo");
-			mkdirSync(repoPath, { recursive: true });
-			initGitRepository(repoPath);
-			await loadWorkspaceContext(repoPath);
+		await withUnavailableRuntimePort(async () => {
+			await withTemporaryHome(async (homePath) => {
+				const repoPath = join(homePath, "repo");
+				mkdirSync(repoPath, { recursive: true });
+				initGitRepository(repoPath);
+				await loadWorkspaceContext(repoPath);
 
-			await withConnectedMcpClient(repoPath, async (client) => {
-				const { result, payload } = await callToolJson(client, "list_tasks", {
-					projectPath: repoPath,
+				await withConnectedMcpClient(repoPath, async (client) => {
+					const { result, payload } = await callToolJson(client, "list_tasks", {
+						projectPath: repoPath,
+					});
+
+					expect(result.isError).toBe(true);
+					expect(payload.ok).toBe(false);
+					expect(payload.error).toContain('Tool "list_tasks"');
 				});
-
-				expect(result.isError).toBe(true);
-				expect(payload.ok).toBe(false);
-				expect(payload.error).toContain('Tool "list_tasks"');
 			});
 		});
 	});
