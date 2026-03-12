@@ -17,6 +17,28 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 ];
 const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 14.5;
 
+function ButtonShortcut({
+	includeShift = false,
+}: {
+	includeShift?: boolean;
+}): ReactElement {
+	return (
+		<span
+			style={{
+				display: "inline-flex",
+				alignItems: "center",
+				gap: 2,
+				marginLeft: 6,
+			}}
+			aria-hidden
+		>
+			<Icon icon="key-command" size={12} />
+			{includeShift ? <Icon icon="key-shift" size={12} /> : null}
+			<Icon icon="key-enter" size={12} />
+		</span>
+	);
+}
+
 export function TaskInlineCreateCard({
 	prompt,
 	onPromptChange,
@@ -153,30 +175,33 @@ export function TaskInlineCreateCard({
 				</div>
 			</FormGroup>
 
-			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+			<div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
 				<Button text={cancelLabel} variant="outlined" onClick={onCancel} />
-				<Button
-					text={
-						<span style={{ display: "inline-flex", alignItems: "center" }}>
-							<span>{actionLabel}</span>
-							<span
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 2,
-									marginLeft: 6,
-								}}
-								aria-hidden
-							>
-								<Icon icon="key-command" size={12} />
-								<Icon icon="key-enter" size={12} />
+				<div style={{ display: "flex", gap: 8 }}>
+					<Button
+						text={
+							<span style={{ display: "inline-flex", alignItems: "center" }}>
+								<span>{actionLabel}</span>
+								<ButtonShortcut />
 							</span>
-						</span>
-					}
-					intent="primary"
-					onClick={onCreate}
-					disabled={!prompt.trim() || !branchRef}
-				/>
+						}
+						onClick={onCreate}
+						disabled={!prompt.trim() || !branchRef}
+					/>
+					{mode === "create" && onCreateAndStart ? (
+						<Button
+							text={
+								<span style={{ display: "inline-flex", alignItems: "center" }}>
+									<span>Start</span>
+									<ButtonShortcut includeShift />
+								</span>
+							}
+							intent="primary"
+							onClick={onCreateAndStart}
+							disabled={!prompt.trim() || !branchRef}
+						/>
+					) : null}
+				</div>
 			</div>
 		</Card>
 	);
