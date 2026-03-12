@@ -26,12 +26,24 @@ const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 // Some interactive shells can start without emitting prompt output immediately.
 // Fallback ensures the initial command is still sent if onData does not fire quickly.
 const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
+// OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
+// We intercept that startup probe during history replay and early PTY output, synthesize a
+// background-color reply, then disable the filter once a live terminal listener has attached.
+const ESC = 0x1b;
+const BEL = 0x07;
+const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
+
+interface TerminalProbeFilterState {
+	pendingChunk: Buffer | null;
+	enabled: boolean;
+}
 
 interface ActiveProcessState {
 	session: PtySession;
 	workspaceTrustBuffer: string | null;
 	cols: number;
 	rows: number;
+	terminalProbeFilter: TerminalProbeFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
@@ -131,6 +143,103 @@ function formatShellSpawnFailure(binary: string, error: unknown): string {
 	return `Failed to launch "${binary}": ${message}`;
 }
 
+function buildTerminalEnvironment(
+	...sources: Array<Record<string, string | undefined> | undefined>
+): Record<string, string | undefined> {
+	return {
+		...process.env,
+		...Object.assign({}, ...sources),
+		COLORTERM: "truecolor",
+		TERM: "xterm-256color",
+		TERM_PROGRAM: "kanban",
+	};
+}
+
+function createTerminalProbeFilterState(): TerminalProbeFilterState {
+	return {
+		pendingChunk: null,
+		enabled: true,
+	};
+}
+
+function filterTerminalProbeOutput(
+	state: TerminalProbeFilterState,
+	incoming: Buffer,
+	onOsc11Query: () => void,
+): Buffer {
+	if (!state.enabled) {
+		return incoming;
+	}
+
+	const pending = state.pendingChunk;
+	const pendingLength = pending?.byteLength ?? 0;
+	const source = pendingLength > 0 ? Buffer.concat([pending as Buffer, incoming]) : incoming;
+	state.pendingChunk = null;
+
+	let cursor = 0;
+	let segmentStart = 0;
+	const segments: Buffer[] = [];
+
+	while (cursor < source.byteLength) {
+		const next = cursor + 1;
+		if (source[cursor] !== ESC || next >= source.byteLength || source[next] !== 0x5d) {
+			cursor += 1;
+			continue;
+		}
+
+		const sequenceStart = cursor;
+		if (sequenceStart > segmentStart) {
+			segments.push(source.subarray(segmentStart, sequenceStart));
+		}
+
+		let sequenceEnd = -1;
+		let contentEnd = -1;
+		let index = sequenceStart + 2;
+		while (index < source.byteLength) {
+			const byte = source[index];
+			if (byte === BEL) {
+				contentEnd = index;
+				sequenceEnd = index + 1;
+				break;
+			}
+			if (byte === ESC && index + 1 < source.byteLength && source[index + 1] === 0x5c) {
+				contentEnd = index;
+				sequenceEnd = index + 2;
+				break;
+			}
+			index += 1;
+		}
+
+		if (sequenceEnd === -1 || contentEnd === -1) {
+			state.pendingChunk = source.subarray(sequenceStart);
+			segmentStart = source.byteLength;
+			break;
+		}
+
+		const content = source.subarray(sequenceStart + 2, contentEnd).toString("utf8");
+		if (content === "11;?") {
+			onOsc11Query();
+		} else {
+			segments.push(source.subarray(sequenceStart, sequenceEnd));
+		}
+
+		segmentStart = sequenceEnd;
+		cursor = sequenceEnd;
+	}
+
+	if (segmentStart < source.byteLength) {
+		segments.push(source.subarray(segmentStart));
+	}
+
+	if (segments.length === 0) {
+		return Buffer.alloc(0);
+	}
+	if (segments.length === 1) {
+		return segments[0] as Buffer;
+	}
+	return Buffer.concat(segments);
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
@@ -166,8 +275,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const entry = this.ensureEntry(taskId);
 
 		listener.onState?.(cloneSummary(entry.summary));
+		const replayFilterState = createTerminalProbeFilterState();
 		for (const chunk of entry.active?.session.getOutputHistory() ?? []) {
-			listener.onOutput?.(chunk);
+			const filteredChunk = filterTerminalProbeOutput(replayFilterState, chunk, () =>
+				entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+			);
+			if (filteredChunk.byteLength > 0) {
+				listener.onOutput?.(filteredChunk);
+			}
+		}
+		if (entry.active && listener.onOutput) {
+			entry.active.terminalProbeFilter.pendingChunk = null;
+			entry.active.terminalProbeFilter.enabled = false;
 		}
 
 		const listenerId = entry.listenerIdCounter;
@@ -208,19 +327,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceId: request.workspaceId,
 		});
 
-		const env = {
-			...process.env,
-			...request.env,
-			...launch.env,
-			TERM: "xterm-256color",
-			COLORTERM: "truecolor",
-		};
+		const env = buildTerminalEnvironment(request.env, launch.env);
 
 		// Adapters can wrap the configured agent binary when they need extra runtime wiring
 		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).
 		const commandBinary = launch.binary ?? request.binary;
 		const commandArgs = [...launch.args];
-		const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) => part.toLowerCase().includes("codex"));
+		const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) =>
+			part.toLowerCase().includes("codex"),
+		);
 		const kickoffShellCommand = buildShellCommandLine(commandBinary, commandArgs);
 		const shell = resolveInteractiveShellCommand();
 		const spawnBinary = shell.binary;
@@ -264,11 +379,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 						sendKickoffShellCommand();
 					}
 
+					const filteredChunk = filterTerminalProbeOutput(entry.active.terminalProbeFilter, chunk, () =>
+						entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+					);
+					if (filteredChunk.byteLength === 0) {
+						return;
+					}
+
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
 						(entry.active.detectOutputTransition !== null &&
 							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
-					const data = needsDecodedOutput ? chunk.toString("utf8") : "";
+					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
 
 					if (entry.active.workspaceTrustBuffer !== null) {
 						entry.active.workspaceTrustBuffer += data;
@@ -277,10 +399,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 								-MAX_WORKSPACE_TRUST_BUFFER_CHARS,
 							);
 						}
-						if (
-							!entry.active.autoConfirmedWorkspaceTrust &&
-							entry.active.workspaceTrustConfirmTimer === null
-						) {
+						if (!entry.active.autoConfirmedWorkspaceTrust && entry.active.workspaceTrustConfirmTimer === null) {
 							const hasClaudePrompt = hasClaudeWorkspaceTrustPrompt(entry.active.workspaceTrustBuffer);
 							const hasCodexPrompt = hasCodexWorkspaceTrustPrompt(entry.active.workspaceTrustBuffer);
 							if (hasClaudePrompt || hasCodexPrompt) {
@@ -318,7 +437,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 
 					for (const taskListener of entry.listeners.values()) {
-						taskListener.onOutput?.(chunk);
+						taskListener.onOutput?.(filteredChunk);
 					}
 				},
 				onExit: (event) => {
@@ -387,6 +506,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					: null,
 			cols,
 			rows,
+			terminalProbeFilter: createTerminalProbeFilterState(),
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
@@ -435,12 +555,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
 		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
-		const env = {
-			...process.env,
-			...request.env,
-			TERM: "xterm-256color",
-			COLORTERM: "truecolor",
-		};
+		const env = buildTerminalEnvironment(request.env);
 
 		let session: PtySession;
 		try {
@@ -456,8 +571,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 
+					const filteredChunk = filterTerminalProbeOutput(entry.active.terminalProbeFilter, chunk, () =>
+						entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+					);
+					if (filteredChunk.byteLength === 0) {
+						return;
+					}
+
 					if (entry.active.workspaceTrustBuffer !== null) {
-						entry.active.workspaceTrustBuffer += chunk.toString("utf8");
+						entry.active.workspaceTrustBuffer += filteredChunk.toString("utf8");
 						if (entry.active.workspaceTrustBuffer.length > MAX_WORKSPACE_TRUST_BUFFER_CHARS) {
 							entry.active.workspaceTrustBuffer = entry.active.workspaceTrustBuffer.slice(
 								-MAX_WORKSPACE_TRUST_BUFFER_CHARS,
@@ -467,7 +589,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					updateSummary(entry, { lastOutputAt: now() });
 
 					for (const taskListener of entry.listeners.values()) {
-						taskListener.onOutput?.(chunk);
+						taskListener.onOutput?.(filteredChunk);
 					}
 				},
 				onExit: (event) => {
@@ -518,6 +640,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceTrustBuffer: null,
 			cols,
 			rows,
+			terminalProbeFilter: createTerminalProbeFilterState(),
 			onSessionCleanup: null,
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
@@ -561,14 +684,20 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(entry.summary);
 	}
 
-	resize(taskId: string, cols: number, rows: number): boolean {
+	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
 			return false;
 		}
 		const safeCols = Math.max(1, Math.floor(cols));
 		const safeRows = Math.max(1, Math.floor(rows));
-		entry.active.session.resize(safeCols, safeRows);
+		const safePixelWidth = Number.isFinite(pixelWidth ?? Number.NaN) ? Math.floor(pixelWidth as number) : undefined;
+		const safePixelHeight = Number.isFinite(pixelHeight ?? Number.NaN)
+			? Math.floor(pixelHeight as number)
+			: undefined;
+		const normalizedPixelWidth = safePixelWidth !== undefined && safePixelWidth > 0 ? safePixelWidth : undefined;
+		const normalizedPixelHeight = safePixelHeight !== undefined && safePixelHeight > 0 ? safePixelHeight : undefined;
+		entry.active.session.resize(safeCols, safeRows, normalizedPixelWidth, normalizedPixelHeight);
 		entry.active.cols = safeCols;
 		entry.active.rows = safeRows;
 		return true;
@@ -630,17 +759,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		const previous = entry.summary.latestHookActivity;
 		const next: RuntimeTaskHookActivity = {
-			activityText: typeof activity.activityText === "string" ? activity.activityText : previous?.activityText ?? null,
-			toolName: typeof activity.toolName === "string" ? activity.toolName : previous?.toolName ?? null,
+			activityText:
+				typeof activity.activityText === "string" ? activity.activityText : (previous?.activityText ?? null),
+			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
 			finalMessage:
-				typeof activity.finalMessage === "string" ? activity.finalMessage : previous?.finalMessage ?? null,
+				typeof activity.finalMessage === "string" ? activity.finalMessage : (previous?.finalMessage ?? null),
 			hookEventName:
-				typeof activity.hookEventName === "string" ? activity.hookEventName : previous?.hookEventName ?? null,
+				typeof activity.hookEventName === "string" ? activity.hookEventName : (previous?.hookEventName ?? null),
 			notificationType:
 				typeof activity.notificationType === "string"
 					? activity.notificationType
-					: previous?.notificationType ?? null,
-			source: typeof activity.source === "string" ? activity.source : previous?.source ?? null,
+					: (previous?.notificationType ?? null),
+			source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
 		};
 
 		const didChange =

@@ -69,16 +69,7 @@ export class PtySession {
 		});
 	}
 
-	static spawn({
-		binary,
-		args = [],
-		cwd,
-		env,
-		cols,
-		rows,
-		onData,
-		onExit,
-	}: SpawnPtySessionRequest): PtySession {
+	static spawn({ binary, args = [], cwd, env, cols, rows, onData, onExit }: SpawnPtySessionRequest): PtySession {
 		const ptyProcess = pty.spawn(binary, args, {
 			name: "xterm-256color",
 			cwd,
@@ -102,7 +93,14 @@ export class PtySession {
 		this.ptyProcess.write(typeof data === "string" ? data : data.toString("utf8"));
 	}
 
-	resize(cols: number, rows: number): void {
+	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
+		if (pixelWidth !== undefined && pixelHeight !== undefined) {
+			this.ptyProcess.resize(cols, rows, {
+				width: pixelWidth,
+				height: pixelHeight,
+			});
+			return;
+		}
 		this.ptyProcess.resize(cols, rows);
 	}
 

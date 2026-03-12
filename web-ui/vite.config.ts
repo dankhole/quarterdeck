@@ -11,6 +11,11 @@ export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),
 	},
+	build: {
+		// esbuild minification corrupts xterm's DECRQM requestMode helper in the
+		// production bundle, which breaks full-screen TUIs like OpenCode at runtime.
+		minify: false,
+	},
 	resolve: {
 		alias: {
 			"@": resolve(__dirname, "src"),

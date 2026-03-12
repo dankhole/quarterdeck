@@ -544,6 +544,8 @@ export const runtimeTerminalWsResizeMessageSchema = z.object({
 	type: z.literal("resize"),
 	cols: z.number().int().positive(),
 	rows: z.number().int().positive(),
+	pixelWidth: z.number().int().positive().optional(),
+	pixelHeight: z.number().int().positive().optional(),
 });
 export type RuntimeTerminalWsResizeMessage = z.infer<typeof runtimeTerminalWsResizeMessageSchema>;
 

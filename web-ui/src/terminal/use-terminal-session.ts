@@ -1,7 +1,7 @@
-import { Colors } from "@blueprintjs/core";
 import { AttachAddon } from "@xterm/addon-attach";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
@@ -9,9 +9,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeTaskSessionSummary, RuntimeTerminalWsClientMessage, RuntimeTerminalWsServerMessage } from "@/runtime/types";
+import type {
+	RuntimeTaskSessionSummary,
+	RuntimeTerminalWsClientMessage,
+	RuntimeTerminalWsServerMessage,
+} from "@/runtime/types";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
@@ -95,6 +100,9 @@ export function useTerminalSession({
 			return;
 		}
 		fitAddon.fit();
+		const bounds = containerRef.current?.getBoundingClientRect();
+		const pixelWidth = Math.round(bounds?.width ?? 0);
+		const pixelHeight = Math.round(bounds?.height ?? 0);
 		reportTerminalGeometry(taskId, {
 			cols: terminal.cols,
 			rows: terminal.rows,
@@ -103,6 +111,8 @@ export function useTerminalSession({
 			type: "resize",
 			cols: terminal.cols,
 			rows: terminal.rows,
+			pixelWidth: pixelWidth > 0 ? pixelWidth : undefined,
+			pixelHeight: pixelHeight > 0 ? pixelHeight : undefined,
 		});
 	}, [sendControlMessage, taskId]);
 
@@ -112,22 +122,20 @@ export function useTerminalSession({
 			return;
 		}
 
-		const terminal = new Terminal({
-			cursorBlink: true,
-			fontSize: 12,
-			fontFamily:
-				'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-			theme: {
-				background: terminalBackgroundColor,
-				foreground: Colors.LIGHT_GRAY5,
-				cursor: cursorColor,
-				selectionBackground: `${Colors.BLUE3}4D`,
-			},
-		});
+		const terminal = new Terminal(
+			createKanbanTerminalOptions({
+				cursorColor,
+				isMacPlatform,
+				terminalBackgroundColor,
+			}),
+		);
 		const fitAddon = new FitAddon();
 		terminal.loadAddon(fitAddon);
 		terminal.loadAddon(new ClipboardAddon());
 		terminal.loadAddon(new WebLinksAddon());
+		const unicode11Addon = new Unicode11Addon();
+		terminal.loadAddon(unicode11Addon);
+		terminal.unicode.activeVersion = "11";
 		terminal.open(container);
 
 		try {

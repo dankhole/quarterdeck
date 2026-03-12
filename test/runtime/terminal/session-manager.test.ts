@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 import { buildShellCommandLine } from "../../../src/core/shell.js";
@@ -67,5 +67,99 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.activityText).toBe("Using Read");
 		expect(updated?.latestHookActivity?.toolName).toBe("Read");
 		expect(typeof updated?.lastHookAt).toBe("number");
+	});
+
+	it("replies to OSC 11 probe from replayed output history and hides the query", () => {
+		const manager = new TerminalSessionManager();
+		const onOutput = vi.fn();
+		const writeSpy = vi.fn();
+		const entry = {
+			summary: createSummary({ taskId: "task-probe", state: "running" }),
+			active: {
+				session: {
+					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8"), Buffer.from("ready", "utf8")],
+					write: writeSpy,
+				},
+				terminalProbeFilter: {
+					pendingChunk: null,
+					enabled: true,
+				},
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-probe", entry);
+
+		manager.attach("task-probe", {
+			onOutput,
+		});
+
+		expect(writeSpy).toHaveBeenCalledWith("\u001b]11;rgb:1717/1717/2121\u001b\\");
+		expect(onOutput).toHaveBeenCalledTimes(1);
+		expect((onOutput.mock.calls[0]?.[0] as Buffer).toString("utf8")).toBe("ready");
+		expect(entry.active.terminalProbeFilter.enabled).toBe(false);
+		expect(entry.active.terminalProbeFilter.pendingChunk).toBeNull();
+	});
+
+	it("keeps the startup probe filter enabled when only a non-output listener attaches", () => {
+		const manager = new TerminalSessionManager();
+		const entry = {
+			summary: createSummary({ taskId: "task-control-first", state: "running" }),
+			active: {
+				session: {
+					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8")],
+					write: vi.fn(),
+				},
+				terminalProbeFilter: {
+					pendingChunk: null,
+					enabled: true,
+				},
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-control-first", entry);
+
+		manager.attach("task-control-first", {
+			onState: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		expect(entry.active.terminalProbeFilter.enabled).toBe(true);
+		expect(entry.active.terminalProbeFilter.pendingChunk).toBeNull();
+	});
+
+	it("forwards pixel dimensions through resize when provided", () => {
+		const manager = new TerminalSessionManager();
+		const resizeSpy = vi.fn();
+		const entry = {
+			summary: createSummary({ taskId: "task-resize", state: "running" }),
+			active: {
+				session: {
+					resize: resizeSpy,
+				},
+				cols: 80,
+				rows: 24,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-resize", entry);
+
+		const resized = manager.resize("task-resize", 100, 30, 1200, 720);
+		expect(resized).toBe(true);
+		expect(resizeSpy).toHaveBeenCalledWith(100, 30, 1200, 720);
 	});
 });
