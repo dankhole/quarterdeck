@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.9]
+
+- Fix worktree paths with symlinks in ignored directories being incorrectly treated as active
+
 ## [0.1.8]
 
 - Terminal now properly renders full-screen TUI applications like OpenCode
