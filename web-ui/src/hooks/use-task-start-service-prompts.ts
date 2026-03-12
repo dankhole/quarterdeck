@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
+import type { RuntimeTaskStartSetupAvailability } from "@/runtime/types";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { findCardSelection } from "@/state/board-state";
@@ -127,6 +128,26 @@ export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupK
 	return results;
 }
 
+export function isTaskStartServicePromptAlreadyConfigured(
+	promptId: TaskStartSetupKind,
+	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined,
+): boolean {
+	if (!taskStartSetupAvailability) {
+		return false;
+	}
+
+	switch (promptId) {
+		case "linear_mcp":
+			return taskStartSetupAvailability.linearMcp;
+		case "github_cli":
+			return taskStartSetupAvailability.githubCli;
+		case "kanban_mcp":
+			return taskStartSetupAvailability.kanbanMcp;
+		default:
+			return false;
+	}
+}
+
 export function buildTaskStartServicePromptContent(
 	promptId: TaskStartSetupKind,
 	options?: { selectedAgentId?: RuntimeAgentId | null; platform?: TaskStartServicePromptPlatform },
@@ -211,6 +232,7 @@ interface UseTaskStartServicePromptsInput {
 	board: BoardData;
 	currentProjectId: string | null;
 	selectedAgentId: RuntimeAgentId | null | undefined;
+	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
 	handleCreateTask: () => string | null;
 	handleStartTask: (taskId: string) => void;
 	prepareTerminalForShortcut: (input: {
@@ -239,6 +261,7 @@ export function useTaskStartServicePrompts({
 	board,
 	currentProjectId,
 	selectedAgentId,
+	taskStartSetupAvailability,
 	handleCreateTask,
 	handleStartTask,
 	prepareTerminalForShortcut,
@@ -462,6 +485,10 @@ export function useTaskStartServicePrompts({
 			const detectedPromptIds = detectTaskStartServicePromptIds(selection.card.prompt);
 			const queuedPrompts: PendingTaskStartServicePromptState[] = [];
 			for (const promptId of detectedPromptIds) {
+				if (isTaskStartServicePromptAlreadyConfigured(promptId, taskStartSetupAvailability)) {
+					continue;
+				}
+
 				if (isTaskStartServicePromptDoNotShowAgainEnabled(promptId)) {
 					continue;
 				}
@@ -503,6 +530,7 @@ export function useTaskStartServicePrompts({
 			board,
 			handleStartTask,
 			isTaskStartServicePromptDoNotShowAgainEnabled,
+			taskStartSetupAvailability,
 			taskStartServicePromptAcknowledgements,
 		],
 	);

@@ -44,6 +44,11 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				configured: selectedAgentId === "codex",
 			},
 		],
+		taskStartSetupAvailability: {
+			githubCli: false,
+			linearMcp: false,
+			kanbanMcp: false,
+		},
 		shortcuts: [],
 		commitPromptTemplate: "",
 		openPrPromptTemplate: "",

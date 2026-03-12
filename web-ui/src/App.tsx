@@ -509,6 +509,7 @@ export default function App(): ReactElement {
 		board,
 		currentProjectId,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
+		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
 		handleCreateTask,
 		handleStartTask,
 		prepareTerminalForShortcut,

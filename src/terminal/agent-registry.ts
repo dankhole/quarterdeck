@@ -1,8 +1,12 @@
-import { spawnSync } from "node:child_process";
-
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
 import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
+import {
+	isBinaryAvailableOnPath,
+	isBinaryResolvableInShell,
+	toShellLaunchCommand,
+} from "./command-discovery.js";
+import { detectTaskStartSetupAvailability } from "./task-start-setup-detection.js";
 
 export interface ResolvedAgentCommand {
 	agentId: RuntimeAgentId;
@@ -18,76 +22,6 @@ function getDefaultArgs(agentId: RuntimeAgentId): string[] {
 		return [];
 	}
 	return [...entry.baseArgs];
-}
-
-function isBinaryAvailableOnPath(binary: string): boolean {
-	const trimmed = binary.trim();
-	if (!trimmed) {
-		return false;
-	}
-	if (trimmed.includes("/") || trimmed.includes("\\")) {
-		// Path-based commands are validated at spawn-time.
-		return true;
-	}
-	const lookupCommand = process.platform === "win32" ? "where" : "which";
-	const result = spawnSync(lookupCommand, [trimmed], {
-		stdio: "ignore",
-	});
-	return result.status === 0;
-}
-
-function getShellBinary(): string | null {
-	if (process.platform === "win32") {
-		return process.env.ComSpec?.trim() || "cmd.exe";
-	}
-	const shell = process.env.SHELL?.trim();
-	return shell || "/bin/bash";
-}
-
-function quotePosixWord(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function isBinaryResolvableInShell(binary: string): boolean {
-	const trimmed = binary.trim();
-	if (!trimmed) {
-		return false;
-	}
-	const shellBinary = getShellBinary();
-	if (!shellBinary) {
-		return false;
-	}
-	if (process.platform === "win32") {
-		const result = spawnSync(shellBinary, ["/d", "/s", "/c", `where ${trimmed} >NUL 2>NUL`], {
-			stdio: "ignore",
-		});
-		return result.status === 0;
-	}
-	const result = spawnSync(shellBinary, ["-ic", `command -v ${quotePosixWord(trimmed)} >/dev/null 2>&1`], {
-		stdio: "ignore",
-	});
-	return result.status === 0;
-}
-
-function toShellLaunchCommand(commandLine: string): { binary: string; args: string[] } | null {
-	const trimmed = commandLine.trim();
-	if (!trimmed) {
-		return null;
-	}
-	const shellBinary = getShellBinary();
-	if (!shellBinary) {
-		return null;
-	}
-	if (process.platform === "win32") {
-		return {
-			binary: shellBinary,
-			args: ["/d", "/s", "/c", trimmed],
-		};
-	}
-	return {
-		binary: shellBinary,
-		args: ["-ic", trimmed],
-	};
 }
 
 function quoteForDisplay(part: string): string {
@@ -182,6 +116,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
 		detectedCommands,
 		agents,
+		taskStartSetupAvailability: detectTaskStartSetupAvailability(runtimeConfig.selectedAgentId),
 		shortcuts: runtimeConfig.shortcuts,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,

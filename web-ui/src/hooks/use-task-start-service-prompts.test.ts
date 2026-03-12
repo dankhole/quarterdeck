@@ -4,6 +4,7 @@ import {
 	buildTaskStartServicePromptContent,
 	detectTaskStartServicePromptIds,
 	getTaskStartServicePromptKey,
+	isTaskStartServicePromptAlreadyConfigured,
 } from "@/hooks/use-task-start-service-prompts";
 
 describe("detectTaskStartServicePromptIds", () => {
@@ -109,7 +110,7 @@ describe("buildTaskStartServicePromptContent", () => {
 		const content = buildTaskStartServicePromptContent("linear_mcp", {
 			selectedAgentId: "cline",
 		});
-		expect(content.installCommand).toBe("droid mcp add linear https://mcp.linear.app/mcp --type http");
+		expect(content.installCommand).toBe("cline mcp add linear https://mcp.linear.app/mcp --type http");
 	});
 
 	it("returns gemini linear install command with user scope", () => {
@@ -200,6 +201,24 @@ describe("buildTaskStartServicePromptContent", () => {
 		expect(content.installCommand).toBe("opencode mcp add");
 		expect(content.description).toContain("name: linear");
 		expect(content.description).toContain("OAuth");
+	});
+});
+
+describe("isTaskStartServicePromptAlreadyConfigured", () => {
+	it("returns false when availability has not loaded", () => {
+		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", null)).toBe(false);
+	});
+
+	it("maps each prompt to its presence flag", () => {
+		const availability = {
+			githubCli: true,
+			linearMcp: true,
+			kanbanMcp: false,
+		};
+
+		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", availability)).toBe(true);
+		expect(isTaskStartServicePromptAlreadyConfigured("github_cli", availability)).toBe(true);
+		expect(isTaskStartServicePromptAlreadyConfigured("kanban_mcp", availability)).toBe(false);
 	});
 });
 

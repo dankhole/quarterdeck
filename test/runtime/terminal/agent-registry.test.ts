@@ -29,6 +29,11 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = buildRuntimeConfigResponse(config);
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
+		expect(response.taskStartSetupAvailability).toEqual({
+			githubCli: expect.any(Boolean),
+			linearMcp: expect.any(Boolean),
+			kanbanMcp: expect.any(Boolean),
+		});
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "gemini")?.defaultArgs).toEqual([]);
@@ -45,6 +50,11 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = buildRuntimeConfigResponse(config);
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
+		expect(response.taskStartSetupAvailability).toEqual({
+			githubCli: expect.any(Boolean),
+			linearMcp: expect.any(Boolean),
+			kanbanMcp: expect.any(Boolean),
+		});
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "gemini")?.defaultArgs).toEqual([]);
