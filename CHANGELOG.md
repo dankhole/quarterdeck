@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.8]
+
+- Terminal now properly renders full-screen TUI applications like OpenCode
+- Fixed terminal content disappearing and scroll back being lost when opening a task. Terminals are now created proactively for each agent instead of connecting mid-session, which preserves full scroll back and content rendering. This is especially important for rendering TUI apps like Codex and Droid correctly.
+- Improved terminal rendering quality, inspired by VS Code's xterm and node-pty implementation. Noticeably higher FPS, smoother scrolling, and a more native look and feel for terminal emulators.
+
 ## [0.1.7]
 
 - When a task prompt mentions creating tasks (e.g. "break down into tasks", "create 3 tickets", "split into cards"), Kanban now shows a setup dialog offering to install the Kanban MCP before the task starts
