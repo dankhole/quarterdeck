@@ -6,6 +6,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
+import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
@@ -318,6 +319,13 @@ export default function App(): ReactElement {
 		upsertSession,
 		sendTaskSessionInput,
 		onWorktreeError: setWorktreeError,
+	});
+	usePrewarmedAgentTerminals({
+		currentProjectId,
+		isWorkspaceReady: !isWorkspaceMetadataPending,
+		sessions,
+		cursorColor: Colors.LIGHT_GRAY5,
+		terminalBackgroundColor: Colors.DARK_GRAY1,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({

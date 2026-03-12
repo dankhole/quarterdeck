@@ -2,14 +2,54 @@ import "@xterm/xterm/css/xterm.css";
 
 import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
 import { useMemo } from "react";
+import type { ReactElement, MutableRefObject } from "react";
 
 import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
-import { useTerminalSession } from "@/terminal/use-terminal-session";
+import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
 const isMacPlatform =
 	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+
+interface AgentTerminalSessionControls {
+	clearTerminal: () => void;
+	containerRef: MutableRefObject<HTMLDivElement | null>;
+	isStopping: boolean;
+	lastError: string | null;
+	stopTerminal: () => Promise<void>;
+}
+
+export interface AgentTerminalPanelProps {
+	taskId: string;
+	workspaceId: string | null;
+	summary: RuntimeTaskSessionSummary | null;
+	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onCommit?: () => void;
+	onOpenPr?: () => void;
+	isCommitLoading?: boolean;
+	isOpenPrLoading?: boolean;
+	taskColumnId?: string;
+	onMoveToTrash?: () => void;
+	onCancelAutomaticAction?: () => void;
+	cancelAutomaticActionLabel?: string | null;
+	showMoveToTrash?: boolean;
+	showSessionToolbar?: boolean;
+	onClose?: () => void;
+	autoFocus?: boolean;
+	minimalHeaderTitle?: string;
+	minimalHeaderSubtitle?: string | null;
+	panelBackgroundColor?: string;
+	terminalBackgroundColor?: string;
+	cursorColor?: string;
+	showRightBorder?: boolean;
+	isVisible?: boolean;
+	onConnectionReady?: (taskId: string) => void;
+	agentCommand?: string | null;
+	onSendAgentCommand?: () => void;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
+}
 
 function describeState(summary: RuntimeTaskSessionSummary | null): string {
 	if (!summary) {
@@ -60,7 +100,7 @@ function AgentTerminalReviewActions({
 	onOpenPr?: () => void;
 	isCommitLoading: boolean;
 	isOpenPrLoading: boolean;
-}): React.ReactElement | null {
+}): ReactElement | null {
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(taskId);
 	const showReviewGitActions = taskColumnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 
@@ -94,11 +134,10 @@ function AgentTerminalReviewActions({
 	);
 }
 
-export function AgentTerminalPanel({
+function AgentTerminalPanelLayout({
 	taskId,
-	workspaceId,
 	summary,
-	onSummary,
+	onSummary: _onSummary,
 	onCommit,
 	onOpenPr,
 	isCommitLoading = false,
@@ -110,60 +149,22 @@ export function AgentTerminalPanel({
 	showMoveToTrash,
 	showSessionToolbar = true,
 	onClose,
-	autoFocus = false,
+	autoFocus: _autoFocus = false,
 	minimalHeaderTitle = "Terminal",
 	minimalHeaderSubtitle = null,
 	panelBackgroundColor = Colors.DARK_GRAY1,
 	terminalBackgroundColor = Colors.DARK_GRAY1,
-	cursorColor = Colors.LIGHT_GRAY5,
+	cursorColor: _cursorColor = Colors.LIGHT_GRAY5,
 	showRightBorder = true,
-	isVisible = true,
-	onConnectionReady,
+	isVisible: _isVisible = true,
+	onConnectionReady: _onConnectionReady,
 	agentCommand,
 	onSendAgentCommand,
 	isExpanded = false,
 	onToggleExpand,
-}: {
-	taskId: string;
-	workspaceId: string | null;
-	summary: RuntimeTaskSessionSummary | null;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
-	onCommit?: () => void;
-	onOpenPr?: () => void;
-	isCommitLoading?: boolean;
-	isOpenPrLoading?: boolean;
-	taskColumnId?: string;
-	onMoveToTrash?: () => void;
-	onCancelAutomaticAction?: () => void;
-	cancelAutomaticActionLabel?: string | null;
-	showMoveToTrash?: boolean;
-	showSessionToolbar?: boolean;
-	onClose?: () => void;
-	autoFocus?: boolean;
-	minimalHeaderTitle?: string;
-	minimalHeaderSubtitle?: string | null;
-	panelBackgroundColor?: string;
-	terminalBackgroundColor?: string;
-	cursorColor?: string;
-	showRightBorder?: boolean;
-	isVisible?: boolean;
-	onConnectionReady?: (taskId: string) => void;
-	agentCommand?: string | null;
-	onSendAgentCommand?: () => void;
-	isExpanded?: boolean;
-	onToggleExpand?: () => void;
-}): React.ReactElement {
-	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = useTerminalSession({
-		taskId,
-		workspaceId,
-		onSummary,
-		onConnectionReady,
-		autoFocus,
-		isVisible,
-		terminalBackgroundColor,
-		cursorColor,
-	});
-
+	sessionControls,
+}: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
+	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusIntent = useMemo(() => getStateIntent(summary), [summary]);
@@ -266,9 +267,7 @@ export function AgentTerminalPanel({
 								content={
 									<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
 										<span>{isExpanded ? "Collapse" : "Expand"}</span>
-										<span
-											style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}
-										>
+										<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
 											<span>(</span>
 											<Icon icon={isMacPlatform ? "key-command" : "key-control"} size={11} />
 											<span>+ M)</span>
@@ -302,28 +301,41 @@ export function AgentTerminalPanel({
 				</Callout>
 			) : null}
 			{showMoveToTrash && onMoveToTrash ? (
-				<>
-					<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
-						<AgentTerminalReviewActions
-							taskId={taskId}
-							taskColumnId={taskColumnId}
-							onCommit={onCommit}
-							onOpenPr={onOpenPr}
-							isCommitLoading={isCommitLoading}
-							isOpenPrLoading={isOpenPrLoading}
+				<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
+					<AgentTerminalReviewActions
+						taskId={taskId}
+						taskColumnId={taskColumnId}
+						onCommit={onCommit}
+						onOpenPr={onOpenPr}
+						isCommitLoading={isCommitLoading}
+						isOpenPrLoading={isOpenPrLoading}
+					/>
+					{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
+						<Button
+							text={`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}
+							variant="outlined"
+							fill
+							onClick={onCancelAutomaticAction}
 						/>
-						{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-							<Button
-								text={`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}
-								variant="outlined"
-								fill
-								onClick={onCancelAutomaticAction}
-							/>
-						) : null}
-						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
-					</div>
-				</>
+					) : null}
+					<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
+				</div>
 			) : null}
 		</div>
 	);
+}
+
+export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement {
+	const sessionControls = usePersistentTerminalSession({
+		taskId: props.taskId,
+		workspaceId: props.workspaceId,
+		onSummary: props.onSummary,
+		onConnectionReady: props.onConnectionReady,
+		autoFocus: props.autoFocus,
+		isVisible: props.isVisible,
+		terminalBackgroundColor: props.terminalBackgroundColor ?? Colors.DARK_GRAY1,
+		cursorColor: props.cursorColor ?? Colors.LIGHT_GRAY5,
+	});
+
+	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;
 }
