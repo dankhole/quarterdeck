@@ -62,6 +62,14 @@ function ColumnSection({
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
+	const createTaskButtonText = (
+		<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+			<span>Create task</span>
+			<span aria-hidden className={Classes.TEXT_MUTED}>
+				(c)
+			</span>
+		</span>
+	);
 
 	return (
 		<div>
@@ -109,7 +117,8 @@ function ColumnSection({
 								{canCreate && !inlineTaskCreator ? (
 									<Button
 										icon="plus"
-										text="Create task"
+										text={createTaskButtonText}
+										aria-label="Create task"
 										fill
 										onClick={onCreateTask}
 										style={{ marginBottom: 8 }}

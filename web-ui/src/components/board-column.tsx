@@ -1,4 +1,4 @@
-import { Button, Colors } from "@blueprintjs/core";
+import { Button, Classes, Colors } from "@blueprintjs/core";
 import { Droppable } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
@@ -72,6 +72,14 @@ export function BoardColumn({
 		activeDragTaskId,
 		programmaticCardMoveInFlight,
 	});
+	const createTaskButtonText = (
+		<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+			<span>Create task</span>
+			<span aria-hidden className={Classes.TEXT_MUTED}>
+				(c)
+			</span>
+		</span>
+	);
 
 	return (
 		<section
@@ -122,7 +130,8 @@ export function BoardColumn({
 							{canCreate && !inlineTaskCreator ? (
 								<Button
 									icon="plus"
-									text="Create task"
+									text={createTaskButtonText}
+									aria-label="Create task"
 									fill
 									onClick={onCreateTask}
 									style={{ marginBottom: 8, flexShrink: 0 }}
