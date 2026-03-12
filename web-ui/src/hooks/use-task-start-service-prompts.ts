@@ -46,7 +46,7 @@ function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | und
 		case "droid":
 			return "droid mcp add linear https://mcp.linear.app/mcp --type http";
 		case "cline":
-			return "droid mcp add linear https://mcp.linear.app/mcp --type http";
+			return "cline mcp add linear https://mcp.linear.app/mcp --type http";
 		default:
 			return DEFAULT_LINEAR_INSTALL_COMMAND;
 	}
