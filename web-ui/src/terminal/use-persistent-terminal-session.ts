@@ -3,7 +3,7 @@ import type { MutableRefObject } from "react";
 
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
-import { ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
+import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
@@ -12,6 +12,7 @@ interface UsePersistentTerminalSessionInput {
 	onConnectionReady?: (taskId: string) => void;
 	autoFocus?: boolean;
 	isVisible?: boolean;
+	sessionStartedAt?: number | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
 }
@@ -31,11 +32,17 @@ export function usePersistentTerminalSession({
 	onConnectionReady,
 	autoFocus = false,
 	isVisible = true,
+	sessionStartedAt = null,
 	terminalBackgroundColor,
 	cursorColor,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
+	const previousSessionRef = useRef<{
+		workspaceId: string;
+		taskId: string;
+		sessionStartedAt: number | null;
+	} | null>(null);
 	const [lastError, setLastError] = useState<string | null>(null);
 	const [isStopping, setIsStopping] = useState(false);
 
@@ -43,6 +50,7 @@ export function usePersistentTerminalSession({
 		if (!workspaceId) {
 			terminalRef.current?.unmount(containerRef.current);
 			terminalRef.current = null;
+			previousSessionRef.current = null;
 			setLastError("No project selected.");
 			return;
 		}
@@ -50,12 +58,26 @@ export function usePersistentTerminalSession({
 		if (!container) {
 			return;
 		}
+		const previousSession = previousSessionRef.current;
+		if (
+			previousSession &&
+			previousSession.workspaceId === workspaceId &&
+			previousSession.taskId === taskId &&
+			previousSession.sessionStartedAt !== sessionStartedAt
+		) {
+			disposePersistentTerminal(workspaceId, taskId);
+		}
 		const terminal = ensurePersistentTerminal({
 			taskId,
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
 		});
+		previousSessionRef.current = {
+			workspaceId,
+			taskId,
+			sessionStartedAt,
+		};
 		terminalRef.current = terminal;
 		const unsubscribe = terminal.subscribe({
 			onConnectionReady,
@@ -82,7 +104,17 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [autoFocus, cursorColor, isVisible, onConnectionReady, onSummary, taskId, terminalBackgroundColor, workspaceId]);
+	}, [
+		autoFocus,
+		cursorColor,
+		isVisible,
+		onConnectionReady,
+		onSummary,
+		sessionStartedAt,
+		taskId,
+		terminalBackgroundColor,
+		workspaceId,
+	]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {
