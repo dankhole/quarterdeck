@@ -150,8 +150,12 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.Notification?.[1]?.hooks?.[0]?.command).toContain("to_review");
 		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
 		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
+		expect(settings.hooks?.PreToolUse?.[1]?.matcher).toBe("AskUser");
+		expect(settings.hooks?.PreToolUse?.[1]?.hooks?.[0]?.command).toContain("to_review");
 		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("*");
 		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
+		expect(settings.hooks?.PostToolUse?.[1]?.matcher).toBe("AskUser");
+		expect(settings.hooks?.PostToolUse?.[1]?.hooks?.[0]?.command).toContain("to_in_progress");
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
 	});
 

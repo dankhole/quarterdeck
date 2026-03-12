@@ -910,8 +910,14 @@ const droidAdapter: AgentSessionAdapter = {
 						{ hooks: [{ type: "command", command: activityNotifyCommand }] },
 						{ hooks: [{ type: "command", command: reviewNotifyCommand }] },
 					],
-					PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
-					PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
+					PreToolUse: [
+						{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] },
+						{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] },
+					],
+					PostToolUse: [
+						{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] },
+						{ matcher: "AskUser", hooks: [{ type: "command", command: inProgressNotifyCommand }] },
+					],
 					PostToolUseFailure: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
 					UserPromptSubmit: [{ hooks: [{ type: "command", command: inProgressNotifyCommand }] }],
 				};
