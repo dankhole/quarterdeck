@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { fetchRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
@@ -10,6 +10,7 @@ export interface UseRuntimeProjectConfigResult {
 }
 
 export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeProjectConfigResult {
+	const previousWorkspaceIdRef = useRef<string | null>(null);
 	const queryFn = useCallback(async () => {
 		if (!workspaceId) {
 			throw new Error("No workspace selected.");
@@ -20,6 +21,15 @@ export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeP
 		enabled: workspaceId !== null,
 		queryFn,
 	});
+	const setConfigData = configQuery.setData;
+
+	useEffect(() => {
+		const workspaceChanged = previousWorkspaceIdRef.current !== workspaceId;
+		previousWorkspaceIdRef.current = workspaceId;
+		if (workspaceChanged) {
+			setConfigData(null);
+		}
+	}, [setConfigData, workspaceId]);
 
 	const refresh = useCallback(() => {
 		void configQuery.refetch();
