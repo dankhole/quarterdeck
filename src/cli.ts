@@ -3,10 +3,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
+import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 
-import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
-import { isTaskSubcommand, runTaskSubcommand } from "./commands/task.js";
+import { registerHooksCommand } from "./commands/hooks.js";
+import { registerTaskCommand } from "./commands/task.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
 import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
@@ -32,8 +33,6 @@ import type { TerminalSessionManager } from "./terminal/session-manager.js";
 import { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown } from "./update/auto-update.js";
 
 interface CliOptions {
-	help: boolean;
-	version: boolean;
 	noOpen: boolean;
 	agent: RuntimeAgentId | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
@@ -72,75 +71,10 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 	}
 }
 
-function parseCliOptions(argv: string[]): CliOptions {
-	let help = false;
-	let version = false;
-	let noOpen = false;
-	let agent: RuntimeAgentId | null = null;
-	let port: { mode: "fixed"; value: number } | { mode: "auto" } | null = null;
-
-	for (let index = 0; index < argv.length; index += 1) {
-		const arg = argv[index];
-		if (arg === "--help" || arg === "-h") {
-			help = true;
-			continue;
-		}
-		if (arg === "--version" || arg === "-v") {
-			version = true;
-			continue;
-		}
-		if (arg === "--no-open") {
-			noOpen = true;
-			continue;
-		}
-		if (arg === "--agent") {
-			const value = argv[index + 1];
-			if (!value) {
-				throw new Error("Missing value for --agent.");
-			}
-			agent = parseCliAgentId(value);
-			index += 1;
-			continue;
-		}
-		if (arg.startsWith("--agent=")) {
-			const value = arg.slice("--agent=".length);
-			if (!value) {
-				throw new Error("Missing value for --agent.");
-			}
-			agent = parseCliAgentId(value);
-			continue;
-		}
-		if (arg === "--port") {
-			const value = argv[index + 1];
-			if (!value) {
-				throw new Error("Missing value for --port.");
-			}
-			port = parseCliPortValue(value);
-			index += 1;
-			continue;
-		}
-		if (arg.startsWith("--port=")) {
-			const value = arg.slice("--port=".length);
-			if (!value) {
-				throw new Error("Missing value for --port.");
-			}
-			port = parseCliPortValue(value);
-		}
-	}
-
-	return { help, version, noOpen, agent, port };
-}
-
-function printHelp(): void {
-	console.log("kanban");
-	console.log("Local orchestration board for coding agents.");
-	console.log("");
-	console.log("Usage:");
-	console.log("  kanban [--agent <id>] [--port <number|auto>] [--no-open] [--help] [--version]");
-	console.log("  kanban task --help");
-	console.log("");
-	console.log(`Runtime URL: ${getKanbanRuntimeOrigin()}`);
-	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
+interface RootCommandOptions {
+	agent?: RuntimeAgentId;
+	port?: { mode: "fixed"; value: number } | { mode: "auto" };
+	open?: boolean;
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -454,33 +388,7 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 	}
 }
 
-async function run(): Promise<void> {
-	const argv = process.argv.slice(2);
-	// TODO: remove this backward-compatibility branch after users have uninstalled Kanban MCP.
-	if (argv[0] === "mcp") {
-		console.warn("Deprecated. Please uninstall Kanban MCP.");
-		return;
-	}
-	if (isHooksSubcommand(argv)) {
-		await runHooksSubcommand(argv);
-		return;
-	}
-	if (isTaskSubcommand(argv)) {
-		await runTaskSubcommand(argv);
-		return;
-	}
-
-	const options = parseCliOptions(argv);
-
-	if (options.help) {
-		printHelp();
-		return;
-	}
-	if (options.version) {
-		console.log(KANBAN_VERSION);
-		return;
-	}
-
+async function runMainCommand(options: CliOptions): Promise<void> {
 	const selectedPort = await applyRuntimePortOption(options.port);
 	if (selectedPort !== null) {
 		console.log(`Using runtime port ${selectedPort}.`);
@@ -565,6 +473,45 @@ async function run(): Promise<void> {
 	process.on("SIGTERM", () => {
 		void shutdown("SIGTERM");
 	});
+}
+
+function createProgram(): Command {
+	const program = new Command();
+	program
+		.name("kanban")
+		.description("Local orchestration board for coding agents.")
+		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
+		.option("--agent <id>", `Default agent ID (${CLI_AGENT_IDS.join(", ")}).`, parseCliAgentId)
+		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
+		.option("--no-open", "Do not open browser automatically.")
+		.showHelpAfterError()
+		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}\nAgent IDs: ${CLI_AGENT_IDS.join(", ")}`);
+
+	registerTaskCommand(program);
+	registerHooksCommand(program);
+
+	program
+		.command("mcp")
+		.description("Deprecated compatibility command.")
+		.action(() => {
+			console.warn("Deprecated. Please uninstall Kanban MCP.");
+		});
+
+	program.action(async (options: RootCommandOptions) => {
+		await runMainCommand({
+			agent: options.agent ?? null,
+			port: options.port ?? null,
+			noOpen: options.open === false,
+		});
+	});
+
+	return program;
+}
+
+async function run(): Promise<void> {
+	const argv = process.argv.slice(2);
+	const program = createProgram();
+	await program.parseAsync(argv, { from: "user" });
 }
 
 run().catch((error) => {

@@ -1,13 +1,22 @@
-.TH KANBAN 1 "March 2026" "kanban 0.1.0" "User Commands"
+.TH KANBAN 1 "March 2026" "kanban 0.1.10" "User Commands"
 .SH NAME
 kanban \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B kanban
-.RI [ --port " " number ]
+.RI [ --port " " number|auto ]
 .RI [ --agent " " id ]
 .RI [ --no-open ]
-.RI [ --help ]
-.RI [ --version ]
+.RI [ command ]
+.br
+.B kanban task
+.RI " " list|create|update|link|unlink|start
+.RI " " [ options ]
+.br
+.B kanban hooks
+.RI " " ingest|notify|gemini-hook|codex-wrapper
+.RI " " [ options ]
+.br
+.B kanban mcp
 .SH DESCRIPTION
 .B kanban
 starts the local Kanban runtime server and serves the web UI.
@@ -16,11 +25,11 @@ When launched inside a git repository, it opens that repository's indexed worksp
 When launched outside git, it starts with no active workspace or falls back to the first indexed project.
 .SH OPTIONS
 .TP
-.B --port <number>
-Bind to a specific local port (default: 3484).
+.B --port <number|auto>
+Bind to a specific local port or pick the first available port starting at 3484.
 .TP
 .B --agent <id>
-Set the default agent command to one of: claude, codex, gemini, opencode, cline.
+Set the default agent command to one of: claude, codex, gemini, opencode, droid, cline.
 .TP
 .B --no-open
 Do not open the browser automatically.
@@ -30,6 +39,90 @@ Show help text and exit.
 .TP
 .B --version, -v
 Show version and exit.
+.SH COMMANDS
+.TP
+.B task|tasks
+Manage Kanban board tasks from the CLI.
+
+Subcommands:
+.br
+.B list
+.RI [ --project-path " " path ]
+.RI [ --column " " backlog|in_progress|review ]
+.br
+.B create
+.B --prompt
+.RI " " text
+.RI [ --project-path " " path ]
+.RI [ --base-ref " " branch ]
+.RI [ --start-in-plan-mode " " true|false ]
+.RI [ --auto-review-enabled " " true|false ]
+.RI [ --auto-review-mode " " commit|pr|move_to_trash ]
+.br
+.B update
+.B --task-id
+.RI " " id
+.RI [ --prompt " " text ]
+.RI [ --project-path " " path ]
+.RI [ --base-ref " " branch ]
+.RI [ --start-in-plan-mode " " true|false ]
+.RI [ --auto-review-enabled " " true|false ]
+.RI [ --auto-review-mode " " commit|pr|move_to_trash ]
+.br
+.B link
+.B --task-id
+.RI " " id
+.B --linked-task-id
+.RI " " id
+.RI [ --project-path " " path ]
+.br
+.B unlink
+.B --dependency-id
+.RI " " id
+.RI [ --project-path " " path ]
+.br
+.B start
+.B --task-id
+.RI " " id
+.RI [ --project-path " " path ]
+
+All task commands return JSON.
+
+Use kebab-case flags only.
+
+.TP
+.B hooks
+Runtime hook helpers used by agent adapters.
+
+Subcommands:
+.br
+.B ingest
+.RI [ payload ]
+.B --event
+.RI " " to_review|to_in_progress|activity
+.RI [ --source " " source ]
+.RI [ --activity-text " " text ]
+.RI [ --tool-name " " name ]
+.RI [ --final-message " " text ]
+.RI [ --hook-event-name " " name ]
+.RI [ --notification-type " " type ]
+.RI [ --metadata-base64 " " base64 ]
+.br
+.B notify
+same options as
+.BR ingest ,
+but best-effort.
+.br
+.B gemini-hook
+.br
+.B codex-wrapper
+.B --real-binary
+.RI " " path
+.RI [ agentArgs... ]
+
+.TP
+.B mcp
+Deprecated compatibility command. Prints a deprecation warning and exits.
 .SH EXAMPLES
 .TP
 Start server on the default port:
@@ -40,6 +133,15 @@ Start server without auto-opening a browser:
 .TP
 Start server on a custom port:
 .B kanban --port 9000
+.TP
+List tasks for the current workspace:
+.B kanban task list
+.TP
+Create and start a task manually:
+.B kanban task create --prompt "Implement API pagination"
+.TP
+Ingest a hook event:
+.B kanban hooks ingest --event to_review
 .SH EXIT STATUS
 .TP
 .B 0

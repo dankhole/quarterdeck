@@ -1,4 +1,5 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
+import type { Command } from "commander";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
@@ -24,7 +25,6 @@ interface RuntimeWorkspaceMutationResult<T> {
 }
 
 type JsonRecord = Record<string, unknown>;
-type ParsedFlagValue = { value: string; hasExplicitValue: boolean };
 
 function toErrorMessage(error: unknown): string {
 	if (error instanceof Error && error.message.trim().length > 0) {
@@ -35,99 +35,6 @@ function toErrorMessage(error: unknown): string {
 
 function printJson(payload: unknown): void {
 	process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-}
-
-function normalizeFlagName(raw: string): string {
-	const stripped = raw.replace(/^--/u, "");
-	return stripped
-		.replaceAll("_", "-")
-		.replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
-		.toLowerCase();
-}
-
-function parseSubcommandFlags(args: string[]): Map<string, ParsedFlagValue> {
-	const flags = new Map<string, ParsedFlagValue>();
-	for (let index = 0; index < args.length; index += 1) {
-		const arg = args[index];
-		if (!arg.startsWith("--")) {
-			throw new Error(`Unexpected positional argument: ${arg}`);
-		}
-
-		const equalsIndex = arg.indexOf("=");
-		if (equalsIndex >= 0) {
-			const key = normalizeFlagName(arg.slice(0, equalsIndex));
-			const value = arg.slice(equalsIndex + 1);
-			flags.set(key, { value, hasExplicitValue: true });
-			continue;
-		}
-
-		const key = normalizeFlagName(arg);
-		const next = args[index + 1];
-		if (next && !next.startsWith("--")) {
-			flags.set(key, { value: next, hasExplicitValue: true });
-			index += 1;
-			continue;
-		}
-
-		flags.set(key, { value: "true", hasExplicitValue: false });
-	}
-	return flags;
-}
-
-function readStringFlag(flags: Map<string, ParsedFlagValue>, ...names: string[]): string | undefined {
-	for (const name of names) {
-		const parsed = flags.get(normalizeFlagName(name));
-		if (parsed === undefined) {
-			continue;
-		}
-		if (!parsed.hasExplicitValue) {
-			const requiredName = names[0] ?? "--value";
-			throw new Error(`Missing value for ${requiredName}.`);
-		}
-		const trimmed = parsed.value.trim();
-		return trimmed.length > 0 ? trimmed : "";
-	}
-	return undefined;
-}
-
-function requireStringFlag(flags: Map<string, ParsedFlagValue>, ...names: string[]): string {
-	const value = readStringFlag(flags, ...names);
-	const requiredName = names[0] ?? "--value";
-	if (value === undefined || value.length === 0) {
-		throw new Error(`Missing required flag ${requiredName}.`);
-	}
-	return value;
-}
-
-function parseBooleanFlag(flags: Map<string, ParsedFlagValue>, ...names: string[]): boolean | undefined {
-	for (const name of names) {
-		const parsed = flags.get(normalizeFlagName(name));
-		if (parsed === undefined) {
-			continue;
-		}
-		if (!parsed.hasExplicitValue) {
-			return true;
-		}
-		const normalized = parsed.value.trim().toLowerCase();
-		if (normalized === "true" || normalized === "1" || normalized === "yes") {
-			return true;
-		}
-		if (normalized === "false" || normalized === "0" || normalized === "no") {
-			return false;
-		}
-		const requiredName = names[0] ?? "--value";
-		throw new Error(`Invalid boolean value for ${requiredName}: "${parsed.value}". Use true or false.`);
-	}
-	return undefined;
-}
-
-function assertOnlyKnownFlags(flags: Map<string, ParsedFlagValue>, allowedFlags: string[]): void {
-	const allowed = new Set(allowedFlags.map((flag) => normalizeFlagName(flag)));
-	for (const key of flags.keys()) {
-		if (!allowed.has(key)) {
-			throw new Error(`Unknown flag --${key}. Use "kanban task --help" for usage.`);
-		}
-	}
 }
 
 function parseListColumn(value: string | undefined): ListTaskColumn | undefined {
@@ -557,168 +464,29 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 	};
 }
 
-function printTaskHelp(): void {
-	process.stdout.write("kanban task\n");
-	process.stdout.write("Manage Kanban board tasks from the CLI.\n");
-	process.stdout.write("\n");
-	process.stdout.write("Usage:\n");
-	process.stdout.write("  kanban task list [--project-path <path>] [--column backlog|in_progress|review]\n");
-	process.stdout.write(
-		"  kanban task create --prompt <text> [--project-path <path>] [--base-ref <branch>] [--start-in-plan-mode <true|false>] [--auto-review-enabled <true|false>] [--auto-review-mode commit|pr|move_to_trash]\n",
-	);
-	process.stdout.write(
-		"  kanban task update --task-id <id> [--prompt <text>] [--project-path <path>] [--base-ref <branch>] [--start-in-plan-mode <true|false>] [--auto-review-enabled <true|false>] [--auto-review-mode commit|pr|move_to_trash]\n",
-	);
-	process.stdout.write("  kanban task link --task-id <id> --linked-task-id <id> [--project-path <path>]\n");
-	process.stdout.write("  kanban task unlink --dependency-id <id> [--project-path <path>]\n");
-	process.stdout.write("  kanban task start --task-id <id> [--project-path <path>]\n");
-	process.stdout.write("  kanban task --help\n");
-	process.stdout.write("\n");
-	process.stdout.write(`Runtime URL: ${getKanbanRuntimeOrigin()}\n`);
-}
-
-export function isTaskSubcommand(argv: string[]): boolean {
-	return argv[0] === "task" || argv[0] === "tasks";
-}
-
-export async function runTaskSubcommand(argv: string[]): Promise<void> {
-	const args = argv.slice(1);
-	const hasSubcommandHelp = args.includes("--help") || args.includes("-h");
-	const action = args[0] && !args[0].startsWith("-") ? args[0] : null;
-	const flagArgs = action ? args.slice(1) : args;
-
-	if (!action || hasSubcommandHelp) {
-		printTaskHelp();
-		return;
+function parseOptionalBooleanOption(value: unknown, flagName: string): boolean | undefined {
+	if (value === undefined) {
+		return undefined;
 	}
+	if (value === true || value === false) {
+		return value;
+	}
+	if (typeof value !== "string") {
+		throw new Error(`Invalid boolean value for ${flagName}. Use true or false.`);
+	}
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "true" || normalized === "1" || normalized === "yes") {
+		return true;
+	}
+	if (normalized === "false" || normalized === "0" || normalized === "no") {
+		return false;
+	}
+	throw new Error(`Invalid boolean value for ${flagName}: "${value}". Use true or false.`);
+}
 
+async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void> {
 	try {
-		const flags = parseSubcommandFlags(flagArgs);
-		const projectPath = readStringFlag(flags, "--project-path", "--projectPath");
-		const cwd = process.cwd();
-
-		if (action === "list") {
-			assertOnlyKnownFlags(flags, ["--project-path", "--projectPath", "--column"]);
-			const column = parseListColumn(readStringFlag(flags, "--column"));
-			const result = await listTasks({ cwd, projectPath, column });
-			printJson(result);
-			return;
-		}
-
-		if (action === "create") {
-			assertOnlyKnownFlags(flags, [
-				"--project-path",
-				"--projectPath",
-				"--prompt",
-				"--base-ref",
-				"--baseRef",
-				"--start-in-plan-mode",
-				"--startInPlanMode",
-				"--auto-review-enabled",
-				"--autoReviewEnabled",
-				"--auto-review-mode",
-				"--autoReviewMode",
-			]);
-			const prompt = requireStringFlag(flags, "--prompt");
-			const baseRef = readStringFlag(flags, "--base-ref", "--baseRef");
-			const startInPlanMode = parseBooleanFlag(flags, "--start-in-plan-mode", "--startInPlanMode");
-			const autoReviewEnabled = parseBooleanFlag(flags, "--auto-review-enabled", "--autoReviewEnabled");
-			const autoReviewMode = parseAutoReviewMode(readStringFlag(flags, "--auto-review-mode", "--autoReviewMode"));
-			const result = await createTask({
-				cwd,
-				prompt,
-				projectPath,
-				baseRef,
-				startInPlanMode,
-				autoReviewEnabled,
-				autoReviewMode,
-			});
-			printJson(result);
-			return;
-		}
-
-		if (action === "update") {
-			assertOnlyKnownFlags(flags, [
-				"--project-path",
-				"--projectPath",
-				"--task-id",
-				"--taskId",
-				"--prompt",
-				"--base-ref",
-				"--baseRef",
-				"--start-in-plan-mode",
-				"--startInPlanMode",
-				"--auto-review-enabled",
-				"--autoReviewEnabled",
-				"--auto-review-mode",
-				"--autoReviewMode",
-			]);
-			const taskId = requireStringFlag(flags, "--task-id", "--taskId");
-			const prompt = readStringFlag(flags, "--prompt");
-			const baseRef = readStringFlag(flags, "--base-ref", "--baseRef");
-			const startInPlanMode = parseBooleanFlag(flags, "--start-in-plan-mode", "--startInPlanMode");
-			const autoReviewEnabled = parseBooleanFlag(flags, "--auto-review-enabled", "--autoReviewEnabled");
-			const autoReviewMode = parseAutoReviewMode(readStringFlag(flags, "--auto-review-mode", "--autoReviewMode"));
-			const result = await updateTaskCommand({
-				cwd,
-				taskId,
-				projectPath,
-				prompt,
-				baseRef,
-				startInPlanMode,
-				autoReviewEnabled,
-				autoReviewMode,
-			});
-			printJson(result);
-			return;
-		}
-
-		if (action === "link") {
-			assertOnlyKnownFlags(flags, [
-				"--project-path",
-				"--projectPath",
-				"--task-id",
-				"--taskId",
-				"--linked-task-id",
-				"--linkedTaskId",
-			]);
-			const taskId = requireStringFlag(flags, "--task-id", "--taskId");
-			const linkedTaskId = requireStringFlag(flags, "--linked-task-id", "--linkedTaskId");
-			const result = await linkTasks({
-				cwd,
-				taskId,
-				linkedTaskId,
-				projectPath,
-			});
-			printJson(result);
-			return;
-		}
-
-		if (action === "unlink") {
-			assertOnlyKnownFlags(flags, ["--project-path", "--projectPath", "--dependency-id", "--dependencyId"]);
-			const dependencyId = requireStringFlag(flags, "--dependency-id", "--dependencyId");
-			const result = await unlinkTasks({
-				cwd,
-				dependencyId,
-				projectPath,
-			});
-			printJson(result);
-			return;
-		}
-
-		if (action === "start") {
-			assertOnlyKnownFlags(flags, ["--project-path", "--projectPath", "--task-id", "--taskId"]);
-			const taskId = requireStringFlag(flags, "--task-id", "--taskId");
-			const result = await startTask({
-				cwd,
-				taskId,
-				projectPath,
-			});
-			printJson(result);
-			return;
-		}
-
-		throw new Error(`Unknown task action "${action}". Use "kanban task --help" for usage.`);
+		printJson(await handler());
 	} catch (error) {
 		printJson({
 			ok: false,
@@ -726,4 +494,137 @@ export async function runTaskSubcommand(argv: string[]): Promise<void> {
 		});
 		process.exitCode = 1;
 	}
+}
+
+export function registerTaskCommand(program: Command): void {
+	const task = program.command("task").alias("tasks").description("Manage Kanban board tasks from the CLI.");
+
+	task
+		.command("list")
+		.description("List Kanban tasks for a workspace.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--column <column>", "Filter column: backlog | in_progress | review.", parseListColumn)
+		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
+			await runTaskCommand(async () =>
+				await listTasks({
+					cwd: process.cwd(),
+					projectPath: options.projectPath,
+					column: options.column,
+				}),
+			);
+		});
+
+	task
+		.command("create")
+		.description("Create a task in backlog.")
+		.requiredOption("--prompt <text>", "Task prompt text.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--base-ref <branch>", "Task base branch/ref.")
+		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
+		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
+		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.action(
+			async (options: {
+				prompt: string;
+				projectPath?: string;
+				baseRef?: string;
+				startInPlanMode?: unknown;
+				autoReviewEnabled?: unknown;
+				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+			}) => {
+				await runTaskCommand(async () =>
+					await createTask({
+						cwd: process.cwd(),
+						prompt: options.prompt,
+						projectPath: options.projectPath,
+						baseRef: options.baseRef,
+						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+						autoReviewMode: options.autoReviewMode,
+					}),
+				);
+			},
+		);
+
+	task
+		.command("update")
+		.description("Update an existing task.")
+		.requiredOption("--task-id <id>", "Task ID.")
+		.option("--prompt <text>", "Replacement task prompt.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--base-ref <branch>", "Replacement base branch/ref.")
+		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
+		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
+		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.action(
+			async (options: {
+				taskId: string;
+				prompt?: string;
+				projectPath?: string;
+				baseRef?: string;
+				startInPlanMode?: unknown;
+				autoReviewEnabled?: unknown;
+				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+			}) => {
+				await runTaskCommand(async () =>
+					await updateTaskCommand({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						projectPath: options.projectPath,
+						prompt: options.prompt,
+						baseRef: options.baseRef,
+						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+						autoReviewMode: options.autoReviewMode,
+					}),
+				);
+			},
+		);
+
+	task
+		.command("link")
+		.description("Link two tasks so one can wait on another.")
+		.requiredOption("--task-id <id>", "First task ID.")
+		.requiredOption("--linked-task-id <id>", "Second task ID.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.action(async (options: { taskId: string; linkedTaskId: string; projectPath?: string }) => {
+			await runTaskCommand(async () =>
+				await linkTasks({
+					cwd: process.cwd(),
+					taskId: options.taskId,
+					linkedTaskId: options.linkedTaskId,
+					projectPath: options.projectPath,
+				}),
+			);
+		});
+
+	task
+		.command("unlink")
+		.description("Remove an existing dependency link.")
+		.requiredOption("--dependency-id <id>", "Dependency ID.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.action(async (options: { dependencyId: string; projectPath?: string }) => {
+			await runTaskCommand(async () =>
+				await unlinkTasks({
+					cwd: process.cwd(),
+					dependencyId: options.dependencyId,
+					projectPath: options.projectPath,
+				}),
+			);
+		});
+
+	task
+		.command("start")
+		.description("Start a task session and move task to in_progress.")
+		.requiredOption("--task-id <id>", "Task ID.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.action(async (options: { taskId: string; projectPath?: string }) => {
+			await runTaskCommand(async () =>
+				await startTask({
+					cwd: process.cwd(),
+					taskId: options.taskId,
+					projectPath: options.projectPath,
+				}),
+			);
+		});
 }

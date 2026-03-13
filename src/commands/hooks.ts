@@ -4,6 +4,7 @@ import { access, open, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
+import type { Command } from "commander";
 
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
@@ -23,6 +24,16 @@ interface HooksIngestArgs {
 	taskId: string;
 	workspaceId: string;
 	metadata?: Partial<RuntimeTaskHookActivity>;
+}
+
+interface HookCommandMetadataOptionValues {
+	source?: string;
+	activityText?: string;
+	toolName?: string;
+	finalMessage?: string;
+	hookEventName?: string;
+	notificationType?: string;
+	metadataBase64?: string;
 }
 
 interface CodexWrapperArgs {
@@ -95,27 +106,11 @@ async function sleep(ms: number): Promise<void> {
 	});
 }
 
-function parseEventArg(argv: string[]): RuntimeHookEvent {
-	let event: string | null = null;
-	for (let i = 0; i < argv.length; i += 1) {
-		const arg = argv[i];
-		const next = argv[i + 1];
-		if (arg === "--event" && next) {
-			event = next;
-			i += 1;
-			continue;
-		}
-		if (arg.startsWith("--event=")) {
-			event = arg.slice("--event=".length);
-		}
+function parseHookEvent(value: string): RuntimeHookEvent {
+	if (!VALID_EVENTS.has(value as RuntimeHookEvent)) {
+		throw new Error(`Invalid event "${value}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
 	}
-	if (!event) {
-		throw new Error("Missing required flag: --event");
-	}
-	if (!VALID_EVENTS.has(event as RuntimeHookEvent)) {
-		throw new Error(`Invalid event "${event}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
-	}
-	return event as RuntimeHookEvent;
+	return value as RuntimeHookEvent;
 }
 
 function normalizeWhitespace(value: string): string {
@@ -169,31 +164,14 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 	}
 }
 
-function parseArgValue(argv: string[], key: string): string | null {
-	for (let i = 0; i < argv.length; i += 1) {
-		const arg = argv[i];
-		if (arg === key) {
-			const next = argv[i + 1];
-			if (!next) {
-				return null;
-			}
-			return next;
-		}
-		if (arg.startsWith(`${key}=`)) {
-			return arg.slice(`${key}=`.length);
-		}
-	}
-	return null;
-}
-
-function parseMetadataFromFlags(argv: string[]): Partial<RuntimeTaskHookActivity> {
+function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): Partial<RuntimeTaskHookActivity> {
 	const metadata: Partial<RuntimeTaskHookActivity> = {};
-	const activityText = parseArgValue(argv, "--activity-text");
-	const toolName = parseArgValue(argv, "--tool-name");
-	const finalMessage = parseArgValue(argv, "--final-message");
-	const hookEventName = parseArgValue(argv, "--hook-event-name");
-	const notificationType = parseArgValue(argv, "--notification-type");
-	const source = parseArgValue(argv, "--source");
+	const activityText = options.activityText;
+	const toolName = options.toolName;
+	const finalMessage = options.finalMessage;
+	const hookEventName = options.hookEventName;
+	const notificationType = options.notificationType;
+	const source = options.source;
 
 	if (activityText) {
 		metadata.activityText = truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH);
@@ -217,8 +195,7 @@ function parseMetadataFromFlags(argv: string[]): Partial<RuntimeTaskHookActivity
 	return metadata;
 }
 
-function parseMetadataFromBase64Flag(argv: string[]): Record<string, unknown> | null {
-	const encoded = parseArgValue(argv, "--metadata-base64");
+function parseMetadataFromBase64(encoded: string | undefined): Record<string, unknown> | null {
 	if (!encoded) {
 		return null;
 	}
@@ -227,20 +204,6 @@ function parseMetadataFromBase64Flag(argv: string[]): Record<string, unknown> | 
 	} catch {
 		return null;
 	}
-}
-
-function parseMetadataFromArgPayload(argv: string[]): Record<string, unknown> | null {
-	for (let i = argv.length - 1; i >= 0; i -= 1) {
-		const arg = argv[i];
-		if (!arg || (!arg.startsWith("{") && !arg.startsWith("["))) {
-			continue;
-		}
-		const parsed = parseJsonObject(arg);
-		if (parsed) {
-			return parsed;
-		}
-	}
-	return null;
 }
 
 function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> | null {
@@ -436,13 +399,17 @@ function normalizeHookMetadata(
 	return merged;
 }
 
-function parseHooksIngestArgs(argv: string[], stdinPayload: string): HooksIngestArgs {
-	const event = parseEventArg(argv);
+function parseHooksIngestArgs(
+	event: RuntimeHookEvent,
+	options: HookCommandMetadataOptionValues,
+	payloadArg: string | undefined,
+	stdinPayload: string,
+): HooksIngestArgs {
 	const context = parseHookRuntimeContextFromEnv();
-	const flagMetadata = parseMetadataFromFlags(argv);
-	const payloadFromBase64 = parseMetadataFromBase64Flag(argv);
+	const flagMetadata = parseMetadataFromOptions(options);
+	const payloadFromBase64 = parseMetadataFromBase64(options.metadataBase64);
 	const payloadFromStdin = parseJsonObject(stdinPayload.trim());
-	const payloadFromArg = parseMetadataFromArgPayload(argv);
+	const payloadFromArg = payloadArg ? parseJsonObject(payloadArg) : null;
 	const payload = payloadFromBase64 ?? payloadFromStdin ?? payloadFromArg;
 	const metadata = normalizeHookMetadata(event, payload, flagMetadata);
 	return {
@@ -518,41 +485,6 @@ function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookA
 
 function getString(value: unknown): string {
 	return typeof value === "string" ? value : "";
-}
-
-function parseCodexWrapperArgs(argv: string[]): CodexWrapperArgs {
-	let realBinary = "";
-	const passthroughArgs: string[] = [];
-
-	for (let index = 0; index < argv.length; index += 1) {
-		const arg = argv[index];
-		if (arg === "--real-binary") {
-			const value = argv[index + 1];
-			if (!value) {
-				throw new Error("Missing value for --real-binary");
-			}
-			realBinary = value;
-			index += 1;
-			continue;
-		}
-		if (arg.startsWith("--real-binary=")) {
-			realBinary = arg.slice("--real-binary=".length);
-			continue;
-		}
-		if (arg === "--") {
-			passthroughArgs.push(...argv.slice(index + 1));
-			break;
-		}
-		passthroughArgs.push(arg);
-	}
-
-	if (!realBinary.trim()) {
-		throw new Error("Missing required flag: --real-binary");
-	}
-	return {
-		realBinary,
-		agentArgs: passthroughArgs,
-	};
 }
 
 function parseCodexSessionLogLine(line: string): CodexSessionLogLine | null {
@@ -924,10 +856,14 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 	};
 }
 
-async function runHooksNotify(argv: string[]): Promise<void> {
+async function runHooksNotify(
+	event: RuntimeHookEvent,
+	options: HookCommandMetadataOptionValues,
+	payloadArg: string | undefined,
+): Promise<void> {
 	try {
 		const stdinPayload = await readStdinText();
-		const args = parseHooksIngestArgs(argv.slice(2), stdinPayload);
+		const args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 		await ingestHookEvent(args);
 	} catch {
 		// Best effort only.
@@ -996,16 +932,7 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
-async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
-	let wrapperArgs: CodexWrapperArgs;
-	try {
-		wrapperArgs = parseCodexWrapperArgs(argv.slice(2));
-	} catch (error) {
-		process.stderr.write(`kanban hooks codex-wrapper: ${formatError(error)}\n`);
-		process.exitCode = 1;
-		return;
-	}
-
+async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise<void> {
 	const childEnv: NodeJS.ProcessEnv = { ...process.env };
 	let shuttingDown = false;
 	let stopWatcher = () => {};
@@ -1092,15 +1019,15 @@ async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
 	});
 }
 
-export function isHooksSubcommand(argv: string[]): boolean {
-	return argv[0] === "hooks";
-}
-
-export async function runHooksIngest(argv: string[]): Promise<void> {
+async function runHooksIngest(
+	event: RuntimeHookEvent,
+	options: HookCommandMetadataOptionValues,
+	payloadArg: string | undefined,
+): Promise<void> {
 	let args: HooksIngestArgs;
 	try {
 		const stdinPayload = await readStdinText();
-		args = parseHooksIngestArgs(argv.slice(2), stdinPayload);
+		args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 	} catch (error) {
 		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
@@ -1115,26 +1042,65 @@ export async function runHooksIngest(argv: string[]): Promise<void> {
 	}
 }
 
-export async function runHooksSubcommand(argv: string[]): Promise<void> {
-	const subcommand = argv[1];
-	if (subcommand === "ingest") {
-		await runHooksIngest(argv);
-		return;
-	}
-	if (subcommand === "notify") {
-		await runHooksNotify(argv);
-		return;
-	}
-	if (subcommand === "gemini-hook") {
-		await runGeminiHookSubcommand();
-		return;
-	}
-	if (subcommand === "codex-wrapper") {
-		await runCodexWrapperSubcommand(argv);
-		return;
-	}
-	process.stderr.write(
-		`kanban hooks: unknown subcommand "${subcommand ?? ""}". Expected one of: ingest, notify, gemini-hook, codex-wrapper\n`,
-	);
-	process.exitCode = 1;
+export function registerHooksCommand(program: Command): void {
+	const hooks = program.command("hooks").description("Runtime hook helpers for agent integrations.");
+
+	hooks
+		.command("ingest [payload]")
+		.description("Ingest hook event into Kanban runtime.")
+		.requiredOption("--event <event>", "Event: to_review | to_in_progress | activity.", parseHookEvent)
+		.option("--source <source>", "Hook source.")
+		.option("--activity-text <text>", "Activity summary text.")
+		.option("--tool-name <name>", "Tool name.")
+		.option("--final-message <message>", "Final message.")
+		.option("--hook-event-name <name>", "Original hook event name.")
+		.option("--notification-type <type>", "Notification type.")
+		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
+		.action(
+			async (
+				payload: string | undefined,
+				options: HookCommandMetadataOptionValues & { event: RuntimeHookEvent },
+			) => {
+				await runHooksIngest(options.event, options, payload);
+			},
+		);
+
+	hooks
+		.command("notify [payload]")
+		.description("Best-effort hook ingest that never throws.")
+		.requiredOption("--event <event>", "Event: to_review | to_in_progress | activity.", parseHookEvent)
+		.option("--source <source>", "Hook source.")
+		.option("--activity-text <text>", "Activity summary text.")
+		.option("--tool-name <name>", "Tool name.")
+		.option("--final-message <message>", "Final message.")
+		.option("--hook-event-name <name>", "Original hook event name.")
+		.option("--notification-type <type>", "Notification type.")
+		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
+		.action(
+			async (
+				payload: string | undefined,
+				options: HookCommandMetadataOptionValues & { event: RuntimeHookEvent },
+			) => {
+				await runHooksNotify(options.event, options, payload);
+			},
+		);
+
+	hooks
+		.command("gemini-hook")
+		.description("Gemini hook entrypoint.")
+		.action(async () => {
+			await runGeminiHookSubcommand();
+		});
+
+	hooks
+		.command("codex-wrapper [agentArgs...]")
+		.description("Codex wrapper that emits Kanban hook notifications.")
+		.requiredOption("--real-binary <path>", "Path to the actual codex binary.")
+		.allowUnknownOption(true)
+		.action(async (agentArgs: string[] | undefined, options: { realBinary: string }) => {
+			await runCodexWrapperSubcommand({
+				realBinary: options.realBinary,
+				agentArgs: agentArgs ?? [],
+			});
+		});
 }
