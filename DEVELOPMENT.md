@@ -178,6 +178,10 @@ Current agent mappings:
   - plugin maps busy activity to `to_in_progress`
   - plugin maps idle/error and permission ask to `to_review`
   - plugin filters child sessions to avoid false transitions from nested runs
+- Droid
+  - `PreToolUse` for active tools like `Read`, `Grep`, `Glob`, `FetchUrl`, `WebSearch`, `Execute`, `Task`, `Edit`, and `Create` emits `to_in_progress`
+  - `PreToolUse` for `AskUser` and `Stop` emit `to_review`
+  - `PostToolUse` for `AskUser` and `UserPromptSubmit` emit `to_in_progress`
 
 Important behavior details:
 

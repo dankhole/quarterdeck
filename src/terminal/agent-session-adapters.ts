@@ -883,6 +883,7 @@ const droidAdapter: AgentSessionAdapter = {
 			};
 
 			if (hooks) {
+				const droidActiveToolMatcher = "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create";
 				const reviewNotifyCommand = buildHooksCommand([
 					"notify",
 					"--event",
@@ -912,6 +913,7 @@ const droidAdapter: AgentSessionAdapter = {
 					],
 					PreToolUse: [
 						{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] },
+						{ matcher: droidActiveToolMatcher, hooks: [{ type: "command", command: inProgressNotifyCommand }] },
 						{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] },
 					],
 					PostToolUse: [
