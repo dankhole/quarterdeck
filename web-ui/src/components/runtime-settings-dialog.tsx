@@ -87,8 +87,9 @@ const renderShortcutIconOption: ItemRenderer<{ value: IconName; label: string }>
 			key={option.value}
 			active={modifiers.active}
 			disabled={modifiers.disabled}
+			text=""
 			icon={option.value}
-			text={option.label}
+			aria-label={option.label}
 			onClick={handleClick}
 			onFocus={handleFocus}
 			roleStructure="listoption"
@@ -704,6 +705,12 @@ export function RuntimeSettingsDialog({
 							items={SHORTCUT_ICON_OPTIONS}
 							itemRenderer={renderShortcutIconOption}
 							filterable={false}
+							menuProps={{
+								style: {
+									minWidth: "unset",
+									width: "fit-content",
+								},
+							}}
 							popoverProps={{ matchTargetWidth: false }}
 							onItemSelect={(option) =>
 								setShortcuts((current) =>
@@ -712,16 +719,29 @@ export function RuntimeSettingsDialog({
 									),
 								)
 							}
-						>
-							<Button
-								variant="outlined"
-								size="small"
-								alignText="left"
-								icon={getShortcutIconOption(shortcut.icon).value}
-								endIcon="caret-down"
-								text={getShortcutIconOption(shortcut.icon).label}
-							/>
-						</ShortcutIconSelect>
+							>
+								<Button
+									variant="outlined"
+									size="small"
+									aria-label={`Shortcut icon: ${getShortcutIconOption(shortcut.icon).label}`}
+									style={{
+										minWidth: 0,
+										paddingLeft: 4,
+										paddingRight: 8,
+									}}
+								>
+									<span
+										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 4,
+										}}
+									>
+										<Icon icon={getShortcutIconOption(shortcut.icon).value} />
+										<Icon icon="caret-down" size={12} />
+									</span>
+								</Button>
+							</ShortcutIconSelect>
 						<InputGroup
 							value={shortcut.label}
 							onChange={(event) =>
