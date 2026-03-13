@@ -47,6 +47,7 @@ import {
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
 	replaceWorkspaceMetadata,
+	resetWorkspaceMetadataStore,
 } from "@/stores/workspace-metadata-store";
 import {
 	findCardSelection,
@@ -170,6 +171,13 @@ export default function App(): ReactElement {
 	useEffect(() => {
 		replaceWorkspaceMetadata(workspaceMetadata);
 	}, [workspaceMetadata]);
+
+	useEffect(() => {
+		if (!isProjectSwitching) {
+			return;
+		}
+		resetWorkspaceMetadataStore();
+	}, [isProjectSwitching]);
 
 	const {
 		displayedProjects,

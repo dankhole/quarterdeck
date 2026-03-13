@@ -77,6 +77,7 @@ export function useGitHistoryData({
 	const [isLogLoading, setIsLogLoading] = useState(false);
 	const [isLoadingMoreCommits, setIsLoadingMoreCommits] = useState(false);
 	const [logErrorMessage, setLogErrorMessage] = useState<string | null>(null);
+	const [resolvedLogKey, setResolvedLogKey] = useState<string | null>(null);
 	// Commit log requests can overlap when users switch refs quickly or trigger refresh/load-more.
 	// We cancel older in-flight requests so stale responses cannot overwrite state from newer requests.
 	const logAbortControllerRef = useRef<AbortController | null>(null);
@@ -115,17 +116,7 @@ export function useGitHistoryData({
 
 	const scopeKey = `${workspaceId ?? "__none__"}:${taskScope?.taskId ?? "__home__"}:${taskScope?.baseRef ?? "__home__"}`;
 	const prevScopeKeyRef = useRef(scopeKey);
-	useEffect(() => {
-		if (scopeKey === prevScopeKeyRef.current) {
-			return;
-		}
-		prevScopeKeyRef.current = scopeKey;
-		setViewMode("commit");
-		setSelectedRefName(null);
-		setSelectedCommitHash(null);
-		setSelectedDiffPath(null);
-		refsQuery.setData(null);
-	}, [scopeKey, refsQuery.setData]);
+	const isScopeTransitioning = prevScopeKeyRef.current !== scopeKey;
 
 	const prevBranchRef = useRef(gitSummary?.currentBranch ?? null);
 	useEffect(() => {
@@ -140,9 +131,15 @@ export function useGitHistoryData({
 		}
 	}, [enabled, gitSummary?.currentBranch, refsQuery.refetch]);
 
-	const refs = refsQuery.data?.refs ?? [];
+	const refs = isScopeTransitioning ? [] : (refsQuery.data?.refs ?? []);
+	const isRefsLoadingVisible =
+		isScopeTransitioning ||
+		(enabled && workspaceId !== null && refsQuery.data === null && !refsQuery.isError) ||
+		(refsQuery.isLoading && refs.length === 0);
 	const refsErrorMessage =
-		refsQuery.isError && refs.length === 0 ? (refsQuery.error?.message ?? "Could not load git refs.") : null;
+		!isScopeTransitioning && refsQuery.isError && refs.length === 0
+			? (refsQuery.error?.message ?? "Could not load git refs.")
+			: null;
 	const headRef = refs.find((ref) => ref.isHead);
 
 	const activeRef = useMemo(() => {
@@ -153,6 +150,7 @@ export function useGitHistoryData({
 	}, [headRef, refs, selectedRefName]);
 
 	const logRef = activeRef?.type === "detached" ? activeRef.hash : (activeRef?.name ?? null);
+	const logKey = `${scopeKey}:${logRef ?? "__no_ref__"}`;
 
 	const loadCommits = useCallback(
 		async (options: { skip: number; maxCount: number; append: boolean; silent?: boolean }) => {
@@ -198,6 +196,7 @@ export function useGitHistoryData({
 				}
 				if (!payload.ok) {
 					if (options.silent) {
+						setResolvedLogKey(logKey);
 						return;
 					}
 					if (!options.append) {
@@ -205,11 +204,13 @@ export function useGitHistoryData({
 						setTotalCommitCount(0);
 					}
 					setLogErrorMessage(payload.error ?? "Could not load commits.");
+					setResolvedLogKey(logKey);
 					return;
 				}
 
 				setLogErrorMessage(null);
 				setTotalCommitCount(payload.totalCount);
+				setResolvedLogKey(logKey);
 				setCommits((current) => {
 					if (!options.append) {
 						return payload.commits;
@@ -234,6 +235,7 @@ export function useGitHistoryData({
 					setTotalCommitCount(0);
 				}
 				setLogErrorMessage(message || "Could not load commits.");
+				setResolvedLogKey(logKey);
 			} finally {
 				if (logAbortControllerRef.current === abortController) {
 					logAbortControllerRef.current = null;
@@ -245,7 +247,7 @@ export function useGitHistoryData({
 				}
 			}
 		},
-		[abortInFlightLogRequest, enabled, isAbortError, logRef, taskScope, workspaceId],
+		[abortInFlightLogRequest, enabled, isAbortError, logKey, logRef, taskScope, workspaceId],
 	);
 
 	useEffect(() => {
@@ -255,6 +257,7 @@ export function useGitHistoryData({
 		setIsLogLoading(false);
 		setIsLoadingMoreCommits(false);
 		setLogErrorMessage(null);
+		setResolvedLogKey(null);
 		if (!enabled || !workspaceId || !logRef) {
 			return;
 		}
@@ -335,7 +338,8 @@ export function useGitHistoryData({
 	}, [selectedCommitHash, taskScope, workspaceId]);
 
 	const diffQuery = useTrpcQuery<RuntimeGitCommitDiffResponse>({
-		enabled: enabled && workspaceId !== null && selectedCommitHash !== null && viewMode === "commit",
+		enabled:
+			!isScopeTransitioning && enabled && workspaceId !== null && selectedCommitHash !== null && viewMode === "commit",
 		queryFn: diffQueryFn,
 	});
 
@@ -352,7 +356,10 @@ export function useGitHistoryData({
 		return await trpc.workspace.getWorkspaceChanges.query();
 	}, [taskScope, workspaceId]);
 	const shouldLoadWorkingCopyChanges =
-		enabled && workspaceId !== null && (taskScope != null || (summaryWorkingCopyFileCount ?? 0) > 0);
+		!isScopeTransitioning &&
+		enabled &&
+		workspaceId !== null &&
+		(taskScope != null || (summaryWorkingCopyFileCount ?? 0) > 0);
 
 	const workingCopyQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
 		enabled: shouldLoadWorkingCopyChanges,
@@ -360,8 +367,41 @@ export function useGitHistoryData({
 		retainDataOnError: true,
 	});
 
+	useEffect(() => {
+		if (!isScopeTransitioning) {
+			return;
+		}
+		prevScopeKeyRef.current = scopeKey;
+		abortInFlightLogRequest();
+		setViewMode("commit");
+		setSelectedRefName(null);
+		setSelectedCommitHash(null);
+		setSelectedDiffPath(null);
+		setCommits([]);
+		setTotalCommitCount(0);
+		setIsLogLoading(false);
+		setIsLoadingMoreCommits(false);
+		setLogErrorMessage(null);
+		setResolvedLogKey(null);
+		refsQuery.setData(null);
+		diffQuery.setData(null);
+		workingCopyQuery.setData(null);
+	}, [
+		abortInFlightLogRequest,
+		diffQuery.setData,
+		isScopeTransitioning,
+		refsQuery.setData,
+		scopeKey,
+		workingCopyQuery.setData,
+	]);
+
 	const workingCopyFileCount = summaryWorkingCopyFileCount ?? workingCopyQuery.data?.files.length ?? 0;
 	const hasWorkingCopy = workingCopyFileCount > 0;
+	const isLogLoadingVisible =
+		isScopeTransitioning ||
+		isRefsLoadingVisible ||
+		isLogLoading ||
+		(enabled && workspaceId !== null && logRef !== null && resolvedLogKey !== logKey);
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
@@ -369,7 +409,7 @@ export function useGitHistoryData({
 			return;
 		}
 		previousStateVersionRef.current = stateVersion;
-		if (!enabled || !workspaceId) {
+		if (!enabled || !workspaceId || isScopeTransitioning) {
 			return;
 		}
 		void refsQuery.refetch();
@@ -383,6 +423,7 @@ export function useGitHistoryData({
 		refreshCommits,
 		shouldLoadWorkingCopyChanges,
 		stateVersion,
+		isScopeTransitioning,
 		workingCopyQuery.data,
 		workingCopyQuery.refetch,
 		workspaceId,
@@ -450,7 +491,7 @@ export function useGitHistoryData({
 
 	const refresh = useCallback(
 		(options?: GitHistoryRefreshOptions) => {
-			if (!enabled) {
+			if (!enabled || isScopeTransitioning) {
 				return;
 			}
 			const isBackgroundRefresh = options?.background === true;
@@ -479,6 +520,7 @@ export function useGitHistoryData({
 		},
 		[
 			enabled,
+			isScopeTransitioning,
 			isLoadingMoreCommits,
 			isLogLoading,
 			refsQuery,
@@ -490,25 +532,36 @@ export function useGitHistoryData({
 		],
 	);
 
+	const visibleCommits = isScopeTransitioning ? [] : commits;
+	const visibleSelectedCommitHash = isScopeTransitioning ? null : selectedCommitHash;
+	const visibleSelectedCommit = isScopeTransitioning ? null : selectedCommit;
+	const visibleWorkingCopyFileCount = isScopeTransitioning ? 0 : workingCopyFileCount;
+	const visibleHasWorkingCopy = isScopeTransitioning ? false : hasWorkingCopy;
+	const visibleDiffSource = isScopeTransitioning ? null : diffSource;
+	const visibleSelectedDiffPath = isScopeTransitioning ? null : selectedDiffPath;
+	const visibleRefsErrorMessage = isScopeTransitioning ? null : refsErrorMessage;
+	const visibleLogErrorMessage = isScopeTransitioning ? null : resolvedLogErrorMessage;
+	const visibleDiffErrorMessage = isScopeTransitioning ? null : diffErrorMessage;
+
 	return {
 		viewMode,
 		refs,
 		activeRef,
-		refsErrorMessage,
-		isRefsLoading: refsQuery.isLoading && refs.length === 0,
-		workingCopyFileCount,
-		hasWorkingCopy,
-		commits,
-		totalCommitCount,
-		selectedCommitHash,
-		selectedCommit,
-		isLogLoading,
+		refsErrorMessage: visibleRefsErrorMessage,
+		isRefsLoading: isRefsLoadingVisible,
+		workingCopyFileCount: visibleWorkingCopyFileCount,
+		hasWorkingCopy: visibleHasWorkingCopy,
+		commits: visibleCommits,
+		totalCommitCount: isScopeTransitioning ? 0 : totalCommitCount,
+		selectedCommitHash: visibleSelectedCommitHash,
+		selectedCommit: visibleSelectedCommit,
+		isLogLoading: isLogLoadingVisible,
 		isLoadingMoreCommits,
-		logErrorMessage: resolvedLogErrorMessage,
-		diffSource,
-		isDiffLoading,
-		diffErrorMessage,
-		selectedDiffPath,
+		logErrorMessage: visibleLogErrorMessage,
+		diffSource: visibleDiffSource,
+		isDiffLoading: isScopeTransitioning || isRefsLoadingVisible || isLogLoadingVisible || isDiffLoading,
+		diffErrorMessage: visibleDiffErrorMessage,
+		selectedDiffPath: visibleSelectedDiffPath,
 		selectWorkingCopy,
 		selectRef,
 		selectCommit,
