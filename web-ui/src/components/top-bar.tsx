@@ -73,26 +73,27 @@ function GitBranchStatusControl({
 					overflow: "hidden",
 				}}
 			>
-				<Button
-					icon={<Icon icon="git-branch" size={12} />}
-					alignText="start"
-					ellipsizeText
-					size="small"
-					variant="outlined"
-					active={isGitHistoryOpen}
-					onClick={onToggleGitHistory}
-					className={Classes.MONOSPACE_TEXT}
-					textClassName={Classes.FILL}
-					style={{
-						fontSize: "var(--bp-typography-size-body-small)",
-						flexShrink: 1,
-						minWidth: 0,
-						maxWidth: "100%",
-						overflow: "hidden",
-					}}
-					title={branchLabel}
-					text={branchLabel}
-				/>
+					<Button
+						icon={<Icon icon="git-branch" size={12} />}
+						alignText="start"
+						ellipsizeText
+						size="small"
+						variant="outlined"
+						intent={isGitHistoryOpen ? "primary" : undefined}
+						active={isGitHistoryOpen}
+						onClick={onToggleGitHistory}
+						className={Classes.MONOSPACE_TEXT}
+						textClassName={Classes.FILL}
+						style={{
+							fontSize: "var(--bp-typography-size-body-small)",
+							flexShrink: 1,
+							minWidth: 0,
+							maxWidth: "100%",
+							overflow: "hidden",
+						}}
+						title={branchLabel}
+						text={branchLabel}
+					/>
 				<span
 					className={Classes.MONOSPACE_TEXT}
 					style={{
