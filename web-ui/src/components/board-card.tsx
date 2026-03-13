@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
+import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useMeasure } from "@/utils/react-use";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
@@ -79,6 +80,7 @@ export function BoardCard({
 	onRestoreFromTrash,
 	onCommit,
 	onOpenPr,
+	onCancelAutomaticAction,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	onDependencyPointerDown,
@@ -98,6 +100,7 @@ export function BoardCard({
 	onRestoreFromTrash?: (taskId: string) => void;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
+	onCancelAutomaticAction?: (taskId: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
@@ -171,6 +174,9 @@ export function BoardCard({
 	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const sessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
+	const cancelAutomaticActionLabel = !isTrashCard && card.autoReviewEnabled
+		? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode)
+		: null;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -443,6 +449,20 @@ export function BoardCard({
 										}}
 									/>
 								</div>
+							) : null}
+							{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
+								<Button
+									text={cancelAutomaticActionLabel}
+									size="small"
+									variant="outlined"
+									fill
+									style={{ marginTop: 12 }}
+									onMouseDown={stopEvent}
+									onClick={(event) => {
+										stopEvent(event);
+										onCancelAutomaticAction(card.id);
+									}}
+								/>
 							) : null}
 						</Card>
 					</div>

@@ -844,6 +844,7 @@ export default function App(): ReactElement {
 											onEditTask={handleOpenEditTask}
 											onCommitTask={handleCommitTask}
 											onOpenPrTask={handleOpenPrTask}
+											onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 											commitTaskLoadingById={commitTaskLoadingById}
 											openPrTaskLoadingById={openPrTaskLoadingById}
 											onMoveToTrashTask={handleMoveReviewCardToTrash}
