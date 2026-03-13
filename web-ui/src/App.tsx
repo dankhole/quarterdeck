@@ -67,12 +67,14 @@ export default function App(): ReactElement {
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
 	}, []);
 	const {
@@ -200,6 +202,10 @@ export default function App(): ReactElement {
 	});
 
 	const { createTaskBranchOptions, defaultTaskBranchRef } = useTaskBranchOptions({ workspaceGit });
+	const queueTaskStartAfterEdit = useCallback((taskId: string) => {
+		setPendingTaskStartAfterEditId(taskId);
+	}, []);
+
 	const {
 		isInlineTaskCreateOpen,
 		newTaskPrompt,
@@ -222,6 +228,7 @@ export default function App(): ReactElement {
 		setEditTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
+		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -229,6 +236,7 @@ export default function App(): ReactElement {
 		handleOpenEditTask,
 		handleCancelEditTask,
 		handleSaveEditedTask,
+		handleSaveAndStartEditedTask,
 		handleCreateTask,
 		resetTaskEditorState,
 	} = useTaskEditor({
@@ -240,6 +248,7 @@ export default function App(): ReactElement {
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId ?? null,
 		setSelectedTaskId,
 		onClearWorktreeError: () => setWorktreeError(null),
+		queueTaskStartAfterEdit,
 	});
 
 	useEffect(() => {
@@ -520,6 +529,18 @@ export default function App(): ReactElement {
 		sendTaskSessionInput,
 	});
 
+	useEffect(() => {
+		if (!pendingTaskStartAfterEditId) {
+			return;
+		}
+		const selection = findCardSelection(board, pendingTaskStartAfterEditId);
+		if (!selection || selection.column.id !== "backlog") {
+			return;
+		}
+		handleStartTaskWithServiceSetupPrompt(pendingTaskStartAfterEditId);
+		setPendingTaskStartAfterEditId(null);
+	}, [board, handleStartTaskWithServiceSetupPrompt, pendingTaskStartAfterEditId]);
+
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
@@ -619,9 +640,11 @@ export default function App(): ReactElement {
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
 			onCreate={handleSaveEditedTask}
+			onCreateAndStart={handleSaveAndStartEditedTask}
 			onCancel={handleCancelEditTask}
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
+			startInPlanModeDisabled={isEditTaskStartInPlanModeDisabled}
 			autoReviewEnabled={editTaskAutoReviewEnabled}
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			autoReviewMode={editTaskAutoReviewMode}

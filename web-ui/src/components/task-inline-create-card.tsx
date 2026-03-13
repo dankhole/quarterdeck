@@ -86,7 +86,7 @@ export function TaskInlineCreateCard({
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
-	const cancelLabel = mode === "create" ? "Cancel (esc)" : "Cancel";
+	const cancelLabel = "Cancel (esc)";
 	const cardMarginBottom = mode === "create" ? 8 : 0;
 
 	useHotkeys(
@@ -98,13 +98,13 @@ export function TaskInlineCreateCard({
 			onCancel();
 		},
 		{
-			enabled: mode === "create",
+			enabled,
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			ignoreEventWhen: (event) => event.defaultPrevented,
 			preventDefault: true,
 		},
-		[mode, onCancel],
+		[enabled, onCancel],
 	);
 
 	return (
@@ -121,7 +121,7 @@ export function TaskInlineCreateCard({
 					value={prompt}
 					onValueChange={onPromptChange}
 					onSubmit={onCreate}
-					onSubmitAndStart={mode === "create" ? onCreateAndStart : undefined}
+					onSubmitAndStart={onCreateAndStart}
 					placeholder="Describe the task"
 					enabled={enabled}
 					autoFocus
@@ -188,7 +188,7 @@ export function TaskInlineCreateCard({
 						onClick={onCreate}
 						disabled={!prompt.trim() || !branchRef}
 					/>
-					{mode === "create" && onCreateAndStart ? (
+					{onCreateAndStart ? (
 						<Button
 							text={
 								<span style={{ display: "inline-flex", alignItems: "center" }}>

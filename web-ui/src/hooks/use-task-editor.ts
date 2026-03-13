@@ -23,6 +23,7 @@ interface UseTaskEditorInput {
 	selectedAgentId: RuntimeAgentId | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	onClearWorktreeError: () => void;
+	queueTaskStartAfterEdit?: (taskId: string) => void;
 }
 
 interface OpenEditTaskOptions {
@@ -51,13 +52,15 @@ export interface UseTaskEditorResult {
 	setEditTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
 	editTaskAutoReviewMode: TaskAutoReviewMode;
 	setEditTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
+	isEditTaskStartInPlanModeDisabled: boolean;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
 	handleOpenCreateTask: () => void;
 	handleCancelCreateTask: () => void;
 	handleOpenEditTask: (task: BoardCard, options?: OpenEditTaskOptions) => void;
 	handleCancelEditTask: () => void;
-	handleSaveEditedTask: () => void;
+	handleSaveEditedTask: () => string | null;
+	handleSaveAndStartEditedTask: () => void;
 	handleCreateTask: () => string | null;
 	resetTaskEditorState: () => void;
 }
@@ -71,6 +74,7 @@ export function useTaskEditor({
 	selectedAgentId,
 	setSelectedTaskId,
 	onClearWorktreeError,
+	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
@@ -95,6 +99,7 @@ export function useTaskEditor({
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
+	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const lastCreatedTaskBranchRef = useMemo(() => {
@@ -137,6 +142,13 @@ export function useTaskEditor({
 		}
 		setNewTaskStartInPlanMode(false);
 	}, [isNewTaskStartInPlanModeDisabled, newTaskStartInPlanMode, setNewTaskStartInPlanMode]);
+
+	useEffect(() => {
+		if (!isEditTaskStartInPlanModeDisabled || !editTaskStartInPlanMode) {
+			return;
+		}
+		setEditTaskStartInPlanMode(false);
+	}, [editTaskStartInPlanMode, isEditTaskStartInPlanModeDisabled]);
 
 	useEffect(() => {
 		if (!editingTaskId) {
@@ -204,22 +216,23 @@ export function useTaskEditor({
 		setEditTaskBranchRef("");
 	}, []);
 
-	const handleSaveEditedTask = useCallback(() => {
+	const handleSaveEditedTask = useCallback((): string | null => {
 		if (!editingTaskId) {
-			return;
+			return null;
 		}
 		const prompt = editTaskPrompt.trim();
 		if (!prompt) {
-			return;
+			return null;
 		}
 		if (!(editTaskBranchRef || resolvedDefaultTaskBranchRef)) {
-			return;
+			return null;
 		}
 
 		const baseRef = editTaskBranchRef || resolvedDefaultTaskBranchRef;
+		const savedTaskId = editingTaskId;
 
 		setBoard((currentBoard) => {
-			const updated = updateTask(currentBoard, editingTaskId, {
+			const updated = updateTask(currentBoard, savedTaskId, {
 				prompt,
 				startInPlanMode: editTaskStartInPlanMode,
 				autoReviewEnabled: editTaskAutoReviewEnabled,
@@ -233,6 +246,7 @@ export function useTaskEditor({
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
 		onClearWorktreeError();
+		return savedTaskId;
 	}, [
 		editTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
@@ -244,6 +258,14 @@ export function useTaskEditor({
 		resolvedDefaultTaskBranchRef,
 		setBoard,
 	]);
+
+	const handleSaveAndStartEditedTask = useCallback(() => {
+		const taskId = handleSaveEditedTask();
+		if (!taskId) {
+			return;
+		}
+		queueTaskStartAfterEdit?.(taskId);
+	}, [handleSaveEditedTask, queueTaskStartAfterEdit]);
 
 	const handleCreateTask = useCallback((): string | null => {
 		const prompt = newTaskPrompt.trim();
@@ -328,6 +350,7 @@ export function useTaskEditor({
 		setEditTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
+		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -335,6 +358,7 @@ export function useTaskEditor({
 		handleOpenEditTask,
 		handleCancelEditTask,
 		handleSaveEditedTask,
+		handleSaveAndStartEditedTask,
 		handleCreateTask,
 		resetTaskEditorState,
 	};
