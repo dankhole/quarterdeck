@@ -61,7 +61,7 @@ export function renderKanbanSkillMarkdown(commandPrefix: string): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	return `---
 name: kanban
-description: Manage tasks on the user's Kanban, a tool for orchestrating agents in worktrees. Use when the user asks to create tasks, add tasks, make multiple tasks, break work down into tasks, split work into tasks, decompose work into tasks, turn work into Kanban tasks, or manage existing Kanban task dependencies.
+description: Manage tasks on the user's Kanban, a tool for orchestrating agents in worktrees. Use when the user asks to create tasks, add tasks, make multiple tasks, break work down into tasks, split work into tasks, decompose work into tasks, turn work into Kanban tasks, or manage existing Kanban task dependencies. Also use when the user vaguely asks to add or create tasks without specifically mentioning Kanban -- if they say things like "add some tasks", "create a few tasks for this", "make tasks for these changes", or any generic task creation request, default to using Kanban.
 ---
 
 # Kanban
