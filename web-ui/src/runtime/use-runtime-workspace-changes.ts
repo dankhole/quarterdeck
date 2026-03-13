@@ -19,6 +19,9 @@ export function useRuntimeWorkspaceChanges(
 	pollIntervalMs: number | null = null,
 ): UseRuntimeWorkspaceChangesResult {
 	const hasWorkspaceScope = taskId !== null && workspaceId !== null && baseRef !== null;
+	const scopeKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}`;
+	const previousScopeKeyRef = useRef(scopeKey);
+	const isScopeTransitioning = hasWorkspaceScope && previousScopeKeyRef.current !== scopeKey;
 	const queryFn = useCallback(async () => {
 		if (!taskId || !workspaceId || !baseRef) {
 			throw new Error("Missing workspace scope.");
@@ -43,7 +46,16 @@ export function useRuntimeWorkspaceChanges(
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
+		if (!isScopeTransitioning) {
+			return;
+		}
+		previousScopeKeyRef.current = scopeKey;
+		changesQuery.setData(null);
+	}, [changesQuery.setData, isScopeTransitioning, scopeKey]);
+
+	useEffect(() => {
 		if (!hasWorkspaceScope) {
+			previousScopeKeyRef.current = scopeKey;
 			previousStateVersionRef.current = stateVersion;
 			return;
 		}
@@ -52,7 +64,7 @@ export function useRuntimeWorkspaceChanges(
 		}
 		previousStateVersionRef.current = stateVersion;
 		void changesQuery.refetch();
-	}, [changesQuery.refetch, hasWorkspaceScope, stateVersion]);
+	}, [changesQuery.refetch, hasWorkspaceScope, scopeKey, stateVersion]);
 
 	useEffect(() => {
 		if (!hasWorkspaceScope || pollIntervalMs == null) {
@@ -84,10 +96,14 @@ export function useRuntimeWorkspaceChanges(
 		};
 	}
 
+	const visibleChanges = isScopeTransitioning ? null : changesQuery.data;
+	const visibleIsLoading = isScopeTransitioning || changesQuery.isLoading;
+	const visibleIsRuntimeAvailable = isScopeTransitioning ? true : !changesQuery.isError;
+
 	return {
-		changes: changesQuery.data,
-		isLoading: changesQuery.isLoading,
-		isRuntimeAvailable: !changesQuery.isError,
+		changes: visibleChanges,
+		isLoading: visibleIsLoading,
+		isRuntimeAvailable: visibleIsRuntimeAvailable,
 		refresh,
 	};
 }
