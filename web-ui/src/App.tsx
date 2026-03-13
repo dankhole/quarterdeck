@@ -339,6 +339,8 @@ export default function App(): ReactElement {
 	usePrewarmedAgentTerminals({
 		currentProjectId,
 		isWorkspaceReady: !isWorkspaceMetadataPending,
+		isRuntimeDisconnected,
+		board,
 		sessions,
 		cursorColor: Colors.LIGHT_GRAY5,
 		terminalBackgroundColor: Colors.DARK_GRAY1,

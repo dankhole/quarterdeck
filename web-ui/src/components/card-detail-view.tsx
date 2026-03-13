@@ -216,6 +216,7 @@ export function CardDetailView({
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
+	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -327,6 +328,7 @@ export function CardDetailView({
 							<AgentTerminalPanel
 								taskId={selection.card.id}
 								workspaceId={currentProjectId}
+								terminalEnabled={isTaskTerminalEnabled}
 								summary={sessionSummary}
 								onSummary={onSessionSummary}
 								onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
