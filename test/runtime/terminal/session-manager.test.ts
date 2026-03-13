@@ -80,9 +80,10 @@ describe("TerminalSessionManager", () => {
 					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8"), Buffer.from("ready", "utf8")],
 					write: writeSpy,
 				},
-				terminalProbeFilter: {
+				terminalProtocolFilter: {
 					pendingChunk: null,
-					enabled: true,
+					interceptOsc11BackgroundQueries: true,
+					suppressDeviceAttributeQueries: false,
 				},
 			},
 			listenerIdCounter: 1,
@@ -101,8 +102,8 @@ describe("TerminalSessionManager", () => {
 		expect(writeSpy).toHaveBeenCalledWith("\u001b]11;rgb:1717/1717/2121\u001b\\");
 		expect(onOutput).toHaveBeenCalledTimes(1);
 		expect((onOutput.mock.calls[0]?.[0] as Buffer).toString("utf8")).toBe("ready");
-		expect(entry.active.terminalProbeFilter.enabled).toBe(false);
-		expect(entry.active.terminalProbeFilter.pendingChunk).toBeNull();
+		expect(entry.active.terminalProtocolFilter.interceptOsc11BackgroundQueries).toBe(false);
+		expect(entry.active.terminalProtocolFilter.pendingChunk).toBeNull();
 	});
 
 	it("keeps the startup probe filter enabled when only a non-output listener attaches", () => {
@@ -114,9 +115,10 @@ describe("TerminalSessionManager", () => {
 					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8")],
 					write: vi.fn(),
 				},
-				terminalProbeFilter: {
+				terminalProtocolFilter: {
 					pendingChunk: null,
-					enabled: true,
+					interceptOsc11BackgroundQueries: true,
+					suppressDeviceAttributeQueries: false,
 				},
 			},
 			listenerIdCounter: 1,
@@ -133,8 +135,8 @@ describe("TerminalSessionManager", () => {
 			onExit: vi.fn(),
 		});
 
-		expect(entry.active.terminalProbeFilter.enabled).toBe(true);
-		expect(entry.active.terminalProbeFilter.pendingChunk).toBeNull();
+		expect(entry.active.terminalProtocolFilter.interceptOsc11BackgroundQueries).toBe(true);
+		expect(entry.active.terminalProtocolFilter.pendingChunk).toBeNull();
 	});
 
 	it("forwards pixel dimensions through resize when provided", () => {

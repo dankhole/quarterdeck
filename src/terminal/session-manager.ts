@@ -19,6 +19,12 @@ import {
 } from "./claude-workspace-trust.js";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust.js";
 import { PtySession } from "./pty-session.js";
+import {
+	createTerminalProtocolFilterState,
+	disableOsc11BackgroundQueryIntercept,
+	filterTerminalProtocolOutput,
+	type TerminalProtocolFilterState,
+} from "./terminal-protocol-filter.js";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
@@ -29,21 +35,14 @@ const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
 // OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
 // We intercept that startup probe during history replay and early PTY output, synthesize a
 // background-color reply, then disable the filter once a live terminal listener has attached.
-const ESC = 0x1b;
-const BEL = 0x07;
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
-
-interface TerminalProbeFilterState {
-	pendingChunk: Buffer | null;
-	enabled: boolean;
-}
 
 interface ActiveProcessState {
 	session: PtySession;
 	workspaceTrustBuffer: string | null;
 	cols: number;
 	rows: number;
-	terminalProbeFilter: TerminalProbeFilterState;
+	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
@@ -155,91 +154,6 @@ function buildTerminalEnvironment(
 	};
 }
 
-function createTerminalProbeFilterState(): TerminalProbeFilterState {
-	return {
-		pendingChunk: null,
-		enabled: true,
-	};
-}
-
-function filterTerminalProbeOutput(
-	state: TerminalProbeFilterState,
-	incoming: Buffer,
-	onOsc11Query: () => void,
-): Buffer {
-	if (!state.enabled) {
-		return incoming;
-	}
-
-	const pending = state.pendingChunk;
-	const pendingLength = pending?.byteLength ?? 0;
-	const source = pendingLength > 0 ? Buffer.concat([pending as Buffer, incoming]) : incoming;
-	state.pendingChunk = null;
-
-	let cursor = 0;
-	let segmentStart = 0;
-	const segments: Buffer[] = [];
-
-	while (cursor < source.byteLength) {
-		const next = cursor + 1;
-		if (source[cursor] !== ESC || next >= source.byteLength || source[next] !== 0x5d) {
-			cursor += 1;
-			continue;
-		}
-
-		const sequenceStart = cursor;
-		if (sequenceStart > segmentStart) {
-			segments.push(source.subarray(segmentStart, sequenceStart));
-		}
-
-		let sequenceEnd = -1;
-		let contentEnd = -1;
-		let index = sequenceStart + 2;
-		while (index < source.byteLength) {
-			const byte = source[index];
-			if (byte === BEL) {
-				contentEnd = index;
-				sequenceEnd = index + 1;
-				break;
-			}
-			if (byte === ESC && index + 1 < source.byteLength && source[index + 1] === 0x5c) {
-				contentEnd = index;
-				sequenceEnd = index + 2;
-				break;
-			}
-			index += 1;
-		}
-
-		if (sequenceEnd === -1 || contentEnd === -1) {
-			state.pendingChunk = source.subarray(sequenceStart);
-			segmentStart = source.byteLength;
-			break;
-		}
-
-		const content = source.subarray(sequenceStart + 2, contentEnd).toString("utf8");
-		if (content === "11;?") {
-			onOsc11Query();
-		} else {
-			segments.push(source.subarray(sequenceStart, sequenceEnd));
-		}
-
-		segmentStart = sequenceEnd;
-		cursor = sequenceEnd;
-	}
-
-	if (segmentStart < source.byteLength) {
-		segments.push(source.subarray(segmentStart));
-	}
-
-	if (segments.length === 0) {
-		return Buffer.alloc(0);
-	}
-	if (segments.length === 1) {
-		return segments[0] as Buffer;
-	}
-	return Buffer.concat(segments);
-}
-
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
@@ -275,18 +189,20 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const entry = this.ensureEntry(taskId);
 
 		listener.onState?.(cloneSummary(entry.summary));
-		const replayFilterState = createTerminalProbeFilterState();
+		const replayFilterState = createTerminalProtocolFilterState({
+			interceptOsc11BackgroundQueries: true,
+			suppressDeviceAttributeQueries: entry.active?.terminalProtocolFilter.suppressDeviceAttributeQueries ?? false,
+		});
 		for (const chunk of entry.active?.session.getOutputHistory() ?? []) {
-			const filteredChunk = filterTerminalProbeOutput(replayFilterState, chunk, () =>
-				entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
-			);
+			const filteredChunk = filterTerminalProtocolOutput(replayFilterState, chunk, {
+				onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+			});
 			if (filteredChunk.byteLength > 0) {
 				listener.onOutput?.(filteredChunk);
 			}
 		}
 		if (entry.active && listener.onOutput) {
-			entry.active.terminalProbeFilter.pendingChunk = null;
-			entry.active.terminalProbeFilter.enabled = false;
+			disableOsc11BackgroundQueryIntercept(entry.active.terminalProtocolFilter);
 		}
 
 		const listenerId = entry.listenerIdCounter;
@@ -379,9 +295,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 						sendKickoffShellCommand();
 					}
 
-					const filteredChunk = filterTerminalProbeOutput(entry.active.terminalProbeFilter, chunk, () =>
-						entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
-					);
+					const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
+						onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+					});
 					if (filteredChunk.byteLength === 0) {
 						return;
 					}
@@ -506,7 +422,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 					: null,
 			cols,
 			rows,
-			terminalProbeFilter: createTerminalProbeFilterState(),
+			terminalProtocolFilter: createTerminalProtocolFilterState({
+				interceptOsc11BackgroundQueries: true,
+				suppressDeviceAttributeQueries: request.agentId === "droid",
+			}),
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
@@ -571,9 +490,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 
-					const filteredChunk = filterTerminalProbeOutput(entry.active.terminalProbeFilter, chunk, () =>
-						entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
-					);
+					const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
+						onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
+					});
 					if (filteredChunk.byteLength === 0) {
 						return;
 					}
@@ -640,7 +559,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceTrustBuffer: null,
 			cols,
 			rows,
-			terminalProbeFilter: createTerminalProbeFilterState(),
+			terminalProtocolFilter: createTerminalProtocolFilterState({
+				interceptOsc11BackgroundQueries: true,
+			}),
 			onSessionCleanup: null,
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
