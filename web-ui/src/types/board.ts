@@ -24,6 +24,17 @@ export function getTaskAutoReviewActionLabel(mode: TaskAutoReviewMode | null | u
 	return "commit";
 }
 
+export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | null | undefined): string {
+	const resolvedMode = resolveTaskAutoReviewMode(mode);
+	if (resolvedMode === "pr") {
+		return "Cancel Auto-PR";
+	}
+	if (resolvedMode === "move_to_trash") {
+		return "Cancel Auto-trash";
+	}
+	return "Cancel Auto-commit";
+}
+
 export interface BoardCard {
 	id: string;
 	prompt: string;
