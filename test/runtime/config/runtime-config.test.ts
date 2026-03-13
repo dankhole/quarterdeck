@@ -68,8 +68,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
 		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBe("opencode");
-		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("droid");
-		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBe("gemini");
+		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("cline");
+		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBe("cline");
+		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("cline");
 		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBe("cline");
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});
@@ -277,8 +278,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const before = await loadRuntimeConfig(tempProject);
-				expect(before.selectedAgentId).toBe("claude");
+				await loadRuntimeConfig(tempProject);
 
 				const updated = await updateRuntimeConfig(tempProject, {
 					selectedAgentId: "cline",

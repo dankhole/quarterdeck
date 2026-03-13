@@ -27,12 +27,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/openai/codex",
 	},
 	{
-		id: "gemini",
-		label: "Gemini CLI",
-		binary: "gemini",
+		id: "cline",
+		label: "Cline CLI",
+		binary: "cline",
 		baseArgs: [],
-		autonomousArgs: ["--yolo"],
-		installUrl: "https://github.com/google-gemini/gemini-cli",
+		autonomousArgs: ["--auto-approve-all"],
+		installUrl: "https://www.npmjs.com/package/cline",
 	},
 	{
 		id: "opencode",
@@ -51,12 +51,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://docs.factory.ai/cli/getting-started/quickstart",
 	},
 	{
-		id: "cline",
-		label: "Cline CLI",
-		binary: "cline",
+		id: "gemini",
+		label: "Gemini CLI",
+		binary: "gemini",
 		baseArgs: [],
-		autonomousArgs: ["--auto-approve-all"],
-		installUrl: "https://www.npmjs.com/package/cline",
+		autonomousArgs: ["--yolo"],
+		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
 ];
 
