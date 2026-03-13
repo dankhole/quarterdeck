@@ -42,27 +42,29 @@ npx kanban
 3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can even use Kanban MCP to tell an agent to create parallelizable tasks and links in clever ways to get projects done quickly.
 4. When they finish, you review diffs, leave comments, and commit or make a PR.
 
+## MCP Setup
+
 Use MCP to let the agent add and start tasks on the kanban board itself, decomposing large work into parallelizable linked tasks in clever ways to get work done quicker.
+
+<details>
+<summary>Install instructions</summary>
+
+Claude Code:
 
 ```bash
 claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp
 ```
 
-<details>
-<summary>Using Cline?</summary>
+Codex:
 
-Add this to your `~/.cline/data/settings/cline_mcp_settings.json`:
+```bash
+codex mcp add kanban -- npx -y kanban mcp
+```
 
-```json
-{
-  "mcpServers": {
-    "kanban": {
-      "command": "npx",
-      "args": ["-y", "kanban", "mcp"],
-      "transportType": "stdio"
-    }
-  }
-}
+Cline CLI:
+
+```bash
+cline mcp add kanban -- npx -y kanban mcp
 ```
 
 </details>

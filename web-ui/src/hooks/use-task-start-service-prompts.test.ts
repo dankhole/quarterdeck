@@ -185,7 +185,7 @@ describe("buildTaskStartServicePromptContent", () => {
 		const content = buildTaskStartServicePromptContent("kanban_mcp", {
 			selectedAgentId: "cline",
 		});
-		expect(content.installCommand).toBe("droid mcp add kanban -- npx -y kanban mcp");
+		expect(content.installCommand).toBe("cline mcp add kanban -- npx -y kanban mcp");
 	});
 
 	it("returns gemini kanban mcp install command with user scope", () => {

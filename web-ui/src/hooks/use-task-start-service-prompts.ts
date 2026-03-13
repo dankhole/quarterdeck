@@ -74,7 +74,7 @@ function getKanbanMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | und
 		case "droid":
 			return "droid mcp add kanban -- npx -y kanban mcp";
 		case "cline":
-			return "droid mcp add kanban -- npx -y kanban mcp";
+			return "cline mcp add kanban -- npx -y kanban mcp";
 		default:
 			return DEFAULT_KANBAN_INSTALL_COMMAND;
 	}
