@@ -29,6 +29,7 @@ interface RenderedDependency {
 	midpointY: number;
 	startSide: AnchorSide;
 	endSide: AnchorSide;
+	isTransient: boolean;
 }
 
 interface DependencyGeometry {
@@ -442,6 +443,8 @@ export function DependencyOverlay({
 	const previousRenderedDependencyByIdRef = useRef<
 		Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">>
 	>({});
+	const previousDependenciesByIdRef = useRef<Record<string, BoardDependency>>({});
+	const transientRemovedDependencyByIdRef = useRef<Record<string, BoardDependency>>({});
 	const sideTransitionByDependencyIdRef = useRef<
 		Record<
 			string,
@@ -526,9 +529,40 @@ export function DependencyOverlay({
 			if (!current) {
 				return null;
 			}
-			return dependencies.some((dependency) => dependency.id === current) ? current : null;
+			const isCurrentDependency = dependencies.some((dependency) => dependency.id === current);
+			const isTransientDependency = transientRemovedDependencyByIdRef.current[current] !== undefined;
+			return isCurrentDependency || isTransientDependency ? current : null;
 		});
 	}, [dependencies]);
+
+	useLayoutEffect(() => {
+		const currentDependenciesById = Object.fromEntries(dependencies.map((dependency) => [dependency.id, dependency]));
+		if (!isMotionActive || !activeTaskId) {
+			transientRemovedDependencyByIdRef.current = {};
+			previousDependenciesByIdRef.current = currentDependenciesById;
+			return;
+		}
+
+		const previousDependenciesById = previousDependenciesByIdRef.current;
+		for (const [dependencyId, dependency] of Object.entries(previousDependenciesById)) {
+			if (currentDependenciesById[dependencyId]) {
+				continue;
+			}
+			if (dependency.fromTaskId !== activeTaskId && dependency.toTaskId !== activeTaskId) {
+				continue;
+			}
+			transientRemovedDependencyByIdRef.current[dependencyId] = dependency;
+		}
+		for (const [dependencyId, transientDependency] of Object.entries(transientRemovedDependencyByIdRef.current)) {
+			if (
+				currentDependenciesById[dependencyId] ||
+				(transientDependency.fromTaskId !== activeTaskId && transientDependency.toTaskId !== activeTaskId)
+			) {
+				delete transientRemovedDependencyByIdRef.current[dependencyId];
+			}
+		}
+		previousDependenciesByIdRef.current = currentDependenciesById;
+	}, [activeTaskId, dependencies, isMotionActive]);
 
 	const clearPendingHoverClear = useCallback(() => {
 		if (hoverClearTimeoutRef.current !== null) {
@@ -613,27 +647,56 @@ export function DependencyOverlay({
 	}, [draft, isMotionActive, refreshLayout]);
 
 	const renderedDependencies = useMemo((): RenderedDependency[] => {
-		const candidates = dependencies
-			.map((dependency) => {
+		const displayedDependencies = new Map<string, { dependency: BoardDependency; isTransient: boolean }>();
+		for (const dependency of dependencies) {
+			displayedDependencies.set(dependency.id, {
+				dependency,
+				isTransient: false,
+			});
+		}
+		for (const [dependencyId, transientDependency] of Object.entries(transientRemovedDependencyByIdRef.current)) {
+			if (displayedDependencies.has(dependencyId)) {
+				continue;
+			}
+			displayedDependencies.set(dependencyId, {
+				dependency: transientDependency,
+				isTransient: true,
+			});
+		}
+
+		const candidates = Array.from(displayedDependencies.values())
+			.map(({ dependency, isTransient }) => {
 				const sourceAnchor = layout.anchors[dependency.fromTaskId];
 				const targetAnchor = layout.anchors[dependency.toTaskId];
 				if (!sourceAnchor || !targetAnchor) {
 					return null;
 				}
-				// Persisted links are only rendered while a backlog card is still involved.
-				if (sourceAnchor.columnId !== "backlog" && targetAnchor.columnId !== "backlog") {
+				const touchesActiveTask =
+					activeTaskId !== null && activeTaskId !== undefined
+						? dependency.fromTaskId === activeTaskId || dependency.toTaskId === activeTaskId
+						: false;
+				if (!isTransient && sourceAnchor.columnId !== "backlog" && targetAnchor.columnId !== "backlog") {
+					return null;
+				}
+				if (isTransient && !touchesActiveTask) {
 					return null;
 				}
 				return {
 					dependency,
 					sourceAnchor,
 					targetAnchor,
+					isTransient,
 				};
 			})
 			.filter(
 				(
 					candidate,
-				): candidate is { dependency: BoardDependency; sourceAnchor: TaskAnchor; targetAnchor: TaskAnchor } =>
+				): candidate is {
+					dependency: BoardDependency;
+					sourceAnchor: TaskAnchor;
+					targetAnchor: TaskAnchor;
+					isTransient: boolean;
+				} =>
 					candidate !== null,
 			);
 
@@ -684,9 +747,10 @@ export function DependencyOverlay({
 				midpointY: geometry.midpointY,
 				startSide: geometry.startSide,
 				endSide: geometry.endSide,
+				isTransient: candidate.isTransient,
 			};
 		});
-	}, [dependencies, layout.anchors, layout.height, layout.width]);
+	}, [activeTaskId, dependencies, layout.anchors, layout.height, layout.width]);
 
 	useLayoutEffect(() => {
 		const now = performance.now();
@@ -839,7 +903,7 @@ export function DependencyOverlay({
 								d={displayedPath}
 								className={`kb-dependency-path${hoveredDependencyId === rendered.dependency.id ? " kb-dependency-path-hover" : ""}`}
 							/>
-							{onDeleteDependency ? (
+							{onDeleteDependency && !rendered.isTransient ? (
 								<path
 									d={displayedPath}
 									className="kb-dependency-hit-path"
@@ -883,7 +947,7 @@ export function DependencyOverlay({
 					<path d={draftPath} className="kb-dependency-draft-path" />
 				</svg>
 			) : null}
-			{onDeleteDependency && hoveredDependency ? (
+			{onDeleteDependency && hoveredDependency && !hoveredDependency.isTransient ? (
 				<div
 					key={`${hoveredDependency.dependency.id}-delete`}
 					className="kb-dependency-delete-control"

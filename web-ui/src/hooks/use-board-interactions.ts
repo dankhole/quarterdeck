@@ -48,6 +48,11 @@ interface SelectedBoardCard {
 	};
 }
 
+interface PendingProgrammaticStartMoveCompletion {
+	resolve: (started: boolean) => void;
+	timeoutId: number;
+}
+
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -127,16 +132,30 @@ export function useBoardInteractions({
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
+	const pendingProgrammaticStartMoveCompletionByTaskIdRef = useRef<
+		Record<string, PendingProgrammaticStartMoveCompletion>
+	>({});
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
 		tryProgrammaticCardMove,
 		consumeProgrammaticCardMove,
 		resolvePendingProgrammaticTrashMove,
+		waitForProgrammaticCardMoveAvailability,
 		resetProgrammaticCardMoves,
 		requestMoveTaskToTrashWithAnimation,
 		programmaticCardMoveCycle,
 	} = useProgrammaticCardMoves();
+
+	const resolvePendingProgrammaticStartMove = useCallback((taskId: string, started: boolean) => {
+		const pending = pendingProgrammaticStartMoveCompletionByTaskIdRef.current[taskId];
+		if (!pending) {
+			return;
+		}
+		window.clearTimeout(pending.timeoutId);
+		delete pendingProgrammaticStartMoveCompletionByTaskIdRef.current[taskId];
+		pending.resolve(started);
+	}, []);
 
 	const handleAddReviewComments = useCallback(
 		async (taskId: string, text: string) => {
@@ -280,6 +299,58 @@ export function useBoardInteractions({
 		],
 	);
 
+	const startBacklogTaskWithAnimation = useCallback(
+		async (task: BoardCard): Promise<boolean> => {
+			const programmaticMoveAttempt = tryProgrammaticCardMove(task.id, "backlog", "in_progress");
+			if (programmaticMoveAttempt === "blocked") {
+				await waitForProgrammaticCardMoveAvailability();
+				return startBacklogTaskWithAnimation(task);
+			}
+			if (programmaticMoveAttempt === "unavailable") {
+				let movedTask: BoardCard | null = null;
+				setBoard((currentBoard) => {
+					const selection = findCardSelection(currentBoard, task.id);
+					if (!selection || selection.column.id !== "backlog") {
+						return currentBoard;
+					}
+					const moved = moveTaskToColumn(currentBoard, task.id, "in_progress", { insertAtTop: true });
+					if (!moved.moved) {
+						return currentBoard;
+					}
+					movedTask = findCardSelection(moved.board, task.id)?.card ?? null;
+					return moved.board;
+				});
+				if (!movedTask) {
+					return false;
+				}
+				return kickoffTaskInProgress(movedTask, task.id, "backlog");
+			}
+
+			let resolveCompletion: ((started: boolean) => void) | null = null;
+			const completionPromise = new Promise<boolean>((resolve) => {
+				resolveCompletion = resolve;
+			});
+			const timeoutId = window.setTimeout(() => {
+				resolvePendingProgrammaticStartMove(task.id, false);
+			}, 5000);
+			pendingProgrammaticStartMoveCompletionByTaskIdRef.current[task.id] = {
+				resolve: (started) => {
+					resolveCompletion?.(started);
+					resolveCompletion = null;
+				},
+				timeoutId,
+			};
+			return completionPromise;
+		},
+		[
+			kickoffTaskInProgress,
+			resolvePendingProgrammaticStartMove,
+			setBoard,
+			tryProgrammaticCardMove,
+			waitForProgrammaticCardMoveAvailability,
+		],
+	);
+
 	useEffect(() => {
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
@@ -369,6 +440,8 @@ export function useBoardInteractions({
 			fetchTaskWorkspaceInfo,
 			maybeRequestNotificationPermissionForTaskStart,
 			kickoffTaskInProgress,
+			startBacklogTaskWithAnimation,
+			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
 		});
 
 	useEffect(() => {
@@ -426,6 +499,7 @@ export function useBoardInteractions({
 
 			const moveEvent = applied.moveEvent;
 			if (!moveEvent) {
+				resolvePendingProgrammaticStartMove(result.draggableId, false);
 				setBoard(applied.board);
 				return;
 			}
@@ -466,9 +540,19 @@ export function useBoardInteractions({
 				maybeRequestNotificationPermissionForTaskStart();
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
-					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId);
+					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId)
+						.then((started) => {
+							resolvePendingProgrammaticStartMove(moveEvent.taskId, started);
+						})
+						.catch(() => {
+							resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
+						});
+					return;
 				}
+				resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
+				return;
 			}
+			resolvePendingProgrammaticStartMove(moveEvent.taskId, false);
 		},
 		[
 			board,
@@ -477,6 +561,7 @@ export function useBoardInteractions({
 			maybeRequestNotificationPermissionForTaskStart,
 			requestMoveTaskToTrash,
 			resumeTaskFromTrash,
+			resolvePendingProgrammaticStartMove,
 			resolvePendingProgrammaticTrashMove,
 			setBoard,
 			setSelectedTaskId,
@@ -690,9 +775,12 @@ export function useBoardInteractions({
 
 	const resetBoardInteractionsState = useCallback(() => {
 		previousSessionsRef.current = {};
+		for (const taskId of Object.keys(pendingProgrammaticStartMoveCompletionByTaskIdRef.current)) {
+			resolvePendingProgrammaticStartMove(taskId, false);
+		}
 		resetProgrammaticCardMoves();
 		setIsClearTrashDialogOpen(false);
-	}, [resetProgrammaticCardMoves, setIsClearTrashDialogOpen]);
+	}, [resetProgrammaticCardMoves, resolvePendingProgrammaticStartMove, setIsClearTrashDialogOpen]);
 
 	useEffect(() => {
 		resetBoardInteractionsState();

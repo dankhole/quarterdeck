@@ -50,6 +50,7 @@ export function useProgrammaticCardMoves(): {
 	) => ProgrammaticCardMoveAttemptResult;
 	consumeProgrammaticCardMove: (taskId: string) => ConsumedProgrammaticCardMove;
 	resolvePendingProgrammaticTrashMove: (taskId: string) => void;
+	waitForProgrammaticCardMoveAvailability: () => Promise<void>;
 	resetProgrammaticCardMoves: () => void;
 	requestMoveTaskToTrashWithAnimation: RequestMoveTaskToTrash;
 	programmaticCardMoveCycle: number;
@@ -242,6 +243,7 @@ export function useProgrammaticCardMoves(): {
 		tryProgrammaticCardMove,
 		consumeProgrammaticCardMove,
 		resolvePendingProgrammaticTrashMove,
+		waitForProgrammaticCardMoveAvailability,
 		resetProgrammaticCardMoves,
 		requestMoveTaskToTrashWithAnimation,
 		programmaticCardMoveCycle,

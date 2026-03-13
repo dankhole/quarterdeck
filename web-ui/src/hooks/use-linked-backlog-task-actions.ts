@@ -41,6 +41,8 @@ export function useLinkedBacklogTaskActions({
 	fetchTaskWorkspaceInfo,
 	maybeRequestNotificationPermissionForTaskStart,
 	kickoffTaskInProgress,
+	startBacklogTaskWithAnimation,
+	waitForBacklogStartAnimationAvailability,
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -57,6 +59,8 @@ export function useLinkedBacklogTaskActions({
 		fromColumnId: BoardColumnId,
 		options?: { optimisticMove?: boolean },
 	) => Promise<boolean>;
+	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
+	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
 }): {
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	handleDeleteDependency: (dependencyId: string) => void;
@@ -141,25 +145,37 @@ export function useLinkedBacklogTaskActions({
 
 			if (readyTasks.length > 0) {
 				maybeRequestNotificationPermissionForTaskStart();
-				setBoard((currentBoardState) => {
-					let nextBoardState = currentBoardState;
-					for (const readyTask of readyTasks) {
-						const moved = moveTaskToColumn(nextBoardState, readyTask.id, "in_progress", {
-							insertAtTop: true,
-						});
-						if (moved.moved) {
-							nextBoardState = moved.board;
+				let startedTaskCount = 0;
+				if (startBacklogTaskWithAnimation) {
+					const startedTaskPromises: Promise<boolean>[] = [];
+					for (const [index, readyTask] of readyTasks.entries()) {
+						startedTaskPromises.push(startBacklogTaskWithAnimation(readyTask));
+						if (index < readyTasks.length - 1) {
+							await waitForBacklogStartAnimationAvailability?.();
 						}
 					}
-					return nextBoardState;
-				});
-				let startedTaskCount = 0;
-				for (const readyTask of readyTasks) {
-					const started = await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
-						optimisticMove: true,
+					const startedTasks = await Promise.all(startedTaskPromises);
+					startedTaskCount = startedTasks.filter(Boolean).length;
+				} else {
+					setBoard((currentBoardState) => {
+						let nextBoardState = currentBoardState;
+						for (const readyTask of readyTasks) {
+							const moved = moveTaskToColumn(nextBoardState, readyTask.id, "in_progress", {
+								insertAtTop: true,
+							});
+							if (moved.moved) {
+								nextBoardState = moved.board;
+							}
+						}
+						return nextBoardState;
 					});
-					if (started) {
-						startedTaskCount += 1;
+					for (const readyTask of readyTasks) {
+						const started = await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
+							optimisticMove: true,
+						});
+						if (started) {
+							startedTaskCount += 1;
+						}
 					}
 				}
 				if (startedTaskCount > 0) {
@@ -176,7 +192,9 @@ export function useLinkedBacklogTaskActions({
 			maybeRequestNotificationPermissionForTaskStart,
 			setBoard,
 			setSelectedTaskId,
+			startBacklogTaskWithAnimation,
 			stopTaskSession,
+			waitForBacklogStartAnimationAvailability,
 		],
 	);
 
