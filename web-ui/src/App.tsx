@@ -488,6 +488,7 @@ export default function App(): ReactElement {
 		handleConfirmClearTrash,
 		handleAddReviewComments,
 		handleSendReviewComments,
+		moveToTrashLoadingById,
 		trashTaskCount,
 	} = useBoardInteractions({
 		board,
@@ -847,6 +848,7 @@ export default function App(): ReactElement {
 											onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 											commitTaskLoadingById={commitTaskLoadingById}
 											openPrTaskLoadingById={openPrTaskLoadingById}
+											moveToTrashLoadingById={moveToTrashLoadingById}
 											onMoveToTrashTask={handleMoveReviewCardToTrash}
 											onRestoreFromTrashTask={handleRestoreTaskFromTrash}
 											dependencies={board.dependencies}
@@ -930,6 +932,7 @@ export default function App(): ReactElement {
 								openPrTaskLoadingById={openPrTaskLoadingById}
 								agentCommitTaskLoadingById={agentCommitTaskLoadingById}
 								agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
+								moveToTrashLoadingById={moveToTrashLoadingById}
 								onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 								onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 								onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
@@ -940,6 +943,7 @@ export default function App(): ReactElement {
 									void handleSendReviewComments(taskId, text);
 								}}
 								onMoveToTrash={handleMoveToTrash}
+								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 								gitHistoryPanel={
 									isGitHistoryOpen ? (
 										<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />

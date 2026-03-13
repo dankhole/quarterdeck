@@ -34,6 +34,7 @@ function ColumnSection({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
+	moveToTrashLoadingById,
 	activeDragSourceColumnId,
 }: {
 	column: BoardColumn;
@@ -55,6 +56,7 @@ function ColumnSection({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
+	moveToTrashLoadingById?: Record<string, boolean>;
 	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
@@ -174,6 +176,7 @@ function ColumnSection({
 												onOpenPr={onOpenPrTask}
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
+												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -217,6 +220,7 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
+	moveToTrashLoadingById,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
@@ -236,6 +240,7 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
+	moveToTrashLoadingById?: Record<string, boolean>;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -316,6 +321,7 @@ export function ColumnContextPanel({
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
+							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 							activeDragSourceColumnId={activeDragSourceColumnId}
 						/>
 					))}

@@ -30,6 +30,7 @@ export function BoardColumn({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
+	moveToTrashLoadingById,
 	onCardClick,
 	activeDragTaskId,
 	activeDragSourceColumnId,
@@ -57,6 +58,7 @@ export function BoardColumn({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
+	moveToTrashLoadingById?: Record<string, boolean>;
 	onCardClick?: (card: BoardCardModel) => void;
 	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
@@ -187,6 +189,7 @@ export function BoardColumn({
 											onCancelAutomaticAction={onCancelAutomaticTaskAction}
 											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
+											isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
 											onDependencyPointerDown={onDependencyPointerDown}
 											onDependencyPointerEnter={onDependencyPointerEnter}
 											isDependencySource={dependencySourceTaskId === card.id}

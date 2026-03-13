@@ -31,6 +31,7 @@ export interface AgentTerminalPanelProps {
 	isOpenPrLoading?: boolean;
 	taskColumnId?: string;
 	onMoveToTrash?: () => void;
+	isMoveToTrashLoading?: boolean;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
 	showMoveToTrash?: boolean;
@@ -144,6 +145,7 @@ function AgentTerminalPanelLayout({
 	isOpenPrLoading = false,
 	taskColumnId = "in_progress",
 	onMoveToTrash,
+	isMoveToTrashLoading = false,
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
 	showMoveToTrash,
@@ -318,7 +320,14 @@ function AgentTerminalPanelLayout({
 							onClick={onCancelAutomaticAction}
 						/>
 					) : null}
-					<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
+					<Button
+						intent="danger"
+						text="Move Card To Trash"
+						fill
+						loading={isMoveToTrashLoading}
+						disabled={isMoveToTrashLoading}
+						onClick={onMoveToTrash}
+					/>
 				</div>
 			) : null}
 		</div>

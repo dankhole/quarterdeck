@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DropResult } from "@hello-pangea/dnd";
 
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
@@ -103,6 +103,7 @@ export interface UseBoardInteractionsResult {
 	handleConfirmClearTrash: () => void;
 	handleAddReviewComments: (taskId: string, text: string) => Promise<void>;
 	handleSendReviewComments: (taskId: string, text: string) => Promise<void>;
+	moveToTrashLoadingById: Record<string, boolean>;
 	trashTaskCount: number;
 }
 
@@ -132,9 +133,11 @@ export function useBoardInteractions({
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
+	const moveToTrashLoadingByIdRef = useRef<Record<string, true>>({});
 	const pendingProgrammaticStartMoveCompletionByTaskIdRef = useRef<
 		Record<string, PendingProgrammaticStartMoveCompletion>
 	>({});
+	const [moveToTrashLoadingById, setMoveToTrashLoadingById] = useState<Record<string, boolean>>({});
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -155,6 +158,32 @@ export function useBoardInteractions({
 		window.clearTimeout(pending.timeoutId);
 		delete pendingProgrammaticStartMoveCompletionByTaskIdRef.current[taskId];
 		pending.resolve(started);
+	}, []);
+
+	const setTaskMoveToTrashLoading = useCallback((taskId: string, isLoading: boolean) => {
+		if (isLoading) {
+			moveToTrashLoadingByIdRef.current[taskId] = true;
+			setMoveToTrashLoadingById((current) => {
+				if (current[taskId]) {
+					return current;
+				}
+				return {
+					...current,
+					[taskId]: true,
+				};
+			});
+			return;
+		}
+
+		delete moveToTrashLoadingByIdRef.current[taskId];
+		setMoveToTrashLoadingById((current) => {
+			if (!current[taskId]) {
+				return current;
+			}
+			const next = { ...current };
+			delete next[taskId];
+			return next;
+		});
 	}, []);
 
 	const handleAddReviewComments = useCallback(
@@ -659,22 +688,26 @@ export function useBoardInteractions({
 		if (!selectedCard) {
 			return;
 		}
-		const programmaticMoveAttempt = tryProgrammaticCardMove(selectedCard.card.id, selectedCard.column.id, "trash");
-		if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+		if (moveToTrashLoadingByIdRef.current[selectedCard.card.id]) {
 			return;
 		}
-		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
-	}, [requestMoveTaskToTrash, selectedCard, tryProgrammaticCardMove]);
+		setTaskMoveToTrashLoading(selectedCard.card.id, true);
+		void requestMoveTaskToTrashWithAnimation(selectedCard.card.id, selectedCard.column.id).finally(() => {
+			setTaskMoveToTrashLoading(selectedCard.card.id, false);
+		});
+	}, [requestMoveTaskToTrashWithAnimation, selectedCard, setTaskMoveToTrashLoading]);
 
 	const handleMoveReviewCardToTrash = useCallback(
 		(taskId: string) => {
-			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "review", "trash");
-			if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+			if (moveToTrashLoadingByIdRef.current[taskId]) {
 				return;
 			}
-			void requestMoveTaskToTrash(taskId, "review");
+			setTaskMoveToTrashLoading(taskId, true);
+			void requestMoveTaskToTrashWithAnimation(taskId, "review").finally(() => {
+				setTaskMoveToTrashLoading(taskId, false);
+			});
 		},
-		[requestMoveTaskToTrash, tryProgrammaticCardMove],
+		[requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading],
 	);
 
 	const handleRestoreTaskFromTrash = useCallback(
@@ -775,6 +808,8 @@ export function useBoardInteractions({
 
 	const resetBoardInteractionsState = useCallback(() => {
 		previousSessionsRef.current = {};
+		moveToTrashLoadingByIdRef.current = {};
+		setMoveToTrashLoadingById({});
 		for (const taskId of Object.keys(pendingProgrammaticStartMoveCompletionByTaskIdRef.current)) {
 			resolvePendingProgrammaticStartMove(taskId, false);
 		}
@@ -804,6 +839,7 @@ export function useBoardInteractions({
 		handleConfirmClearTrash,
 		handleAddReviewComments,
 		handleSendReviewComments,
+		moveToTrashLoadingById,
 		trashTaskCount,
 	};
 }

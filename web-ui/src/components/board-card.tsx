@@ -83,6 +83,7 @@ export function BoardCard({
 	onCancelAutomaticAction,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
+	isMoveToTrashLoading = false,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	isDependencySource = false,
@@ -103,6 +104,7 @@ export function BoardCard({
 	onCancelAutomaticAction?: (taskId: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
+	isMoveToTrashLoading?: boolean;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	isDependencySource?: boolean;
@@ -292,6 +294,8 @@ export function BoardCard({
 										intent="primary"
 										variant="minimal"
 										size="small"
+										loading={isMoveToTrashLoading}
+										disabled={isMoveToTrashLoading}
 										aria-label="Move task to trash"
 										onMouseDown={stopEvent}
 										onClick={(event) => {

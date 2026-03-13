@@ -138,9 +138,11 @@ export function CardDetailView({
 	openPrTaskLoadingById,
 	agentCommitTaskLoadingById,
 	agentOpenPrTaskLoadingById,
+	moveToTrashLoadingById,
 	onAddReviewComments,
 	onSendReviewComments,
 	onMoveToTrash,
+	isMoveToTrashLoading,
 	gitHistoryPanel,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
@@ -183,9 +185,11 @@ export function CardDetailView({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	agentCommitTaskLoadingById?: Record<string, boolean>;
 	agentOpenPrTaskLoadingById?: Record<string, boolean>;
+	moveToTrashLoadingById?: Record<string, boolean>;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	onMoveToTrash: () => void;
+	isMoveToTrashLoading?: boolean;
 	gitHistoryPanel?: ReactNode;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
@@ -310,6 +314,7 @@ export function CardDetailView({
 				onRestoreFromTrashTask={onRestoreTaskFromTrash}
 				commitTaskLoadingById={commitTaskLoadingById}
 				openPrTaskLoadingById={openPrTaskLoadingById}
+				moveToTrashLoadingById={moveToTrashLoadingById}
 			/>
 			<div
 				style={{
@@ -339,6 +344,7 @@ export function CardDetailView({
 								autoFocus
 								showMoveToTrash={showMoveToTrashActions}
 								onMoveToTrash={onMoveToTrash}
+								isMoveToTrashLoading={isMoveToTrashLoading}
 								onCancelAutomaticAction={
 									selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
 										? () => onCancelAutomaticTaskAction(selection.card.id)
