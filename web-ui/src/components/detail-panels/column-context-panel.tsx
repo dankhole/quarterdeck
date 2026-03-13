@@ -1,7 +1,7 @@
 import { Button, Classes, Collapse, Colors, Icon } from "@blueprintjs/core";
 import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BoardCard } from "@/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
@@ -73,6 +73,13 @@ function ColumnSection({
 			</span>
 		</span>
 	);
+
+	useEffect(() => {
+		if (!column.cards.some((card) => card.id === selectedCardId)) {
+			return;
+		}
+		setOpen(true);
+	}, [column.cards, selectedCardId]);
 
 	return (
 		<div>
@@ -231,6 +238,7 @@ export function ColumnContextPanel({
 	openPrTaskLoadingById?: Record<string, boolean>;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
+	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
 	const handleBeforeCapture = useCallback(
 		(start: BeforeCapture) => {
@@ -247,6 +255,28 @@ export function ColumnContextPanel({
 		[onTaskDragEnd],
 	);
 
+	useEffect(() => {
+		const scrollContainer = scrollContainerRef.current;
+		if (!scrollContainer) {
+			return;
+		}
+		const escapedTaskId = selection.card.id.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+		const selectedCardElement = scrollContainer.querySelector<HTMLElement>(`[data-task-id="${escapedTaskId}"]`);
+		if (!selectedCardElement) {
+			return;
+		}
+
+		const frameId = window.requestAnimationFrame(() => {
+			selectedCardElement.scrollIntoView({
+				block: "center",
+				inline: "nearest",
+			});
+		});
+		return () => {
+			window.cancelAnimationFrame(frameId);
+		};
+	}, [selection.card.id, selection.column.id]);
+
 	return (
 		<div
 			style={{
@@ -260,7 +290,10 @@ export function ColumnContextPanel({
 			}}
 		>
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
-				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
+				<div
+					ref={scrollContainerRef}
+					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
+				>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
 							key={column.id}
