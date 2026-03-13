@@ -7,6 +7,7 @@ import packageJson from "../package.json" with { type: "json" };
 
 import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
 import { isMcpSubcommand, runMcpSubcommand } from "./commands/mcp.js";
+import { isTaskSubcommand, runTaskSubcommand } from "./commands/task.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
 import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
@@ -25,7 +26,9 @@ import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { resolveInteractiveShellCommand } from "./server/shell.js";
 import { shutdownRuntimeServer } from "./server/shutdown-coordinator.js";
 import { collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry } from "./server/workspace-registry.js";
+import { installKanbanSkillFiles, resolveKanbanSkillCommandPrefix } from "./skills/kanban-skill.js";
 import { loadWorkspaceContext } from "./state/workspace-state.js";
+import { detectInstalledCommands } from "./terminal/agent-registry.js";
 import type { TerminalSessionManager } from "./terminal/session-manager.js";
 import { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown } from "./update/auto-update.js";
 
@@ -136,6 +139,7 @@ function printHelp(): void {
 	console.log("Usage:");
 	console.log("  kanban [--agent <id>] [--port <number|auto>] [--no-open] [--help] [--version]");
 	console.log("  npx -y kanban mcp");
+	console.log("  kanban task --help");
 	console.log("");
 	console.log(`Runtime URL: ${getKanbanRuntimeOrigin()}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
@@ -462,6 +466,10 @@ async function run(): Promise<void> {
 		await runHooksSubcommand(argv);
 		return;
 	}
+	if (isTaskSubcommand(argv)) {
+		await runTaskSubcommand(argv);
+		return;
+	}
 
 	const options = parseCliOptions(argv);
 
@@ -488,6 +496,20 @@ async function run(): Promise<void> {
 		if (didChange) {
 			console.log(`Default agent set to ${options.agent}.`);
 		}
+	}
+
+	try {
+		const detectedCommands = detectInstalledCommands();
+		const commandPrefix = resolveKanbanSkillCommandPrefix({
+			currentVersion: KANBAN_VERSION,
+		});
+		await installKanbanSkillFiles({
+			commandPrefix,
+			installClaudeSkill: detectedCommands.includes("claude"),
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`Could not install Kanban skill files: ${message}`);
 	}
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
