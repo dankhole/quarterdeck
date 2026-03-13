@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.10]
+
+- Add "Start task" button to create task card -- press `c` to create, type your task, then Cmd+Shift+Enter to start it right away
+- Add "Cancel auto-review" actions to task cards
+- Add "Start All" button to backlog column header to start all backlog tasks at once
+- Add Cmd+Enter shortcut for sending diff comments
+- Show keyboard shortcut hints on the create task button
+- Simplified shortcut icon picker
+- Show authentication warning callout in Linear MCP setup dialog
+- Show loading state on trash button while deleting
+- Resume paused droid tasks when read/grep hooks fire
+- Fix stale diff persisting when switching between task details
+- Fix stale script shortcuts lingering after switching projects
+- Fix git history flicker during scope switches
+- Fix terminal rendering for Droid CLI in split terminals
+- Fix linked task start animations
+- Detect when GitHub/Linear/Kanban MCPs are already installed to skip unnecessary setup dialogs
+- Fix resuming trashed tasks after terminal refactors
+- Fix Droid CLI review state transitions around AskUser tool calls
+- Default new users to Cline CLI when installed
+- Highlight active branch button in blue
+- Fix settings dialog appearing disabled during config refresh
+- Center selected detail card in sidebar
+
 ## [0.1.9]
 
 - Fix worktree paths with symlinks in ignored directories being incorrectly treated as active
