@@ -1,4 +1,4 @@
-import { Button, Classes, Colors } from "@blueprintjs/core";
+import { Button, Classes, Colors, Icon } from "@blueprintjs/core";
 import { Droppable } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
@@ -17,6 +17,7 @@ export function BoardColumn({
 	taskSessions,
 	onCreateTask,
 	onStartTask,
+	onStartAllTasks,
 	onClearTrash,
 	inlineTaskCreator,
 	editingTaskId,
@@ -42,6 +43,7 @@ export function BoardColumn({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onStartTask?: (taskId: string) => void;
+	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
@@ -66,6 +68,7 @@ export function BoardColumn({
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
+	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
@@ -110,6 +113,17 @@ export function BoardColumn({
 						<span style={{ fontWeight: 600 }}>{column.title}</span>
 						<span style={{ color: lightColor }}>{column.cards.length}</span>
 					</div>
+					{canStartAllTasks ? (
+						<Button
+							icon={<Icon icon="play" color={column.cards.length > 0 ? Colors.GRAY4 : Colors.GRAY3} />}
+							variant="minimal"
+							size="small"
+							onClick={onStartAllTasks}
+							disabled={column.cards.length === 0}
+							aria-label="Start all backlog tasks"
+							title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+						/>
+					) : null}
 					{canClearTrash ? (
 						<Button
 							icon="trash"

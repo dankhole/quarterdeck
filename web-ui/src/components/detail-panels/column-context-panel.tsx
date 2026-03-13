@@ -22,6 +22,7 @@ function ColumnSection({
 	taskSessions,
 	onCreateTask,
 	onStartTask,
+	onStartAllTasks,
 	onClearTrash,
 	inlineTaskCreator,
 	editingTaskId,
@@ -42,6 +43,7 @@ function ColumnSection({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onStartTask?: (taskId: string) => void;
+	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
@@ -59,6 +61,7 @@ function ColumnSection({
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
+	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
@@ -87,6 +90,18 @@ function ColumnSection({
 						</span>
 					}
 				/>
+				{canStartAllTasks ? (
+					<Button
+						icon={<Icon icon="play" color={column.cards.length > 0 ? Colors.GRAY4 : Colors.GRAY3} />}
+						variant="minimal"
+						size="small"
+						onClick={onStartAllTasks}
+						disabled={column.cards.length === 0}
+						aria-label="Start all backlog tasks"
+						title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+						style={{ marginRight: 4 }}
+					/>
+				) : null}
 				{canClearTrash ? (
 					<Button
 						icon="trash"
@@ -183,6 +198,7 @@ export function ColumnContextPanel({
 	onTaskDragEnd,
 	onCreateTask,
 	onStartTask,
+	onStartAllTasks,
 	onClearTrash,
 	inlineTaskCreator,
 	editingTaskId,
@@ -201,6 +217,7 @@ export function ColumnContextPanel({
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
 	onStartTask?: (taskId: string) => void;
+	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
@@ -254,6 +271,7 @@ export function ColumnContextPanel({
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
 							onStartTask={column.id === "backlog" ? onStartTask : undefined}
+							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}

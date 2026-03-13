@@ -87,6 +87,7 @@ export interface UseBoardInteractionsResult {
 	handleDeleteDependency: (dependencyId: string) => void;
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
 	handleStartTask: (taskId: string) => void;
+	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
 	handleDetailTaskDragEnd: (result: DropResult) => void;
 	handleCardSelect: (taskId: string) => void;
 	handleMoveToTrash: () => void;
@@ -506,6 +507,54 @@ export function useBoardInteractions({
 		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, setBoard, tryProgrammaticCardMove],
 	);
 
+	const handleStartAllBacklogTasks = useCallback(
+		(taskIds?: string[]) => {
+			const requestedTaskIds =
+				taskIds ??
+				board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ??
+				[];
+			if (requestedTaskIds.length === 0) {
+				return;
+			}
+
+			let nextBoard = board;
+			const pendingStarts: BoardCard[] = [];
+			const startedTaskIds = new Set<string>();
+
+			for (const taskId of requestedTaskIds) {
+				if (!taskId || startedTaskIds.has(taskId)) {
+					continue;
+				}
+				const selection = findCardSelection(nextBoard, taskId);
+				if (!selection || selection.column.id !== "backlog") {
+					continue;
+				}
+				const moved = moveTaskToColumn(nextBoard, taskId, "in_progress", { insertAtTop: true });
+				if (!moved.moved) {
+					continue;
+				}
+				nextBoard = moved.board;
+				const movedSelection = findCardSelection(nextBoard, taskId);
+				if (!movedSelection) {
+					continue;
+				}
+				pendingStarts.push(movedSelection.card);
+				startedTaskIds.add(taskId);
+			}
+
+			if (pendingStarts.length === 0) {
+				return;
+			}
+
+			setBoard(nextBoard);
+			maybeRequestNotificationPermissionForTaskStart();
+			for (const task of pendingStarts) {
+				void kickoffTaskInProgress(task, task.id, "backlog");
+			}
+		},
+		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, setBoard],
+	);
+
 	const handleDetailTaskDragEnd = useCallback(
 		(result: DropResult) => {
 			handleDragEnd(result);
@@ -656,6 +705,7 @@ export function useBoardInteractions({
 		handleDeleteDependency,
 		handleDragEnd,
 		handleStartTask,
+		handleStartAllBacklogTasks,
 		handleDetailTaskDragEnd,
 		handleCardSelect,
 		handleMoveToTrash,

@@ -460,6 +460,7 @@ export default function App(): ReactElement {
 		handleDeleteDependency,
 		handleDragEnd,
 		handleStartTask,
+		handleStartAllBacklogTasks,
 		handleDetailTaskDragEnd,
 		handleCardSelect,
 		handleMoveToTrash,
@@ -499,6 +500,7 @@ export default function App(): ReactElement {
 	const {
 		handleCreateAndStartTask,
 		handleStartTaskWithServiceSetupPrompt,
+		handleStartAllBacklogTasksWithServiceSetupPrompt,
 		taskStartServicePromptDialogOpen,
 		taskStartServicePromptDialogPrompt,
 		taskStartServicePromptDoNotShowAgain,
@@ -512,6 +514,7 @@ export default function App(): ReactElement {
 		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
 		handleCreateTask,
 		handleStartTask,
+		handleStartAllBacklogTasks,
 		prepareTerminalForShortcut,
 		prepareWaitForTerminalConnectionReady,
 		sendTaskSessionInput,
@@ -802,6 +805,7 @@ export default function App(): ReactElement {
 											onCardSelect={handleCardSelect}
 											onCreateTask={handleOpenCreateTask}
 											onStartTask={handleStartTaskWithServiceSetupPrompt}
+											onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
 											onClearTrash={handleOpenClearTrash}
 											inlineTaskCreator={inlineTaskCreator}
 											editingTaskId={editingTaskId}
@@ -878,6 +882,7 @@ export default function App(): ReactElement {
 								onTaskDragEnd={handleDetailTaskDragEnd}
 								onCreateTask={handleOpenCreateTask}
 								onStartTask={handleStartTaskWithServiceSetupPrompt}
+								onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
 								onClearTrash={handleOpenClearTrash}
 								inlineTaskCreator={inlineTaskCreator}
 								editingTaskId={editingTaskId}

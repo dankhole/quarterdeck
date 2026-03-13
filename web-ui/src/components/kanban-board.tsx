@@ -33,6 +33,7 @@ export function KanbanBoard({
 	onCardSelect,
 	onCreateTask,
 	onStartTask,
+	onStartAllTasks,
 	onClearTrash,
 	inlineTaskCreator,
 	editingTaskId,
@@ -55,6 +56,7 @@ export function KanbanBoard({
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
 	onStartTask?: (taskId: string) => void;
+	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
@@ -370,6 +372,7 @@ export function KanbanBoard({
 						taskSessions={taskSessions}
 						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
 						onStartTask={column.id === "backlog" ? onStartTask : undefined}
+						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 						inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 						editingTaskId={column.id === "backlog" ? editingTaskId : null}

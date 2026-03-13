@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildTaskStartServicePromptContent,
+	collectPendingTaskStartServicePrompts,
 	detectTaskStartServicePromptIds,
 	getTaskStartServicePromptKey,
 	isTaskStartServicePromptAlreadyConfigured,
@@ -225,5 +226,62 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 describe("getTaskStartServicePromptKey", () => {
 	it("builds stable task prompt keys", () => {
 		expect(getTaskStartServicePromptKey("task-1", "linear_mcp")).toBe("task-1:linear_mcp");
+	});
+});
+
+describe("collectPendingTaskStartServicePrompts", () => {
+	it("deduplicates prompts across multiple tasks while keeping affected task ids", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Check github issue and sync with linear",
+					},
+					{
+						taskId: "task-2",
+						prompt: "Investigate github PR history",
+					},
+				],
+				taskStartSetupAvailability: null,
+				promptAcknowledgements: {},
+				isPromptDoNotShowAgainEnabled: () => false,
+			}),
+		).toEqual([
+			{
+				promptId: "linear_mcp",
+				taskIds: ["task-1"],
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-1", "task-2"],
+			},
+		]);
+	});
+
+	it("filters out configured, acknowledged, and suppressed prompts", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Use github and linear context",
+					},
+					{
+						taskId: "task-2",
+						prompt: "Create a task from this bug report",
+					},
+				],
+				taskStartSetupAvailability: {
+					githubCli: true,
+					linearMcp: false,
+					kanbanMcp: false,
+				},
+				promptAcknowledgements: {
+					[getTaskStartServicePromptKey("task-1", "linear_mcp")]: true,
+				},
+				isPromptDoNotShowAgainEnabled: (promptId) => promptId === "kanban_mcp",
+			}),
+		).toEqual([]);
 	});
 });
