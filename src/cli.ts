@@ -456,6 +456,11 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
+	// TODO: remove this backward-compatibility branch after users have uninstalled Kanban MCP.
+	if (argv[0] === "mcp") {
+		console.warn("Deprecated. Please uninstall Kanban MCP.");
+		return;
+	}
 	if (isHooksSubcommand(argv)) {
 		await runHooksSubcommand(argv);
 		return;
