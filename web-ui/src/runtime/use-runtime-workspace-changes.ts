@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeWorkspaceChangesResponse } from "@/runtime/types";
+import type { RuntimeWorkspaceChangesMode, RuntimeWorkspaceChangesResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeWorkspaceChangesResult {
@@ -15,11 +15,12 @@ export function useRuntimeWorkspaceChanges(
 	taskId: string | null,
 	workspaceId: string | null,
 	baseRef: string | null,
+	mode: RuntimeWorkspaceChangesMode = "working_copy",
 	stateVersion = 0,
 	pollIntervalMs: number | null = null,
 ): UseRuntimeWorkspaceChangesResult {
 	const hasWorkspaceScope = taskId !== null && workspaceId !== null && baseRef !== null;
-	const scopeKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}`;
+	const scopeKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}`;
 	const previousScopeKeyRef = useRef(scopeKey);
 	const isScopeTransitioning = hasWorkspaceScope && previousScopeKeyRef.current !== scopeKey;
 	const queryFn = useCallback(async () => {
@@ -30,8 +31,9 @@ export function useRuntimeWorkspaceChanges(
 		return await trpcClient.workspace.getChanges.query({
 			taskId,
 			baseRef,
+			mode,
 		});
-	}, [baseRef, taskId, workspaceId]);
+	}, [baseRef, mode, taskId, workspaceId]);
 	const changesQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
 		enabled: hasWorkspaceScope,
 		queryFn,

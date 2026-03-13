@@ -39,7 +39,9 @@ function FileTreeRow({
 				}}
 			>
 				<Icon icon={isDirectory ? "folder-close" : "document"} size={14} />
-				<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{node.name}</span>
+				<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} style={{ minWidth: 0, flex: "1 1 auto" }}>
+					{node.name}
+				</span>
 				{fileStats ? (
 					<span
 						className={Classes.MONOSPACE_TEXT}
@@ -72,10 +74,12 @@ export function FileTreePanel({
 	workspaceFiles,
 	selectedPath,
 	onSelectPath,
+	panelFlex = "0.6 1 0",
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
+	panelFlex?: string;
 }): React.ReactElement {
 	const referencedPaths = useMemo(() => {
 		return workspaceFiles?.map((file) => file.path) ?? [];
@@ -96,7 +100,7 @@ export function FileTreePanel({
 		<div
 			style={{
 				display: "flex",
-				flex: "0.6 1 0",
+				flex: panelFlex,
 				flexDirection: "column",
 				minWidth: 0,
 				minHeight: 0,
