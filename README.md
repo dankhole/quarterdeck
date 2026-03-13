@@ -39,46 +39,26 @@ npx kanban
 
 1. Install an agent like Claude Code, Codex, Gemini, OpenCode, Cline
 2. Run `kanban` (install with `npm i -g kanban`) in your repo to launch a web GUI
-3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can even use Kanban MCP to tell an agent to create parallelizable tasks and links in clever ways to get projects done quickly.
+3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can also ask your agent to manage tasks through Kanban's built-in skill and task CLI.
 4. When they finish, you review diffs, leave comments, and commit or make a PR.
 
-## MCP Setup
+## Agent Skill Setup
 
-Use MCP to let the agent add and start tasks on the kanban board itself, decomposing large work into parallelizable linked tasks in clever ways to get work done quicker.
+Kanban writes a `kanban` skill file on every launch so your agent can add, update, link, and start tasks using `kanban task` commands.
 
-<details>
-<summary>Install instructions</summary>
+Generated skill paths:
 
-Claude Code:
+- `~/.agents/skills/kanban/SKILL.md`
+- `~/.claude/skills/kanban/SKILL.md` (written when Claude is installed)
 
-```bash
-claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp
-```
+The file is regenerated each launch so new Kanban releases can update the instructions automatically.
 
-Codex:
+The skill includes:
 
-```bash
-codex mcp add kanban -- npx -y kanban mcp
-```
-
-Cline CLI:
-
-```bash
-cline mcp add kanban -- npx -y kanban mcp
-```
-
-</details>
-
-With the MCP tools, your agent can:
-
-- `list_tasks`: see what's on the board, including task links and auto-review settings
-- `create_task`: add a new task to backlog, optionally with auto-review enabled
-- `update_task`: change a task's prompt, base ref, plan mode, or auto-review settings
-- `link_tasks`: link tasks so backlog work waits on another task to finish first
-- `unlink_tasks`: remove a task link
-- `start_task`: kick off a task (creates the worktree, launches the agent)
-
-Task linking handles both parallelization and dependencies. Link multiple backlog tasks to the same dependency and they all become ready once it finishes. Auto-review settings let a task automatically commit, open a PR, or move to trash.
+- command reference for `kanban task list|create|update|link|unlink|start`
+- parameter guidance for each command
+- dependency and auto-review workflow notes
+- ephemeral worktree handling (`.kanban/worktrees`) so commands target the main workspace
 
 ## License
 

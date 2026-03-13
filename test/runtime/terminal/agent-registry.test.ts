@@ -32,7 +32,6 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.taskStartSetupAvailability).toEqual({
 			githubCli: expect.any(Boolean),
 			linearMcp: expect.any(Boolean),
-			kanbanMcp: expect.any(Boolean),
 		});
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
@@ -53,7 +52,6 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.taskStartSetupAvailability).toEqual({
 			githubCli: expect.any(Boolean),
 			linearMcp: expect.any(Boolean),
-			kanbanMcp: expect.any(Boolean),
 		});
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);

@@ -47,7 +47,6 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		taskStartSetupAvailability: {
 			githubCli: false,
 			linearMcp: false,
-			kanbanMcp: false,
 		},
 		shortcuts: [],
 		commitPromptTemplate: "",

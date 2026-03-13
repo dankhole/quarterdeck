@@ -78,8 +78,8 @@ describe("telemetry events", () => {
 			selected_agent_id: "codex",
 		});
 		trackTaskStartSetupInstallCommandClicked({
-			setup_kind: "kanban_mcp",
-			selected_agent_id: "claude",
+			setup_kind: "github_cli",
+			selected_agent_id: "codex",
 		});
 
 		expect(captureMock).toHaveBeenNthCalledWith(1, "task_start_setup_prompt_viewed", {
@@ -87,8 +87,8 @@ describe("telemetry events", () => {
 			selected_agent_id: "codex",
 		});
 		expect(captureMock).toHaveBeenNthCalledWith(2, "task_start_setup_install_command_clicked", {
-			setup_kind: "kanban_mcp",
-			selected_agent_id: "claude",
+			setup_kind: "github_cli",
+			selected_agent_id: "codex",
 		});
 	});
 

@@ -6,7 +6,6 @@ import { createServer as createNetServer } from "node:net";
 import packageJson from "../package.json" with { type: "json" };
 
 import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
-import { isMcpSubcommand, runMcpSubcommand } from "./commands/mcp.js";
 import { isTaskSubcommand, runTaskSubcommand } from "./commands/task.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
 import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
@@ -138,7 +137,6 @@ function printHelp(): void {
 	console.log("");
 	console.log("Usage:");
 	console.log("  kanban [--agent <id>] [--port <number|auto>] [--no-open] [--help] [--version]");
-	console.log("  npx -y kanban mcp");
 	console.log("  kanban task --help");
 	console.log("");
 	console.log(`Runtime URL: ${getKanbanRuntimeOrigin()}`);
@@ -458,10 +456,6 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
-	if (isMcpSubcommand(argv)) {
-		await runMcpSubcommand(argv);
-		return;
-	}
 	if (isHooksSubcommand(argv)) {
 		await runHooksSubcommand(argv);
 		return;

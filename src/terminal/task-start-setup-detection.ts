@@ -155,7 +155,7 @@ function getOpenCodeConfigPaths(): string[] {
 	return paths;
 }
 
-function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear" | "kanban"): boolean {
+function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boolean {
 	switch (agentId) {
 		case "claude":
 			return hasClaudeMcpServer(serverName);
@@ -182,6 +182,5 @@ export function detectTaskStartSetupAvailability(selectedAgentId: RuntimeAgentId
 	return {
 		githubCli: isCommandAvailable("gh"),
 		linearMcp: hasAgentMcpServer(selectedAgentId, "linear"),
-		kanbanMcp: hasAgentMcpServer(selectedAgentId, "kanban"),
 	};
 }

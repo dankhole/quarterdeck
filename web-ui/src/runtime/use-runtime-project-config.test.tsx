@@ -57,7 +57,6 @@ function createRuntimeConfigResponse(
 		taskStartSetupAvailability: {
 			githubCli: false,
 			linearMcp: false,
-			kanbanMcp: false,
 		},
 		shortcuts,
 		commitPromptTemplate: "",

@@ -440,7 +440,6 @@ export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema
 export const runtimeTaskStartSetupAvailabilitySchema = z.object({
 	githubCli: z.boolean(),
 	linearMcp: z.boolean(),
-	kanbanMcp: z.boolean(),
 });
 export type RuntimeTaskStartSetupAvailability = z.infer<typeof runtimeTaskStartSetupAvailabilitySchema>;
 

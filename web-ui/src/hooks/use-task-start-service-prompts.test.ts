@@ -37,51 +37,6 @@ describe("detectTaskStartServicePromptIds", () => {
 		expect(detectTaskStartServicePromptIds("Please check github for related PRs")).toEqual(["github_cli"]);
 	});
 
-	it("detects task creation prompts for kanban setup", () => {
-		expect(detectTaskStartServicePromptIds("Please create a task for the crash report")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects add task without article", () => {
-		expect(detectTaskStartServicePromptIds("please add task for onboarding")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects ticket and card creation prompts", () => {
-		expect(detectTaskStartServicePromptIds("Can you make a ticket for this bug?")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("Create card for release blockers")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects numbered task creation", () => {
-		expect(detectTaskStartServicePromptIds("create 3 tasks for the migration")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("add three tasks")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects break down into tasks", () => {
-		expect(detectTaskStartServicePromptIds("break down into tasks")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("break this up into tasks")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects split/decompose/turn into tasks", () => {
-		expect(detectTaskStartServicePromptIds("split this into tasks")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("decompose into tasks")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("turn this project into tasks")).toEqual(["kanban_mcp"]);
-		expect(detectTaskStartServicePromptIds("convert this spec into tickets")).toEqual(["kanban_mcp"]);
-	});
-
-	it("detects start tasks", () => {
-		expect(detectTaskStartServicePromptIds("start a task for the bug fix")).toEqual(["kanban_mcp"]);
-	});
-
-	it("does not trigger kanban for unrelated task mentions", () => {
-		expect(detectTaskStartServicePromptIds("this is a difficult task")).toEqual([]);
-		expect(detectTaskStartServicePromptIds("finish the remaining tasks")).toEqual([]);
-	});
-
-	it("detects both github and kanban when both present", () => {
-		const result = detectTaskStartServicePromptIds("Make a task, then check github issue details");
-		expect(result).toContain("kanban_mcp");
-		expect(result).toContain("github_cli");
-	});
-
 	it("detects both linear and github when both present", () => {
 		const result = detectTaskStartServicePromptIds(
 			"Investigate https://github.com/cline/kanban/issues/42 and then check LINEAR-12",
@@ -152,49 +107,6 @@ describe("buildTaskStartServicePromptContent", () => {
 		expect(content.installCommand).toBeUndefined();
 	});
 
-	it("returns kanban mcp install command", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp");
-		expect(content.installCommand).toBe("claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp");
-		expect(content.learnMoreUrl).toBe("https://github.com/cline/kanban");
-	});
-
-	it("returns codex-specific kanban mcp install command", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp", {
-			selectedAgentId: "codex",
-		});
-		expect(content.installCommand).toBe("codex mcp add kanban -- npx -y kanban mcp");
-	});
-
-	it("returns opencode-specific kanban mcp install command", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp", {
-			selectedAgentId: "opencode",
-		});
-		expect(content.installCommand).toBe("opencode mcp add");
-		expect(content.description).toContain("server type: Local MCP server");
-		expect(content.description).toContain("command: npx -y kanban mcp");
-	});
-
-	it("returns droid-specific kanban mcp install command", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp", {
-			selectedAgentId: "droid",
-		});
-		expect(content.installCommand).toBe("droid mcp add kanban -- npx -y kanban mcp");
-	});
-
-	it("returns cline-specific kanban mcp install command", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp", {
-			selectedAgentId: "cline",
-		});
-		expect(content.installCommand).toBe("cline mcp add kanban -- npx -y kanban mcp");
-	});
-
-	it("returns gemini kanban mcp install command with user scope", () => {
-		const content = buildTaskStartServicePromptContent("kanban_mcp", {
-			selectedAgentId: "gemini",
-		});
-		expect(content.installCommand).toBe("gemini mcp add kanban npx -y kanban mcp --scope user");
-	});
-
 	it("returns opencode-specific linear guidance with oauth", () => {
 		const content = buildTaskStartServicePromptContent("linear_mcp", {
 			selectedAgentId: "opencode",
@@ -213,13 +125,11 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 	it("maps each prompt to its presence flag", () => {
 		const availability = {
 			githubCli: true,
-			linearMcp: true,
-			kanbanMcp: false,
+			linearMcp: false,
 		};
 
-		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", availability)).toBe(true);
+		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", availability)).toBe(false);
 		expect(isTaskStartServicePromptAlreadyConfigured("github_cli", availability)).toBe(true);
-		expect(isTaskStartServicePromptAlreadyConfigured("kanban_mcp", availability)).toBe(false);
 	});
 });
 
@@ -267,20 +177,15 @@ describe("collectPendingTaskStartServicePrompts", () => {
 						taskId: "task-1",
 						prompt: "Use github and linear context",
 					},
-					{
-						taskId: "task-2",
-						prompt: "Create a task from this bug report",
-					},
 				],
 				taskStartSetupAvailability: {
 					githubCli: true,
 					linearMcp: false,
-					kanbanMcp: false,
 				},
 				promptAcknowledgements: {
 					[getTaskStartServicePromptKey("task-1", "linear_mcp")]: true,
 				},
-				isPromptDoNotShowAgainEnabled: (promptId) => promptId === "kanban_mcp",
+				isPromptDoNotShowAgainEnabled: () => false,
 			}),
 		).toEqual([]);
 	});

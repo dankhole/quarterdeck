@@ -40,11 +40,8 @@ type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
 
 const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
-const KANBAN_ACTION_WORDS = /\b(?:create|make|add|start|break|split|decompose|turn|convert)\b/i;
-const KANBAN_NOUN_WORDS = /\b(?:tasks?|tickets?|cards?|projects?)\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND =
 	"claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
-const DEFAULT_KANBAN_INSTALL_COMMAND = "claude mcp add --transport stdio --scope user kanban -- npx -y kanban mcp";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -60,23 +57,6 @@ function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | und
 			return "cline mcp add linear https://mcp.linear.app/mcp --type http";
 		default:
 			return DEFAULT_LINEAR_INSTALL_COMMAND;
-	}
-}
-
-function getKanbanMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
-	switch (selectedAgentId) {
-		case "codex":
-			return "codex mcp add kanban -- npx -y kanban mcp";
-		case "gemini":
-				return "gemini mcp add kanban npx -y kanban mcp --scope user";
-		case "opencode":
-			return "opencode mcp add";
-		case "droid":
-			return "droid mcp add kanban -- npx -y kanban mcp";
-		case "cline":
-			return "cline mcp add kanban -- npx -y kanban mcp";
-		default:
-			return DEFAULT_KANBAN_INSTALL_COMMAND;
 	}
 }
 
@@ -131,10 +111,6 @@ export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupK
 		results.push("github_cli");
 	}
 
-	if (KANBAN_ACTION_WORDS.test(normalizedPrompt) && KANBAN_NOUN_WORDS.test(normalizedPrompt)) {
-		results.push("kanban_mcp");
-	}
-
 	return results;
 }
 
@@ -151,8 +127,6 @@ export function isTaskStartServicePromptAlreadyConfigured(
 			return taskStartSetupAvailability.linearMcp;
 		case "github_cli":
 			return taskStartSetupAvailability.githubCli;
-		case "kanban_mcp":
-			return taskStartSetupAvailability.kanbanMcp;
 		default:
 			return false;
 	}
@@ -199,23 +173,6 @@ export function buildTaskStartServicePromptContent(
 							installCommandDescription: "Install command:",
 						}
 					: {}),
-			};
-		}
-		case "kanban_mcp": {
-			const installCommand = getKanbanMcpInstallCommand(options?.selectedAgentId ?? null);
-			const isOpenCode = options?.selectedAgentId === "opencode";
-			return {
-				id: promptId,
-				title: "Set up Kanban MCP before starting this task?",
-				description: isOpenCode
-					? "This prompt looks like task-creation work. In OpenCode, run the command below, then use name: kanban, server type: Local MCP server, and command: npx -y kanban mcp."
-					: "This prompt looks like task-creation work. Connecting the Kanban MCP helps the agent create and manage tasks directly.",
-				learnMoreUrl: "https://github.com/cline/kanban",
-				installCommand,
-				installButtonLabel: "Run install command",
-				installCommandDescription: isOpenCode
-					? "Run this first, then follow OpenCode prompts:"
-					: "Install command:",
 			};
 		}
 		default:
@@ -323,8 +280,6 @@ export function useTaskStartServicePrompts({
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartLinearSetupPromptDoNotShowAgain, false);
 	const [isGithubTaskStartPromptDoNotShowAgain, setIsGithubTaskStartPromptDoNotShowAgain] =
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartGithubSetupPromptDoNotShowAgain, false);
-	const [isKanbanTaskStartPromptDoNotShowAgain, setIsKanbanTaskStartPromptDoNotShowAgain] =
-		useBooleanLocalStorageValue(LocalStorageKey.TaskStartKanbanSetupPromptDoNotShowAgain, false);
 	const [pendingTaskStartServicePromptQueue, setPendingTaskStartServicePromptQueue] = useState<
 		PendingTaskStartServicePromptState[]
 	>([]);
@@ -364,17 +319,11 @@ export function useTaskStartServicePrompts({
 					return isLinearTaskStartPromptDoNotShowAgain;
 				case "github_cli":
 					return isGithubTaskStartPromptDoNotShowAgain;
-				case "kanban_mcp":
-					return isKanbanTaskStartPromptDoNotShowAgain;
 				default:
 					return false;
 			}
 		},
-		[
-			isGithubTaskStartPromptDoNotShowAgain,
-			isKanbanTaskStartPromptDoNotShowAgain,
-			isLinearTaskStartPromptDoNotShowAgain,
-		],
+		[isGithubTaskStartPromptDoNotShowAgain, isLinearTaskStartPromptDoNotShowAgain],
 	);
 
 	const setTaskStartServicePromptDoNotShowAgainPreference = useCallback(
@@ -386,18 +335,11 @@ export function useTaskStartServicePrompts({
 				case "github_cli":
 					setIsGithubTaskStartPromptDoNotShowAgain(value);
 					return;
-				case "kanban_mcp":
-					setIsKanbanTaskStartPromptDoNotShowAgain(value);
-					return;
 				default:
 					return;
 			}
 		},
-		[
-			setIsGithubTaskStartPromptDoNotShowAgain,
-			setIsKanbanTaskStartPromptDoNotShowAgain,
-			setIsLinearTaskStartPromptDoNotShowAgain,
-		],
+		[setIsGithubTaskStartPromptDoNotShowAgain, setIsLinearTaskStartPromptDoNotShowAgain],
 	);
 
 	const acknowledgeTaskStartServicePrompt = useCallback(

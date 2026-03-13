@@ -72,9 +72,6 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 				[
 					"[mcp_servers.linear]",
 					'url = "https://mcp.linear.app/mcp"',
-					"",
-					"[mcp_servers.kanban]",
-					'command = "npx"',
 				].join("\n"),
 				"utf8",
 			);
@@ -88,7 +85,6 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			expect(availability).toEqual({
 				githubCli: true,
 				linearMcp: true,
-				kanbanMcp: true,
 			});
 		} finally {
 			cleanupBin();
@@ -108,8 +104,7 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 					"{",
 					"  // local MCP servers",
 					'  "mcp": {',
-					'    "linear": { "type": "remote" },',
-					'    "kanban": { "type": "local" }',
+					'    "linear": { "type": "remote" }',
 					"  }",
 					"}",
 				].join("\n"),
@@ -141,7 +136,6 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			expect(opencodeAvailability).toEqual({
 				githubCli: false,
 				linearMcp: true,
-				kanbanMcp: true,
 			});
 
 			const claudeAvailability = withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, () =>
@@ -150,7 +144,6 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			expect(claudeAvailability).toEqual({
 				githubCli: false,
 				linearMcp: true,
-				kanbanMcp: false,
 			});
 		} finally {
 			cleanupBin();
