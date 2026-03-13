@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.11]
+
+- Add Kanban skill for creating and managing tasks directly from your agent
+- Remove Kanban MCP server in favor of skill-based task automation
+
 ## [0.1.10]
 
 - Add "Start task" button to create task card -- press `c` to create, type your task, then Cmd+Shift+Enter to start it right away
