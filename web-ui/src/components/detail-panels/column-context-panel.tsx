@@ -320,7 +320,13 @@ export function ColumnContextPanel({
 				<div
 					ref={scrollContainerRef}
 					className="flex flex-col gap-2 p-2"
-					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
+					style={{
+						flex: "1 1 0",
+						minHeight: 0,
+						overflowY: "auto",
+						overscrollBehavior: "contain",
+						overflowAnchor: "none",
+					}}
 				>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
