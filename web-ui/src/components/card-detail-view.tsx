@@ -331,6 +331,15 @@ export function CardDetailView({
 		[agentPanelRatio, isResizing, stopResize],
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
+	const lastTurnViewKey =
+		diffMode === "last_turn"
+			? [
+					sessionSummary?.state ?? "none",
+					sessionSummary?.latestTurnCheckpoint?.commit ?? "none",
+					sessionSummary?.previousTurnCheckpoint?.commit ?? "none",
+				].join(":")
+			: null;
+	const shouldClearLastTurnDuringTransition = diffMode !== "last_turn" || sessionSummary?.state === "running";
 	const { changes: workspaceChanges, isRuntimeAvailable } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
@@ -338,6 +347,8 @@ export function CardDetailView({
 		diffMode,
 		taskWorkspaceStateVersion,
 		isDocumentVisible && !gitHistoryPanel ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
+		lastTurnViewKey,
+		shouldClearLastTurnDuringTransition,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;

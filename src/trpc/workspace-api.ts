@@ -249,10 +249,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const summary = terminalManager.getSummary(normalizedInput.taskId);
 				const fromCheckpoint = summary?.previousTurnCheckpoint;
 				const toCheckpoint = summary?.latestTurnCheckpoint;
-				if (!fromCheckpoint || !toCheckpoint) {
-					if (!toCheckpoint) {
-						return await createEmptyWorkspaceChangesResponse(taskCwd);
-					}
+				if (!toCheckpoint) {
+					return await createEmptyWorkspaceChangesResponse(taskCwd);
+				}
+				if (summary?.state === "running" || !fromCheckpoint) {
 					return await getWorkspaceChangesFromRef({
 						cwd: taskCwd,
 						fromRef: toCheckpoint.commit,

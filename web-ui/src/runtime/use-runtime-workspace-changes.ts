@@ -18,22 +18,26 @@ export function useRuntimeWorkspaceChanges(
 	mode: RuntimeWorkspaceChangesMode = "working_copy",
 	stateVersion = 0,
 	pollIntervalMs: number | null = null,
+	viewKey: string | null = null,
+	clearOnViewTransition = true,
 ): UseRuntimeWorkspaceChangesResult {
 	const hasWorkspaceScope = taskId !== null && workspaceId !== null && baseRef !== null;
-	const scopeKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}`;
-	const previousScopeKeyRef = useRef(scopeKey);
-	const isScopeTransitioning = hasWorkspaceScope && previousScopeKeyRef.current !== scopeKey;
+	const normalizedViewKey = viewKey ?? "__default__";
+	const requestKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}`;
+	const previousRequestKeyRef = useRef(requestKey);
+	const isRequestTransitioning = hasWorkspaceScope && previousRequestKeyRef.current !== requestKey;
 	const queryFn = useCallback(async () => {
 		if (!taskId || !workspaceId || !baseRef) {
 			throw new Error("Missing workspace scope.");
 		}
+		void normalizedViewKey;
 		const trpcClient = getRuntimeTrpcClient(workspaceId);
 		return await trpcClient.workspace.getChanges.query({
 			taskId,
 			baseRef,
 			mode,
 		});
-	}, [baseRef, mode, taskId, workspaceId]);
+	}, [baseRef, mode, normalizedViewKey, taskId, workspaceId]);
 	const changesQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
 		enabled: hasWorkspaceScope,
 		queryFn,
@@ -48,16 +52,18 @@ export function useRuntimeWorkspaceChanges(
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
-		if (!isScopeTransitioning) {
+		if (!isRequestTransitioning) {
 			return;
 		}
-		previousScopeKeyRef.current = scopeKey;
-		changesQuery.setData(null);
-	}, [changesQuery.setData, isScopeTransitioning, scopeKey]);
+		previousRequestKeyRef.current = requestKey;
+		if (clearOnViewTransition) {
+			changesQuery.setData(null);
+		}
+	}, [changesQuery.setData, clearOnViewTransition, isRequestTransitioning, requestKey]);
 
 	useEffect(() => {
 		if (!hasWorkspaceScope) {
-			previousScopeKeyRef.current = scopeKey;
+			previousRequestKeyRef.current = requestKey;
 			previousStateVersionRef.current = stateVersion;
 			return;
 		}
@@ -66,7 +72,7 @@ export function useRuntimeWorkspaceChanges(
 		}
 		previousStateVersionRef.current = stateVersion;
 		void changesQuery.refetch();
-	}, [changesQuery.refetch, hasWorkspaceScope, scopeKey, stateVersion]);
+	}, [changesQuery.refetch, hasWorkspaceScope, requestKey, stateVersion]);
 
 	useEffect(() => {
 		if (!hasWorkspaceScope || pollIntervalMs == null) {
@@ -98,9 +104,10 @@ export function useRuntimeWorkspaceChanges(
 		};
 	}
 
-	const visibleChanges = isScopeTransitioning ? null : changesQuery.data;
-	const visibleIsLoading = isScopeTransitioning || changesQuery.isLoading;
-	const visibleIsRuntimeAvailable = isScopeTransitioning ? true : !changesQuery.isError;
+	const shouldHideDuringTransition = clearOnViewTransition && isRequestTransitioning;
+	const visibleChanges = shouldHideDuringTransition ? null : changesQuery.data;
+	const visibleIsLoading = shouldHideDuringTransition || changesQuery.isLoading;
+	const visibleIsRuntimeAvailable = shouldHideDuringTransition ? true : !changesQuery.isError;
 
 	return {
 		changes: visibleChanges,
