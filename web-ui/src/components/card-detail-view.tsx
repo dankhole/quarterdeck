@@ -27,8 +27,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 	return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
-const COLLAPSED_FILE_TREE_PANEL_BASIS = "30%";
-const EXPANDED_FILE_TREE_PANEL_BASIS = "20%";
+const COLLAPSED_FILE_TREE_PANEL_BASIS = "33.3333%";
+const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
 
 function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): React.ReactElement {
 	return (
@@ -154,7 +154,7 @@ function DiffToolbar({
 	);
 }
 
-const DEFAULT_AGENT_PANEL_RATIO = 0.38;
+const DEFAULT_AGENT_PANEL_RATIO = 0.4;
 const MIN_AGENT_PANEL_RATIO = 0.15;
 const MAX_AGENT_PANEL_RATIO = 0.75;
 

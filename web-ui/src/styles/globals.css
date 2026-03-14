@@ -293,6 +293,101 @@ body.kb-dependency-link-mode {
 	background: transparent;
 }
 
+.kb-diff-row-noncommentable {
+	cursor: default;
+}
+
+.kb-diff-row-noncommentable:hover .kb-diff-comment-gutter {
+	display: none;
+}
+
+.kb-diff-row-noncommentable:hover .kb-diff-line-number-text {
+	opacity: 1;
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-context:hover {
+	background: transparent;
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-added:hover {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.2);
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-removed:hover {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.2);
+}
+
+.kb-diff-split-grid-shell {
+	position: relative;
+	background: var(--bp-palette-dark-gray-2);
+}
+
+.kb-diff-split-grid-backgrounds {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	pointer-events: none;
+}
+
+.kb-diff-split-grid-background-column {
+	background-color: oklch(from var(--bp-palette-dark-gray-5) l c h / 0.08);
+	background-image: linear-gradient(
+		135deg,
+		oklch(from var(--bp-palette-dark-gray-5) l c h / 0.24) 25%,
+		transparent 25%,
+		transparent 50%,
+		oklch(from var(--bp-palette-dark-gray-5) l c h / 0.24) 50%,
+		oklch(from var(--bp-palette-dark-gray-5) l c h / 0.24) 75%,
+		transparent 75%,
+		transparent
+	);
+	background-size: 12px 12px;
+	background-position: 0 0;
+}
+
+.kb-diff-split-grid-background-column-right {
+	border-left: 1px solid var(--bp-palette-dark-gray-5);
+}
+
+.kb-diff-split-grid-content {
+	position: relative;
+	z-index: 1;
+}
+
+.kb-diff-split-grid-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.kb-diff-split-cell {
+	min-width: 0;
+	min-height: 100%;
+}
+
+.kb-diff-split-cell-right {
+	border-left: 1px solid var(--bp-palette-dark-gray-5);
+}
+
+.kb-diff-split-cell-filled {
+	background: var(--bp-palette-dark-gray-2);
+}
+
+.kb-diff-split-cell-placeholder {
+	background: transparent;
+}
+
+.kb-diff-row-placeholder {
+	height: 100%;
+	background: transparent;
+	pointer-events: none;
+	user-select: none;
+}
+
+.kb-diff-row-placeholder:hover {
+	background: transparent;
+}
+
 .kb-diff-segment-added {
 	background: oklch(from var(--bp-intent-success-rest) l c h / 0.3);
 	border-radius: 2px;

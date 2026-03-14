@@ -8,6 +8,7 @@ import {
 	buildUnifiedDiffRows,
 	countAddedRemoved,
 	DiffRowText,
+	getHighlightedLineHtml,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
 	truncatePathMiddle,
@@ -38,6 +39,8 @@ export interface DiffLineComment {
 	variant: "added" | "removed" | "context";
 	comment: string;
 }
+
+export type DiffViewMode = "unified" | "split";
 
 function commentKey(filePath: string, lineNumber: number, variant: DiffLineComment["variant"]): string {
 	return `${filePath}:${variant}:${lineNumber}`;
@@ -247,6 +250,256 @@ function UnifiedDiff({
 	);
 }
 
+interface SplitDiffRowPair {
+	key: string;
+	left: UnifiedDiffRow | null;
+	right: UnifiedDiffRow | null;
+}
+
+function pairRowsForSplit(rows: UnifiedDiffRow[]): SplitDiffRowPair[] {
+	const pairs: SplitDiffRowPair[] = [];
+	let index = 0;
+	while (index < rows.length) {
+		const row = rows[index];
+		if (!row) {
+			index += 1;
+			continue;
+		}
+		const nextRow = rows[index + 1];
+		if (row.variant === "removed" && nextRow?.variant === "added") {
+			pairs.push({
+				key: `pair-${row.key}-${nextRow.key}`,
+				left: row,
+				right: nextRow,
+			});
+			index += 2;
+			continue;
+		}
+		if (row.variant === "removed") {
+			pairs.push({
+				key: `pair-left-${row.key}`,
+				left: row,
+				right: null,
+			});
+			index += 1;
+			continue;
+		}
+		if (row.variant === "added") {
+			pairs.push({
+				key: `pair-right-${row.key}`,
+				left: null,
+				right: row,
+			});
+			index += 1;
+			continue;
+		}
+
+		pairs.push({
+			key: `pair-context-${row.key}`,
+			left: row,
+			right: row,
+		});
+		index += 1;
+	}
+
+	return pairs;
+}
+
+function isCommentableOnSplitSide(row: UnifiedDiffRow, side: "left" | "right"): boolean {
+	if (row.variant === "removed") {
+		return side === "left";
+	}
+	if (row.variant === "added") {
+		return side === "right";
+	}
+	return side === "right";
+}
+
+function SplitDiff({
+	path,
+	oldText,
+	newText,
+	comments,
+	onAddComment,
+	onUpdateComment,
+	onDeleteComment,
+}: {
+	path: string;
+	oldText: string | null | undefined;
+	newText: string;
+	comments: Map<string, DiffLineComment>;
+	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
+	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+}): React.ReactElement {
+	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
+	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
+	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
+
+	const toggleBlock = useCallback((id: string) => {
+		setExpandedBlocks((prev) => ({
+			...prev,
+			[id]: !prev[id],
+		}));
+	}, []);
+
+	const renderSide = (row: UnifiedDiffRow | null, side: "left" | "right"): React.ReactElement => {
+		if (!row || row.lineNumber == null) {
+			return (
+				<div className="kb-diff-row kb-diff-row-context kb-diff-row-noncommentable kb-diff-row-placeholder">
+					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+						<span className="kb-diff-line-number-text" />
+					</span>
+					<DiffRowText
+						row={{ key: `empty-${side}`, lineNumber: null, variant: "context", text: "" }}
+						highlightedLineHtml={null}
+						grammar={prismGrammar}
+						language={prismLanguage}
+					/>
+				</div>
+			);
+		}
+
+		const canCommentOnSide = isCommentableOnSplitSide(row, side);
+		const rowKey = canCommentOnSide ? commentKey(path, row.lineNumber, row.variant) : null;
+		const existingComment = rowKey ? comments.get(rowKey) : null;
+		const hasComment = existingComment != null;
+		const baseClass =
+			row.variant === "added"
+				? "kb-diff-row kb-diff-row-added"
+				: row.variant === "removed"
+					? "kb-diff-row kb-diff-row-removed"
+					: "kb-diff-row kb-diff-row-context";
+		const rowClass = hasComment
+			? `${baseClass} kb-diff-row-commented`
+			: canCommentOnSide
+				? baseClass
+				: `${baseClass} kb-diff-row-noncommentable`;
+		const canClickRow = canCommentOnSide && !hasComment;
+		const highlightedLineHtml = getHighlightedLineHtml(row.text, prismGrammar, prismLanguage);
+
+		return (
+			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }}
+					onClick={
+						canClickRow
+							? () => {
+								onAddComment(row.lineNumber!, row.text, row.variant);
+							}
+							: undefined
+					}
+				>
+					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+						<span className="kb-diff-line-number-text">{row.lineNumber}</span>
+						{canCommentOnSide ? (
+							<span
+								className="kb-diff-comment-gutter"
+								onClick={
+									hasComment
+										? (event) => {
+											event.stopPropagation();
+											onDeleteComment(row.lineNumber!, row.variant);
+										}
+										: undefined
+								}
+								style={hasComment ? { cursor: "pointer" } : undefined}
+							>
+								<span className="kb-diff-gutter-icon-comment">
+									<Icon icon="comment" size={12} />
+								</span>
+								<span className="kb-diff-gutter-icon-delete">
+									<Icon icon="cross" size={12} color={Colors.RED5} />
+								</span>
+							</span>
+						) : null}
+					</span>
+					<DiffRowText
+						row={row}
+						highlightedLineHtml={highlightedLineHtml}
+						grammar={prismGrammar}
+						language={prismLanguage}
+					/>
+				</div>
+				{existingComment ? (
+					<InlineComment
+						comment={existingComment}
+						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
+						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+					/>
+				) : null}
+			</div>
+		);
+	};
+
+	const renderPairs = (sourceRows: UnifiedDiffRow[]): React.ReactElement[] => {
+		const pairs = pairRowsForSplit(sourceRows);
+		return pairs.map((pair) => (
+			<div key={pair.key} className="kb-diff-split-grid-row">
+				<div
+					className={`kb-diff-split-cell ${pair.left ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
+				>
+					{renderSide(pair.left, "left")}
+				</div>
+				<div
+					className={`kb-diff-split-cell kb-diff-split-cell-right ${pair.right ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
+				>
+					{renderSide(pair.right, "right")}
+				</div>
+			</div>
+		));
+	};
+
+	return (
+		<div className="kb-diff-split-grid-shell">
+			<div className="kb-diff-split-grid-backgrounds" aria-hidden>
+				<div className="kb-diff-split-grid-background-column" />
+				<div className="kb-diff-split-grid-background-column kb-diff-split-grid-background-column-right" />
+			</div>
+			<div className="kb-diff-split-grid-content">
+			{displayItems.map((item) => {
+				if (item.type === "row") {
+					return renderPairs([item.row]);
+				}
+
+				return (
+					<div key={item.block.id}>
+						<div className="kb-diff-split-grid-row">
+							<div className="kb-diff-split-cell kb-diff-split-cell-filled">
+								<Button
+								variant="minimal"
+								size="small"
+								fill
+								alignText="left"
+								icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
+								text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+								onClick={() => toggleBlock(item.block.id)}
+								style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
+							/>
+							</div>
+							<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
+								<Button
+									variant="minimal"
+									size="small"
+									fill
+									alignText="left"
+									icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
+									text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+									onClick={() => toggleBlock(item.block.id)}
+									style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
+								/>
+							</div>
+						</div>
+						{item.block.expanded ? renderPairs(item.block.rows) : null}
+					</div>
+				);
+			})}
+			</div>
+		</div>
+	);
+}
+
 export function DiffViewerPanel({
 	workspaceFiles,
 	selectedPath,
@@ -255,6 +508,7 @@ export function DiffViewerPanel({
 	onSendToTerminal,
 	comments,
 	onCommentsChange,
+	viewMode = "unified",
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
@@ -263,6 +517,7 @@ export function DiffViewerPanel({
 	onSendToTerminal?: (formatted: string) => void;
 	comments: Map<string, DiffLineComment>;
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
+	viewMode?: DiffViewMode;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -585,21 +840,39 @@ export function DiffViewerPanel({
 											<div>
 												{group.entries.map((entry) => (
 													<div key={entry.id} className="kb-diff-entry">
-														<UnifiedDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
-															onUpdateComment={(lineNumber, variant, text) =>
-																handleUpdateComment(group.path, lineNumber, variant, text)
-															}
-															onDeleteComment={(lineNumber, variant) =>
-																handleDeleteComment(group.path, lineNumber, variant)
-															}
-														/>
+												{viewMode === "split" ? (
+													<SplitDiff
+														path={group.path}
+														oldText={entry.oldText}
+														newText={entry.newText}
+														comments={comments}
+														onAddComment={(lineNumber, lineText, variant) =>
+															handleAddComment(group.path, lineNumber, lineText, variant)
+														}
+														onUpdateComment={(lineNumber, variant, text) =>
+															handleUpdateComment(group.path, lineNumber, variant, text)
+														}
+														onDeleteComment={(lineNumber, variant) =>
+															handleDeleteComment(group.path, lineNumber, variant)
+														}
+													/>
+												) : (
+													<UnifiedDiff
+														path={group.path}
+														oldText={entry.oldText}
+														newText={entry.newText}
+														comments={comments}
+														onAddComment={(lineNumber, lineText, variant) =>
+															handleAddComment(group.path, lineNumber, lineText, variant)
+														}
+														onUpdateComment={(lineNumber, variant, text) =>
+															handleUpdateComment(group.path, lineNumber, variant, text)
+														}
+														onDeleteComment={(lineNumber, variant) =>
+															handleDeleteComment(group.path, lineNumber, variant)
+														}
+													/>
+												)}
 													</div>
 												))}
 											</div>
