@@ -421,6 +421,7 @@ function ProjectRow({
 					size="sm"
 					icon={isRemovingProject ? <Spinner size={12} /> : <Trash2 size={14} />}
 					disabled={hasAnyProjectRemoval && !isRemovingProject}
+					className={isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined}
 					onClick={(e) => {
 						e.stopPropagation();
 						onRemove(project.id);

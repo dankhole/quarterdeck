@@ -57,8 +57,8 @@ web-ui Stack
 
 Styling mental model
 - Use Tailwind utility classes as the primary styling system. Prefer `className` over inline `style={{}}`.
+- Prefer Tailwind classes over adding custom CSS in `globals.css` when possible. Conditional Tailwind classes via `cn()` are better than CSS overrides for state-driven styling (e.g. selected/active variants). Reserve `globals.css` for things Tailwind can't express: complex selectors (sibling combinators, attribute selectors), app-level layout glue, or styles that genuinely need to cascade.
 - Only use inline `style={{}}` for truly dynamic values (colors from props/variables, computed positions from drag-and-drop, runtime-dependent dimensions).
-- App-level layout glue and complex CSS selectors (`:hover`, sibling selectors, attribute selectors) live in `globals.css` with `kb-` prefixed classes.
 - The design system tokens are defined in `globals.css` inside `@theme { ... }`. Use Tailwind utilities that reference them: `bg-surface-0`, `text-text-primary`, `border-border`, etc.
 
 Design tokens (defined in globals.css @theme)
