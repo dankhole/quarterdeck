@@ -54,24 +54,26 @@ export function TaskTrashWarningDialog({
 			<AlertDialogTitle className="text-sm font-semibold text-text-primary">
 				Unsaved task changes detected
 			</AlertDialogTitle>
-			<AlertDialogDescription className="text-text-secondary mt-2 mb-3">
+			<AlertDialogDescription className="text-[13px] text-text-secondary mt-2">
 				{warning
 					? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
 					: "This task has uncommitted changes."}
 			</AlertDialogDescription>
-			<p className="text-[13px] text-text-primary">
+			<p className="text-[13px] text-text-secondary mt-3">
 				Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.
 			</p>
 			{warning?.workspaceInfo?.path ? (
-				<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto my-2">
+				<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto mt-3">
 					{formatPathForDisplay(warning.workspaceInfo.path)}
 				</pre>
 			) : null}
-			{guidance.map((line) => (
-				<p key={line} className="text-[13px] text-text-secondary">
-					{line}
-				</p>
-			))}
+			<div className="mt-3 flex flex-col gap-1">
+				{guidance.map((line) => (
+					<p key={line} className="text-[13px] text-text-secondary">
+						{line}
+					</p>
+				))}
+			</div>
 			<div className="flex justify-end gap-2 mt-4">
 				<AlertDialogCancel asChild>
 					<Button variant="default" onClick={onCancel}>Cancel</Button>
