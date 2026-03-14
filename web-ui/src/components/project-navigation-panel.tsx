@@ -211,14 +211,14 @@ const ESSENTIAL_SHORTCUTS = [
 	{ keys: [MOD, "\u23CE"], label: "Create task" },
 	{ keys: [MOD, "Shift", "\u23CE"], label: "Create & start" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
-	{ keys: ["\u2191"], label: "Previous card" },
+	{ keys: [MOD], label: "Hold to link tasks" },
 ];
 
 const MORE_SHORTCUTS = [
+	{ keys: ["\u2191"], label: "Previous card" },
 	{ keys: ["\u2193"], label: "Next card" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Cancel / back" },
-	{ keys: [MOD], label: "Hold to link tasks" },
 	{ keys: ["\u2191"], label: "Previous commit" },
 	{ keys: ["\u2193"], label: "Next commit" },
 ];
