@@ -9,7 +9,7 @@ import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
-import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { clampTextWithInlineSuffix, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -29,6 +29,11 @@ const SESSION_ACTIVITY_COLOR = {
 	muted: "var(--color-text-tertiary)",
 	secondary: "var(--color-text-secondary)",
 } as const;
+
+const DESCRIPTION_COLLAPSE_LINES = 3;
+const DESCRIPTION_EXPAND_LABEL = "See more";
+const DESCRIPTION_COLLAPSE_LABEL = "Less";
+const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
 
 function formatToolLabel(toolName: string, activityText: string): string {
 	const marker = `${toolName}: `;
@@ -125,8 +130,12 @@ export function BoardCard({
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
+	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
+	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
+	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
+	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -161,10 +170,39 @@ export function BoardCard({
 		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
 	}, [titleRect.width]);
 
+	useEffect(() => {
+		setDescriptionFont(readElementFontShorthand(descriptionRef.current, DEFAULT_TEXT_MEASURE_FONT));
+	}, [descriptionRect.width, displayPromptSplit.description]);
+
+	useEffect(() => {
+		setIsDescriptionExpanded(false);
+	}, [card.id, displayPromptSplit.description]);
+
 	const stopEvent = (event: MouseEvent<HTMLElement>) => {
 		event.preventDefault();
 		event.stopPropagation();
 	};
+
+	const descriptionDisplay = useMemo(() => {
+		if (!displayPromptSplit.description) {
+			return {
+				text: "",
+				isTruncated: false,
+			};
+		}
+		if (descriptionRect.width <= 0) {
+			return {
+				text: displayPromptSplit.description,
+				isTruncated: false,
+			};
+		}
+		return clampTextWithInlineSuffix(displayPromptSplit.description, {
+			maxWidthPx: descriptionRect.width,
+			maxLines: DESCRIPTION_COLLAPSE_LINES,
+			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+			measureText: (value) => measureTextWidth(value, descriptionFont),
+		});
+	}, [descriptionFont, descriptionRect.width, displayPromptSplit.description]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
@@ -333,21 +371,59 @@ export function BoardCard({
 								) : null}
 							</div>
 							{displayPromptSplit.description ? (
-								<p
-									className={cn(
-										"text-sm leading-[1.4]",
-										isTrashCard ? "text-text-tertiary" : "text-text-secondary",
-									)}
-									style={{
-										margin: "2px 0 0",
-										display: "-webkit-box",
-										WebkitLineClamp: 3,
-										WebkitBoxOrient: "vertical",
-										overflow: "hidden",
-									}}
-								>
-									{displayPromptSplit.description}
-								</p>
+								<div ref={descriptionContainerRef}>
+									<p
+										ref={descriptionRef}
+										className={cn(
+											"text-sm leading-[1.4]",
+											isTrashCard ? "text-text-tertiary" : "text-text-secondary",
+										)}
+										style={{
+											margin: "2px 0 0",
+										}}
+									>
+										{isDescriptionExpanded || !descriptionDisplay.isTruncated
+											? displayPromptSplit.description
+											: descriptionDisplay.text}
+										{descriptionDisplay.isTruncated ? (
+											isDescriptionExpanded ? (
+												<>
+													{" "}
+													<button
+														type="button"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														aria-expanded={isDescriptionExpanded}
+														aria-label="Collapse task description"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															setIsDescriptionExpanded(false);
+														}}
+													>
+														{DESCRIPTION_COLLAPSE_LABEL}
+													</button>
+												</>
+											) : (
+												<>
+													{"… "}
+													<button
+														type="button"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														aria-expanded={isDescriptionExpanded}
+														aria-label="Expand task description"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															setIsDescriptionExpanded(true);
+														}}
+													>
+														{DESCRIPTION_EXPAND_LABEL}
+													</button>
+												</>
+											)
+										) : null}
+									</p>
+								</div>
 							) : null}
 							{sessionActivity ? (
 								<div

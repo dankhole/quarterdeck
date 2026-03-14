@@ -43,13 +43,26 @@ vi.mock("@/utils/react-use", () => ({
 	],
 }));
 
-vi.mock("@/utils/task-prompt", () => ({
-	truncateTaskPromptLabel: (prompt: string) => prompt,
-	splitPromptToTitleDescriptionByWidth: (prompt: string) => ({
-		title: prompt,
-		description: "",
-	}),
+vi.mock("@/utils/text-measure", () => ({
+	DEFAULT_TEXT_MEASURE_FONT: "400 14px sans-serif",
+	measureTextWidth: (value: string) => value.length * 8,
+	readElementFontShorthand: () => "400 14px sans-serif",
 }));
+
+vi.mock("@/utils/task-prompt", async () => {
+	const actual = await vi.importActual<typeof import("@/utils/task-prompt")>("@/utils/task-prompt");
+	return {
+		...actual,
+		truncateTaskPromptLabel: (prompt: string) => prompt.split("||")[0]?.trim() ?? "",
+		splitPromptToTitleDescriptionByWidth: (prompt: string) => {
+			const [title, ...descriptionParts] = prompt.split("||");
+			return {
+				title: title?.trim() ?? "",
+				description: descriptionParts.join("||").trim(),
+			};
+		},
+	};
+});
 
 function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>) {
 	return {
@@ -146,5 +159,39 @@ describe("BoardCard", () => {
 		expect(trashButton).toBeInstanceOf(HTMLButtonElement);
 		expect((trashButton as HTMLButtonElement | null)?.disabled).toBe(true);
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
+	});
+
+	it("shows inline see more and less controls for long descriptions", async () => {
+		const description =
+			"Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau final hidden segment";
+
+		await act(async () => {
+			root.render(<BoardCard card={createCard({ prompt: `Task title||${description}` })} index={0} columnId="backlog" />);
+		});
+
+		const findButton = (label: string) =>
+			Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label);
+
+		const seeMoreButton = findButton("See more");
+		expect(seeMoreButton).toBeDefined();
+		expect(container.textContent).not.toContain("final hidden segment");
+
+		await act(async () => {
+			seeMoreButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			seeMoreButton?.click();
+		});
+
+		expect(findButton("See more")).toBeUndefined();
+		expect(findButton("Less")).toBeDefined();
+		expect(container.textContent).toContain(description);
+
+		const lessButton = findButton("Less");
+		await act(async () => {
+			lessButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			lessButton?.click();
+		});
+
+		expect(findButton("See more")).toBeDefined();
+		expect(container.textContent).not.toContain("final hidden segment");
 	});
 });
