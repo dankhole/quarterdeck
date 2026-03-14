@@ -5,6 +5,7 @@ import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
@@ -351,7 +352,7 @@ function AgentTerminalPanelLayout({
 						disabled={isMoveToTrashLoading}
 						onClick={onMoveToTrash}
 					>
-						{isMoveToTrashLoading ? "..." : "Move Card To Trash"}
+						{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
 					</Button>
 				</div>
 			) : null}
