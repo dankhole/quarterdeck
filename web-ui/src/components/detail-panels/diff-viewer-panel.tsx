@@ -76,6 +76,12 @@ function flattenFilePathsForDisplay(paths: string[]): string[] {
 	return ordered;
 }
 
+function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTMLElement): number {
+	const containerRect = container.getBoundingClientRect();
+	const sectionRect = section.getBoundingClientRect();
+	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
+}
+
 function InlineComment({
 	comment,
 	onChange,
@@ -585,7 +591,7 @@ export function DiffViewerPanel({
 			if (!section) {
 				continue;
 			}
-			if (section.offsetTop <= probeOffset) {
+			if (getSectionTopWithinScrollContainer(container, section) <= probeOffset) {
 				activePath = group.path;
 				continue;
 			}
@@ -630,7 +636,7 @@ export function DiffViewerPanel({
 		}, 320);
 		const containerStyle = window.getComputedStyle(container);
 		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
-		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		const targetScrollTop = Math.max(0, getSectionTopWithinScrollContainer(container, section) - paddingTop);
 		container.scrollTop = targetScrollTop;
 	}, []);
 

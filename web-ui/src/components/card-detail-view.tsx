@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
+import { GitCompareArrows, Maximize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -129,9 +129,19 @@ function DiffToolbar({
 }): React.ReactElement {
 	return (
 		<div
-			className="flex items-center justify-between px-2 py-1"
+			className="flex items-center gap-1 px-2 py-1"
 			style={{ borderBottom: "1px solid var(--color-divider)" }}
 		>
+			{isExpanded ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<X size={14} />}
+					onClick={onToggleExpand}
+					className="h-5"
+					aria-label="Collapse expanded diff view"
+				/>
+			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<Button
 					variant="ghost"
@@ -152,14 +162,16 @@ function DiffToolbar({
 					Last Turn
 				</Button>
 			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-				onClick={onToggleExpand}
-				className="h-5"
-				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
-			/>
+			{!isExpanded ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<Maximize2 size={14} />}
+					onClick={onToggleExpand}
+					className="ml-auto h-5"
+					aria-label="Expand split diff view"
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -345,7 +357,6 @@ export function CardDetailView({
 					sessionSummary?.previousTurnCheckpoint?.commit ?? "none",
 				].join(":")
 			: null;
-	const shouldClearLastTurnDuringTransition = diffMode !== "last_turn" || sessionSummary?.state === "running";
 	const { changes: workspaceChanges, isRuntimeAvailable } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
@@ -354,7 +365,7 @@ export function CardDetailView({
 		taskWorkspaceStateVersion,
 		isDocumentVisible && !gitHistoryPanel ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
 		lastTurnViewKey,
-		shouldClearLastTurnDuringTransition,
+		true,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
@@ -390,18 +401,6 @@ export function CardDetailView({
 	);
 
 	useHotkeys(
-		"esc",
-		() => {
-			onBack();
-		},
-		{
-			ignoreEventWhen: (event) => isTypingTarget(event.target),
-			preventDefault: true,
-		},
-		[onBack],
-	);
-
-	useHotkeys(
 		"up,left",
 		() => {
 			handleSelectAdjacentCard(-1);
@@ -411,6 +410,24 @@ export function CardDetailView({
 			preventDefault: true,
 		},
 		[handleSelectAdjacentCard],
+	);
+
+	useWindowEvent(
+		"keydown",
+		useCallback(
+			(event: KeyboardEvent) => {
+				if (event.key !== "Escape" || event.defaultPrevented || isTypingTarget(event.target)) {
+					return;
+				}
+				event.preventDefault();
+				if (isDiffExpanded) {
+					setIsDiffExpanded(false);
+					return;
+				}
+				onBack();
+			},
+			[isDiffExpanded, onBack],
+		),
 	);
 
 	useHotkeys(
