@@ -339,7 +339,7 @@ export function BoardCard({
 										isTrashCard ? "text-text-tertiary" : "text-text-secondary",
 									)}
 									style={{
-										margin: "4px 0 0",
+										margin: "2px 0 0",
 										display: "-webkit-box",
 										WebkitLineClamp: 3,
 										WebkitBoxOrient: "vertical",
@@ -351,7 +351,7 @@ export function BoardCard({
 							) : null}
 							{sessionActivity ? (
 								<div
-									className="flex gap-1.5 items-start mt-1"
+									className="flex gap-1.5 items-start mt-[6px]"
 									style={{
 									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
