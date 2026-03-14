@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -207,7 +207,7 @@ async function readJsonFile(path: string): Promise<unknown | null> {
 
 async function writeJsonFileAtomic(path: string, payload: unknown): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
-	const tempPath = `${path}.tmp.${process.pid}.${Date.now()}`;
+	const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
 	await writeFile(tempPath, JSON.stringify(payload, null, 2), "utf8");
 	await rename(tempPath, path);
 }
