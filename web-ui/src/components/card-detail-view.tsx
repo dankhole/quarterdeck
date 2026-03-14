@@ -619,8 +619,8 @@ export function CardDetailView({
 										onClose={onBottomTerminalClose}
 										minimalHeaderTitle="Terminal"
 										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 										showRightBorder={false}
 										onConnectionReady={onBottomTerminalConnectionReady}
