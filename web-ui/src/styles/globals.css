@@ -293,6 +293,11 @@ body.kb-dependency-link-mode {
 	color: #fff;
 }
 
+.kb-file-tree-row.kb-file-tree-row-selected:hover {
+	background: var(--color-accent);
+	color: #fff;
+}
+
 /* -- Diff rows -- */
 
 .kb-diff-row {
@@ -563,6 +568,10 @@ body.kb-dependency-link-mode {
 	padding: 8px 12px;
 	border-top: 1px solid var(--color-border);
 	background: var(--color-surface-1);
+}
+
+.kb-diff-comments-count {
+	font-size: 12px;
 }
 
 /* -- Focus ring -- */

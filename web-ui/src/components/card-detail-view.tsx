@@ -128,23 +128,25 @@ function DiffToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center justify-between border-b border-border bg-surface-1 px-2 py-1.5">
-			<div className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 p-0.5">
+		<div className="flex items-center justify-between border-b border-border px-2 py-1">
+			<div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
 				<Button
-					variant={mode === "last_turn" ? "primary" : "ghost"}
-					size="sm"
-					onClick={() => onModeChange("last_turn")}
-					className="h-7 rounded-sm text-xs"
-				>
-					Last Turn
-				</Button>
-				<Button
-					variant={mode === "working_copy" ? "primary" : "ghost"}
+					variant="ghost"
 					size="sm"
 					onClick={() => onModeChange("working_copy")}
-					className="h-7 rounded-sm text-xs"
+					className="h-5 rounded-sm text-xs"
+					style={mode === "working_copy" ? { backgroundColor: "var(--color-surface-4)", color: "var(--color-text-primary)" } : undefined}
 				>
 					All Changes
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => onModeChange("last_turn")}
+					className="h-5 rounded-sm text-xs"
+					style={mode === "last_turn" ? { backgroundColor: "var(--color-surface-4)", color: "var(--color-text-primary)" } : undefined}
+				>
+					Last Turn
 				</Button>
 			</div>
 			<Button
@@ -152,6 +154,7 @@ function DiffToolbar({
 				size="sm"
 				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
 				onClick={onToggleExpand}
+				className="h-6"
 				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
 			/>
 		</div>
@@ -255,7 +258,7 @@ export function CardDetailView({
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
-	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("last_turn");
+	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
 	const [agentPanelRatio, setAgentPanelRatio] = useState(DEFAULT_AGENT_PANEL_RATIO);
 	const [isResizing, setIsResizing] = useState(false);
@@ -354,7 +357,7 @@ export function CardDetailView({
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
-	const emptyDiffTitle = diffMode === "last_turn" ? "No last-turn changes yet" : "No working changes";
+	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
 	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
 	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
 	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
@@ -431,7 +434,7 @@ export function CardDetailView({
 	}, [selection.card.id]);
 
 	useEffect(() => {
-		setDiffMode("last_turn");
+		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
 	return (

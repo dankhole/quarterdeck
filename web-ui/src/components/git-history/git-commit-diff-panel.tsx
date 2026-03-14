@@ -151,10 +151,10 @@ export function GitCommitDiffPanel({
 			return;
 		}
 		programmaticScrollUntilRef.current = Date.now() + 320;
-		const containerRect = container.getBoundingClientRect();
-		const sectionRect = section.getBoundingClientRect();
-		const delta = sectionRect.top - containerRect.top - 6;
-		container.scrollTop = Math.max(0, container.scrollTop + delta);
+		const containerStyle = window.getComputedStyle(container);
+		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
+		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		container.scrollTop = targetScrollTop;
 	}, []);
 
 	useEffect(() => {

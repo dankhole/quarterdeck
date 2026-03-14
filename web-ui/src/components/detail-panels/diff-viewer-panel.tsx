@@ -628,12 +628,10 @@ export function DiffViewerPanel({
 			programmaticScrollUntilRef.current = 0;
 			programmaticScrollClearTimerRef.current = null;
 		}, 320);
-
-		const containerRect = container.getBoundingClientRect();
-		const sectionRect = section.getBoundingClientRect();
-		const viewportPadding = 6;
-		const delta = sectionRect.top - containerRect.top - viewportPadding;
-		container.scrollTop = Math.max(0, container.scrollTop + delta);
+		const containerStyle = window.getComputedStyle(container);
+		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
+		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		container.scrollTop = targetScrollTop;
 	}, []);
 
 	useEffect(() => {
@@ -895,7 +893,7 @@ export function DiffViewerPanel({
 					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
 						<div className="kb-diff-comments-footer">
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-								<span className="text-text-secondary">
+								<span className="kb-diff-comments-count text-text-secondary">
 									{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
 								</span>
 								<Button
