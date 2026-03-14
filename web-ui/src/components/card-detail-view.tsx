@@ -128,14 +128,17 @@ function DiffToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center justify-between border-b border-border px-2 py-1">
-			<div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
+		<div
+			className="flex items-center justify-between px-2 py-1"
+			style={{ borderBottom: "1px solid var(--color-divider)" }}
+		>
+			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={() => onModeChange("working_copy")}
 					className="h-5 rounded-sm text-xs"
-					style={mode === "working_copy" ? { backgroundColor: "var(--color-surface-4)", color: "var(--color-text-primary)" } : undefined}
+					style={mode === "working_copy" ? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" } : undefined}
 				>
 					All Changes
 				</Button>
@@ -144,7 +147,7 @@ function DiffToolbar({
 					size="sm"
 					onClick={() => onModeChange("last_turn")}
 					className="h-5 rounded-sm text-xs"
-					style={mode === "last_turn" ? { backgroundColor: "var(--color-surface-4)", color: "var(--color-text-primary)" } : undefined}
+					style={mode === "last_turn" ? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" } : undefined}
 				>
 					Last Turn
 				</Button>
@@ -154,7 +157,7 @@ function DiffToolbar({
 				size="sm"
 				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
 				onClick={onToggleExpand}
-				className="h-6"
+				className="h-5"
 				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
 			/>
 		</div>
