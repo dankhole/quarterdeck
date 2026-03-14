@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { ArrowBigUp, Check, Command, CornerDownLeft } from "lucide-react";
+import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
 import type { ReactElement } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
@@ -125,7 +125,7 @@ export function TaskInlineCreateCard({
 			</div>
 
 			<div className="flex flex-col gap-2 mt-3">
-				<label htmlFor={planModeId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer">
+				<label htmlFor={planModeId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
 					<RadixCheckbox.Root
 						id={planModeId}
 						aria-label="Start in plan mode"
@@ -155,7 +155,7 @@ export function TaskInlineCreateCard({
 				</div>
 
 				<div className="flex items-center gap-2 flex-wrap">
-					<label htmlFor={autoReviewEnabledId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer">
+					<label htmlFor={autoReviewEnabledId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
 						<RadixCheckbox.Root
 							id={autoReviewEnabledId}
 							aria-label="Enable automatic review action"
@@ -169,22 +169,25 @@ export function TaskInlineCreateCard({
 						</RadixCheckbox.Root>
 						<span>Automatically</span>
 					</label>
-					<select
-						id={autoReviewModeId}
-						value={autoReviewMode}
-						onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
-						className="h-7 rounded-md border border-border-bright bg-surface-3 px-2 text-[12px] text-text-primary focus:border-border-focus focus:outline-none"
-						style={{
-							width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
-							maxWidth: "100%",
-						}}
-					>
-						{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
-							<option key={option.value} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</select>
+					<div className="relative inline-flex">
+						<select
+							id={autoReviewModeId}
+							value={autoReviewMode}
+							onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
+							className="h-7 appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none"
+							style={{
+								width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
+								maxWidth: "100%",
+							}}
+						>
+							{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
+						<ChevronDown size={14} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+					</div>
 				</div>
 			</div>
 
