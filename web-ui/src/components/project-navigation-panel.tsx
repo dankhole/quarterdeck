@@ -130,12 +130,15 @@ export function ProjectNavigationPanel({
 				))}
 			</div>
 			<ShortcutsCard />
-			<div
-				className="text-text-tertiary text-center"
+			<a
+				href="https://cline.bot"
+				target="_blank"
+				rel="noopener noreferrer"
+				className="text-text-tertiary hover:text-text-primary text-center block transition-colors"
 				style={{ padding: "6px 12px", fontSize: 10 }}
 			>
 				Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
-			</div>
+			</a>
 			<AlertDialog
 				open={pendingProjectRemoval !== null}
 				onOpenChange={(open) => {
