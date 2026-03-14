@@ -1,4 +1,4 @@
-import { Button, Card, Classes, Colors, Icon, NonIdealState, TextArea } from "@blueprintjs/core";
+import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -14,7 +14,7 @@ import {
 	truncatePathMiddle,
 	type UnifiedDiffRow,
 } from "@/components/shared/diff-renderer";
-import { panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
 
@@ -93,8 +93,8 @@ function InlineComment({
 
 	return (
 		<div className="kb-diff-inline-comment">
-			<TextArea
-				inputRef={textAreaRef}
+			<textarea
+				ref={textAreaRef}
 				value={comment.comment}
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={(event) => {
@@ -105,10 +105,9 @@ function InlineComment({
 				}}
 				onClick={(event) => event.stopPropagation()}
 				placeholder="Add a comment..."
-				autoResize
 				rows={1}
-				fill
-				style={{ fontSize: "var(--bp-typography-size-body-small)" }}
+				className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none"
+				style={{ fontSize: 12 }}
 			/>
 		</div>
 	);
@@ -181,7 +180,7 @@ function UnifiedDiff({
 		return (
 			<div key={row.key}>
 				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }} onClick={handleRowClick}>
-					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
 						{row.lineNumber != null ? (
 							<span
@@ -197,10 +196,10 @@ function UnifiedDiff({
 								style={hasComment ? { cursor: "pointer" } : undefined}
 							>
 								<span className="kb-diff-gutter-icon-comment">
-									<Icon icon="comment" size={12} />
+									<MessageSquare size={12} />
 								</span>
 								<span className="kb-diff-gutter-icon-delete">
-									<Icon icon="cross" size={12} color={Colors.RED5} />
+									<X size={12} className="text-status-red" />
 								</span>
 							</span>
 						) : null}
@@ -233,15 +232,15 @@ function UnifiedDiff({
 				return (
 					<div key={item.block.id}>
 						<Button
-							variant="minimal"
-							size="small"
+							variant="ghost"
+							size="sm"
 							fill
-							alignText="left"
-							icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
-							text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 							onClick={() => toggleBlock(item.block.id)}
-							style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
-						/>
+							style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0, justifyContent: "flex-start" }}
+						>
+							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+						</Button>
 						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
@@ -349,7 +348,7 @@ function SplitDiff({
 		if (!row || row.lineNumber == null) {
 			return (
 				<div className="kb-diff-row kb-diff-row-context kb-diff-row-noncommentable kb-diff-row-placeholder">
-					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text" />
 					</span>
 					<DiffRowText
@@ -391,7 +390,7 @@ function SplitDiff({
 							: undefined
 					}
 				>
-					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text">{row.lineNumber}</span>
 						{canCommentOnSide ? (
 							<span
@@ -407,10 +406,10 @@ function SplitDiff({
 								style={hasComment ? { cursor: "pointer" } : undefined}
 							>
 								<span className="kb-diff-gutter-icon-comment">
-									<Icon icon="comment" size={12} />
+									<MessageSquare size={12} />
 								</span>
 								<span className="kb-diff-gutter-icon-delete">
-									<Icon icon="cross" size={12} color={Colors.RED5} />
+									<X size={12} className="text-status-red" />
 								</span>
 							</span>
 						) : null}
@@ -468,27 +467,27 @@ function SplitDiff({
 						<div className="kb-diff-split-grid-row">
 							<div className="kb-diff-split-cell kb-diff-split-cell-filled">
 								<Button
-								variant="minimal"
-								size="small"
+								variant="ghost"
+								size="sm"
 								fill
-								alignText="left"
-								icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
-								text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+								className="justify-start text-xs rounded-none my-0.5"
+								icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 								onClick={() => toggleBlock(item.block.id)}
-								style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
-							/>
+							>
+								{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+							</Button>
 							</div>
 							<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
 								<Button
-									variant="minimal"
-									size="small"
+									variant="ghost"
+									size="sm"
 									fill
-									alignText="left"
-									icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
-									text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+									className="justify-start text-xs rounded-none my-0.5"
+									icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 									onClick={() => toggleBlock(item.block.id)}
-									style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
-								/>
+								>
+									{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+								</Button>
 							</div>
 						</div>
 						{item.block.expanded ? renderPairs(item.block.rows) : null}
@@ -743,7 +742,6 @@ export function DiffViewerPanel({
 
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
-	const sendShortcutModifierIcon = isMacPlatform ? "key-command" : "key-control";
 
 	useHotkeys(
 		"meta+enter,ctrl+enter",
@@ -772,13 +770,18 @@ export function DiffViewerPanel({
 				flexDirection: "column",
 				minWidth: 0,
 				minHeight: 0,
-				background: Colors.DARK_GRAY1,
-				borderRight: `1px solid ${panelSeparatorColor}`,
+				background: "var(--color-surface-0)",
+				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
 			{groupedByPath.length === 0 ? (
 				<div className="kb-empty-state-center" style={{ flex: 1 }}>
-					<NonIdealState icon="comparison" />
+					<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
+						<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+							<rect x="3" y="3" width="8" height="18" rx="1" />
+							<rect x="13" y="3" width="8" height="18" rx="1" />
+						</svg>
+					</div>
 				</div>
 			) : (
 				<>
@@ -797,15 +800,12 @@ export function DiffViewerPanel({
 									}}
 									style={{ marginBottom: 12 }}
 								>
-									<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
-										<Button
-											variant="minimal"
-											fill
-											alignText="left"
+									<div className="rounded-md border border-border bg-surface-1" style={{ overflow: "hidden", padding: 0 }}>
+										<button
+											type="button"
 											className="kb-diff-file-header"
 											aria-expanded={isExpanded}
 											aria-current={selectedPath === group.path ? "true" : undefined}
-											icon={<Icon icon={isExpanded ? "chevron-down" : "chevron-right"} size={12} />}
 											onClick={() => {
 												const container = scrollContainerRef.current;
 												const sectionEl = sectionElementsRef.current[group.path];
@@ -824,18 +824,28 @@ export function DiffViewerPanel({
 													container.scrollTop += nextTop - previousTop;
 												});
 											}}
-											text={
-												<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} title={group.path}>
-													{truncatePathMiddle(group.path)}
-												</span>
-											}
-											endIcon={
-												<span>
-													<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>{" "}
-													<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
-												</span>
-											}
-										/>
+											style={{
+												display: "flex",
+												alignItems: "center",
+												gap: 8,
+												width: "100%",
+												padding: "6px 8px",
+												background: "none",
+												border: "none",
+												cursor: "pointer",
+												color: "inherit",
+												textAlign: "left",
+											}}
+										>
+											{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+											<span className="truncate" title={group.path} style={{ flex: "1 1 auto", minWidth: 0 }}>
+												{truncatePathMiddle(group.path)}
+											</span>
+											<span style={{ flexShrink: 0 }}>
+												<span className="text-status-green">+{group.added}</span>{" "}
+												<span className="text-status-red">-{group.removed}</span>
+											</span>
+										</button>
 										{isExpanded ? (
 											<div>
 												{group.entries.map((entry) => (
@@ -877,7 +887,7 @@ export function DiffViewerPanel({
 												))}
 											</div>
 										) : null}
-									</Card>
+									</div>
 								</section>
 							);
 						})}
@@ -885,52 +895,51 @@ export function DiffViewerPanel({
 					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
 						<div className="kb-diff-comments-footer">
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-								<span className={Classes.TEXT_MUTED}>
+								<span className="text-text-secondary">
 									{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
 								</span>
 								<Button
-									text="Clear All"
-									variant="minimal"
-									size="small"
-									intent="danger"
+									variant="danger"
+									size="sm"
 									onClick={handleClearAllComments}
-								/>
+								>
+									Clear All
+								</Button>
 							</div>
 							<div style={{ display: "flex", gap: 4 }}>
 								{onAddToTerminal ? (
 									<Button
-										text="Add"
-										variant="outlined"
-										size="small"
+										variant="default"
+										size="sm"
 										disabled={nonEmptyCount === 0}
 										onClick={handleAddComments}
-									/>
+									>
+										Add
+									</Button>
 								) : null}
 								{onSendToTerminal ? (
 									<Button
-										text={
-											<span style={{ display: "inline-flex", alignItems: "center" }}>
-												<span>Send</span>
-												<span
-													style={{
-														display: "inline-flex",
-														alignItems: "center",
-														gap: 2,
-														marginLeft: 6,
-													}}
-													aria-hidden
-												>
-													<Icon icon={sendShortcutModifierIcon} size={12} />
-													<Icon icon="key-enter" size={12} />
-												</span>
-											</span>
-										}
-										intent="primary"
-										variant="solid"
-										size="small"
+										variant="primary"
+										size="sm"
 										disabled={nonEmptyCount === 0}
 										onClick={handleSendComments}
-									/>
+									>
+										<span style={{ display: "inline-flex", alignItems: "center" }}>
+											<span>Send</span>
+											<span
+												style={{
+													display: "inline-flex",
+													alignItems: "center",
+													gap: 2,
+													marginLeft: 6,
+												}}
+												aria-hidden
+											>
+												{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
+												<CornerDownLeft size={12} />
+											</span>
+										</span>
+									</Button>
 								) : null}
 							</div>
 						</div>

@@ -1,4 +1,4 @@
-import { Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
+import { FileText, Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
@@ -38,17 +38,15 @@ function FileTreeRow({
 					}
 				}}
 			>
-				<Icon icon={isDirectory ? "folder-close" : "document"} size={14} />
-				<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} style={{ minWidth: 0, flex: "1 1 auto" }}>
-					{node.name}
-				</span>
+				{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
+				<span className="truncate">{node.name}</span>
 				{fileStats ? (
 					<span
-						className={Classes.MONOSPACE_TEXT}
+						className="font-mono"
 						style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4 }}
 					>
-						{fileStats.added > 0 ? <span style={{ color: Colors.GREEN5 }}>+{fileStats.added}</span> : null}
-						{fileStats.removed > 0 ? <span style={{ color: Colors.RED5 }}>-{fileStats.removed}</span> : null}
+						{fileStats.added > 0 ? <span className="text-status-green">+{fileStats.added}</span> : null}
+						{fileStats.removed > 0 ? <span className="text-status-red">-{fileStats.removed}</span> : null}
 					</span>
 				) : null}
 			</button>
@@ -74,7 +72,7 @@ export function FileTreePanel({
 	workspaceFiles,
 	selectedPath,
 	onSelectPath,
-	panelFlex = "0.6 1 0",
+	panelFlex,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
@@ -100,17 +98,19 @@ export function FileTreePanel({
 		<div
 			style={{
 				display: "flex",
-				flex: panelFlex,
+				flex: panelFlex ?? "0.6 1 0",
 				flexDirection: "column",
 				minWidth: 0,
 				minHeight: 0,
-				background: Colors.DARK_GRAY1,
+				background: "var(--color-surface-0)",
 			}}
 		>
 			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 8 }}>
 				{tree.length === 0 ? (
 					<div className="kb-empty-state-center">
-						<NonIdealState icon="folder-open" />
+						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
+							<FolderOpen size={40} />
+						</div>
 					</div>
 				) : (
 					<div>

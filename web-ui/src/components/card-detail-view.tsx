@@ -1,5 +1,5 @@
-import { Button, Classes, Colors, NonIdealState, SegmentedControl } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
+import { GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -9,16 +9,22 @@ import { ColumnContextPanel } from "@/components/detail-panels/column-context-pa
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
-import { panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewActionLabel } from "@/types";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
+const COLLAPSED_FILE_TREE_PANEL_BASIS = "33.3333%";
+const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
+const DEFAULT_AGENT_PANEL_RATIO = 0.4;
+const MIN_AGENT_PANEL_RATIO = 0.15;
+const MAX_AGENT_PANEL_RATIO = 0.75;
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -27,18 +33,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
 	return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
-const COLLAPSED_FILE_TREE_PANEL_BASIS = "33.3333%";
-const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
-
 function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): React.ReactElement {
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
 			<div
 				style={{
 					display: "flex",
 					flex: "1 1 0",
 					flexDirection: "column",
-					borderRight: `1px solid ${panelSeparatorColor}`,
+					borderRight: "1px solid var(--color-divider)",
 				}}
 			>
 				<div
@@ -47,30 +50,30 @@ function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): Rea
 					}}
 				>
 					<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-						<div className={Classes.SKELETON} style={{ height: 14, width: "62%", borderRadius: 3 }} />
-						<div className={Classes.SKELETON} style={{ height: 16, width: 42, borderRadius: 999 }} />
+						<div className="kb-skeleton" style={{ height: 14, width: "62%", borderRadius: 3 }} />
+						<div className="kb-skeleton" style={{ height: 16, width: 42, borderRadius: 999 }} />
 					</div>
 					<div
-						className={Classes.SKELETON}
+						className="kb-skeleton"
 						style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }}
 					/>
 					<div
-						className={Classes.SKELETON}
+						className="kb-skeleton"
 						style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }}
 					/>
 					<div
-						className={Classes.SKELETON}
+						className="kb-skeleton"
 						style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }}
 					/>
 					<div
-						className={Classes.SKELETON}
+						className="kb-skeleton"
 						style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }}
 					/>
 					<div
-						className={Classes.SKELETON}
+						className="kb-skeleton"
 						style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }}
 					/>
-					<div className={Classes.SKELETON} style={{ height: 13, width: "76%", borderRadius: 3 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "76%", borderRadius: 3 }} />
 				</div>
 				<div style={{ flex: "1 1 0" }} />
 			</div>
@@ -79,21 +82,20 @@ function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): Rea
 					display: "flex",
 					flex: panelFlex,
 					flexDirection: "column",
-					minWidth: 0,
 					padding: "10px 8px",
 				}}
 			>
 				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className={Classes.SKELETON} style={{ height: 13, width: "61%", borderRadius: 3 }} />
+					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "61%", borderRadius: 3 }} />
 				</div>
 				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className={Classes.SKELETON} style={{ height: 13, width: "70%", borderRadius: 3 }} />
+					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "70%", borderRadius: 3 }} />
 				</div>
 				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className={Classes.SKELETON} style={{ height: 13, width: "53%", borderRadius: 3 }} />
+					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "53%", borderRadius: 3 }} />
 				</div>
 				<div style={{ flex: "1 1 0" }} />
 			</div>
@@ -103,9 +105,12 @@ function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): Rea
 
 function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactElement {
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
 			<div className="kb-empty-state-center" style={{ flex: 1 }}>
-				<NonIdealState icon="comparison" title={title} />
+				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
+					<GitCompareArrows size={40} />
+					<h3 className="font-semibold text-text-secondary">{title}</h3>
+				</div>
 			</div>
 		</div>
 	);
@@ -123,40 +128,35 @@ function DiffToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div
-			style={{
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "space-between",
-				padding: "6px 10px",
-				borderBottom: `1px solid ${panelSeparatorColor}`,
-				background: Colors.DARK_GRAY2,
-			}}
-		>
-			<SegmentedControl
-				size="small"
-				value={mode}
-				onValueChange={(value) => onModeChange(value as RuntimeWorkspaceChangesMode)}
-				options={[
-					{ label: "Last Turn", value: "last_turn" },
-					{ label: "All Changes", value: "working_copy" },
-				]}
-			/>
-			<div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+		<div className="flex items-center justify-between border-b border-border bg-surface-1 px-2 py-1.5">
+			<div className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 p-0.5">
 				<Button
-					icon={isExpanded ? "minimize" : "maximize"}
-					variant="minimal"
-					size="small"
-					onClick={onToggleExpand}
-				/>
+					variant={mode === "last_turn" ? "primary" : "ghost"}
+					size="sm"
+					onClick={() => onModeChange("last_turn")}
+					className="h-7 rounded-sm text-xs"
+				>
+					Last Turn
+				</Button>
+				<Button
+					variant={mode === "working_copy" ? "primary" : "ghost"}
+					size="sm"
+					onClick={() => onModeChange("working_copy")}
+					className="h-7 rounded-sm text-xs"
+				>
+					All Changes
+				</Button>
 			</div>
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+				onClick={onToggleExpand}
+				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+			/>
 		</div>
 	);
 }
-
-const DEFAULT_AGENT_PANEL_RATIO = 0.4;
-const MIN_AGENT_PANEL_RATIO = 0.15;
-const MAX_AGENT_PANEL_RATIO = 0.75;
 
 export function CardDetailView({
 	selection,
@@ -261,7 +261,7 @@ export function CardDetailView({
 	const [isResizing, setIsResizing] = useState(false);
 	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
-	const mainRowRef = useRef<HTMLDivElement>(null);
+	const mainRowRef = useRef<HTMLDivElement | null>(null);
 
 	const stopResize = useCallback(() => {
 		setIsResizing(false);
@@ -355,6 +355,9 @@ export function CardDetailView({
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
 	const emptyDiffTitle = diffMode === "last_turn" ? "No last-turn changes yet" : "No working changes";
+	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
+	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
+	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const availablePaths = useMemo(() => {
@@ -431,12 +434,8 @@ export function CardDetailView({
 		setDiffMode("last_turn");
 	}, [selection.card.id]);
 
-	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
-	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
-	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
-
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>
+		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}>
 			{!isDiffExpanded ? (
 				<ColumnContextPanel
 					selection={selection}
@@ -502,6 +501,7 @@ export function CardDetailView({
 												? getTaskAutoReviewActionLabel(selection.card.autoReviewMode)
 												: null
 										}
+									showRightBorder={false}
 										taskColumnId={selection.column.id}
 									/>
 								</div>
@@ -514,7 +514,7 @@ export function CardDetailView({
 									style={{
 										position: "relative",
 										flex: "0 0 1px",
-										background: panelSeparatorColor,
+										background: "var(--color-divider)",
 										zIndex: 2,
 									}}
 								>
@@ -545,7 +545,7 @@ export function CardDetailView({
 										mode={diffMode}
 										onModeChange={setDiffMode}
 										isExpanded={isDiffExpanded}
-										onToggleExpand={() => setIsDiffExpanded((prev) => !prev)}
+										onToggleExpand={() => setIsDiffExpanded((previous) => !previous)}
 									/>
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
@@ -598,8 +598,8 @@ export function CardDetailView({
 										display: "flex",
 										flex: "1 1 0",
 										minWidth: 0,
-										paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
-										paddingRight: "calc(var(--bp-surface-spacing) * 3)",
+										paddingLeft: 12,
+										paddingRight: 12,
 									}}
 								>
 									<AgentTerminalPanel
@@ -613,9 +613,9 @@ export function CardDetailView({
 										onClose={onBottomTerminalClose}
 										minimalHeaderTitle="Terminal"
 										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={Colors.DARK_GRAY2}
-										terminalBackgroundColor={Colors.DARK_GRAY2}
-										cursorColor={Colors.LIGHT_GRAY5}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 										showRightBorder={false}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
