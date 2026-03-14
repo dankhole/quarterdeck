@@ -8,13 +8,27 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeGitRef } from "@/runtime/types";
 
 const ROW_HEIGHT = 30;
+const SELECTED_SUBTLE_TEXT_COLOR = "rgba(255, 255, 255, 0.64)";
 const MATCHED_TEXT_STYLE = {
 	color: "var(--color-status-blue)",
 	fontWeight: 600,
 } as const;
+const MATCHED_TEXT_STYLE_SELECTED = {
+	color: "rgba(255, 255, 255, 0.92)",
+	fontWeight: 600,
+} as const;
 const HEAD_BADGE_BACKGROUND = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
+const HEAD_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 18%, transparent)";
 
-function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: number }): React.ReactElement | null {
+function AheadBehindIndicator({
+	ahead,
+	behind,
+	isSelected = false,
+}: {
+	ahead?: number;
+	behind?: number;
+	isSelected?: boolean;
+}): React.ReactElement | null {
 	if (!ahead && !behind) {
 		return null;
 	}
@@ -25,7 +39,7 @@ function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: numb
 				alignItems: "center",
 				gap: 3,
 				fontSize: 10,
-				color: "var(--color-text-tertiary)",
+				color: isSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-text-tertiary)",
 				flexShrink: 0,
 			}}
 		>
@@ -92,6 +106,9 @@ export function GitRefsPanel({
 	);
 
 	const showSearch = otherBranches.length > 0;
+	const isHeadBranchSelected =
+		!isWorkingCopySelected &&
+		(selectedRefName === headBranch?.name || (selectedRefName === null && headBranch?.isHead === true));
 
 	return (
 		<div
@@ -187,23 +204,20 @@ export function GitRefsPanel({
 
 						{headBranch ? (
 							<RefRow
-								isSelected={
-									!isWorkingCopySelected &&
-									(selectedRefName === headBranch.name || (selectedRefName === null && headBranch.isHead))
-								}
+								isSelected={isHeadBranchSelected}
 								onSelect={() => onSelectRef(headBranch)}
 							>
 								<GitBranch size={12} />
 								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
 									{headBranch.name}
 								</span>
-								<AheadBehindIndicator ahead={headBranch.ahead} behind={headBranch.behind} />
+								<AheadBehindIndicator ahead={headBranch.ahead} behind={headBranch.behind} isSelected={isHeadBranchSelected} />
 								<span
 									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
 									style={{
 										fontSize: 10,
-										backgroundColor: HEAD_BADGE_BACKGROUND,
-										color: "var(--color-status-blue)",
+										backgroundColor: isHeadBranchSelected ? HEAD_BADGE_BACKGROUND_SELECTED : HEAD_BADGE_BACKGROUND,
+										color: isHeadBranchSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-status-blue)",
 									}}
 								>
 									HEAD
@@ -225,20 +239,27 @@ export function GitRefsPanel({
 							</div>
 						) : null}
 
-						{filteredOtherBranches.map((ref) => (
-							<RefRow
-								key={ref.name}
-								isSelected={!isWorkingCopySelected && selectedRefName === ref.name}
-								onSelect={() => onSelectRef(ref)}
-								onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
-							>
-								<GitBranch size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-									{renderFuzzyHighlightedText(ref.name, fuzzyBranchResultsByName.get(ref.name)?.positions, MATCHED_TEXT_STYLE)}
-								</span>
-								<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} />
-							</RefRow>
-						))}
+						{filteredOtherBranches.map((ref) => {
+							const isSelected = !isWorkingCopySelected && selectedRefName === ref.name;
+							return (
+								<RefRow
+									key={ref.name}
+									isSelected={isSelected}
+									onSelect={() => onSelectRef(ref)}
+									onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
+								>
+									<GitBranch size={12} />
+									<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+										{renderFuzzyHighlightedText(
+											ref.name,
+											fuzzyBranchResultsByName.get(ref.name)?.positions,
+											isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
+										)}
+									</span>
+									<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} isSelected={isSelected} />
+								</RefRow>
+							);
+						})}
 
 						{searchQuery && filteredOtherBranches.length === 0 ? (
 							<div
