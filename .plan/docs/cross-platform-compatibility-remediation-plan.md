@@ -37,6 +37,9 @@ This plan does not attempt to guarantee every agent binary behaves identically o
 - Completed: runtime timeout termination now uses platform-aware behavior with `tree-kill` for Windows process trees.
   - Commit: `845e112`
   - Files: `src/server/process-termination.ts`, `src/cli.ts`, `test/runtime/process-termination.test.ts`
+- Completed: ignored-path mirroring now behaves as best-effort and never blocks worktree setup when symlink creation fails.
+  - Commit: `5dac7f9`
+  - Files: `src/workspace/task-worktree.ts`, `test/runtime/task-worktree-mirroring.test.ts`, `test/integration/task-worktree.integration.test.ts`
 - Current overall status: partial cross-compatibility with several high-impact gaps on Windows and Linux.
 
 ## Findings backlog
@@ -45,7 +48,7 @@ This plan does not attempt to guarantee every agent binary behaves identically o
 | --- | --- | --- | --- | --- |
 | CP-001 | high | Workspace open command generation in web UI is macOS-only | Windows, Linux | completed |
 | CP-002 | high | System folder picker has no Windows path and weak Linux fallback | Windows, Linux | completed |
-| CP-003 | high | Worktree ignored-path mirroring should be best effort on Windows | Windows | in_progress |
+| CP-003 | high | Worktree ignored-path mirroring should be best effort on Windows | Windows | completed |
 | CP-004 | medium | Hook transcript path source inference assumes forward slashes | Windows | completed |
 | CP-005 | medium | OpenCode config and state path probing is Unix-centric | Windows | completed |
 | CP-006 | medium | Runtime command execution uses shell and SIGTERM behavior that differs on Windows | Windows | completed |
@@ -152,7 +155,7 @@ Implementation plan:
    - If symlink fails with permission or unsupported errors, skip mirroring that path and continue.
    - Do not fail task worktree creation when mirroring fails.
 3. Keep `.git/info/exclude` sync logic for paths that are mirrored.
-4. Emit a concise warning when mirroring is skipped so behavior is visible but non-blocking.
+4. Keep behavior non-blocking if symlink creation fails while mirroring ignored paths.
 5. Preserve idempotency when rerunning ensure flow.
 
 Test plan:
@@ -165,7 +168,7 @@ Acceptance criteria:
 
 - Worktree creation succeeds on default Windows setups without requiring admin.
 - Mirroring failure does not abort worktree creation.
-- Skipped mirroring paths are surfaced via warning output.
+- Mirroring failures do not abort worktree creation.
 
 ## CP-004: Normalize transcript paths before source inference
 
@@ -349,7 +352,7 @@ Use this section to track progress as work lands.
 | --- | --- | --- | --- | --- | --- |
 | CP-001 | unassigned |  |  | completed | commit `1f793a5` |
 | CP-002 | unassigned |  |  | completed | commit `d1e35a4` |
-| CP-003 | unassigned |  |  | in_progress | best-effort Windows ignored-path mirroring in progress |
+| CP-003 | unassigned |  |  | completed | commit `5dac7f9` |
 | CP-004 | unassigned |  |  | completed | commit `fe1eee9` |
 | CP-005 | unassigned |  |  | completed | commit `d92b2a6` |
 | CP-006 | unassigned |  |  | completed | commit `845e112` |
