@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.16]
+
+- Fixed agent startup reliability and command detection
+- Fixed path handling on Windows and Linux for cross-platform support
+
 ## [0.1.15]
 
 - Fix diff view syntax highlighting colors in git history
