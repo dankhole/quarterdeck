@@ -328,6 +328,21 @@ function inferActivityText(
 	return null;
 }
 
+export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
+	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
+	const normalizedTranscriptPath = transcriptPath?.replaceAll("\\", "/").toLowerCase() ?? null;
+	if (normalizedTranscriptPath?.includes("/.claude/")) {
+		return "claude";
+	}
+	if (normalizedTranscriptPath?.includes("/.factory/")) {
+		return "droid";
+	}
+	if (payload && readStringField(payload, "type") === "agent-turn-complete") {
+		return "codex";
+	}
+	return null;
+}
+
 function normalizeHookMetadata(
 	event: RuntimeHookEvent,
 	payload: Record<string, unknown> | null,
@@ -358,15 +373,7 @@ function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
 
-	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
-	let inferredSource: string | null = null;
-	if (transcriptPath?.includes("/.claude/")) {
-		inferredSource = "claude";
-	} else if (transcriptPath?.includes("/.factory/")) {
-		inferredSource = "droid";
-	} else if (payload && readStringField(payload, "type") === "agent-turn-complete") {
-		inferredSource = "codex";
-	}
+	const inferredSource = inferHookSourceFromPayload(payload);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
 	const merged: Partial<RuntimeTaskHookActivity> = {
