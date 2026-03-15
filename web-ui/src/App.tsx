@@ -785,6 +785,7 @@ export default function App(): ReactElement {
 										<KanbanBoard
 											data={board}
 											taskSessions={sessions}
+											workspacePath={workspacePath}
 											onCardSelect={handleCardSelect}
 											onCreateTask={handleOpenCreateTask}
 											onStartTask={handleStartTaskWithServiceSetupPrompt}
@@ -851,6 +852,7 @@ export default function App(): ReactElement {
 							<CardDetailView
 								selection={selectedCard}
 								currentProjectId={currentProjectId}
+								workspacePath={workspacePath}
 								sessionSummary={detailSession}
 								taskSessions={sessions}
 								onSessionSummary={upsertSession}

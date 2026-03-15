@@ -9,6 +9,7 @@ export default defineConfig({
 			"@": resolve(__dirname, "src"),
 			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
+			"@runtime-task-worktree-path": resolve(__dirname, "../src/workspace/task-worktree-path.ts"),
 			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
 		},
 	},

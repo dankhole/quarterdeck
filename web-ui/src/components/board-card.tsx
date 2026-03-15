@@ -3,6 +3,7 @@ import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
@@ -34,6 +35,17 @@ const DESCRIPTION_COLLAPSE_LINES = 3;
 const DESCRIPTION_EXPAND_LABEL = "See more";
 const DESCRIPTION_COLLAPSE_LABEL = "Less";
 const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
+
+function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
+	if (!workspacePath) {
+		return null;
+	}
+	try {
+		return buildTaskWorktreeDisplayPath(taskId, workspacePath);
+	} catch {
+		return null;
+	}
+}
 
 function formatToolLabel(toolName: string, activityText: string): string {
 	const marker = `${toolName}: `;
@@ -106,6 +118,7 @@ export function BoardCard({
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
+	workspacePath,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -127,6 +140,7 @@ export function BoardCard({
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
@@ -212,7 +226,11 @@ export function BoardCard({
 	};
 	const statusMarker = renderStatusMarker();
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const reviewWorkspacePath = reviewWorkspaceSnapshot ? formatPathForDisplay(reviewWorkspaceSnapshot.path) : null;
+	const reviewWorkspacePath = reviewWorkspaceSnapshot
+		? formatPathForDisplay(reviewWorkspaceSnapshot.path)
+		: isTrashCard
+			? reconstructTaskWorktreeDisplayPath(card.id, workspacePath)
+			: null;
 	const reviewRefLabel = reviewWorkspaceSnapshot?.branch ?? reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "HEAD";
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null
@@ -453,7 +471,7 @@ export function BoardCard({
 									</span>
 								</div>
 							) : null}
-							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
+							{showWorkspaceStatus && reviewWorkspacePath ? (
 								<p
 									className="font-mono"
 									style={{
@@ -474,7 +492,7 @@ export function BoardCard({
 										>
 											{reviewWorkspacePath}
 										</span>
-									) : (
+									) : reviewWorkspaceSnapshot ? (
 										<>
 										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
 											<GitBranch
@@ -497,7 +515,7 @@ export function BoardCard({
 												</>
 											) : null}
 										</>
-									)}
+									) : null}
 								</p>
 							) : null}
 							{showReviewGitActions ? (

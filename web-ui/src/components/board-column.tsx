@@ -37,6 +37,7 @@ export function BoardColumn({
 	dependencySourceTaskId,
 	dependencyTargetTaskId,
 	isDependencyLinking,
+	workspacePath,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -65,6 +66,7 @@ export function BoardColumn({
 	dependencySourceTaskId?: string | null;
 	dependencyTargetTaskId?: string | null;
 	isDependencyLinking?: boolean;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -187,6 +189,7 @@ export function BoardColumn({
 											isDependencySource={dependencySourceTaskId === card.id}
 											isDependencyTarget={dependencyTargetTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
+											workspacePath={workspacePath}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

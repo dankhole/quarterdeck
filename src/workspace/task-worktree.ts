@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { access, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 import type {
@@ -8,12 +8,16 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
+import {
+	KANBAN_TASK_WORKTREES_DIR_NAME,
+	getWorkspaceFolderLabelForWorktreePath,
+	normalizeTaskIdForWorktreePath,
+} from "./task-worktree-path.js";
 import { createGitProcessEnv } from "../core/git-process-env.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
-const WORKTREES_DIR = "worktrees";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
 
@@ -26,30 +30,6 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Spotlight-V100",
 	".Trashes",
 ]);
-
-function normalizeTaskId(taskId: string): string {
-	const normalized = taskId.trim();
-	if (!normalized || normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
-		throw new Error("Invalid task id for worktree path.");
-	}
-	return normalized;
-}
-
-function getWorkspaceFolderLabel(repoPath: string): string {
-	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
-	const folder = basename(trimmed);
-	if (!folder) {
-		return "workspace";
-	}
-	const cleaned = [...folder]
-		.filter((char) => {
-			const code = char.charCodeAt(0);
-			return code >= 32 && code !== 127;
-		})
-		.join("")
-		.trim();
-	return cleaned || "workspace";
-}
 
 function toPlatformRelativePath(path: string): string {
 	return path
@@ -111,16 +91,16 @@ async function readGitHeadInfo(cwd: string): Promise<{
 }
 
 function getWorktreesRootPath(taskId: string): string {
-	const normalizedTaskId = normalizeTaskId(taskId);
-	return join(getRuntimeHomePath(), WORKTREES_DIR, normalizedTaskId);
+	const normalizedTaskId = normalizeTaskIdForWorktreePath(taskId);
+	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME, normalizedTaskId);
 }
 
 function getWorktreesBaseRootPath(): string {
-	return join(getRuntimeHomePath(), WORKTREES_DIR);
+	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME);
 }
 
 function getTaskWorktreePath(repoPath: string, taskId: string): string {
-	const workspaceLabel = getWorkspaceFolderLabel(repoPath);
+	const workspaceLabel = getWorkspaceFolderLabelForWorktreePath(repoPath);
 	return join(getWorktreesRootPath(taskId), workspaceLabel);
 }
 
@@ -288,7 +268,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
-		const taskId = normalizeTaskId(options.taskId);
+		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 		// Investigation note: ensure is called on every task start. The previous implementation
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
@@ -360,7 +340,7 @@ export async function deleteTaskWorktree(options: {
 	taskId: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
-		const taskId = normalizeTaskId(options.taskId);
+		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
 		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
@@ -417,7 +397,7 @@ export async function getTaskWorkspacePathInfo(options: {
 	taskId: string;
 	baseRef: string;
 }): Promise<Pick<RuntimeTaskWorkspaceInfoResponse, "taskId" | "path" | "exists" | "baseRef">> {
-	const taskId = normalizeTaskId(options.taskId);
+	const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 	const normalizedBaseRef = options.baseRef.trim();
 	const repoPath = options.cwd.trim();
 

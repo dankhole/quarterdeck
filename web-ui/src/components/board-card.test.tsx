@@ -4,6 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import type { ReviewTaskWorkspaceSnapshot } from "@/types";
+
+let mockWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | undefined;
 
 vi.mock("@hello-pangea/dnd", () => ({
 	Draggable: ({
@@ -23,7 +27,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/stores/workspace-metadata-store", () => ({
-	useTaskWorkspaceSnapshotValue: () => undefined,
+	useTaskWorkspaceSnapshotValue: () => mockWorkspaceSnapshot,
 }));
 
 vi.mock("@/utils/react-use", () => ({
@@ -107,6 +111,7 @@ describe("BoardCard", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		mockWorkspaceSnapshot = undefined;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -193,5 +198,22 @@ describe("BoardCard", () => {
 
 		expect(findButton("See more")).toBeDefined();
 		expect(container.textContent).not.toContain("final hidden segment");
+	});
+
+	it("reconstructs and shows trashed worktree path when workspace metadata is not tracked", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<BoardCard
+						card={createCard({ id: "trash-task-1" })}
+						index={0}
+						columnId="trash"
+						workspacePath="/Users/alice/projects/kanban"
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		expect(container.textContent).toContain("~/.kanban/worktrees/trash-task-1/kanban");
 	});
 });

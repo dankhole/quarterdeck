@@ -177,6 +177,7 @@ function DiffToolbar({
 export function CardDetailView({
 	selection,
 	currentProjectId,
+	workspacePath,
 	sessionSummary,
 	taskSessions,
 	onSessionSummary,
@@ -224,6 +225,7 @@ export function CardDetailView({
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
+	workspacePath?: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -460,6 +462,7 @@ export function CardDetailView({
 			{!isDiffExpanded ? (
 				<ColumnContextPanel
 					selection={selection}
+					workspacePath={workspacePath}
 					onCardSelect={onCardSelect}
 					taskSessions={taskSessions}
 					onTaskDragEnd={onTaskDragEnd}

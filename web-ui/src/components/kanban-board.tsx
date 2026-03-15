@@ -52,6 +52,7 @@ export function KanbanBoard({
 	onDeleteDependency,
 	onDragEnd,
 	onRequestProgrammaticCardMoveReady,
+	workspacePath,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -77,6 +78,7 @@ export function KanbanBoard({
 	onDeleteDependency?: (dependencyId: string) => void;
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
 	const boardRef = useRef<HTMLElement>(null);
@@ -398,6 +400,7 @@ export function KanbanBoard({
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
 						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
 						isDependencyLinking={dependencyLinking.draft !== null}
+						workspacePath={workspacePath}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);
