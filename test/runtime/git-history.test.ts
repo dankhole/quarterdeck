@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { getCommitDiff, getGitRefs } from "../../src/workspace/git-history.js";
-import { discardGitChanges } from "../../src/workspace/git-sync.js";
+import { getCommitDiff, getGitLog, getGitRefs } from "../../src/workspace/git-history.js";
+import { discardGitChanges, getGitSyncSummary } from "../../src/workspace/git-sync.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
@@ -148,9 +148,42 @@ describe.sequential("git history runtime", () => {
 			const headBranch = refsResponse.refs.find((ref) => ref.isHead);
 			expect(headBranch).toMatchObject({
 				name: currentBranch,
+				type: "branch",
+				upstreamName: `origin/${currentBranch}`,
 				ahead: 1,
 				behind: 1,
 			});
+
+			expect(refsResponse.refs).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						name: `origin/${currentBranch}`,
+						type: "remote",
+					}),
+				]),
+			);
+
+			const summary = await getGitSyncSummary(localPath);
+			expect(summary.aheadCount).toBe(1);
+			expect(summary.behindCount).toBe(1);
+
+			const logResponse = await getGitLog({
+				cwd: localPath,
+				refs: [currentBranch, `origin/${currentBranch}`],
+			});
+			expect(logResponse.ok).toBe(true);
+			expect(logResponse.commits).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						message: "local commit",
+						relation: "selected",
+					}),
+					expect.objectContaining({
+						message: "remote commit",
+						relation: "upstream",
+					}),
+				]),
+			);
 		} finally {
 			cleanup();
 		}

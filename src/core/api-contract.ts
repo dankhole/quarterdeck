@@ -601,14 +601,16 @@ export const runtimeGitCommitSchema = z.object({
 	date: z.string(),
 	message: z.string(),
 	parentHashes: z.array(z.string()),
+	relation: z.enum(["selected", "upstream", "shared"]).optional(),
 });
 export type RuntimeGitCommit = z.infer<typeof runtimeGitCommitSchema>;
 
 export const runtimeGitRefSchema = z.object({
 	name: z.string(),
-	type: z.enum(["branch", "detached"]),
+	type: z.enum(["branch", "remote", "detached"]),
 	hash: z.string(),
 	isHead: z.boolean(),
+	upstreamName: z.string().optional(),
 	ahead: z.number().optional(),
 	behind: z.number().optional(),
 });
@@ -616,6 +618,7 @@ export type RuntimeGitRef = z.infer<typeof runtimeGitRefSchema>;
 
 export const runtimeGitLogRequestSchema = z.object({
 	ref: z.string().nullable().optional(),
+	refs: z.array(z.string()).optional(),
 	maxCount: z.number().int().positive().optional(),
 	skip: z.number().int().nonnegative().optional(),
 	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),

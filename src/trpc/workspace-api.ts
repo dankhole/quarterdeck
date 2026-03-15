@@ -344,6 +344,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			return await getGitLog({
 				cwd: logCwd,
 				ref: input.ref ?? null,
+				refs: input.refs ?? null,
 				maxCount: input.maxCount,
 				skip: input.skip,
 			});
