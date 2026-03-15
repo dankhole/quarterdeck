@@ -231,7 +231,11 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
 	if (!noOpen) {
 		try {
-			openInBrowser(projectUrl);
+			openInBrowser(projectUrl, {
+				warn: (message) => {
+					console.warn(message);
+				},
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.warn(`Could not open browser automatically: ${message}`);
@@ -442,7 +446,11 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 	console.log(`Kanban running at ${runtime.url}`);
 	if (!options.noOpen) {
 		try {
-			openInBrowser(runtime.url);
+			openInBrowser(runtime.url, {
+				warn: (message) => {
+					console.warn(message);
+				},
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.warn(`Could not open browser automatically: ${message}`);
