@@ -31,6 +31,23 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Trashes",
 ]);
 
+type CreateSymlink = (target: string, path: string, type: "dir" | "file") => Promise<void>;
+
+export async function mirrorIgnoredPath(options: {
+	sourcePath: string;
+	targetPath: string;
+	isDirectory: boolean;
+	createSymlink?: CreateSymlink;
+}): Promise<"mirrored" | "skipped"> {
+	const createSymlink = options.createSymlink ?? symlink;
+	try {
+		await createSymlink(options.sourcePath, options.targetPath, options.isDirectory ? "dir" : "file");
+		return "mirrored";
+	} catch {
+		return "skipped";
+	}
+}
+
 function toPlatformRelativePath(path: string): string {
 	return path
 		.trim()
@@ -234,7 +251,11 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 
 		const sourceStat = await lstat(sourcePath);
 		await mkdir(dirname(targetPath), { recursive: true });
-		await symlink(sourcePath, targetPath, sourceStat.isDirectory() ? "dir" : "file");
+		await mirrorIgnoredPath({
+			sourcePath,
+			targetPath,
+			isDirectory: sourceStat.isDirectory(),
+		});
 	}
 }
 

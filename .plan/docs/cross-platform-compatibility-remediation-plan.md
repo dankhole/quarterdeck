@@ -34,6 +34,9 @@ This plan does not attempt to guarantee every agent binary behaves identically o
 - Completed: OpenCode path detection now supports Windows AppData and LocalAppData candidates.
   - Commit: `d92b2a6`
   - Files: `src/terminal/opencode-paths.ts`, `src/terminal/task-start-setup-detection.ts`, `src/terminal/agent-session-adapters.ts`
+- Completed: runtime timeout termination now uses platform-aware behavior with `tree-kill` for Windows process trees.
+  - Commit: `845e112`
+  - Files: `src/server/process-termination.ts`, `src/cli.ts`, `test/runtime/process-termination.test.ts`
 - Current overall status: partial cross-compatibility with several high-impact gaps on Windows and Linux.
 
 ## Findings backlog
@@ -42,10 +45,10 @@ This plan does not attempt to guarantee every agent binary behaves identically o
 | --- | --- | --- | --- | --- |
 | CP-001 | high | Workspace open command generation in web UI is macOS-only | Windows, Linux | completed |
 | CP-002 | high | System folder picker has no Windows path and weak Linux fallback | Windows, Linux | completed |
-| CP-003 | high | Worktree ignored-path mirroring should be best effort on Windows | Windows | pending |
+| CP-003 | high | Worktree ignored-path mirroring should be best effort on Windows | Windows | in_progress |
 | CP-004 | medium | Hook transcript path source inference assumes forward slashes | Windows | completed |
 | CP-005 | medium | OpenCode config and state path probing is Unix-centric | Windows | completed |
-| CP-006 | medium | Runtime command execution uses shell and SIGTERM behavior that differs on Windows | Windows | in_progress |
+| CP-006 | medium | Runtime command execution uses shell and SIGTERM behavior that differs on Windows | Windows | completed |
 | CP-007 | low | `file://` URL construction in web UI is path-format fragile | Windows | pending |
 | CP-008 | medium | CI does not run on Windows or macOS | Windows, macOS | pending |
 
@@ -346,9 +349,9 @@ Use this section to track progress as work lands.
 | --- | --- | --- | --- | --- | --- |
 | CP-001 | unassigned |  |  | completed | commit `1f793a5` |
 | CP-002 | unassigned |  |  | completed | commit `d1e35a4` |
-| CP-003 | unassigned |  |  | pending |  |
+| CP-003 | unassigned |  |  | in_progress | best-effort Windows ignored-path mirroring in progress |
 | CP-004 | unassigned |  |  | completed | commit `fe1eee9` |
 | CP-005 | unassigned |  |  | completed | commit `d92b2a6` |
-| CP-006 | unassigned |  |  | in_progress | windows timeout termination helper in progress |
+| CP-006 | unassigned |  |  | completed | commit `845e112` |
 | CP-007 | unassigned |  |  | pending |  |
 | CP-008 | unassigned |  |  | pending |  |

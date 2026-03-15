@@ -8,6 +8,18 @@ import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktr
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
+function expectMirroredPathBehavior(path: string): void {
+	const exists = existsSync(path);
+	if (process.platform === "win32") {
+		if (exists) {
+			expect(lstatSync(path).isSymbolicLink()).toBe(true);
+		}
+		return;
+	}
+	expect(exists).toBe(true);
+	expect(lstatSync(path).isSymbolicLink()).toBe(true);
+}
+
 function runGit(cwd: string, args: string[]): string {
 	const result = spawnSync("git", args, {
 		cwd,
@@ -87,10 +99,12 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
-				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
+				const huskyIgnoredPath = join(ensured.path, ".husky", "_");
+				expectMirroredPathBehavior(huskyIgnoredPath);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
+				if (existsSync(huskyIgnoredPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
+				}
 
 				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
@@ -99,8 +113,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(ensuredAgain.ok).toBe(true);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
-				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
+				expectMirroredPathBehavior(huskyIgnoredPath);
 			} finally {
 				cleanup();
 			}
@@ -138,12 +151,18 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				expect(lstatSync(join(ensured.path, ".next")).isSymbolicLink()).toBe(true);
-				expect(lstatSync(join(ensured.path, "node_modules")).isSymbolicLink()).toBe(true);
+				const nextPath = join(ensured.path, ".next");
+				const nodeModulesPath = join(ensured.path, "node_modules");
+				expectMirroredPathBehavior(nextPath);
+				expectMirroredPathBehavior(nodeModulesPath);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
-				expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
-				expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
+				if (existsSync(nextPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
+				}
+				if (existsSync(nodeModulesPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
+				}
 			} finally {
 				cleanup();
 			}
