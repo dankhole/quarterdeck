@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, X } from "lucide-react";
+import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -162,16 +162,14 @@ function DiffToolbar({
 					Last Turn
 				</Button>
 			</div>
-			{!isExpanded ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<Maximize2 size={14} />}
-					onClick={onToggleExpand}
-					className="ml-auto h-5"
-					aria-label="Expand split diff view"
-				/>
-			) : null}
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+				onClick={onToggleExpand}
+				className="ml-auto h-5"
+				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+			/>
 		</div>
 	);
 }
