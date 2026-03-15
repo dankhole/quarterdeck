@@ -18,6 +18,15 @@ interface PickDirectoryPathFromSystemDialogOptions {
 	runCommand?: RunCommand;
 }
 
+const WINDOWS_DIRECTORY_PICKER_SCRIPT = [
+	"$ErrorActionPreference = 'Stop'",
+	"Add-Type -AssemblyName System.Windows.Forms",
+	"$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+	"$dialog.Description = 'Select a project folder'",
+	"$dialog.ShowNewFolderButton = $false",
+	"if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }",
+].join("; ");
+
 function parseChildProcessErrorCode(error: unknown): string | null {
 	if (!error || typeof error !== "object" || !("code" in error)) {
 		return null;
@@ -115,6 +124,32 @@ export function pickDirectoryPathFromSystemDialog(options: PickDirectoryPathFrom
 		}
 
 		throw new Error('Could not open directory picker. Install "zenity" or "kdialog" and try again.');
+	}
+
+	if (platform === "win32") {
+		const candidates: DirectoryPickerCommandCandidate[] = [
+			{
+				command: "powershell",
+				args: ["-NoProfile", "-STA", "-Command", WINDOWS_DIRECTORY_PICKER_SCRIPT],
+			},
+			{
+				command: "pwsh",
+				args: ["-NoProfile", "-STA", "-Command", WINDOWS_DIRECTORY_PICKER_SCRIPT],
+			},
+		];
+
+		for (const candidate of candidates) {
+			const result = runDirectoryPickerCommand(candidate, runCommand);
+			if (result.kind === "unavailable") {
+				continue;
+			}
+			if (result.kind === "selected") {
+				return result.path;
+			}
+			return null;
+		}
+
+		throw new Error('Could not open directory picker. Install PowerShell ("powershell" or "pwsh") and try again.');
 	}
 
 	return null;
