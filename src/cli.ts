@@ -21,6 +21,7 @@ import {
 } from "./core/runtime-endpoint.js";
 import { resolveProjectInputPath } from "./projects/project-path.js";
 import { openInBrowser } from "./server/browser.js";
+import { pickDirectoryPathFromSystemDialog } from "./server/directory-picker.js";
 import { createRuntimeServer } from "./server/runtime-server.js";
 import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { resolveInteractiveShellCommand } from "./server/shell.js";
@@ -148,38 +149,6 @@ function hasGitRepository(path: string): boolean {
 		env: createGitProcessEnv(),
 	});
 	return result.status === 0 && result.stdout.trim() === "true";
-}
-
-function pickDirectoryPathFromSystemDialog(): string | null {
-	if (process.platform === "darwin") {
-		const result = spawnSync(
-			"osascript",
-			["-e", 'POSIX path of (choose folder with prompt "Select a project folder")'],
-			{
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "pipe"],
-			},
-		);
-		if (result.status !== 0) {
-			return null;
-		}
-		const selected = typeof result.stdout === "string" ? result.stdout.trim() : "";
-		return selected || null;
-	}
-
-	if (process.platform === "linux") {
-		const result = spawnSync("zenity", ["--file-selection", "--directory", "--title=Select project folder"], {
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		if (result.status !== 0) {
-			return null;
-		}
-		const selected = typeof result.stdout === "string" ? result.stdout.trim() : "";
-		return selected || null;
-	}
-
-	return null;
 }
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
