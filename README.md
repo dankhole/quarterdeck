@@ -1,8 +1,4 @@
-<div>
-
 ## npx kanban (Research Preview)
-
-</div>
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/bd06a620-c66a-4903-84a7-759682d0f139" width="100%" />
