@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.13]
+
+- New task creation dialog with list detection for quickly creating multiple tasks at once
+- Git history now shows remote refs and branch divergence so you know if you need to pull
+- Expandable task card descriptions -- click to reveal the full description inline
+- Notifications now show the latest agent message
+- Improved split diff rendering by consolidating same hunk changes
+- Fixed issue where cards in the kanban column updating content would cause scroll jumps
+
 ## [0.1.12]
 
 - Redesigned the web UI with a refined dark theme, custom UI primitives, and polished controls for a more professional look and feel
