@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeAgentId, RuntimeTaskStartSetupAvailability } from "../core/api-contract.js";
-import { isCommandAvailable } from "./command-discovery.js";
+import { isBinaryAvailableOnPath } from "./command-discovery.js";
 import { getOpenCodeConfigPathCandidates } from "./opencode-paths.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,7 +172,7 @@ function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boole
 
 export function detectTaskStartSetupAvailability(selectedAgentId: RuntimeAgentId): RuntimeTaskStartSetupAvailability {
 	return {
-		githubCli: isCommandAvailable("gh"),
+		githubCli: isBinaryAvailableOnPath("gh"),
 		linearMcp: hasAgentMcpServer(selectedAgentId, "linear"),
 	};
 }

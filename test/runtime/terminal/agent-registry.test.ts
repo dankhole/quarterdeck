@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
-	isCommandAvailable: vi.fn(),
 }));
 
 vi.mock("../../../src/terminal/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
-	isCommandAvailable: commandDiscoveryMocks.isCommandAvailable,
 }));
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
@@ -36,9 +34,7 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 
 beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
-	commandDiscoveryMocks.isCommandAvailable.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
-	commandDiscoveryMocks.isCommandAvailable.mockReturnValue(false);
 });
 
 describe("agent-registry", () => {
