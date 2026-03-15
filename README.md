@@ -1,8 +1,11 @@
-# kanban (Research Preview)
+### npx kanban (Research Preview)
+
+A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree all handled for you automatically. Enable auto-commit and link cards together to create dependency chains of tasks to complete large amounts of work autonomously. Open a card to view the agent's work and see a diff of all its changes for you to comment on or commit. Run `npx kanban` (or `npm i -g kanban`) in your project to use it with your installed CLI agent.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/deabc452-a340-4210-b42f-f8696be04ee9" width="100%" />
+  <img src="https://github.com/user-attachments/assets/bd06a620-c66a-4903-84a7-759682d0f139" width="100%" />
 </p>
+
 
 <div align="center">
 <table>
@@ -29,36 +32,51 @@
 </table>
 </div>
 
-A Human-in-the-Loop Agent Swarm Orchestration layer that gives more autonomy to your CLI agents with task dependency linking and automatic commits and pull requests. Each task runs in its own branchless worktree with .gitignore'd files like node_modules symlinked so your filesystem and git don't get polluted, letting you run hundreds of tasks in parallel on any computer. It also comes with a visualizer for your git branches and commit history, so you can keep track of the work your agents do.
+Kanban makes it easy to go from idea -> commit or PR, and work on many tasks in parallel without running into merge conflicts. This is accomplished with worktrees and agent-assisted merging.
 
-```
-npx kanban
-```
+Start by creating a task, or opening the bottom terminal (cmd + j) to start your agent and ask it to create tasks for you. You can even create a task to create tasks (agents are automatically loaded with a `kanban` skill that shows them how to use the kanban CLI to add/edit/start tasks for you).
 
-## Getting Started
+Hit the play button to start a task, this provisions an ephemeral worktree just for that task and uses clever tricks like symlinking gitignored files so you don't have to worry about worktree initialization or management yourself.
 
-1. Install an agent like Claude Code, Codex, Gemini, OpenCode, Cline
-2. Run `kanban` (install with `npm i -g kanban`) in your repo to launch a web GUI
-3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can also ask your agent to manage tasks through Kanban's built-in skill and task CLI.
-4. When they finish, you review diffs, leave comments, and commit or make a PR.
+Your configured CLI agent then gets started on the task in a terminal emulator. Kanban uses hooks to retrieve the latest message or tool call from the agent as it works, so you can stay in the loop watching hundreds of agents work at the same time. Use an agent's TUI in a terminal emulator by clicking on a card. You can also see a diff of all the changes, or changes between each message you send with kanban's own checkpointing system. 
 
-## Agent Skill Setup
+When the task is completed, you can hit the Commit or Open PR buttons which send a dynamic prompt to the agent to help it convert the worktree to a commit for your base ref or a PR branch. Once finished, move the task to trash to clean up the agent terminal and the worktree files. You can always resume a trashed task since kanban keeps track of the resume ID.
 
-Kanban writes a `kanban` skill file on every launch so your agent can add, update, link, and start tasks using `kanban task` commands.
+Keep track of all the work being done on your repo by clicking the branch name in the navbar to view its git information, with commit history, and list of branches to easily switch. Inspired by Git Tower, this git visualizer includes all the core git features you need to manage and push changes as your agents make them. It also comes with a visualizer for your git branches and commit history, so you can keep track of the work your agents do.
 
-Generated skill paths:
+### Advanced Usage
 
-- `~/.agents/skills/kanban/SKILL.md`
-- `~/.claude/skills/kanban/SKILL.md` (written when Claude is installed)
+You can choose to skip review process and automatically commit or open a PR as soon as the agent is done working.
 
-The file is regenerated each launch so new Kanban releases can update the instructions automatically.
+You can also command click in a card to create a link to another task card. This creates a 'dependency' where as soon as one of those cards is completed and moved to trash, it auto-starts the linked task. 
 
-The skill includes:
+Auto commit/PR + linking allows you to complete large projects end to end in a way that parallelizes for efficiency. You can even ask your agent to break a large project down into tasks and link them in a way that parallelizes. It’s a pretty magical experience using the kanban MCP to ask Cline to decompose a big task into subtasks that auto-commit - he’ll cleverly do it in a way that parallelizes efficiently and links tasks together for end to end autonomy.
 
-- command reference for `kanban task list|create|update|link|unlink|start`
-- parameter guidance for each command
-- dependency and auto-review workflow notes
-- ephemeral worktree handling (`.kanban/worktrees`) so commands target the main workspace
+
+### Worktree Parallelization
+
+Every task gets its own worktree. As soon as the task is started, the worktree is created, and your project's gitignore is used to create symbolic links to things like node_modules that take quite long and would waste too much hard drive if we directly copied. Symlinks allow us to reference the original files in the new location, and are ideal for when you need a file to be in your project that you don't plan on modifying.
+
+### Create tasks to create tasks
+
+A `kanban` skill is automatically added to your CLI agent, so that it knows how to use the kanban CLI right away. This allows it to create, edit, start, and link tasks on your kanban board for you. It’s a pretty magical experience asking the agent to decompose a big task into subtasks that auto-commit - he’ll cleverly do it in a way that parallelizes efficiently and links tasks together for end to end autonomy.
+
+### Auto-commit + Linking
+
+With the models getting better, most work will become less course correcting and more reviewing and committing. Auto-commit or PR allows the agent to autonomously complete the work so that all you have to do is watch. This becomes especially powerful when you link tasks together, so that one task auto-completing automatically kicks off a dependent task or tasks, and those tasks kick off their own dependency and so on. 
+
+### Script Shortcuts
+
+To easily test and debug your app, create a Script Shortcut in settings. Use a command like `npm run dev` so that all you have to do is hit a play button in the navbar, instead of remembering commands or asking your agent to do it.
+
+### Add comments to diffs
+
+Once the agent's completed working, view the changes in a unified or full screen split diff view. Click on lines to leave comments and send them to your agent. 
+
+### Git History
+
+Keep track of the work your agent is doing by having a full git GUI for you to manage branches and commit history. Fetch, pull, push, keep track of remote changes, switch branches, everything you'd need in managing git with a UI to make it all make sense.
+
 
 ## License
 
