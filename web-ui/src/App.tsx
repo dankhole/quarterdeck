@@ -202,6 +202,7 @@ export default function App(): ReactElement {
 		board,
 		isDocumentVisible,
 		latestTaskReadyForReview,
+		taskSessions: sessions,
 		readyForReviewNotificationsEnabled,
 		workspacePath,
 	});
