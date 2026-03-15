@@ -11,7 +11,21 @@ const nodeBinary = process.execPath;
 const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function printHelp() {
-	console.log("Usage: npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]");
+	console.log(
+		"Usage: npm run dogfood [--skip-shutdown-cleanup] -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build] [--skip-shutdown-cleanup]",
+	);
+}
+
+function readNpmBooleanFlag(name) {
+	const value = process.env[`npm_config_${name}`];
+	if (typeof value !== "string") {
+		return false;
+	}
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "" || normalized === "true" || normalized === "1") {
+		return true;
+	}
+	return !["false", "0", "no", "off"].includes(normalized);
 }
 
 function parseArgs(argv) {
@@ -19,6 +33,7 @@ function parseArgs(argv) {
 	let port = "auto";
 	let noOpen = false;
 	let skipBuild = false;
+	let skipShutdownCleanup = readNpmBooleanFlag("skip_shutdown_cleanup");
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -60,6 +75,10 @@ function parseArgs(argv) {
 			skipBuild = true;
 			continue;
 		}
+		if (arg === "--skip-shutdown-cleanup") {
+			skipShutdownCleanup = true;
+			continue;
+		}
 		throw new Error(`Unknown option: ${arg}`);
 	}
 
@@ -68,6 +87,7 @@ function parseArgs(argv) {
 		port: port.trim() || "auto",
 		noOpen,
 		skipBuild,
+		skipShutdownCleanup,
 	};
 }
 
@@ -118,7 +138,10 @@ async function main() {
 	}
 
 	const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
-	const launchArgs = [cliEntrypoint, "--port", args.port, "--skip-shutdown-cleanup"];
+	const launchArgs = [cliEntrypoint, "--port", args.port];
+	if (args.skipShutdownCleanup) {
+		launchArgs.push("--skip-shutdown-cleanup");
+	}
 	if (args.noOpen) {
 		launchArgs.push("--no-open");
 	}
