@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.15]
+
+- Fix diff view syntax highlighting colors in git history
+- Improve graceful shutdown handling for CLI processes
+- Fix worktree symlink mirroring for ignored paths to avoid blocking operations
+- Fix process cleanup on Windows when tasks time out
+- Support Windows AppData path discovery for Opencode integration
+- Make "Open in Editor" workspace actions work correctly across platforms
+- Add directory picker support on Windows
+- Fix transcript path detection in hooks
+- Handle Linux directory picker fallbacks and errors gracefully
+
 ## [0.1.14]
 
 - Fixed a crash on Linux systems where no browser opener (xdg-open, etc.) was available
