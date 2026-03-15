@@ -51,6 +51,7 @@ export async function mirrorIgnoredPath(options: {
 function toPlatformRelativePath(path: string): string {
 	return path
 		.trim()
+		.replaceAll("\\", "/")
 		.replace(/\/+$/g, "")
 		.split("/")
 		.filter((segment) => segment.length > 0)

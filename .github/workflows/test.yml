@@ -9,11 +9,19 @@ permissions:
 
 jobs:
   build-check-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22]
+        include:
+          - os: ubuntu-latest
+            node-version: 20
+          - os: ubuntu-latest
+            node-version: 22
+          - os: windows-latest
+            node-version: 22
+          - os: macos-latest
+            node-version: 22
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -70,8 +70,9 @@ export class PtySession {
 	}
 
 	static spawn({ binary, args = [], cwd, env, cols, rows, onData, onExit }: SpawnPtySessionRequest): PtySession {
+		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
 		const ptyProcess = pty.spawn(binary, args, {
-			name: "xterm-256color",
+			name: terminalName,
 			cwd,
 			env,
 			cols,

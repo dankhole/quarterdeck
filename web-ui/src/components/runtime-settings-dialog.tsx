@@ -33,6 +33,7 @@ import {
 	getBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
+import { toFileUrl } from "@/utils/file-url";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 interface RuntimeSettingsAgentRowModel {
@@ -538,7 +539,7 @@ export function RuntimeSettingsDialog({
 					style={{ cursor: config?.globalConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.globalConfigPath) {
-							window.open(`file://${config.globalConfigPath}`);
+							window.open(toFileUrl(config.globalConfigPath));
 						}
 					}}
 				>
@@ -661,7 +662,7 @@ export function RuntimeSettingsDialog({
 					style={{ cursor: config?.projectConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.projectConfigPath) {
-							window.open(`file://${config.projectConfigPath}`);
+							window.open(toFileUrl(config.projectConfigPath));
 						}
 					}}
 				>
