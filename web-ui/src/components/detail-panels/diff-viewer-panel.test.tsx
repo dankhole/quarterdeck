@@ -133,4 +133,73 @@ describe("DiffViewerPanel", () => {
 
 		expect(scrollContainer.scrollTop).toBe(547);
 	});
+
+	it("renders replaced lines side by side in split view", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 1,
+				oldText: "const value = 1;\n",
+				newText: "const value = 2;\n",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+					viewMode="split"
+				/>,
+			);
+		});
+
+		const splitRows = Array.from(container.querySelectorAll(".kb-diff-split-grid-row"));
+		expect(splitRows).toHaveLength(1);
+		expect(splitRows[0]?.querySelector(".kb-diff-row-removed")).toBeInstanceOf(HTMLDivElement);
+		expect(splitRows[0]?.querySelector(".kb-diff-row-added")).toBeInstanceOf(HTMLDivElement);
+		expect(splitRows[0]?.querySelector(".kb-diff-split-cell-placeholder")).toBeNull();
+	});
+
+	it("renders uneven split replacements with an empty placeholder cell", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 2,
+				oldText: "const first = 1;\nconst second = 2;\n",
+				newText: "const value = 2;\n",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+					viewMode="split"
+				/>,
+			);
+		});
+
+		const splitRows = Array.from(container.querySelectorAll(".kb-diff-split-grid-row"));
+		expect(splitRows).toHaveLength(2);
+		expect(splitRows[0]?.querySelector(".kb-diff-row-removed")).toBeInstanceOf(HTMLDivElement);
+		expect(splitRows[0]?.querySelector(".kb-diff-row-added")).toBeInstanceOf(HTMLDivElement);
+		expect(splitRows[1]?.querySelector(".kb-diff-row-removed")).toBeInstanceOf(HTMLDivElement);
+		const placeholderCell = splitRows[1]?.querySelector(".kb-diff-split-cell-right");
+		expect(placeholderCell).toBeInstanceOf(HTMLDivElement);
+		expect(placeholderCell?.classList.contains("kb-diff-split-cell-placeholder")).toBe(true);
+		expect(placeholderCell?.childElementCount).toBe(0);
+		expect(placeholderCell?.querySelector(".kb-diff-line-number")).toBeNull();
+	});
 });

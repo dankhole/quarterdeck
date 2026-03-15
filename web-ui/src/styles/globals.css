@@ -472,17 +472,6 @@ body.kb-dependency-link-mode {
 	background: transparent;
 }
 
-.kb-diff-row-placeholder {
-	height: 100%;
-	background: transparent;
-	pointer-events: none;
-	user-select: none;
-}
-
-.kb-diff-row-placeholder:hover {
-	background: transparent;
-}
-
 .kb-diff-segment-added {
 	background: rgba(63, 185, 80, 0.3);
 	border-radius: 2px;
