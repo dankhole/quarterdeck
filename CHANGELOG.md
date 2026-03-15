@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.14]
+
+- Fixed a crash on Linux systems where no browser opener (xdg-open, etc.) was available
+
 ## [0.1.13]
 
 - New task creation dialog with list detection for quickly creating multiple tasks at once
