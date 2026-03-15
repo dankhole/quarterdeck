@@ -22,6 +22,7 @@ import {
 import { resolveProjectInputPath } from "./projects/project-path.js";
 import { openInBrowser } from "./server/browser.js";
 import { pickDirectoryPathFromSystemDialog } from "./server/directory-picker.js";
+import { terminateProcessForTimeout } from "./server/process-termination.js";
 import { createRuntimeServer } from "./server/runtime-server.js";
 import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
 import { resolveInteractiveShellCommand } from "./server/shell.js";
@@ -255,7 +256,7 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 		});
 
 		const timeout = setTimeout(() => {
-			child.kill("SIGTERM");
+			terminateProcessForTimeout(child);
 		}, 60_000);
 
 		child.on("close", (code) => {
