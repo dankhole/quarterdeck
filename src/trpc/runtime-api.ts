@@ -25,6 +25,28 @@ export interface CreateRuntimeApiDependencies {
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 }
 
+async function resolveExistingTaskCwdOrEnsure(options: {
+	cwd: string;
+	taskId: string;
+	baseRef: string;
+}): Promise<string> {
+	try {
+		return await resolveTaskCwd({
+			cwd: options.cwd,
+			taskId: options.taskId,
+			baseRef: options.baseRef,
+			ensure: false,
+		});
+	} catch {
+		return await resolveTaskCwd({
+			cwd: options.cwd,
+			taskId: options.taskId,
+			baseRef: options.baseRef,
+			ensure: true,
+		});
+	}
+}
+
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
 	return {
 		loadConfig: async (workspaceScope) => {
@@ -51,11 +73,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
-				const taskCwd = await resolveTaskCwd({
+				const taskCwd = await resolveExistingTaskCwdOrEnsure({
 					cwd: workspaceScope.workspacePath,
 					taskId: body.taskId,
 					baseRef: body.baseRef,
-					ensure: true,
 				});
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = await terminalManager.startTaskSession({

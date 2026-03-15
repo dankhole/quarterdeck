@@ -5,7 +5,6 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract.js";
-import { buildShellCommandLine, resolveInteractiveShellCommand } from "../core/shell.js";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -30,9 +29,6 @@ import {
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
-// Some interactive shells can start without emitting prompt output immediately.
-// Fallback ensures the initial command is still sent if onData does not fire quickly.
-const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
 // OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
 // We intercept that startup probe during history replay and early PTY output, synthesize a
 // background-color reply, then disable the filter once a live terminal listener has attached.
@@ -255,37 +251,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) =>
 			part.toLowerCase().includes("codex"),
 		);
-		const kickoffShellCommand = buildShellCommandLine(commandBinary, commandArgs);
-		const shell = resolveInteractiveShellCommand();
-		const spawnBinary = shell.binary;
-		const spawnArgs = shell.args;
-		let kickoffShellCommandSent = false;
-		let kickoffShellTimer: NodeJS.Timeout | null = null;
-		const clearKickoffShellTimer = () => {
-			if (!kickoffShellTimer) {
-				return;
-			}
-			clearTimeout(kickoffShellTimer);
-			kickoffShellTimer = null;
-		};
-		const sendKickoffShellCommand = () => {
-			if (!kickoffShellCommand || kickoffShellCommandSent) {
-				return;
-			}
-			const runningEntry = this.entries.get(request.taskId);
-			if (!runningEntry?.active) {
-				return;
-			}
-			kickoffShellCommandSent = true;
-			clearKickoffShellTimer();
-			runningEntry.active.session.write(kickoffShellCommand);
-			runningEntry.active.session.write("\r");
-		};
 		let session: PtySession;
 		try {
 			session = PtySession.spawn({
-				binary: spawnBinary,
-				args: spawnArgs,
+				binary: commandBinary,
+				args: commandArgs,
 				cwd: request.cwd,
 				env,
 				cols,
@@ -293,9 +263,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				onData: (chunk) => {
 					if (!entry.active) {
 						return;
-					}
-					if (kickoffShellCommand && !kickoffShellCommandSent) {
-						sendKickoffShellCommand();
 					}
 
 					const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
@@ -369,7 +336,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 					stopWorkspaceTrustTimers(currentActive);
-					clearKickoffShellTimer();
 
 					const summary = this.applySessionEvent(currentEntry, {
 						type: "process.exit",
@@ -456,13 +422,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 			previousTurnCheckpoint: null,
 		});
 		this.emitSummary(entry.summary);
-
-		if (kickoffShellCommand) {
-			kickoffShellTimer = setTimeout(() => {
-				sendKickoffShellCommand();
-				kickoffShellTimer = null;
-			}, SHELL_KICKOFF_FALLBACK_DELAY_MS);
-		}
 
 		return cloneSummary(entry.summary);
 	}

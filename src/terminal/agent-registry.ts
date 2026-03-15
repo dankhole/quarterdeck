@@ -1,7 +1,7 @@
 import type { RuntimeConfigState } from "../config/runtime-config.js";
 import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
-import { isBinaryAvailableOnPath, isBinaryResolvableInShell, toShellLaunchCommand } from "./command-discovery.js";
+import { isBinaryAvailableOnPath } from "./command-discovery.js";
 import { detectTaskStartSetupAvailability } from "./task-start-setup-detection.js";
 
 export interface ResolvedAgentCommand {
@@ -39,7 +39,7 @@ export function detectInstalledCommands(): string[] {
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {
-		if (isBinaryAvailableOnPath(candidate) || isBinaryResolvableInShell(candidate)) {
+		if (isBinaryAvailableOnPath(candidate)) {
 			detected.push(candidate);
 		}
 	}
@@ -78,19 +78,6 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 			command,
 			binary: selected.binary,
 			args: defaultArgs,
-		};
-	}
-	if (isBinaryResolvableInShell(selected.binary)) {
-		const shellLaunch = toShellLaunchCommand(command);
-		if (!shellLaunch) {
-			return null;
-		}
-		return {
-			agentId: selected.id,
-			label: selected.label,
-			command,
-			binary: shellLaunch.binary,
-			args: shellLaunch.args,
 		};
 	}
 	return null;
