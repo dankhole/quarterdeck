@@ -204,6 +204,10 @@ export function TaskCreateDialog({
 		(index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 				event.preventDefault();
+				if (event.shiftKey) {
+					handleCreateAndStartAll();
+					return;
+				}
 				handleCreateAll();
 				return;
 			}
@@ -217,17 +221,21 @@ export function TaskCreateDialog({
 				handleRemoveTask(index);
 			}
 		},
-		[handleAddTask, handleCreateAll, handleRemoveTask, taskPrompts],
+		[handleAddTask, handleCreateAll, handleCreateAndStartAll, handleRemoveTask, taskPrompts],
 	);
 
 	const setInputRef = useCallback((index: number, el: HTMLInputElement | null) => {
 		inputRefs.current[index] = el;
 	}, []);
 
-	// Cmd+Enter in multi mode (for when focus is elsewhere in the dialog)
+	// Cmd/Ctrl+Enter in multi mode (for when focus is elsewhere in the dialog)
 	useHotkeys(
-		"meta+enter",
-		() => {
+		"mod+enter",
+		(event) => {
+			if (event.shiftKey) {
+				handleCreateAndStartAll();
+				return;
+			}
 			handleCreateAll();
 		},
 		{
@@ -235,7 +243,7 @@ export function TaskCreateDialog({
 			enableOnFormTags: true,
 			preventDefault: true,
 		},
-		[open, mode, handleCreateAll],
+		[open, mode, handleCreateAll, handleCreateAndStartAll],
 	);
 
 	const dialogTitle = mode === "multi"
