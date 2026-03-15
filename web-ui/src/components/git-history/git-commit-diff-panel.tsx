@@ -278,7 +278,7 @@ export function GitCommitDiffPanel({
 								}}
 								style={{ marginBottom: 12 }}
 							>
-								<div className="rounded-md border border-border bg-surface-2" style={{ overflow: "hidden", padding: 0 }}>
+								<div className="rounded-md border border-border bg-surface-1" style={{ overflow: "hidden", padding: 0 }}>
 									<button
 										type="button"
 										className="kb-diff-file-header flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3"
