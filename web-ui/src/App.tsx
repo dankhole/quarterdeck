@@ -12,6 +12,7 @@ import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { RuntimeStatusBanners } from "@/components/runtime-status-banners";
+import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
@@ -244,6 +245,7 @@ export default function App(): ReactElement {
 		handleSaveEditedTask,
 		handleSaveAndStartEditedTask,
 		handleCreateTask,
+		handleCreateTasks,
 		resetTaskEditorState,
 	} = useTaskEditor({
 		board,
@@ -517,6 +519,7 @@ export default function App(): ReactElement {
 
 	const {
 		handleCreateAndStartTask,
+		handleCreateAndStartTasks,
 		handleStartTaskWithServiceSetupPrompt,
 		handleStartAllBacklogTasksWithServiceSetupPrompt,
 		taskStartServicePromptDialogOpen,
@@ -531,6 +534,7 @@ export default function App(): ReactElement {
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
 		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
 		handleCreateTask,
+		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
 		prepareTerminalForShortcut,
@@ -619,28 +623,14 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const inlineTaskCreator = isInlineTaskCreateOpen ? (
-		<TaskInlineCreateCard
-			prompt={newTaskPrompt}
-			onPromptChange={setNewTaskPrompt}
-			onCreate={handleCreateTask}
-			onCreateAndStart={handleCreateAndStartTask}
-			onCancel={handleCancelCreateTask}
-			startInPlanMode={newTaskStartInPlanMode}
-			onStartInPlanModeChange={setNewTaskStartInPlanMode}
-			startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
-			autoReviewEnabled={newTaskAutoReviewEnabled}
-			onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
-			autoReviewMode={newTaskAutoReviewMode}
-			onAutoReviewModeChange={setNewTaskAutoReviewMode}
-			workspaceId={currentProjectId}
-			branchRef={newTaskBranchRef}
-			branchOptions={createTaskBranchOptions}
-			onBranchRefChange={setNewTaskBranchRef}
-			mode="create"
-			idPrefix="inline-create-task"
-		/>
-	) : undefined;
+	const handleCreateDialogOpenChange = useCallback(
+		(open: boolean) => {
+			if (!open) {
+				handleCancelCreateTask();
+			}
+		},
+		[handleCancelCreateTask],
+	);
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
@@ -791,7 +781,6 @@ export default function App(): ReactElement {
 											onStartTask={handleStartTaskWithServiceSetupPrompt}
 											onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
 											onClearTrash={handleOpenClearTrash}
-											inlineTaskCreator={inlineTaskCreator}
 											editingTaskId={editingTaskId}
 											inlineTaskEditor={inlineTaskEditor}
 											onEditTask={handleOpenEditTask}
@@ -863,7 +852,6 @@ export default function App(): ReactElement {
 								onStartTask={handleStartTaskWithServiceSetupPrompt}
 								onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
 								onClearTrash={handleOpenClearTrash}
-								inlineTaskCreator={inlineTaskCreator}
 								editingTaskId={editingTaskId}
 								inlineTaskEditor={inlineTaskEditor}
 								onEditTask={(task) => {
@@ -927,6 +915,27 @@ export default function App(): ReactElement {
 					refreshRuntimeProjectConfig();
 					refreshSettingsRuntimeProjectConfig();
 				}}
+			/>
+			<TaskCreateDialog
+				open={isInlineTaskCreateOpen}
+				onOpenChange={handleCreateDialogOpenChange}
+				prompt={newTaskPrompt}
+				onPromptChange={setNewTaskPrompt}
+				onCreate={handleCreateTask}
+				onCreateAndStart={handleCreateAndStartTask}
+				onCreateMultiple={handleCreateTasks}
+				onCreateAndStartMultiple={handleCreateAndStartTasks}
+				startInPlanMode={newTaskStartInPlanMode}
+				onStartInPlanModeChange={setNewTaskStartInPlanMode}
+				startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
+				autoReviewEnabled={newTaskAutoReviewEnabled}
+				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
+				autoReviewMode={newTaskAutoReviewMode}
+				onAutoReviewModeChange={setNewTaskAutoReviewMode}
+				workspaceId={currentProjectId}
+				branchRef={newTaskBranchRef}
+				branchOptions={createTaskBranchOptions}
+				onBranchRefChange={setNewTaskBranchRef}
 			/>
 			<ClearTrashDialog
 				open={isClearTrashDialogOpen}

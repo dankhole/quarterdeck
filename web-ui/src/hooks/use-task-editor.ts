@@ -62,6 +62,7 @@ export interface UseTaskEditorResult {
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
 	handleCreateTask: () => string | null;
+	handleCreateTasks: (prompts: string[]) => string[];
 	resetTaskEditorState: () => void;
 }
 
@@ -318,6 +319,62 @@ export function useTaskEditor({
 		setBoard,
 	]);
 
+	const handleCreateTasks = useCallback((prompts: string[]): string[] => {
+		const validPrompts = prompts.map((p) => p.trim()).filter(Boolean);
+		if (validPrompts.length === 0) {
+			return [];
+		}
+		if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
+			return [];
+		}
+		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
+		const createdTaskIds: string[] = [];
+		setBoard((currentBoard) => {
+			let updatedBoard = currentBoard;
+			for (const prompt of validPrompts) {
+				const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
+					prompt,
+					startInPlanMode: newTaskStartInPlanMode,
+					autoReviewEnabled: newTaskAutoReviewEnabled,
+					autoReviewMode: newTaskAutoReviewMode,
+					baseRef,
+				});
+				updatedBoard = created.board;
+				createdTaskIds.push(created.task.id);
+			}
+			return updatedBoard;
+		});
+		for (const prompt of validPrompts) {
+			trackTaskCreated({
+				selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
+				start_in_plan_mode: newTaskStartInPlanMode,
+				...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
+				prompt_character_count: prompt.length,
+			});
+		}
+		if (currentProjectId) {
+			setLastCreatedTaskBranchByProjectId((current) => ({
+				...current,
+				[currentProjectId]: baseRef,
+			}));
+		}
+		setNewTaskPrompt("");
+		setNewTaskBranchRef(baseRef);
+		setIsInlineTaskCreateOpen(false);
+		onClearWorktreeError();
+		return createdTaskIds;
+	}, [
+		currentProjectId,
+		newTaskAutoReviewEnabled,
+		newTaskAutoReviewMode,
+		newTaskBranchRef,
+		newTaskStartInPlanMode,
+		onClearWorktreeError,
+		resolvedDefaultTaskBranchRef,
+		selectedAgentId,
+		setBoard,
+	]);
+
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
@@ -360,6 +417,7 @@ export function useTaskEditor({
 		handleSaveEditedTask,
 		handleSaveAndStartEditedTask,
 		handleCreateTask,
+		handleCreateTasks,
 		resetTaskEditorState,
 	};
 }

@@ -6,6 +6,7 @@ import {
 	detectTaskStartServicePromptIds,
 	getTaskStartServicePromptKey,
 	isTaskStartServicePromptAlreadyConfigured,
+	mergeTaskStartServicePromptQueue,
 } from "@/hooks/use-task-start-service-prompts";
 
 describe("detectTaskStartServicePromptIds", () => {
@@ -186,5 +187,55 @@ describe("collectPendingTaskStartServicePrompts", () => {
 				isPromptDoNotShowAgainEnabled: () => false,
 			}),
 		).toEqual([]);
+	});
+});
+
+describe("mergeTaskStartServicePromptQueue", () => {
+	it("appends new prompt kinds and merges task ids for existing prompt kinds", () => {
+		expect(
+			mergeTaskStartServicePromptQueue(
+				[
+					{
+						promptId: "linear_mcp",
+						taskIds: ["task-1"],
+					},
+				],
+				[
+					{
+						promptId: "linear_mcp",
+						taskIds: ["task-2", "task-1"],
+					},
+					{
+						promptId: "github_cli",
+						taskIds: ["task-3"],
+					},
+				],
+			),
+		).toEqual([
+			{
+				promptId: "linear_mcp",
+				taskIds: ["task-1", "task-2"],
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-3"],
+			},
+		]);
+	});
+
+	it("returns next queue directly when current queue is empty", () => {
+		expect(
+			mergeTaskStartServicePromptQueue([], [
+				{
+					promptId: "github_cli",
+					taskIds: ["task-1"],
+				},
+			]),
+		).toEqual([
+			{
+				promptId: "github_cli",
+				taskIds: ["task-1"],
+			},
+		]);
 	});
 });

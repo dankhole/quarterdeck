@@ -13,17 +13,22 @@ export function Dialog({
 	open,
 	onOpenChange,
 	children,
+	contentClassName,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: ReactNode;
+	contentClassName?: string;
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
 			<RadixDialog.Portal>
 				<RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/60" style={{ animation: "kb-overlay-show 150ms ease" }} />
 				<RadixDialog.Content
-					className="fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-border bg-surface-1 shadow-2xl focus:outline-none"
+					className={cn(
+						"fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-border bg-surface-1 shadow-2xl focus:outline-none",
+						contentClassName,
+					)}
 					style={{ animation: "kb-dialog-show 150ms ease", transform: "translate(-50%, -50%)" }}
 				>
 					{children}

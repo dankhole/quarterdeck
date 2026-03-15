@@ -20,7 +20,6 @@ function ColumnSection({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -43,7 +42,6 @@ function ColumnSection({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
@@ -152,7 +150,7 @@ function ColumnSection({
 									padding: 8,
 								}}
 							>
-								{canCreate && !inlineTaskCreator ? (
+								{canCreate ? (
 									<Button
 										icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
 										aria-label="Create task"
@@ -168,7 +166,6 @@ function ColumnSection({
 										</span>
 									</Button>
 								) : null}
-								{inlineTaskCreator}
 								{(() => {
 									const items: ReactNode[] = [];
 									let draggableIndex = 0;
@@ -236,7 +233,6 @@ export function ColumnContextPanel({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -257,7 +253,6 @@ export function ColumnContextPanel({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
@@ -345,7 +340,6 @@ export function ColumnContextPanel({
 							onStartTask={column.id === "backlog" ? onStartTask : undefined}
 							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-							inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}
 							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 							onEditTask={column.id === "backlog" ? onEditTask : undefined}
