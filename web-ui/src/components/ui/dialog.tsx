@@ -26,7 +26,7 @@ export function Dialog({
 				<RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/60" style={{ animation: "kb-overlay-show 150ms ease" }} />
 				<RadixDialog.Content
 					className={cn(
-						"fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-border bg-surface-1 shadow-2xl focus:outline-none",
+						"fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-[#5A6572] bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,
 					)}
 					style={{ animation: "kb-dialog-show 150ms ease", transform: "translate(-50%, -50%)" }}
@@ -40,7 +40,7 @@ export function Dialog({
 
 export function DialogHeader({ title, icon, children }: { title: string; icon?: ReactNode; children?: ReactNode }): React.ReactElement {
 	return (
-		<div className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface-2 shrink-0 rounded-t-lg">
+		<div className="flex items-center justify-between px-4 py-2 bg-surface-2 border-b border-[#5A6572] shrink-0 rounded-t-lg">
 			<RadixDialog.Title className="flex items-center gap-2 text-sm font-semibold text-text-primary">
 				{icon ? <span className="text-text-secondary">{icon}</span> : null}
 				{title}
@@ -54,11 +54,11 @@ export function DialogHeader({ title, icon, children }: { title: string; icon?: 
 }
 
 export function DialogBody({ children, className }: { children: ReactNode; className?: string }): React.ReactElement {
-	return <div className={cn("p-5 overflow-y-auto flex-1 min-h-0", className)}>{children}</div>;
+	return <div className={cn("p-4 overflow-y-auto flex-1 min-h-0 bg-surface-1", className)}>{children}</div>;
 }
 
 export function DialogFooter({ children }: { children: ReactNode }): React.ReactElement {
-	return <div className="flex justify-end gap-2 px-5 py-3 border-t border-border bg-surface-2 shrink-0 rounded-b-lg">{children}</div>;
+	return <div className="flex justify-end gap-2 px-4 py-2 bg-surface-2 border-t border-[#5A6572] shrink-0 rounded-b-lg">{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */
