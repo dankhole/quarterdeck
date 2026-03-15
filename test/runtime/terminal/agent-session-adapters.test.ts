@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters.js";
 
 const originalHome = process.env.HOME;
+const originalAppData = process.env.APPDATA;
+const originalLocalAppData = process.env.LOCALAPPDATA;
 let tempHome: string | null = null;
 
 function setupTempHome(): string {
@@ -24,6 +26,16 @@ afterEach(() => {
 	if (tempHome) {
 		rmSync(tempHome, { recursive: true, force: true });
 		tempHome = null;
+	}
+	if (originalAppData === undefined) {
+		delete process.env.APPDATA;
+	} else {
+		process.env.APPDATA = originalAppData;
+	}
+	if (originalLocalAppData === undefined) {
+		delete process.env.LOCALAPPDATA;
+	} else {
+		process.env.LOCALAPPDATA = originalLocalAppData;
 	}
 });
 
@@ -117,6 +129,56 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(plugin).toContain('"permission.ask"');
 		expect(plugin).toContain("session.status");
 		expect(plugin).toContain('currentState = "idle"');
+	});
+
+	it("loads OpenCode preferred model from LOCALAPPDATA state and auth paths", async () => {
+		const homePath = setupTempHome();
+		const localAppDataPath = join(homePath, "AppData", "Local");
+		process.env.LOCALAPPDATA = localAppDataPath;
+
+		const statePath = join(localAppDataPath, "opencode", "state");
+		mkdirSync(statePath, { recursive: true });
+		writeFileSync(
+			join(statePath, "model.json"),
+			JSON.stringify(
+				{
+					recent: [
+						{ providerID: "anthropic", modelID: "claude-3-7-sonnet" },
+						{ providerID: "openai", modelID: "gpt-4o" },
+					],
+				},
+				null,
+				2,
+			),
+			"utf8",
+		);
+
+		const authPath = join(localAppDataPath, "opencode");
+		mkdirSync(authPath, { recursive: true });
+		writeFileSync(
+			join(authPath, "auth.json"),
+			JSON.stringify(
+				{
+					openai: { key: "sk-test" },
+				},
+				null,
+				2,
+			),
+			"utf8",
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-opencode-model",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
 	});
 
 	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {

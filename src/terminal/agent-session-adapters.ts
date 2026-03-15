@@ -1,5 +1,4 @@
 import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -8,6 +7,11 @@ import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
+import {
+	getOpenCodeAuthPathCandidates,
+	getOpenCodeConfigPathCandidates,
+	getOpenCodeModelStatePathCandidates,
+} from "./opencode-paths.js";
 import { stripAnsi } from "./output-utils.js";
 import type { SessionTransitionEvent } from "./session-state-machine.js";
 
@@ -585,22 +589,7 @@ const geminiAdapter: AgentSessionAdapter = {
 };
 
 async function resolveOpenCodeBaseConfigPath(explicitPath: string | undefined): Promise<string | null> {
-	const candidates: string[] = [];
-	const explicit = explicitPath?.trim();
-	if (explicit) {
-		candidates.push(explicit);
-	}
-	const processExplicit = process.env.OPENCODE_CONFIG?.trim();
-	if (processExplicit) {
-		candidates.push(processExplicit);
-	}
-	candidates.push(
-		join(homedir(), ".config", "opencode", "config.json"),
-		join(homedir(), ".config", "opencode", "opencode.jsonc"),
-		join(homedir(), ".config", "opencode", "opencode.json"),
-		join(homedir(), ".opencode", "opencode.jsonc"),
-		join(homedir(), ".opencode", "opencode.json"),
-	);
+	const candidates = getOpenCodeConfigPathCandidates({ explicitPath });
 	for (const candidate of candidates) {
 		try {
 			await access(candidate);
@@ -756,35 +745,42 @@ async function resolveOpenCodePreferredModelArg(configPath: string | null): Prom
 		}
 	}
 
-	const modelStatePath = join(homedir(), ".local", "state", "opencode", "model.json");
-	const authPath = join(homedir(), ".local", "share", "opencode", "auth.json");
-
+	const modelStateCandidates = getOpenCodeModelStatePathCandidates();
 	let recentModels: Array<{ providerID?: unknown; modelID?: unknown }> = [];
-	try {
-		const raw = await readFile(modelStatePath, "utf8");
-		const parsed = JSON.parse(raw) as { recent?: Array<{ providerID?: unknown; modelID?: unknown }> };
-		if (Array.isArray(parsed.recent)) {
-			recentModels = parsed.recent;
+	for (const modelStatePath of modelStateCandidates) {
+		try {
+			const raw = await readFile(modelStatePath, "utf8");
+			const parsed = JSON.parse(raw) as { recent?: Array<{ providerID?: unknown; modelID?: unknown }> };
+			if (Array.isArray(parsed.recent)) {
+				recentModels = parsed.recent;
+				break;
+			}
+		} catch {
+			// Keep searching through candidate state paths.
 		}
-	} catch {
+	}
+	if (recentModels.length === 0) {
 		return null;
 	}
 
 	const configuredProviders = new Set<string>();
-	try {
-		const raw = await readFile(authPath, "utf8");
-		const parsed = JSON.parse(raw) as Record<string, unknown>;
-		for (const [provider, value] of Object.entries(parsed)) {
-			if (!value || typeof value !== "object" || Array.isArray(value)) {
-				continue;
+	for (const authPath of getOpenCodeAuthPathCandidates()) {
+		try {
+			const raw = await readFile(authPath, "utf8");
+			const parsed = JSON.parse(raw) as Record<string, unknown>;
+			for (const [provider, value] of Object.entries(parsed)) {
+				if (!value || typeof value !== "object" || Array.isArray(value)) {
+					continue;
+				}
+				const key = (value as Record<string, unknown>).key;
+				if (typeof key === "string" && key.trim()) {
+					configuredProviders.add(provider);
+				}
 			}
-			const key = (value as Record<string, unknown>).key;
-			if (typeof key === "string" && key.trim()) {
-				configuredProviders.add(provider);
-			}
+			break;
+		} catch {
+			// Keep searching through candidate auth paths.
 		}
-	} catch {
-		// If auth cannot be read, fall back to recent model order.
 	}
 
 	const candidates: Array<{ providerId: string; model: string }> = [];
