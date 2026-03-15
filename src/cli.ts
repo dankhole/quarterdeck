@@ -3,6 +3,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
+import closeWithGrace from "close-with-grace";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 
@@ -429,18 +430,13 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 	console.log("Press Ctrl+C to stop.");
 
 	let isShuttingDown = false;
-	const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+	const shutdown = async (signal: NodeJS.Signals | null) => {
 		if (isShuttingDown) {
 			process.exit(130);
 			return;
 		}
 		isShuttingDown = true;
 		runPendingAutoUpdateOnShutdown();
-		const forceExitTimer = setTimeout(() => {
-			console.error(`Forced exit after ${signal} timeout.`);
-			process.exit(130);
-		}, 3000);
-		forceExitTimer.unref();
 		try {
 			if (options.skipShutdownCleanup) {
 				console.warn("Skipping shutdown task cleanup for this instance.");
@@ -448,21 +444,29 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 			await runtime.shutdown({
 				skipSessionCleanup: options.skipShutdownCleanup,
 			});
-			clearTimeout(forceExitTimer);
-			process.exit(130);
+			process.exit(signal ? 130 : 0);
 		} catch (error) {
-			clearTimeout(forceExitTimer);
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`Shutdown failed: ${message}`);
 			process.exit(1);
 		}
 	};
-	process.on("SIGINT", () => {
-		void shutdown("SIGINT");
-	});
-	process.on("SIGTERM", () => {
-		void shutdown("SIGTERM");
-	});
+
+	closeWithGrace(
+		{
+			delay: 3000,
+			skip: ["uncaughtException", "unhandledRejection", "beforeExit"],
+			onTimeout: (delayMs) => {
+				console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);
+			},
+			onSecondSignal: (signal) => {
+				console.error(`Forced exit on second signal: ${signal}`);
+			},
+		},
+		async ({ signal }) => {
+			await shutdown(signal ?? null);
+		},
+	);
 }
 
 function createProgram(): Command {
