@@ -22,16 +22,22 @@ This plan does not attempt to guarantee every agent binary behaves identically o
 - Already fixed: browser auto-open no longer crashes when `xdg-open` is missing on Linux.
   - Commit: `1aec3f4`
   - Files: `src/server/browser.ts`, `src/cli.ts`, `test/runtime/browser.test.ts`
+- Completed: transcript source inference now normalizes Windows and Unix path separators.
+  - Commit: `fe1eee9`
+  - Files: `src/commands/hooks.ts`, `test/runtime/hooks-source-inference.test.ts`
+- Completed: project directory picker now supports Windows PowerShell (`powershell` with `pwsh` fallback).
+  - Commit: `d1e35a4`
+  - Files: `src/server/directory-picker.ts`, `test/runtime/directory-picker.test.ts`
 - Current overall status: partial cross-compatibility with several high-impact gaps on Windows and Linux.
 
 ## Findings backlog
 
 | ID | Severity | Area | Affected OS | Status |
 | --- | --- | --- | --- | --- |
-| CP-001 | high | Workspace open command generation in web UI is macOS-only | Windows, Linux | pending |
-| CP-002 | high | System folder picker has no Windows path and weak Linux fallback | Windows, Linux | pending |
+| CP-001 | high | Workspace open command generation in web UI is macOS-only | Windows, Linux | in_progress |
+| CP-002 | high | System folder picker has no Windows path and weak Linux fallback | Windows, Linux | completed |
 | CP-003 | high | Worktree ignored-path mirroring should be best effort on Windows | Windows | pending |
-| CP-004 | medium | Hook transcript path source inference assumes forward slashes | Windows | pending |
+| CP-004 | medium | Hook transcript path source inference assumes forward slashes | Windows | completed |
 | CP-005 | medium | OpenCode config and state path probing is Unix-centric | Windows | pending |
 | CP-006 | medium | Runtime command execution uses shell and SIGTERM behavior that differs on Windows | Windows | pending |
 | CP-007 | low | `file://` URL construction in web UI is path-format fragile | Windows | pending |
@@ -332,10 +338,10 @@ Use this section to track progress as work lands.
 
 | ID | Owner | Branch | PR | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| CP-001 | unassigned |  |  | pending |  |
-| CP-002 | unassigned |  |  | pending |  |
+| CP-001 | unassigned |  |  | in_progress | OS-aware open workspace commands and target filtering |
+| CP-002 | unassigned |  |  | completed | commit `d1e35a4` |
 | CP-003 | unassigned |  |  | pending |  |
-| CP-004 | unassigned |  |  | pending |  |
+| CP-004 | unassigned |  |  | completed | commit `fe1eee9` |
 | CP-005 | unassigned |  |  | pending |  |
 | CP-006 | unassigned |  |  | pending |  |
 | CP-007 | unassigned |  |  | pending |  |
