@@ -161,9 +161,11 @@ export function KanbanBoard({
 			const firstTargetCardElement = targetCardsElement.querySelector<HTMLElement>("[data-task-id]");
 			if (firstTargetCardElement) {
 				const targetRect = firstTargetCardElement.getBoundingClientRect();
+				const desiredCenterY = targetRect.top + sourceCardRect.height / 2;
+				const maxTopInsertCenterY = targetRect.top + targetRect.height / 2 - 1;
 				return {
 					x: targetRect.left + sourceCardRect.width / 2,
-					y: targetRect.top + sourceCardRect.height / 2,
+					y: Math.min(desiredCenterY, maxTopInsertCenterY),
 				};
 			}
 			const targetRect = targetCardsElement.getBoundingClientRect();
