@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.17]
+
+- Fix keyboard shortcuts (Cmd+Enter) not working when focus is on dialog inputs
+
 ## [0.1.16]
 
 - Fixed agent startup reliability and command detection
