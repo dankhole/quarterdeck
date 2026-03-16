@@ -175,6 +175,84 @@ echo '{"cancel":false}'
 `;
 }
 
+function buildClinePreToolUseHookScriptContent(): string {
+	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
+	const reviewCommand = buildHooksCommandParts(["notify", "--event", "to_review", "--source", "cline"]);
+	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
+	if (process.platform === "win32") {
+		const activity = activityCommand.map(powerShellQuote).join(" ");
+		const review = reviewCommand.map(powerShellQuote).join(" ");
+		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
+try {
+  $inputText | & ${activity} | Out-Null
+} catch {
+}
+if ($isUserQuestionTool) {
+  try {
+    $inputText | & ${review} | Out-Null
+  } catch {
+  }
+} else {
+  try {
+    $inputText | & ${inProgress} | Out-Null
+  } catch {
+  }
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const activity = activityCommand.map(quoteShellArg).join(" ");
+	const review = reviewCommand.map(quoteShellArg).join(" ");
+	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
+if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
+  printf '%s' "$INPUT" | ${review} >/dev/null 2>&1 || true
+else
+  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
+fi
+echo '{"cancel":false}'
+`;
+}
+
+function buildClinePostToolUseHookScriptContent(): string {
+	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
+	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
+	if (process.platform === "win32") {
+		const activity = activityCommand.map(powerShellQuote).join(" ");
+		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
+try {
+  $inputText | & ${activity} | Out-Null
+} catch {
+}
+if ($isUserQuestionTool) {
+  try {
+    $inputText | & ${inProgress} | Out-Null
+  } catch {
+  }
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const activity = activityCommand.map(quoteShellArg).join(" ");
+	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
+if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
+  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
+fi
+echo '{"cancel":false}'
+`;
+}
+
 function buildOpenCodePluginContent(
 	reviewCommand: string,
 	toInProgressCommand: string,
@@ -984,8 +1062,8 @@ const clineAdapter: AgentSessionAdapter = {
 			await ensureTextFile(notificationHookPath, buildClineNotificationHookScriptContent(), executable);
 			await ensureTextFile(taskCompleteHookPath, buildClineHookScriptContent("to_review"), executable);
 			await ensureTextFile(userPromptSubmitHookPath, buildClineHookScriptContent("to_in_progress"), executable);
-			await ensureTextFile(preToolUseHookPath, buildClineHookScriptContent("activity"), executable);
-			await ensureTextFile(postToolUseHookPath, buildClineHookScriptContent("activity"), executable);
+			await ensureTextFile(preToolUseHookPath, buildClinePreToolUseHookScriptContent(), executable);
+			await ensureTextFile(postToolUseHookPath, buildClinePostToolUseHookScriptContent(), executable);
 
 			if (!hasCliOption(args, "--hooks-dir")) {
 				args.push("--hooks-dir", hooksDir);

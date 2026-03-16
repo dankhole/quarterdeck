@@ -282,10 +282,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const preToolUseScript = readFileSync(preToolUseHookPath, "utf8");
 		expect(preToolUseScript).toContain("hooks");
 		expect(preToolUseScript).toContain("activity");
+		expect(preToolUseScript).toContain("to_in_progress");
+		expect(preToolUseScript).toContain("to_review");
+		expect(preToolUseScript).toContain("ask_followup_question");
+		expect(preToolUseScript).toContain("plan_mode_respond");
 
 		const postToolUseScript = readFileSync(postToolUseHookPath, "utf8");
 		expect(postToolUseScript).toContain("hooks");
 		expect(postToolUseScript).toContain("activity");
+		expect(postToolUseScript).toContain("to_in_progress");
+		expect(postToolUseScript).toContain("ask_followup_question");
+		expect(postToolUseScript).toContain("plan_mode_respond");
 	});
 
 	it("adds resume flags for each agent", async () => {
