@@ -1,7 +1,7 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
 import { Check, ChevronDown, GitBranch } from "lucide-react";
-import type { CSSProperties, KeyboardEvent, ReactElement } from "react";
+import type { CSSProperties, KeyboardEvent, ReactElement, WheelEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
@@ -61,6 +61,7 @@ export function BranchSelectDropdown({
 	const [query, setQuery] = useState("");
 	const [activeOptionIndex, setActiveOptionIndex] = useState(0);
 	const inputRef = useRef<HTMLInputElement | null>(null);
+	const menuRef = useRef<HTMLDivElement | null>(null);
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const orderedOptions = useMemo(() => {
 		const items = options.slice();
@@ -200,6 +201,16 @@ export function BranchSelectDropdown({
 
 	const resolvedIconSize = typeof iconSize === "number" ? iconSize : 14;
 
+	const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
+		const menu = menuRef.current;
+		if (!menu || menu.scrollHeight <= menu.clientHeight) {
+			return;
+		}
+		menu.scrollTop += event.deltaY;
+		event.preventDefault();
+		event.stopPropagation();
+	}, []);
+
 	return (
 		<RadixPopover.Root open={isOpen} onOpenChange={handleOpenChange}>
 			<RadixPopover.Trigger asChild>
@@ -220,6 +231,7 @@ export function BranchSelectDropdown({
 			<RadixPopover.Portal>
 				<RadixPopover.Content
 					className="z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
+					onWheelCapture={handleWheelCapture}
 					style={{
 						width: matchTargetWidth ? "var(--radix-popover-trigger-width)" : undefined,
 						...dropdownStyle,
@@ -236,7 +248,7 @@ export function BranchSelectDropdown({
 							onKeyDown={handleSearchInputKeyDown}
 						/>
 					</div>
-					<div className="max-h-[250px] overflow-y-auto p-1" style={menuStyle}>
+					<div ref={menuRef} className="max-h-[250px] overflow-y-auto overscroll-contain p-1" style={menuStyle}>
 						{filteredItems.length === 0 ? (
 							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
 						) : (
