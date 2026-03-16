@@ -25,7 +25,7 @@ import {
 	type RuntimeShortcutIconOption,
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
-import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
@@ -313,7 +313,6 @@ export function RuntimeSettingsDialog({
 		selectedPromptVariant === "commit" ? isCommitPromptAtDefault : isOpenPrPromptAtDefault;
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
-	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
@@ -621,15 +620,19 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-2 mb-2.5">
 					Use{" "}
 					<InlineUtilityButton
-						text={copiedVariableToken === baseRefVariable.token ? "Copied!" : baseRefVariable.token}
+						text={
+							copiedVariableToken === TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
+								? "Copied!"
+								: TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
+						}
 						monospace
-						widthCh={Math.max(baseRefVariable.token.length, "Copied!".length) + 2}
+						widthCh={Math.max(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token.length, "Copied!".length) + 2}
 						onClick={() => {
-							handleCopyVariableToken(baseRefVariable.token);
+							handleCopyVariableToken(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token);
 						}}
 						disabled={controlsDisabled}
 					/>{" "}
-					to reference {baseRefVariable.description}
+					to reference {TASK_GIT_BASE_REF_PROMPT_VARIABLE.description}
 				</p>
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
 				<div className="flex items-center gap-2">
