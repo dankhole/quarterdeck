@@ -229,6 +229,28 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 	});
 }
 
+function getShutdownSignal(): NodeJS.Signals {
+	return process.platform === "win32" ? "SIGTERM" : "SIGINT";
+}
+
+async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
+	if (childProcess.exitCode !== null) {
+		return true;
+	}
+
+	return await new Promise<boolean>((resolveExit) => {
+		const handleExit = () => {
+			clearTimeout(timeoutId);
+			resolveExit(true);
+		};
+		const timeoutId = setTimeout(() => {
+			childProcess.removeListener("exit", handleExit);
+			resolveExit(false);
+		}, timeoutMs);
+		childProcess.once("exit", handleExit);
+	});
+}
+
 async function startKanbanServer(input: {
 	cwd: string;
 	homeDir: string;
@@ -256,23 +278,17 @@ async function startKanbanServer(input: {
 			if (child.exitCode !== null) {
 				return;
 			}
-			const exitPromise = new Promise<void>((resolveExit) => {
-				child.once("exit", () => {
-					resolveExit();
-				});
-			});
-			child.kill("SIGINT");
-			await Promise.race([
-				exitPromise,
-				new Promise<void>((resolveTimeout) => {
-					setTimeout(() => {
-						if (child.exitCode === null) {
-							child.kill("SIGKILL");
-						}
-						resolveTimeout();
-					}, 5_000);
-				}),
-			]);
+			child.kill(getShutdownSignal());
+			const didExitGracefully = await waitForExit(child, 5_000);
+			if (didExitGracefully) {
+				return;
+			}
+
+			child.kill("SIGKILL");
+			const didExitAfterForce = await waitForExit(child, 5_000);
+			if (!didExitAfterForce) {
+				throw new Error("Timed out stopping kanban test server process.");
+			}
 		},
 	};
 }

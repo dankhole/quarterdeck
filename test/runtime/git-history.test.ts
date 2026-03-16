@@ -107,7 +107,7 @@ describe.sequential("git history runtime", () => {
 
 			expect(response.ok).toBe(true);
 			expect(response.summary.changedFiles).toBe(0);
-			expect(readFileSync(join(repoPath, "tracked.txt"), "utf8")).toBe("original\n");
+			expect(readFileSync(join(repoPath, "tracked.txt"), "utf8").replace(/\r\n/gu, "\n")).toBe("original\n");
 			expect(existsSync(join(repoPath, "scratch", "note.txt"))).toBe(false);
 		} finally {
 			cleanup();
