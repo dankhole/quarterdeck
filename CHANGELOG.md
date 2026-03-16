@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21]
+
+- Fix Windows agent commands failing to launch
+- Fix update detection for Windows npm-cache npx transient installs
+- Reduce false-positive triggering of the kanban skill
+- Show worktree errors in toasts
+
 ## [0.1.20]
 
 - Fix branch picker showing remote tracking refs instead of just local branches, and enable trackpad scrolling in the picker
