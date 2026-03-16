@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -147,12 +147,16 @@ export function BoardCard({
 	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
 	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
+	const [titleWidthFallback, setTitleWidthFallback] = useState(0);
+	const [descriptionWidthFallback, setDescriptionWidthFallback] = useState(0);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
+	const titleWidth = titleRect.width > 0 ? titleRect.width : titleWidthFallback;
+	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
 	const displayPrompt = useMemo(() => {
 		return card.prompt.trim();
 	}, [card.prompt]);
@@ -164,29 +168,49 @@ export function BoardCard({
 				description: "",
 			};
 		}
-		if (titleRect.width <= 0) {
+		if (titleWidth <= 0) {
 			return {
 				title: fallbackTitle,
 				description: "",
 			};
 		}
 		const split = splitPromptToTitleDescriptionByWidth(displayPrompt, {
-			maxTitleWidthPx: titleRect.width,
+			maxTitleWidthPx: titleWidth,
 			measureText: (value) => measureTextWidth(value, titleFont),
 		});
 		return {
 			title: split.title || fallbackTitle,
 			description: split.description,
 		};
-	}, [card.prompt, displayPrompt, titleFont, titleRect.width]);
+	}, [card.prompt, displayPrompt, titleFont, titleWidth]);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
+		if (titleRect.width > 0) {
+			return;
+		}
+		const nextWidth = titleRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
+		if (nextWidth > 0 && nextWidth !== titleWidthFallback) {
+			setTitleWidthFallback(nextWidth);
+		}
+	}, [titleRect.width, titleWidthFallback]);
+
+	useLayoutEffect(() => {
+		if (descriptionRect.width > 0 || !displayPromptSplit.description) {
+			return;
+		}
+		const nextWidth = descriptionRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
+		if (nextWidth > 0 && nextWidth !== descriptionWidthFallback) {
+			setDescriptionWidthFallback(nextWidth);
+		}
+	}, [descriptionRect.width, descriptionWidthFallback, displayPromptSplit.description]);
+
+	useLayoutEffect(() => {
 		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [titleRect.width]);
+	}, [titleWidth]);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		setDescriptionFont(readElementFontShorthand(descriptionRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [descriptionRect.width, displayPromptSplit.description]);
+	}, [descriptionWidth, displayPromptSplit.description]);
 
 	useEffect(() => {
 		setIsDescriptionExpanded(false);
@@ -206,19 +230,19 @@ export function BoardCard({
 				isTruncated: false,
 			};
 		}
-		if (descriptionRect.width <= 0) {
+		if (descriptionWidth <= 0) {
 			return {
 				text: displayPromptSplit.description,
 				isTruncated: false,
 			};
 		}
 		return clampTextWithInlineSuffix(displayPromptSplit.description, {
-			maxWidthPx: descriptionRect.width,
+			maxWidthPx: descriptionWidth,
 			maxLines: DESCRIPTION_COLLAPSE_LINES,
 			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
 			measureText: (value) => measureTextWidth(value, descriptionFont),
 		});
-	}, [descriptionFont, descriptionRect.width, displayPromptSplit.description]);
+	}, [descriptionFont, descriptionWidth, displayPromptSplit.description]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {

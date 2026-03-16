@@ -87,6 +87,11 @@ body,
 	padding: 6px;
 }
 
+.kb-board[data-programmatic-card-move="true"] [data-rfd-draggable-context-id],
+.kb-board[data-programmatic-card-move="true"] [data-rfd-placeholder-context-id] {
+	transition: none !important;
+}
+
 /* -- Scrollbars -- */
 
 * {

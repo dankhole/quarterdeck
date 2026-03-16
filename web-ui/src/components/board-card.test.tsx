@@ -8,6 +8,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
 
 let mockWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | undefined;
+let mockTitleMeasureWidth = 240;
+let mockDescriptionMeasureWidth = 240;
+let mockMeasureCallCount = 0;
 
 vi.mock("@hello-pangea/dnd", () => ({
 	Draggable: ({
@@ -31,20 +34,24 @@ vi.mock("@/stores/workspace-metadata-store", () => ({
 }));
 
 vi.mock("@/utils/react-use", () => ({
-	useMeasure: () => [
-		() => {},
-		{
-			width: 240,
-			height: 0,
-			top: 0,
-			left: 0,
-			bottom: 0,
-			right: 0,
-			x: 0,
-			y: 0,
-			toJSON: () => ({}),
-		},
-	],
+	useMeasure: () => {
+		mockMeasureCallCount += 1;
+		const width = mockMeasureCallCount % 2 === 1 ? mockTitleMeasureWidth : mockDescriptionMeasureWidth;
+		return [
+			() => {},
+			{
+				width,
+				height: 0,
+				top: 0,
+				left: 0,
+				bottom: 0,
+				right: 0,
+				x: 0,
+				y: 0,
+				toJSON: () => ({}),
+			},
+		];
+	},
 }));
 
 vi.mock("@/utils/text-measure", () => ({
@@ -112,12 +119,26 @@ describe("BoardCard", () => {
 
 	beforeEach(() => {
 		mockWorkspaceSnapshot = undefined;
+		mockTitleMeasureWidth = 240;
+		mockDescriptionMeasureWidth = 240;
+		mockMeasureCallCount = 0;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
+		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
+			x: 0,
+			y: 0,
+			left: 0,
+			top: 0,
+			width: 240,
+			height: 32,
+			right: 240,
+			bottom: 32,
+			toJSON: () => ({}),
+		}));
 	});
 
 	afterEach(() => {
@@ -215,5 +236,22 @@ describe("BoardCard", () => {
 		});
 
 		expect(container.textContent).toContain("~/.kanban/worktrees/trash-task-1/kanban");
+	});
+
+	it("renders a new card description before the async measure observer reports width", async () => {
+		mockTitleMeasureWidth = 0;
+		mockDescriptionMeasureWidth = 0;
+
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({ prompt: "Task title||Freshly created task description" })}
+					index={0}
+					columnId="backlog"
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Freshly created task description");
 	});
 });

@@ -370,7 +370,11 @@ export function KanbanBoard({
 			onDragEnd={handleDragEnd}
 			sensors={[programmaticSensor]}
 		>
-			<section ref={boardRef} className="kb-board kb-dependency-surface">
+			<section
+				ref={boardRef}
+				className="kb-board kb-dependency-surface"
+				data-programmatic-card-move={programmaticCardMoveInFlight ? "true" : undefined}
+			>
 				{data.columns.map((column) => (
 					<BoardColumn
 						key={column.id}
