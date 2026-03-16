@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
@@ -52,7 +53,6 @@ interface UseTerminalPanelsInput {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface PrepareTerminalForShortcutInput {
@@ -110,7 +110,6 @@ export function useTerminalPanels({
 	agentCommand,
 	upsertSession,
 	sendTaskSessionInput,
-	onWorktreeError,
 }: UseTerminalPanelsInput): UseTerminalPanelsResult {
 	const homeTerminalProjectIdRef = useRef<string | null>(null);
 	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
@@ -213,12 +212,12 @@ export function useTerminalPanels({
 			return true;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			onWorktreeError(message);
+			notifyError(message);
 			return false;
 		} finally {
 			setIsHomeTerminalStarting(false);
 		}
-	}, [currentProjectId, onWorktreeError, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
+	}, [currentProjectId, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
 
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {
@@ -260,7 +259,7 @@ export function useTerminalPanels({
 				return true;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				onWorktreeError(message);
+				notifyError(message);
 				return false;
 			} finally {
 				if (showLoading) {
@@ -268,7 +267,7 @@ export function useTerminalPanels({
 				}
 			}
 		},
-		[currentProjectId, onWorktreeError, upsertSession],
+		[currentProjectId, upsertSession],
 	);
 
 	const handleToggleDetailTerminal = useCallback(() => {

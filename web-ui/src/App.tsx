@@ -2,7 +2,7 @@ import { FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { showAppToast } from "@/components/app-toaster";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
@@ -11,7 +11,6 @@ import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
-import { RuntimeStatusBanners } from "@/components/runtime-status-banners";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
@@ -62,7 +61,6 @@ export default function App(): ReactElement {
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
-	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
@@ -95,7 +93,6 @@ export default function App(): ReactElement {
 		resetProjectNavigationState,
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
-		onProjectRemoveError: setWorktreeError,
 	});
 	const activeNotificationWorkspaceId = navigationCurrentProjectId;
 	const isDocumentVisible = useDocumentVisibility();
@@ -136,7 +133,6 @@ export default function App(): ReactElement {
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
-		onWorktreeError: setWorktreeError,
 	});
 
 	const selectedCard = useMemo(() => {
@@ -163,7 +159,6 @@ export default function App(): ReactElement {
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
-		onWorktreeError: setWorktreeError,
 	});
 
 	useEffect(() => {
@@ -255,7 +250,6 @@ export default function App(): ReactElement {
 		defaultTaskBranchRef,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId ?? null,
 		setSelectedTaskId,
-		onClearWorktreeError: () => setWorktreeError(null),
 		queueTaskStartAfterEdit,
 	});
 
@@ -340,7 +334,6 @@ export default function App(): ReactElement {
 		agentCommand,
 		upsertSession,
 		sendTaskSessionInput,
-		onWorktreeError: setWorktreeError,
 	});
 	usePrewarmedAgentTerminals({
 		currentProjectId,
@@ -396,11 +389,7 @@ export default function App(): ReactElement {
 
 	useEffect(() => {
 		if (!streamError) {
-			const previousStreamError = lastStreamErrorRef.current;
-			if (previousStreamError) {
-				setWorktreeError((current) => (current === previousStreamError ? null : current));
-				lastStreamErrorRef.current = null;
-			}
+			lastStreamErrorRef.current = null;
 			return;
 		}
 		const removedPath = parseRemovedProjectPathFromStreamError(streamError);
@@ -417,20 +406,19 @@ export default function App(): ReactElement {
 				`project-removed-${removedPath || "unknown"}`,
 			);
 			lastStreamErrorRef.current = null;
-			setWorktreeError(null);
 			return;
 		}
 		if (isRuntimeDisconnected) {
 			lastStreamErrorRef.current = streamError;
-			setWorktreeError(null);
 			return;
 		}
+		if (lastStreamErrorRef.current !== streamError) {
+			notifyError(streamError, { key: `error:${streamError}` });
+		}
 		lastStreamErrorRef.current = streamError;
-		setWorktreeError(streamError);
 	}, [isRuntimeDisconnected, streamError]);
 
 	useEffect(() => {
-		setWorktreeError(null);
 		setSelectedTaskId(null);
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
@@ -511,7 +499,6 @@ export default function App(): ReactElement {
 		fetchTaskWorkingChangeCount,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
-		onWorktreeError: setWorktreeError,
 		readyForReviewNotificationsEnabled,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
@@ -729,7 +716,6 @@ export default function App(): ReactElement {
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
-				<RuntimeStatusBanners worktreeError={worktreeError} onDismissWorktreeError={() => setWorktreeError(null)} />
 				<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
 					<div
 						className="kb-home-layout"

@@ -89,7 +89,6 @@ function HookHarness({
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
-		onWorktreeError: () => {},
 	});
 
 	useEffect(() => {

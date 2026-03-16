@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import type {
 	RuntimeGitRepositoryInfo,
@@ -19,7 +20,6 @@ interface UseWorkspaceSyncInput {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface UseWorkspaceSyncResult {
@@ -42,7 +42,6 @@ export function useWorkspaceSync({
 	setBoard,
 	setSessions,
 	setCanPersistWorkspaceState,
-	onWorktreeError,
 }: UseWorkspaceSyncInput): UseWorkspaceSyncResult {
 	const [workspacePath, setWorkspacePath] = useState<string | null>(null);
 	const [workspaceGit, setWorkspaceGit] = useState<RuntimeGitRepositoryInfo | null>(null);
@@ -127,7 +126,6 @@ export function useWorkspaceSync({
 				return;
 			}
 			applyWorkspaceState(refreshed);
-			onWorktreeError(null);
 		} catch (error) {
 			if (
 				workspaceRefreshRequestIdRef.current !== requestId ||
@@ -136,13 +134,13 @@ export function useWorkspaceSync({
 				return;
 			}
 			const message = error instanceof Error ? error.message : String(error);
-			onWorktreeError(message);
+			notifyError(message);
 		} finally {
 			if (workspaceRefreshRequestIdRef.current === requestId) {
 				setIsWorkspaceStateRefreshing(false);
 			}
 		}
-	}, [applyWorkspaceState, currentProjectId, onWorktreeError]);
+	}, [applyWorkspaceState, currentProjectId]);
 
 	const resetWorkspaceSyncState = useCallback(() => {
 		workspaceRefreshRequestIdRef.current += 1;

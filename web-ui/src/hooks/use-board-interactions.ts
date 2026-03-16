@@ -1,7 +1,7 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { showAppToast } from "@/components/app-toaster";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { type PendingTrashWarningState, useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
@@ -68,7 +68,6 @@ interface UseBoardInteractionsInput {
 		input: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	onWorktreeError: (message: string | null) => void;
 	readyForReviewNotificationsEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
@@ -115,7 +114,6 @@ export function useBoardInteractions({
 	fetchTaskWorkingChangeCount,
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
-	onWorktreeError,
 	readyForReviewNotificationsEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
@@ -249,7 +247,7 @@ export function useBoardInteractions({
 			const optimisticMove = options?.optimisticMove ?? true;
 			const ensured = await ensureTaskWorkspace(task);
 			if (!ensured.ok) {
-				onWorktreeError(ensured.message ?? "Could not set up task workspace.");
+				notifyError(ensured.message ?? "Could not set up task workspace.");
 				if (optimisticMove) {
 					setBoard((currentBoard) => {
 						const currentColumnId = getTaskColumnId(currentBoard, taskId);
@@ -281,7 +279,7 @@ export function useBoardInteractions({
 			}
 			const started = await startTaskSession(task);
 			if (!started.ok) {
-				onWorktreeError(started.message ?? "Could not start task session.");
+				notifyError(started.message ?? "Could not start task session.");
 				if (optimisticMove) {
 					setBoard((currentBoard) => {
 						const currentColumnId = getTaskColumnId(currentBoard, taskId);
@@ -304,10 +302,9 @@ export function useBoardInteractions({
 					return moved.moved ? moved.board : currentBoard;
 				});
 			}
-			onWorktreeError(null);
 			return true;
 		},
-		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, onWorktreeError, selectedTaskId, setBoard, startTaskSession],
+		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, setBoard, startTaskSession],
 	);
 
 	const startBacklogTaskWithAnimation = useCallback(
@@ -461,11 +458,10 @@ export function useBoardInteractions({
 					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
 					return disabledAutoReview.updated ? disabledAutoReview.board : currentBoard;
 				});
-				onWorktreeError(null);
 				return;
 			}
 
-			onWorktreeError(resumed.message ?? "Could not resume task session.");
+			notifyError(resumed.message ?? "Could not resume task session.");
 			if (!options?.optimisticMoveApplied) {
 				return;
 			}
@@ -480,7 +476,7 @@ export function useBoardInteractions({
 				return reverted.moved ? reverted.board : currentBoard;
 			});
 		},
-		[onWorktreeError, setBoard, startTaskSession],
+		[setBoard, startTaskSession],
 	);
 
 	const handleDragEnd = useCallback(

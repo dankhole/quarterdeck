@@ -22,7 +22,6 @@ interface UseTaskEditorInput {
 	defaultTaskBranchRef: string;
 	selectedAgentId: RuntimeAgentId | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	onClearWorktreeError: () => void;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 }
 
@@ -74,7 +73,6 @@ export function useTaskEditor({
 	defaultTaskBranchRef,
 	selectedAgentId,
 	setSelectedTaskId,
-	onClearWorktreeError,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
@@ -246,7 +244,6 @@ export function useTaskEditor({
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
-		onClearWorktreeError();
 		return savedTaskId;
 	}, [
 		editTaskAutoReviewEnabled,
@@ -255,7 +252,6 @@ export function useTaskEditor({
 		editTaskPrompt,
 		editTaskStartInPlanMode,
 		editingTaskId,
-		onClearWorktreeError,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
 	]);
@@ -304,7 +300,6 @@ export function useTaskEditor({
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
-		onClearWorktreeError();
 		return createdTaskId;
 	}, [
 		currentProjectId,
@@ -313,7 +308,6 @@ export function useTaskEditor({
 		newTaskBranchRef,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
-		onClearWorktreeError,
 		resolvedDefaultTaskBranchRef,
 		selectedAgentId,
 		setBoard,
@@ -361,7 +355,6 @@ export function useTaskEditor({
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
-		onClearWorktreeError();
 		return createdTaskIds;
 	}, [
 		currentProjectId,
@@ -369,7 +362,6 @@ export function useTaskEditor({
 		newTaskAutoReviewMode,
 		newTaskBranchRef,
 		newTaskStartInPlanMode,
-		onClearWorktreeError,
 		resolvedDefaultTaskBranchRef,
 		selectedAgentId,
 		setBoard,

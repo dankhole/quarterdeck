@@ -71,7 +71,6 @@ function HookHarness({
 		defaultTaskBranchRef: "main",
 		selectedAgentId: null,
 		setSelectedTaskId,
-		onClearWorktreeError: () => {},
 		queueTaskStartAfterEdit,
 	});
 

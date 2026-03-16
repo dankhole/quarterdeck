@@ -64,13 +64,11 @@ function HookHarness({
 	setBoard,
 	ensureTaskWorkspace,
 	startTaskSession,
-	onWorktreeError,
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	onWorktreeError: (message: string | null) => void;
 }): null {
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [, setSelectedTaskId] = useState<string | null>(null);
@@ -97,7 +95,6 @@ function HookHarness({
 		fetchTaskWorkingChangeCount: NOOP_FETCH_WORKING_CHANGE_COUNT,
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
 		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
-		onWorktreeError,
 		readyForReviewNotificationsEnabled: false,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction: NOOP_RUN_AUTO_REVIEW,
@@ -174,7 +171,6 @@ describe("useBoardInteractions", () => {
 			},
 		}));
 		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
-		const onWorktreeError = vi.fn();
 
 		await act(async () => {
 			root.render(
@@ -183,7 +179,6 @@ describe("useBoardInteractions", () => {
 					setBoard={setBoard}
 					ensureTaskWorkspace={ensureTaskWorkspace}
 					startTaskSession={startTaskSession}
-					onWorktreeError={onWorktreeError}
 				/>,
 			);
 		});
@@ -205,6 +200,5 @@ describe("useBoardInteractions", () => {
 		expect(started).toBe(true);
 		expect(ensureTaskWorkspace).toHaveBeenCalledWith(backlogTask);
 		expect(startTaskSession).toHaveBeenCalledWith(backlogTask);
-		expect(onWorktreeError).toHaveBeenLastCalledWith(null);
 	});
 });

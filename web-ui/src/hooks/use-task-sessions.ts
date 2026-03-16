@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -18,7 +19,6 @@ import type { BoardCard } from "@/types";
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface EnsureTaskWorkspaceResult {
@@ -59,7 +59,6 @@ export interface UseTaskSessionsResult {
 export function useTaskSessions({
 	currentProjectId,
 	setSessions,
-	onWorktreeError,
 }: UseTaskSessionsInput): UseTaskSessionsResult {
 	const upsertSession = useCallback(
 		(summary: RuntimeTaskSessionSummary) => {
@@ -225,11 +224,11 @@ export function useTaskSessions({
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				onWorktreeError(message);
+				notifyError(message);
 				return null;
 			}
 		},
-		[currentProjectId, onWorktreeError],
+		[currentProjectId],
 	);
 
 	const fetchTaskWorkingChangeCount = useCallback(
