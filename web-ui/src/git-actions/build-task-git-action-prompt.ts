@@ -11,7 +11,7 @@ interface TaskGitPromptVariable {
 export const TASK_GIT_BASE_REF_PROMPT_VARIABLE: TaskGitPromptVariable = {
 	key: "base_ref",
 	token: "{{base_ref}}",
-	description: "the branch this task was created from",
+	description: "the branch this task worktree was created from",
 };
 
 export interface TaskGitPromptTemplates {
