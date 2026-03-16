@@ -228,22 +228,39 @@ export function TaskCreateDialog({
 		inputRefs.current[index] = el;
 	}, []);
 
-	// Cmd/Ctrl+Enter in multi mode (for when focus is elsewhere in the dialog)
+	// Cmd/Ctrl+Enter (and Cmd/Ctrl+Shift+Enter) from anywhere in the dialog.
 	useHotkeys(
-		"mod+enter",
+		"mod+enter, mod+shift+enter",
 		(event) => {
-			if (event.shiftKey) {
-				handleCreateAndStartAll();
+			if (mode === "multi") {
+				if (event.shiftKey) {
+					handleCreateAndStartAll();
+					return;
+				}
+				handleCreateAll();
 				return;
 			}
-			handleCreateAll();
+			if (event.shiftKey) {
+				onCreateAndStart?.();
+				return;
+			}
+			onCreate();
 		},
 		{
-			enabled: open && mode === "multi",
+			enabled: open,
 			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			ignoreEventWhen: (event) => {
+				if (!event.defaultPrevented) return false;
+				// Only skip when a textarea or input already handled the shortcut.
+				// Radix checkbox also calls preventDefault() on Enter, but that
+				// should not block the dialog-level shortcut.
+				const tag = (event.target as HTMLElement).tagName?.toLowerCase();
+				return tag === "textarea" || tag === "input";
+			},
 			preventDefault: true,
 		},
-		[open, mode, handleCreateAll, handleCreateAndStartAll],
+		[open, mode, onCreate, onCreateAndStart, handleCreateAll, handleCreateAndStartAll],
 	);
 
 	const dialogTitle = mode === "multi"
