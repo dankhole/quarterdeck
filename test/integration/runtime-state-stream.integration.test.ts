@@ -5,6 +5,7 @@ import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -160,8 +161,8 @@ function resolveShutdownIpcHookPath(): string {
 	return resolve(process.cwd(), "test/integration/shutdown-ipc-hook.cjs");
 }
 
-function resolveTsxLoaderPath(): string {
-	return requireFromHere.resolve("tsx");
+function resolveTsxLoaderImportSpecifier(): string {
+	return pathToFileURL(requireFromHere.resolve("tsx")).href;
 }
 
 async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
@@ -269,14 +270,14 @@ async function startKanbanServer(input: {
 }> {
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
 	const shutdownIpcHookPath = resolveShutdownIpcHookPath();
-	const tsxLoaderPath = resolveTsxLoaderPath();
+	const tsxLoaderImportSpecifier = resolveTsxLoaderImportSpecifier();
 	const child = spawn(
 		process.execPath,
 		[
 			"--require",
 			shutdownIpcHookPath,
 			"--import",
-			tsxLoaderPath,
+			tsxLoaderImportSpecifier,
 			cliEntrypoint,
 			"--no-open",
 			...(input.extraArgs ?? []),
