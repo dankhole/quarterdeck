@@ -487,7 +487,7 @@ export function BoardCard({
 										}}
 									/>
 									<span
-										className="font-mono"
+										className="font-mono line-clamp-6"
 										style={{
 											fontSize: 12,
 											whiteSpace: "normal",
