@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.20]
+
+- Fix branch picker showing remote tracking refs instead of just local branches, and enable trackpad scrolling in the picker
+- Fix task card activity not updating when Opencode completes hook actions
+- Fix Cline tasks getting stuck instead of returning to in-progress when asking follow-up questions during review
+
 ## [0.1.19]
 
 - Fixed a race condition where navigating to a task's detail view could trigger an unintended auto-start
