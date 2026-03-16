@@ -127,7 +127,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const plugin = readFileSync(pluginPath, "utf8");
 		expect(plugin).toContain("parentID");
 		expect(plugin).toContain('"permission.ask"');
+		expect(plugin).toContain('"tool.execute.before"');
+		expect(plugin).toContain('"tool.execute.after"');
 		expect(plugin).toContain("session.status");
+		expect(plugin).toContain("message.part.updated");
+		expect(plugin).toContain("last_assistant_message");
+		expect(plugin).toContain("--metadata-base64");
+		expect(plugin).toContain('if (kind === "review")');
 		expect(plugin).toContain('currentState = "idle"');
 	});
 
