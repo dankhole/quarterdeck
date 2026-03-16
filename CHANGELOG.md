@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.23]
+
+- Fix Windows terminal launches incorrectly escaping arguments with spaces, parentheses, and other special characters
+
 ## [0.1.22]
 
 - Fix Windows terminal launch failing for bare executables (e.g. `cline`) due to unnecessary quoting
