@@ -40,7 +40,7 @@ export function Dialog({
 
 export function DialogHeader({ title, icon, children }: { title: string; icon?: ReactNode; children?: ReactNode }): React.ReactElement {
 	return (
-		<div className="flex items-center justify-between px-4 py-2 bg-surface-2 border-b border-[#5A6572] shrink-0 rounded-t-lg">
+		<div className="flex items-center justify-between px-2 py-2 bg-surface-2 border-b border-[#5A6572] shrink-0 rounded-t-lg">
 			<RadixDialog.Title className="flex items-center gap-2 text-sm font-semibold text-text-primary">
 				{icon ? <span className="text-text-secondary">{icon}</span> : null}
 				{title}
@@ -58,7 +58,7 @@ export function DialogBody({ children, className }: { children: ReactNode; class
 }
 
 export function DialogFooter({ children }: { children: ReactNode }): React.ReactElement {
-	return <div className="flex justify-end gap-2 px-4 py-2 bg-surface-2 border-t border-[#5A6572] shrink-0 rounded-b-lg">{children}</div>;
+	return <div className="flex justify-end gap-2 px-2 py-2 bg-surface-2 border-t border-[#5A6572] shrink-0 rounded-b-lg">{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */
