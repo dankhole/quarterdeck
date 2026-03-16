@@ -75,9 +75,27 @@ describe("PtySession", () => {
 			"/d",
 			"/s",
 			"/c",
-			'"codex" "--foo" "hello world"',
+			'codex --foo "hello world"',
 		]);
 		expect(session.pid).toBe(4242);
+	});
+
+	it("does not over-quote bare executables on Windows", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		PtySession.spawn({
+			binary: "cline",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["/d", "/s", "/c", "cline"]);
 	});
 
 	it("does not use cmd shell outside Windows", () => {

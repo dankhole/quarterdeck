@@ -1,8 +1,7 @@
 import * as pty from "node-pty";
 
-import { buildShellCommandLine } from "../core/shell.js";
-
 const MAX_HISTORY_BYTES = 1024 * 1024;
+const SAFE_WINDOWS_CMD_TOKEN_PATTERN = /^[A-Za-z0-9_./:\\@%+=,-]+$/;
 
 export interface PtyExitEvent {
 	exitCode: number;
@@ -44,6 +43,20 @@ function terminatePtyProcess(ptyProcess: pty.IPty): void {
 function resolveWindowsComSpec(): string {
 	const comSpec = process.env.ComSpec?.trim() || process.env.COMSPEC?.trim();
 	return comSpec || "cmd.exe";
+}
+
+function quoteWindowsCmdToken(value: string): string {
+	if (value.length === 0) {
+		return '""';
+	}
+	if (SAFE_WINDOWS_CMD_TOKEN_PATTERN.test(value)) {
+		return value;
+	}
+	return `"${value.replaceAll('"', '""')}"`;
+}
+
+function buildWindowsCmdCommandLine(binary: string, args: string[]): string {
+	return [binary, ...args].map((part) => quoteWindowsCmdToken(part)).join(" ");
 }
 
 function shouldUseWindowsShellLaunch(binary: string): boolean {
@@ -95,7 +108,7 @@ export class PtySession {
 		const useWindowsShellLaunch = shouldUseWindowsShellLaunch(binary);
 		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec() : binary;
 		const spawnArgs = useWindowsShellLaunch
-			? ["/d", "/s", "/c", buildShellCommandLine(binary, args)]
+			? ["/d", "/s", "/c", buildWindowsCmdCommandLine(binary, args)]
 			: args;
 		const ptyOptions: pty.IPtyForkOptions = {
 			name: terminalName,
