@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.22]
+
+- Fix Windows terminal launch failing for bare executables (e.g. `cline`) due to unnecessary quoting
+
 ## [0.1.21]
 
 - Fix Windows agent commands failing to launch
