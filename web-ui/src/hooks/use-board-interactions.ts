@@ -318,23 +318,9 @@ export function useBoardInteractions({
 				return startBacklogTaskWithAnimation(task);
 			}
 			if (programmaticMoveAttempt === "unavailable") {
-				let movedTask: BoardCard | null = null;
-				setBoard((currentBoard) => {
-					const selection = findCardSelection(currentBoard, task.id);
-					if (!selection || selection.column.id !== "backlog") {
-						return currentBoard;
-					}
-					const moved = moveTaskToColumn(currentBoard, task.id, "in_progress", { insertAtTop: true });
-					if (!moved.moved) {
-						return currentBoard;
-					}
-					movedTask = findCardSelection(moved.board, task.id)?.card ?? null;
-					return moved.board;
+				return kickoffTaskInProgress(task, task.id, "backlog", {
+					optimisticMove: false,
 				});
-				if (!movedTask) {
-					return false;
-				}
-				return kickoffTaskInProgress(movedTask, task.id, "backlog");
 			}
 
 			let resolveCompletion: ((started: boolean) => void) | null = null;
