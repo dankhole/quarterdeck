@@ -77,7 +77,7 @@ describe("renderKanbanSkillMarkdown", () => {
 		const rendered = renderKanbanSkillMarkdown("kanban");
 		expect(rendered).toContain("name: kanban");
 		expect(rendered).toContain("description: Manage tasks on the user's Kanban");
-		expect(rendered).toContain("Use when the user asks to create tasks");
+		expect(rendered).toContain("Only use this skill when the user mentions kanban");
 		expect(rendered).toContain("kanban task create");
 		expect(rendered).toContain("If a task command fails because the runtime is unavailable");
 	});
