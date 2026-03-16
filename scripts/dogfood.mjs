@@ -91,28 +91,90 @@ function parseArgs(argv) {
 	};
 }
 
-function runCommand(command, args, { trapSignals, ...spawnOptions } = {}) {
+function runCommand(command, args, spawnOptions = {}) {
 	return new Promise((resolveExit, reject) => {
 		const child = spawn(command, args, {
 			stdio: "inherit",
 			...spawnOptions,
 		});
 
-		// When trapSignals is set, ignore SIGINT/SIGTERM in the parent and let
-		// the child handle shutdown gracefully. Both processes receive the signal
-		// from the process group, so the parent just needs to wait for the child
-		// to finish its cleanup and exit.
-		const noop = trapSignals ? () => {} : undefined;
-		if (noop) {
-			process.on("SIGINT", noop);
-			process.on("SIGTERM", noop);
-		}
+		child.on("error", (err) => {
+			reject(err);
+		});
+		child.on("close", (code) => {
+			resolveExit(typeof code === "number" ? code : 1);
+		});
+	});
+}
+
+function runRuntimeCommand(command, args, spawnOptions = {}) {
+	return new Promise((resolveExit, reject) => {
+		const child = spawn(command, args, {
+			stdio: "inherit",
+			detached: process.platform !== "win32",
+			...spawnOptions,
+		});
+
+		// Dogfood used to rely on the shell/npm process group behavior, but under
+		// `npm run dogfood` Ctrl+C could reach the runtime twice: once directly
+		// from the terminal group and again through npm wrapper shutdown. That
+		// second SIGINT was enough to make Kanban force-exit before shutdown
+		// cleanup finished, which left in_progress/review cards behind. Running
+		// the runtime in its own process group and forwarding exactly one graceful
+		// shutdown signal from this wrapper keeps shutdown deterministic while
+		// still giving us a timed SIGKILL fallback if the child hangs.
+		const sendSignalToChild = (signal) => {
+			if (child.exitCode !== null || child.pid == null) {
+				return;
+			}
+			if (process.platform !== "win32") {
+				try {
+					process.kill(-child.pid, signal);
+					return;
+				} catch (error) {
+					if (error && typeof error === "object" && "code" in error && error.code === "ESRCH") {
+						return;
+					}
+				}
+			}
+			child.kill(signal);
+		};
+
+		let shutdownStarted = false;
+		let forceKillTimer = null;
+		const requestShutdown = (signal) => {
+			if (shutdownStarted) {
+				return;
+			}
+			shutdownStarted = true;
+			sendSignalToChild(signal);
+			forceKillTimer = setTimeout(() => {
+				sendSignalToChild("SIGKILL");
+			}, 10_000);
+		};
+
+		const onSigint = () => {
+			requestShutdown("SIGINT");
+		};
+		const onSigterm = () => {
+			requestShutdown("SIGTERM");
+		};
+		const onSighup = () => {
+			requestShutdown("SIGTERM");
+		};
+
+		process.on("SIGINT", onSigint);
+		process.on("SIGTERM", onSigterm);
+		process.on("SIGHUP", onSighup);
 
 		const cleanup = () => {
-			if (noop) {
-				process.off("SIGINT", noop);
-				process.off("SIGTERM", noop);
+			if (forceKillTimer !== null) {
+				clearTimeout(forceKillTimer);
+				forceKillTimer = null;
 			}
+			process.off("SIGINT", onSigint);
+			process.off("SIGTERM", onSigterm);
+			process.off("SIGHUP", onSighup);
 		};
 
 		child.on("error", (err) => {
@@ -138,7 +200,7 @@ async function main() {
 	}
 
 	const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
-	const launchArgs = [cliEntrypoint, "--port", args.port];
+	const launchArgs = ["--port", args.port];
 	if (args.skipShutdownCleanup) {
 		launchArgs.push("--skip-shutdown-cleanup");
 	}
@@ -156,10 +218,9 @@ async function main() {
 	}
 	console.log(`[dogfood] Runtime port: ${args.port}`);
 
-	const exitCode = await runCommand(nodeBinary, launchArgs, {
+	const exitCode = await runRuntimeCommand(nodeBinary, [cliEntrypoint, ...launchArgs], {
 		cwd: launchCwd,
 		env: process.env,
-		trapSignals: true,
 	});
 	process.exit(exitCode);
 }

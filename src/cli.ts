@@ -454,7 +454,7 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 
 	closeWithGrace(
 		{
-			delay: 3000,
+			delay: 10000,
 			skip: ["uncaughtException", "unhandledRejection", "beforeExit"],
 			onTimeout: (delayMs) => {
 				console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);

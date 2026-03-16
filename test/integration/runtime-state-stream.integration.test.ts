@@ -1027,7 +1027,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 45_000);
 
-	it("moves stale hook-review cards to trash on shutdown after hydration", async () => {
+	it("moves stale hook-review cards to trash on shutdown", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-review-");
 
@@ -1102,33 +1102,8 @@ describe.sequential("runtime state stream integration", () => {
 			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
 			expect(workspaceId).not.toBe("");
 
-			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
-				type: "query",
-				workspaceId,
-			});
-			expect(hydratedState.status).toBe(200);
-			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("hook");
-		} finally {
-			await secondServer.stop();
-		}
-
-		const thirdPort = await getAvailablePort();
-		const thirdServer = await startKanbanServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: thirdPort,
-		});
-
-		try {
-			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
-
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getState",
 				type: "query",
 				workspaceId,
@@ -1144,13 +1119,13 @@ describe.sequential("runtime state stream integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 		} finally {
-			await thirdServer.stop();
+			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}
 	}, 45_000);
 
-	it("moves stale completed review cards to trash on shutdown after hydration", async () => {
+	it("moves stale completed review cards to trash on shutdown", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-exit-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-exit-review-");
 
@@ -1236,33 +1211,8 @@ describe.sequential("runtime state stream integration", () => {
 			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
 			expect(workspaceId).not.toBe("");
 
-			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
-				type: "query",
-				workspaceId,
-			});
-			expect(hydratedState.status).toBe(200);
-			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("exit");
-		} finally {
-			await secondServer.stop();
-		}
-
-		const thirdPort = await getAvailablePort();
-		const thirdServer = await startKanbanServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: thirdPort,
-		});
-
-		try {
-			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
-
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getState",
 				type: "query",
 				workspaceId,
@@ -1276,7 +1226,7 @@ describe.sequential("runtime state stream integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getTaskContext",
 				type: "query",
 				workspaceId,
@@ -1288,7 +1238,7 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceInfo.status).toBe(200);
 			expect(workspaceInfo.payload.exists).toBe(false);
 		} finally {
-			await thirdServer.stop();
+			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}
