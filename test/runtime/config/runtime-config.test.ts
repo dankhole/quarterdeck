@@ -139,7 +139,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				process.env.SHELL = "/definitely-not-a-shell";
 				await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
-					expect(state.selectedAgentId).toBe("claude");
+					expect(state.selectedAgentId).toBe("cline");
 					expect(existsSync(join(tempHome, ".kanban", "config.json"))).toBe(false);
 				});
 			} finally {
@@ -214,7 +214,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(tempProject);
-				expect(state.selectedAgentId).toBe("claude");
+				expect(state.selectedAgentId).toBe("cline");
 			});
 		} finally {
 			cleanupBin();
@@ -237,7 +237,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const current = await loadRuntimeConfig(tempProject);
 				await saveRuntimeConfig(tempProject, {
-					selectedAgentId: "claude",
+					selectedAgentId: "cline",
 					selectedShortcutLabel: null,
 					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
@@ -279,9 +279,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await loadRuntimeConfig(tempProject);
 
 				const updated = await updateRuntimeConfig(tempProject, {
-					selectedAgentId: "cline",
+					selectedAgentId: "codex",
 				});
-				expect(updated.selectedAgentId).toBe("cline");
+				expect(updated.selectedAgentId).toBe("codex");
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
@@ -289,7 +289,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 				};
-				expect(globalPayload.selectedAgentId).toBe("cline");
+				expect(globalPayload.selectedAgentId).toBe("codex");
 				expect(globalPayload.selectedShortcutLabel).toBeUndefined();
 				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();

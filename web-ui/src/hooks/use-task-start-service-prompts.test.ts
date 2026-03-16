@@ -106,6 +106,13 @@ describe("buildTaskStartServicePromptContent", () => {
 		expect(content.installCommand).toBeUndefined();
 	});
 
+	it("returns agent cli setup guidance with cline install command", () => {
+		const content = buildTaskStartServicePromptContent("agent_cli");
+		expect(content.installCommand).toBe("npm install -g cline");
+		expect(content.installButtonLabel).toBe("Run install command");
+		expect(content.description).toContain("No supported CLI agent was detected");
+	});
+
 	it("returns opencode-specific linear guidance with oauth", () => {
 		const content = buildTaskStartServicePromptContent("linear_mcp", {
 			selectedAgentId: "opencode",
@@ -129,6 +136,11 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 
 		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", availability)).toBe(false);
 		expect(isTaskStartServicePromptAlreadyConfigured("github_cli", availability)).toBe(true);
+	});
+
+	it("maps agent cli prompt to installed-agent state", () => {
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { hasInstalledAgent: false })).toBe(false);
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { hasInstalledAgent: true })).toBe(true);
 	});
 });
 
@@ -189,6 +201,35 @@ describe("collectPendingTaskStartServicePrompts", () => {
 		).toEqual([]);
 	});
 });
+
+	it("shows agent cli prompt first when no supported agent is installed", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Use github and linear context",
+					},
+					{
+						taskId: "task-2",
+						prompt: "No integrations needed",
+					},
+				],
+				taskStartSetupAvailability: {
+					githubCli: true,
+					linearMcp: true,
+				},
+				hasInstalledAgent: false,
+				promptAcknowledgements: {},
+				isPromptDoNotShowAgainEnabled: () => false,
+			}),
+		).toEqual([
+			{
+				promptId: "agent_cli",
+				taskIds: ["task-1", "task-2"],
+			},
+		]);
+	});
 
 describe("mergeTaskStartServicePromptQueue", () => {
 	it("appends new prompt kinds and merges task ids for existing prompt kinds", () => {

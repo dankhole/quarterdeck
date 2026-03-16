@@ -40,6 +40,8 @@ type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
 const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND = "claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
+const CLINE_CLI_INSTALL_COMMAND = "npm install -g cline";
+const SUPPORTED_AGENT_LABELS = "Claude Code, OpenAI Codex, Cline CLI, OpenCode, Droid CLI, or Gemini CLI";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -115,8 +117,14 @@ export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupK
 export function isTaskStartServicePromptAlreadyConfigured(
 	promptId: TaskStartSetupKind,
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined,
+	options?: {
+		hasInstalledAgent?: boolean | null;
+	},
 ): boolean {
 	if (!taskStartSetupAvailability) {
+		if (promptId === "agent_cli") {
+			return options?.hasInstalledAgent === true;
+		}
 		return false;
 	}
 
@@ -125,6 +133,8 @@ export function isTaskStartServicePromptAlreadyConfigured(
 			return taskStartSetupAvailability.linearMcp;
 		case "github_cli":
 			return taskStartSetupAvailability.githubCli;
+		case "agent_cli":
+			return options?.hasInstalledAgent === true;
 		default:
 			return false;
 	}
@@ -173,6 +183,17 @@ export function buildTaskStartServicePromptContent(
 					: {}),
 			};
 		}
+		case "agent_cli": {
+			return {
+				id: promptId,
+				title: "Set up a CLI agent before starting this task?",
+				description: `No supported CLI agent was detected on your PATH. Kanban can run tasks with ${SUPPORTED_AGENT_LABELS}.`,
+				installCommand: CLINE_CLI_INSTALL_COMMAND,
+				installButtonLabel: "Run install command",
+				installCommandDescription: "Install Cline CLI:",
+				authenticationNote: "After installing, try starting the task again.",
+			};
+		}
 		default:
 			return {
 				id: promptId,
@@ -185,9 +206,25 @@ export function buildTaskStartServicePromptContent(
 export function collectPendingTaskStartServicePrompts(input: {
 	tasks: TaskStartServicePromptTask[];
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
+	hasInstalledAgent?: boolean | null;
 	promptAcknowledgements: Record<string, true>;
 	isPromptDoNotShowAgainEnabled: (promptId: TaskStartSetupKind) => boolean;
 }): CollectedTaskStartServicePrompt[] {
+	if (input.hasInstalledAgent === false && !input.isPromptDoNotShowAgainEnabled("agent_cli")) {
+		const missingAgentPromptTaskIds = [...new Set(input.tasks.map((task) => task.taskId))].filter((taskId) => {
+			const promptKey = getTaskStartServicePromptKey(taskId, "agent_cli");
+			return !input.promptAcknowledgements[promptKey];
+		});
+		if (missingAgentPromptTaskIds.length > 0) {
+			return [
+				{
+					promptId: "agent_cli",
+					taskIds: missingAgentPromptTaskIds,
+				},
+			];
+		}
+	}
+
 	const promptTaskIdsByPromptId = new Map<TaskStartSetupKind, string[]>();
 
 	for (const task of input.tasks) {
@@ -264,6 +301,7 @@ interface UseTaskStartServicePromptsInput {
 	currentProjectId: string | null;
 	selectedAgentId: RuntimeAgentId | null | undefined;
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
+	hasInstalledAgent: boolean | null | undefined;
 	handleCreateTask: () => string | null;
 	handleCreateTasks: (prompts: string[]) => string[];
 	handleStartTask: (taskId: string) => void;
@@ -297,6 +335,7 @@ export function useTaskStartServicePrompts({
 	currentProjectId,
 	selectedAgentId,
 	taskStartSetupAvailability,
+	hasInstalledAgent,
 	handleCreateTask,
 	handleCreateTasks,
 	handleStartTask,
@@ -309,6 +348,8 @@ export function useTaskStartServicePrompts({
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartLinearSetupPromptDoNotShowAgain, false);
 	const [isGithubTaskStartPromptDoNotShowAgain, setIsGithubTaskStartPromptDoNotShowAgain] =
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartGithubSetupPromptDoNotShowAgain, false);
+	const [isAgentCliTaskStartPromptDoNotShowAgain, setIsAgentCliTaskStartPromptDoNotShowAgain] =
+		useBooleanLocalStorageValue(LocalStorageKey.TaskStartAgentCliSetupPromptDoNotShowAgain, false);
 	const [pendingTaskStartServicePromptQueue, setPendingTaskStartServicePromptQueue] = useState<
 		PendingTaskStartServicePromptState[]
 	>([]);
@@ -348,11 +389,17 @@ export function useTaskStartServicePrompts({
 					return isLinearTaskStartPromptDoNotShowAgain;
 				case "github_cli":
 					return isGithubTaskStartPromptDoNotShowAgain;
+				case "agent_cli":
+					return isAgentCliTaskStartPromptDoNotShowAgain;
 				default:
 					return false;
 			}
 		},
-		[isGithubTaskStartPromptDoNotShowAgain, isLinearTaskStartPromptDoNotShowAgain],
+		[
+			isAgentCliTaskStartPromptDoNotShowAgain,
+			isGithubTaskStartPromptDoNotShowAgain,
+			isLinearTaskStartPromptDoNotShowAgain,
+		],
 	);
 
 	const setTaskStartServicePromptDoNotShowAgainPreference = useCallback(
@@ -364,11 +411,18 @@ export function useTaskStartServicePrompts({
 				case "github_cli":
 					setIsGithubTaskStartPromptDoNotShowAgain(value);
 					return;
+				case "agent_cli":
+					setIsAgentCliTaskStartPromptDoNotShowAgain(value);
+					return;
 				default:
 					return;
 			}
 		},
-		[setIsGithubTaskStartPromptDoNotShowAgain, setIsLinearTaskStartPromptDoNotShowAgain],
+		[
+			setIsAgentCliTaskStartPromptDoNotShowAgain,
+			setIsGithubTaskStartPromptDoNotShowAgain,
+			setIsLinearTaskStartPromptDoNotShowAgain,
+		],
 	);
 
 	const acknowledgeTaskStartServicePrompt = useCallback(
@@ -514,7 +568,11 @@ export function useTaskStartServicePrompts({
 					if (!selection) {
 						continue;
 					}
-					for (const promptId of detectTaskStartServicePromptIds(selection.card.prompt)) {
+					const promptIds = detectTaskStartServicePromptIds(selection.card.prompt);
+					if (hasInstalledAgent === false) {
+						promptIds.push("agent_cli");
+					}
+					for (const promptId of promptIds) {
 						const promptKey = getTaskStartServicePromptKey(taskId, promptId);
 						if (!(promptKey in next)) {
 							continue;
@@ -528,7 +586,7 @@ export function useTaskStartServicePrompts({
 				return next;
 			});
 		},
-		[board],
+		[board, hasInstalledAgent],
 	);
 
 	const queueTaskStartServicePrompts = useCallback(
@@ -547,6 +605,7 @@ export function useTaskStartServicePrompts({
 					})
 					.filter((task): task is TaskStartServicePromptTask => task !== null),
 				taskStartSetupAvailability,
+				hasInstalledAgent,
 				promptAcknowledgements: taskStartServicePromptAcknowledgements,
 				isPromptDoNotShowAgainEnabled: isTaskStartServicePromptDoNotShowAgainEnabled,
 			});
@@ -561,6 +620,7 @@ export function useTaskStartServicePrompts({
 		},
 		[
 			board,
+			hasInstalledAgent,
 			isTaskStartServicePromptDoNotShowAgainEnabled,
 			taskStartSetupAvailability,
 			taskStartServicePromptAcknowledgements,

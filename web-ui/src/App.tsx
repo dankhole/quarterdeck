@@ -101,6 +101,7 @@ export default function App(): ReactElement {
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
 		useRuntimeProjectConfig(currentProjectId);
+	const hasInstalledAgent = runtimeProjectConfig ? runtimeProjectConfig.agents.some((agent) => agent.installed) : null;
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
@@ -520,6 +521,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
 		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
+		hasInstalledAgent,
 		handleCreateTask,
 		handleCreateTasks,
 		handleStartTask,
