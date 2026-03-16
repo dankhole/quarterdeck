@@ -49,8 +49,12 @@ function escapeWindowsCommand(value: string): string {
 	return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
 }
 
+function normalizeWindowsCmdArgument(value: string): string {
+	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").replaceAll("\n", "\\n");
+}
+
 function escapeWindowsArgument(value: string): string {
-	let escaped = `${value}`;
+	let escaped = normalizeWindowsCmdArgument(`${value}`);
 	escaped = escaped.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
 	escaped = escaped.replace(/(?=(\\+?)?)\1$/g, "$1$1");
 	escaped = `"${escaped}"`;

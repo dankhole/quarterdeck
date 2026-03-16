@@ -104,7 +104,7 @@ describe("PtySession", () => {
 
 		PtySession.spawn({
 			binary: "cline",
-			args: ["add comment to random file"],
+			args: ["add comment to random file\nwith more context"],
 			cwd: "C:/repo",
 			cols: 120,
 			rows: 40,
@@ -116,7 +116,9 @@ describe("PtySession", () => {
 		expect(cmdArgs).toContain("add^");
 		expect(cmdArgs).toContain("comment^");
 		expect(cmdArgs).toContain("random^");
-		expect(cmdArgs).toContain("file");
+		expect(cmdArgs).toContain("file\\nwith^");
+		expect(cmdArgs).toContain("more^");
+		expect(cmdArgs).toContain("context");
 	});
 
 	it("does not use cmd shell outside Windows", () => {
