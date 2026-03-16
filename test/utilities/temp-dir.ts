@@ -10,8 +10,8 @@ export function createTempDir(prefix = "kanban-test-"): { path: string; cleanup:
 			rmSync(path, {
 				recursive: true,
 				force: true,
-				maxRetries: 8,
-				retryDelay: 150,
+				maxRetries: 15,
+				retryDelay: 300,
 			}),
 	};
 }
