@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18]
+
+- Fix layout stability when moving cards between columns programmatically
+- Improve checkbox contrast on dialog footers
+- Reduce dialog header/footer side padding to match vertical padding
+- Fix description briefly flashing on card mount
+
 ## [0.1.17]
 
 - Fix keyboard shortcuts (Cmd+Enter) not working when focus is on dialog inputs
