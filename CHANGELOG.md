@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.24]
+
+- Fixed multiline prompt arguments being broken on Windows cmd.exe
+
 ## [0.1.23]
 
 - Fix Windows terminal launches incorrectly escaping arguments with spaces, parentheses, and other special characters
