@@ -71,12 +71,10 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("C:\\Windows\\System32\\cmd.exe");
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual([
-			"/d",
-			"/s",
-			"/c",
-			'codex --foo "hello world"',
-		]);
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("/d /s /c");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("codex");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("hello^");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toContain("world");
 		expect(session.pid).toBe(4242);
 	});
 
@@ -95,7 +93,30 @@ describe("PtySession", () => {
 		});
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["/d", "/s", "/c", "cline"]);
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toBe('/d /s /c "cline"');
+	});
+
+	it("preserves full prompt text on Windows", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		PtySession.spawn({
+			binary: "cline",
+			args: ["add comment to random file"],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		const cmdArgs = ptyMocks.spawn.mock.calls[0]?.[1] as string;
+		expect(cmdArgs).toContain("cline");
+		expect(cmdArgs).toContain("add^");
+		expect(cmdArgs).toContain("comment^");
+		expect(cmdArgs).toContain("random^");
+		expect(cmdArgs).toContain("file");
 	});
 
 	it("does not use cmd shell outside Windows", () => {

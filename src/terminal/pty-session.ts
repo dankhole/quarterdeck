@@ -1,7 +1,7 @@
 import * as pty from "node-pty";
 
 const MAX_HISTORY_BYTES = 1024 * 1024;
-const SAFE_WINDOWS_CMD_TOKEN_PATTERN = /^[A-Za-z0-9_./:\\@%+=,-]+$/;
+const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
 
 export interface PtyExitEvent {
 	exitCode: number;
@@ -10,7 +10,7 @@ export interface PtyExitEvent {
 
 export interface SpawnPtySessionRequest {
 	binary: string;
-	args?: string[];
+	args?: string[] | string;
 	cwd: string;
 	env?: Record<string, string | undefined>;
 	cols: number;
@@ -45,18 +45,24 @@ function resolveWindowsComSpec(): string {
 	return comSpec || "cmd.exe";
 }
 
-function quoteWindowsCmdToken(value: string): string {
-	if (value.length === 0) {
-		return '""';
-	}
-	if (SAFE_WINDOWS_CMD_TOKEN_PATTERN.test(value)) {
-		return value;
-	}
-	return `"${value.replaceAll('"', '""')}"`;
+function escapeWindowsCommand(value: string): string {
+	return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
 }
 
-function buildWindowsCmdCommandLine(binary: string, args: string[]): string {
-	return [binary, ...args].map((part) => quoteWindowsCmdToken(part)).join(" ");
+function escapeWindowsArgument(value: string): string {
+	let escaped = `${value}`;
+	escaped = escaped.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
+	escaped = escaped.replace(/(?=(\\+?)?)\1$/g, "$1$1");
+	escaped = `"${escaped}"`;
+	escaped = escaped.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
+	return escaped;
+}
+
+function buildWindowsCmdArgsCommandLine(binary: string, args: string[]): string {
+	const escapedCommand = escapeWindowsCommand(binary);
+	const escapedArgs = args.map((part) => escapeWindowsArgument(part));
+	const shellCommand = [escapedCommand, ...escapedArgs].join(" ");
+	return `/d /s /c "${shellCommand}"`;
 }
 
 function shouldUseWindowsShellLaunch(binary: string): boolean {
@@ -104,12 +110,13 @@ export class PtySession {
 	}
 
 	static spawn({ binary, args = [], cwd, env, cols, rows, onData, onExit }: SpawnPtySessionRequest): PtySession {
+		const normalizedArgs = typeof args === "string" ? [args] : args;
 		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
 		const useWindowsShellLaunch = shouldUseWindowsShellLaunch(binary);
 		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec() : binary;
 		const spawnArgs = useWindowsShellLaunch
-			? ["/d", "/s", "/c", buildWindowsCmdCommandLine(binary, args)]
-			: args;
+			? buildWindowsCmdArgsCommandLine(binary, normalizedArgs)
+			: normalizedArgs;
 		const ptyOptions: pty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,
