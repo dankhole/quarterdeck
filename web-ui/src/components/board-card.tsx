@@ -197,6 +197,8 @@ export function BoardCard({
 		event.stopPropagation();
 	};
 
+	const isDescriptionMeasured = descriptionRect.width > 0;
+
 	const descriptionDisplay = useMemo(() => {
 		if (!displayPromptSplit.description) {
 			return {
@@ -395,6 +397,7 @@ export function BoardCard({
 										className={cn(
 											"text-sm leading-[1.4]",
 											isTrashCard ? "text-text-tertiary" : "text-text-secondary",
+											!isDescriptionMeasured && !isDescriptionExpanded && "line-clamp-3",
 										)}
 										style={{
 											margin: "2px 0 0",
