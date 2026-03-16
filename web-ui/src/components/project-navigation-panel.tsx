@@ -134,8 +134,8 @@ export function ProjectNavigationPanel({
 				href="https://cline.bot"
 				target="_blank"
 				rel="noopener noreferrer"
-				className="text-text-tertiary hover:text-text-primary text-center block transition-colors"
-				style={{ padding: "6px 12px", fontSize: 10 }}
+				className="text-text-tertiary hover:text-text-primary text-center block text-xs"
+				style={{ padding: "6px 12px" }}
 			>
 				Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
 			</a>
@@ -229,7 +229,7 @@ const MORE_SHORTCUTS = [
 function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React.ReactElement {
 	return (
 		<div className="flex justify-between items-center py-px">
-			<span className="text-text-tertiary text-[11px]">{label}</span>
+			<span className="text-text-tertiary text-xs">{label}</span>
 			<span className="inline-flex items-center gap-0.5">
 				{keys.map((key, i) => (
 					<Kbd key={`${key}-${i}`}>{key}</Kbd>
@@ -261,9 +261,9 @@ function ShortcutsCard(): React.ReactElement {
 					<Collapsible.Trigger asChild>
 						<button
 							type="button"
-							className="flex items-center gap-1 mt-1.5 text-[10px] text-text-tertiary hover:text-text-secondary cursor-pointer bg-transparent border-none p-0"
+							className="flex items-center gap-1 mt-1.5 text-xs text-text-tertiary hover:text-text-secondary cursor-pointer bg-transparent border-none p-0"
 						>
-							{expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+							{expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
 							{expanded ? "Less" : "All shortcuts"}
 						</button>
 					</Collapsible.Trigger>
