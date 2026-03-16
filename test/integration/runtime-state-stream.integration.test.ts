@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -156,21 +156,12 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-function resolveTsxCliEntrypoint(): string {
-	const packageJsonPath = requireFromHere.resolve("tsx/package.json");
-	const packageJson = requireFromHere(packageJsonPath) as {
-		bin?: string | Record<string, string>;
-	};
-	const binValue =
-		typeof packageJson.bin === "string"
-			? packageJson.bin
-			: packageJson.bin && typeof packageJson.bin === "object"
-				? (packageJson.bin.tsx ?? Object.values(packageJson.bin)[0])
-				: null;
-	if (!binValue) {
-		throw new Error("Could not resolve tsx CLI entrypoint from package metadata.");
-	}
-	return resolve(dirname(packageJsonPath), binValue);
+function resolveShutdownIpcHookPath(): string {
+	return resolve(process.cwd(), "test/integration/shutdown-ipc-hook.cjs");
+}
+
+function resolveTsxLoaderPath(): string {
+	return requireFromHere.resolve("tsx");
 }
 
 async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
@@ -233,6 +224,22 @@ function getShutdownSignal(): NodeJS.Signals {
 	return process.platform === "win32" ? "SIGTERM" : "SIGINT";
 }
 
+async function requestGracefulShutdown(childProcess: ChildProcess): Promise<void> {
+	if (typeof childProcess.send !== "function" || !childProcess.connected) {
+		childProcess.kill(getShutdownSignal());
+		return;
+	}
+
+	await new Promise<void>((resolveSend) => {
+		childProcess.send({ type: "kanban.shutdown" }, (error) => {
+			if (error) {
+				childProcess.kill(getShutdownSignal());
+			}
+			resolveSend();
+		});
+	});
+}
+
 async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
 	if (childProcess.exitCode !== null) {
 		return true;
@@ -260,17 +267,30 @@ async function startKanbanServer(input: {
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
-	const tsxEntrypoint = resolveTsxCliEntrypoint();
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open", ...(input.extraArgs ?? [])], {
+	const shutdownIpcHookPath = resolveShutdownIpcHookPath();
+	const tsxLoaderPath = resolveTsxLoaderPath();
+	const child = spawn(
+		process.execPath,
+		[
+			"--require",
+			shutdownIpcHookPath,
+			"--import",
+			tsxLoaderPath,
+			cliEntrypoint,
+			"--no-open",
+			...(input.extraArgs ?? []),
+		],
+		{
 		cwd: input.cwd,
 		env: createGitTestEnv({
 			HOME: input.homeDir,
 			USERPROFILE: input.homeDir,
 			KANBAN_RUNTIME_PORT: String(input.port),
 		}),
-		stdio: ["ignore", "pipe", "pipe"],
-	});
+		stdio: ["ignore", "pipe", "pipe", "ipc"],
+		},
+	);
 	const { runtimeUrl } = await waitForProcessStart(child);
 	return {
 		runtimeUrl,
@@ -278,7 +298,7 @@ async function startKanbanServer(input: {
 			if (child.exitCode !== null) {
 				return;
 			}
-			child.kill(getShutdownSignal());
+			await requestGracefulShutdown(child);
 			const didExitGracefully = await waitForExit(child, 5_000);
 			if (didExitGracefully) {
 				return;
