@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.19]
+
+- Fixed a race condition where navigating to a task's detail view could trigger an unintended auto-start
+- Fixed shutdown cleanup to reliably stop all running tasks across projects
+
 ## [0.1.18]
 
 - Fix layout stability when moving cards between columns programmatically
