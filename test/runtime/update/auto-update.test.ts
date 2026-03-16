@@ -63,6 +63,25 @@ describe("detectAutoUpdateInstallation", () => {
 		expectPathEndsWith(installation.updateCommand?.args[2], "/Users/saoud/.npm/_npx/593b71878a7c70f2");
 	});
 
+	it("marks npm-cache npx installs for shutdown-time cache refresh", () => {
+		const installation = detectAutoUpdateInstallation({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js",
+			cwd: "/Users/saoud/projects/work",
+		});
+
+		expect(installation.packageManager).toBe(AutoUpdatePackageManager.NPX);
+		expect(installation.updateTiming).toBe("shutdown");
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(
+			installation.updateCommand?.args[2],
+			"/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2",
+		);
+	});
+
 	it("marks pnpm dlx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
@@ -137,6 +156,19 @@ describe("detectAutoUpdateInstallation", () => {
 			currentVersion: "1.0.0",
 			packageName: "kanban",
 			entrypointPath: "/Users/saoud/.npm/_npx/node_modules/kanban/dist/cli.js",
+			cwd: "/Users/saoud/projects/work",
+		});
+
+		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.updateCommand).toBeNull();
+		expect(installation.updateTiming).toBe("startup");
+	});
+
+	it("fails closed for malformed npm-cache npx-style paths", () => {
+		const installation = detectAutoUpdateInstallation({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/node_modules/kanban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
