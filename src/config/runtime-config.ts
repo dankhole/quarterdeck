@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -322,14 +322,28 @@ async function writeRuntimeProjectConfigFile(
 	configPath: string,
 	config: { shortcuts: RuntimeProjectShortcut[] },
 ): Promise<void> {
-	const existing = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(configPath);
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
-	const payload: RuntimeProjectConfigFileShape = {};
-	if (hasOwnKey(existing, "shortcuts") || normalizedShortcuts.length > 0) {
-		payload.shortcuts = normalizedShortcuts;
+	if (normalizedShortcuts.length === 0) {
+		await rm(configPath, { force: true });
+		try {
+			await rm(dirname(configPath));
+		} catch {
+			// Ignore missing or non-empty project config directories.
+		}
+		return;
 	}
 	await mkdir(dirname(configPath), { recursive: true });
-	await writeFile(configPath, JSON.stringify(payload, null, 2), "utf8");
+	await writeFile(
+		configPath,
+		JSON.stringify(
+			{
+				shortcuts: normalizedShortcuts,
+			} satisfies RuntimeProjectConfigFileShape,
+			null,
+			2,
+		),
+		"utf8",
+	);
 }
 
 export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
