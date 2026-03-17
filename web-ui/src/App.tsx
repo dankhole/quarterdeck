@@ -79,6 +79,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
+		latestTaskChatMessage,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -101,7 +102,11 @@ export default function App(): ReactElement {
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
 		useRuntimeProjectConfig(currentProjectId);
-	const hasInstalledAgent = runtimeProjectConfig ? runtimeProjectConfig.agents.some((agent) => agent.installed) : null;
+	const hasInstalledAgent = runtimeProjectConfig
+		? runtimeProjectConfig.selectedAgentId === "cline"
+			? true
+			: runtimeProjectConfig.agents.some((agent) => agent.installed)
+		: null;
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
@@ -128,6 +133,9 @@ export default function App(): ReactElement {
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
+		sendTaskChatMessage,
+		cancelTaskChatTurn,
+		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 		fetchTaskWorkingChangeCount,
@@ -612,6 +620,28 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
+	const handleSendClineChatMessage = useCallback(
+		async (taskId: string, text: string): Promise<{ ok: boolean; message?: string }> => {
+			return await sendTaskChatMessage(taskId, text);
+		},
+		[sendTaskChatMessage],
+	);
+	const handleLoadClineChatMessages = useCallback(
+		async (taskId: string) => await fetchTaskChatMessages(taskId),
+		[fetchTaskChatMessages],
+	);
+	const handleCancelClineChatTurn = useCallback(
+		async (taskId: string): Promise<{ ok: boolean; message?: string }> => {
+			return await cancelTaskChatTurn(taskId);
+		},
+		[cancelTaskChatTurn],
+	);
+	const latestSelectedTaskChatMessage = useMemo(() => {
+		if (!selectedCard || !latestTaskChatMessage || latestTaskChatMessage.taskId !== selectedCard.card.id) {
+			return null;
+		}
+		return latestTaskChatMessage.message;
+	}, [latestTaskChatMessage, selectedCard]);
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
 			if (!open) {
@@ -830,6 +860,7 @@ export default function App(): ReactElement {
 								selection={selectedCard}
 								currentProjectId={currentProjectId}
 								workspacePath={workspacePath}
+								selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 								sessionSummary={detailSession}
 								taskSessions={sessions}
 								onSessionSummary={upsertSession}
@@ -863,6 +894,10 @@ export default function App(): ReactElement {
 								onSendReviewComments={(taskId: string, text: string) => {
 									void handleSendReviewComments(taskId, text);
 								}}
+								onSendClineChatMessage={handleSendClineChatMessage}
+								onCancelClineChatTurn={handleCancelClineChatTurn}
+								onLoadClineChatMessages={handleLoadClineChatMessages}
+								latestClineChatMessage={latestSelectedTaskChatMessage}
 								onMoveToTrash={handleMoveToTrash}
 								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 								gitHistoryPanel={

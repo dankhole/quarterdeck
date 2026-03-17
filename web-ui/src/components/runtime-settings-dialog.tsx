@@ -26,7 +26,14 @@ import {
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type {
+	RuntimeAgentId,
+	RuntimeClineProviderCatalogItem,
+	RuntimeClineProviderModel,
+	RuntimeConfigResponse,
+	RuntimeProjectShortcut,
+} from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
 	type BrowserNotificationPermission,
@@ -286,6 +293,20 @@ export function RuntimeSettingsDialog({
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [clineProviderId, setClineProviderId] = useState("");
+	const [clineModelId, setClineModelId] = useState("");
+	const [clineApiKey, setClineApiKey] = useState("");
+	const [clineBaseUrl, setClineBaseUrl] = useState("");
+	const [clineOauthProvider, setClineOauthProvider] = useState<"cline" | "oca" | "openai-codex" | "">("");
+	const [clineOauthAccessToken, setClineOauthAccessToken] = useState("");
+	const [clineOauthRefreshToken, setClineOauthRefreshToken] = useState("");
+	const [clineOauthAccountId, setClineOauthAccountId] = useState("");
+	const [clineOauthExpiresAt, setClineOauthExpiresAt] = useState("");
+	const [clineProviderCatalog, setClineProviderCatalog] = useState<RuntimeClineProviderCatalogItem[]>([]);
+	const [clineProviderModels, setClineProviderModels] = useState<RuntimeClineProviderModel[]>([]);
+	const [isLoadingClineProviderCatalog, setIsLoadingClineProviderCatalog] = useState(false);
+	const [isLoadingClineProviderModels, setIsLoadingClineProviderModels] = useState(false);
+	const [isRunningClineOauthLogin, setIsRunningClineOauthLogin] = useState(false);
 	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
@@ -344,6 +365,12 @@ export function RuntimeSettingsDialog({
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
+	const initialClineProviderId = config?.clineProviderSettings.providerId ?? "";
+	const initialClineModelId = config?.clineProviderSettings.modelId ?? "";
+	const initialClineBaseUrl = config?.clineProviderSettings.baseUrl ?? "";
+	const initialClineOauthProvider = config?.clineProviderSettings.oauthProvider ?? "";
+	const initialClineOauthAccountId = config?.clineProviderSettings.oauthAccountId ?? "";
+	const initialClineOauthExpiresAt = config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "";
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
@@ -358,6 +385,33 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (clineProviderId.trim() !== initialClineProviderId.trim()) {
+			return true;
+		}
+		if (clineModelId.trim() !== initialClineModelId.trim()) {
+			return true;
+		}
+		if (clineBaseUrl.trim() !== initialClineBaseUrl.trim()) {
+			return true;
+		}
+		if (clineOauthProvider !== initialClineOauthProvider) {
+			return true;
+		}
+		if (clineOauthAccountId.trim() !== initialClineOauthAccountId.trim()) {
+			return true;
+		}
+		if (clineOauthExpiresAt.trim() !== initialClineOauthExpiresAt.trim()) {
+			return true;
+		}
+		if (selectedAgentId === "cline" && clineApiKey.trim().length > 0) {
+			return true;
+		}
+		if (selectedAgentId === "cline" && clineOauthAccessToken.trim().length > 0) {
+			return true;
+		}
+		if (selectedAgentId === "cline" && clineOauthRefreshToken.trim().length > 0) {
 			return true;
 		}
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -378,6 +432,12 @@ export function RuntimeSettingsDialog({
 		commitPromptTemplate,
 		config,
 		initialAgentAutonomousModeEnabled,
+		initialClineBaseUrl,
+		initialClineModelId,
+		initialClineOauthAccountId,
+		initialClineOauthExpiresAt,
+		initialClineOauthProvider,
+		initialClineProviderId,
 		initialCommitPromptTemplate,
 		initialOpenPrPromptTemplate,
 		initialReadyForReviewNotificationsEnabled,
@@ -386,6 +446,15 @@ export function RuntimeSettingsDialog({
 		openPrPromptTemplate,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
+		clineApiKey,
+		clineBaseUrl,
+		clineModelId,
+		clineOauthAccessToken,
+		clineOauthAccountId,
+		clineOauthExpiresAt,
+		clineOauthProvider,
+		clineOauthRefreshToken,
+		clineProviderId,
 		shortcuts,
 	]);
 
@@ -396,6 +465,15 @@ export function RuntimeSettingsDialog({
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
+		setClineProviderId(config?.clineProviderSettings.providerId ?? "");
+		setClineModelId(config?.clineProviderSettings.modelId ?? "");
+		setClineApiKey("");
+		setClineBaseUrl(config?.clineProviderSettings.baseUrl ?? "");
+		setClineOauthProvider(config?.clineProviderSettings.oauthProvider ?? "");
+		setClineOauthAccessToken("");
+		setClineOauthRefreshToken("");
+		setClineOauthAccountId(config?.clineProviderSettings.oauthAccountId ?? "");
+		setClineOauthExpiresAt(config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "");
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
@@ -403,6 +481,12 @@ export function RuntimeSettingsDialog({
 	}, [
 		config?.agentAutonomousModeEnabled,
 		config?.commitPromptTemplate,
+		config?.clineProviderSettings.baseUrl,
+		config?.clineProviderSettings.modelId,
+		config?.clineProviderSettings.oauthAccountId,
+		config?.clineProviderSettings.oauthExpiresAt,
+		config?.clineProviderSettings.oauthProvider,
+		config?.clineProviderSettings.providerId,
 		config?.openPrPromptTemplate,
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
@@ -418,6 +502,71 @@ export function RuntimeSettingsDialog({
 		refreshNotificationPermission();
 	}, [open, refreshNotificationPermission]);
 	useWindowEvent("focus", open ? refreshNotificationPermission : null);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline" || !workspaceId) {
+			setClineProviderCatalog([]);
+			return;
+		}
+		let cancelled = false;
+		setIsLoadingClineProviderCatalog(true);
+		void getRuntimeTrpcClient(workspaceId)
+			.runtime.getClineProviderCatalog.query()
+			.then((response) => {
+				if (cancelled) {
+					return;
+				}
+				setClineProviderCatalog(response.providers);
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setClineProviderCatalog([]);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setIsLoadingClineProviderCatalog(false);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [open, selectedAgentId, workspaceId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline" || !workspaceId) {
+			setClineProviderModels([]);
+			return;
+		}
+		const providerId = clineProviderId.trim();
+		if (!providerId) {
+			setClineProviderModels([]);
+			return;
+		}
+		let cancelled = false;
+		setIsLoadingClineProviderModels(true);
+		void getRuntimeTrpcClient(workspaceId)
+			.runtime.getClineProviderModels.query({ providerId })
+			.then((response) => {
+				if (cancelled) {
+					return;
+				}
+				setClineProviderModels(response.models);
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setClineProviderModels([]);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setIsLoadingClineProviderModels(false);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [clineProviderId, open, selectedAgentId, workspaceId]);
 
 	useEffect(() => {
 		if (!open || initialSection !== "shortcuts") {
@@ -505,10 +654,35 @@ export function RuntimeSettingsDialog({
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
 		}
+		const trimmedOauthExpiresAt = clineOauthExpiresAt.trim();
+		const parsedOauthExpiresAt = trimmedOauthExpiresAt ? Number.parseInt(trimmedOauthExpiresAt, 10) : NaN;
+		if (
+			selectedAgentId === "cline" &&
+			trimmedOauthExpiresAt.length > 0 &&
+			(!Number.isFinite(parsedOauthExpiresAt) || parsedOauthExpiresAt <= 0)
+		) {
+			setSaveError("OAuth expiry must be a positive Unix timestamp in seconds.");
+			return;
+		}
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled,
+			clineProviderId: selectedAgentId === "cline" ? clineProviderId.trim() || null : undefined,
+			clineModelId: selectedAgentId === "cline" ? clineModelId.trim() || null : undefined,
+			clineApiKey: selectedAgentId === "cline" ? clineApiKey.trim() || null : undefined,
+			clineBaseUrl: selectedAgentId === "cline" ? clineBaseUrl.trim() || null : undefined,
+			clineOauthProvider: selectedAgentId === "cline" ? clineOauthProvider || null : undefined,
+			clineOauthAccessToken: selectedAgentId === "cline" ? clineOauthAccessToken.trim() || null : undefined,
+			clineOauthRefreshToken:
+				selectedAgentId === "cline" ? clineOauthRefreshToken.trim() || null : undefined,
+			clineOauthAccountId: selectedAgentId === "cline" ? clineOauthAccountId.trim() || null : undefined,
+			clineOauthExpiresAt:
+				selectedAgentId === "cline"
+					? Number.isFinite(parsedOauthExpiresAt)
+						? parsedOauthExpiresAt
+						: null
+					: undefined,
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
@@ -525,6 +699,47 @@ export function RuntimeSettingsDialog({
 		void (async () => {
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
+		})();
+	};
+
+	const handleRunClineOauthLogin = () => {
+		void (async () => {
+			if (!workspaceId) {
+				setSaveError("Select a workspace before running OAuth login.");
+				return;
+			}
+			if (!clineOauthProvider) {
+				setSaveError("Choose an OAuth provider first.");
+				return;
+			}
+			setSaveError(null);
+			setIsRunningClineOauthLogin(true);
+			try {
+				const response = await getRuntimeTrpcClient(workspaceId).runtime.runClineProviderOAuthLogin.mutate({
+					provider: clineOauthProvider,
+				});
+				if (!response.ok) {
+					setSaveError(response.error ?? "OAuth login failed.");
+					return;
+				}
+				if (response.accessToken) {
+					setClineOauthAccessToken(response.accessToken);
+				}
+				if (response.refreshToken) {
+					setClineOauthRefreshToken(response.refreshToken);
+				}
+				if (response.accountId) {
+					setClineOauthAccountId(response.accountId);
+				}
+				if (response.expiresAt) {
+					setClineOauthExpiresAt(response.expiresAt.toString());
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setSaveError(message);
+			} finally {
+				setIsRunningClineOauthLogin(false);
+			}
 		})();
 	};
 
@@ -581,6 +796,156 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
+
+				{selectedAgentId === "cline" ? (
+					<>
+						<h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6>
+						<div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Provider</p>
+								<input
+									value={clineProviderId}
+									onChange={(event) => setClineProviderId(event.target.value)}
+									placeholder={isLoadingClineProviderCatalog ? "Loading providers..." : "cline"}
+									list="cline-provider-options"
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
+								<input
+									value={clineModelId}
+									onChange={(event) => setClineModelId(event.target.value)}
+									placeholder={isLoadingClineProviderModels ? "Loading models..." : "claude-sonnet-4-6"}
+									list="cline-model-options"
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						<datalist id="cline-provider-options">
+							{clineProviderCatalog.map((provider) => (
+								<option key={provider.id} value={provider.id}>
+									{provider.name}
+								</option>
+							))}
+						</datalist>
+						<datalist id="cline-model-options">
+							{clineProviderModels.map((model) => (
+								<option key={model.id} value={model.id}>
+									{model.name}
+								</option>
+							))}
+						</datalist>
+						{isLoadingClineProviderCatalog || isLoadingClineProviderModels ? (
+							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+								{isLoadingClineProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
+							</p>
+						) : null}
+						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+								<input
+									type="password"
+									value={clineApiKey}
+									onChange={(event) => setClineApiKey(event.target.value)}
+									placeholder={config?.clineProviderSettings.apiKeyConfigured ? "Saved" : "Enter API key"}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+								<input
+									value={clineBaseUrl}
+									onChange={(event) => setClineBaseUrl(event.target.value)}
+									placeholder="https://api.cline.bot"
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth provider</p>
+								<select
+									value={clineOauthProvider}
+									onChange={(event) =>
+										setClineOauthProvider(
+											event.target.value as "" | "cline" | "oca" | "openai-codex",
+										)
+									}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
+								>
+									<option value="">None</option>
+									<option value="cline">cline</option>
+									<option value="oca">oca</option>
+									<option value="openai-codex">openai-codex</option>
+								</select>
+							</div>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth account ID</p>
+								<input
+									value={clineOauthAccountId}
+									onChange={(event) => setClineOauthAccountId(event.target.value)}
+									placeholder={config?.clineProviderSettings.oauthAccountId ?? "Optional"}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						<div className="mt-2">
+							<Button
+								variant="default"
+								size="sm"
+								disabled={controlsDisabled || !clineOauthProvider || isRunningClineOauthLogin}
+								onClick={handleRunClineOauthLogin}
+							>
+								{isRunningClineOauthLogin ? "Signing in..." : "Sign in with selected OAuth provider"}
+							</Button>
+						</div>
+						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth access token</p>
+								<input
+									type="password"
+									value={clineOauthAccessToken}
+									onChange={(event) => setClineOauthAccessToken(event.target.value)}
+									placeholder={
+										config?.clineProviderSettings.oauthAccessTokenConfigured ? "Saved" : "Optional"
+									}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth refresh token</p>
+								<input
+									type="password"
+									value={clineOauthRefreshToken}
+									onChange={(event) => setClineOauthRefreshToken(event.target.value)}
+									placeholder={
+										config?.clineProviderSettings.oauthRefreshTokenConfigured ? "Saved" : "Optional"
+									}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						<div className="min-w-0 mt-2">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth expiry (Unix seconds)</p>
+							<input
+								value={clineOauthExpiresAt}
+								onChange={(event) => setClineOauthExpiresAt(event.target.value)}
+								placeholder={config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "Optional"}
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					</>
+				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">
 					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>

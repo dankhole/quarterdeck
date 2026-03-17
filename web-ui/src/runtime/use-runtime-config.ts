@@ -14,6 +14,15 @@ export interface UseRuntimeConfigResult {
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		clineProviderId?: string | null;
+		clineModelId?: string | null;
+		clineApiKey?: string | null;
+		clineBaseUrl?: string | null;
+			clineOauthProvider?: "cline" | "oca" | "openai-codex" | null;
+			clineOauthAccessToken?: string | null;
+			clineOauthRefreshToken?: string | null;
+			clineOauthAccountId?: string | null;
+			clineOauthExpiresAt?: number | null;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 	}) => Promise<RuntimeConfigResponse | null>;
@@ -58,6 +67,15 @@ export function useRuntimeConfig(
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
+			clineProviderId?: string | null;
+			clineModelId?: string | null;
+			clineApiKey?: string | null;
+			clineBaseUrl?: string | null;
+			clineOauthProvider?: "cline" | "oca" | "openai-codex" | null;
+			clineOauthAccessToken?: string | null;
+			clineOauthRefreshToken?: string | null;
+			clineOauthAccountId?: string | null;
+			clineOauthExpiresAt?: number | null;
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
 		}): Promise<RuntimeConfigResponse | null> => {

@@ -5,6 +5,7 @@ import { notifyError } from "@/components/app-toaster";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
@@ -32,6 +33,21 @@ interface SendTaskSessionInputResult {
 	message?: string;
 }
 
+interface SendTaskChatMessageResult {
+	ok: boolean;
+	message?: string;
+}
+
+interface AbortTaskChatTurnResult {
+	ok: boolean;
+	message?: string;
+}
+
+interface CancelTaskChatTurnResult {
+	ok: boolean;
+	message?: string;
+}
+
 interface StartTaskSessionResult {
 	ok: boolean;
 	message?: string;
@@ -51,6 +67,10 @@ export interface UseTaskSessionsResult {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
+	sendTaskChatMessage: (taskId: string, text: string) => Promise<SendTaskChatMessageResult>;
+	abortTaskChatTurn: (taskId: string) => Promise<AbortTaskChatTurnResult>;
+	cancelTaskChatTurn: (taskId: string) => Promise<CancelTaskChatTurnResult>;
+	fetchTaskChatMessages: (taskId: string) => Promise<RuntimeTaskChatMessage[] | null>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
@@ -211,6 +231,97 @@ export function useTaskSessions({
 		[currentProjectId],
 	);
 
+	const sendTaskChatMessage = useCallback(
+		async (taskId: string, text: string): Promise<SendTaskChatMessageResult> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.sendTaskChatMessage.mutate({
+					taskId,
+					text,
+				});
+				if (!payload.ok) {
+					return { ok: false, message: payload.error ?? "Task chat message failed." };
+				}
+				if (payload.summary) {
+					upsertSession(payload.summary);
+				}
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
+			}
+		},
+		[currentProjectId, upsertSession],
+	);
+
+	const fetchTaskChatMessages = useCallback(
+		async (taskId: string): Promise<RuntimeTaskChatMessage[] | null> => {
+			if (!currentProjectId) {
+				return null;
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.getTaskChatMessages.query({ taskId });
+				if (!payload.ok) {
+					return null;
+				}
+				return payload.messages;
+			} catch {
+				return null;
+			}
+		},
+		[currentProjectId],
+	);
+
+	const abortTaskChatTurn = useCallback(
+		async (taskId: string): Promise<AbortTaskChatTurnResult> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.abortTaskChatTurn.mutate({ taskId });
+				if (!payload.ok) {
+					return { ok: false, message: payload.error ?? "Could not abort chat turn." };
+				}
+				if (payload.summary) {
+					upsertSession(payload.summary);
+				}
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
+			}
+		},
+		[currentProjectId, upsertSession],
+	);
+
+	const cancelTaskChatTurn = useCallback(
+		async (taskId: string): Promise<CancelTaskChatTurnResult> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.cancelTaskChatTurn.mutate({ taskId });
+				if (!payload.ok) {
+					return { ok: false, message: payload.error ?? "Could not cancel chat turn." };
+				}
+				if (payload.summary) {
+					upsertSession(payload.summary);
+				}
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
+			}
+		},
+		[currentProjectId, upsertSession],
+	);
+
 	const fetchTaskWorkspaceInfo = useCallback(
 		async (task: BoardCard): Promise<RuntimeTaskWorkspaceInfoResponse | null> => {
 			if (!currentProjectId) {
@@ -262,6 +373,10 @@ export function useTaskSessions({
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
+		sendTaskChatMessage,
+		abortTaskChatTurn,
+		cancelTaskChatTurn,
+		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 		fetchTaskWorkingChangeCount,

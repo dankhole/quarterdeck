@@ -7,6 +7,11 @@ import type {
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeClineOauthLoginRequest,
+	RuntimeClineOauthLoginResponse,
+	RuntimeClineProviderCatalogResponse,
+	RuntimeClineProviderModelsRequest,
+	RuntimeClineProviderModelsResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -28,6 +33,14 @@ import type {
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
+	RuntimeTaskChatMessagesRequest,
+	RuntimeTaskChatMessagesResponse,
+	RuntimeTaskChatAbortRequest,
+	RuntimeTaskChatAbortResponse,
+	RuntimeTaskChatCancelRequest,
+	RuntimeTaskChatCancelResponse,
+	RuntimeTaskChatSendRequest,
+	RuntimeTaskChatSendResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
@@ -52,6 +65,11 @@ import {
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
+	runtimeClineOauthLoginRequestSchema,
+	runtimeClineOauthLoginResponseSchema,
+	runtimeClineProviderCatalogResponseSchema,
+	runtimeClineProviderModelsRequestSchema,
+	runtimeClineProviderModelsResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -73,6 +91,14 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
+	runtimeTaskChatMessagesRequestSchema,
+	runtimeTaskChatMessagesResponseSchema,
+	runtimeTaskChatAbortRequestSchema,
+	runtimeTaskChatAbortResponseSchema,
+	runtimeTaskChatCancelRequestSchema,
+	runtimeTaskChatCancelResponseSchema,
+	runtimeTaskChatSendRequestSchema,
+	runtimeTaskChatSendResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -116,6 +142,31 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionInputRequest,
 		) => Promise<RuntimeTaskSessionInputResponse>;
+		getTaskChatMessages: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskChatMessagesRequest,
+		) => Promise<RuntimeTaskChatMessagesResponse>;
+		sendTaskChatMessage: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskChatSendRequest,
+		) => Promise<RuntimeTaskChatSendResponse>;
+		abortTaskChatTurn: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskChatAbortRequest,
+		) => Promise<RuntimeTaskChatAbortResponse>;
+		cancelTaskChatTurn: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskChatCancelRequest,
+		) => Promise<RuntimeTaskChatCancelResponse>;
+		getClineProviderCatalog: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeClineProviderCatalogResponse>;
+		getClineProviderModels: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeClineProviderModelsRequest,
+		) => Promise<RuntimeClineProviderModelsResponse>;
+		runClineProviderOAuthLogin: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeClineOauthLoginRequest,
+		) => Promise<RuntimeClineOauthLoginResponse>;
 		startShellSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeShellSessionStartRequest,
@@ -277,6 +328,47 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeTaskSessionInputResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.sendTaskSessionInput(ctx.workspaceScope, input);
+			}),
+		getTaskChatMessages: workspaceProcedure
+			.input(runtimeTaskChatMessagesRequestSchema)
+			.output(runtimeTaskChatMessagesResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.getTaskChatMessages(ctx.workspaceScope, input);
+			}),
+		sendTaskChatMessage: workspaceProcedure
+			.input(runtimeTaskChatSendRequestSchema)
+			.output(runtimeTaskChatSendResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.sendTaskChatMessage(ctx.workspaceScope, input);
+			}),
+		abortTaskChatTurn: workspaceProcedure
+			.input(runtimeTaskChatAbortRequestSchema)
+			.output(runtimeTaskChatAbortResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.abortTaskChatTurn(ctx.workspaceScope, input);
+			}),
+		cancelTaskChatTurn: workspaceProcedure
+			.input(runtimeTaskChatCancelRequestSchema)
+			.output(runtimeTaskChatCancelResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.cancelTaskChatTurn(ctx.workspaceScope, input);
+			}),
+		getClineProviderCatalog: workspaceProcedure
+			.output(runtimeClineProviderCatalogResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineProviderCatalog(ctx.workspaceScope);
+			}),
+		getClineProviderModels: workspaceProcedure
+			.input(runtimeClineProviderModelsRequestSchema)
+			.output(runtimeClineProviderModelsResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.getClineProviderModels(ctx.workspaceScope, input);
+			}),
+		runClineProviderOAuthLogin: workspaceProcedure
+			.input(runtimeClineOauthLoginRequestSchema)
+			.output(runtimeClineOauthLoginResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.runClineProviderOAuthLogin(ctx.workspaceScope, input);
 			}),
 		startShellSession: workspaceProcedure
 			.input(runtimeShellSessionStartRequestSchema)

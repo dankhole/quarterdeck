@@ -57,7 +57,7 @@
     "web:typecheck": "npm --prefix web-ui run typecheck",
     "web:test": "npm --prefix web-ui run test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "biome lint .",
+    "lint": "biome lint src test web-ui/src web-ui/tests vitest.config.ts web-ui/vite.config.ts web-ui/vitest.config.ts web-ui/playwright.config.ts",
     "format": "biome check --write .",
     "check": "npm run lint && npm run typecheck && npm run test",
     "test": "vitest run",
