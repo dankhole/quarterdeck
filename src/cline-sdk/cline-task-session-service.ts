@@ -1,5 +1,5 @@
 import type { RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
-import { createSessionHost, type SessionHost } from "../../third_party/cline-sdk/packages/core/dist/server/index.js";
+import { createSessionHost, buildWorkspaceMetadata, type SessionHost } from "../../third_party/cline-sdk/packages/core/dist/server/index.js";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
 
@@ -53,6 +53,16 @@ export interface ClineTaskSessionService {
 
 function now(): number {
 	return Date.now();
+}
+
+function toErrorMessage(error: unknown): string {
+	if (error instanceof Error) {
+		const message = error.message.trim();
+		if (message.length > 0) {
+			return message;
+		}
+	}
+	return "Unknown error";
 }
 
 function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
@@ -334,9 +344,19 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 		void (async () => {
 			const assistantCountBeforeStart = entry.messages.filter((message) => message.role === "assistant").length;
-			const sessionHost = await this.ensureSessionHost().catch(() => null);
+			let sessionHost: SessionHost | null = null;
+			let sessionHostError: unknown = null;
+			try {
+				sessionHost = await this.ensureSessionHost();
+			} catch (error) {
+				sessionHostError = error;
+			}
 			if (!sessionHost) {
-				const failedMessage = createMessage(request.taskId, "system", "Cline SDK host is unavailable.");
+				const failedMessage = createMessage(
+					request.taskId,
+					"system",
+					`Cline SDK host is unavailable: ${toErrorMessage(sessionHostError)}.`,
+				);
 				entry.messages.push(failedMessage);
 				this.emitMessage(request.taskId, failedMessage);
 				const failedSummary = updateSummary(entry, {
@@ -349,6 +369,12 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			}
 
 			try {
+				let systemPrompt = "You are a helpful coding assistant.";
+				if (providerId === "cline") {
+					const workspaceMetadata = await buildWorkspaceMetadata(request.cwd);
+					systemPrompt = `${systemPrompt}\n\n${workspaceMetadata}`;
+				}
+
 				const startResult = await sessionHost.start({
 					config: {
 						sessionId: requestedSessionId,
@@ -360,7 +386,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 						enableTools: true,
 						enableSpawnAgent: false,
 						enableAgentTeams: false,
-						systemPrompt: "You are a helpful coding assistant.",
+						systemPrompt,
 					},
 					prompt: request.prompt,
 					interactive: true,
@@ -385,8 +411,12 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 						this.emitMessage(request.taskId, agentMessage);
 					}
 				}
-			} catch {
-				const failedMessage = createMessage(request.taskId, "system", "Cline SDK start failed.");
+			} catch (error) {
+				const failedMessage = createMessage(
+					request.taskId,
+					"system",
+					`Cline SDK start failed: ${toErrorMessage(error)}.`,
+				);
 				entry.messages.push(failedMessage);
 				this.emitMessage(request.taskId, failedMessage);
 				const failedSummary = updateSummary(entry, {
@@ -553,8 +583,12 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 							}
 						}
 					})
-					.catch(() => {
-						const systemMessage = createMessage(taskId, "system", "Cline SDK send failed.");
+					.catch((error: unknown) => {
+						const systemMessage = createMessage(
+							taskId,
+							"system",
+							`Cline SDK send failed: ${toErrorMessage(error)}.`,
+						);
 						entry.messages.push(systemMessage);
 						this.emitMessage(taskId, systemMessage);
 					});

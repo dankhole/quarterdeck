@@ -26,6 +26,7 @@ import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
+import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
@@ -61,6 +62,7 @@ export default function App(): ReactElement {
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
+	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
@@ -126,7 +128,6 @@ export default function App(): ReactElement {
 		}
 		return shortcuts[0]?.label ?? null;
 	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
-
 	const {
 		upsertSession,
 		ensureTaskWorkspace,
@@ -316,7 +317,6 @@ export default function App(): ReactElement {
 		homeTerminalTaskId,
 		isHomeTerminalOpen,
 		isHomeTerminalStarting,
-		homeTerminalShellBinary,
 		homeTerminalPaneHeight,
 		isDetailTerminalOpen,
 		detailTerminalTaskId,
@@ -354,6 +354,13 @@ export default function App(): ReactElement {
 		terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
+	const homeSidebarAgentPanel = useHomeSidebarAgentPanel({
+		currentProjectId,
+		hasNoProjects,
+		runtimeProjectConfig,
+		workspaceGit,
+		latestTaskChatMessage,
+	});
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
 		currentProjectId,
 		selectedShortcutLabel: runtimeProjectConfig?.selectedShortcutLabel,
@@ -448,6 +455,23 @@ export default function App(): ReactElement {
 		}
 	}, [selectedTaskId, selectedCard]);
 
+	useEffect(() => {
+		if (selectedCard) {
+			return;
+		}
+		if (hasNoProjects || !currentProjectId) {
+			if (isHomeTerminalOpen) {
+				closeHomeTerminal();
+			}
+			return;
+		}
+	}, [closeHomeTerminal, currentProjectId, hasNoProjects, isHomeTerminalOpen, selectedCard]);
+	const showHomeBottomTerminal = !selectedCard && !hasNoProjects && isHomeTerminalOpen;
+	const homeTerminalSubtitle = useMemo(
+		() => workspacePath ?? navigationProjectPath ?? null,
+		[navigationProjectPath, workspacePath],
+	);
+
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
@@ -457,15 +481,18 @@ export default function App(): ReactElement {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
 	}, []);
+	const handleToggleHomeAgentPanel = useCallback(() => {
+		setHomeSidebarSection((current) => (current === "agent" ? "projects" : "agent"));
+	}, []);
 
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
-		isHomeTerminalOpen,
+		isHomeTerminalOpen: showHomeBottomTerminal,
 		handleToggleDetailTerminal,
-		handleToggleHomeTerminal,
+		handleToggleHomeTerminal: handleToggleHomeAgentPanel,
 		handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal,
+		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
 		handleOpenCreateTask,
 	});
 
@@ -686,6 +713,10 @@ export default function App(): ReactElement {
 					isLoadingProjects={isProjectListLoading}
 					currentProjectId={navigationCurrentProjectId}
 					removingProjectId={removingProjectId}
+					activeSection={homeSidebarSection}
+					onActiveSectionChange={setHomeSidebarSection}
+					canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+					agentSectionContent={homeSidebarAgentPanel}
 					onSelectProject={(projectId) => {
 						void handleSelectProject(projectId);
 					}}
@@ -730,10 +761,10 @@ export default function App(): ReactElement {
 					onToggleTerminal={
 						hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
 					}
-					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
+					isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
-						shortcuts={shortcuts}
+					shortcuts={shortcuts}
 					selectedShortcutLabel={selectedShortcutLabel}
 					onSelectShortcutLabel={handleSelectShortcutLabel}
 					runningShortcutLabel={runningShortcutLabel}
@@ -763,7 +794,9 @@ export default function App(): ReactElement {
 								<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
 									<FolderOpen size={48} strokeWidth={1} />
 									<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
-									<p className="text-[13px] text-text-secondary">Add a git repository to start using Kanban.</p>
+									<p className="text-[13px] text-text-secondary">
+										Add a git repository to start using Kanban.
+									</p>
 									<Button
 										variant="primary"
 										onClick={() => {
@@ -820,28 +853,36 @@ export default function App(): ReactElement {
 										/>
 									)}
 								</div>
-								{isHomeTerminalOpen ? (
+								{showHomeBottomTerminal ? (
 									<ResizableBottomPane
+										minHeight={200}
 										initialHeight={homeTerminalPaneHeight}
 										onHeightChange={setHomeTerminalPaneHeight}
 									>
-										<div className="flex flex-1 min-w-0 px-3">
+										<div
+											style={{
+												display: "flex",
+												flex: "1 1 0",
+												minWidth: 0,
+												paddingLeft: 12,
+												paddingRight: 12,
+											}}
+										>
 											<AgentTerminalPanel
-												key={`${currentProjectId ?? "none"}:${homeTerminalTaskId}`}
+												key={`home-shell-${homeTerminalTaskId}`}
 												taskId={homeTerminalTaskId}
 												workspaceId={currentProjectId}
 												summary={homeTerminalSummary}
 												onSummary={upsertSession}
 												showSessionToolbar={false}
-												onClose={closeHomeTerminal}
 												autoFocus
+												onClose={closeHomeTerminal}
 												minimalHeaderTitle="Terminal"
-												minimalHeaderSubtitle={homeTerminalShellBinary}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+												minimalHeaderSubtitle={homeTerminalSubtitle}
+												panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+												terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+												cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 												showRightBorder={false}
-												isVisible={!selectedCard}
 												onConnectionReady={markTerminalConnectionReady}
 												agentCommand={agentCommand}
 												onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
@@ -923,7 +964,7 @@ export default function App(): ReactElement {
 					) : null}
 				</div>
 			</div>
-				<RuntimeSettingsDialog
+			<RuntimeSettingsDialog
 				open={isSettingsOpen}
 				workspaceId={settingsWorkspaceId}
 				initialConfig={settingsRuntimeProjectConfig}

@@ -33,6 +33,42 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Investigate startup"]);
 	});
 
+	it("defaults to anthropic provider when provider is not explicitly configured", async () => {
+		const service = createInMemoryClineTaskSessionService();
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			subscribe: vi.fn(() => () => {}),
+		};
+		const serviceInternal = service as unknown as {
+			sessionHostPromise: Promise<unknown> | null;
+		};
+		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		await vi.waitFor(() => {
+			expect(fakeHost.start).toHaveBeenCalledTimes(1);
+		});
+
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					providerId: "anthropic",
+				}),
+			}),
+		);
+	});
+
 	it("stores follow-up user input and keeps session running", async () => {
 		const service = createInMemoryClineTaskSessionService();
 		await service.startTaskSession({

@@ -119,6 +119,8 @@ export interface ClineAgentChatPanelProps {
 	taskId: string;
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
+	composerPlaceholder?: string;
+	showRightBorder?: boolean;
 	onSendMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string }>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
@@ -138,6 +140,8 @@ export function ClineAgentChatPanel({
 	taskId,
 	summary,
 	taskColumnId = "in_progress",
+	composerPlaceholder = "Ask Cline to make progress on this task",
+	showRightBorder = true,
 	onSendMessage,
 	onCancelTurn,
 	onLoadMessages,
@@ -177,7 +181,10 @@ export function ClineAgentChatPanel({
 	}, [messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-surface-0">
+		<div
+			className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-0"
+			style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
+		>
 			<div ref={messagesContainerRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">
 				{messages.length === 0 ? (
 					<div className="text-sm text-text-secondary">Send a message to start chatting with Cline.</div>
@@ -197,7 +204,7 @@ export function ClineAgentChatPanel({
 				<textarea
 					value={draft}
 					onChange={(event) => setDraft(event.target.value)}
-					placeholder="Ask Cline to make progress on this task"
+					placeholder={composerPlaceholder}
 					disabled={!canSend}
 					rows={3}
 					className="w-full resize-none rounded-md border border-border bg-surface-2 px-2 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-50"

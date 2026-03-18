@@ -11,25 +11,26 @@ import {
 import { models as llmsModels } from "../../third_party/cline-sdk/packages/llms/dist/index.js";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
+import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { updateRuntimeConfig } from "../config/runtime-config.js";
-import type { RuntimeCommandRunResponse, RuntimeClineProviderModel } from "../core/api-contract.js";
+import type { RuntimeClineProviderModel, RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
-	parseTaskChatAbortRequest,
-	parseTaskChatCancelRequest,
 	parseClineOauthLoginRequest,
 	parseClineProviderModelsRequest,
 	parseCommandRunRequest,
-	parseTaskChatMessagesRequest,
-	parseTaskChatSendRequest,
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
+	parseTaskChatAbortRequest,
+	parseTaskChatCancelRequest,
+	parseTaskChatMessagesRequest,
+	parseTaskChatSendRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation.js";
+import { openInBrowser } from "../server/browser.js";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { openInBrowser } from "../server/browser.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints.js";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
@@ -51,9 +52,6 @@ function createRuntimeOauthCallbacks(providerId: "cline" | "oca" | "openai-codex
 					: `Browser callback did not complete for ${providerId}.`,
 			);
 		},
-		onManualCodeInput: async () => {
-			throw new Error("Manual OAuth code entry is not supported in Kanban runtime.");
-		},
 		onProgress: () => {},
 	};
 }
@@ -73,6 +71,64 @@ interface OAuthResolution {
 
 function isManagedOauthProviderId(providerId: string): providerId is ManagedOauthProviderId {
 	return providerId === "cline" || providerId === "oca" || providerId === "openai-codex";
+}
+
+function inferManagedOauthProviderId(runtimeConfig: RuntimeConfigState): ManagedOauthProviderId | null {
+	const oauthProviderId = runtimeConfig.clineSettings.oauthProvider?.trim().toLowerCase() ?? "";
+	if (isManagedOauthProviderId(oauthProviderId)) {
+		return oauthProviderId;
+	}
+	const hasOauthTokens =
+		(runtimeConfig.clineSettings.auth.accessToken?.trim().length ?? 0) > 0 &&
+		(runtimeConfig.clineSettings.auth.refreshToken?.trim().length ?? 0) > 0;
+	if (hasOauthTokens) {
+		return "cline";
+	}
+	const authAccessToken = runtimeConfig.clineSettings.auth.accessToken?.trim() ?? "";
+	if (authAccessToken.toLowerCase().startsWith(WORKOS_TOKEN_PREFIX)) {
+		return "cline";
+	}
+	const apiKey = runtimeConfig.clineSettings.apiKey?.trim() ?? "";
+	if (apiKey.toLowerCase().startsWith(WORKOS_TOKEN_PREFIX)) {
+		return "cline";
+	}
+	return null;
+}
+
+function resolveManagedOauthProviderId(
+	runtimeConfig: RuntimeConfigState,
+	configuredProviderId: string | null,
+): ManagedOauthProviderId | null {
+	const normalizedProviderId = configuredProviderId?.trim().toLowerCase() ?? "";
+	if (normalizedProviderId.length > 0) {
+		if (!isManagedOauthProviderId(normalizedProviderId)) {
+			return null;
+		}
+		return normalizedProviderId;
+	}
+	return inferManagedOauthProviderId(runtimeConfig);
+}
+
+function resolveConfiguredClineProviderId(
+	runtimeConfig: RuntimeConfigState,
+	oauthResolution: OAuthResolution | null,
+): string | null {
+	const explicitProviderId = runtimeConfig.clineSettings.providerId?.trim().toLowerCase() ?? "";
+	if (explicitProviderId.length > 0) {
+		return explicitProviderId;
+	}
+	if (oauthResolution?.providerId) {
+		return oauthResolution.providerId;
+	}
+	const inferredManagedProviderId = inferManagedOauthProviderId(runtimeConfig);
+	if (inferredManagedProviderId) {
+		return inferredManagedProviderId;
+	}
+	const apiKey = runtimeConfig.clineSettings.apiKey?.trim() ?? "";
+	if (apiKey.toLowerCase().startsWith(WORKOS_TOKEN_PREFIX)) {
+		return "cline";
+	}
+	return null;
 }
 
 function normalizeEpochMs(expiresAt: number | null | undefined): number {
@@ -126,9 +182,28 @@ function toRuntimeProviderModel(
 	};
 }
 
-async function resolveOauthApiKey(runtimeConfig: RuntimeConfigState): Promise<OAuthResolution | null> {
-	const providerId = runtimeConfig.clineSettings.providerId?.trim().toLowerCase() ?? "";
-	if (!isManagedOauthProviderId(providerId)) {
+function resolveEffectiveProviderApiKey(input: {
+	runtimeConfig: RuntimeConfigState;
+	providerId: string;
+	oauthResolution: OAuthResolution | null;
+}): string | null {
+	const oauthApiKey =
+		input.oauthResolution && input.oauthResolution.providerId === input.providerId
+			? input.oauthResolution.apiKey.trim()
+			: "";
+	if (oauthApiKey.length > 0) {
+		return oauthApiKey;
+	}
+	const configuredApiKey = input.runtimeConfig.clineSettings.apiKey?.trim() ?? "";
+	return configuredApiKey.length > 0 ? configuredApiKey : null;
+}
+
+async function resolveOauthApiKey(
+	runtimeConfig: RuntimeConfigState,
+	configuredProviderId: string | null,
+): Promise<OAuthResolution | null> {
+	const providerId = resolveManagedOauthProviderId(runtimeConfig, configuredProviderId);
+	if (!providerId) {
 		return null;
 	}
 	const accessToken = runtimeConfig.clineSettings.auth.accessToken?.trim() ?? "";
@@ -137,8 +212,7 @@ async function resolveOauthApiKey(runtimeConfig: RuntimeConfigState): Promise<OA
 		return null;
 	}
 
-	const normalizedAccessToken =
-		providerId === "cline" ? stripWorkosPrefix(accessToken) : accessToken;
+	const normalizedAccessToken = providerId === "cline" ? stripWorkosPrefix(accessToken) : accessToken;
 	if (!normalizedAccessToken) {
 		return null;
 	}
@@ -177,12 +251,12 @@ async function resolveOauthApiKey(runtimeConfig: RuntimeConfigState): Promise<OA
 			undefined,
 			configuredBaseUrl
 				? {
-					mode: configuredBaseUrl.includes("code-internal") ? "internal" : "external",
-					config: {
-						internal: { baseUrl: configuredBaseUrl },
-						external: { baseUrl: configuredBaseUrl },
-					},
-				}
+						mode: configuredBaseUrl.includes("code-internal") ? "internal" : "external",
+						config: {
+							internal: { baseUrl: configuredBaseUrl },
+							external: { baseUrl: configuredBaseUrl },
+						},
+					}
 				: undefined,
 		);
 		if (!nextCredentials) {
@@ -246,7 +320,7 @@ function syncSdkProviderSettings(input: {
 	runtimeConfig: RuntimeConfigState;
 	oauthResolution: OAuthResolution | null;
 }): void {
-	const providerId = input.runtimeConfig.clineSettings.providerId?.trim().toLowerCase() ?? "";
+	const providerId = resolveConfiguredClineProviderId(input.runtimeConfig, input.oauthResolution) ?? "";
 	if (!providerId) {
 		return;
 	}
@@ -255,7 +329,6 @@ function syncSdkProviderSettings(input: {
 		const manager = new ProviderSettingsManager();
 		const modelId = input.runtimeConfig.clineSettings.modelId?.trim() ?? "";
 		const baseUrl = input.runtimeConfig.clineSettings.baseUrl?.trim() ?? "";
-		const configuredApiKey = input.runtimeConfig.clineSettings.apiKey?.trim() ?? "";
 		const oauthAuth =
 			isManagedOauthProviderId(providerId) &&
 			input.oauthResolution &&
@@ -292,8 +365,11 @@ function syncSdkProviderSettings(input: {
 				expiresAt: normalizeEpochMs(oauthAuth.expiresAt),
 			};
 		}
-		const effectiveApiKey =
-			input.oauthResolution?.apiKey?.trim() || configuredApiKey || storedOauthAccessToken;
+		const effectiveApiKey = resolveEffectiveProviderApiKey({
+			runtimeConfig: input.runtimeConfig,
+			providerId,
+			oauthResolution: input.oauthResolution,
+		});
 		if (effectiveApiKey) {
 			payload.apiKey = effectiveApiKey;
 		}
@@ -315,6 +391,44 @@ export interface CreateRuntimeApiDependencies {
 	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
+}
+
+interface ResolvedClineLaunchConfig {
+	providerId: string;
+	modelId: string | null;
+	apiKey: string | null;
+	baseUrl: string | null;
+}
+
+async function resolveClineLaunchConfig(
+	deps: CreateRuntimeApiDependencies,
+	workspaceScope: RuntimeTrpcWorkspaceScope,
+	runtimeConfig: RuntimeConfigState,
+): Promise<ResolvedClineLaunchConfig> {
+	const configuredProviderId = resolveConfiguredClineProviderId(runtimeConfig, null);
+	const oauthResolution = await resolveOauthApiKey(runtimeConfig, configuredProviderId);
+	const providerId = resolveConfiguredClineProviderId(runtimeConfig, oauthResolution) ?? "cline";
+	const apiKey = resolveEffectiveProviderApiKey({
+		runtimeConfig,
+		providerId,
+		oauthResolution,
+	});
+
+	if (oauthResolution) {
+		await persistResolvedOauthIfChanged(deps, workspaceScope, runtimeConfig, oauthResolution);
+	}
+
+	syncSdkProviderSettings({
+		runtimeConfig,
+		oauthResolution,
+	});
+
+	return {
+		providerId,
+		modelId: runtimeConfig.clineSettings.modelId,
+		apiKey,
+		baseUrl: runtimeConfig.clineSettings.baseUrl,
+	};
 }
 
 async function resolveExistingTaskCwdOrEnsure(options: {
@@ -357,35 +471,31 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskSessionStartRequest(input);
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				const oauthResolution = await resolveOauthApiKey(scopedRuntimeConfig);
-				if (oauthResolution) {
-					await persistResolvedOauthIfChanged(deps, workspaceScope, scopedRuntimeConfig, oauthResolution);
-				}
-				const taskCwd = await resolveExistingTaskCwdOrEnsure({
-					cwd: workspaceScope.workspacePath,
-					taskId: body.taskId,
-					baseRef: body.baseRef,
-				});
+				const taskCwd = isHomeAgentSessionId(body.taskId)
+					? workspaceScope.workspacePath
+					: await resolveExistingTaskCwdOrEnsure({
+							cwd: workspaceScope.workspacePath,
+							taskId: body.taskId,
+							baseRef: body.baseRef,
+						});
+				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
 
 				if (scopedRuntimeConfig.selectedAgentId === "cline") {
-					syncSdkProviderSettings({
-						runtimeConfig: scopedRuntimeConfig,
-						oauthResolution,
-					});
+					const clineLaunchConfig = await resolveClineLaunchConfig(deps, workspaceScope, scopedRuntimeConfig);
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
 						prompt: body.prompt,
 						resumeFromTrash: body.resumeFromTrash,
-						providerId: scopedRuntimeConfig.clineSettings.providerId,
-						modelId: scopedRuntimeConfig.clineSettings.modelId,
-						apiKey: oauthResolution?.apiKey ?? scopedRuntimeConfig.clineSettings.apiKey,
-						baseUrl: scopedRuntimeConfig.clineSettings.baseUrl,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
 					});
 
 					let nextSummary = summary;
-					if (!body.resumeFromTrash) {
+					if (shouldCaptureTurnCheckpoint) {
 						try {
 							const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 							const checkpoint = await captureTaskTurnCheckpoint({
@@ -430,7 +540,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 
 				let nextSummary = summary;
-				if (!body.resumeFromTrash) {
+				if (shouldCaptureTurnCheckpoint) {
 					try {
 						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 						const checkpoint = await captureTaskTurnCheckpoint({
@@ -612,32 +722,27 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							capabilities?: string[];
 						}>,
 					) =>
-					sdkProviders
-						.map((provider) => ({
-							id: provider.id,
-							name: provider.name,
-							oauthSupported: (provider.capabilities ?? []).includes("oauth"),
-							enabled:
-								selectedProviderId.length > 0
-									? selectedProviderId === provider.id
-									: provider.id === "cline",
-							defaultModelId: provider.defaultModelId ?? null,
-						}))
-						.sort((left, right) => {
-							if (left.id === "cline") {
-								return -1;
-							}
-							if (right.id === "cline") {
-								return 1;
-							}
-							return left.name.localeCompare(right.name);
-						}),
+						sdkProviders
+							.map((provider) => ({
+								id: provider.id,
+								name: provider.name,
+								oauthSupported: (provider.capabilities ?? []).includes("oauth"),
+								enabled:
+									selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
+								defaultModelId: provider.defaultModelId ?? null,
+							}))
+							.sort((left, right) => {
+								if (left.id === "cline") {
+									return -1;
+								}
+								if (right.id === "cline") {
+									return 1;
+								}
+								return left.name.localeCompare(right.name);
+							}),
 				)
 				.catch(() => []);
-			if (
-				selectedProviderId.length > 0 &&
-				!providers.some((provider) => provider.id === selectedProviderId)
-			) {
+			if (selectedProviderId.length > 0 && !providers.some((provider) => provider.id === selectedProviderId)) {
 				providers.unshift({
 					id: selectedProviderId,
 					name: selectedProviderId,
@@ -657,27 +762,18 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				normalizedProviderId.length > 0
 					? await llmsModels
 							.getModelsForProvider(normalizedProviderId)
-							.then(
-								(
-									sdkModels: Record<
-										string,
-										{ name?: string; capabilities?: string[] } | unknown
-									>,
-								) =>
+							.then((sdkModels: Record<string, { name?: string; capabilities?: string[] } | unknown>) =>
 								Object.entries(sdkModels)
 									.map(([modelId, modelInfo]) => {
 										const parsedModelInfo =
 											typeof modelInfo === "object" && modelInfo !== null
 												? (modelInfo as {
-													name?: unknown;
-													capabilities?: unknown;
-												})
+														name?: unknown;
+														capabilities?: unknown;
+													})
 												: null;
 										return toRuntimeProviderModel(modelId, {
-											name:
-												typeof parsedModelInfo?.name === "string"
-													? parsedModelInfo.name
-													: undefined,
+											name: typeof parsedModelInfo?.name === "string" ? parsedModelInfo.name : undefined,
 											capabilities: Array.isArray(parsedModelInfo?.capabilities)
 												? parsedModelInfo.capabilities.filter(
 														(value): value is string => typeof value === "string",
@@ -731,15 +827,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				if (body.provider === "oca") {
 					const configuredBaseUrl = scopedRuntimeConfig.clineSettings.baseUrl?.trim() || null;
 					const credentials = await loginOcaOAuth({
-						mode:
-							configuredBaseUrl?.includes("code-internal")
-								? "internal"
-								: "external",
+						mode: configuredBaseUrl?.includes("code-internal") ? "internal" : "external",
 						config: configuredBaseUrl
 							? {
-								internal: { baseUrl: configuredBaseUrl },
-								external: { baseUrl: configuredBaseUrl },
-							}
+									internal: { baseUrl: configuredBaseUrl },
+									external: { baseUrl: configuredBaseUrl },
+								}
 							: undefined,
 						callbacks: createRuntimeOauthCallbacks("oca"),
 					});
@@ -778,13 +871,26 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskChatSendRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				const summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text);
+				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text);
 				if (!summary) {
-					return {
-						ok: false,
-						summary: null,
-						error: "Task chat session is not running.",
-					};
+					if (!isHomeAgentSessionId(body.taskId)) {
+						return {
+							ok: false,
+							summary: null,
+							error: "Task chat session is not running.",
+						};
+					}
+					const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+					const clineLaunchConfig = await resolveClineLaunchConfig(deps, workspaceScope, scopedRuntimeConfig);
+					summary = await clineTaskSessionService.startTaskSession({
+						taskId: body.taskId,
+						cwd: workspaceScope.workspacePath,
+						prompt: body.text,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
+					});
 				}
 				const latestMessage = clineTaskSessionService.listMessages(body.taskId).at(-1) ?? null;
 				return {
