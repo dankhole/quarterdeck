@@ -1,8 +1,14 @@
 import { type ReactElement, useMemo, useState } from "react";
-import { Brain, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 
 import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
-import { parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
+import {
+	getToolSummary,
+	parseToolMessageContent,
+	parseToolOutput,
+} from "@/components/detail-panels/cline-chat-message-utils";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
@@ -10,55 +16,86 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 	const isRunning = message.meta?.hookEventName === "tool_call_start";
 	const hasError = Boolean(parsed.error);
 	const [expanded, setExpanded] = useState(false);
-	const statusText = hasError ? "Failed" : isRunning ? "Running" : "Completed";
-	const statusClasses = hasError
-		? "text-status-red"
-		: isRunning
-			? "text-status-orange"
-			: "text-status-green";
+
+	const summary = useMemo(() => getToolSummary(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
+	const toolOutput = useMemo(() => (parsed.output ? parseToolOutput(parsed.output) : null), [parsed.output]);
+	const hasExpandableContent = Boolean(parsed.output || parsed.error);
 
 	return (
-		<div className="w-full rounded-md border border-border bg-status-blue/5 px-2 py-2">
+		<div className="w-full">
 			<button
 				type="button"
-				onClick={() => setExpanded((current) => !current)}
-				className="flex w-full items-center justify-between gap-2 text-left"
+				onClick={hasExpandableContent ? () => setExpanded((e) => !e) : undefined}
+				className={cn(
+					"group flex w-full items-center gap-1.5 rounded px-1.5 py-0 text-left text-sm",
+					hasExpandableContent && "cursor-pointer",
+				)}
 			>
-				<div className="min-w-0">
-					<div className="flex items-center gap-2 text-xs uppercase tracking-wide text-text-tertiary">
-						<Wrench size={12} />
-						<span>Tool</span>
-						<span className={statusClasses}>{statusText}</span>
-					</div>
-					<div className="truncate text-sm text-text-primary">{parsed.toolName}</div>
-				</div>
-				<div className="flex items-center gap-2 text-xs text-text-secondary">
-					{typeof parsed.durationMs === "number" ? <span>{parsed.durationMs}ms</span> : null}
-					{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-				</div>
+				{isRunning ? (
+					<Spinner size={14} className="shrink-0" />
+				) : hasError ? (
+					<XCircle size={14} className="shrink-0 text-status-red" />
+				) : null}
+				<span className={cn(
+					"shrink-0 font-semibold group-hover:text-[#C9D1D9]",
+					expanded ? "text-[#C9D1D9]" : "text-text-secondary",
+				)}>{parsed.toolName}</span>
+				{summary ? (
+					<span className={cn(
+						"min-w-0 truncate group-hover:text-text-secondary",
+						expanded ? "text-text-secondary" : "text-text-tertiary",
+					)}>{summary}</span>
+				) : null}
+				{hasExpandableContent ? (
+					<span className={cn(
+						"shrink-0 group-hover:text-text-secondary",
+						expanded ? "text-text-secondary" : "text-text-tertiary",
+					)}>
+						{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+					</span>
+				) : null}
 			</button>
+
 			{expanded ? (
-				<div className="mt-2 space-y-2">
-					{parsed.input ? (
-						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">Input</div>
-							<pre className="max-h-44 overflow-auto rounded border border-border bg-surface-1 px-2 py-1 text-xs whitespace-pre-wrap break-all text-text-secondary">
-								{parsed.input}
-							</pre>
-						</div>
-					) : null}
-					{parsed.output ? (
-						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">Output</div>
-							<pre className="max-h-56 overflow-auto rounded border border-border bg-surface-1 px-2 py-1 text-xs whitespace-pre-wrap break-all text-text-primary">
-								{parsed.output}
-							</pre>
-						</div>
-					) : null}
+				<div className="mt-1 space-y-1.5 pr-1.5 pl-[24px] pb-1">
+					{/* Parsed ToolOperationResult output */}
+					{toolOutput
+						? toolOutput.results.map((result, i) => (
+								<div key={i}>
+									{toolOutput.results.length > 1 ? (
+										<div className="mb-0.5 truncate text-xs text-text-tertiary">
+											{result.query}
+										</div>
+									) : null}
+									{result.error ? (
+										<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+											{result.error}
+										</pre>
+									) : null}
+									{result.content ? (
+										<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+											{result.content}
+										</pre>
+									) : null}
+								</div>
+							))
+						: parsed.output
+							? /* Fallback for non-ToolOperationResult output (skills, ask_question, MCP tools) */
+								(
+									<div>
+										<div className="mb-0.5 text-xs text-text-tertiary">Output</div>
+										<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+											{parsed.output}
+										</pre>
+									</div>
+								)
+							: null}
+
+					{/* Tool-level error (SDK crash/timeout, separate from per-result errors) */}
 					{parsed.error ? (
 						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-status-red">Error</div>
-							<pre className="max-h-56 overflow-auto rounded border border-status-red/40 bg-status-red/10 px-2 py-1 text-xs whitespace-pre-wrap break-all text-status-red">
+							<div className="mb-0.5 text-xs text-status-red">Error</div>
+							<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
 								{parsed.error}
 							</pre>
 						</div>
@@ -72,7 +109,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	return (
 		<div className="w-full">
-			<div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-status-purple">
+			<div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wide text-status-purple">
 				<Brain size={12} />
 				<span>Reasoning</span>
 			</div>
@@ -98,7 +135,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	if (message.role === "assistant") {
 		const normalizedAssistantContent = message.content.replace(/^\n+/, "");
 		return (
-			<div className="w-full text-sm whitespace-pre-wrap text-text-primary">
+			<div className="w-full px-1.5 text-sm text-text-primary">
 				<ClineMarkdownContent content={normalizedAssistantContent} />
 			</div>
 		);
@@ -106,7 +143,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	const label = message.role === "status" ? "Status" : "System";
 	return (
 		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm whitespace-pre-wrap text-text-secondary">
-			<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">{label}</div>
+			<div className="mb-1 text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
 			{message.content}
 		</div>
 	);
