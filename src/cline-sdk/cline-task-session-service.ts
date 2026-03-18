@@ -23,7 +23,7 @@ import {
 	setOrCreateAssistantMessage,
 	updateSummary,
 } from "./cline-session-state.js";
-import { buildClineSdkWorkspaceMetadata } from "./sdk-runtime-boundary.js";
+import { resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary.js";
 
 export type { ClineTaskMessage } from "./cline-session-state.js";
 
@@ -160,11 +160,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		void (async () => {
 			const assistantCountBeforeStart = entry.messages.filter((message) => message.role === "assistant").length;
 			try {
-				let systemPrompt = "You are a helpful coding assistant.";
-				if (providerId === "cline") {
-					const workspaceMetadata = await buildClineSdkWorkspaceMetadata(request.cwd);
-					systemPrompt = `${systemPrompt}\n\n${workspaceMetadata}`;
-				}
+				let systemPrompt = await resolveClineSdkSystemPrompt({
+					cwd: request.cwd,
+					providerId,
+				});
 				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
 				if (appendedSystemPrompt) {
 					systemPrompt = `${systemPrompt}\n\n${appendedSystemPrompt}`;

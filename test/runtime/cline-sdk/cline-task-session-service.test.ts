@@ -66,6 +66,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect.objectContaining({
 				config: expect.objectContaining({
 					providerId: "anthropic",
+					systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
 				}),
 			}),
 		);
@@ -100,6 +101,13 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect(fakeHost.start).toHaveBeenCalledTimes(1);
 		});
 
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
+				}),
+			}),
+		);
 		expect(fakeHost.start).toHaveBeenCalledWith(
 			expect.objectContaining({
 				config: expect.objectContaining({
