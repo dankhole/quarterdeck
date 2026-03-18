@@ -19,6 +19,7 @@ import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
+import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -361,6 +362,30 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		config,
 	});
+	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
+		const items: SearchSelectOption[] = clineSettings.providerCatalog.map((provider) => ({
+			value: provider.id,
+			label: `${provider.name} ${provider.oauthSupported ? "(OAuth)" : "(API key)"}`,
+		}));
+		const trimmedId = clineSettings.providerId.trim();
+		if (
+			trimmedId.length > 0 &&
+			!clineSettings.providerCatalog.some(
+				(provider) => provider.id.trim().toLowerCase() === clineSettings.normalizedProviderId,
+			)
+		) {
+			items.push({ value: trimmedId, label: `${trimmedId} (custom)` });
+		}
+		return items;
+	}, [clineSettings.providerCatalog, clineSettings.providerId, clineSettings.normalizedProviderId]);
+	const clineModelOptions = useMemo(
+		(): SearchSelectOption[] =>
+			clineSettings.providerModels.map((model) => ({
+				value: model.id,
+				label: model.name,
+			})),
+		[clineSettings.providerModels],
+	);
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -615,45 +640,45 @@ export function RuntimeSettingsDialog({
 						<div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 							<div className="min-w-0">
 								<p className="text-text-secondary text-[12px] mt-0 mb-1">Provider</p>
-								<select
-									value={clineSettings.providerId}
-									onChange={(event) => clineSettings.setProviderId(event.target.value)}
+								<SearchSelectDropdown
+									options={clineProviderOptions}
+									selectedValue={clineSettings.providerId}
+									onSelect={(value) => clineSettings.setProviderId(value)}
 									disabled={controlsDisabled || clineSettings.isLoadingProviderCatalog}
-									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
-								>
-									<option value="">{clineSettings.isLoadingProviderCatalog ? "Loading providers..." : "Select provider"}</option>
-									{clineSettings.providerCatalog.map((provider) => (
-										<option key={provider.id} value={provider.id}>
-											{provider.name} {provider.oauthSupported ? "(OAuth)" : "(API key)"}
-										</option>
-									))}
-									{clineSettings.providerId.trim().length > 0 &&
-									!clineSettings.providerCatalog.some(
-										(provider) => provider.id.trim().toLowerCase() === clineSettings.normalizedProviderId,
-									) ? (
-										<option value={clineSettings.providerId}>{clineSettings.providerId} (custom)</option>
-									) : null}
-								</select>
+									fill
+									size="sm"
+									buttonText={
+										clineSettings.isLoadingProviderCatalog
+											? "Loading providers..."
+											: clineProviderOptions.find((o) => o.value === clineSettings.providerId)?.label
+									}
+									emptyText="Select provider"
+									noResultsText="No matching providers"
+									placeholder="Search providers..."
+									showSelectedIndicator
+								/>
 							</div>
 							<div className="min-w-0">
 								<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
-								<input
-									value={clineSettings.modelId}
-									onChange={(event) => clineSettings.setModelId(event.target.value)}
-									placeholder={clineSettings.isLoadingProviderModels ? "Loading models..." : "claude-sonnet-4-6"}
-									list="cline-model-options"
-									disabled={controlsDisabled}
-									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								<SearchSelectDropdown
+									options={clineModelOptions}
+									selectedValue={clineSettings.modelId}
+									onSelect={(value) => clineSettings.setModelId(value)}
+									disabled={controlsDisabled || clineSettings.isLoadingProviderModels}
+									fill
+									size="sm"
+									buttonText={
+										clineSettings.isLoadingProviderModels
+											? "Loading models..."
+											: clineModelOptions.find((o) => o.value === clineSettings.modelId)?.label
+									}
+									emptyText="Select model"
+									noResultsText="No matching models"
+									placeholder="Search models..."
+									showSelectedIndicator
 								/>
 							</div>
 						</div>
-						<datalist id="cline-model-options">
-							{clineSettings.providerModels.map((model) => (
-								<option key={model.id} value={model.id}>
-									{model.name}
-								</option>
-							))}
-						</datalist>
 						{clineSettings.isLoadingProviderCatalog || clineSettings.isLoadingProviderModels ? (
 							<p className="text-text-secondary text-[12px] mt-1 mb-0">
 								{clineSettings.isLoadingProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
