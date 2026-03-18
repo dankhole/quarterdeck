@@ -1,10 +1,11 @@
 // Layout component for the native Cline chat panel.
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
-import { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
+import React, { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { ShimmeringText } from "@/components/ui/text-shimmer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
@@ -12,6 +13,14 @@ import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 const CLINE_CHAT_COMPOSER_MAX_HEIGHT = 160;
+
+const ThinkingShimmer = React.memo(function ThinkingShimmer() {
+	return (
+		<div className="px-1.5">
+			<ShimmeringText text="Thinking..." className="text-sm" duration={2.5} spread={5} repeatDelay={1.2} startOnView={false} />
+		</div>
+	);
+});
 
 export interface ClineAgentChatPanelProps {
 	taskId: string;
@@ -120,10 +129,7 @@ export function ClineAgentChatPanel({
 					messages.map((message) => <ClineChatMessageItem key={message.id} message={message} />)
 				)}
 				{showAgentProgressIndicator ? (
-					<div className="flex items-center gap-2 px-1 text-xs text-text-secondary">
-						<Spinner size={12} />
-						<span>Thinking...</span>
-					</div>
+					<ThinkingShimmer />
 				) : null}
 				<div ref={messageEndRef} aria-hidden="true" />
 			</div>
