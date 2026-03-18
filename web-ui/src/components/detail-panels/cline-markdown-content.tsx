@@ -78,18 +78,18 @@ function toCodeString(children: ReactNode): string {
 }
 
 const markdownComponents: Components = {
-	h1: ({ className, ...props }) => <h1 className={cn("mt-3 mb-2 text-base text-text-primary", className)} {...props} />,
-	h2: ({ className, ...props }) => <h2 className={cn("mt-3 mb-2 text-base text-text-primary", className)} {...props} />,
-	h3: ({ className, ...props }) => <h3 className={cn("mt-2 mb-1 text-sm text-text-primary", className)} {...props} />,
-	p: ({ className, ...props }) => <p className={cn("my-1 whitespace-pre-wrap text-sm text-text-primary", className)} {...props} />,
-	ul: ({ className, ...props }) => <ul className={cn("my-1 list-disc space-y-1 pl-5 text-sm text-text-primary", className)} {...props} />,
-	ol: ({ className, ...props }) => <ol className={cn("my-1 list-decimal space-y-1 pl-5 text-sm text-text-primary", className)} {...props} />,
-	li: ({ className, ...props }) => <li className={cn("text-sm text-text-primary", className)} {...props} />,
+	h1: ({ className, ...props }) => <h1 className={cn("mt-3 text-base font-semibold text-text-primary", className)} {...props} />,
+	h2: ({ className, ...props }) => <h2 className={cn("mt-3 text-base font-semibold text-text-primary", className)} {...props} />,
+	h3: ({ className, ...props }) => <h3 className={cn("mt-2 text-sm font-semibold text-text-primary", className)} {...props} />,
+	p: ({ className, ...props }) => <p className={cn("leading-snug whitespace-pre-wrap text-sm text-text-primary", className)} {...props} />,
+	ul: ({ className, ...props }) => <ul className={cn("list-disc pl-5 leading-snug text-sm text-text-primary", className)} {...props} />,
+	ol: ({ className, ...props }) => <ol className={cn("list-decimal pl-5 leading-snug text-sm text-text-primary", className)} {...props} />,
+	li: ({ className, ...props }) => <li className={cn("leading-snug text-sm text-text-primary", className)} {...props} />,
 	a: ({ className, ...props }) => <a className={cn("text-accent underline", className)} target="_blank" rel="noreferrer" {...props} />,
 	blockquote: ({ className, ...props }) => (
-		<blockquote className={cn("my-2 border-l-2 border-border-bright pl-3 text-sm text-text-secondary", className)} {...props} />
+		<blockquote className={cn("border-l-2 border-border-bright pl-3 text-sm leading-snug text-text-secondary", className)} {...props} />
 	),
-	hr: ({ className, ...props }) => <hr className={cn("my-2 border-border", className)} {...props} />,
+	hr: ({ className, ...props }) => <hr className={cn("border-border", className)} {...props} />,
 	code: ({ className, children, ...props }) => {
 		const code = toCodeString(children);
 		const isInline = !className || !className.includes("language-");
@@ -110,14 +110,14 @@ const markdownComponents: Components = {
 
 		if (highlighted) {
 			return (
-				<pre className="my-1 overflow-x-auto rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs leading-5 text-text-primary">
+				<pre className="my-0.5 overflow-x-auto rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs leading-5 text-text-primary">
 					<code className={`language-${prismLanguage}`} dangerouslySetInnerHTML={{ __html: highlighted }} />
 				</pre>
 			);
 		}
 
 		return (
-			<pre className="my-1 overflow-x-auto rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs leading-5 text-text-primary">
+			<pre className="my-0.5 overflow-x-auto rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs leading-5 text-text-primary">
 				<code className={cn("font-mono", className)}>{code}</code>
 			</pre>
 		);
@@ -128,5 +128,5 @@ export function ClineMarkdownContent({ content }: { content: string }): ReactEle
 	if (!content.trim()) {
 		return <span className="text-text-secondary" />;
 	}
-	return <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown>;
+	return <div className="kb-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown></div>;
 }
