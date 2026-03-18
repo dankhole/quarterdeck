@@ -132,9 +132,7 @@ describe("CardDetailView", () => {
 		}
 	});
 
-	it("collapses the expanded diff before closing the detail view", async () => {
-		const onBack = vi.fn();
-
+	it("collapses the expanded diff on Escape without closing the detail view", async () => {
 		await act(async () => {
 			root.render(
 				<CardDetailView
@@ -143,7 +141,6 @@ describe("CardDetailView", () => {
 					sessionSummary={null}
 					taskSessions={{}}
 					onSessionSummary={() => {}}
-					onBack={onBack}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
 					onMoveToTrash={() => {}}
@@ -176,15 +173,8 @@ describe("CardDetailView", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
 		});
 
-		expect(onBack).not.toHaveBeenCalled();
 		expect(container.querySelector('button[aria-label="Collapse expanded diff view"]')).toBeNull();
 		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
-
-		await act(async () => {
-			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-		});
-
-		expect(onBack).toHaveBeenCalledTimes(1);
 	});
 
 	it("clears stale diff content when switching from all changes to last turn", async () => {
@@ -196,7 +186,6 @@ describe("CardDetailView", () => {
 					sessionSummary={null}
 					taskSessions={{}}
 					onSessionSummary={() => {}}
-					onBack={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
 					onMoveToTrash={() => {}}
@@ -236,7 +225,6 @@ describe("CardDetailView", () => {
 					sessionSummary={null}
 					taskSessions={{}}
 					onSessionSummary={() => {}}
-					onBack={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
 					onMoveToTrash={() => {}}

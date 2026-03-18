@@ -186,7 +186,6 @@ export function CardDetailView({
 	sessionSummary,
 	taskSessions,
 	onSessionSummary,
-	onBack,
 	onCardSelect,
 	onTaskDragEnd,
 	onCreateTask,
@@ -238,7 +237,6 @@ export function CardDetailView({
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
-	onBack: () => void;
 	onCardSelect: (taskId: string) => void;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
@@ -432,14 +430,12 @@ export function CardDetailView({
 				if (event.key !== "Escape" || event.defaultPrevented || isTypingTarget(event.target)) {
 					return;
 				}
-				event.preventDefault();
 				if (isDiffExpanded) {
+					event.preventDefault();
 					setIsDiffExpanded(false);
-					return;
 				}
-				onBack();
 			},
-			[isDiffExpanded, onBack],
+			[isDiffExpanded],
 		),
 	);
 
