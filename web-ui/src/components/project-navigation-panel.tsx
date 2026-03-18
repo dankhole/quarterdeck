@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Heart, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
 import {
 	AlertDialog,
@@ -15,8 +16,6 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
-
-const GITHUB_URL = "https://github.com/cline/kanban";
 
 interface TaskCountBadge {
 	id: string;
@@ -71,17 +70,10 @@ export function ProjectNavigationPanel({
 		>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
-					<div className="font-semibold text-base">
+					<div className="font-semibold text-base flex items-baseline gap-1.5">
+						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
-					<a
-						href={GITHUB_URL}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-accent-hover text-xs hover:underline"
-					>
-						View on GitHub
-					</a>
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">
 					<div className="grid grid-cols-2 gap-1">
