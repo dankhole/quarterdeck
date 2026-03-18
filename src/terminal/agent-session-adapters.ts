@@ -1,10 +1,11 @@
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
+import { lockedFileSystem } from "../fs/locked-file-system.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
@@ -575,26 +576,10 @@ function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
 }
 
-async function readFileIfExists(filePath: string): Promise<string | null> {
-	try {
-		return await readFile(filePath, "utf8");
-	} catch (error) {
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-			return null;
-		}
-		throw error;
-	}
-}
-
 async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
-	await mkdir(dirname(filePath), { recursive: true });
-	const existing = await readFileIfExists(filePath);
-	if (existing !== content) {
-		await writeFile(filePath, content, "utf8");
-	}
-	if (executable) {
-		await chmod(filePath, 0o755);
-	}
+	await lockedFileSystem.writeTextFileAtomic(filePath, content, {
+		executable,
+	});
 }
 
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {

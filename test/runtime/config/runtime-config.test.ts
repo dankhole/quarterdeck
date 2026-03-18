@@ -385,4 +385,34 @@ describe.sequential("runtime-config auto agent selection", () => {
 			cleanupHome();
 		}
 	});
+
+	it("preserves concurrent config updates across processes", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-concurrent-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-concurrent-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await loadRuntimeConfig(tempProject);
+
+				const [selectedAgentState, autonomousModeState] = await Promise.all([
+					updateRuntimeConfig(tempProject, {
+						selectedAgentId: "codex",
+					}),
+					updateRuntimeConfig(tempProject, {
+						agentAutonomousModeEnabled: false,
+					}),
+				]);
+
+				expect(selectedAgentState.selectedAgentId).toBe("codex");
+				expect(autonomousModeState.agentAutonomousModeEnabled).toBe(false);
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.selectedAgentId).toBe("codex");
+				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
 });
