@@ -173,6 +173,24 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		.filter((line) => line.length > 0);
 }
 
+async function worktreeHasConfiguredSubmodules(worktreePath: string): Promise<boolean> {
+	const gitmodulesPath = join(worktreePath, ".gitmodules");
+	if (!(await pathExists(gitmodulesPath))) {
+		return false;
+	}
+
+	const output = await tryRunGit([
+		"-C",
+		worktreePath,
+		"config",
+		"--file",
+		gitmodulesPath,
+		"--get-regexp",
+		"^submodule\\..*\\.path$",
+	]);
+	return output !== null && output.trim().length > 0;
+}
+
 function escapeGitIgnoreLiteral(path: string): string {
 	const normalized = toPlatformRelativePath(path);
 	return normalized
@@ -260,6 +278,24 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 	}
 }
 
+async function initializeSubmodulesIfNeeded(worktreePath: string): Promise<void> {
+	if (!(await worktreeHasConfiguredSubmodules(worktreePath))) {
+		return;
+	}
+
+	await runGit(["-C", worktreePath, "submodule", "update", "--init", "--recursive"]);
+}
+
+async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): Promise<void> {
+	try {
+		await initializeSubmodulesIfNeeded(worktreePath);
+		await syncIgnoredPathsIntoWorktree(repoPath, worktreePath);
+	} catch (error) {
+		await removeTaskWorktreeInternal(repoPath, worktreePath).catch(() => {});
+		throw error;
+	}
+}
+
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
 	await tryRunGit(["-C", repoPath, "worktree", "remove", "--force", worktreePath]);
@@ -337,7 +373,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 
 		await mkdir(dirname(worktreePath), { recursive: true });
 		await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
-		await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
+		await prepareNewTaskWorktree(context.repoPath, worktreePath);
 
 		return {
 			ok: true,
