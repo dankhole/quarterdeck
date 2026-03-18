@@ -4,7 +4,9 @@ import type { RuntimeAgentId } from "./api-contract.js";
 // We mint a synthetic home agent session id so the existing task-scoped
 // runtime APIs can manage its chat and terminal lifecycle without creating
 // a worktree-backed task.
-export const HOME_AGENT_SESSION_PREFIX = "__home_agent__:";
+const HOME_AGENT_SESSION_NAMESPACE = "__home_agent__";
+
+export const HOME_AGENT_SESSION_PREFIX = `${HOME_AGENT_SESSION_NAMESPACE}:`;
 
 function hashHomeAgentDescriptor(value: string): string {
 	let hash = 2_166_136_261;

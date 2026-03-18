@@ -486,19 +486,28 @@ export type RuntimeClineProviderModelsResponse = z.infer<typeof runtimeClineProv
 
 export const runtimeClineOauthLoginRequestSchema = z.object({
 	provider: runtimeClineOauthProviderSchema,
+	baseUrl: z.string().nullable().optional(),
 });
 export type RuntimeClineOauthLoginRequest = z.infer<typeof runtimeClineOauthLoginRequestSchema>;
 
 export const runtimeClineOauthLoginResponseSchema = z.object({
 	ok: z.boolean(),
 	provider: runtimeClineOauthProviderSchema,
-	accessToken: z.string().nullable().optional(),
-	refreshToken: z.string().nullable().optional(),
-	accountId: z.string().nullable().optional(),
-	expiresAt: z.number().int().positive().nullable().optional(),
+	settings: runtimeClineProviderSettingsSchema.optional(),
 	error: z.string().optional(),
 });
 export type RuntimeClineOauthLoginResponse = z.infer<typeof runtimeClineOauthLoginResponseSchema>;
+
+export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
+	providerId: z.string(),
+	modelId: z.string().nullable().optional(),
+	apiKey: z.string().nullable().optional(),
+	baseUrl: z.string().nullable().optional(),
+});
+export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClineProviderSettingsSaveRequestSchema>;
+
+export const runtimeClineProviderSettingsSaveResponseSchema = runtimeClineProviderSettingsSchema;
+export type RuntimeClineProviderSettingsSaveResponse = z.infer<typeof runtimeClineProviderSettingsSaveResponseSchema>;
 
 export const runtimeCommandRunRequestSchema = z.object({
 	command: z.string(),
@@ -557,15 +566,6 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
-	clineProviderId: z.string().nullable().optional(),
-	clineModelId: z.string().nullable().optional(),
-	clineApiKey: z.string().nullable().optional(),
-	clineBaseUrl: z.string().nullable().optional(),
-	clineOauthProvider: runtimeClineOauthProviderSchema.nullable().optional(),
-	clineOauthAccessToken: z.string().nullable().optional(),
-	clineOauthRefreshToken: z.string().nullable().optional(),
-	clineOauthAccountId: z.string().nullable().optional(),
-	clineOauthExpiresAt: z.number().int().positive().nullable().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
 });

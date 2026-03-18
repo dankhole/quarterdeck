@@ -1,3 +1,6 @@
+// Composes the sidebar agent surface for the current workspace.
+// It decides whether the synthetic home session should render native Cline
+// chat or a terminal panel and wires that surface to shared runtime actions.
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -5,21 +8,16 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { Spinner } from "@/components/ui/spinner";
 import { createIdleTaskSession } from "@/hooks/app-utils";
+import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
 	RuntimeGitRepositoryInfo,
 	RuntimeStateStreamTaskChatMessage,
-	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-
-interface TaskChatActionResult {
-	ok: boolean;
-	message?: string;
-}
 
 interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
@@ -27,10 +25,6 @@ interface UseHomeSidebarAgentPanelInput {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
-}
-
-function toErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 async function stopHomeSidebarTaskSession(workspaceId: string, taskId: string): Promise<void> {
@@ -70,6 +64,14 @@ export function useHomeSidebarAgentPanel({
 	useEffect(() => {
 		currentTaskIdRef.current = taskId;
 	}, [taskId]);
+	const {
+		sendTaskChatMessage,
+		loadTaskChatMessages,
+		cancelTaskChatTurn,
+	} = useClineChatRuntimeActions({
+		currentProjectId,
+		onSessionSummary: upsertSessionSummary,
+	});
 
 	const selectedAgentLabel = useMemo(() => {
 		if (!runtimeProjectConfig) {
@@ -90,70 +92,29 @@ export function useHomeSidebarAgentPanel({
 	}, [latestTaskChatMessage, taskId]);
 
 	const handleSendHomeClineChatMessage = useCallback(
-		async (messageTaskId: string, text: string): Promise<TaskChatActionResult> => {
-			if (!currentProjectId) {
-				return { ok: false, message: "No project selected." };
+		async (messageTaskId: string, text: string) => {
+			const result = await sendTaskChatMessage(messageTaskId, text);
+			if (!result.ok) {
+				return result;
 			}
-			try {
-				const payload = await getRuntimeTrpcClient(currentProjectId).runtime.sendTaskChatMessage.mutate({
-					taskId: messageTaskId,
-					text,
-				});
-				if (!payload.ok) {
-					return { ok: false, message: payload.error ?? "Task chat message failed." };
-				}
-				if (payload.summary) {
-					upsertSessionSummary(payload.summary);
-				}
+			if (currentProjectId) {
 				if (currentTaskIdRef.current !== messageTaskId) {
 					await stopHomeSidebarTaskSession(currentProjectId, messageTaskId);
 				}
-				return { ok: true };
-			} catch (error) {
-				return { ok: false, message: toErrorMessage(error) };
 			}
+			return result;
 		},
-		[currentProjectId, upsertSessionSummary],
+		[currentProjectId, sendTaskChatMessage],
 	);
 
 	const handleLoadHomeClineChatMessages = useCallback(
-		async (messageTaskId: string): Promise<RuntimeTaskChatMessage[] | null> => {
-			if (!currentProjectId) {
-				return null;
-			}
-			try {
-				const payload = await getRuntimeTrpcClient(currentProjectId).runtime.getTaskChatMessages.query({
-					taskId: messageTaskId,
-				});
-				return payload.ok ? payload.messages : null;
-			} catch {
-				return null;
-			}
-		},
-		[currentProjectId],
+		async (messageTaskId: string) => await loadTaskChatMessages(messageTaskId),
+		[loadTaskChatMessages],
 	);
 
 	const handleCancelHomeClineChatTurn = useCallback(
-		async (messageTaskId: string): Promise<TaskChatActionResult> => {
-			if (!currentProjectId) {
-				return { ok: false, message: "No project selected." };
-			}
-			try {
-				const payload = await getRuntimeTrpcClient(currentProjectId).runtime.cancelTaskChatTurn.mutate({
-					taskId: messageTaskId,
-				});
-				if (!payload.ok) {
-					return { ok: false, message: payload.error ?? "Could not cancel chat turn." };
-				}
-				if (payload.summary) {
-					upsertSessionSummary(payload.summary);
-				}
-				return { ok: true };
-			} catch (error) {
-				return { ok: false, message: toErrorMessage(error) };
-			}
-		},
-		[currentProjectId, upsertSessionSummary],
+		async (messageTaskId: string) => await cancelTaskChatTurn(messageTaskId),
+		[cancelTaskChatTurn],
 	);
 
 	if (hasNoProjects || !currentProjectId) {

@@ -1,11 +1,15 @@
+// Manages the message list and send or cancel lifecycle for one native Cline session.
+// It merges loaded history with streamed updates and guards against stale task
+// switches so chat surfaces can stay reactive without duplicating logic.
 import { useCallback, useEffect, useState } from "react";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { RuntimeTaskChatMessage } from "@/runtime/types";
 
 export type ClineChatMessage = RuntimeTaskChatMessage;
 
 interface UseClineChatSessionInput {
 	taskId: string;
-	onSendMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string }>;
+	onSendMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
@@ -18,6 +22,39 @@ interface UseClineChatSessionResult {
 	error: string | null;
 	sendMessage: (text: string) => Promise<boolean>;
 	cancelTurn: () => Promise<boolean>;
+}
+
+function areMessagesEqual(left: ClineChatMessage, right: ClineChatMessage): boolean {
+	return (
+		left.content === right.content &&
+		left.role === right.role &&
+		left.createdAt === right.createdAt &&
+		JSON.stringify(left.meta ?? null) === JSON.stringify(right.meta ?? null)
+	);
+}
+
+function upsertMessage(currentMessages: ClineChatMessage[], nextMessage: ClineChatMessage): ClineChatMessage[] {
+	const existingIndex = currentMessages.findIndex((message) => message.id === nextMessage.id);
+	if (existingIndex < 0) {
+		return [...currentMessages, nextMessage];
+	}
+	const existingMessage = currentMessages[existingIndex];
+	if (!existingMessage || areMessagesEqual(existingMessage, nextMessage)) {
+		return currentMessages;
+	}
+	const nextMessages = [...currentMessages];
+	nextMessages[existingIndex] = nextMessage;
+	return nextMessages;
+}
+
+function mergeMessages(
+	baseMessages: ClineChatMessage[],
+	additionalMessages: ClineChatMessage[],
+): ClineChatMessage[] {
+	return additionalMessages.reduce(
+		(nextMessages, message) => upsertMessage(nextMessages, message),
+		[...baseMessages],
+	);
 }
 
 export function useClineChatSession({
@@ -34,11 +71,16 @@ export function useClineChatSession({
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
+		setMessages([]);
 		setError(null);
+	}, [taskId]);
+
+	useEffect(() => {
 		if (!onLoadMessages) {
 			setMessages([]);
 			return;
 		}
+		setError(null);
 		let cancelled = false;
 		setIsLoading(true);
 		void onLoadMessages(taskId)
@@ -46,7 +88,7 @@ export function useClineChatSession({
 				if (cancelled) {
 					return;
 				}
-				setMessages(loadedMessages ?? []);
+				setMessages((currentMessages) => mergeMessages(loadedMessages ?? [], currentMessages));
 			})
 			.catch((loadError) => {
 				if (cancelled) {
@@ -69,27 +111,7 @@ export function useClineChatSession({
 		if (!incomingMessage) {
 			return;
 		}
-		setMessages((currentMessages) => {
-			const existingIndex = currentMessages.findIndex((message) => message.id === incomingMessage.id);
-			if (existingIndex >= 0) {
-				const existing = currentMessages[existingIndex];
-				if (!existing) {
-					return currentMessages;
-				}
-				if (
-					existing.content === incomingMessage.content &&
-					existing.role === incomingMessage.role &&
-					existing.createdAt === incomingMessage.createdAt &&
-					JSON.stringify(existing.meta ?? null) === JSON.stringify(incomingMessage.meta ?? null)
-				) {
-					return currentMessages;
-				}
-				const nextMessages = [...currentMessages];
-				nextMessages[existingIndex] = incomingMessage;
-				return nextMessages;
-			}
-			return [...currentMessages, incomingMessage];
-		});
+		setMessages((currentMessages) => upsertMessage(currentMessages, incomingMessage));
 	}, [incomingMessage]);
 
 	const cancelTurn = useCallback(async (): Promise<boolean> => {
@@ -131,7 +153,10 @@ export function useClineChatSession({
 					setError(message);
 					return false;
 				}
-				if (onLoadMessages) {
+				const sentMessage = result.chatMessage ?? null;
+				if (sentMessage) {
+					setMessages((currentMessages) => upsertMessage(currentMessages, sentMessage));
+				} else if (onLoadMessages) {
 					const loadedMessages = await onLoadMessages(taskId);
 					setMessages(loadedMessages ?? []);
 				}

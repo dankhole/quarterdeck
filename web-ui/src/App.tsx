@@ -1,3 +1,6 @@
+// Main React composition root for the browser app.
+// Keep this file focused on wiring top-level hooks and surfaces together, and
+// push runtime-specific orchestration down into hooks and service modules.
 import { FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -647,22 +650,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const handleSendClineChatMessage = useCallback(
-		async (taskId: string, text: string): Promise<{ ok: boolean; message?: string }> => {
-			return await sendTaskChatMessage(taskId, text);
-		},
-		[sendTaskChatMessage],
-	);
-	const handleLoadClineChatMessages = useCallback(
-		async (taskId: string) => await fetchTaskChatMessages(taskId),
-		[fetchTaskChatMessages],
-	);
-	const handleCancelClineChatTurn = useCallback(
-		async (taskId: string): Promise<{ ok: boolean; message?: string }> => {
-			return await cancelTaskChatTurn(taskId);
-		},
-		[cancelTaskChatTurn],
-	);
 	const latestSelectedTaskChatMessage = useMemo(() => {
 		if (!selectedCard || !latestTaskChatMessage || latestTaskChatMessage.taskId !== selectedCard.card.id) {
 			return null;
@@ -935,9 +922,9 @@ export default function App(): ReactElement {
 								onSendReviewComments={(taskId: string, text: string) => {
 									void handleSendReviewComments(taskId, text);
 								}}
-								onSendClineChatMessage={handleSendClineChatMessage}
-								onCancelClineChatTurn={handleCancelClineChatTurn}
-								onLoadClineChatMessages={handleLoadClineChatMessages}
+								onSendClineChatMessage={sendTaskChatMessage}
+								onCancelClineChatTurn={cancelTaskChatTurn}
+								onLoadClineChatMessages={fetchTaskChatMessages}
 								latestClineChatMessage={latestSelectedTaskChatMessage}
 								onMoveToTrash={handleMoveToTrash}
 								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}

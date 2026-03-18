@@ -1,3 +1,6 @@
+// Streams live runtime state to browser clients over websocket.
+// It listens to terminal and native Cline updates, normalizes them into the
+// shared API contract, and fans out workspace-scoped snapshots and deltas.
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 

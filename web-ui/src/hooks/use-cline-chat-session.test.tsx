@@ -10,21 +10,39 @@ interface HookSnapshot {
 	lastMessageHookEvent: string | null;
 	error: string | null;
 	isSending: boolean;
+	sendMessage: (text: string) => Promise<boolean>;
+}
+
+function createDeferred<T>() {
+	let resolve: (value: T) => void = () => {};
+	let reject: (error: unknown) => void = () => {};
+	const promise = new Promise<T>((nextResolve, nextReject) => {
+		resolve = nextResolve;
+		reject = nextReject;
+	});
+	return {
+		promise,
+		resolve,
+		reject,
+	};
 }
 
 function HookHarness({
 	taskId,
+	onSendMessage,
 	onLoadMessages,
 	incomingMessage,
 	onSnapshot,
 }: {
 	taskId: string;
+	onSendMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string; chatMessage?: ClineChatMessage | null }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const state = useClineChatSession({
 		taskId,
+		onSendMessage,
 		onLoadMessages,
 		incomingMessage,
 	});
@@ -37,8 +55,9 @@ function HookHarness({
 			lastMessageHookEvent: lastMessage?.meta?.hookEventName ?? null,
 			error: state.error,
 			isSending: state.isSending,
+			sendMessage: state.sendMessage,
 		});
-	}, [onSnapshot, state.messages, state.error, state.isSending]);
+	}, [onSnapshot, state.error, state.isSending, state.messages, state.sendMessage]);
 
 	return null;
 }
@@ -184,5 +203,142 @@ describe("useClineChatSession", () => {
 
 		expect(snapshots.at(-1)?.messageIds).toEqual(["tool-1"]);
 		expect(snapshots.at(-1)?.lastMessageHookEvent).toBe("tool_call_end");
+	});
+
+	it("appends the returned chat message after send without reloading history", async () => {
+		const onLoadMessages = vi.fn(async () => []);
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-1",
+				role: "user" as const,
+				content: "Hello",
+				createdAt: 3,
+			},
+		}));
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onSendMessage={onSendMessage}
+					onLoadMessages={onLoadMessages}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			await snapshots.at(-1)?.sendMessage("Hello");
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["sent-1"]);
+		expect(snapshots.at(-1)?.lastMessageContent).toBe("Hello");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Hello");
+		expect(onLoadMessages).toHaveBeenCalledTimes(1);
+	});
+
+	it("merges late-loaded history with streamed messages that arrived first", async () => {
+		const deferredLoad = createDeferred<ClineChatMessage[] | null>();
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={() => deferredLoad.promise}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={() => deferredLoad.promise}
+					incomingMessage={{
+						id: "streamed-1",
+						role: "assistant",
+						content: "Streaming first",
+						createdAt: 2,
+					}}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["streamed-1"]);
+
+		await act(async () => {
+			deferredLoad.resolve([
+				{
+					id: "loaded-1",
+					role: "assistant",
+					content: "Loaded history",
+					createdAt: 1,
+				},
+			]);
+			await deferredLoad.promise;
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["loaded-1", "streamed-1"]);
+		expect(snapshots.at(-1)?.lastMessageContent).toBe("Streaming first");
+	});
+
+	it("clears stale messages when switching to another task", async () => {
+		const onLoadMessages = vi.fn(async (taskId: string) => {
+			if (taskId === "task-1") {
+				return [
+					{
+						id: "task-1-message",
+						role: "assistant" as const,
+						content: "Task one",
+						createdAt: 1,
+					},
+				];
+			}
+			return [
+				{
+					id: "task-2-message",
+					role: "assistant" as const,
+					content: "Task two",
+					createdAt: 2,
+				},
+			];
+		});
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={onLoadMessages}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["task-1-message"]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-2"
+					onLoadMessages={onLoadMessages}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["task-2-message"]);
+		expect(snapshots.at(-1)?.lastMessageContent).toBe("Task two");
 	});
 });

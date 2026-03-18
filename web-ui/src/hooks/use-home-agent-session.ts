@@ -1,3 +1,6 @@
+// Manages the synthetic home agent session lifecycle for the sidebar.
+// It keeps one project-scoped session identity stable per workspace and
+// rotates it only when the selected agent configuration meaningfully changes.
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { buildHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";

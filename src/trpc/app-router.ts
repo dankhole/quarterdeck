@@ -1,3 +1,6 @@
+// Defines the typed TRPC boundary between the browser and the local runtime.
+// Keep request and response contracts plus workspace-scoped procedures here,
+// and delegate domain behavior to runtime-api.ts and lower-level services.
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -12,6 +15,8 @@ import type {
 	RuntimeClineProviderCatalogResponse,
 	RuntimeClineProviderModelsRequest,
 	RuntimeClineProviderModelsResponse,
+	RuntimeClineProviderSettingsSaveRequest,
+	RuntimeClineProviderSettingsSaveResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -70,6 +75,8 @@ import {
 	runtimeClineProviderCatalogResponseSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderModelsResponseSchema,
+	runtimeClineProviderSettingsSaveRequestSchema,
+	runtimeClineProviderSettingsSaveResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -130,6 +137,10 @@ export interface RuntimeTrpcContext {
 	runtimeApi: {
 		loadConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigResponse>;
 		saveConfig: (scope: RuntimeTrpcWorkspaceScope, input: RuntimeConfigSaveRequest) => Promise<RuntimeConfigResponse>;
+		saveClineProviderSettings: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeClineProviderSettingsSaveRequest,
+		) => Promise<RuntimeClineProviderSettingsSaveResponse>;
 		startTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionStartRequest,
@@ -310,6 +321,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeConfigResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.saveConfig(ctx.workspaceScope, input);
+			}),
+		saveClineProviderSettings: workspaceProcedure
+			.input(runtimeClineProviderSettingsSaveRequestSchema)
+			.output(runtimeClineProviderSettingsSaveResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.saveClineProviderSettings(ctx.workspaceScope, input);
 			}),
 		startTaskSession: workspaceProcedure
 			.input(runtimeTaskSessionStartRequestSchema)

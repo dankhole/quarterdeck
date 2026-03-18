@@ -24,6 +24,8 @@ const oauthMocks = vi.hoisted(() => ({
 	loginOcaOAuth: vi.fn(),
 	loginOpenAICodex: vi.fn(),
 	saveProviderSettings: vi.fn(),
+	getProviderSettings: vi.fn(),
+	getLastUsedProviderSettings: vi.fn(),
 }));
 
 const llmsModelMocks = vi.hoisted(() => ({
@@ -57,6 +59,8 @@ vi.mock("../../../third_party/cline-sdk/packages/core/dist/server/index.js", () 
 	loginOpenAICodex: oauthMocks.loginOpenAICodex,
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
+		getProviderSettings = oauthMocks.getProviderSettings;
+		getLastUsedProviderSettings = oauthMocks.getLastUsedProviderSettings;
 	},
 }));
 
@@ -100,19 +104,6 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		agentAutonomousModeEnabled: true,
 		readyForReviewNotificationsEnabled: true,
 		shortcuts: [],
-		clineSettings: {
-			providerId: null,
-			modelId: null,
-			apiKey: null,
-			baseUrl: null,
-			oauthProvider: null,
-			auth: {
-				accessToken: null,
-				refreshToken: null,
-				accountId: null,
-				expiresAt: null,
-			},
-		},
 		commitPromptTemplate: "commit",
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
@@ -120,6 +111,28 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 	};
+}
+
+function setSelectedProviderSettings(
+	settings:
+		| {
+				provider: string;
+				model?: string;
+				baseUrl?: string;
+				apiKey?: string;
+				auth?: {
+					accessToken?: string;
+					refreshToken?: string;
+					accountId?: string;
+					expiresAt?: number;
+				};
+		  }
+		| null,
+): void {
+	oauthMocks.getLastUsedProviderSettings.mockReturnValue(settings ?? undefined);
+	oauthMocks.getProviderSettings.mockImplementation((providerId: string) =>
+		settings && settings.provider === providerId ? settings : undefined,
+	);
 }
 
 function createClineTaskSessionServiceMock() {
@@ -135,6 +148,7 @@ function createClineTaskSessionServiceMock() {
 		getSummary: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary | null>(() => null),
 		listSummaries: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary[]>(() => []),
 		listMessages: vi.fn<(...args: unknown[]) => unknown[]>(() => []),
+		loadTaskSessionMessages: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
 		applyTurnCheckpoint: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary | null>(() => null),
 		dispose: vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
 	};
@@ -153,6 +167,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.getValidOcaCredentials.mockReset();
 		oauthMocks.getValidOpenAICodexCredentials.mockReset();
 		oauthMocks.saveProviderSettings.mockReset();
+		oauthMocks.getProviderSettings.mockReset();
+		oauthMocks.getLastUsedProviderSettings.mockReset();
 		llmsModelMocks.getAllProviders.mockReset();
 		llmsModelMocks.getModelsForProvider.mockReset();
 		browserMocks.openInBrowser.mockReset();
@@ -206,6 +222,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			expires: 1_700_000_000_000,
 			accountId: "codex-acct",
 		});
+		setSelectedProviderSettings(null);
 		llmsModelMocks.getAllProviders.mockResolvedValue([
 			{
 				id: "cline",
@@ -433,17 +450,21 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
 
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
 				runtimeConfigState.selectedAgentId = "codex";
-				runtimeConfigState.clineSettings.providerId = "cline";
-				runtimeConfigState.clineSettings.auth.accessToken = "workos:oauth-access";
-				runtimeConfigState.clineSettings.auth.refreshToken = "oauth-refresh";
-				runtimeConfigState.clineSettings.auth.accountId = "acct-1";
-				runtimeConfigState.clineSettings.auth.expiresAt = 1_700_000_000;
 				return runtimeConfigState;
 			}),
 			setActiveRuntimeConfig: vi.fn(),
@@ -492,18 +513,22 @@ describe("createRuntimeApi startTaskSession", () => {
 			expires: 1_700_000_000_000,
 			accountId: "acct-1",
 		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "claude-sonnet-4-6",
+			auth: {
+				accessToken: "oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
 
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
 				runtimeConfigState.selectedAgentId = "cline";
-				runtimeConfigState.clineSettings.providerId = "cline";
-				runtimeConfigState.clineSettings.modelId = "claude-sonnet-4-6";
-				runtimeConfigState.clineSettings.auth.accessToken = "oauth-access";
-				runtimeConfigState.clineSettings.auth.refreshToken = "oauth-refresh";
-				runtimeConfigState.clineSettings.auth.accountId = "acct-1";
-				runtimeConfigState.clineSettings.auth.expiresAt = 1_700_000_000;
 				return runtimeConfigState;
 			}),
 			setActiveRuntimeConfig: vi.fn(),
@@ -535,7 +560,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
 			expect.objectContaining({
 				provider: "cline",
-				apiKey: "workos:oauth-access",
 				auth: expect.objectContaining({
 					accessToken: "workos:oauth-access",
 					refreshToken: "oauth-refresh",
@@ -544,7 +568,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 			expect.objectContaining({
 				tokenSource: "oauth",
-				setLastUsed: false,
+				setLastUsed: true,
 			}),
 		);
 	});
@@ -559,17 +583,21 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
+		setSelectedProviderSettings({
+			provider: "anthropic",
+			apiKey: "anthropic-api-key",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
 
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
 				runtimeConfigState.selectedAgentId = "cline";
-				runtimeConfigState.clineSettings.providerId = "anthropic";
-				runtimeConfigState.clineSettings.apiKey = "anthropic-api-key";
-				runtimeConfigState.clineSettings.auth.accessToken = "workos:oauth-access";
-				runtimeConfigState.clineSettings.auth.refreshToken = "oauth-refresh";
-				runtimeConfigState.clineSettings.auth.expiresAt = 1_700_000_000;
 				return runtimeConfigState;
 			}),
 			setActiveRuntimeConfig: vi.fn(),
@@ -599,15 +627,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				apiKey: "anthropic-api-key",
 			}),
 		);
-		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
-			expect.objectContaining({
-				provider: "anthropic",
-				apiKey: "anthropic-api-key",
-			}),
-			expect.objectContaining({
-				tokenSource: "manual",
-			}),
-		);
+		expect(oauthMocks.saveProviderSettings).not.toHaveBeenCalled();
 	});
 
 	it("routes cline task input and stop to cline task session service", async () => {
@@ -661,6 +681,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(summary);
 		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
+		clineTaskSessionService.loadTaskSessionMessages.mockResolvedValue([latestMessage]);
 		clineTaskSessionService.getSummary.mockReturnValue(summary);
 
 		const api = createRuntimeApi({
@@ -705,6 +726,37 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(clineTaskSessionService.cancelTaskTurn).toHaveBeenCalledWith("task-1");
 	});
 
+	it("hydrates persisted cline chat messages when no live in-memory session is loaded", async () => {
+		const persistedMessage = {
+			id: "message-persisted-1",
+			role: "assistant" as const,
+			content: "Recovered from SDK artifacts",
+			createdAt: Date.now(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.getSummary.mockReturnValue(null);
+		clineTaskSessionService.loadTaskSessionMessages.mockResolvedValue([persistedMessage]);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.getTaskChatMessages(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1" },
+		);
+
+		expect(response.ok).toBe(true);
+		expect(response.messages).toEqual([persistedMessage]);
+		expect(clineTaskSessionService.loadTaskSessionMessages).toHaveBeenCalledWith("task-1");
+	});
+
 	it("auto-starts home chat sessions when the first message is sent", async () => {
 		const summary = createSummary({ agentId: "cline", pid: null });
 		const latestMessage = {
@@ -718,9 +770,14 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		const runtimeConfigState = createRuntimeConfigState();
-		runtimeConfigState.clineSettings.auth.accessToken = "seed-token";
-		runtimeConfigState.clineSettings.auth.refreshToken = "seed-refresh";
-		runtimeConfigState.clineSettings.auth.expiresAt = Math.floor(Date.now() / 1000) + 3600;
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "seed-token",
+				refreshToken: "seed-refresh",
+				expiresAt: Date.now() + 3_600_000,
+			},
+		});
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
 		clineTaskSessionService.startTaskSession.mockResolvedValue(summary);
 		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
@@ -767,11 +824,15 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		const runtimeConfigState = createRuntimeConfigState();
-		runtimeConfigState.clineSettings.providerId = "anthropic";
-		runtimeConfigState.clineSettings.apiKey = "anthropic-api-key";
-		runtimeConfigState.clineSettings.auth.accessToken = "workos:seed-token";
-		runtimeConfigState.clineSettings.auth.refreshToken = "seed-refresh";
-		runtimeConfigState.clineSettings.auth.expiresAt = Math.floor(Date.now() / 1000) + 3600;
+		setSelectedProviderSettings({
+			provider: "anthropic",
+			apiKey: "anthropic-api-key",
+			auth: {
+				accessToken: "workos:seed-token",
+				refreshToken: "seed-refresh",
+				expiresAt: Date.now() + 3_600_000,
+			},
+		});
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
 		clineTaskSessionService.startTaskSession.mockResolvedValue(summary);
 
@@ -809,16 +870,17 @@ describe("createRuntimeApi startTaskSession", () => {
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
-				const runtimeConfigState = createRuntimeConfigState();
-				runtimeConfigState.clineSettings.providerId = "cline";
-				runtimeConfigState.clineSettings.modelId = "claude-sonnet-4-6";
-				return runtimeConfigState;
+				return createRuntimeConfigState();
 			}),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
 			resolveInteractiveShellCommand: vi.fn(),
 			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "claude-sonnet-4-6",
 		});
 
 		const catalogResponse = await api.getClineProviderCatalog({
@@ -836,7 +898,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(modelsResponse.models.some((model) => model.id === "claude-sonnet-4-6")).toBe(true);
 	});
 
-	it("runs oauth login for selected provider and returns tokens", async () => {
+	it("runs oauth login for selected provider and persists provider settings", async () => {
 		const terminalManager = {
 			writeInput: vi.fn(),
 		};
@@ -858,9 +920,29 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(response.ok).toBe(true);
 		expect(response.provider).toBe("cline");
-		expect(response.accessToken).toBe("oauth-access");
-		expect(response.refreshToken).toBe("oauth-refresh");
-		expect(response.accountId).toBe("acct-1");
+		expect(response.settings).toEqual(
+			expect.objectContaining({
+				providerId: "cline",
+				oauthProvider: "cline",
+				oauthAccessTokenConfigured: true,
+				oauthRefreshTokenConfigured: true,
+				oauthAccountId: "acct-1",
+			}),
+		);
+		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
+			expect.objectContaining({
+				provider: "cline",
+				auth: expect.objectContaining({
+					accessToken: "workos:oauth-access",
+					refreshToken: "oauth-refresh",
+					accountId: "acct-1",
+				}),
+			}),
+			expect.objectContaining({
+				tokenSource: "oauth",
+				setLastUsed: true,
+			}),
+		);
 		expect(oauthMocks.loginClineOAuth).toHaveBeenCalledTimes(1);
 		const loginInput = oauthMocks.loginClineOAuth.mock.calls[0]?.[0] as
 			| {

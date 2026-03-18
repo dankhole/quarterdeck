@@ -1,3 +1,6 @@
+// Persists Kanban-owned runtime preferences on disk.
+// This module should store Kanban settings such as selected agents,
+// shortcuts, and prompt templates, not SDK-owned Cline secrets or OAuth data.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -6,28 +9,11 @@ import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contrac
 import { detectInstalledCommands } from "../terminal/agent-registry.js";
 import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
 
-type RuntimeClineOauthProvider = "cline" | "oca" | "openai-codex";
-
-interface RuntimeClineSettingsFileShape {
-	providerId?: string;
-	modelId?: string;
-	apiKey?: string;
-	baseUrl?: string;
-	oauthProvider?: RuntimeClineOauthProvider;
-	auth?: {
-		accessToken?: string;
-		refreshToken?: string;
-		accountId?: string;
-		expiresAt?: number;
-	};
-}
-
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
-	clineSettings?: RuntimeClineSettingsFileShape;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 }
@@ -44,19 +30,6 @@ export interface RuntimeConfigState {
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
-	clineSettings: {
-		providerId: string | null;
-		modelId: string | null;
-		apiKey: string | null;
-		baseUrl: string | null;
-		oauthProvider: RuntimeClineOauthProvider | null;
-		auth: {
-			accessToken: string | null;
-			refreshToken: string | null;
-			accountId: string | null;
-			expiresAt: number | null;
-		};
-	};
 	commitPromptTemplate: string;
 	openPrPromptTemplate: string;
 	commitPromptTemplateDefault: string;
@@ -69,15 +42,6 @@ export interface RuntimeConfigUpdateInput {
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
-	clineProviderId?: string | null;
-	clineModelId?: string | null;
-	clineApiKey?: string | null;
-	clineBaseUrl?: string | null;
-	clineOauthProvider?: RuntimeClineOauthProvider | null;
-	clineOauthAccessToken?: string | null;
-	clineOauthRefreshToken?: string | null;
-	clineOauthAccountId?: string | null;
-	clineOauthExpiresAt?: number | null;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 }
@@ -222,31 +186,6 @@ function normalizeShortcutLabel(value: unknown): string | null {
 	return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeOptionalStringValue(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const normalized = value.trim();
-	return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeClineOauthProvider(value: unknown): RuntimeClineOauthProvider | null {
-	if (value === "cline" || value === "oca" || value === "openai-codex") {
-		return value;
-	}
-	return null;
-}
-
-function normalizeOptionalPositiveInteger(value: unknown): number | null {
-	if (typeof value !== "number") {
-		return null;
-	}
-	if (!Number.isInteger(value) || value <= 0) {
-		return null;
-	}
-	return value;
-}
-
 function hasOwnKey<T extends object>(value: T | null, key: keyof T): boolean {
 	if (!value) {
 		return false;
@@ -287,19 +226,6 @@ function toRuntimeConfigState({
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
-		clineSettings: {
-			providerId: normalizeOptionalStringValue(globalConfig?.clineSettings?.providerId),
-			modelId: normalizeOptionalStringValue(globalConfig?.clineSettings?.modelId),
-			apiKey: normalizeOptionalStringValue(globalConfig?.clineSettings?.apiKey),
-			baseUrl: normalizeOptionalStringValue(globalConfig?.clineSettings?.baseUrl),
-			oauthProvider: normalizeClineOauthProvider(globalConfig?.clineSettings?.oauthProvider),
-			auth: {
-				accessToken: normalizeOptionalStringValue(globalConfig?.clineSettings?.auth?.accessToken),
-				refreshToken: normalizeOptionalStringValue(globalConfig?.clineSettings?.auth?.refreshToken),
-				accountId: normalizeOptionalStringValue(globalConfig?.clineSettings?.auth?.accountId),
-				expiresAt: normalizeOptionalPositiveInteger(globalConfig?.clineSettings?.auth?.expiresAt),
-			},
-		},
 		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
 		openPrPromptTemplate: normalizePromptTemplate(
 			globalConfig?.openPrPromptTemplate,
@@ -326,15 +252,6 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
-		clineProviderId?: string | null;
-		clineModelId?: string | null;
-		clineApiKey?: string | null;
-		clineBaseUrl?: string | null;
-		clineOauthProvider?: RuntimeClineOauthProvider | null;
-		clineOauthAccessToken?: string | null;
-		clineOauthRefreshToken?: string | null;
-		clineOauthAccountId?: string | null;
-		clineOauthExpiresAt?: number | null;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 	},
@@ -357,41 +274,6 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
-	const clineProviderId =
-		config.clineProviderId === undefined ? undefined : normalizeOptionalStringValue(config.clineProviderId);
-	const existingClineProviderId = normalizeOptionalStringValue(existing?.clineSettings?.providerId);
-	const clineModelId =
-		config.clineModelId === undefined ? undefined : normalizeOptionalStringValue(config.clineModelId);
-	const existingClineModelId = normalizeOptionalStringValue(existing?.clineSettings?.modelId);
-	const clineApiKey =
-		config.clineApiKey === undefined ? undefined : normalizeOptionalStringValue(config.clineApiKey);
-	const existingClineApiKey = normalizeOptionalStringValue(existing?.clineSettings?.apiKey);
-	const clineBaseUrl =
-		config.clineBaseUrl === undefined ? undefined : normalizeOptionalStringValue(config.clineBaseUrl);
-	const existingClineBaseUrl = normalizeOptionalStringValue(existing?.clineSettings?.baseUrl);
-	const clineOauthProvider =
-		config.clineOauthProvider === undefined ? undefined : normalizeClineOauthProvider(config.clineOauthProvider);
-	const existingClineOauthProvider = normalizeClineOauthProvider(existing?.clineSettings?.oauthProvider);
-	const clineOauthAccessToken =
-		config.clineOauthAccessToken === undefined
-			? undefined
-			: normalizeOptionalStringValue(config.clineOauthAccessToken);
-	const existingClineOauthAccessToken = normalizeOptionalStringValue(existing?.clineSettings?.auth?.accessToken);
-	const clineOauthRefreshToken =
-		config.clineOauthRefreshToken === undefined
-			? undefined
-			: normalizeOptionalStringValue(config.clineOauthRefreshToken);
-	const existingClineOauthRefreshToken = normalizeOptionalStringValue(existing?.clineSettings?.auth?.refreshToken);
-	const clineOauthAccountId =
-		config.clineOauthAccountId === undefined
-			? undefined
-			: normalizeOptionalStringValue(config.clineOauthAccountId);
-	const existingClineOauthAccountId = normalizeOptionalStringValue(existing?.clineSettings?.auth?.accountId);
-	const clineOauthExpiresAt =
-		config.clineOauthExpiresAt === undefined
-			? undefined
-			: normalizeOptionalPositiveInteger(config.clineOauthExpiresAt);
-	const existingClineOauthExpiresAt = normalizeOptionalPositiveInteger(existing?.clineSettings?.auth?.expiresAt);
 	const commitPromptTemplate =
 		config.commitPromptTemplate === undefined
 			? DEFAULT_COMMIT_PROMPT_TEMPLATE
@@ -427,50 +309,6 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
-	}
-	const nextClineProviderId = clineProviderId === undefined ? existingClineProviderId : clineProviderId;
-	const nextClineModelId = clineModelId === undefined ? existingClineModelId : clineModelId;
-	const nextClineApiKey = clineApiKey === undefined ? existingClineApiKey : clineApiKey;
-	const nextClineBaseUrl = clineBaseUrl === undefined ? existingClineBaseUrl : clineBaseUrl;
-	const nextClineOauthProvider =
-		clineOauthProvider === undefined ? existingClineOauthProvider : clineOauthProvider;
-	const nextClineOauthAccessToken =
-		clineOauthAccessToken === undefined ? existingClineOauthAccessToken : clineOauthAccessToken;
-	const nextClineOauthRefreshToken =
-		clineOauthRefreshToken === undefined ? existingClineOauthRefreshToken : clineOauthRefreshToken;
-	const nextClineOauthAccountId =
-		clineOauthAccountId === undefined ? existingClineOauthAccountId : clineOauthAccountId;
-	const nextClineOauthExpiresAt =
-		clineOauthExpiresAt === undefined ? existingClineOauthExpiresAt : clineOauthExpiresAt;
-	if (
-		nextClineProviderId ||
-		nextClineModelId ||
-		nextClineApiKey ||
-		nextClineBaseUrl ||
-		nextClineOauthProvider ||
-		nextClineOauthAccessToken ||
-		nextClineOauthRefreshToken ||
-		nextClineOauthAccountId ||
-		nextClineOauthExpiresAt
-	) {
-		payload.clineSettings = {
-			...(nextClineProviderId ? { providerId: nextClineProviderId } : {}),
-			...(nextClineModelId ? { modelId: nextClineModelId } : {}),
-			...(nextClineApiKey ? { apiKey: nextClineApiKey } : {}),
-			...(nextClineBaseUrl ? { baseUrl: nextClineBaseUrl } : {}),
-			...(nextClineOauthProvider ? { oauthProvider: nextClineOauthProvider } : {}),
-			...((nextClineOauthAccessToken ||
-				nextClineOauthRefreshToken ||
-				nextClineOauthAccountId ||
-				nextClineOauthExpiresAt) && {
-				auth: {
-					...(nextClineOauthAccessToken ? { accessToken: nextClineOauthAccessToken } : {}),
-					...(nextClineOauthRefreshToken ? { refreshToken: nextClineOauthRefreshToken } : {}),
-					...(nextClineOauthAccountId ? { accountId: nextClineOauthAccountId } : {}),
-					...(nextClineOauthExpiresAt ? { expiresAt: nextClineOauthExpiresAt } : {}),
-				},
-			}),
-		};
 	}
 	if (hasOwnKey(existing, "commitPromptTemplate") || commitPromptTemplate !== DEFAULT_COMMIT_PROMPT_TEMPLATE) {
 		payload.commitPromptTemplate = commitPromptTemplate;
@@ -544,15 +382,6 @@ export async function saveRuntimeConfig(
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
-		clineProviderId?: string | null;
-		clineModelId?: string | null;
-		clineApiKey?: string | null;
-		clineBaseUrl?: string | null;
-		clineOauthProvider?: RuntimeClineOauthProvider | null;
-		clineOauthAccessToken?: string | null;
-		clineOauthRefreshToken?: string | null;
-		clineOauthAccountId?: string | null;
-		clineOauthExpiresAt?: number | null;
 		commitPromptTemplate: string;
 		openPrPromptTemplate: string;
 	},
@@ -564,15 +393,6 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: config.selectedShortcutLabel,
 		agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
-		clineProviderId: config.clineProviderId,
-		clineModelId: config.clineModelId,
-		clineApiKey: config.clineApiKey,
-		clineBaseUrl: config.clineBaseUrl,
-		clineOauthProvider: config.clineOauthProvider,
-		clineOauthAccessToken: config.clineOauthAccessToken,
-		clineOauthRefreshToken: config.clineOauthRefreshToken,
-		clineOauthAccountId: config.clineOauthAccountId,
-		clineOauthExpiresAt: config.clineOauthExpiresAt,
 		commitPromptTemplate: config.commitPromptTemplate,
 		openPrPromptTemplate: config.openPrPromptTemplate,
 	});
@@ -591,19 +411,6 @@ export async function saveRuntimeConfig(
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(config.shortcuts),
-		clineSettings: {
-			providerId: normalizeOptionalStringValue(config.clineProviderId),
-			modelId: normalizeOptionalStringValue(config.clineModelId),
-			apiKey: normalizeOptionalStringValue(config.clineApiKey),
-			baseUrl: normalizeOptionalStringValue(config.clineBaseUrl),
-			oauthProvider: normalizeClineOauthProvider(config.clineOauthProvider),
-			auth: {
-				accessToken: normalizeOptionalStringValue(config.clineOauthAccessToken),
-				refreshToken: normalizeOptionalStringValue(config.clineOauthRefreshToken),
-				accountId: normalizeOptionalStringValue(config.clineOauthAccountId),
-				expiresAt: normalizeOptionalPositiveInteger(config.clineOauthExpiresAt),
-			},
-		},
 		commitPromptTemplate: normalizePromptTemplate(config.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
 		openPrPromptTemplate: normalizePromptTemplate(config.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE),
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -621,29 +428,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		readyForReviewNotificationsEnabled:
 			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
 		shortcuts: updates.shortcuts ?? current.shortcuts,
-		clineProviderId:
-			updates.clineProviderId === undefined ? current.clineSettings.providerId : updates.clineProviderId,
-		clineModelId: updates.clineModelId === undefined ? current.clineSettings.modelId : updates.clineModelId,
-		clineApiKey: updates.clineApiKey === undefined ? current.clineSettings.apiKey : updates.clineApiKey,
-		clineBaseUrl: updates.clineBaseUrl === undefined ? current.clineSettings.baseUrl : updates.clineBaseUrl,
-		clineOauthProvider:
-			updates.clineOauthProvider === undefined ? current.clineSettings.oauthProvider : updates.clineOauthProvider,
-		clineOauthAccessToken:
-			updates.clineOauthAccessToken === undefined
-				? current.clineSettings.auth.accessToken
-				: updates.clineOauthAccessToken,
-		clineOauthRefreshToken:
-			updates.clineOauthRefreshToken === undefined
-				? current.clineSettings.auth.refreshToken
-				: updates.clineOauthRefreshToken,
-		clineOauthAccountId:
-			updates.clineOauthAccountId === undefined
-				? current.clineSettings.auth.accountId
-				: updates.clineOauthAccountId,
-		clineOauthExpiresAt:
-			updates.clineOauthExpiresAt === undefined
-				? current.clineSettings.auth.expiresAt
-				: updates.clineOauthExpiresAt,
 		commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
 		openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 	};
@@ -653,15 +437,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 		nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-		nextConfig.clineProviderId !== current.clineSettings.providerId ||
-		nextConfig.clineModelId !== current.clineSettings.modelId ||
-		nextConfig.clineApiKey !== current.clineSettings.apiKey ||
-		nextConfig.clineBaseUrl !== current.clineSettings.baseUrl ||
-		nextConfig.clineOauthProvider !== current.clineSettings.oauthProvider ||
-		nextConfig.clineOauthAccessToken !== current.clineSettings.auth.accessToken ||
-		nextConfig.clineOauthRefreshToken !== current.clineSettings.auth.refreshToken ||
-		nextConfig.clineOauthAccountId !== current.clineSettings.auth.accountId ||
-		nextConfig.clineOauthExpiresAt !== current.clineSettings.auth.expiresAt ||
 		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 		nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 		!areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts);

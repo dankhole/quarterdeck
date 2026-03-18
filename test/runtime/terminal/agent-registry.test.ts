@@ -24,19 +24,6 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 		agentAutonomousModeEnabled: true,
 		readyForReviewNotificationsEnabled: true,
 		shortcuts: [],
-		clineSettings: {
-			providerId: null,
-			modelId: null,
-			apiKey: null,
-			baseUrl: null,
-			oauthProvider: null,
-			auth: {
-				accessToken: null,
-				refreshToken: null,
-				accountId: null,
-				expiresAt: null,
-			},
-		},
 		commitPromptTemplate: "commit",
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
@@ -75,7 +62,17 @@ describe("buildRuntimeConfigResponse", () => {
 			agentAutonomousModeEnabled: true,
 		});
 
-		const response = buildRuntimeConfigResponse(config);
+		const response = buildRuntimeConfigResponse(config, {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
 		expect(response.taskStartSetupAvailability).toEqual({
@@ -96,7 +93,17 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
 
-		const response = buildRuntimeConfigResponse(config);
+		const response = buildRuntimeConfigResponse(config, {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
 		expect(response.taskStartSetupAvailability).toEqual({

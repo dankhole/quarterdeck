@@ -1,3 +1,6 @@
+// Settings dialog composition for Kanban.
+// Generic app settings live here, while Cline-specific provider state and
+// side effects should stay in use-runtime-settings-cline-controller.ts.
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
@@ -15,6 +18,7 @@ import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-age
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -26,11 +30,8 @@ import {
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
-	RuntimeClineProviderCatalogItem,
-	RuntimeClineProviderModel,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
@@ -73,16 +74,6 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 ];
 
 export type RuntimeSettingsSection = "shortcuts";
-
-type ManagedClineOauthProvider = "cline" | "oca" | "openai-codex";
-
-function toManagedClineOauthProvider(value: string): ManagedClineOauthProvider | null {
-	const normalized = value.trim().toLowerCase();
-	if (normalized === "cline" || normalized === "oca" || normalized === "openai-codex") {
-		return normalized;
-	}
-	return null;
-}
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -303,19 +294,6 @@ export function RuntimeSettingsDialog({
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
-	const [clineProviderId, setClineProviderId] = useState("");
-	const [clineModelId, setClineModelId] = useState("");
-	const [clineApiKey, setClineApiKey] = useState("");
-	const [clineBaseUrl, setClineBaseUrl] = useState("");
-	const [clineOauthAccessToken, setClineOauthAccessToken] = useState("");
-	const [clineOauthRefreshToken, setClineOauthRefreshToken] = useState("");
-	const [clineOauthAccountId, setClineOauthAccountId] = useState("");
-	const [clineOauthExpiresAt, setClineOauthExpiresAt] = useState("");
-	const [clineProviderCatalog, setClineProviderCatalog] = useState<RuntimeClineProviderCatalogItem[]>([]);
-	const [clineProviderModels, setClineProviderModels] = useState<RuntimeClineProviderModel[]>([]);
-	const [isLoadingClineProviderCatalog, setIsLoadingClineProviderCatalog] = useState(false);
-	const [isLoadingClineProviderModels, setIsLoadingClineProviderModels] = useState(false);
-	const [isRunningClineOauthLogin, setIsRunningClineOauthLogin] = useState(false);
 	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
@@ -374,18 +352,15 @@ export function RuntimeSettingsDialog({
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
-	const initialClineProviderId =
-		config?.clineProviderSettings.providerId ?? config?.clineProviderSettings.oauthProvider ?? "";
-	const initialClineModelId = config?.clineProviderSettings.modelId ?? "";
-	const initialClineBaseUrl = config?.clineProviderSettings.baseUrl ?? "";
-	const initialClineOauthAccountId = config?.clineProviderSettings.oauthAccountId ?? "";
-	const initialClineOauthExpiresAt = config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "";
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
-	const normalizedClineProviderId = clineProviderId.trim().toLowerCase();
-	const clineManagedOauthProvider = toManagedClineOauthProvider(normalizedClineProviderId);
-	const isClineOauthProviderSelected = clineManagedOauthProvider !== null;
+	const clineSettings = useRuntimeSettingsClineController({
+		open,
+		workspaceId,
+		selectedAgentId,
+		config,
+	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -399,28 +374,7 @@ export function RuntimeSettingsDialog({
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
 			return true;
 		}
-		if (clineProviderId.trim() !== initialClineProviderId.trim()) {
-			return true;
-		}
-		if (clineModelId.trim() !== initialClineModelId.trim()) {
-			return true;
-		}
-		if (clineBaseUrl.trim() !== initialClineBaseUrl.trim()) {
-			return true;
-		}
-		if (clineOauthAccountId.trim() !== initialClineOauthAccountId.trim()) {
-			return true;
-		}
-		if (clineOauthExpiresAt.trim() !== initialClineOauthExpiresAt.trim()) {
-			return true;
-		}
-		if (selectedAgentId === "cline" && clineApiKey.trim().length > 0) {
-			return true;
-		}
-		if (selectedAgentId === "cline" && clineOauthAccessToken.trim().length > 0) {
-			return true;
-		}
-		if (selectedAgentId === "cline" && clineOauthRefreshToken.trim().length > 0) {
+		if (clineSettings.hasUnsavedChanges) {
 			return true;
 		}
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -438,14 +392,10 @@ export function RuntimeSettingsDialog({
 		);
 	}, [
 		agentAutonomousModeEnabled,
+		clineSettings.hasUnsavedChanges,
 		commitPromptTemplate,
 		config,
 		initialAgentAutonomousModeEnabled,
-		initialClineBaseUrl,
-		initialClineModelId,
-		initialClineOauthAccountId,
-		initialClineOauthExpiresAt,
-		initialClineProviderId,
 		initialCommitPromptTemplate,
 		initialOpenPrPromptTemplate,
 		initialReadyForReviewNotificationsEnabled,
@@ -454,14 +404,6 @@ export function RuntimeSettingsDialog({
 		openPrPromptTemplate,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
-		clineApiKey,
-		clineBaseUrl,
-		clineModelId,
-		clineOauthAccessToken,
-		clineOauthAccountId,
-		clineOauthExpiresAt,
-		clineOauthRefreshToken,
-		clineProviderId,
 		shortcuts,
 	]);
 
@@ -472,14 +414,6 @@ export function RuntimeSettingsDialog({
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
-		setClineProviderId(config?.clineProviderSettings.providerId ?? config?.clineProviderSettings.oauthProvider ?? "");
-		setClineModelId(config?.clineProviderSettings.modelId ?? "");
-		setClineApiKey("");
-		setClineBaseUrl(config?.clineProviderSettings.baseUrl ?? "");
-		setClineOauthAccessToken("");
-		setClineOauthRefreshToken("");
-		setClineOauthAccountId(config?.clineProviderSettings.oauthAccountId ?? "");
-		setClineOauthExpiresAt(config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "");
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
@@ -487,12 +421,6 @@ export function RuntimeSettingsDialog({
 	}, [
 		config?.agentAutonomousModeEnabled,
 		config?.commitPromptTemplate,
-		config?.clineProviderSettings.baseUrl,
-		config?.clineProviderSettings.modelId,
-		config?.clineProviderSettings.oauthAccountId,
-		config?.clineProviderSettings.oauthExpiresAt,
-		config?.clineProviderSettings.oauthProvider,
-		config?.clineProviderSettings.providerId,
 		config?.openPrPromptTemplate,
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
@@ -508,71 +436,6 @@ export function RuntimeSettingsDialog({
 		refreshNotificationPermission();
 	}, [open, refreshNotificationPermission]);
 	useWindowEvent("focus", open ? refreshNotificationPermission : null);
-
-	useEffect(() => {
-		if (!open || selectedAgentId !== "cline" || !workspaceId) {
-			setClineProviderCatalog([]);
-			return;
-		}
-		let cancelled = false;
-		setIsLoadingClineProviderCatalog(true);
-		void getRuntimeTrpcClient(workspaceId)
-			.runtime.getClineProviderCatalog.query()
-			.then((response) => {
-				if (cancelled) {
-					return;
-				}
-				setClineProviderCatalog(response.providers);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setClineProviderCatalog([]);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsLoadingClineProviderCatalog(false);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [open, selectedAgentId, workspaceId]);
-
-	useEffect(() => {
-		if (!open || selectedAgentId !== "cline" || !workspaceId) {
-			setClineProviderModels([]);
-			return;
-		}
-		const providerId = clineProviderId.trim();
-		if (!providerId) {
-			setClineProviderModels([]);
-			return;
-		}
-		let cancelled = false;
-		setIsLoadingClineProviderModels(true);
-		void getRuntimeTrpcClient(workspaceId)
-			.runtime.getClineProviderModels.query({ providerId })
-			.then((response) => {
-				if (cancelled) {
-					return;
-				}
-				setClineProviderModels(response.models);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setClineProviderModels([]);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsLoadingClineProviderModels(false);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [clineProviderId, open, selectedAgentId, workspaceId]);
 
 	useEffect(() => {
 		if (!open || initialSection !== "shortcuts") {
@@ -660,56 +523,19 @@ export function RuntimeSettingsDialog({
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
 		}
-		const trimmedOauthExpiresAt = clineOauthExpiresAt.trim();
-		const parsedOauthExpiresAt = trimmedOauthExpiresAt ? Number.parseInt(trimmedOauthExpiresAt, 10) : NaN;
-		const managedOauthProvider = toManagedClineOauthProvider(clineProviderId);
-		const shouldUseOauth = selectedAgentId === "cline" && managedOauthProvider !== null;
-		if (
-			shouldUseOauth &&
-			trimmedOauthExpiresAt.length > 0 &&
-			(!Number.isFinite(parsedOauthExpiresAt) || parsedOauthExpiresAt <= 0)
-		) {
-			setSaveError("OAuth expiry must be a positive Unix timestamp in seconds.");
+		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
+			setSaveError("Choose a Cline provider before saving.");
+			return;
+		}
+		const clineSaveResult = await clineSettings.saveProviderSettings();
+		if (!clineSaveResult.ok) {
+			setSaveError(clineSaveResult.message ?? "Could not save Cline provider settings.");
 			return;
 		}
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled,
-			clineProviderId: selectedAgentId === "cline" ? clineProviderId.trim() || null : undefined,
-			clineModelId: selectedAgentId === "cline" ? clineModelId.trim() || null : undefined,
-			clineApiKey:
-				selectedAgentId === "cline"
-					? shouldUseOauth
-						? null
-						: clineApiKey.trim() || null
-					: undefined,
-			clineBaseUrl: selectedAgentId === "cline" ? clineBaseUrl.trim() || null : undefined,
-			clineOauthProvider: selectedAgentId === "cline" ? managedOauthProvider : undefined,
-			clineOauthAccessToken:
-				selectedAgentId === "cline"
-					? shouldUseOauth
-						? clineOauthAccessToken.trim() || null
-						: null
-					: undefined,
-			clineOauthRefreshToken:
-				selectedAgentId === "cline"
-					? shouldUseOauth
-						? clineOauthRefreshToken.trim() || null
-						: null
-					: undefined,
-			clineOauthAccountId:
-				selectedAgentId === "cline"
-					? shouldUseOauth
-						? clineOauthAccountId.trim() || null
-						: null
-					: undefined,
-			clineOauthExpiresAt:
-				selectedAgentId === "cline"
-					? shouldUseOauth && Number.isFinite(parsedOauthExpiresAt)
-						? parsedOauthExpiresAt
-						: null
-					: undefined,
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
@@ -726,48 +552,6 @@ export function RuntimeSettingsDialog({
 		void (async () => {
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
-		})();
-	};
-
-	const handleRunClineOauthLogin = () => {
-		void (async () => {
-			if (!workspaceId) {
-				setSaveError("Select a workspace before running OAuth login.");
-				return;
-			}
-			const managedOauthProvider = toManagedClineOauthProvider(clineProviderId);
-			if (!managedOauthProvider) {
-				setSaveError("Choose an OAuth provider from the Provider field first.");
-				return;
-			}
-			setSaveError(null);
-			setIsRunningClineOauthLogin(true);
-			try {
-				const response = await getRuntimeTrpcClient(workspaceId).runtime.runClineProviderOAuthLogin.mutate({
-					provider: managedOauthProvider,
-				});
-				if (!response.ok) {
-					setSaveError(response.error ?? "OAuth login failed.");
-					return;
-				}
-				if (response.accessToken) {
-					setClineOauthAccessToken(response.accessToken);
-				}
-				if (response.refreshToken) {
-					setClineOauthRefreshToken(response.refreshToken);
-				}
-				if (response.accountId) {
-					setClineOauthAccountId(response.accountId);
-				}
-				if (response.expiresAt) {
-					setClineOauthExpiresAt(response.expiresAt.toString());
-				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				setSaveError(message);
-			} finally {
-				setIsRunningClineOauthLogin(false);
-			}
 		})();
 	};
 
@@ -832,31 +616,31 @@ export function RuntimeSettingsDialog({
 							<div className="min-w-0">
 								<p className="text-text-secondary text-[12px] mt-0 mb-1">Provider</p>
 								<select
-									value={clineProviderId}
-									onChange={(event) => setClineProviderId(event.target.value)}
-									disabled={controlsDisabled || isLoadingClineProviderCatalog}
+									value={clineSettings.providerId}
+									onChange={(event) => clineSettings.setProviderId(event.target.value)}
+									disabled={controlsDisabled || clineSettings.isLoadingProviderCatalog}
 									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
 								>
-									<option value="">{isLoadingClineProviderCatalog ? "Loading providers..." : "Select provider"}</option>
-									{clineProviderCatalog.map((provider) => (
+									<option value="">{clineSettings.isLoadingProviderCatalog ? "Loading providers..." : "Select provider"}</option>
+									{clineSettings.providerCatalog.map((provider) => (
 										<option key={provider.id} value={provider.id}>
 											{provider.name} {provider.oauthSupported ? "(OAuth)" : "(API key)"}
 										</option>
 									))}
-									{clineProviderId.trim().length > 0 &&
-									!clineProviderCatalog.some(
-										(provider) => provider.id.trim().toLowerCase() === normalizedClineProviderId,
+									{clineSettings.providerId.trim().length > 0 &&
+									!clineSettings.providerCatalog.some(
+										(provider) => provider.id.trim().toLowerCase() === clineSettings.normalizedProviderId,
 									) ? (
-										<option value={clineProviderId}>{clineProviderId} (custom)</option>
+										<option value={clineSettings.providerId}>{clineSettings.providerId} (custom)</option>
 									) : null}
 								</select>
 							</div>
 							<div className="min-w-0">
 								<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
 								<input
-									value={clineModelId}
-									onChange={(event) => setClineModelId(event.target.value)}
-									placeholder={isLoadingClineProviderModels ? "Loading models..." : "claude-sonnet-4-6"}
+									value={clineSettings.modelId}
+									onChange={(event) => clineSettings.setModelId(event.target.value)}
+									placeholder={clineSettings.isLoadingProviderModels ? "Loading models..." : "claude-sonnet-4-6"}
 									list="cline-model-options"
 									disabled={controlsDisabled}
 									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
@@ -864,29 +648,29 @@ export function RuntimeSettingsDialog({
 							</div>
 						</div>
 						<datalist id="cline-model-options">
-							{clineProviderModels.map((model) => (
+							{clineSettings.providerModels.map((model) => (
 								<option key={model.id} value={model.id}>
 									{model.name}
 								</option>
 							))}
 						</datalist>
-						{isLoadingClineProviderCatalog || isLoadingClineProviderModels ? (
+						{clineSettings.isLoadingProviderCatalog || clineSettings.isLoadingProviderModels ? (
 							<p className="text-text-secondary text-[12px] mt-1 mb-0">
-								{isLoadingClineProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
+								{clineSettings.isLoadingProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
 							</p>
 						) : null}
 						<p className="text-text-secondary text-[12px] mt-2 mb-0">
-							Authentication: {isClineOauthProviderSelected ? "OAuth" : "API key"}
+							Authentication: {clineSettings.isOauthProviderSelected ? "OAuth" : "API key"}
 						</p>
-						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: isClineOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
-							{isClineOauthProviderSelected ? null : (
+						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: clineSettings.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
+							{clineSettings.isOauthProviderSelected ? null : (
 								<div className="min-w-0">
 									<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
 									<input
 										type="password"
-										value={clineApiKey}
-										onChange={(event) => setClineApiKey(event.target.value)}
-										placeholder={config?.clineProviderSettings.apiKeyConfigured ? "Saved" : "Enter API key"}
+										value={clineSettings.apiKey}
+										onChange={(event) => clineSettings.setApiKey(event.target.value)}
+										placeholder={clineSettings.apiKeyConfigured ? "Saved" : "Enter API key"}
 										disabled={controlsDisabled}
 										className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 									/>
@@ -895,77 +679,50 @@ export function RuntimeSettingsDialog({
 							<div className="min-w-0">
 								<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
 								<input
-									value={clineBaseUrl}
-									onChange={(event) => setClineBaseUrl(event.target.value)}
+									value={clineSettings.baseUrl}
+									onChange={(event) => clineSettings.setBaseUrl(event.target.value)}
 									placeholder="https://api.cline.bot"
 									disabled={controlsDisabled}
 									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 								/>
 							</div>
 						</div>
-						{isClineOauthProviderSelected ? (
+						{clineSettings.isOauthProviderSelected ? (
 							<>
-								<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-									<div className="min-w-0">
-										<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth account ID</p>
-										<input
-											value={clineOauthAccountId}
-											onChange={(event) => setClineOauthAccountId(event.target.value)}
-											placeholder={config?.clineProviderSettings.oauthAccountId ?? "Optional"}
-											disabled={controlsDisabled}
-											className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-										/>
-									</div>
-								</div>
+								<p className="text-text-secondary text-[12px] mt-2 mb-0">
+									Status: {clineSettings.oauthConfigured ? "Signed in" : "Not signed in"}
+								</p>
+								{clineSettings.oauthAccountId ? (
+									<p className="text-text-secondary text-[12px] mt-1 mb-0">
+										Account ID: <span className="text-text-primary">{clineSettings.oauthAccountId}</span>
+									</p>
+								) : null}
+								{clineSettings.oauthExpiresAt ? (
+									<p className="text-text-secondary text-[12px] mt-1 mb-0">
+										Expiry: <span className="text-text-primary">{clineSettings.oauthExpiresAt}</span>
+									</p>
+								) : null}
 								<div className="mt-2">
 									<Button
 										variant="default"
 										size="sm"
-										disabled={controlsDisabled || isRunningClineOauthLogin}
-										onClick={handleRunClineOauthLogin}
+										disabled={controlsDisabled || clineSettings.isRunningOauthLogin}
+										onClick={() => {
+											void (async () => {
+												setSaveError(null);
+												const result = await clineSettings.runOauthLogin();
+												if (!result.ok) {
+													setSaveError(result.message ?? "OAuth login failed.");
+												}
+											})();
+										}}
 									>
-										{isRunningClineOauthLogin
+										{clineSettings.isRunningOauthLogin
 											? "Signing in..."
-											: `Sign in with ${clineManagedOauthProvider ?? "OAuth"}`}
+											: clineSettings.oauthConfigured
+												? `Sign in again with ${clineSettings.managedOauthProvider ?? "OAuth"}`
+												: `Sign in with ${clineSettings.managedOauthProvider ?? "OAuth"}`}
 									</Button>
-								</div>
-								<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-									<div className="min-w-0">
-										<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth access token</p>
-										<input
-											type="password"
-											value={clineOauthAccessToken}
-											onChange={(event) => setClineOauthAccessToken(event.target.value)}
-											placeholder={
-												config?.clineProviderSettings.oauthAccessTokenConfigured ? "Saved" : "Optional"
-											}
-											disabled={controlsDisabled}
-											className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-										/>
-									</div>
-									<div className="min-w-0">
-										<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth refresh token</p>
-										<input
-											type="password"
-											value={clineOauthRefreshToken}
-											onChange={(event) => setClineOauthRefreshToken(event.target.value)}
-											placeholder={
-												config?.clineProviderSettings.oauthRefreshTokenConfigured ? "Saved" : "Optional"
-											}
-											disabled={controlsDisabled}
-											className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-										/>
-									</div>
-								</div>
-								<div className="min-w-0 mt-2">
-									<p className="text-text-secondary text-[12px] mt-0 mb-1">OAuth expiry (Unix seconds)</p>
-									<input
-										value={clineOauthExpiresAt}
-										onChange={(event) => setClineOauthExpiresAt(event.target.value)}
-										placeholder={config?.clineProviderSettings.oauthExpiresAt?.toString() ?? "Optional"}
-										disabled={controlsDisabled}
-										className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-									/>
 								</div>
 							</>
 						) : null}

@@ -1,119 +1,15 @@
-import { type ReactElement, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Brain, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+// Layout component for the native Cline chat panel.
+// Rendering lives here, while session state and action wiring come from the
+// controller hook so multiple surfaces can share the same behavior.
+import { useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
-import { parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
-import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
+import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
+import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
+import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-
-function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
-	const parsed = useMemo(() => parseToolMessageContent(message.content), [message.content]);
-	const isRunning = message.meta?.hookEventName === "tool_call_start";
-	const hasError = Boolean(parsed.error);
-	const [expanded, setExpanded] = useState(false);
-	const statusText = hasError ? "Failed" : isRunning ? "Running" : "Completed";
-	const statusClasses = hasError
-		? "text-status-red"
-		: isRunning
-			? "text-status-orange"
-			: "text-status-green";
-
-	return (
-		<div className="w-full rounded-md border border-border bg-status-blue/5 px-2 py-2">
-			<button
-				type="button"
-				onClick={() => setExpanded((current) => !current)}
-				className="flex w-full items-center justify-between gap-2 text-left"
-			>
-				<div className="min-w-0">
-					<div className="flex items-center gap-2 text-xs uppercase tracking-wide text-text-tertiary">
-						<Wrench size={12} />
-						<span>Tool</span>
-						<span className={statusClasses}>{statusText}</span>
-					</div>
-					<div className="truncate text-sm text-text-primary">{parsed.toolName}</div>
-				</div>
-				<div className="flex items-center gap-2 text-xs text-text-secondary">
-					{typeof parsed.durationMs === "number" ? <span>{parsed.durationMs}ms</span> : null}
-					{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-				</div>
-			</button>
-			{expanded ? (
-				<div className="mt-2 space-y-2">
-					{parsed.input ? (
-						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">Input</div>
-							<pre className="max-h-44 overflow-auto rounded border border-border bg-surface-1 px-2 py-1 text-xs whitespace-pre-wrap break-all text-text-secondary">
-								{parsed.input}
-							</pre>
-						</div>
-					) : null}
-					{parsed.output ? (
-						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">Output</div>
-							<pre className="max-h-56 overflow-auto rounded border border-border bg-surface-1 px-2 py-1 text-xs whitespace-pre-wrap break-all text-text-primary">
-								{parsed.output}
-							</pre>
-						</div>
-					) : null}
-					{parsed.error ? (
-						<div>
-							<div className="mb-1 text-[11px] uppercase tracking-wide text-status-red">Error</div>
-							<pre className="max-h-56 overflow-auto rounded border border-status-red/40 bg-status-red/10 px-2 py-1 text-xs whitespace-pre-wrap break-all text-status-red">
-								{parsed.error}
-							</pre>
-						</div>
-					) : null}
-				</div>
-			) : null}
-		</div>
-	);
-}
-
-function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
-	return (
-		<div className="w-full">
-			<div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-status-purple">
-				<Brain size={12} />
-				<span>Reasoning</span>
-			</div>
-			<div className="w-full text-sm whitespace-pre-wrap text-text-secondary">{message.content}</div>
-		</div>
-	);
-}
-
-function ChatMessageItem({ message }: { message: ClineChatMessage }): ReactElement {
-	if (message.role === "tool") {
-		return <ToolMessageBlock message={message} />;
-	}
-	if (message.role === "reasoning") {
-		return <ReasoningMessageBlock message={message} />;
-	}
-	if (message.role === "user") {
-		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm whitespace-pre-wrap text-text-primary">
-				{message.content}
-			</div>
-		);
-	}
-	if (message.role === "assistant") {
-		const normalizedAssistantContent = message.content.replace(/^\n+/, "");
-		return (
-			<div className="w-full text-sm whitespace-pre-wrap text-text-primary">
-				<ClineMarkdownContent content={normalizedAssistantContent} />
-			</div>
-		);
-	}
-	const label = message.role === "status" ? "Status" : "System";
-	return (
-		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm whitespace-pre-wrap text-text-secondary">
-			<div className="mb-1 text-[11px] uppercase tracking-wide text-text-tertiary">{label}</div>
-			{message.content}
-		</div>
-	);
-}
 
 export interface ClineAgentChatPanelProps {
 	taskId: string;
@@ -121,7 +17,7 @@ export interface ClineAgentChatPanelProps {
 	taskColumnId?: string;
 	composerPlaceholder?: string;
 	showRightBorder?: boolean;
-	onSendMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string }>;
+	onSendMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
@@ -156,28 +52,40 @@ export function ClineAgentChatPanel({
 	cancelAutomaticActionLabel,
 	showMoveToTrash = false,
 }: ClineAgentChatPanelProps): ReactElement {
-	const [draft, setDraft] = useState("");
-	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-	const messageEndRef = useRef<HTMLDivElement | null>(null);
-	const { messages, isSending, isCanceling, error, sendMessage, cancelTurn } = useClineChatSession({
+	const {
+		draft,
+		setDraft,
+		messages,
+		error,
+		isSending,
+		isCanceling,
+		canSend,
+		canCancel,
+		showReviewActions,
+		showAgentProgressIndicator,
+		showActionFooter,
+		showCancelAutomaticAction,
+		handleSendDraft,
+		handleCancelTurn,
+	} = useClineChatPanelController({
 		taskId,
+		summary,
+		taskColumnId,
 		onSendMessage,
 		onCancelTurn,
 		onLoadMessages,
 		incomingMessage,
+		onCommit,
+		onOpenPr,
+		onMoveToTrash,
+		onCancelAutomaticAction,
+		cancelAutomaticActionLabel,
+		showMoveToTrash,
 	});
-	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
-	const canCancel = Boolean(onCancelTurn) && summary?.state === "running" && !isCanceling;
-	const showReviewActions = taskColumnId === "review" && Boolean(onCommit) && Boolean(onOpenPr);
-	const showAgentProgressIndicator = summary?.state === "running";
-	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
-	const showCancelAutomaticAction = Boolean(cancelAutomaticActionLabel && onCancelAutomaticAction);
+	const messageEndRef = useRef<HTMLDivElement | null>(null);
 
 	useLayoutEffect(() => {
-		if (!messagesContainerRef.current || !messageEndRef.current) {
-			return;
-		}
-		messageEndRef.current.scrollIntoView({ block: "end" });
+		messageEndRef.current?.scrollIntoView({ block: "end" });
 	}, [messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
 
 	return (
@@ -185,11 +93,11 @@ export function ClineAgentChatPanel({
 			className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-0"
 			style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
 		>
-			<div ref={messagesContainerRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">
+			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">
 				{messages.length === 0 ? (
 					<div className="text-sm text-text-secondary">Send a message to start chatting with Cline.</div>
 				) : (
-					messages.map((message) => <ChatMessageItem key={message.id} message={message} />)
+					messages.map((message) => <ClineChatMessageItem key={message.id} message={message} />)
 				)}
 				{showAgentProgressIndicator ? (
 					<div className="flex items-center gap-2 px-1 text-xs text-text-secondary">
@@ -215,9 +123,7 @@ export function ClineAgentChatPanel({
 							variant="default"
 							size="sm"
 							disabled={!canCancel}
-							onClick={() => {
-								void cancelTurn();
-							}}
+							onClick={handleCancelTurn}
 						>
 							{isCanceling ? <Spinner size={14} /> : "Cancel"}
 						</Button>
@@ -227,12 +133,7 @@ export function ClineAgentChatPanel({
 						size="sm"
 						disabled={!canSend || draft.trim().length === 0}
 						onClick={() => {
-							void (async () => {
-								const sent = await sendMessage(draft);
-								if (sent) {
-									setDraft("");
-								}
-							})();
+							void handleSendDraft();
 						}}
 					>
 						{isSending ? <Spinner size={14} /> : "Send"}

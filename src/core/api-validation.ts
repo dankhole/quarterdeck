@@ -5,6 +5,7 @@ import {
 	type RuntimeConfigSaveRequest,
 	type RuntimeClineOauthLoginRequest,
 	type RuntimeClineProviderModelsRequest,
+	type RuntimeClineProviderSettingsSaveRequest,
 	type RuntimeTaskChatAbortRequest,
 	type RuntimeTaskChatCancelRequest,
 	type RuntimeTaskChatMessagesRequest,
@@ -28,6 +29,7 @@ import {
 	runtimeConfigSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineProviderModelsRequestSchema,
+	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeTaskChatAbortRequestSchema,
 	runtimeTaskChatCancelRequestSchema,
 	runtimeTaskChatMessagesRequestSchema,
@@ -297,8 +299,24 @@ export function parseClineProviderModelsRequest(value: unknown): RuntimeClinePro
 	};
 }
 
+export function parseClineProviderSettingsSaveRequest(value: unknown): RuntimeClineProviderSettingsSaveRequest {
+	const parsed = parseWithSchema(runtimeClineProviderSettingsSaveRequestSchema, value);
+	const providerId = parsed.providerId.trim();
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+	return {
+		...parsed,
+		providerId,
+	};
+}
+
 export function parseClineOauthLoginRequest(value: unknown): RuntimeClineOauthLoginRequest {
-	return parseWithSchema(runtimeClineOauthLoginRequestSchema, value);
+	const parsed = parseWithSchema(runtimeClineOauthLoginRequestSchema, value);
+	return {
+		...parsed,
+		baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl.trim() || null : parsed.baseUrl,
+	};
 }
 
 export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessionStartRequest {

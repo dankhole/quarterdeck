@@ -47,9 +47,11 @@ describe("InMemoryClineTaskSessionService", () => {
 			subscribe: vi.fn(() => () => {}),
 		};
 		const serviceInternal = service as unknown as {
-			sessionHostPromise: Promise<unknown> | null;
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+			};
 		};
-		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -114,12 +116,14 @@ describe("InMemoryClineTaskSessionService", () => {
 			subscribe: vi.fn(() => () => {}),
 		};
 		const serviceInternal = service as unknown as {
-			sessionHostPromise: Promise<unknown> | null;
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -132,9 +136,9 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(canceled?.reviewReason).toBeNull();
 		expect(canceled?.latestHookActivity?.activityText).toBe("Turn canceled");
 
-		const sessionId = serviceInternal.sessionIdByTaskId.get("task-1") ?? "session-1";
-		serviceInternal.taskIdBySessionId.set(sessionId, "task-1");
-		serviceInternal.handleSessionEvent({
+		const sessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1") ?? "session-1";
+		serviceInternal.sessionRuntime.taskIdBySessionId.set(sessionId, "task-1");
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId,
@@ -158,14 +162,16 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		const serviceInternal = service as unknown as {
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.taskIdBySessionId.set("session-1", "task-1");
+		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
+		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -178,7 +184,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			},
 		});
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "chunk",
 			payload: {
 				sessionId: "session-1",
@@ -188,7 +194,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			},
 		});
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -218,14 +224,16 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		const serviceInternal = service as unknown as {
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.taskIdBySessionId.set("session-1", "task-1");
+		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
+		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -236,7 +244,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			},
 		});
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -247,7 +255,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			},
 		});
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -260,7 +268,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			},
 		});
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -297,14 +305,16 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		const serviceInternal = service as unknown as {
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.taskIdBySessionId.set("session-1", "task-1");
+		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
+		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -321,7 +331,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(service.getSummary("task-1")?.reviewReason).toBe("hook");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -348,14 +358,16 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		const serviceInternal = service as unknown as {
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.taskIdBySessionId.set("session-1", "task-1");
+		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
+		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -386,11 +398,13 @@ describe("InMemoryClineTaskSessionService", () => {
 			subscribe: vi.fn(() => () => {}),
 		};
 		const serviceInternal = service as unknown as {
-			sessionHostPromise: Promise<unknown> | null;
-			sessionIdByTaskId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+				sessionIdByTaskId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
 
 		const summary = await service.startTaskSession({
 			taskId: "task-1",
@@ -399,10 +413,10 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		expect(summary.state).toBe("running");
-		const mappedSessionId = serviceInternal.sessionIdByTaskId.get("task-1");
+		const mappedSessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1");
 		expect(mappedSessionId).toBeTruthy();
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: mappedSessionId,
@@ -444,9 +458,11 @@ describe("InMemoryClineTaskSessionService", () => {
 			subscribe: vi.fn(() => () => {}),
 		};
 		const serviceInternal = service as unknown as {
-			sessionHostPromise: Promise<unknown> | null;
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+			};
 		};
-		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -479,11 +495,13 @@ describe("InMemoryClineTaskSessionService", () => {
 			subscribe: vi.fn(() => () => {}),
 		};
 		const serviceInternal = service as unknown as {
-			sessionHostPromise: Promise<unknown> | null;
-			sessionIdByTaskId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+				sessionIdByTaskId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionHostPromise = Promise.resolve(fakeHost);
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -492,9 +510,9 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		await service.sendTaskSessionInput("task-1", "Continue");
-		const sessionId = serviceInternal.sessionIdByTaskId.get("task-1") ?? "session-1";
+		const sessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1") ?? "session-1";
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId,
@@ -526,14 +544,16 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		const serviceInternal = service as unknown as {
-			sessionIdByTaskId: Map<string, string>;
-			taskIdBySessionId: Map<string, string>;
-			handleSessionEvent: (event: unknown) => void;
+			sessionRuntime: {
+				sessionIdByTaskId: Map<string, string>;
+				taskIdBySessionId: Map<string, string>;
+				handleSessionEvent: (event: unknown) => void;
+			};
 		};
-		serviceInternal.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.taskIdBySessionId.set("session-1", "task-1");
+		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
+		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
 
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -545,7 +565,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			},
 		});
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",
@@ -556,7 +576,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			},
 		});
-		serviceInternal.handleSessionEvent({
+		serviceInternal.sessionRuntime.handleSessionEvent({
 			type: "agent_event",
 			payload: {
 				sessionId: "session-1",

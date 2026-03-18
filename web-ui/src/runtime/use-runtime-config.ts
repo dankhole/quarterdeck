@@ -8,21 +8,13 @@ export interface UseRuntimeConfigResult {
 	config: RuntimeConfigResponse | null;
 	isLoading: boolean;
 	isSaving: boolean;
+	refresh: () => void;
 	save: (nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
-		clineProviderId?: string | null;
-		clineModelId?: string | null;
-		clineApiKey?: string | null;
-		clineBaseUrl?: string | null;
-			clineOauthProvider?: "cline" | "oca" | "openai-codex" | null;
-			clineOauthAccessToken?: string | null;
-			clineOauthRefreshToken?: string | null;
-			clineOauthAccountId?: string | null;
-			clineOauthExpiresAt?: number | null;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 	}) => Promise<RuntimeConfigResponse | null>;
@@ -67,15 +59,6 @@ export function useRuntimeConfig(
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
-			clineProviderId?: string | null;
-			clineModelId?: string | null;
-			clineApiKey?: string | null;
-			clineBaseUrl?: string | null;
-			clineOauthProvider?: "cline" | "oca" | "openai-codex" | null;
-			clineOauthAccessToken?: string | null;
-			clineOauthRefreshToken?: string | null;
-			clineOauthAccountId?: string | null;
-			clineOauthExpiresAt?: number | null;
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
 		}): Promise<RuntimeConfigResponse | null> => {
@@ -96,10 +79,15 @@ export function useRuntimeConfig(
 		[setConfigData, workspaceId],
 	);
 
+	const refresh = useCallback(() => {
+		void configQuery.refetch();
+	}, [configQuery.refetch]);
+
 	return {
 		config: workspaceId ? (configQuery.data ?? initialConfig) : null,
 		isLoading: open ? configQuery.isLoading && configQuery.data === null && initialConfig === null : false,
 		isSaving,
+		refresh,
 		save,
 	};
 }

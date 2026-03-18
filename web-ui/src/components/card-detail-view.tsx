@@ -11,6 +11,7 @@ import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panel
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { Button } from "@/components/ui/button";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeAgentId, RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
@@ -260,7 +261,7 @@ export function CardDetailView({
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
-	onSendClineChatMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string }>;
+	onSendClineChatMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
 	onCancelClineChatTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadClineChatMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	latestClineChatMessage?: ClineChatMessage | null;
