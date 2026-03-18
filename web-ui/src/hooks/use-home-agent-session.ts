@@ -1,9 +1,10 @@
 // Manages the synthetic home agent session lifecycle for the sidebar.
-// It keeps one project-scoped session identity stable per workspace and
-// rotates it only when the selected agent configuration meaningfully changes.
+// It keeps one in-memory session identity stable per workspace while the app
+// stays open and rotates it only when the selected agent configuration
+// meaningfully changes.
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { buildHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
+import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 
 import { notifyError } from "@/components/app-toaster";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
@@ -18,6 +19,7 @@ type HomeAgentPanelMode = "chat" | "terminal";
 
 interface HomeAgentDescriptor {
 	panelMode: HomeAgentPanelMode;
+	descriptorKey: string;
 	taskId: string;
 }
 
@@ -37,6 +39,12 @@ interface UseHomeAgentSessionResult {
 
 interface HomeAgentSessionIdentity {
 	workspaceId: string;
+	taskId: string;
+}
+
+interface HomeAgentWorkspaceDescriptor {
+	descriptorKey: string;
+	panelMode: HomeAgentPanelMode;
 	taskId: string;
 }
 
@@ -107,6 +115,7 @@ export function useHomeAgentSession({
 	upsertSessionSummary,
 }: UseHomeAgentSessionInput): UseHomeAgentSessionResult {
 	const latestBaseRefRef = useRef("HEAD");
+	const homeDescriptorByWorkspaceRef = useRef(new Map<string, HomeAgentWorkspaceDescriptor>());
 	const desiredTaskIdByWorkspaceRef = useRef(new Map<string, string>());
 	const startedSessionKeysRef = useRef(new Set<string>());
 	const pendingStartRequestIdsRef = useRef(new Map<string, number>());
@@ -122,28 +131,42 @@ export function useHomeAgentSession({
 			return null;
 		}
 
+		let panelMode: HomeAgentPanelMode;
+		let descriptorKey: string;
 		if (runtimeProjectConfig.selectedAgentId === "cline") {
+			panelMode = "chat";
+			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
+		} else {
+			if (!runtimeProjectConfig.effectiveCommand) {
+				return null;
+			}
+			panelMode = "terminal";
+			descriptorKey = buildTerminalDescriptor(runtimeProjectConfig);
+		}
+
+		const existingDescriptor = homeDescriptorByWorkspaceRef.current.get(currentProjectId);
+		if (
+			existingDescriptor &&
+			existingDescriptor.descriptorKey === descriptorKey &&
+			existingDescriptor.panelMode === panelMode
+		) {
 			return {
-				panelMode: "chat",
-				taskId: buildHomeAgentSessionId(
-					currentProjectId,
-					runtimeProjectConfig.selectedAgentId,
-					buildClineDescriptor(runtimeProjectConfig),
-				),
+				panelMode,
+				descriptorKey,
+				taskId: existingDescriptor.taskId,
 			};
 		}
 
-		if (!runtimeProjectConfig.effectiveCommand) {
-			return null;
-		}
-
+		const taskId = createHomeAgentSessionId(currentProjectId, runtimeProjectConfig.selectedAgentId);
+		homeDescriptorByWorkspaceRef.current.set(currentProjectId, {
+			descriptorKey,
+			panelMode,
+			taskId,
+		});
 		return {
-			panelMode: "terminal",
-			taskId: buildHomeAgentSessionId(
-				currentProjectId,
-				runtimeProjectConfig.selectedAgentId,
-				buildTerminalDescriptor(runtimeProjectConfig),
-			),
+			panelMode,
+			descriptorKey,
+			taskId,
 		};
 	}, [
 		currentProjectId,
@@ -170,6 +193,7 @@ export function useHomeAgentSession({
 				return;
 			}
 
+			homeDescriptorByWorkspaceRef.current.delete(currentProjectId);
 			desiredTaskIdByWorkspaceRef.current.delete(currentProjectId);
 			startedSessionKeysRef.current.delete(
 				buildHomeAgentSessionKey({
@@ -294,6 +318,7 @@ export function useHomeAgentSession({
 				taskId,
 			}));
 			desiredTaskIdByWorkspaceRef.current.clear();
+			homeDescriptorByWorkspaceRef.current.clear();
 			startedSessionKeysRef.current.clear();
 			pendingStartRequestIdsRef.current.clear();
 			for (const session of sessionsToStop) {

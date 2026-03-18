@@ -386,6 +386,54 @@ describe("useHomeAgentSession", () => {
 		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
 	});
 
+	it("creates a fresh home chat session id after remounting the app", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig({
+						selectedAgentId: "cline",
+						effectiveCommand: "cline",
+					})}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const firstTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
+
+		await act(async () => {
+			root.unmount();
+		});
+		root = createRoot(container);
+		latestSnapshot = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig({
+						selectedAgentId: "cline",
+						effectiveCommand: "cline",
+					})}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const secondTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
+		expect(secondTaskId).toMatch(/^__home_agent__:workspace-1:cline:/);
+		expect(secondTaskId).not.toBe(firstTaskId);
+	});
+
 	it("stops stale terminal starts when the selected agent changes mid-launch", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const firstStart = createDeferred<{
