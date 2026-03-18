@@ -90,7 +90,7 @@ export function ClineAgentChatPanel({
 
 	return (
 		<div
-			className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-0"
+			className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-1"
 			style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
 		>
 			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">

@@ -168,8 +168,7 @@ export function ProjectNavigationPanel({
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
-					<div className="px-3 pb-2 pt-1 text-[11px] uppercase tracking-wide text-text-tertiary">Agent</div>
-					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-0 px-2 pb-2">
+					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">
 						{agentSectionContent ?? (
 							<div className="flex w-full items-center justify-center rounded-md border border-border bg-surface-2 px-3 text-center text-sm text-text-secondary">
 								Select a project to use the agent.
