@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 
 import { notifyError } from "@/components/app-toaster";
+import { isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -133,7 +134,7 @@ export function useHomeAgentSession({
 
 		let panelMode: HomeAgentPanelMode;
 		let descriptorKey: string;
-		if (runtimeProjectConfig.selectedAgentId === "cline") {
+		if (isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
 			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
 		} else {

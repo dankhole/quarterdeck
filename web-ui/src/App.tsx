@@ -44,6 +44,7 @@ import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-promp
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { isTaskAgentSetupSatisfied, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
@@ -107,11 +108,7 @@ export default function App(): ReactElement {
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
 		useRuntimeProjectConfig(currentProjectId);
-	const hasInstalledAgent = runtimeProjectConfig
-		? runtimeProjectConfig.selectedAgentId === "cline"
-			? true
-			: runtimeProjectConfig.agents.some((agent) => agent.installed)
-		: null;
+	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
@@ -560,7 +557,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
 		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
-		hasInstalledAgent,
+		isTaskAgentSetupSatisfied: isTaskAgentReady,
 		handleCreateTask,
 		handleCreateTasks,
 		handleStartTask,
@@ -651,12 +648,10 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const latestSelectedTaskChatMessage = useMemo(() => {
-		if (!selectedCard || !latestTaskChatMessage || latestTaskChatMessage.taskId !== selectedCard.card.id) {
-			return null;
-		}
-		return latestTaskChatMessage.message;
-	}, [latestTaskChatMessage, selectedCard]);
+	const latestSelectedTaskChatMessage = selectLatestTaskChatMessageForTask(
+		selectedCard?.card.id,
+		latestTaskChatMessage,
+	);
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
 			if (!open) {

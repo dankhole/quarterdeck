@@ -118,12 +118,12 @@ export function isTaskStartServicePromptAlreadyConfigured(
 	promptId: TaskStartSetupKind,
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined,
 	options?: {
-		hasInstalledAgent?: boolean | null;
+		isTaskAgentSetupSatisfied?: boolean | null;
 	},
 ): boolean {
 	if (!taskStartSetupAvailability) {
 		if (promptId === "agent_cli") {
-			return options?.hasInstalledAgent === true;
+			return options?.isTaskAgentSetupSatisfied === true;
 		}
 		return false;
 	}
@@ -134,7 +134,7 @@ export function isTaskStartServicePromptAlreadyConfigured(
 		case "github_cli":
 			return taskStartSetupAvailability.githubCli;
 		case "agent_cli":
-			return options?.hasInstalledAgent === true;
+			return options?.isTaskAgentSetupSatisfied === true;
 		default:
 			return false;
 	}
@@ -206,11 +206,11 @@ export function buildTaskStartServicePromptContent(
 export function collectPendingTaskStartServicePrompts(input: {
 	tasks: TaskStartServicePromptTask[];
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
-	hasInstalledAgent?: boolean | null;
+	isTaskAgentSetupSatisfied?: boolean | null;
 	promptAcknowledgements: Record<string, true>;
 	isPromptDoNotShowAgainEnabled: (promptId: TaskStartSetupKind) => boolean;
 }): CollectedTaskStartServicePrompt[] {
-	if (input.hasInstalledAgent === false && !input.isPromptDoNotShowAgainEnabled("agent_cli")) {
+	if (input.isTaskAgentSetupSatisfied === false && !input.isPromptDoNotShowAgainEnabled("agent_cli")) {
 		const missingAgentPromptTaskIds = [...new Set(input.tasks.map((task) => task.taskId))].filter((taskId) => {
 			const promptKey = getTaskStartServicePromptKey(taskId, "agent_cli");
 			return !input.promptAcknowledgements[promptKey];
@@ -301,7 +301,7 @@ interface UseTaskStartServicePromptsInput {
 	currentProjectId: string | null;
 	selectedAgentId: RuntimeAgentId | null | undefined;
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
-	hasInstalledAgent: boolean | null | undefined;
+	isTaskAgentSetupSatisfied: boolean | null | undefined;
 	handleCreateTask: () => string | null;
 	handleCreateTasks: (prompts: string[]) => string[];
 	handleStartTask: (taskId: string) => void;
@@ -335,7 +335,7 @@ export function useTaskStartServicePrompts({
 	currentProjectId,
 	selectedAgentId,
 	taskStartSetupAvailability,
-	hasInstalledAgent,
+	isTaskAgentSetupSatisfied,
 	handleCreateTask,
 	handleCreateTasks,
 	handleStartTask,
@@ -569,7 +569,7 @@ export function useTaskStartServicePrompts({
 						continue;
 					}
 					const promptIds = detectTaskStartServicePromptIds(selection.card.prompt);
-					if (hasInstalledAgent === false) {
+					if (isTaskAgentSetupSatisfied === false) {
 						promptIds.push("agent_cli");
 					}
 					for (const promptId of promptIds) {
@@ -586,29 +586,29 @@ export function useTaskStartServicePrompts({
 				return next;
 			});
 		},
-		[board, hasInstalledAgent],
+		[board, isTaskAgentSetupSatisfied],
 	);
 
 	const queueTaskStartServicePrompts = useCallback(
 		(taskIds: string[]): boolean => {
-			const queuedPrompts = collectPendingTaskStartServicePrompts({
-				tasks: [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))]
-					.map((taskId) => {
+				const queuedPrompts = collectPendingTaskStartServicePrompts({
+					tasks: [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))]
+						.map((taskId) => {
 						const selection = findCardSelection(board, taskId);
 						if (!selection || selection.column.id !== "backlog") {
 							return null;
 						}
-						return {
-							taskId,
-							prompt: selection.card.prompt,
-						};
-					})
-					.filter((task): task is TaskStartServicePromptTask => task !== null),
-				taskStartSetupAvailability,
-				hasInstalledAgent,
-				promptAcknowledgements: taskStartServicePromptAcknowledgements,
-				isPromptDoNotShowAgainEnabled: isTaskStartServicePromptDoNotShowAgainEnabled,
-			});
+							return {
+								taskId,
+								prompt: selection.card.prompt,
+							};
+						})
+						.filter((task): task is TaskStartServicePromptTask => task !== null),
+					taskStartSetupAvailability,
+					isTaskAgentSetupSatisfied,
+					promptAcknowledgements: taskStartServicePromptAcknowledgements,
+					isPromptDoNotShowAgainEnabled: isTaskStartServicePromptDoNotShowAgainEnabled,
+				});
 
 			if (queuedPrompts.length === 0) {
 				return false;
@@ -620,7 +620,7 @@ export function useTaskStartServicePrompts({
 		},
 		[
 			board,
-			hasInstalledAgent,
+			isTaskAgentSetupSatisfied,
 			isTaskStartServicePromptDoNotShowAgainEnabled,
 			taskStartSetupAvailability,
 			taskStartServicePromptAcknowledgements,

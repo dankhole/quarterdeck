@@ -139,8 +139,8 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 	});
 
 	it("maps agent cli prompt to installed-agent state", () => {
-		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { hasInstalledAgent: false })).toBe(false);
-		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { hasInstalledAgent: true })).toBe(true);
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { isTaskAgentSetupSatisfied: false })).toBe(false);
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { isTaskAgentSetupSatisfied: true })).toBe(true);
 	});
 });
 
@@ -219,7 +219,7 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					githubCli: true,
 					linearMcp: true,
 				},
-				hasInstalledAgent: false,
+				isTaskAgentSetupSatisfied: false,
 				promptAcknowledgements: {},
 				isPromptDoNotShowAgainEnabled: () => false,
 			}),

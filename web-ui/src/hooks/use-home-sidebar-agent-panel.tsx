@@ -11,6 +11,7 @@ import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
+import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
@@ -97,12 +98,7 @@ export function useHomeSidebarAgentPanel({
 	}, [runtimeProjectConfig]);
 
 	const homeAgentPanelSummary = taskId ? (effectiveSessionSummaries[taskId] ?? null) : null;
-	const latestHomeTaskChatMessage = useMemo(() => {
-		if (!taskId || !latestTaskChatMessage || latestTaskChatMessage.taskId !== taskId) {
-			return null;
-		}
-		return latestTaskChatMessage.message;
-	}, [latestTaskChatMessage, taskId]);
+	const latestHomeTaskChatMessage = selectLatestTaskChatMessageForTask(taskId, latestTaskChatMessage);
 
 	const handleSendHomeClineChatMessage = useCallback(
 		async (messageTaskId: string, text: string) => {

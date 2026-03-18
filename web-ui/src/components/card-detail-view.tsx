@@ -13,6 +13,7 @@ import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { Button } from "@/components/ui/button";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { isNativeClineAgentSelected } from "@/runtime/native-agent";
 import type { RuntimeAgentId, RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
@@ -388,7 +389,7 @@ export function CardDetailView({
 	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
-	const showClineAgentChatPanel = selectedAgentId === "cline";
+	const showClineAgentChatPanel = isNativeClineAgentSelected(selectedAgentId);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
