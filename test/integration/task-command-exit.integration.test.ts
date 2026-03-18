@@ -176,6 +176,39 @@ function spawnSourceCli(
 	});
 }
 
+async function runCliCommandAndCollectOutput(options: {
+	args: string[];
+	cwd: string;
+	env: NodeJS.ProcessEnv;
+	timeoutMs?: number;
+}): Promise<{ stdout: string; stderr: string; exitCode: number | null; didExit: boolean }> {
+	const process = spawnSourceCli(options.args, {
+		cwd: options.cwd,
+		env: options.env,
+	});
+
+	let stdout = "";
+	let stderr = "";
+	process.stdout?.on("data", (chunk: Buffer) => {
+		stdout += chunk.toString();
+	});
+	process.stderr?.on("data", (chunk: Buffer) => {
+		stderr += chunk.toString();
+	});
+
+	const didExit = await waitForExit(process, options.timeoutMs ?? 8_000);
+	if (!didExit) {
+		process.kill("SIGKILL");
+	}
+
+	return {
+		stdout,
+		stderr,
+		exitCode: process.exitCode,
+		didExit,
+	};
+}
+
 describe("source task commands", () => {
 	it("exits after creating a task when the runtime server is already running", async () => {
 		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-exit-");
@@ -245,6 +278,130 @@ describe("source task commands", () => {
 				expect(didExit, `task create did not exit in time.\nstdout:\n${stdout}\nstderr:\n${stderr}`).toBe(true);
 				expect(commandProcess.exitCode).toBe(0);
 				expect(stdout).toContain('"ok": true');
+			} finally {
+				await requestGracefulShutdown(serverProcess);
+				const stopped = await waitForExit(serverProcess, 5_000);
+				if (!stopped) {
+					serverProcess.kill("SIGKILL");
+					await waitForExit(serverProcess, 5_000);
+				}
+			}
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("supports trashing and deleting tasks by column", async () => {
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-trash-delete-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-task-trash-delete-");
+
+		try {
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "README.md"), "# Task Trash Delete Test\n", "utf8");
+			commitAll(projectPath, "init");
+
+			const port = String(await getAvailablePort());
+			const env = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+			});
+
+			const serverProcess = spawn(
+				process.execPath,
+				[
+					"--require",
+					resolveShutdownIpcHookPath(),
+					"--import",
+					resolveTsxLoaderImportSpecifier(),
+					resolve(process.cwd(), "src/cli.ts"),
+					"--no-open",
+				],
+				{
+					cwd: projectPath,
+					env,
+					stdio: ["ignore", "pipe", "pipe", "ipc"],
+				},
+			);
+
+			try {
+				await waitForServerStart(serverProcess);
+
+				for (const prompt of [
+					"Create a temporary task for trash and delete",
+					"Create another temporary task for trash and delete",
+				]) {
+					const created = await runCliCommandAndCollectOutput({
+						args: ["task", "create", "--prompt", prompt, "--project-path", projectPath],
+						cwd: projectPath,
+						env,
+					});
+					expect(
+						created.didExit,
+						`task create did not exit in time.\nstdout:\n${created.stdout}\nstderr:\n${created.stderr}`,
+					).toBe(true);
+					expect(created.exitCode).toBe(0);
+
+					const createdPayload = JSON.parse(created.stdout) as {
+						ok?: boolean;
+						task?: { id?: string };
+					};
+					expect(createdPayload.ok).toBe(true);
+					expect(typeof createdPayload.task?.id).toBe("string");
+				}
+
+				const trashed = await runCliCommandAndCollectOutput({
+					args: ["task", "trash", "--column", "backlog", "--project-path", projectPath],
+					cwd: projectPath,
+					env,
+				});
+				expect(
+					trashed.didExit,
+					`task trash did not exit in time.\nstdout:\n${trashed.stdout}\nstderr:\n${trashed.stderr}`,
+				).toBe(true);
+				expect(trashed.exitCode).toBe(0);
+				expect(trashed.stdout).toContain('"ok": true');
+				expect(trashed.stdout).toContain('"column": "backlog"');
+				expect(trashed.stdout).toContain('"count": 2');
+
+				const listedTrashBeforeDelete = await runCliCommandAndCollectOutput({
+					args: ["task", "list", "--column", "trash", "--project-path", projectPath],
+					cwd: projectPath,
+					env,
+				});
+				expect(
+					listedTrashBeforeDelete.didExit,
+					`task list --column trash did not exit in time.\nstdout:\n${listedTrashBeforeDelete.stdout}\nstderr:\n${listedTrashBeforeDelete.stderr}`,
+				).toBe(true);
+				expect(listedTrashBeforeDelete.exitCode).toBe(0);
+				expect(listedTrashBeforeDelete.stdout).toContain('"count": 2');
+
+				const deletedTrash = await runCliCommandAndCollectOutput({
+					args: ["task", "delete", "--column", "trash", "--project-path", projectPath],
+					cwd: projectPath,
+					env,
+				});
+				expect(
+					deletedTrash.didExit,
+					`task delete --column trash did not exit in time.\nstdout:\n${deletedTrash.stdout}\nstderr:\n${deletedTrash.stderr}`,
+				).toBe(true);
+				expect(deletedTrash.exitCode).toBe(0);
+				expect(deletedTrash.stdout).toContain('"ok": true');
+				expect(deletedTrash.stdout).toContain('"column": "trash"');
+				expect(deletedTrash.stdout).toContain('"count": 2');
+
+				const listedTrash = await runCliCommandAndCollectOutput({
+					args: ["task", "list", "--column", "trash", "--project-path", projectPath],
+					cwd: projectPath,
+					env,
+				});
+				expect(
+					listedTrash.didExit,
+					`task list --column trash did not exit in time.\nstdout:\n${listedTrash.stdout}\nstderr:\n${listedTrash.stderr}`,
+				).toBe(true);
+				expect(listedTrash.exitCode).toBe(0);
+				expect(listedTrash.stdout).toContain('"count": 0');
 			} finally {
 				await requestGracefulShutdown(serverProcess);
 				const stopped = await waitForExit(serverProcess, 5_000);
