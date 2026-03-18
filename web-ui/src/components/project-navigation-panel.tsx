@@ -89,7 +89,7 @@ export function ProjectNavigationPanel({
 							type="button"
 							onClick={() => onActiveSectionChange("projects")}
 							className={cn(
-								"rounded-sm px-2 py-1 text-xs font-medium",
+								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
 								activeSection === "projects"
 									? "bg-surface-4 text-text-primary"
 									: "text-text-secondary hover:text-text-primary",
@@ -102,7 +102,7 @@ export function ProjectNavigationPanel({
 							onClick={() => onActiveSectionChange("agent")}
 							disabled={!canShowAgentSection}
 							className={cn(
-								"rounded-sm px-2 py-1 text-xs font-medium",
+								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
 								activeSection === "agent"
 									? "bg-surface-4 text-text-primary"
 									: "text-text-secondary hover:text-text-primary",

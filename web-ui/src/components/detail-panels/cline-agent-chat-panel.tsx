@@ -1,7 +1,7 @@
 // Layout component for the native Cline chat panel.
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
-import { useLayoutEffect, useRef, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,6 +10,8 @@ import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actio
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+
+const CLINE_CHAT_COMPOSER_MAX_HEIGHT = 160;
 
 export interface ClineAgentChatPanelProps {
 	taskId: string;
@@ -83,10 +85,28 @@ export function ClineAgentChatPanel({
 		showMoveToTrash,
 	});
 	const messageEndRef = useRef<HTMLDivElement | null>(null);
+	const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
 	useLayoutEffect(() => {
 		messageEndRef.current?.scrollIntoView({ block: "end" });
 	}, [messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
+
+	useLayoutEffect(() => {
+		const textarea = composerRef.current;
+		if (!textarea) {
+			return;
+		}
+		textarea.style.height = "auto";
+		textarea.style.height = `${Math.min(textarea.scrollHeight, CLINE_CHAT_COMPOSER_MAX_HEIGHT)}px`;
+		textarea.style.overflowY = textarea.scrollHeight > CLINE_CHAT_COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+	}, [draft]);
+
+	useEffect(() => {
+		if (!canSend) {
+			return;
+		}
+		composerRef.current?.focus();
+	}, [canSend, taskId]);
 
 	return (
 		<div
@@ -110,35 +130,36 @@ export function ClineAgentChatPanel({
 			{error ? <div className="border-t border-status-red/30 bg-status-red/10 px-3 py-2 text-xs text-status-red">{error}</div> : null}
 			<div className="border-t border-border px-3 py-3">
 				<textarea
+					ref={composerRef}
 					value={draft}
 					onChange={(event) => setDraft(event.target.value)}
+					onKeyDown={(event) => {
+						if (event.nativeEvent.isComposing) {
+							return;
+						}
+						if (event.key === "Escape") {
+							if (!canCancel) {
+								return;
+							}
+							event.preventDefault();
+							handleCancelTurn();
+							return;
+						}
+						if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+							return;
+						}
+						if (!canSend || draft.trim().length === 0) {
+							return;
+						}
+						event.preventDefault();
+						void handleSendDraft();
+					}}
 					placeholder={composerPlaceholder}
 					disabled={!canSend}
-					rows={3}
-					className="w-full resize-none rounded-md border border-border bg-surface-2 px-2 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-50"
+					rows={1}
+					className="w-full min-h-9 resize-none rounded-md border border-border bg-surface-2 px-2 py-2 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-50"
+					style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
 				/>
-				<div className="mt-2 flex items-center justify-end gap-2">
-					{onCancelTurn ? (
-						<Button
-							variant="default"
-							size="sm"
-							disabled={!canCancel}
-							onClick={handleCancelTurn}
-						>
-							{isCanceling ? <Spinner size={14} /> : "Cancel"}
-						</Button>
-					) : null}
-					<Button
-						variant="primary"
-						size="sm"
-						disabled={!canSend || draft.trim().length === 0}
-						onClick={() => {
-							void handleSendDraft();
-						}}
-					>
-						{isSending ? <Spinner size={14} /> : "Send"}
-					</Button>
-				</div>
 			</div>
 			{showActionFooter ? (
 				<div className="flex flex-col gap-2 px-3 pb-3">

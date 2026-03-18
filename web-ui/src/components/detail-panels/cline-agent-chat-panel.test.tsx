@@ -165,6 +165,85 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.querySelector("pre code")).toBeTruthy();
 	});
 
+	it("autofocuses the composer, grows it, sends on enter, and cancels on escape", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-1",
+				role: "user" as const,
+				content: "Ship it",
+				createdAt: 2,
+			},
+		}));
+		const onCancelTurn = vi.fn(async () => ({ ok: true }));
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running")}
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+					onCancelTurn={onCancelTurn}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		expect(document.activeElement).toBe(textarea);
+		expect(textarea.getAttribute("rows")).toBe("1");
+		expect(container.querySelectorAll("button")).toHaveLength(0);
+
+		Object.defineProperty(textarea, "scrollHeight", {
+			configurable: true,
+			value: 96,
+		});
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Ship it");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		expect(textarea.style.height).toBe("96px");
+
+		await act(async () => {
+			textarea.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Enter",
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+
+		await act(async () => {
+			textarea.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Escape",
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			await Promise.resolve();
+		});
+
+		expect(onCancelTurn).toHaveBeenCalledWith("task-1");
+	});
+
 	it("keeps chat pinned to bottom when action footer appears", async () => {
 		const messages: ClineChatMessage[] = [
 			{
