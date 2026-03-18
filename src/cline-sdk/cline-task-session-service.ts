@@ -3,18 +3,17 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type { RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { applyClineSessionEvent } from "./cline-event-adapter.js";
+import { type ClineMessageRepository, createInMemoryClineMessageRepository } from "./cline-message-repository.js";
 import {
-	createInMemoryClineMessageRepository,
-	type ClineMessageRepository,
-} from "./cline-message-repository.js";
-import {
-	createInMemoryClineSessionRuntime,
 	type ClineSessionRuntime,
 	type CreateInMemoryClineSessionRuntimeOptions,
+	createInMemoryClineSessionRuntime,
 } from "./cline-session-runtime.js";
-import { buildClineSdkWorkspaceMetadata } from "./sdk-runtime-boundary.js";
 import {
+	type ClineTaskMessage,
+	type ClineTaskSessionEntry,
 	clearActiveTurnState,
 	cloneSummary,
 	createAssistantMessage,
@@ -22,10 +21,9 @@ import {
 	createMessage,
 	now,
 	setOrCreateAssistantMessage,
-	type ClineTaskMessage,
-	type ClineTaskSessionEntry,
 	updateSummary,
 } from "./cline-session-state.js";
+import { buildClineSdkWorkspaceMetadata } from "./sdk-runtime-boundary.js";
 
 export type { ClineTaskMessage } from "./cline-session-state.js";
 
@@ -167,6 +165,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					const workspaceMetadata = await buildClineSdkWorkspaceMetadata(request.cwd);
 					systemPrompt = `${systemPrompt}\n\n${workspaceMetadata}`;
 				}
+				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
+				if (appendedSystemPrompt) {
+					systemPrompt = `${systemPrompt}\n\n${appendedSystemPrompt}`;
+				}
 
 				const startResult = await this.sessionRuntime.startTaskSession({
 					taskId: request.taskId,
@@ -282,7 +284,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (!entry) {
 			return null;
 		}
-		if (entry.summary.state !== "running" && entry.summary.state !== "awaiting_review" && entry.summary.state !== "idle") {
+		if (
+			entry.summary.state !== "running" &&
+			entry.summary.state !== "awaiting_review" &&
+			entry.summary.state !== "idle"
+		) {
 			return null;
 		}
 		this.pendingTurnCancelTaskIds.delete(taskId);
@@ -313,7 +319,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);
 					if (agentText) {
-						const assistantCountAfterSend = entry.messages.filter((message) => message.role === "assistant").length;
+						const assistantCountAfterSend = entry.messages.filter(
+							(message) => message.role === "assistant",
+						).length;
 						if (assistantCountAfterSend > assistantCountBeforeSend) {
 							return;
 						}
@@ -324,7 +332,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					}
 				})
 				.catch((error: unknown) => {
-					const systemMessage = createMessage(taskId, "system", `Cline SDK send failed: ${toErrorMessage(error)}.`);
+					const systemMessage = createMessage(
+						taskId,
+						"system",
+						`Cline SDK send failed: ${toErrorMessage(error)}.`,
+					);
 					entry.messages.push(systemMessage);
 					this.emitMessage(taskId, systemMessage);
 				});

@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
 import {
@@ -109,6 +110,24 @@ function hasCliOption(args: string[], optionName: string): boolean {
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
 		if (arg === optionName || arg.startsWith(`${optionName}=`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function hasCodexConfigOverride(args: string[], key: string): boolean {
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (arg === "-c" || arg === "--config") {
+			const next = args[i + 1];
+			if (typeof next === "string" && next.startsWith(`${key}=`)) {
+				return true;
+			}
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith(`-c${key}=`) || arg.startsWith(`--config=${key}=`)) {
 			return true;
 		}
 	}
@@ -601,6 +620,7 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
 			input.autonomousModeEnabled &&
 			!input.startInPlanMode &&
@@ -666,9 +686,7 @@ const claudeAdapter: AgentSessionAdapter = {
 					],
 					UserPromptSubmit: [
 						{
-							hooks: [
-								{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) },
-							],
+							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
 						},
 					],
 				},
@@ -682,6 +700,14 @@ const claudeAdapter: AgentSessionAdapter = {
 					workspaceId: hooks.workspaceId,
 				}),
 			);
+		}
+
+		if (
+			appendedSystemPrompt &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", appendedSystemPrompt);
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
@@ -720,6 +746,7 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
 		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
 			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
@@ -732,6 +759,10 @@ const codexAdapter: AgentSessionAdapter = {
 			if (!hasCliOption(codexArgs, "--last")) {
 				codexArgs.push("--last");
 			}
+		}
+
+		if (appendedSystemPrompt && !hasCodexConfigOverride(codexArgs, "developer_instructions")) {
+			codexArgs.push("-c", `developer_instructions=${JSON.stringify(appendedSystemPrompt)}`);
 		}
 
 		const hooks = resolveHookContext(input);

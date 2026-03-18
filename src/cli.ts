@@ -390,15 +390,8 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 }
 
 async function runMainCommand(options: CliOptions): Promise<void> {
-	const [
-		{ openInBrowser },
-		{ installKanbanSkillFiles, resolveKanbanSkillCommandPrefix },
-		{ detectInstalledCommands },
-		{ autoUpdateOnStartup, runPendingAutoUpdateOnShutdown },
-	] = await Promise.all([
+	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
 		import("./server/browser.js"),
-		import("./skills/kanban-skill.js"),
-		import("./terminal/agent-registry.js"),
 		import("./update/auto-update.js"),
 	]);
 	const selectedPort = await applyRuntimePortOption(options.port);
@@ -415,20 +408,6 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 		if (didChange) {
 			console.log(`Default agent set to ${options.agent}.`);
 		}
-	}
-
-	try {
-		const detectedCommands = detectInstalledCommands();
-		const commandPrefix = resolveKanbanSkillCommandPrefix({
-			currentVersion: KANBAN_VERSION,
-		});
-		await installKanbanSkillFiles({
-			commandPrefix,
-			installClaudeSkill: detectedCommands.includes("claude"),
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`Could not install Kanban skill files: ${message}`);
 	}
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;

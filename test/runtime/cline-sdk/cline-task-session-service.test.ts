@@ -71,6 +71,51 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("appends Kanban sidebar instructions for home sessions", async () => {
+		const service = createInMemoryClineTaskSessionService();
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			subscribe: vi.fn(() => () => {}),
+		};
+		const serviceInternal = service as unknown as {
+			sessionRuntime: {
+				sessionHostPromise: Promise<unknown> | null;
+			};
+		};
+		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+
+		await service.startTaskSession({
+			taskId: "__home_agent__:workspace-1:cline:abc123",
+			cwd: "/tmp/worktree",
+			prompt: "Add a task",
+		});
+		await vi.waitFor(() => {
+			expect(fakeHost.start).toHaveBeenCalledTimes(1);
+		});
+
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					systemPrompt: expect.stringContaining("Kanban sidebar agent"),
+				}),
+			}),
+		);
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					systemPrompt: expect.stringContaining("kanban task create"),
+				}),
+			}),
+		);
+	});
+
 	it("stores follow-up user input and keeps session running", async () => {
 		const service = createInMemoryClineTaskSessionService();
 		await service.startTaskSession({
@@ -82,10 +127,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		const nextSummary = await service.sendTaskSessionInput("task-1", "Continue\n");
 
 		expect(nextSummary?.state).toBe("running");
-		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
-			"Initial prompt",
-			"Continue",
-		]);
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Initial prompt", "Continue"]);
 	});
 
 	it("marks session interrupted when stopped", async () => {
