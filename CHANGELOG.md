@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.25]
+
+- Added a chat view to the home sidebar for project-scoped agent conversations. What used to be the project column is now a sidebar that can switch between projects and chat.
+- The agent can now trash and delete tasks on your behalf using new task management commands
+- When no CLI agent is detected, a guided setup flow walks you through getting started
+- Replaced the Kanban skill system with `--append-system-prompt` -- since the board now has a dedicated agent, we just append context to its prompt instead of maintaining a separate skill
+- Native Cline SDK chat runtime with cancelable turns
+- `--host` flag to bind the server to a custom IP address
+- Submodules are now initialized automatically in new task worktrees
+- Fix Escape key unexpectedly closing the detail view
+- Increased shortcut label and footer font sizes
+- Capped agent preview lines in task cards
+
 ## [0.1.24]
 
 - Fixed multiline prompt arguments being broken on Windows cmd.exe
