@@ -50,8 +50,8 @@ If you remember nothing else, remember this:
                                 |                                |
                                 v                                v
 +-------------------------------+--+          +------------------+-------------------+
-| Worktrees and shell processes    |          | Vendored Cline SDK                  |
-| per-task cwd, CLI agents, shell  |          | third_party/cline-sdk/              |
+| Worktrees and shell processes    |          | Published Cline SDK packages        |
+| per-task cwd, CLI agents, shell  |          | `@clinebot/core`, `@clinebot/agents`, `@clinebot/llms` |
 +----------------------------------+          | provider store, session host,       |
                                               | session artifact persistence         |
                                               +--------------------------------------+
@@ -109,7 +109,7 @@ The browser layer is the presentation and orchestration layer. It renders the bo
 
 The runtime layer is the control layer. It decides what session to start, where it should run, what worktree or workspace it belongs to, what command or SDK session should be used, and what state should be streamed back to the browser.
 
-The execution layer is the actual agent implementation. For most agents that means a CLI process attached to a PTY. For Cline that means the vendored SDK with its own provider store, session host, and persisted session artifacts.
+The execution layer is the actual agent implementation. For most agents that means a CLI process attached to a PTY. For Cline that means the published SDK packages with their own provider store, session host, and persisted session artifacts.
 
 That split explains a lot of the architecture:
 
@@ -251,7 +251,7 @@ runtime-api.ts
     |    sdk-provider-boundary.ts
     |        |
     |        v
-    |    third_party/cline-sdk provider store, catalog, OAuth helpers
+    |    @clinebot/core and @clinebot/llms provider store, catalog, OAuth helpers
     |
     v
 cline-task-session-service.ts
@@ -262,7 +262,7 @@ cline-task-session-service.ts
     |    sdk-runtime-boundary.ts
     |        |
     |        v
-    |    third_party/cline-sdk session host and persisted session records
+    |    @clinebot/core session host and persisted session records, plus @clinebot/agents prompt helpers
     |
     +--> cline-message-repository.ts
     |        |
@@ -368,7 +368,7 @@ These are the architectural rules that are most important to preserve.
 
 Some of the highest-value rules are enforced automatically by lint.
 
-- only the two SDK boundary modules may import directly from `third_party/cline-sdk/`
+- only the two SDK boundary modules may import directly from `@clinebot/*`
 - in the browser app, `createWorkspaceTrpcClient` is reserved for the runtime query helpers
 - the raw home agent session prefix should not be duplicated in app code
 
@@ -380,7 +380,7 @@ Not everything is perfectly generalized, and that is okay. Some current tradeoff
 
 - the home sidebar uses a synthetic session identity instead of a first-class workspace-native session type
 - some agent-selection code still branches on `"cline"` directly, even though the long-term direction is more capability-based routing
-- the vendored SDK is still a real dependency boundary, so the local boundary modules matter a lot
+- the published SDK packages are still a real dependency boundary, so the local boundary modules matter a lot
 - Cline is native chat while the rest of the catalog is still command-driven, which means some parallel abstractions are similar but not identical
 
 The important thing is that these tradeoffs are now explicit. They are not random accidents spread through the codebase.

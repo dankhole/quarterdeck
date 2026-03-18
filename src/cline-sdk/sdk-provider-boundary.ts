@@ -9,8 +9,8 @@ import {
 	loginOcaOAuth,
 	loginOpenAICodex,
 	ProviderSettingsManager,
-} from "../../third_party/cline-sdk/packages/core/dist/server/index.js";
-import { models as llmsModels } from "../../third_party/cline-sdk/packages/llms/dist/index.js";
+} from "@clinebot/core/server";
+import { models as llmsModels } from "@clinebot/llms/node";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 

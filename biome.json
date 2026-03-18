@@ -57,8 +57,15 @@
 							"options": {
 								"patterns": [
 									{
-										"group": ["**/third_party/cline-sdk/**"],
-										"message": "Import the Cline SDK only through src/cline-sdk/sdk-provider-boundary.ts or src/cline-sdk/sdk-runtime-boundary.ts."
+										"group": [
+											"@clinebot/agents",
+											"@clinebot/agents/**",
+											"@clinebot/core",
+											"@clinebot/core/**",
+											"@clinebot/llms",
+											"@clinebot/llms/**"
+										],
+										"message": "Import Cline SDK packages only through src/cline-sdk/sdk-provider-boundary.ts or src/cline-sdk/sdk-runtime-boundary.ts."
 									}
 								]
 							}
@@ -112,9 +119,9 @@
 							"level": "error",
 							"options": {
 								"paths": {
-									"@/runtime/trpc-client": {
-										"importNames": ["createWorkspaceTrpcClient"],
-										"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
+											"@/runtime/trpc-client": {
+												"importNames": ["createWorkspaceTrpcClient"],
+												"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
 									}
 								}
 							}
