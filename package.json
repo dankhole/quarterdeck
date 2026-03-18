@@ -78,6 +78,9 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@clinebot/agents": "nightly",
+    "@clinebot/core": "nightly",
+    "@clinebot/llms": "nightly",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "close-with-grace": "^2.5.0",

@@ -6,13 +6,12 @@ import {
 	buildWorkspaceMetadata,
 	createSessionHost,
 	type SessionHost,
-} from "../../third_party/cline-sdk/packages/core/dist/server/index.js";
-import { getClineDefaultSystemPrompt } from "../../third_party/cline-sdk/packages/agents/dist/index.js";
-import type { SessionRecord } from "../../third_party/cline-sdk/packages/core/dist/types/sessions.js";
-import type { providers as ClineSdkProviders } from "../../third_party/cline-sdk/packages/llms/dist/index.js";
+} from "@clinebot/core/server";
+import { getClineDefaultSystemPrompt } from "@clinebot/agents";
+import type { providers as ClineSdkProviders } from "@clinebot/llms/node";
 
 export type ClineSdkSessionHost = SessionHost;
-export type ClineSdkSessionRecord = SessionRecord;
+export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
 export type ClineSdkPersistedMessage = ClineSdkProviders.Message;
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {

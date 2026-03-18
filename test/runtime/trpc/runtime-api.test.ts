@@ -50,7 +50,7 @@ vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
 	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
 }));
 
-vi.mock("../../../third_party/cline-sdk/packages/core/dist/server/index.js", () => ({
+vi.mock("@clinebot/core/server", () => ({
 	getValidClineCredentials: oauthMocks.getValidClineCredentials,
 	getValidOcaCredentials: oauthMocks.getValidOcaCredentials,
 	getValidOpenAICodexCredentials: oauthMocks.getValidOpenAICodexCredentials,
@@ -64,7 +64,7 @@ vi.mock("../../../third_party/cline-sdk/packages/core/dist/server/index.js", () 
 	},
 }));
 
-vi.mock("../../../third_party/cline-sdk/packages/llms/dist/index.js", () => ({
+vi.mock("@clinebot/llms/node", () => ({
 	models: {
 		getAllProviders: llmsModelMocks.getAllProviders,
 		getModelsForProvider: llmsModelMocks.getModelsForProvider,
