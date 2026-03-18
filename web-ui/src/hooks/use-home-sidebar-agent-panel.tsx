@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { Spinner } from "@/components/ui/spinner";
+import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
@@ -23,6 +24,7 @@ interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
 	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
 }
@@ -41,6 +43,7 @@ export function useHomeSidebarAgentPanel({
 	currentProjectId,
 	hasNoProjects,
 	runtimeProjectConfig,
+	taskSessions,
 	workspaceGit,
 	latestTaskChatMessage,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
@@ -51,11 +54,21 @@ export function useHomeSidebarAgentPanel({
 			[summary.taskId]: summary,
 		}));
 	}, []);
+	const effectiveSessionSummaries = useMemo(() => {
+		const mergedSessionSummaries = { ...taskSessions };
+		for (const [taskId, summary] of Object.entries(sessionSummaries)) {
+			const newestSummary = selectNewestTaskSessionSummary(mergedSessionSummaries[taskId] ?? null, summary);
+			if (newestSummary) {
+				mergedSessionSummaries[taskId] = newestSummary;
+			}
+		}
+		return mergedSessionSummaries;
+	}, [sessionSummaries, taskSessions]);
 	const { panelMode, taskId } = useHomeAgentSession({
 		currentProjectId,
 		runtimeProjectConfig,
 		workspaceGit,
-		sessionSummaries,
+		sessionSummaries: effectiveSessionSummaries,
 		setSessionSummaries,
 		upsertSessionSummary,
 	});
@@ -83,7 +96,7 @@ export function useHomeSidebarAgentPanel({
 		);
 	}, [runtimeProjectConfig]);
 
-	const homeAgentPanelSummary = taskId ? (sessionSummaries[taskId] ?? null) : null;
+	const homeAgentPanelSummary = taskId ? (effectiveSessionSummaries[taskId] ?? null) : null;
 	const latestHomeTaskChatMessage = useMemo(() => {
 		if (!taskId || !latestTaskChatMessage || latestTaskChatMessage.taskId !== taskId) {
 			return null;

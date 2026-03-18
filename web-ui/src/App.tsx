@@ -361,6 +361,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		hasNoProjects,
 		runtimeProjectConfig,
+		taskSessions: sessions,
 		workspaceGit,
 		latestTaskChatMessage,
 	});
