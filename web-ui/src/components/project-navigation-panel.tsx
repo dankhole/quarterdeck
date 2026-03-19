@@ -251,19 +251,15 @@ const MOD = isMac ? "\u2318" : "Ctrl";
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
-	{ keys: [MOD, "\u23CE"], label: "Create task" },
-	{ keys: [MOD, "Shift", "\u23CE"], label: "Create & start" },
+	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
+	{ keys: ["Click", MOD], label: "Hold to link tasks" },
+	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
-	{ keys: [MOD], label: "Hold to link tasks" },
 ];
 
 const MORE_SHORTCUTS = [
-	{ keys: ["\u2191"], label: "Previous card" },
-	{ keys: ["\u2193"], label: "Next card" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
-	{ keys: ["Esc"], label: "Cancel / back" },
-	{ keys: ["\u2191"], label: "Previous commit" },
-	{ keys: ["\u2193"], label: "Next commit" },
+	{ keys: ["Esc"], label: "Close / back" },
 ];
 
 function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React.ReactElement {

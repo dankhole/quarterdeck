@@ -485,16 +485,29 @@ export default function App(): ReactElement {
 	const handleToggleHomeAgentPanel = useCallback(() => {
 		setHomeSidebarSection((current) => (current === "agent" ? "projects" : "agent"));
 	}, []);
+	const handleToggleGitHistory = useCallback(() => {
+		if (hasNoProjects) {
+			return;
+		}
+		setIsGitHistoryOpen((current) => !current);
+	}, [hasNoProjects]);
+	const handleCloseGitHistory = useCallback(() => {
+		setIsGitHistoryOpen(false);
+	}, []);
 
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
 		isHomeTerminalOpen: showHomeBottomTerminal,
+		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
 		handleToggleDetailTerminal,
-		handleToggleHomeTerminal: handleToggleHomeAgentPanel,
+		handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal,
 		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
 		handleOpenCreateTask,
+		handleOpenSettings,
+		handleToggleGitHistory,
+		handleCloseGitHistory,
 	});
 
 	const {
@@ -758,7 +771,7 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
-					onToggleGitHistory={hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
+					onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
@@ -928,6 +941,7 @@ export default function App(): ReactElement {
 										<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
 									) : undefined
 								}
+								onCloseGitHistory={handleCloseGitHistory}
 								bottomTerminalOpen={isDetailTerminalOpen}
 								bottomTerminalTaskId={detailTerminalTaskId}
 								bottomTerminalSummary={detailTerminalSummary}

@@ -36,6 +36,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
 	return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
+function isEventInsideDialog(target: EventTarget | null): boolean {
+	return target instanceof Element && target.closest("[role='dialog']") !== null;
+}
+
 function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): React.ReactElement {
 	return (
 		<div
@@ -209,6 +213,7 @@ export function CardDetailView({
 	onMoveToTrash,
 	isMoveToTrashLoading,
 	gitHistoryPanel,
+	onCloseGitHistory,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
 	bottomTerminalSummary,
@@ -260,6 +265,7 @@ export function CardDetailView({
 	onMoveToTrash: () => void;
 	isMoveToTrashLoading?: boolean;
 	gitHistoryPanel?: ReactNode;
+	onCloseGitHistory?: () => void;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
@@ -420,7 +426,15 @@ export function CardDetailView({
 		"keydown",
 		useCallback(
 			(event: KeyboardEvent) => {
-				if (event.key !== "Escape" || event.defaultPrevented || isTypingTarget(event.target)) {
+				if (event.key !== "Escape" || event.defaultPrevented || isEventInsideDialog(event.target)) {
+					return;
+				}
+				if (gitHistoryPanel && onCloseGitHistory) {
+					event.preventDefault();
+					onCloseGitHistory();
+					return;
+				}
+				if (isTypingTarget(event.target)) {
 					return;
 				}
 				if (isDiffExpanded) {
@@ -428,7 +442,7 @@ export function CardDetailView({
 					setIsDiffExpanded(false);
 				}
 			},
-			[isDiffExpanded],
+			[gitHistoryPanel, isDiffExpanded, onCloseGitHistory],
 		),
 	);
 

@@ -221,6 +221,41 @@ describe("CardDetailView", () => {
 		expect(lastCall?.[7]).toBe(true);
 	});
 
+	it("closes git history before handling other Escape behavior", async () => {
+		const onCloseGitHistory = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					gitHistoryPanel={<div data-testid="git-history-panel">Git history</div>}
+					onCloseGitHistory={onCloseGitHistory}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const input = document.createElement("input");
+		container.appendChild(input);
+		input.focus();
+
+		await act(async () => {
+			input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+		});
+
+		expect(onCloseGitHistory).toHaveBeenCalledTimes(1);
+	});
+
 	it("renders native chat panel for cline agent", async () => {
 		await act(async () => {
 			root.render(
