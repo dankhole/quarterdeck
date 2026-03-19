@@ -20,7 +20,14 @@ import { TaskStartServicePromptDialog } from "@/components/task-start-service-pr
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogTitle } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogBody,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
@@ -43,8 +50,8 @@ import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isTaskAgentSetupSatisfied, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
@@ -1043,22 +1050,24 @@ export default function App(): ReactElement {
 					}
 				}}
 			>
-				<AlertDialogTitle className="text-sm font-semibold text-text-primary mb-2">
-					{gitActionErrorTitle}
-				</AlertDialogTitle>
-				<p className="text-[13px] text-text-secondary mb-3">{gitActionError?.message}</p>
-				{gitActionError?.output ? (
-					<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto max-h-[220px] mb-4">
-						{gitActionError.output}
-					</pre>
-				) : null}
-				<div className="flex justify-end">
+				<AlertDialogHeader>
+					<AlertDialogTitle>{gitActionErrorTitle}</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<p>{gitActionError?.message}</p>
+					{gitActionError?.output ? (
+						<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
+							{gitActionError.output}
+						</pre>
+					) : null}
+				</AlertDialogBody>
+				<AlertDialogFooter className="justify-end">
 					<AlertDialogAction asChild>
 						<Button variant="default" onClick={clearGitActionError}>
 							Close
 						</Button>
 					</AlertDialogAction>
-				</div>
+				</AlertDialogFooter>
 			</AlertDialog>
 		</div>
 	);
