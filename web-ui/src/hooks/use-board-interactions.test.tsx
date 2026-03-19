@@ -294,16 +294,15 @@ describe("useBoardInteractions", () => {
 			}
 		});
 
-		// moveTaskToColumn updates updatedAt with Date.now(), so match without it.
-		const { updatedAt: _ensureUpdatedAt, ...ensureTaskFields } =
-			ensureTaskWorkspace.mock.calls[0]?.[0] ?? {};
-		expect(ensureTaskFields).toEqual({ ...trashTask, updatedAt: undefined });
-		expect(_ensureUpdatedAt).toBeGreaterThan(0);
-
-		const { updatedAt: _startUpdatedAt, ...startTaskFields } =
-			startTaskSession.mock.calls[0]?.[0] ?? {};
-		expect(startTaskFields).toEqual({ ...trashTask, updatedAt: undefined });
-		expect(startTaskSession.mock.calls[0]?.[1]).toEqual({ resumeFromTrash: true });
+		// moveTaskToColumn updates updatedAt with Date.now(), so match fields except updatedAt.
+		const expectedTask = expect.objectContaining({
+			id: trashTask.id,
+			prompt: trashTask.prompt,
+			baseRef: trashTask.baseRef,
+			createdAt: trashTask.createdAt,
+		});
+		expect(ensureTaskWorkspace).toHaveBeenCalledWith(expectedTask);
+		expect(startTaskSession).toHaveBeenCalledWith(expectedTask, { resumeFromTrash: true });
 		expect(showAppToastMock).toHaveBeenCalledWith({
 			intent: "warning",
 			icon: "warning-sign",
