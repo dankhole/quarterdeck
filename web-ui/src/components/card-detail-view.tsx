@@ -3,9 +3,8 @@ import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-
-import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
@@ -39,7 +38,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): React.ReactElement {
 	return (
-		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+		<div
+			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
+		>
 			<div
 				style={{
 					display: "flex",
@@ -57,26 +58,11 @@ function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): Rea
 						<div className="kb-skeleton" style={{ height: 14, width: "62%", borderRadius: 3 }} />
 						<div className="kb-skeleton" style={{ height: 16, width: 42, borderRadius: 999 }} />
 					</div>
-					<div
-						className="kb-skeleton"
-						style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }}
-					/>
-					<div
-						className="kb-skeleton"
-						style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }}
-					/>
-					<div
-						className="kb-skeleton"
-						style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }}
-					/>
-					<div
-						className="kb-skeleton"
-						style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }}
-					/>
-					<div
-						className="kb-skeleton"
-						style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }}
-					/>
+					<div className="kb-skeleton" style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }} />
+					<div className="kb-skeleton" style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }} />
 					<div className="kb-skeleton" style={{ height: 13, width: "76%", borderRadius: 3 }} />
 				</div>
 				<div style={{ flex: "1 1 0" }} />
@@ -109,7 +95,9 @@ function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): Rea
 
 function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactElement {
 	return (
-		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+		<div
+			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
+		>
 			<div className="kb-empty-state-center" style={{ flex: 1 }}>
 				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 					<GitCompareArrows size={40} />
@@ -132,10 +120,7 @@ function DiffToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div
-			className="flex items-center gap-1 px-2 py-1"
-			style={{ borderBottom: "1px solid var(--color-divider)" }}
-		>
+		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
 			{isExpanded ? (
 				<Button
 					variant="ghost"
@@ -152,7 +137,11 @@ function DiffToolbar({
 					size="sm"
 					onClick={() => onModeChange("working_copy")}
 					className="h-5 rounded-sm text-xs"
-					style={mode === "working_copy" ? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" } : undefined}
+					style={
+						mode === "working_copy"
+							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
+							: undefined
+					}
 				>
 					All Changes
 				</Button>
@@ -161,7 +150,11 @@ function DiffToolbar({
 					size="sm"
 					onClick={() => onModeChange("last_turn")}
 					className="h-5 rounded-sm text-xs"
-					style={mode === "last_turn" ? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" } : undefined}
+					style={
+						mode === "last_turn"
+							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
+							: undefined
+					}
 				>
 					Last Turn
 				</Button>
@@ -467,7 +460,15 @@ export function CardDetailView({
 	}, [selection.card.id]);
 
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}>
+		<div
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				minHeight: 0,
+				overflow: "hidden",
+				background: "var(--color-surface-0)",
+			}}
+		>
 			{!isDiffExpanded ? (
 				<ColumnContextPanel
 					selection={selection}
@@ -514,9 +515,9 @@ export function CardDetailView({
 											summary={sessionSummary}
 											taskColumnId={selection.column.id}
 											onSendMessage={onSendClineChatMessage}
-									onCancelTurn={onCancelClineChatTurn}
+											onCancelTurn={onCancelClineChatTurn}
 											onLoadMessages={onLoadClineChatMessages}
-									incomingMessage={latestClineChatMessage}
+											incomingMessage={latestClineChatMessage}
 											onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
 											onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
 											isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
@@ -561,6 +562,8 @@ export function CardDetailView({
 													? getTaskAutoReviewActionLabel(selection.card.autoReviewMode)
 													: null
 											}
+											panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+											terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 											showRightBorder={false}
 											taskColumnId={selection.column.id}
 										/>
@@ -629,9 +632,9 @@ export function CardDetailView({
 												onSendToTerminal={
 													onSendReviewComments
 														? (formatted) => {
-															onSendReviewComments(selection.card.id, formatted);
-															setIsDiffExpanded(false);
-														}
+																onSendReviewComments(selection.card.id, formatted);
+																setIsDiffExpanded(false);
+															}
 														: undefined
 												}
 												comments={diffComments}
