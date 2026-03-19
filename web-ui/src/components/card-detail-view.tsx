@@ -473,6 +473,13 @@ export function CardDetailView({
 		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
+	const handleToggleDiffExpand = useCallback(() => {
+		if (!isDiffExpanded && bottomTerminalOpen) {
+			onBottomTerminalClose();
+		}
+		setIsDiffExpanded((previous) => !previous);
+	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+
 	return (
 		<div
 			style={{
@@ -619,13 +626,13 @@ export function CardDetailView({
 								}}
 							>
 								{isRuntimeAvailable ? (
-									<DiffToolbar
-										mode={diffMode}
-										onModeChange={setDiffMode}
-										isExpanded={isDiffExpanded}
-										onToggleExpand={() => setIsDiffExpanded((previous) => !previous)}
-									/>
-								) : null}
+								<DiffToolbar
+									mode={diffMode}
+									onModeChange={setDiffMode}
+									isExpanded={isDiffExpanded}
+									onToggleExpand={handleToggleDiffExpand}
+								/>
+							) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 									{isWorkspaceChangesPending ? (
 										<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
