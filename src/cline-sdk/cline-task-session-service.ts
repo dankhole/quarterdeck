@@ -3,7 +3,9 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type { RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
+import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
+import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
 import { applyClineSessionEvent } from "./cline-event-adapter.js";
 import { type ClineMessageRepository, createInMemoryClineMessageRepository } from "./cline-message-repository.js";
 import {
@@ -390,23 +392,67 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.messageRepository.emitMessage(taskId, message);
 	}
 
+	private shouldCaptureReviewCheckpoint(
+		previousSummary: RuntimeTaskSessionSummary,
+		nextSummary: RuntimeTaskSessionSummary | null,
+	): nextSummary is RuntimeTaskSessionSummary {
+		if (!nextSummary) {
+			return false;
+		}
+		if (isHomeAgentSessionId(nextSummary.taskId) || !nextSummary.workspacePath) {
+			return false;
+		}
+		return previousSummary.state !== "awaiting_review" && nextSummary.state === "awaiting_review";
+	}
+
+	private captureReviewCheckpoint(taskId: string, summary: RuntimeTaskSessionSummary): void {
+		const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
+		const staleRef = summary.previousTurnCheckpoint?.ref ?? null;
+		void captureTaskTurnCheckpoint({
+			cwd: summary.workspacePath ?? ".",
+			taskId,
+			turn: nextTurn,
+		})
+			.then((checkpoint) => {
+				this.applyTurnCheckpoint(taskId, checkpoint);
+				if (!staleRef) {
+					return;
+				}
+				void deleteTaskTurnCheckpointRef({
+					cwd: summary.workspacePath ?? ".",
+					ref: staleRef,
+				}).catch(() => {
+					// Best effort cleanup only.
+				});
+			})
+			.catch(() => {
+				// Best effort checkpointing only.
+			});
+	}
+
 	private handleTaskEvent(taskId: string, event: unknown): void {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
 			return;
 		}
+		const previousSummary = cloneSummary(entry.summary);
+		let latestSummary: RuntimeTaskSessionSummary | null = null;
 		applyClineSessionEvent({
 			event,
 			taskId,
 			entry,
 			pendingTurnCancelTaskIds: this.pendingTurnCancelTaskIds,
 			emitSummary: (summary: RuntimeTaskSessionSummary) => {
+				latestSummary = summary;
 				this.emitSummary(summary);
 			},
 			emitMessage: (taskIdFromEvent: string, message: ClineTaskMessage) => {
 				this.emitMessage(taskIdFromEvent, message);
 			},
 		});
+		if (this.shouldCaptureReviewCheckpoint(previousSummary, latestSummary)) {
+			this.captureReviewCheckpoint(taskId, latestSummary);
+		}
 	}
 }
 

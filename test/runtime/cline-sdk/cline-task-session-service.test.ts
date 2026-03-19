@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import type {
 	ClinePersistedTaskSessionSnapshot,
@@ -10,6 +10,16 @@ import type {
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
+
+const turnCheckpointMocks = vi.hoisted(() => ({
+	captureTaskTurnCheckpoint: vi.fn(),
+	deleteTaskTurnCheckpointRef: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
+	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
+	deleteTaskTurnCheckpointRef: turnCheckpointMocks.deleteTaskTurnCheckpointRef,
+}));
 
 function createDeferred<T>() {
 	let resolve: (value: T) => void = () => {};
@@ -176,6 +186,18 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 
 describe("InMemoryClineTaskSessionService", () => {
 	const services: ClineTaskSessionService[] = [];
+
+	beforeEach(() => {
+		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
+		turnCheckpointMocks.deleteTaskTurnCheckpointRef.mockReset();
+		turnCheckpointMocks.captureTaskTurnCheckpoint.mockImplementation(async (input: { taskId: string; turn: number }) => ({
+			turn: input.turn,
+			ref: `refs/kanban/checkpoints/${input.taskId}/turn/${input.turn}`,
+			commit: `commit-${input.turn}`,
+			createdAt: input.turn,
+		}));
+		turnCheckpointMocks.deleteTaskTurnCheckpointRef.mockResolvedValue(undefined);
+	});
 
 	function createTrackedService(): TaskSessionServiceHarness {
 		const runtime = createFakeClineSessionRuntime();
@@ -439,6 +461,12 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
+		service.applyTurnCheckpoint("task-1", {
+			turn: 1,
+			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			commit: "commit-1",
+			createdAt: 1,
+		});
 
 		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
@@ -453,6 +481,15 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(summary?.reviewReason).toBe("hook");
 		expect(summary?.latestHookActivity?.hookEventName).toBe("agent_end");
 		expect(summary?.latestHookActivity?.finalMessage).toBe("Done. Added the comment.");
+		await vi.waitFor(() => {
+			expect(turnCheckpointMocks.captureTaskTurnCheckpoint).toHaveBeenCalledWith({
+				cwd: "/tmp/worktree",
+				taskId: "task-1",
+				turn: 2,
+			});
+		});
+		expect(service.getSummary("task-1")?.previousTurnCheckpoint?.commit).toBe("commit-1");
+		expect(service.getSummary("task-1")?.latestTurnCheckpoint?.commit).toBe("commit-2");
 	});
 
 	it("creates task entry and session mapping before start() resolves", async () => {
