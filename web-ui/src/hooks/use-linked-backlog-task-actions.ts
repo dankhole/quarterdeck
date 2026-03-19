@@ -182,7 +182,7 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (taskId: string, fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
+		async (taskId: string, _fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
 			const boardSnapshot = boardRef.current;
 			const selection = findCardSelection(boardSnapshot, taskId);
 			if (!selection) {

@@ -485,9 +485,6 @@ export default function App(): ReactElement {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
 	}, []);
-	const handleToggleHomeAgentPanel = useCallback(() => {
-		setHomeSidebarSection((current) => (current === "agent" ? "projects" : "agent"));
-	}, []);
 	const handleToggleGitHistory = useCallback(() => {
 		if (hasNoProjects) {
 			return;
@@ -515,7 +512,6 @@ export default function App(): ReactElement {
 
 	const {
 		handleProgrammaticCardMoveReady,
-		confirmMoveTaskToTrash,
 		handleCreateDependency,
 		handleDeleteDependency,
 		handleDragEnd,

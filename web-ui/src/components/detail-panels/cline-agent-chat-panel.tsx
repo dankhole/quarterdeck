@@ -68,8 +68,6 @@ export function ClineAgentChatPanel({
 		setDraft,
 		messages,
 		error,
-		isSending,
-		isCanceling,
 		canSend,
 		canCancel,
 		showReviewActions,
