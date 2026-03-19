@@ -112,33 +112,16 @@ export function ProjectNavigationPanel({
 
 			{activeSection === "projects" ? (
 				<>
-					<div className="flex items-center justify-end" style={{ padding: "4px 12px" }}>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<Plus size={14} />}
-							onClick={onAddProject}
-							aria-label="Add project"
-							disabled={removingProjectId !== null}
-						/>
-					</div>
-
 					<div
 						className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
-						style={{ padding: "4px 0" }}
+						style={{ padding: "4px 12px" }}
 					>
-						{sortedProjects.length === 0 ? (
-							isLoadingProjects ? (
-								<div style={{ padding: "4px 0" }}>
-									{Array.from({ length: 3 }).map((_, index) => (
-										<ProjectRowSkeleton key={`project-skeleton-${index}`} />
-									))}
-								</div>
-							) : (
-								<div className="text-center" style={{ padding: "24px 12px" }}>
-									<span className="text-text-secondary">No projects yet</span>
-								</div>
-							)
+						{sortedProjects.length === 0 && isLoadingProjects ? (
+							<div style={{ padding: "4px 0" }}>
+								{Array.from({ length: 3 }).map((_, index) => (
+									<ProjectRowSkeleton key={`project-skeleton-${index}`} />
+								))}
+							</div>
 						) : null}
 
 						{sortedProjects.map((project) => (
@@ -157,6 +140,19 @@ export function ProjectNavigationPanel({
 								}}
 							/>
 						))}
+
+						{!isLoadingProjects ? (
+							<button
+								type="button"
+								className="kb-project-row flex cursor-pointer items-center gap-1.5 rounded-md text-text-secondary hover:text-text-primary"
+								style={{ padding: "6px 8px" }}
+								onClick={onAddProject}
+								disabled={removingProjectId !== null}
+							>
+								<Plus size={14} className="shrink-0" />
+								<span className="text-sm">Add project</span>
+							</button>
+						) : null}
 					</div>
 					<ShortcutsCard />
 				</>
@@ -282,7 +278,7 @@ function ShortcutsCard(): React.ReactElement {
 
 	return (
 		<div style={{ padding: "8px 12px" }}>
-			<div className="rounded-md p-2.5">
+			<div style={{ padding: "0 8px" }}>
 				<div className="flex flex-col gap-0.5">
 					{ESSENTIAL_SHORTCUTS.map((s) => (
 						<ShortcutHint key={s.label} keys={s.keys} label={s.label} />
@@ -314,7 +310,7 @@ function ShortcutsCard(): React.ReactElement {
 function ProjectRowSkeleton(): React.ReactElement {
 	return (
 		<div
-			className="flex items-center gap-1.5 mx-2"
+			className="flex items-center gap-1.5"
 			style={{
 				padding: "6px 8px",
 			}}
@@ -406,7 +402,7 @@ function ProjectRow({
 					onSelect(project.id);
 				}
 			}}
-			className={cn("kb-project-row cursor-pointer rounded-md mx-2", isCurrent && "kb-project-row-selected")}
+			className={cn("kb-project-row cursor-pointer rounded-md", isCurrent && "kb-project-row-selected")}
 			style={{
 				display: "flex",
 				alignItems: "center",
