@@ -1,5 +1,6 @@
 import type {
 	RuntimeAgentId,
+	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeTaskChatMessage,
@@ -7,6 +8,24 @@ import type {
 
 export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
 	return agentId === "cline";
+}
+
+export function getRuntimeClineProviderSettings(
+	config: Pick<RuntimeConfigResponse, "clineProviderSettings"> | null | undefined,
+): RuntimeClineProviderSettings {
+	return (
+		config?.clineProviderSettings ?? {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		}
+	);
 }
 
 export function isTaskAgentSetupSatisfied(
