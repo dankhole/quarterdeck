@@ -8,8 +8,11 @@ import { cn } from "@/components/ui/cn";
 import {
 	AlertDialog,
 	AlertDialogAction,
+	AlertDialogBody,
 	AlertDialogCancel,
 	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
@@ -186,22 +189,22 @@ export function ProjectNavigationPanel({
 					}
 				}}
 			>
-				<AlertDialogTitle className="text-sm font-semibold text-text-primary mb-2">
-					Delete project permanently?
-				</AlertDialogTitle>
-				<AlertDialogDescription asChild>
-					<div>
-						<p className="text-text-secondary mb-2">
-							{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}
-						</p>
-						<p className="text-text-primary mb-2">
-							This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees,
-							and stop any running processes for this project.
-						</p>
-						<p className="text-text-primary">This action cannot be undone.</p>
-					</div>
-				</AlertDialogDescription>
-				<div className="flex justify-end gap-2 mt-4">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove Project</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<AlertDialogDescription asChild>
+						<div className="flex flex-col gap-3">
+							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}</p>
+							<p className="text-text-primary">
+								This will delete all project tasks ({pendingProjectTaskCount}), remove task
+								workspaces/worktrees, and stop any running processes for this project.
+							</p>
+							<p className="text-text-primary">This action cannot be undone.</p>
+						</div>
+					</AlertDialogDescription>
+				</AlertDialogBody>
+				<AlertDialogFooter>
 					<AlertDialogCancel asChild>
 						<Button
 							variant="default"
@@ -232,14 +235,14 @@ export function ProjectNavigationPanel({
 							{isProjectRemovalPending ? (
 								<>
 									<Spinner size={14} />
-									Deleting...
+									Removing...
 								</>
 							) : (
-								"Delete Project"
+								"Remove Project"
 							)}
 						</Button>
 					</AlertDialogAction>
-				</div>
+				</AlertDialogFooter>
 			</AlertDialog>
 		</aside>
 	);
