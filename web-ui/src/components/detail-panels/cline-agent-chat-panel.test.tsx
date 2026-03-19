@@ -30,7 +30,6 @@ describe("ClineAgentChatPanel", () => {
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
 	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
-	let originalScrollIntoView: typeof HTMLElement.prototype.scrollIntoView;
 
 	beforeEach(() => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -39,9 +38,11 @@ describe("ClineAgentChatPanel", () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
-		originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 		scrollIntoViewMock = vi.fn();
-		HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoViewMock,
+		});
 	});
 
 	afterEach(() => {
@@ -55,7 +56,10 @@ describe("ClineAgentChatPanel", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: () => {},
+		});
 	});
 
 	it("renders reasoning and tool messages with specialized UI", async () => {
