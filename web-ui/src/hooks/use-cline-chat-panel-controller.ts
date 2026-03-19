@@ -40,6 +40,28 @@ interface UseClineChatPanelControllerResult {
 	handleCancelTurn: () => void;
 }
 
+function hasVisibleStreamingMessage(
+	summary: RuntimeTaskSessionSummary | null,
+	messages: ClineChatMessage[],
+	incomingMessage: ClineChatMessage | null,
+): boolean {
+	const latestHookEventName = summary?.latestHookActivity?.hookEventName ?? null;
+	if (latestHookEventName === "assistant_delta" || latestHookEventName === "tool_call") {
+		return true;
+	}
+
+	if (incomingMessage) {
+		if (incomingMessage.role === "assistant" || incomingMessage.role === "reasoning") {
+			return true;
+		}
+		if (incomingMessage.role === "tool" && incomingMessage.meta?.hookEventName === "tool_call_start") {
+			return true;
+		}
+	}
+
+	return messages.some((message) => message.role === "tool" && message.meta?.hookEventName === "tool_call_start");
+}
+
 export function useClineChatPanelController({
 	taskId,
 	summary,
@@ -66,7 +88,8 @@ export function useClineChatPanelController({
 	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
 	const canCancel = Boolean(onCancelTurn) && summary?.state === "running" && !isCanceling;
 	const showReviewActions = taskColumnId === "review" && Boolean(onCommit) && Boolean(onOpenPr);
-	const showAgentProgressIndicator = summary?.state === "running";
+	const showAgentProgressIndicator =
+		summary?.state === "running" && !hasVisibleStreamingMessage(summary, messages, incomingMessage);
 	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
 	const showCancelAutomaticAction = Boolean(cancelAutomaticActionLabel && onCancelAutomaticAction);
 

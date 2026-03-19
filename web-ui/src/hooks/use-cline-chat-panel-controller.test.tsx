@@ -12,6 +12,7 @@ interface HookSnapshot {
 	canSend: boolean;
 	canCancel: boolean;
 	showReviewActions: boolean;
+	showAgentProgressIndicator: boolean;
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
 	setDraft: (draft: string) => void;
@@ -48,6 +49,7 @@ function HookHarness({
 	summary,
 	taskColumnId,
 	onSendMessage,
+	incomingMessage,
 	onSnapshot,
 }: {
 	summary: RuntimeTaskSessionSummary | null;
@@ -62,6 +64,18 @@ function HookHarness({
 			createdAt: number;
 		} | null;
 	}>;
+	incomingMessage?: {
+		id: string;
+		role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
+		content: string;
+		createdAt: number;
+		meta?: {
+			toolName?: string | null;
+			hookEventName?: string | null;
+			toolCallId?: string | null;
+			streamType?: string | null;
+		} | null;
+	} | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const loadMessages = useCallback(async () => [], []);
@@ -75,6 +89,7 @@ function HookHarness({
 		taskColumnId,
 		onSendMessage,
 		onLoadMessages: loadMessages,
+		incomingMessage,
 		onCommit: handleCommit,
 		onOpenPr: handleOpenPr,
 		onMoveToTrash: handleMoveToTrash,
@@ -92,6 +107,7 @@ function HookHarness({
 			canSend: state.canSend,
 			canCancel: state.canCancel,
 			showReviewActions: state.showReviewActions,
+			showAgentProgressIndicator: state.showAgentProgressIndicator,
 			showActionFooter: state.showActionFooter,
 			showCancelAutomaticAction: state.showCancelAutomaticAction,
 			setDraft: state.setDraft,
@@ -191,7 +207,32 @@ describe("useClineChatPanelController", () => {
 		expect(requireSnapshot(latestSnapshot).canSend).toBe(true);
 		expect(requireSnapshot(latestSnapshot).canCancel).toBe(false);
 		expect(requireSnapshot(latestSnapshot).showReviewActions).toBe(true);
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(true);
 		expect(requireSnapshot(latestSnapshot).showActionFooter).toBe(true);
 		expect(requireSnapshot(latestSnapshot).showCancelAutomaticAction).toBe(true);
+	});
+
+	it("hides the thinking indicator as soon as an assistant stream event arrives", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running")}
+					incomingMessage={{
+						id: "assistant-1",
+						role: "assistant",
+						content: "H",
+						createdAt: 2,
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
 	});
 });

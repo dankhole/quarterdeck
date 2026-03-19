@@ -4,9 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
 
-function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSessionSummary {
+function createSummary(
+	state: RuntimeTaskSessionSummary["state"],
+	latestHookActivity: RuntimeTaskHookActivity | null = null,
+): RuntimeTaskSessionSummary {
 	return {
 		taskId: "task-1",
 		state,
@@ -19,7 +22,7 @@ function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSe
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
-		latestHookActivity: null,
+		latestHookActivity,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -140,6 +143,75 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.textContent).toContain("Thinking...");
 		expect(container.textContent).not.toContain("Cline chat");
 		expect(scrollIntoViewMock).toHaveBeenCalled();
+	});
+
+	it("hides the thinking indicator while assistant text is streaming", async () => {
+		const messages: ClineChatMessage[] = [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "Streaming reply",
+				createdAt: 1,
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running", {
+						activityText: "Agent active",
+						toolName: null,
+						finalMessage: null,
+						hookEventName: "assistant_delta",
+						notificationType: null,
+						source: "cline-sdk",
+					})}
+					onLoadMessages={async () => messages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Streaming reply");
+		expect(container.textContent).not.toContain("Thinking...");
+	});
+
+	it("hides the thinking indicator while a tool call is streaming", async () => {
+		const messages: ClineChatMessage[] = [
+			{
+				id: "tool-1",
+				role: "tool",
+				content: ["Tool: Read", "Input:", '{"file":"src/index.ts"}'].join("\n"),
+				createdAt: 1,
+				meta: {
+					hookEventName: "tool_call_start",
+					toolName: "Read",
+					streamType: "tool",
+				},
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running", {
+						activityText: "Using Read",
+						toolName: "Read",
+						finalMessage: null,
+						hookEventName: "tool_call",
+						notificationType: null,
+						source: "cline-sdk",
+					})}
+					onLoadMessages={async () => messages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Read");
+		expect(container.textContent).not.toContain("Thinking...");
 	});
 
 	it("renders assistant markdown including fenced code blocks", async () => {
