@@ -1,6 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
+import type {
+	ClinePersistedTaskSessionSnapshot,
+	ClineSessionRuntime,
+	CreateInMemoryClineSessionRuntimeOptions,
+	StartClineSessionRuntimeRequest,
+	StartClineSessionRuntimeResult,
+} from "../../../src/cline-sdk/cline-session-runtime.js";
+import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
+import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 
 function createDeferred<T>() {
 	let resolve: (value: T) => void = () => {};
@@ -16,9 +25,183 @@ function createDeferred<T>() {
 	};
 }
 
+type StartTaskSessionMock = Mock<
+	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
+>;
+type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string) => Promise<unknown>>;
+type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
+type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
+type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
+type DisposeMock = Mock<() => Promise<void>>;
+
+interface FakeClineSessionRuntimeController {
+	sessionIdByTaskId: Map<string, string>;
+	taskIdBySessionId: Map<string, string>;
+	startTaskSessionMock: StartTaskSessionMock;
+	sendTaskSessionInputMock: SendTaskSessionInputMock;
+	stopTaskSessionMock: StopTaskSessionMock;
+	abortTaskSessionMock: AbortTaskSessionMock;
+	readPersistedTaskSessionMock: ReadPersistedTaskSessionMock;
+	disposeMock: DisposeMock;
+	createRuntime(options: CreateInMemoryClineSessionRuntimeOptions): ClineSessionRuntime;
+	getTaskSessionId(taskId: string): string | null;
+	bindTaskSession(taskId: string, sessionId: string): void;
+	emitAgentEvent(sessionId: string, event: unknown): void;
+	emitChunk(sessionId: string, chunk: string, stream?: string): void;
+}
+
+interface TaskSessionServiceHarness {
+	service: ClineTaskSessionService;
+	runtime: FakeClineSessionRuntimeController;
+}
+
+function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
+	const sessionIdByTaskId = new Map<string, string>();
+	const taskIdBySessionId = new Map<string, string>();
+	let onTaskEvent: ((taskId: string, event: unknown) => void) | null = null;
+
+	const bindTaskSession = (taskId: string, sessionId: string) => {
+		const previousSessionId = sessionIdByTaskId.get(taskId);
+		if (previousSessionId) {
+			taskIdBySessionId.delete(previousSessionId);
+		}
+		sessionIdByTaskId.set(taskId, sessionId);
+		taskIdBySessionId.set(sessionId, taskId);
+	};
+
+	const startTaskSessionMock: StartTaskSessionMock = vi.fn(
+		async (request: StartClineSessionRuntimeRequest & { sessionId: string }) => ({
+			sessionId: request.sessionId,
+			result: {},
+		}),
+	);
+	const sendTaskSessionInputMock: SendTaskSessionInputMock = vi.fn(async () => ({}));
+	const stopTaskSessionMock: StopTaskSessionMock = vi.fn(async () => {});
+	const abortTaskSessionMock: AbortTaskSessionMock = vi.fn(async () => {});
+	const readPersistedTaskSessionMock: ReadPersistedTaskSessionMock = vi.fn(async () => null);
+	const disposeMock: DisposeMock = vi.fn(async () => {});
+
+	const createRuntime = (options: CreateInMemoryClineSessionRuntimeOptions): ClineSessionRuntime => {
+		onTaskEvent = options.onTaskEvent ?? null;
+		return {
+			async startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult> {
+				const requestedSessionId = createSessionId(request.taskId);
+				bindTaskSession(request.taskId, requestedSessionId);
+
+				const startResult = await startTaskSessionMock({
+					...request,
+					sessionId: requestedSessionId,
+				});
+
+				bindTaskSession(request.taskId, startResult.sessionId);
+				return startResult;
+			},
+			async sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown> {
+				return await sendTaskSessionInputMock(taskId, prompt);
+			},
+			async stopTaskSession(taskId: string): Promise<void> {
+				await stopTaskSessionMock(taskId);
+			},
+			async abortTaskSession(taskId: string): Promise<void> {
+				await abortTaskSessionMock(taskId);
+			},
+			getTaskSessionId(taskId: string): string | null {
+				return sessionIdByTaskId.get(taskId) ?? null;
+			},
+			async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
+				return await readPersistedTaskSessionMock(taskId);
+			},
+			async dispose(): Promise<void> {
+				sessionIdByTaskId.clear();
+				taskIdBySessionId.clear();
+				await disposeMock();
+			},
+		};
+	};
+
+	const emitAgentEvent = (sessionId: string, event: unknown) => {
+		if (!onTaskEvent) {
+			throw new Error("Fake runtime has not been attached to a task session service.");
+		}
+		const taskId = taskIdBySessionId.get(sessionId);
+		if (!taskId) {
+			throw new Error(`No task is bound to session ${sessionId}.`);
+		}
+		onTaskEvent(taskId, {
+			type: "agent_event",
+			payload: {
+				sessionId,
+				event,
+			},
+		});
+	};
+
+	const emitChunk = (sessionId: string, chunk: string, stream = "agent") => {
+		if (!onTaskEvent) {
+			throw new Error("Fake runtime has not been attached to a task session service.");
+		}
+		const taskId = taskIdBySessionId.get(sessionId);
+		if (!taskId) {
+			throw new Error(`No task is bound to session ${sessionId}.`);
+		}
+		onTaskEvent(taskId, {
+			type: "chunk",
+			payload: {
+				sessionId,
+				stream,
+				chunk,
+				ts: Date.now(),
+			},
+		});
+	};
+
+	return {
+		sessionIdByTaskId,
+		taskIdBySessionId,
+		startTaskSessionMock,
+		sendTaskSessionInputMock,
+		stopTaskSessionMock,
+		abortTaskSessionMock,
+		readPersistedTaskSessionMock,
+		disposeMock,
+		createRuntime,
+		getTaskSessionId(taskId: string): string | null {
+			return sessionIdByTaskId.get(taskId) ?? null;
+		},
+		bindTaskSession,
+		emitAgentEvent,
+		emitChunk,
+	};
+}
+
 describe("InMemoryClineTaskSessionService", () => {
+	const services: ClineTaskSessionService[] = [];
+
+	function createTrackedService(): TaskSessionServiceHarness {
+		const runtime = createFakeClineSessionRuntime();
+		// Keep this suite fully in-process. Earlier Node 22 GitHub runner hangs
+		// came from the real SDK session runtime booting a live child process
+		// before Vitest could report a single test result from this file.
+		const service = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtime.createRuntime(options),
+		});
+		services.push(service);
+		return {
+			service,
+			runtime,
+		};
+	}
+
+	afterEach(async () => {
+		await Promise.allSettled(
+			services.splice(0).map(async (service) => {
+				await service.dispose();
+			}),
+		);
+	});
+
 	it("starts a cline session and captures initial prompt as a user message", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service } = createTrackedService();
 
 		const summary = await service.startTaskSession({
 			taskId: "task-1",
@@ -34,24 +217,7 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("defaults to anthropic provider when provider is not explicitly configured", async () => {
-		const service = createInMemoryClineTaskSessionService();
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => ({})),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		const { service, runtime } = createTrackedService();
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -59,38 +225,19 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Investigate startup",
 		});
 		await vi.waitFor(() => {
-			expect(fakeHost.start).toHaveBeenCalledTimes(1);
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
-		expect(fakeHost.start).toHaveBeenCalledWith(
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				config: expect.objectContaining({
-					providerId: "anthropic",
-					systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
-				}),
+				providerId: "anthropic",
+				systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
 			}),
 		);
 	});
 
 	it("appends Kanban sidebar instructions for home sessions", async () => {
-		const service = createInMemoryClineTaskSessionService();
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => ({})),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		const { service, runtime } = createTrackedService();
 
 		await service.startTaskSession({
 			taskId: "__home_agent__:workspace-1:cline:abc123",
@@ -98,34 +245,28 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Add a task",
 		});
 		await vi.waitFor(() => {
-			expect(fakeHost.start).toHaveBeenCalledTimes(1);
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
-		expect(fakeHost.start).toHaveBeenCalledWith(
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				config: expect.objectContaining({
-					systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
-				}),
+				systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
 			}),
 		);
-		expect(fakeHost.start).toHaveBeenCalledWith(
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				config: expect.objectContaining({
-					systemPrompt: expect.stringContaining("Kanban sidebar agent"),
-				}),
+				systemPrompt: expect.stringContaining("Kanban sidebar agent"),
 			}),
 		);
-		expect(fakeHost.start).toHaveBeenCalledWith(
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				config: expect.objectContaining({
-					systemPrompt: expect.stringContaining("kanban task create"),
-				}),
+				systemPrompt: expect.stringContaining("kanban task create"),
 			}),
 		);
 	});
 
 	it("stores follow-up user input and keeps session running", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
@@ -139,7 +280,7 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("marks session interrupted when stopped", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
@@ -153,27 +294,7 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("cancels only the active turn without interrupting or trashing the task", async () => {
-		const service = createInMemoryClineTaskSessionService();
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => ({})),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		const { service, runtime } = createTrackedService();
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -186,17 +307,10 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(canceled?.reviewReason).toBeNull();
 		expect(canceled?.latestHookActivity?.activityText).toBe("Turn canceled");
 
-		const sessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1") ?? "session-1";
-		serviceInternal.sessionRuntime.taskIdBySessionId.set(sessionId, "task-1");
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId,
-				event: {
-					type: "done",
-					reason: "aborted",
-				},
-			},
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		runtime.emitAgentEvent(sessionId, {
+			type: "done",
+			reason: "aborted",
 		});
 
 		expect(service.getSummary("task-1")?.state).toBe("idle");
@@ -204,57 +318,28 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("uses agent_event text deltas for streaming and ignores serialized agent chunks", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
 
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
-
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "text",
-					text: "Hello",
-					accumulated: "Hello",
-				},
-			},
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "text",
+			text: "Hello",
+			accumulated: "Hello",
 		});
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "chunk",
-			payload: {
-				sessionId: "session-1",
-				stream: "agent",
-				chunk: '{"type":"content_start","contentType":"text","text":"SHOULD_NOT_RENDER"}',
-				ts: Date.now(),
-			},
-		});
+		runtime.emitChunk(sessionId, '{"type":"content_start","contentType":"text","text":"SHOULD_NOT_RENDER"}');
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "text",
-					text: " world",
-					accumulated: "Hello world",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "text",
+			text: " world",
+			accumulated: "Hello world",
 		});
 
 		const assistantMessages = service
@@ -266,71 +351,39 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("streams reasoning and tool lifecycle messages with stable ids", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
 
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "reasoning",
-					reasoning: "Thinking",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "reasoning",
+			reasoning: "Thinking",
 		});
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "reasoning",
-					reasoning: "...",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "reasoning",
+			reasoning: "...",
 		});
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "tool",
-					toolCallId: "tool-1",
-					toolName: "Read",
-					input: { file: "a.ts" },
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "tool",
+			toolCallId: "tool-1",
+			toolName: "Read",
+			input: { file: "a.ts" },
 		});
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_end",
-					contentType: "tool",
-					toolCallId: "tool-1",
-					toolName: "Read",
-					output: { ok: true },
-					durationMs: 25,
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_end",
+			contentType: "tool",
+			toolCallId: "tool-1",
+			toolName: "Read",
+			output: { ok: true },
+			durationMs: 25,
 		});
 
 		const messages = service.listMessages("task-1");
@@ -347,52 +400,32 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("transitions between running and awaiting_review for user-attention tools", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
 
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "tool",
-					toolCallId: "tool-1",
-					toolName: "ask_followup_question",
-					input: { question: "Need approval" },
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "tool",
+			toolCallId: "tool-1",
+			toolName: "ask_followup_question",
+			input: { question: "Need approval" },
 		});
 
 		expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(service.getSummary("task-1")?.reviewReason).toBe("hook");
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_end",
-					contentType: "tool",
-					toolCallId: "tool-1",
-					toolName: "ask_followup_question",
-					output: { ok: true },
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_end",
+			contentType: "tool",
+			toolCallId: "tool-1",
+			toolName: "ask_followup_question",
+			output: { ok: true },
 		});
 
 		expect(service.getSummary("task-1")?.state).toBe("running");
@@ -400,33 +433,19 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("moves to awaiting_review when SDK emits done for a completed turn", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
 
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "done",
-					reason: "completed",
-					text: "Done. Added the comment.",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "done",
+			reason: "completed",
+			text: "Done. Added the comment.",
 		});
 
 		const summary = service.getSummary("task-1");
@@ -437,24 +456,11 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("creates task entry and session mapping before start() resolves", async () => {
-		const service = createInMemoryClineTaskSessionService();
-		const startDeferred = createDeferred<{ sessionId: string; result: unknown }>();
-		const fakeHost = {
-			start: vi.fn(async () => await startDeferred.promise),
-			send: vi.fn(async () => ({})),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-				sessionIdByTaskId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		const { service, runtime } = createTrackedService();
+		const startDeferred = createDeferred<StartClineSessionRuntimeResult>();
+		runtime.startTaskSessionMock.mockImplementationOnce(
+			async (_request: StartClineSessionRuntimeRequest & { sessionId: string }) => await startDeferred.promise,
+		);
 
 		const summary = await service.startTaskSession({
 			taskId: "task-1",
@@ -463,20 +469,14 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		expect(summary.state).toBe("running");
-		const mappedSessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1");
+		const mappedSessionId = runtime.getTaskSessionId("task-1");
 		expect(mappedSessionId).toBeTruthy();
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: mappedSessionId,
-				event: {
-					type: "content_start",
-					contentType: "text",
-					text: "Streaming",
-					accumulated: "Streaming",
-				},
-			},
+		runtime.emitAgentEvent(mappedSessionId ?? "session-1", {
+			type: "content_start",
+			contentType: "text",
+			text: "Streaming",
+			accumulated: "Streaming",
 		});
 
 		expect(
@@ -494,25 +494,9 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("does not block sendTaskSessionInput on full-turn SDK send completion", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		const sendDeferred = createDeferred<unknown>();
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => await sendDeferred.promise),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		runtime.sendTaskSessionInputMock.mockImplementationOnce(async () => await sendDeferred.promise);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -526,32 +510,14 @@ describe("InMemoryClineTaskSessionService", () => {
 		]);
 
 		expect(response).not.toBeNull();
-		expect(fakeHost.send).toHaveBeenCalledTimes(1);
+		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledTimes(1);
 		sendDeferred.resolve({ text: "done" });
 	});
 
 	it("does not duplicate assistant output when stream and send result both include final text", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		const sendDeferred = createDeferred<unknown>();
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => await sendDeferred.promise),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			subscribe: vi.fn(() => () => {}),
-		};
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionHostPromise: Promise<unknown> | null;
-				sessionIdByTaskId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionHostPromise = Promise.resolve(fakeHost);
+		runtime.sendTaskSessionInputMock.mockImplementationOnce(async () => await sendDeferred.promise);
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -560,19 +526,13 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		await service.sendTaskSessionInput("task-1", "Continue");
-		const sessionId = serviceInternal.sessionRuntime.sessionIdByTaskId.get("task-1") ?? "session-1";
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId,
-				event: {
-					type: "content_start",
-					contentType: "text",
-					text: "Done.",
-					accumulated: "Done.",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "text",
+			text: "Done.",
+			accumulated: "Done.",
 		});
 
 		sendDeferred.resolve({ text: "Done." });
@@ -586,56 +546,30 @@ describe("InMemoryClineTaskSessionService", () => {
 	});
 
 	it("does not duplicate final assistant text when content_end and done carry the same text", async () => {
-		const service = createInMemoryClineTaskSessionService();
+		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
 
-		const serviceInternal = service as unknown as {
-			sessionRuntime: {
-				sessionIdByTaskId: Map<string, string>;
-				taskIdBySessionId: Map<string, string>;
-				handleSessionEvent: (event: unknown) => void;
-			};
-		};
-		serviceInternal.sessionRuntime.sessionIdByTaskId.set("task-1", "session-1");
-		serviceInternal.sessionRuntime.taskIdBySessionId.set("session-1", "task-1");
+		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
 
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_start",
-					contentType: "text",
-					text: "Done.",
-					accumulated: "Done.",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_start",
+			contentType: "text",
+			text: "Done.",
+			accumulated: "Done.",
 		});
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "content_end",
-					contentType: "text",
-					text: "Done.",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_end",
+			contentType: "text",
+			text: "Done.",
 		});
-		serviceInternal.sessionRuntime.handleSessionEvent({
-			type: "agent_event",
-			payload: {
-				sessionId: "session-1",
-				event: {
-					type: "done",
-					reason: "completed",
-					text: "Done.",
-				},
-			},
+		runtime.emitAgentEvent(sessionId, {
+			type: "done",
+			reason: "completed",
+			text: "Done.",
 		});
 
 		const assistantMessages = service
