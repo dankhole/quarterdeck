@@ -302,8 +302,8 @@ interface UseTaskStartServicePromptsInput {
 	selectedAgentId: RuntimeAgentId | null | undefined;
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
 	isTaskAgentSetupSatisfied: boolean | null | undefined;
-	handleCreateTask: () => string | null;
-	handleCreateTasks: (prompts: string[]) => string[];
+	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleStartTask: (taskId: string) => void;
 	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
 	prepareTerminalForShortcut: (input: {
@@ -318,8 +318,8 @@ interface UseTaskStartServicePromptsInput {
 }
 
 export interface UseTaskStartServicePromptsResult {
-	handleCreateAndStartTask: () => void;
-	handleCreateAndStartTasks: (prompts: string[]) => void;
+	handleCreateAndStartTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	handleCreateAndStartTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleStartTaskWithServiceSetupPrompt: (taskId: string) => void;
 	handleStartAllBacklogTasksWithServiceSetupPrompt: () => void;
 	taskStartServicePromptDialogOpen: boolean;
@@ -683,21 +683,23 @@ export function useTaskStartServicePrompts({
 		startTasksWithServiceSetupPrompt(backlogTaskIds);
 	}, [board.columns, startTasksWithServiceSetupPrompt]);
 
-	const handleCreateAndStartTask = useCallback(() => {
-		const taskId = handleCreateTask();
+	const handleCreateAndStartTask = useCallback((options?: { keepDialogOpen?: boolean }): string | null => {
+		const taskId = handleCreateTask(options);
 		if (!taskId) {
-			return;
+			return null;
 		}
 		setPendingTaskStartAfterCreateIds([taskId]);
+		return taskId;
 	}, [handleCreateTask]);
 
 	const handleCreateAndStartTasks = useCallback(
-		(prompts: string[]) => {
-			const taskIds = handleCreateTasks(prompts);
+		(prompts: string[], options?: { keepDialogOpen?: boolean }): string[] => {
+			const taskIds = handleCreateTasks(prompts, options);
 			if (taskIds.length === 0) {
-				return;
+				return [];
 			}
 			setPendingTaskStartAfterCreateIds(taskIds);
+			return taskIds;
 		},
 		[handleCreateTasks],
 	);
