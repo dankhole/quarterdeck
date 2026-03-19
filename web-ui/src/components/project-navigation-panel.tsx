@@ -112,8 +112,7 @@ export function ProjectNavigationPanel({
 
 			{activeSection === "projects" ? (
 				<>
-					<div className="flex items-center justify-between" style={{ padding: "4px 12px" }}>
-						<span className="text-text-tertiary text-xs font-medium uppercase tracking-wide">Projects</span>
+					<div className="flex items-center justify-end" style={{ padding: "4px 12px" }}>
 						<Button
 							variant="ghost"
 							size="sm"
