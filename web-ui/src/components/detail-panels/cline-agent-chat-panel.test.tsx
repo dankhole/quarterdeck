@@ -162,6 +162,7 @@ describe("ClineAgentChatPanel", () => {
 					summary={createSummary("running", {
 						activityText: "Agent active",
 						toolName: null,
+						toolInputSummary: null,
 						finalMessage: null,
 						hookEventName: "assistant_delta",
 						notificationType: null,
@@ -199,6 +200,7 @@ describe("ClineAgentChatPanel", () => {
 					summary={createSummary("running", {
 						activityText: "Using Read",
 						toolName: "Read",
+						toolInputSummary: null,
 						finalMessage: null,
 						hookEventName: "tool_call",
 						notificationType: null,

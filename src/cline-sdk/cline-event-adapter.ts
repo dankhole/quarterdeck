@@ -2,6 +2,7 @@
 // Keep protocol-specific parsing here so the runtime and repository can stay
 // focused on lifecycle, storage, and task-facing orchestration.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import { formatClineToolCallLabel, getClineToolCallDisplay } from "./cline-tool-call-display.js";
 import {
 	appendAssistantChunk,
 	appendReasoningChunk,
@@ -29,6 +30,24 @@ export interface ApplyClineSessionEventInput {
 	pendingTurnCancelTaskIds: Set<string>;
 	emitSummary: (summary: RuntimeTaskSessionSummary) => void;
 	emitMessage: (taskId: string, message: ClineTaskMessage) => void;
+}
+
+function getRetainedClineToolActivity(entry: ClineTaskSessionEntry): {
+	toolName: string | null;
+	toolInputSummary: string | null;
+} {
+	const latestHookActivity = entry.summary.latestHookActivity;
+	if (!latestHookActivity || latestHookActivity.source !== "cline-sdk" || !latestHookActivity.toolName) {
+		return {
+			toolName: null,
+			toolInputSummary: null,
+		};
+	}
+
+	return {
+		toolName: latestHookActivity.toolName,
+		toolInputSummary: latestHookActivity.toolInputSummary ?? null,
+	};
 }
 
 export function extractClineSessionId(event: unknown): string | null {
@@ -77,13 +96,15 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
 				activityText: "Agent active",
-				toolName: null,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: null,
 				hookEventName: "assistant_delta",
 				notificationType: null,
@@ -137,6 +158,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			latestHookActivity: {
 				activityText: finalText ? `Final: ${finalText}` : "Waiting for review",
 				toolName: null,
+				toolInputSummary: null,
 				finalMessage: finalText || null,
 				hookEventName: "agent_end",
 				notificationType: null,
@@ -246,6 +268,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				? event.payload.event.toolCallId
 				: null;
 		const toolInput = "input" in event.payload.event ? event.payload.event.input : undefined;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
 		input.emitMessage(
 			taskId,
@@ -259,8 +282,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: toolName ? `Using ${toolName}` : "Using tool",
-				toolName,
+				activityText: `Using ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
 				finalMessage: null,
 				hookEventName: "tool_call",
 				notificationType: isUserAttentionTool ? "user_attention" : null,
@@ -311,6 +335,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			"durationMs" in event.payload.event && typeof event.payload.event.durationMs === "number"
 				? event.payload.event.durationMs
 				: null;
+		const toolInput = toolCallId ? entry.toolInputByToolCallId.get(toolCallId) : undefined;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
 		input.emitMessage(
 			taskId,
@@ -326,14 +352,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: toolError
-					? toolName
-						? `Failed ${toolName}`
-						: "Failed tool"
-					: toolName
-						? `Completed ${toolName}`
-						: "Completed tool",
-				toolName,
+				activityText: `${toolError ? "Failed" : "Completed"} ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
 				finalMessage: null,
 				hookEventName: "tool_result",
 				notificationType: null,
@@ -398,13 +419,15 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			return;
 		}
 		input.emitMessage(taskId, appendAssistantChunk(entry, taskId, chunk));
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
 				activityText: "Agent active",
-				toolName: null,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: null,
 				hookEventName: "assistant_delta",
 				notificationType: null,
@@ -437,6 +460,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			latestHookActivity: {
 				activityText,
 				toolName,
+				toolInputSummary: null,
 				finalMessage: null,
 				hookEventName,
 				notificationType: null,
@@ -508,6 +532,7 @@ function emitTurnCanceled(input: ApplyClineSessionEventInput): void {
 		latestHookActivity: {
 			activityText: "Turn canceled",
 			toolName: null,
+			toolInputSummary: null,
 			finalMessage: null,
 			hookEventName: "turn_canceled",
 			notificationType: null,

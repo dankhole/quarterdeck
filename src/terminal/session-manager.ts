@@ -674,6 +674,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const hasActivityUpdate =
 			typeof activity.activityText === "string" ||
 			typeof activity.toolName === "string" ||
+			typeof activity.toolInputSummary === "string" ||
 			typeof activity.finalMessage === "string" ||
 			typeof activity.hookEventName === "string" ||
 			typeof activity.notificationType === "string" ||
@@ -687,6 +688,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			activityText:
 				typeof activity.activityText === "string" ? activity.activityText : (previous?.activityText ?? null),
 			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
+			toolInputSummary:
+				typeof activity.toolInputSummary === "string"
+					? activity.toolInputSummary
+					: (previous?.toolInputSummary ?? null),
 			finalMessage:
 				typeof activity.finalMessage === "string" ? activity.finalMessage : (previous?.finalMessage ?? null),
 			hookEventName:
@@ -701,6 +706,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const didChange =
 			next.activityText !== (previous?.activityText ?? null) ||
 			next.toolName !== (previous?.toolName ?? null) ||
+			next.toolInputSummary !== (previous?.toolInputSummary ?? null) ||
 			next.finalMessage !== (previous?.finalMessage ?? null) ||
 			next.hookEventName !== (previous?.hookEventName ?? null) ||
 			next.notificationType !== (previous?.notificationType ?? null) ||

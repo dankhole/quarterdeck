@@ -116,6 +116,10 @@ describe("applyClineSessionEvent", () => {
 		expect(toolStart.entry.summary.state).toBe("awaiting_review");
 		expect(toolStart.entry.summary.reviewReason).toBe("hook");
 		expect(toolStart.messages[0]?.role).toBe("tool");
+		expect(toolStart.summaries.at(-1)?.latestHookActivity?.activityText).toBe(
+			"Using ask_followup_question(Need approval?)",
+		);
+		expect(toolStart.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe("Need approval?");
 
 		const toolEnd = applyEvent({
 			entry,
@@ -137,6 +141,51 @@ describe("applyClineSessionEvent", () => {
 		expect(toolEnd.entry.summary.state).toBe("running");
 		expect(toolEnd.entry.summary.reviewReason).toBeNull();
 		expect(toolEnd.messages[0]?.meta?.hookEventName).toBe("tool_call_end");
+		expect(toolEnd.summaries.at(-1)?.latestHookActivity?.activityText).toBe(
+			"Completed ask_followup_question(Need approval?)",
+		);
+	});
+
+	it("retains the last tool label while assistant text streams after a tool call", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "tool",
+						toolCallId: "tool-1",
+						toolName: "Read",
+						input: { file_path: "src/index.ts" },
+					},
+				},
+			},
+		});
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "text",
+						text: "Looking at the file now",
+						accumulated: "Looking at the file now",
+					},
+				},
+			},
+		});
+
+		expect(result.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("assistant_delta");
+		expect(result.summaries.at(-1)?.latestHookActivity?.toolName).toBe("Read");
+		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe("src/index.ts");
 	});
 
 	it("converts aborted done events with pending cancel state back to idle", () => {

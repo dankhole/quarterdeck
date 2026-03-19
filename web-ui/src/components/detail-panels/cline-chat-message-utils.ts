@@ -1,3 +1,5 @@
+import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
+
 export interface ParsedToolMessageContent {
 	toolName: string;
 	input: string | null;
@@ -7,112 +9,12 @@ export interface ParsedToolMessageContent {
 }
 
 /**
- * Formats the first element of a string array, appending "(+N more)" if there are extras.
- */
-function formatArraySummary(arr: unknown[]): string | null {
-	if (arr.length === 0) return null;
-	const first = String(arr[0]).split("\n")[0]?.trim();
-	if (!first) return null;
-	return arr.length > 1 ? `${first} (+${arr.length - 1} more)` : first;
-}
-
-function formatArrayList(arr: unknown[]): string | null {
-	const items = arr
-		.map((value) => String(value).split("\n")[0]?.trim())
-		.filter((value): value is string => Boolean(value));
-
-	if (items.length === 0) return null;
-	return items.join(", ");
-}
-
-function normalizeToolName(toolName: string): string {
-	return toolName.toLowerCase().replace(/[^a-z]/g, "");
-}
-
-/**
  * Extracts a short, human-readable summary from the tool's input parameters.
  * Uses tool-specific logic for known Cline SDK tools, then falls back to generic extraction.
  */
 export function getToolSummary(toolName: string, input: string | null): string | null {
-	if (!input) return null;
-
-	try {
-		const parsed: unknown = JSON.parse(input);
-		const normalizedToolName = normalizeToolName(toolName);
-
-		if (normalizedToolName === "readfiles") {
-			if (typeof parsed === "string") {
-				return parsed.trim() || null;
-			}
-			if (Array.isArray(parsed)) {
-				return formatArrayList(parsed);
-			}
-		}
-
-		if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-			const record = parsed as Record<string, unknown>;
-
-			// Cline SDK built-in tools have specific parameter shapes
-			switch (normalizedToolName) {
-				case "runcommands": {
-					if (Array.isArray(record.commands)) return formatArraySummary(record.commands);
-					break;
-				}
-				case "readfiles": {
-					if (Array.isArray(record.file_paths)) return formatArrayList(record.file_paths);
-					break;
-				}
-				case "searchcodebase": {
-					if (Array.isArray(record.queries)) return formatArraySummary(record.queries);
-					break;
-				}
-				case "editor": {
-					const path = record.path;
-					const cmd = record.command;
-					if (typeof path === "string") {
-						return typeof cmd === "string" ? `${cmd} ${path}` : path;
-					}
-					break;
-				}
-				case "fetchwebcontent": {
-					if (Array.isArray(record.requests) && record.requests.length > 0) {
-						const first = record.requests[0];
-						if (typeof first === "object" && first !== null && "url" in first) {
-							const url = String((first as Record<string, unknown>).url);
-							return record.requests.length > 1 ? `${url} (+${record.requests.length - 1} more)` : url;
-						}
-					}
-					break;
-				}
-				case "skills": {
-					if (typeof record.skill === "string") return record.skill;
-					break;
-				}
-				case "askquestion": {
-					if (typeof record.question === "string") return record.question.split("\n")[0] ?? null;
-					break;
-				}
-			}
-
-			// Generic fallback for MCP tools and others: try common scalar keys, then arrays
-			for (const value of Object.values(record)) {
-				if (typeof value === "string" && value.trim().length > 0) {
-					return value.trim().split("\n")[0]?.slice(0, 120) ?? null;
-				}
-				if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-					return formatArraySummary(value);
-				}
-			}
-		}
-	} catch {
-		// Not JSON, fall through
-	}
-
-	const firstLine = input.split("\n").find((line) => line.trim().length > 0);
-	return firstLine ? firstLine.trim().slice(0, 120) : null;
+	return getClineToolCallDisplay(toolName, input).inputSummary;
 }
-
-// -- Tool output parsing (ToolOperationResult format) --
 
 export interface ToolOutputResult {
 	query: string;
@@ -164,12 +66,11 @@ export function parseToolOutput(output: string): ParsedToolOutput | null {
 			return { results: [toToolOutputResult(parsed)] };
 		}
 	} catch {
-		// Not JSON
+		return null;
 	}
 
 	return null;
 }
-
 
 function normalizeSectionValue(lines: string[]): string | null {
 	const value = lines.join("\n").trim();

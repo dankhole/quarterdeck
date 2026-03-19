@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getToolSummary, parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
+import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
 
 describe("parseToolMessageContent", () => {
 	it("parses tool name input output and duration", () => {
@@ -42,6 +43,16 @@ describe("parseToolMessageContent", () => {
 });
 
 describe("getToolSummary", () => {
+	it("parses structured tool calls through the shared runtime helper", () => {
+		expect(
+			getClineToolCallDisplay("fetch_web_content", {
+				requests: [{ url: "https://example.com/a" }, { url: "https://example.com/b" }],
+			}),
+		).toEqual({
+			toolName: "fetch_web_content",
+			inputSummary: "https://example.com/a (+1 more)",
+		});
+	});
 	it("shows the full read_files path list from object input", () => {
 		expect(
 			getToolSummary(

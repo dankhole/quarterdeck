@@ -149,6 +149,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				latestHookActivity: {
 					activityText: "Agent active",
 					toolName: null,
+					toolInputSummary: null,
 					finalMessage: null,
 					hookEventName: "turn_start",
 					notificationType: null,
@@ -270,6 +271,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			latestHookActivity: {
 				activityText: "Turn canceled",
 				toolName: null,
+				toolInputSummary: null,
 				finalMessage: null,
 				hookEventName: "turn_canceled",
 				notificationType: null,
@@ -307,6 +309,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				latestHookActivity: {
 					activityText: "Agent active",
 					toolName: null,
+					toolInputSummary: null,
 					finalMessage: null,
 					hookEventName: "turn_start",
 					notificationType: null,

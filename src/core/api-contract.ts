@@ -170,6 +170,7 @@ export type RuntimeTaskSessionReviewReason = z.infer<typeof runtimeTaskSessionRe
 export const runtimeTaskHookActivitySchema = z.object({
 	activityText: z.string().nullable().default(null),
 	toolName: z.string().nullable().default(null),
+	toolInputSummary: z.string().nullable().default(null),
 	finalMessage: z.string().nullable().default(null),
 	hookEventName: z.string().nullable().default(null),
 	notificationType: z.string().nullable().default(null),
