@@ -566,11 +566,16 @@ export async function deleteTaskWorktree(options: {
 			};
 		}
 
-		await captureTaskPatch({
-			repoPath: options.repoPath,
-			taskId,
-			worktreePath,
-		});
+		try {
+			await captureTaskPatch({
+				repoPath: options.repoPath,
+				taskId,
+				worktreePath,
+			});
+		} catch {
+			// Patch capture is best-effort. A corrupted or partially-created
+			// worktree (e.g. plain directory, no git init) should still be removed.
+		}
 		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 		await pruneEmptyParents(rootPath, dirname(worktreePath));
 
