@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
+import { getToolSummary, parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
 
 describe("parseToolMessageContent", () => {
 	it("parses tool name input output and duration", () => {
@@ -38,5 +38,24 @@ describe("parseToolMessageContent", () => {
 		expect(parsed.output).toBeNull();
 		expect(parsed.error).toBe("Command failed");
 		expect(parsed.durationMs).toBeNull();
+	});
+});
+
+describe("getToolSummary", () => {
+	it("shows the full read_files path list from object input", () => {
+		expect(
+			getToolSummary(
+				"read_files",
+				JSON.stringify({
+					file_paths: ["/tmp/a.ts", "/tmp/b.ts"],
+				}),
+			),
+		).toBe("/tmp/a.ts, /tmp/b.ts");
+	});
+
+	it("shows the full readfiles path list from top level array input", () => {
+		expect(getToolSummary("readfiles", JSON.stringify(["/tmp/a.ts", "/tmp/b.ts"]))).toBe(
+			"/tmp/a.ts, /tmp/b.ts",
+		);
 	});
 });

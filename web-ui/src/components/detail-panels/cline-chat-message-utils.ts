@@ -16,6 +16,19 @@ function formatArraySummary(arr: unknown[]): string | null {
 	return arr.length > 1 ? `${first} (+${arr.length - 1} more)` : first;
 }
 
+function formatArrayList(arr: unknown[]): string | null {
+	const items = arr
+		.map((value) => String(value).split("\n")[0]?.trim())
+		.filter((value): value is string => Boolean(value));
+
+	if (items.length === 0) return null;
+	return items.join(", ");
+}
+
+function normalizeToolName(toolName: string): string {
+	return toolName.toLowerCase().replace(/[^a-z]/g, "");
+}
+
 /**
  * Extracts a short, human-readable summary from the tool's input parameters.
  * Uses tool-specific logic for known Cline SDK tools, then falls back to generic extraction.
@@ -25,20 +38,31 @@ export function getToolSummary(toolName: string, input: string | null): string |
 
 	try {
 		const parsed: unknown = JSON.parse(input);
+		const normalizedToolName = normalizeToolName(toolName);
+
+		if (normalizedToolName === "readfiles") {
+			if (typeof parsed === "string") {
+				return parsed.trim() || null;
+			}
+			if (Array.isArray(parsed)) {
+				return formatArrayList(parsed);
+			}
+		}
+
 		if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
 			const record = parsed as Record<string, unknown>;
 
 			// Cline SDK built-in tools have specific parameter shapes
-			switch (toolName) {
-				case "run_commands": {
+			switch (normalizedToolName) {
+				case "runcommands": {
 					if (Array.isArray(record.commands)) return formatArraySummary(record.commands);
 					break;
 				}
-				case "read_files": {
-					if (Array.isArray(record.file_paths)) return formatArraySummary(record.file_paths);
+				case "readfiles": {
+					if (Array.isArray(record.file_paths)) return formatArrayList(record.file_paths);
 					break;
 				}
-				case "search_codebase": {
+				case "searchcodebase": {
 					if (Array.isArray(record.queries)) return formatArraySummary(record.queries);
 					break;
 				}
@@ -50,7 +74,7 @@ export function getToolSummary(toolName: string, input: string | null): string |
 					}
 					break;
 				}
-				case "fetch_web_content": {
+				case "fetchwebcontent": {
 					if (Array.isArray(record.requests) && record.requests.length > 0) {
 						const first = record.requests[0];
 						if (typeof first === "object" && first !== null && "url" in first) {
@@ -64,7 +88,7 @@ export function getToolSummary(toolName: string, input: string | null): string |
 					if (typeof record.skill === "string") return record.skill;
 					break;
 				}
-				case "ask_question": {
+				case "askquestion": {
 					if (typeof record.question === "string") return record.question.split("\n")[0] ?? null;
 					break;
 				}
