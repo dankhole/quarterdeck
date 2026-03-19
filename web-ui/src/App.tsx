@@ -17,7 +17,6 @@ import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
-import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +36,6 @@ import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
-import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
@@ -74,7 +72,6 @@ export default function App(): ReactElement {
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
-	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
@@ -146,7 +143,6 @@ export default function App(): ReactElement {
 		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
-		fetchTaskWorkingChangeCount,
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
@@ -546,14 +542,12 @@ export default function App(): ReactElement {
 		selectedTaskId,
 		currentProjectId,
 		setSelectedTaskId,
-		setPendingTrashWarning,
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
 		stopTaskSession,
 		cleanupTaskWorkspace,
 		ensureTaskWorkspace,
 		startTaskSession,
-		fetchTaskWorkingChangeCount,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
@@ -1018,30 +1012,7 @@ export default function App(): ReactElement {
 				onClose={handleCloseTaskStartServicePrompt}
 				onRunInstallCommand={handleRunTaskStartServiceInstallCommand}
 			/>
-			<TaskTrashWarningDialog
-				open={pendingTrashWarning !== null}
-				warning={
-					pendingTrashWarning
-						? {
-								taskTitle: pendingTrashWarning.taskTitle,
-								fileCount: pendingTrashWarning.fileCount,
-								workspaceInfo: pendingTrashWarning.workspaceInfo,
-							}
-						: null
-				}
-				onCancel={() => setPendingTrashWarning(null)}
-				onConfirm={() => {
-					if (!pendingTrashWarning) {
-						return;
-					}
-					const selection = findCardSelection(board, pendingTrashWarning.taskId);
-					setPendingTrashWarning(null);
-					if (!selection) {
-						return;
-					}
-					void confirmMoveTaskToTrash(selection.card, board);
-				}}
-			/>
+
 			<AlertDialog
 				open={gitActionError !== null}
 				onOpenChange={(open) => {
