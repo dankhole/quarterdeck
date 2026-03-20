@@ -45,6 +45,7 @@ import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
+import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
@@ -116,6 +117,20 @@ export default function App(): ReactElement {
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
+	const {
+		startupOnboardingPrompt,
+		isStartupOnboardingDialogOpen,
+		handleCloseStartupOnboardingDialog,
+		handleSelectOnboardingAgent,
+		handleOnboardingClineSetupSaved,
+	} = useStartupOnboarding({
+		currentProjectId,
+		hasNoProjects,
+		runtimeProjectConfig,
+		isTaskAgentReady,
+		refreshRuntimeProjectConfig,
+		refreshSettingsRuntimeProjectConfig,
+	});
 	const {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
@@ -1001,12 +1016,33 @@ export default function App(): ReactElement {
 				onConfirm={handleConfirmClearTrash}
 			/>
 			<TaskStartServicePromptDialog
+				open={isStartupOnboardingDialogOpen}
+				prompt={startupOnboardingPrompt}
+				doNotShowAgain={false}
+				onDoNotShowAgainChange={() => {}}
+				onClose={handleCloseStartupOnboardingDialog}
+				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+				agents={runtimeProjectConfig?.agents ?? []}
+				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig ?? null}
+				onSelectAgent={handleSelectOnboardingAgent}
+				onClineSetupSaved={handleOnboardingClineSetupSaved}
+			/>
+			<TaskStartServicePromptDialog
 				open={taskStartServicePromptDialogOpen}
 				prompt={taskStartServicePromptDialogPrompt}
 				doNotShowAgain={taskStartServicePromptDoNotShowAgain}
 				onDoNotShowAgainChange={setTaskStartServicePromptDoNotShowAgain}
 				onClose={handleCloseTaskStartServicePrompt}
 				onRunInstallCommand={handleRunTaskStartServiceInstallCommand}
+				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+				agents={runtimeProjectConfig?.agents ?? []}
+				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig ?? null}
+				onSelectAgent={handleSelectOnboardingAgent}
+				onClineSetupSaved={handleOnboardingClineSetupSaved}
 			/>
 
 			<AlertDialog
