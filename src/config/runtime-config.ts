@@ -8,7 +8,6 @@ import { dirname, join, resolve } from "node:path";
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract.js";
 import {
 	isRuntimeAgentLaunchSupported,
-	RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS,
 } from "../core/agent-catalog.js";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 import { detectInstalledCommands } from "../terminal/agent-registry.js";
@@ -56,7 +55,7 @@ const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
-const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS;
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.

@@ -68,10 +68,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
 		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBeNull();
-		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBe("cline");
+		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});
 
