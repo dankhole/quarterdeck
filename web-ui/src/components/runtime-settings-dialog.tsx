@@ -64,6 +64,9 @@ function quoteCommandPartForDisplay(part: string): string {
 }
 
 function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, autonomousModeEnabled: boolean): string {
+	if (agentId === "cline") {
+		return "";
+	}
 	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
 	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
 }
@@ -78,6 +81,8 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 ];
 
 export type RuntimeSettingsSection = "shortcuts";
+
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -123,8 +128,9 @@ function AgentRow({
 	disabled: boolean;
 }): React.ReactElement {
 	const installUrl = getRuntimeAgentCatalogEntry(agent.id)?.installUrl;
+	const isNativeCline = agent.id === "cline";
 	const isInstalled = agent.installed === true;
-	const isInstallStatusPending = agent.installed === null;
+	const isInstallStatusPending = !isNativeCline && agent.installed === null;
 
 	return (
 		<div
@@ -152,7 +158,7 @@ function AgentRow({
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
 						<span className="text-[13px] text-text-primary">{agent.label}</span>
-						{isInstalled ? (
+						{!isNativeCline && isInstalled ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
 							</span>
@@ -169,7 +175,7 @@ function AgentRow({
 					) : null}
 				</div>
 			</div>
-			{agent.installed === false && installUrl ? (
+			{!isNativeCline && agent.installed === false && installUrl ? (
 				<a
 					href={installUrl}
 					target="_blank"
@@ -179,7 +185,7 @@ function AgentRow({
 				>
 					Install
 				</a>
-			) : agent.installed === false ? (
+			) : !isNativeCline && agent.installed === false ? (
 				<Button size="sm" disabled>Install</Button>
 			) : null}
 		</div>
@@ -336,15 +342,23 @@ export function RuntimeSettingsDialog({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
-				installed: agent.installed,
+				installed: agent.id === "cline" ? true : agent.installed,
 			})) ??
 			getRuntimeLaunchSupportedAgentCatalog().map((agent) => ({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
-				installed: null,
+				installed: agent.id === "cline" ? true : null,
 			}));
-		return agents.map((agent) => ({
+		const orderIndexByAgentId = new Map(
+			SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const),
+		);
+		const orderedAgents = [...agents].sort((left, right) => {
+			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+			return leftOrderIndex - rightOrderIndex;
+		});
+		return orderedAgents.map((agent) => ({
 			...agent,
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
