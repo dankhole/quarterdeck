@@ -14,6 +14,8 @@ import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 
+const BOTTOM_LOCK_THRESHOLD_PX = 24;
+
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
 		<div className="px-1.5">
@@ -106,8 +108,9 @@ export function ClineAgentChatPanel({
 		cancelAutomaticActionLabel,
 		showMoveToTrash,
 	});
-	const messageEndRef = useRef<HTMLDivElement | null>(null);
+	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const [composerError, setComposerError] = useState<string | null>(null);
+	const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 	const [isSavingModel, setIsSavingModel] = useState(false);
 	const [mode, setMode] = useState<RuntimeTaskSessionMode>(defaultMode);
 	const clineSettings = useRuntimeSettingsClineController({
@@ -143,12 +146,36 @@ export function ClineAgentChatPanel({
 
 	const panelError = composerError ?? error;
 
+	const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
+		const remainingDistance = container.scrollHeight - container.scrollTop - container.clientHeight;
+		return remainingDistance <= BOTTOM_LOCK_THRESHOLD_PX;
+	}, []);
+
+	const handleMessageListScroll = useCallback(() => {
+		const container = scrollContainerRef.current;
+		if (!container) {
+			return;
+		}
+		const nextIsAutoScrollEnabled = isPinnedToBottom(container);
+		setIsAutoScrollEnabled((currentValue) =>
+			currentValue === nextIsAutoScrollEnabled ? currentValue : nextIsAutoScrollEnabled,
+		);
+	}, [isPinnedToBottom]);
+
 	useLayoutEffect(() => {
-		messageEndRef.current?.scrollIntoView({ block: "end" });
-	}, [messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
+		const container = scrollContainerRef.current;
+		if (!container || !isAutoScrollEnabled) {
+			return;
+		}
+		container.scrollTop = container.scrollHeight;
+	}, [isAutoScrollEnabled, messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
 
 	useEffect(() => {
 		setComposerError(null);
+	}, [taskId]);
+
+	useEffect(() => {
+		setIsAutoScrollEnabled(true);
 	}, [taskId]);
 
 	useEffect(() => {
@@ -213,10 +240,13 @@ export function ClineAgentChatPanel({
 			className="flex min-h-0 min-w-0 flex-1 flex-col"
 			style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
 		>
-			<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3">
+			<div
+				ref={scrollContainerRef}
+				className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
+				onScroll={handleMessageListScroll}
+			>
 				{messages.map((message) => <ClineChatMessageItem key={message.id} message={message} />)}
 				{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
-				<div ref={messageEndRef} aria-hidden="true" />
 			</div>
 			{panelError ? (
 				<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">{panelError}</div>

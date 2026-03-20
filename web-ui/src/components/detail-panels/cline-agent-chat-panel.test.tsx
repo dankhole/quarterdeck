@@ -34,11 +34,58 @@ function renderPanel(root: Root, panel: ReactElement): void {
 	root.render(<TooltipProvider>{panel}</TooltipProvider>);
 }
 
+function getMessageList(container: HTMLElement): HTMLDivElement {
+	const messageList = container.querySelector("div.overflow-y-auto");
+	expect(messageList).toBeInstanceOf(HTMLDivElement);
+	if (!(messageList instanceof HTMLDivElement)) {
+		throw new Error("Expected chat message list.");
+	}
+	return messageList;
+}
+
+function mockScrollMetrics(
+	element: HTMLDivElement,
+	initialValues: { scrollHeight: number; clientHeight: number; scrollTop: number },
+): {
+	getScrollTop: () => number;
+	setScrollHeight: (value: number) => void;
+	setScrollTop: (value: number) => void;
+} {
+	let currentScrollHeight = initialValues.scrollHeight;
+	const currentClientHeight = initialValues.clientHeight;
+	let currentScrollTop = initialValues.scrollTop;
+
+	Object.defineProperty(element, "scrollHeight", {
+		configurable: true,
+		get: () => currentScrollHeight,
+	});
+	Object.defineProperty(element, "clientHeight", {
+		configurable: true,
+		get: () => currentClientHeight,
+	});
+	Object.defineProperty(element, "scrollTop", {
+		configurable: true,
+		get: () => currentScrollTop,
+		set: (value: number) => {
+			currentScrollTop = value;
+		},
+	});
+
+	return {
+		getScrollTop: () => currentScrollTop,
+		setScrollHeight: (value: number) => {
+			currentScrollHeight = value;
+		},
+		setScrollTop: (value: number) => {
+			currentScrollTop = value;
+		},
+	};
+}
+
 describe("ClineAgentChatPanel", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
-	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -48,11 +95,6 @@ describe("ClineAgentChatPanel", () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
-		scrollIntoViewMock = vi.fn();
-		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-			configurable: true,
-			value: scrollIntoViewMock,
-		});
 	});
 
 	afterEach(() => {
@@ -67,10 +109,6 @@ describe("ClineAgentChatPanel", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-			configurable: true,
-			value: () => {},
-		});
 	});
 
 	it("renders reasoning and tool messages with specialized UI", async () => {
@@ -152,7 +190,144 @@ describe("ClineAgentChatPanel", () => {
 
 		expect(container.textContent).toContain("Thinking...");
 		expect(container.textContent).not.toContain("Cline chat");
-		expect(scrollIntoViewMock).toHaveBeenCalled();
+	});
+
+	it("keeps the message list pinned to the bottom while new content streams in", async () => {
+		const initialMessages: ClineChatMessage[] = [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "First reply",
+				createdAt: 1,
+			},
+		];
+		const incomingMessage: ClineChatMessage = {
+			id: "assistant-2",
+			role: "assistant",
+			content: "Second reply",
+			createdAt: 2,
+		};
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => initialMessages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const messageList = getMessageList(container);
+		const scroll = mockScrollMetrics(messageList, {
+			scrollHeight: 200,
+			clientHeight: 100,
+			scrollTop: 100,
+		});
+		scroll.setScrollHeight(260);
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => initialMessages}
+					incomingMessage={incomingMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(scroll.getScrollTop()).toBe(260);
+	});
+
+	it("stops auto-scroll while the user is reading older messages and re-enables it at the bottom", async () => {
+		const initialMessages: ClineChatMessage[] = [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "First reply",
+				createdAt: 1,
+			},
+		];
+		const secondMessage: ClineChatMessage = {
+			id: "assistant-2",
+			role: "assistant",
+			content: "Second reply",
+			createdAt: 2,
+		};
+		const thirdMessage: ClineChatMessage = {
+			id: "assistant-3",
+			role: "assistant",
+			content: "Third reply",
+			createdAt: 3,
+		};
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => initialMessages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const messageList = getMessageList(container);
+		const scroll = mockScrollMetrics(messageList, {
+			scrollHeight: 200,
+			clientHeight: 100,
+			scrollTop: 100,
+		});
+
+		scroll.setScrollTop(20);
+		await act(async () => {
+			messageList.dispatchEvent(new Event("scroll", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		scroll.setScrollHeight(260);
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => initialMessages}
+					incomingMessage={secondMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(scroll.getScrollTop()).toBe(20);
+
+		scroll.setScrollTop(160);
+		await act(async () => {
+			messageList.dispatchEvent(new Event("scroll", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		scroll.setScrollHeight(320);
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => initialMessages}
+					incomingMessage={thirdMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(scroll.getScrollTop()).toBe(320);
 	});
 
 	it("hides the thinking indicator while assistant text is streaming", async () => {
@@ -572,7 +747,13 @@ describe("ClineAgentChatPanel", () => {
 			await Promise.resolve();
 		});
 
-		scrollIntoViewMock.mockClear();
+		const messageList = getMessageList(container);
+		const scroll = mockScrollMetrics(messageList, {
+			scrollHeight: 200,
+			clientHeight: 100,
+			scrollTop: 100,
+		});
+		scroll.setScrollHeight(240);
 
 		await act(async () => {
 			renderPanel(
@@ -591,7 +772,7 @@ describe("ClineAgentChatPanel", () => {
 			await Promise.resolve();
 		});
 
-		expect(scrollIntoViewMock).toHaveBeenCalled();
+		expect(scroll.getScrollTop()).toBe(240);
 	});
 
 	it("does not show commit actions when the review workspace is clean", async () => {
