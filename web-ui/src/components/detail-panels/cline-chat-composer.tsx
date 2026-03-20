@@ -118,7 +118,7 @@ export function ClineChatComposer({
 				style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
 			/>
 			<div className="mt-2 flex min-w-0 items-center gap-2">
-				<div className="min-w-0 flex-1 max-w-[8.5rem] sm:max-w-[10rem] md:max-w-[12rem]">
+				<div className="min-w-0 shrink overflow-hidden">
 					<SearchSelectDropdown
 						id="cline-chat-model-picker"
 						options={modelOptions}
@@ -126,7 +126,6 @@ export function ClineChatComposer({
 						onSelect={onSelectModel}
 						disabled={modelPickerDisabled}
 						size="sm"
-						fill
 						buttonText={selectedModelButtonText}
 						emptyText="Select model"
 						noResultsText="No matching models"
@@ -136,7 +135,7 @@ export function ClineChatComposer({
 						collisionPadding={12}
 						dropdownStyle={{ minWidth: "220px", maxWidth: "320px" }}
 						buttonClassName={cn(
-							"w-full justify-between rounded-md border-border-bright bg-surface-3 px-2 text-text-secondary shadow-none hover:cursor-pointer hover:bg-surface-4 hover:text-text-primary",
+							"min-w-0 max-w-full justify-between rounded-md border-border-bright bg-surface-3 px-2 text-left text-text-secondary shadow-none hover:cursor-pointer hover:bg-surface-4 hover:text-text-primary",
 							(isModelLoading || isModelSaving) && "text-text-tertiary",
 						)}
 					/>
