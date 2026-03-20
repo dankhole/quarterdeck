@@ -14,8 +14,6 @@ import type {
 	RuntimeConfigResponse,
 } from "@/runtime/types";
 
-const ONBOARDING_ASSET_BASE_PATH = "/assets/onboarding";
-
 interface OnboardingSlide {
 	title: string;
 	description: string;
@@ -25,6 +23,9 @@ interface OnboardingSlide {
 	assetAlt?: string;
 	assetWidthPx?: number;
 	assetHeightPx?: number;
+	assetFrameWidthPx?: number;
+	assetFrameHeightPx?: number;
+	assetObjectFit?: "contain" | "cover";
 }
 
 interface AgentSelectionResult {
@@ -39,10 +40,10 @@ interface OnboardingDoneResult {
 
 export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	{
-		title: "Welcome to Cline Kanban",
+		title: "Auto commit and link",
 		description:
-			"Run many tasks in parallel with isolated worktrees and terminals. Link cards to build dependency chains that keep work moving automatically.",
-		assetVideoUrl: "https://github.com/user-attachments/assets/51e3b617-3039-498f-b6c9-f39f68336f27",
+			"Create dependency chains of linked tasks that start one another automatically. Agents can auto commit their work as they finish, so you can orchestrate tasks in order and watch the board burn them down automatically.",
+		assetVideoUrl: "https://github.com/user-attachments/assets/c9c7d9b2-8511-4676-8c9e-8014b4c4b091",
 		assetAlt: "Linking task cards in Cline Kanban",
 		assetWidthPx: 976,
 		assetHeightPx: 720,
@@ -50,11 +51,14 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	{
 		title: "Review changes with comments",
 		description:
-			"Your workflow can feel like creating tickets and leaving comments. Watch the agent TUI next to real-time diffs, then click lines to leave review feedback.",
-		assetStemPath: `${ONBOARDING_ASSET_BASE_PATH}/diff-comments`,
+			"Your workflow will feel like writing tickets, reviewing code, and shipping. Watch the agent work next to real-time diffs, then click lines to leave comments like you're reviewing a PR.",
+		assetVideoUrl: "https://github.com/user-attachments/assets/17992035-c1ca-449a-a48b-bb094007f0a1",
 		assetAlt: "Leaving comments on code diffs in Cline Kanban",
-		assetWidthPx: 976,
+		assetWidthPx: 1076,
 		assetHeightPx: 720,
+		assetFrameWidthPx: 976,
+		assetFrameHeightPx: 720,
+		assetObjectFit: "cover",
 	},
 	{
 		title: "Choose your agent",
@@ -83,6 +87,9 @@ function OnboardingMedia({
 	assetImageUrl,
 	assetWidthPx,
 	assetHeightPx,
+	assetFrameWidthPx,
+	assetFrameHeightPx,
+	assetObjectFit,
 	alt,
 }: {
 	assetStemPath?: string;
@@ -90,6 +97,9 @@ function OnboardingMedia({
 	assetImageUrl?: string;
 	assetWidthPx?: number;
 	assetHeightPx?: number;
+	assetFrameWidthPx?: number;
+	assetFrameHeightPx?: number;
+	assetObjectFit?: "contain" | "cover";
 	alt: string;
 }): ReactElement {
 	const [assetMode, setAssetMode] = useState<"video" | "image" | "missing">("video");
@@ -97,12 +107,38 @@ function OnboardingMedia({
 	const imagePath = assetImageUrl ?? (assetStemPath ? `${assetStemPath}.gif` : null);
 	const mediaWidth = assetWidthPx;
 	const mediaHeight = assetHeightPx;
+	const frameWidth = assetFrameWidthPx ?? assetWidthPx;
+	const frameHeight = assetFrameHeightPx ?? assetHeightPx;
+	const objectFitClassName = assetObjectFit === "cover" ? "object-cover" : "object-contain";
+	const hasFrameSize = typeof frameWidth === "number" && typeof frameHeight === "number";
 	const mediaContainerStyle =
-		typeof mediaWidth === "number" && typeof mediaHeight === "number"
+		hasFrameSize
 			? {
-					maxWidth: `${mediaWidth}px`,
+					aspectRatio: `${frameWidth} / ${frameHeight}`,
+					maxWidth: `${frameWidth}px`,
 					width: "100%",
 				}
+			: typeof frameWidth === "number"
+				? {
+						maxWidth: `${frameWidth}px`,
+						width: "100%",
+					}
+				: {
+						width: "100%",
+					};
+	const missingStateStyle =
+		typeof frameWidth === "number" && typeof frameHeight === "number"
+			? {
+					maxHeight: `${frameHeight}px`,
+					maxWidth: `${frameWidth}px`,
+					width: "100%",
+				}
+			: typeof frameHeight === "number"
+				? {
+						maxHeight: `${frameHeight}px`,
+						maxWidth: "100%",
+						width: "auto",
+					}
 			: {
 					width: "100%",
 				};
@@ -116,7 +152,7 @@ function OnboardingMedia({
 			<div className="flex w-full justify-center">
 				<div
 					className="flex min-h-[180px] w-full items-center justify-center rounded-md border border-dashed border-border-bright bg-surface-1 p-4 text-center"
-					style={mediaContainerStyle}
+					style={missingStateStyle}
 				>
 					<p className="m-0 text-xs text-text-secondary">
 						Add onboarding media by setting a valid slide video or gif source.
@@ -144,32 +180,35 @@ function OnboardingMedia({
 			}
 			return (
 				<div className="flex w-full justify-center">
-					<img
-						src={imagePath}
-						alt={alt}
-						onError={() => setAssetMode("missing")}
-						width={mediaWidth}
-						height={mediaHeight}
-						style={mediaContainerStyle}
-						className="h-auto rounded-md border border-border bg-surface-1"
-					/>
+					<div className="relative w-full overflow-hidden rounded-md bg-surface-1" style={mediaContainerStyle}>
+						<img
+							src={imagePath}
+							alt={alt}
+							onError={() => setAssetMode("missing")}
+							width={mediaWidth}
+							height={mediaHeight}
+							className={cn("h-full w-full", objectFitClassName)}
+						/>
+					</div>
 				</div>
 			);
 		}
 		return (
 			<div className="flex w-full justify-center">
-				<video
-					src={videoPath}
-					autoPlay
-					loop
-					muted
-					playsInline
-					width={mediaWidth}
-					height={mediaHeight}
-					onError={() => setAssetMode(imagePath ? "image" : "missing")}
-					style={mediaContainerStyle}
-					className="h-auto rounded-md border border-border bg-surface-1"
-				/>
+				<div className="relative w-full overflow-hidden rounded-md bg-surface-1" style={mediaContainerStyle}>
+					<video
+						src={videoPath}
+						autoPlay
+						loop
+						muted
+						playsInline
+						preload="auto"
+						width={mediaWidth}
+						height={mediaHeight}
+						onError={() => setAssetMode(imagePath ? "image" : "missing")}
+						className={cn("h-full w-full", objectFitClassName)}
+					/>
+				</div>
 			</div>
 		);
 	}
@@ -191,15 +230,16 @@ function OnboardingMedia({
 
 	return (
 		<div className="flex w-full justify-center">
-			<img
-				src={imagePath}
-				alt={alt}
-				onError={() => setAssetMode("missing")}
-				width={mediaWidth}
-				height={mediaHeight}
-				style={mediaContainerStyle}
-				className="h-auto rounded-md border border-border bg-surface-1"
-			/>
+			<div className="relative w-full overflow-hidden rounded-md bg-surface-1" style={mediaContainerStyle}>
+				<img
+					src={imagePath}
+					alt={alt}
+					onError={() => setAssetMode("missing")}
+					width={mediaWidth}
+					height={mediaHeight}
+					className={cn("h-full w-full", objectFitClassName)}
+				/>
+			</div>
 		</div>
 	);
 }
@@ -254,10 +294,31 @@ export function TaskStartAgentOnboardingCarousel({
 	const [selectionError, setSelectionError] = useState<string | null>(null);
 	const [clineSetupError, setClineSetupError] = useState<string | null>(null);
 	const selectionSavePromiseRef = useRef<Promise<AgentSelectionResult> | null>(null);
+	const preloadedVideoUrlsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		setActiveAgentId(selectedAgentId);
 	}, [selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || typeof document === "undefined") {
+			return;
+		}
+
+		for (const slide of TASK_START_ONBOARDING_SLIDES) {
+			if (!slide.assetVideoUrl || preloadedVideoUrlsRef.current.has(slide.assetVideoUrl)) {
+				continue;
+			}
+
+			const preloadVideo = document.createElement("video");
+			preloadVideo.preload = "auto";
+			preloadVideo.muted = true;
+			preloadVideo.playsInline = true;
+			preloadVideo.src = slide.assetVideoUrl;
+			preloadVideo.load();
+			preloadedVideoUrlsRef.current.add(slide.assetVideoUrl);
+		}
+	}, [open]);
 
 	const currentSlide =
 		TASK_START_ONBOARDING_SLIDES[activeSlideIndex] ??
@@ -367,12 +428,14 @@ export function TaskStartAgentOnboardingCarousel({
 
 			{activeSlideIndex < 2 && currentSlide.assetAlt ? (
 				<OnboardingMedia
-					key={`${activeSlideIndex}:${currentSlide.assetVideoUrl ?? ""}:${currentSlide.assetImageUrl ?? ""}:${currentSlide.assetStemPath ?? ""}`}
 					assetStemPath={currentSlide.assetStemPath}
 					assetVideoUrl={currentSlide.assetVideoUrl}
 					assetImageUrl={currentSlide.assetImageUrl}
 					assetWidthPx={currentSlide.assetWidthPx}
 					assetHeightPx={currentSlide.assetHeightPx}
+					assetFrameWidthPx={currentSlide.assetFrameWidthPx}
+					assetFrameHeightPx={currentSlide.assetFrameHeightPx}
+					assetObjectFit={currentSlide.assetObjectFit}
 					alt={currentSlide.assetAlt}
 				/>
 			) : null}
