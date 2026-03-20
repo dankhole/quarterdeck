@@ -430,6 +430,34 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.querySelector("pre code")).toBeTruthy();
 	});
 
+	it("applies wrapping styles to inline code in assistant markdown", async () => {
+		const messages: ClineChatMessage[] = [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "Use `averylongidentifierwithnobreakpointswhatsoever1234567890` here.",
+				createdAt: 1,
+			},
+		];
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={null}
+					onLoadMessages={async () => messages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const inlineCode = container.querySelector("p code");
+		expect(inlineCode).toBeInstanceOf(HTMLElement);
+		expect(inlineCode?.className).toContain("whitespace-pre-wrap");
+		expect(inlineCode?.className).toContain("break-all");
+	});
+
 	it("autofocuses the composer, grows it, sends on enter, and cancels on escape", async () => {
 		const onSendMessage = vi.fn(async () => ({
 			ok: true,
