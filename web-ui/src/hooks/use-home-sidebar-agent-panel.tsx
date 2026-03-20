@@ -144,12 +144,14 @@ export function useHomeSidebarAgentPanel({
 				key={taskId}
 				taskId={taskId}
 				summary={homeAgentPanelSummary ?? createIdleTaskSession(taskId)}
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig}
 				onSendMessage={handleSendHomeClineChatMessage}
 				onCancelTurn={handleCancelHomeClineChatTurn}
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
 				showRightBorder={false}
-				composerPlaceholder="Ask Cline anything about this repository"
+				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
 			/>
 		);
 	}

@@ -910,6 +910,7 @@ export default function App(): ReactElement {
 								currentProjectId={currentProjectId}
 								workspacePath={workspacePath}
 								selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+								runtimeConfig={runtimeProjectConfig ?? null}
 								sessionSummary={detailSession}
 								taskSessions={sessions}
 								onSessionSummary={upsertSession}
@@ -967,6 +968,7 @@ export default function App(): ReactElement {
 								isBottomTerminalExpanded={isDetailTerminalExpanded}
 								onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 								isDocumentVisible={isDocumentVisible}
+								onClineSettingsSaved={refreshRuntimeProjectConfig}
 							/>
 						</div>
 					) : null}

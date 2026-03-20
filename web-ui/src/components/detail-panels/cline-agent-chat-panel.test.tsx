@@ -278,7 +278,13 @@ describe("ClineAgentChatPanel", () => {
 
 		expect(document.activeElement).toBe(textarea);
 		expect(textarea.getAttribute("rows")).toBe("1");
-		expect(container.querySelectorAll("button")).toHaveLength(0);
+		expect(container.textContent).toContain("Select model");
+		const sendButton = container.querySelector('button[aria-label="Cancel request"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer action button");
+		}
+		expect(sendButton.disabled).toBe(false);
 
 		Object.defineProperty(textarea, "scrollHeight", {
 			configurable: true,
@@ -296,6 +302,7 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(textarea.style.height).toBe("96px");
+		expect(sendButton.disabled).toBe(false);
 
 		await act(async () => {
 			textarea.dispatchEvent(
