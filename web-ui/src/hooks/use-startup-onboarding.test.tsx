@@ -135,7 +135,8 @@ describe("useStartupOnboarding", () => {
 			throw new Error("Expected a startup onboarding snapshot.");
 		}
 
-		expect(latestSnapshot.isStartupOnboardingDialogOpen).toBe(true);
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
 	});
 
 	it("reopens after a project is added when setup is still incomplete", async () => {
@@ -161,6 +162,7 @@ describe("useStartupOnboarding", () => {
 			throw new Error("Expected a startup onboarding snapshot.");
 		}
 
-		expect(latestSnapshot.isStartupOnboardingDialogOpen).toBe(true);
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
 	});
 });

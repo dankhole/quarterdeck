@@ -25,7 +25,7 @@ interface AgentSelectionResult {
 	message?: string;
 }
 
-interface UseStartupOnboardingResult {
+export interface UseStartupOnboardingResult {
 	startupOnboardingPrompt: TaskStartServicePromptContent;
 	isStartupOnboardingDialogOpen: boolean;
 	handleCloseStartupOnboardingDialog: () => void;
