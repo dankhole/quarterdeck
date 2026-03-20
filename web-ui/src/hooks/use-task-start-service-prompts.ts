@@ -203,6 +203,34 @@ export function buildTaskStartServicePromptContent(
 	}
 }
 
+export function getStartableBacklogTaskIds(board: BoardData): string[] {
+	const allBacklogTasks = new Set<string>();
+	const allInProgressTasks = new Set<string>();
+	const startableTaskIds: string[] = [];
+
+	const backlogCards = board.columns.find((column) => column.id === "backlog")?.cards;
+	const inProgressTasks = board.columns.find((column) => column.id === "in_progress")?.cards;
+
+	backlogCards?.forEach((card) => {
+		allBacklogTasks.add(card.id);
+	});
+	inProgressTasks?.forEach((card) => {
+		allInProgressTasks.add(card.id);
+	});
+
+	backlogCards?.forEach((card) => {
+		const dependency = board.dependencies.find((d) => d.fromTaskId === card.id);
+		const isChildTaskInBacklog = dependency && allBacklogTasks.has(dependency.toTaskId);
+		const isChildTaskInProgress = dependency && allInProgressTasks.has(dependency.toTaskId);
+
+		if (!isChildTaskInBacklog && !isChildTaskInProgress) {
+			startableTaskIds.push(card.id);
+		}
+	});
+
+	return startableTaskIds;
+}
+
 export function collectPendingTaskStartServicePrompts(input: {
 	tasks: TaskStartServicePromptTask[];
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
@@ -675,13 +703,13 @@ export function useTaskStartServicePrompts({
 	);
 
 	const handleStartAllBacklogTasksWithServiceSetupPrompt = useCallback(() => {
-		const backlogTaskIds =
-			board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ?? [];
+		const backlogTaskIds = getStartableBacklogTaskIds(board);
+
 		if (backlogTaskIds.length === 0) {
 			return;
 		}
 		startTasksWithServiceSetupPrompt(backlogTaskIds);
-	}, [board.columns, startTasksWithServiceSetupPrompt]);
+	}, [board, startTasksWithServiceSetupPrompt]);
 
 	const handleCreateAndStartTask = useCallback((options?: { keepDialogOpen?: boolean }): string | null => {
 		const taskId = handleCreateTask(options);
