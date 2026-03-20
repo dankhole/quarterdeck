@@ -14,7 +14,10 @@ import {
 	Settings,
 	X,
 } from "lucide-react";
-import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-agent-catalog";
+import {
+	getRuntimeAgentCatalogEntry,
+	getRuntimeLaunchSupportedAgentCatalog,
+} from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -335,7 +338,7 @@ export function RuntimeSettingsDialog({
 				binary: agent.binary,
 				installed: agent.installed,
 			})) ??
-			RUNTIME_AGENT_CATALOG.map((agent) => ({
+			getRuntimeLaunchSupportedAgentCatalog().map((agent) => ({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,

@@ -5,6 +5,7 @@ import type {
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeTaskChatMessage,
 } from "@/runtime/types";
+import { isRuntimeAgentLaunchSupported } from "@runtime-agent-catalog";
 
 export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
 	return agentId === "cline";
@@ -37,7 +38,7 @@ export function isTaskAgentSetupSatisfied(
 	if (isNativeClineAgentSelected(config.selectedAgentId)) {
 		return true;
 	}
-	return config.agents.some((agent) => agent.installed);
+	return config.agents.some((agent) => isRuntimeAgentLaunchSupported(agent.id) && agent.installed);
 }
 
 export function selectLatestTaskChatMessageForTask(

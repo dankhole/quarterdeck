@@ -1,5 +1,8 @@
 import type { RuntimeConfigState } from "../config/runtime-config.js";
-import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
+import {
+	getRuntimeLaunchSupportedAgentCatalog,
+	RUNTIME_AGENT_CATALOG,
+} from "../core/agent-catalog.js";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,
@@ -54,7 +57,7 @@ export function detectInstalledCommands(): string[] {
 
 function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: string[]): RuntimeAgentDefinition[] {
 	const detectedSet = new Set(detected);
-	return RUNTIME_AGENT_CATALOG.map((entry) => {
+	return getRuntimeLaunchSupportedAgentCatalog().map((entry) => {
 		const defaultArgs = getDefaultArgs(entry.id);
 		const command = joinCommand(entry.binary, defaultArgs);
 		return {
@@ -70,7 +73,7 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 }
 
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	const selected = RUNTIME_AGENT_CATALOG.find((entry) => entry.id === runtimeConfig.selectedAgentId);
+	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === runtimeConfig.selectedAgentId);
 	if (!selected) {
 		return null;
 	}
