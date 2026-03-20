@@ -28,6 +28,7 @@ export interface ClineAgentChatPanelProps {
 	taskColumnId?: string;
 	defaultMode?: RuntimeTaskSessionMode;
 	composerPlaceholder?: string;
+	showComposerModeToggle?: boolean;
 	showRightBorder?: boolean;
 	workspaceId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
@@ -57,6 +58,7 @@ export function ClineAgentChatPanel({
 	taskColumnId = "in_progress",
 	defaultMode = "act",
 	composerPlaceholder = "Ask Cline to add, edit, start, or link tasks",
+	showComposerModeToggle = true,
 	showRightBorder = true,
 	workspaceId = null,
 	runtimeConfig = null,
@@ -227,6 +229,7 @@ export function ClineAgentChatPanel({
 					placeholder={composerPlaceholder}
 					mode={mode}
 					onModeChange={setMode}
+					showModeToggle={showComposerModeToggle}
 					canSend={canSend}
 					canCancel={canCancel}
 					onSend={handleComposerSend}

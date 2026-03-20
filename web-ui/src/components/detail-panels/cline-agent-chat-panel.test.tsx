@@ -1,8 +1,9 @@
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
@@ -27,6 +28,10 @@ function createSummary(
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
+}
+
+function renderPanel(root: Root, panel: ReactElement): void {
+	root.render(<TooltipProvider>{panel}</TooltipProvider>);
 }
 
 describe("ClineAgentChatPanel", () => {
@@ -97,7 +102,8 @@ describe("ClineAgentChatPanel", () => {
 		];
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={null}
@@ -133,7 +139,8 @@ describe("ClineAgentChatPanel", () => {
 
 	it("shows running progress indicator while session is running", async () => {
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("running")}
@@ -159,7 +166,8 @@ describe("ClineAgentChatPanel", () => {
 		];
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("running", {
@@ -197,7 +205,8 @@ describe("ClineAgentChatPanel", () => {
 		];
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("running", {
@@ -230,7 +239,8 @@ describe("ClineAgentChatPanel", () => {
 		];
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={null}
@@ -258,7 +268,8 @@ describe("ClineAgentChatPanel", () => {
 		const onCancelTurn = vi.fn(async () => ({ ok: true }));
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("running")}
@@ -343,7 +354,8 @@ describe("ClineAgentChatPanel", () => {
 		}));
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("idle")}
@@ -402,7 +414,8 @@ describe("ClineAgentChatPanel", () => {
 		}));
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("idle")}
@@ -456,6 +469,76 @@ describe("ClineAgentChatPanel", () => {
 		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Switch it", { mode: "plan" });
 	});
 
+	it("hides the composer mode toggle when requested", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-4",
+				role: "user" as const,
+				content: "Keep acting",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("idle")}
+					showComposerModeToggle={false}
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.querySelector('[aria-label="Cline mode"]')).toBeNull();
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		await act(async () => {
+			textarea.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "A",
+					metaKey: true,
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Keep acting");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const sendButton = container.querySelector('button[aria-label="Send message"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer send button");
+		}
+
+		await act(async () => {
+			sendButton.click();
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Keep acting", { mode: "act" });
+	});
+
 	it("keeps chat pinned to bottom when action footer appears", async () => {
 		const messages: ClineChatMessage[] = [
 			{
@@ -477,7 +560,8 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("awaiting_review")}
@@ -491,7 +575,8 @@ describe("ClineAgentChatPanel", () => {
 		scrollIntoViewMock.mockClear();
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("awaiting_review")}
@@ -522,7 +607,8 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		await act(async () => {
-			root.render(
+			renderPanel(
+				root,
 				<ClineAgentChatPanel
 					taskId="task-1"
 					summary={createSummary("awaiting_review")}

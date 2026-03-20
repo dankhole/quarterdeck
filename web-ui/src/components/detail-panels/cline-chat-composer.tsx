@@ -19,6 +19,7 @@ export function ClineChatComposer({
 	placeholder,
 	mode,
 	onModeChange,
+	showModeToggle = true,
 	canSend,
 	canCancel,
 	onSend,
@@ -38,6 +39,7 @@ export function ClineChatComposer({
 	placeholder: string;
 	mode: RuntimeTaskSessionMode;
 	onModeChange: (mode: RuntimeTaskSessionMode) => void;
+	showModeToggle?: boolean;
 	canSend: boolean;
 	canCancel: boolean;
 	onSend: () => void | Promise<void>;
@@ -81,7 +83,13 @@ export function ClineChatComposer({
 					if (event.nativeEvent.isComposing) {
 						return;
 					}
-					if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+					if (
+						showModeToggle &&
+						(event.metaKey || event.ctrlKey) &&
+						event.shiftKey &&
+						!event.altKey &&
+						event.key.toLowerCase() === "a"
+					) {
 						event.preventDefault();
 						onModeChange(mode === "plan" ? "act" : "plan");
 						return;
@@ -134,56 +142,58 @@ export function ClineChatComposer({
 					/>
 				</div>
 				<div className="ml-auto flex shrink-0 items-center gap-2">
-					<Tooltip
-						side="top"
-						content={
-							<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-								<span>Toggle</span>
-								<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
-									<span>(</span>
-									{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
-									<span>+</span>
-									<ArrowBigUp size={11} />
-									<span>+ A)</span>
+					{showModeToggle ? (
+						<Tooltip
+							side="top"
+							content={
+								<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+									<span>Toggle</span>
+									<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
+										<span>(</span>
+										{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
+										<span>+</span>
+										<ArrowBigUp size={11} />
+										<span>+ A)</span>
+									</span>
 								</span>
-							</span>
-						}
-					>
-						<div
-							className="inline-flex h-7 shrink-0 items-center rounded-md border border-border-bright bg-surface-3 p-0.5"
-							role="tablist"
-							aria-label="Cline mode"
+							}
 						>
-							<button
-								type="button"
-								role="tab"
-								aria-selected={mode === "plan"}
-								className={cn(
-									"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
-									mode === "plan"
-										? "bg-surface-1 text-text-primary"
-										: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
-								)}
-								onClick={() => onModeChange("plan")}
+							<div
+								className="inline-flex h-7 shrink-0 items-center rounded-md border border-border-bright bg-surface-3 p-0.5"
+								role="tablist"
+								aria-label="Cline mode"
 							>
-								Plan
-							</button>
-							<button
-								type="button"
-								role="tab"
-								aria-selected={mode === "act"}
-								className={cn(
-									"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
-									mode === "act"
-										? "bg-surface-1 text-text-primary"
-										: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
-								)}
-								onClick={() => onModeChange("act")}
-							>
-								Act
-							</button>
-						</div>
-					</Tooltip>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={mode === "plan"}
+									className={cn(
+										"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+										mode === "plan"
+											? "bg-surface-1 text-text-primary"
+											: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
+									)}
+									onClick={() => onModeChange("plan")}
+								>
+									Plan
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={mode === "act"}
+									className={cn(
+										"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+										mode === "act"
+											? "bg-surface-1 text-text-primary"
+											: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
+									)}
+									onClick={() => onModeChange("act")}
+								>
+									Act
+								</button>
+							</div>
+						</Tooltip>
+					) : null}
 					<Button
 						variant="default"
 						size="sm"
