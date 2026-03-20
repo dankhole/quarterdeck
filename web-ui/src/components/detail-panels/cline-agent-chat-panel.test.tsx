@@ -315,7 +315,7 @@ describe("ClineAgentChatPanel", () => {
 			await Promise.resolve();
 		});
 
-		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it", { mode: "act" });
 
 		await act(async () => {
 			textarea.dispatchEvent(
@@ -329,6 +329,131 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(onCancelTurn).toHaveBeenCalledWith("task-1");
+	});
+
+	it("defaults the composer mode from the task and sends using the selected mode", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-2",
+				role: "user" as const,
+				content: "Investigate",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("idle")}
+					defaultMode="plan"
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		const planToggle = Array.from(container.querySelectorAll('button[role="tab"]')).find((button) =>
+			button.textContent?.includes("Plan"),
+		);
+		expect(planToggle?.getAttribute("aria-selected")).toBe("true");
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Investigate");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const sendButton = container.querySelector('button[aria-label="Send message"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer send button");
+		}
+
+		await act(async () => {
+			sendButton.click();
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Investigate", { mode: "plan" });
+	});
+
+	it("toggles the composer mode with command shift a", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-3",
+				role: "user" as const,
+				content: "Switch it",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("idle")}
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		await act(async () => {
+			textarea.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "A",
+					metaKey: true,
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Switch it");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const sendButton = container.querySelector('button[aria-label="Send message"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer send button");
+		}
+
+		await act(async () => {
+			sendButton.click();
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Switch it", { mode: "plan" });
 	});
 
 	it("keeps chat pinned to bottom when action footer appears", async () => {

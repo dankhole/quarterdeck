@@ -12,7 +12,7 @@ import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actio
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
-import type { RuntimeConfigResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
@@ -26,12 +26,17 @@ export interface ClineAgentChatPanelProps {
 	taskId: string;
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
+	defaultMode?: RuntimeTaskSessionMode;
 	composerPlaceholder?: string;
 	showRightBorder?: boolean;
 	workspaceId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
 	onClineSettingsSaved?: () => void;
-	onSendMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
+	onSendMessage?: (
+		taskId: string,
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode },
+	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
@@ -50,6 +55,7 @@ export function ClineAgentChatPanel({
 	taskId,
 	summary,
 	taskColumnId = "in_progress",
+	defaultMode = "act",
 	composerPlaceholder = "Ask Cline to add, edit, start, or link tasks",
 	showRightBorder = true,
 	workspaceId = null,
@@ -101,6 +107,7 @@ export function ClineAgentChatPanel({
 	const messageEndRef = useRef<HTMLDivElement | null>(null);
 	const [composerError, setComposerError] = useState<string | null>(null);
 	const [isSavingModel, setIsSavingModel] = useState(false);
+	const [mode, setMode] = useState<RuntimeTaskSessionMode>(defaultMode);
 	const clineSettings = useRuntimeSettingsClineController({
 		open: true,
 		workspaceId,
@@ -141,6 +148,10 @@ export function ClineAgentChatPanel({
 	useEffect(() => {
 		setComposerError(null);
 	}, [taskId]);
+
+	useEffect(() => {
+		setMode(defaultMode);
+	}, [defaultMode, taskId]);
 
 	const persistSelectedModel = useCallback(
 		async (nextModelId?: string): Promise<boolean> => {
@@ -192,8 +203,8 @@ export function ClineAgentChatPanel({
 				return;
 			}
 		}
-		await handleSendDraft();
-	}, [clineSettings.hasUnsavedChanges, handleSendDraft, isSavingModel, persistSelectedModel]);
+		await handleSendDraft(mode);
+	}, [clineSettings.hasUnsavedChanges, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
 
 	return (
 		<div
@@ -214,6 +225,8 @@ export function ClineAgentChatPanel({
 					draft={draft}
 					onDraftChange={setDraft}
 					placeholder={composerPlaceholder}
+					mode={mode}
+					onModeChange={setMode}
 					canSend={canSend}
 					canCancel={canCancel}
 					onSend={handleComposerSend}

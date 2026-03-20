@@ -1,18 +1,24 @@
-import { Pause, SendHorizontal } from "lucide-react";
+import { ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
+import type { RuntimeTaskSessionMode } from "@/runtime/types";
 
 const CLINE_CHAT_COMPOSER_MAX_HEIGHT = 160;
+const isMacPlatform =
+	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 export function ClineChatComposer({
 	taskId,
 	draft,
 	onDraftChange,
 	placeholder,
+	mode,
+	onModeChange,
 	canSend,
 	canCancel,
 	onSend,
@@ -30,6 +36,8 @@ export function ClineChatComposer({
 	draft: string;
 	onDraftChange: (draft: string) => void;
 	placeholder: string;
+	mode: RuntimeTaskSessionMode;
+	onModeChange: (mode: RuntimeTaskSessionMode) => void;
 	canSend: boolean;
 	canCancel: boolean;
 	onSend: () => void | Promise<void>;
@@ -73,6 +81,11 @@ export function ClineChatComposer({
 					if (event.nativeEvent.isComposing) {
 						return;
 					}
+					if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+						event.preventDefault();
+						onModeChange(mode === "plan" ? "act" : "plan");
+						return;
+					}
 					if (event.key === "Escape") {
 						if (!canCancel) {
 							return;
@@ -96,27 +109,81 @@ export function ClineChatComposer({
 				className="w-full min-h-6 resize-none bg-transparent p-0 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
 				style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
 			/>
-			<div className="mt-2 flex items-center justify-between gap-2">
-				<SearchSelectDropdown
-					id="cline-chat-model-picker"
-					options={modelOptions}
-					selectedValue={selectedModelId}
-					onSelect={onSelectModel}
-					disabled={modelPickerDisabled}
-					size="sm"
-					buttonText={selectedModelButtonText}
-					emptyText="Select model"
-					noResultsText="No matching models"
-					placeholder="Search models..."
+			<div className="mt-2 flex min-w-0 items-center gap-2">
+				<div className="min-w-0 flex-1 max-w-[8.5rem] sm:max-w-[10rem] md:max-w-[12rem]">
+					<SearchSelectDropdown
+						id="cline-chat-model-picker"
+						options={modelOptions}
+						selectedValue={selectedModelId}
+						onSelect={onSelectModel}
+						disabled={modelPickerDisabled}
+						size="sm"
+						fill
+						buttonText={selectedModelButtonText}
+						emptyText="Select model"
+						noResultsText="No matching models"
+						placeholder="Search models..."
 						showSelectedIndicator
 						matchTargetWidth={false}
 						collisionPadding={12}
-						dropdownStyle={{ minWidth: "240px", maxWidth: "320px" }}
+						dropdownStyle={{ minWidth: "220px", maxWidth: "320px" }}
 						buttonClassName={cn(
-						"max-w-[220px] rounded-full border-transparent bg-surface-3 px-2.5 text-text-secondary shadow-none hover:bg-surface-4 hover:text-text-primary",
-						(isModelLoading || isModelSaving) && "text-text-tertiary",
-					)}
-				/>
+							"w-full justify-between rounded-md border-border-bright bg-surface-3 px-2 text-text-secondary shadow-none hover:cursor-pointer hover:bg-surface-4 hover:text-text-primary",
+							(isModelLoading || isModelSaving) && "text-text-tertiary",
+						)}
+					/>
+				</div>
+				<div className="ml-auto flex shrink-0 items-center gap-2">
+					<Tooltip
+						side="top"
+						content={
+							<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+								<span>Toggle</span>
+								<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
+									<span>(</span>
+									{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
+									<span>+</span>
+									<ArrowBigUp size={11} />
+									<span>+ A)</span>
+								</span>
+							</span>
+						}
+					>
+						<div
+							className="inline-flex h-7 shrink-0 items-center rounded-md border border-border-bright bg-surface-3 p-0.5"
+							role="tablist"
+							aria-label="Cline mode"
+						>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={mode === "plan"}
+								className={cn(
+									"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+									mode === "plan"
+										? "bg-surface-1 text-text-primary"
+										: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
+								)}
+								onClick={() => onModeChange("plan")}
+							>
+								Plan
+							</button>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={mode === "act"}
+								className={cn(
+									"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+									mode === "act"
+										? "bg-surface-1 text-text-primary"
+										: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
+								)}
+								onClick={() => onModeChange("act")}
+							>
+								Act
+							</button>
+						</div>
+					</Tooltip>
 					<Button
 						variant="default"
 						size="sm"
@@ -142,5 +209,6 @@ export function ClineChatComposer({
 					/>
 				</div>
 			</div>
+		</div>
 	);
 }

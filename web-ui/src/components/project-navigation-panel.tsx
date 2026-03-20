@@ -256,6 +256,7 @@ const ESSENTIAL_SHORTCUTS = [
 ];
 
 const MORE_SHORTCUTS = [
+	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Close / back" },
 ];

@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
 interface HookSnapshot {
@@ -17,7 +17,7 @@ interface HookSnapshot {
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
 	setDraft: (draft: string) => void;
-	handleSendDraft: () => Promise<void>;
+	handleSendDraft: (mode?: RuntimeTaskSessionMode) => Promise<void>;
 }
 
 function createSummary(
@@ -71,7 +71,7 @@ function HookHarness({
 }: {
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
-	onSendMessage?: (taskId: string, text: string) => Promise<{
+	onSendMessage?: (taskId: string, text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<{
 		ok: boolean;
 		message?: string;
 		chatMessage?: {
@@ -199,10 +199,10 @@ describe("useClineChatPanelController", () => {
 		expect(requireSnapshot(latestSnapshot).draft).toBe("Ship it");
 
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).handleSendDraft();
+			await requireSnapshot(latestSnapshot).handleSendDraft("plan");
 		});
 
-		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it", { mode: "plan" });
 		expect(requireSnapshot(latestSnapshot).draft).toBe("");
 		expect(requireSnapshot(latestSnapshot).messageIds).toEqual(["sent-1"]);
 		expect(requireSnapshot(latestSnapshot).lastMessageContent).toBe("Ship it");
