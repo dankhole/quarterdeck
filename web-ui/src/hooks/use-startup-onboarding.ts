@@ -15,6 +15,7 @@ interface UseStartupOnboardingOptions {
 	currentProjectId: string | null;
 	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
+	isRuntimeProjectConfigLoading: boolean;
 	isTaskAgentReady: boolean | null;
 	refreshRuntimeProjectConfig: () => void;
 	refreshSettingsRuntimeProjectConfig: () => void;
@@ -37,6 +38,7 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	const {
 		currentProjectId,
 		runtimeProjectConfig,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
@@ -62,6 +64,10 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	}, [currentProjectId]);
 
 	useEffect(() => {
+		if (isRuntimeProjectConfigLoading && runtimeProjectConfig === null) {
+			setIsStartupOnboardingDialogOpen(false);
+			return;
+		}
 		if (didDismissStartupOnboardingForSession) {
 			setIsStartupOnboardingDialogOpen(false);
 			return;
@@ -78,7 +84,9 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		didDismissStartupOnboardingForSession,
 		forceShowOnboardingDialog,
 		hasShownOnboardingDialog,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
+		runtimeProjectConfig,
 		selectedAgentAuthenticated,
 	]);
 
@@ -90,12 +98,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 
 	const handleSelectOnboardingAgent = useCallback(
 		async (agentId: RuntimeAgentId): Promise<AgentSelectionResult> => {
-			if (!currentProjectId) {
-				return {
-					ok: false,
-					message: "Select a project before choosing an agent.",
-				};
-			}
 			try {
 				await saveRuntimeConfigQuery(currentProjectId, { selectedAgentId: agentId });
 				refreshRuntimeProjectConfig();

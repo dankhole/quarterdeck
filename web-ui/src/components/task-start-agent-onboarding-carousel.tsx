@@ -517,7 +517,7 @@ export function TaskStartAgentOnboardingCarousel({
 								<div className="mt-2">
 									<ClineSetupSection
 										controller={clineSettings}
-										controlsDisabled={!workspaceId}
+										controlsDisabled={false}
 										showHeading={false}
 										onError={setClineSetupError}
 										onSaved={onClineSetupSaved}

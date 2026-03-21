@@ -536,3 +536,64 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		});
 	});
 }
+
+export async function updateGlobalRuntimeConfig(
+	current: RuntimeConfigState,
+	updates: RuntimeConfigUpdateInput,
+): Promise<RuntimeConfigState> {
+	const globalConfigPath = getRuntimeGlobalConfigPath();
+	return await lockedFileSystem.withLocks(
+		[
+			{
+				path: globalConfigPath,
+				type: "file",
+			},
+		],
+		async () => {
+			const nextConfig = {
+				selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
+				selectedShortcutLabel:
+					updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel,
+				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
+				readyForReviewNotificationsEnabled:
+					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+				shortcuts: current.shortcuts,
+				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
+				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
+			};
+
+			const hasChanges =
+				nextConfig.selectedAgentId !== current.selectedAgentId ||
+				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
+				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
+				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
+				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate;
+
+			if (!hasChanges) {
+				return current;
+			}
+
+			await writeRuntimeGlobalConfigFile(globalConfigPath, {
+				selectedAgentId: nextConfig.selectedAgentId,
+				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
+				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
+				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				commitPromptTemplate: nextConfig.commitPromptTemplate,
+				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
+			});
+
+			return createRuntimeConfigStateFromValues({
+				globalConfigPath,
+				projectConfigPath: current.projectConfigPath,
+				selectedAgentId: nextConfig.selectedAgentId,
+				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
+				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
+				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				shortcuts: nextConfig.shortcuts,
+				commitPromptTemplate: nextConfig.commitPromptTemplate,
+				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
+			});
+		},
+	);
+}
