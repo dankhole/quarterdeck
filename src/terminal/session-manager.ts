@@ -102,6 +102,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};

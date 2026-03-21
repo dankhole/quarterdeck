@@ -298,6 +298,27 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("surfaces startup warnings from the runtime on the session summary", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.startTaskSessionMock.mockResolvedValueOnce({
+			sessionId: "task-1-runtime",
+			result: {},
+			warnings: ['Failed to load MCP server "linear": MCP server "linear" requires OAuth authorization.'],
+		});
+
+		const summary = await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.warningMessage).toContain('Failed to load MCP server "linear"');
+		});
+
+		expect(summary.warningMessage).toBeNull();
+	});
+
 	it("appends Kanban sidebar instructions for home sessions", async () => {
 		const { service, runtime } = createTrackedService();
 

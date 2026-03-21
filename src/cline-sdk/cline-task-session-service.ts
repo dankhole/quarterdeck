@@ -97,6 +97,20 @@ function readAgentResultText(result: unknown): string | null {
 	return normalized.length > 0 ? normalized : null;
 }
 
+function formatStartWarnings(warnings: readonly string[] | undefined): string | null {
+	if (!warnings) {
+		return null;
+	}
+	const normalized = warnings.map((warning) => warning.trim()).filter((warning) => warning.length > 0);
+	if (normalized.length === 0) {
+		return null;
+	}
+	if (normalized.length === 1) {
+		return normalized[0] ?? null;
+	}
+	return `${normalized[0]} (+${normalized.length - 1} more MCP warning${normalized.length === 2 ? "" : "s"})`;
+}
+
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
@@ -231,6 +245,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					userInstructionWatcher: runtimeSetup.watcher,
 					requestToolApproval: runtimeSetup.requestToolApproval,
 				});
+				const warningMessage = formatStartWarnings(startResult.warnings);
+				if (warningMessage) {
+					this.emitSummary(
+						updateSummary(entry, {
+							warningMessage,
+						}),
+					);
+				}
 
 				const initialAgentText = readAgentResultText(startResult.result);
 				if (initialAgentText) {
