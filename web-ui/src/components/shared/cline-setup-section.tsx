@@ -54,7 +54,7 @@ export function ClineSetupSection({
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
 			value: provider.id,
-			label: `${provider.name} ${provider.oauthSupported ? "(OAuth)" : "(API key)"}`,
+			label: provider.name,
 		}));
 		const trimmedId = controller.providerId.trim();
 		if (
@@ -190,10 +190,10 @@ export function ClineSetupSection({
 					{controller.isLoadingProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
 				</p>
 			) : null}
-			<p className="text-text-secondary text-[12px] mt-2 mb-0">
+			<p className="text-text-secondary text-[12px] mt-1 mb-0">
 				Authentication: {controller.isOauthProviderSelected ? "OAuth" : "API key"}
 			</p>
-			<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: controller.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
+			<div className="grid gap-2 mt-1" style={{ gridTemplateColumns: controller.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
 				{controller.isOauthProviderSelected ? null : (
 					<div className="min-w-0">
 						<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
@@ -207,20 +207,22 @@ export function ClineSetupSection({
 						/>
 					</div>
 				)}
-				<div className="min-w-0">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
-					<input
-						value={controller.baseUrl}
-						onChange={(event) => controller.setBaseUrl(event.target.value)}
-						placeholder="https://api.cline.bot"
-						disabled={controlsDisabled}
-						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					/>
-				</div>
+				{controller.isOauthProviderSelected ? null : (
+					<div className="min-w-0">
+						<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+						<input
+							value={controller.baseUrl}
+							onChange={(event) => controller.setBaseUrl(event.target.value)}
+							placeholder="https://api.cline.bot"
+							disabled={controlsDisabled}
+							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+						/>
+					</div>
+				)}
 			</div>
 			{controller.isOauthProviderSelected ? (
 				<>
-					<p className="text-text-secondary text-[12px] mt-2 mb-0">
+					<p className="text-text-secondary text-[12px] mt-1 mb-0">
 						Status: {controller.oauthConfigured ? "Signed in" : "Not signed in"}
 					</p>
 					{controller.oauthAccountId ? (
