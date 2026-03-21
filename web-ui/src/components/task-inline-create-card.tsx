@@ -188,7 +188,7 @@ export function TaskInlineCreateCard({
 						checked={startInPlanMode}
 						onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
 						disabled={startInPlanModeDisabled || !enabled}
-						className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40"
+						className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 					>
 						<RadixCheckbox.Indicator>
 							<Check size={10} className="text-white" />
@@ -221,7 +221,7 @@ export function TaskInlineCreateCard({
 							aria-label="Enable automatic review action"
 							checked={autoReviewEnabled}
 							onCheckedChange={(checked) => onAutoReviewEnabledChange(checked === true)}
-							className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 						>
 							<RadixCheckbox.Indicator>
 								<Check size={10} className="text-white" />
