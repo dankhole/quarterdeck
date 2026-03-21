@@ -8,8 +8,8 @@ import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-mess
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
-import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -20,7 +20,14 @@ const BOTTOM_LOCK_THRESHOLD_PX = 24;
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
 		<div className="px-1.5">
-			<ShimmeringText text="Thinking..." className="text-sm" duration={2.5} spread={5} repeatDelay={1.2} startOnView={false} />
+			<ShimmeringText
+				text="Thinking..."
+				className="text-sm"
+				duration={2.5}
+				spread={5}
+				repeatDelay={0}
+				startOnView={false}
+			/>
 		</div>
 	);
 });
@@ -190,7 +197,14 @@ ref,
 			return;
 		}
 		container.scrollTop = container.scrollHeight;
-	}, [isAutoScrollEnabled, messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
+	}, [
+		isAutoScrollEnabled,
+		messages,
+		showAgentProgressIndicator,
+		showActionFooter,
+		showReviewActions,
+		showCancelAutomaticAction,
+	]);
 
 	useEffect(() => {
 		setComposerError(null);
@@ -311,11 +325,15 @@ ref,
 				className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
 				onScroll={handleMessageListScroll}
 			>
-				{messages.map((message) => <ClineChatMessageItem key={message.id} message={message} />)}
+				{messages.map((message) => (
+					<ClineChatMessageItem key={message.id} message={message} />
+				))}
 				{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
 			</div>
 			{panelError ? (
-				<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">{panelError}</div>
+				<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">
+					{panelError}
+				</div>
 			) : null}
 			<div className="px-2 py-3">
 				<ClineChatComposer
