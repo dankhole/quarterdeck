@@ -551,7 +551,7 @@ export const runtimeConfigResponseSchema = z.object({
 	agentAutonomousModeEnabled: z.boolean(),
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
-	projectConfigPath: z.string(),
+	projectConfigPath: z.string().nullable(),
 	readyForReviewNotificationsEnabled: z.boolean(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
