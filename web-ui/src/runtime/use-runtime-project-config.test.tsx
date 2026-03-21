@@ -54,10 +54,6 @@ function createRuntimeConfigResponse(
 				configured: selectedAgentId === "codex",
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts,
 		clineProviderSettings: {
 			providerId: null,

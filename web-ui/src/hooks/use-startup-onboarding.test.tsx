@@ -35,10 +35,6 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				configured: selectedAgentId === "codex",
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: null,
@@ -60,14 +56,12 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 
 function HookHarness({
 	currentProjectId,
-	hasNoProjects,
 	runtimeProjectConfig,
 	isRuntimeProjectConfigLoading,
 	isTaskAgentReady,
 	onSnapshot,
 }: {
 	currentProjectId: string | null;
-	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	isRuntimeProjectConfigLoading: boolean;
 	isTaskAgentReady: boolean | null;
@@ -75,7 +69,6 @@ function HookHarness({
 }): null {
 	const snapshot = useStartupOnboarding({
 		currentProjectId,
-		hasNoProjects,
 		runtimeProjectConfig,
 		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
@@ -127,7 +120,6 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={null}
-					hasNoProjects={true}
 					runtimeProjectConfig={null}
 					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={null}
@@ -154,7 +146,6 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={null}
-					hasNoProjects={true}
 					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
 					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={false}
@@ -184,7 +175,6 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={null}
-					hasNoProjects={true}
 					runtimeProjectConfig={null}
 					isRuntimeProjectConfigLoading={true}
 					isTaskAgentReady={null}
@@ -212,7 +202,6 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={"project-1"}
-					hasNoProjects={false}
 					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
 					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={false}

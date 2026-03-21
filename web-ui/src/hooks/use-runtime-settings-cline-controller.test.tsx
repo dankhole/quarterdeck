@@ -58,10 +58,6 @@ function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigRespon
 				configured: true,
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: "cline",

@@ -539,12 +539,6 @@ export const runtimeAgentDefinitionSchema = z.object({
 });
 export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
 
-export const runtimeTaskStartSetupAvailabilitySchema = z.object({
-	githubCli: z.boolean(),
-	linearMcp: z.boolean(),
-});
-export type RuntimeTaskStartSetupAvailability = z.infer<typeof runtimeTaskStartSetupAvailabilitySchema>;
-
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	selectedShortcutLabel: z.string().nullable(),
@@ -555,7 +549,6 @@ export const runtimeConfigResponseSchema = z.object({
 	readyForReviewNotificationsEnabled: z.boolean(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
-	taskStartSetupAvailability: runtimeTaskStartSetupAvailabilitySchema,
 	shortcuts: z.array(runtimeProjectShortcutSchema),
 	clineProviderSettings: runtimeClineProviderSettingsSchema,
 	commitPromptTemplate: z.string(),
