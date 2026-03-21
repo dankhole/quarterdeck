@@ -20,7 +20,7 @@ interface UseShortcutActionsInput {
 	refreshRuntimeProjectConfig: () => void;
 	prepareTerminalForShortcut: (input: {
 		prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
-	}) => Promise<{ ok: boolean; targetTaskId?: string; usedExistingTerminal?: boolean; message?: string }>;
+	}) => Promise<{ ok: boolean; targetTaskId?: string; message?: string }>;
 	prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
 	sendTaskSessionInput: (
 		taskId: string,

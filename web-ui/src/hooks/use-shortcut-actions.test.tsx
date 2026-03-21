@@ -94,7 +94,6 @@ describe("useShortcutActions", () => {
 		const prepareTerminalForShortcut = vi.fn(async () => ({
 			ok: true,
 			targetTaskId: "__home_terminal__",
-			usedExistingTerminal: true,
 		}));
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
@@ -129,7 +128,6 @@ describe("useShortcutActions", () => {
 		const prepareTerminalForShortcut = vi.fn(async () => ({
 			ok: true,
 			targetTaskId: "__home_terminal__",
-			usedExistingTerminal: false,
 		}));
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
