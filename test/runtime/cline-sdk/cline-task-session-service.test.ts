@@ -13,6 +13,10 @@ import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 
+const originalArgv = [...process.argv];
+const originalExecArgv = [...process.execArgv];
+const originalExecPath = process.execPath;
+
 const turnCheckpointMocks = vi.hoisted(() => ({
 	captureTaskTurnCheckpoint: vi.fn(),
 	deleteTaskTurnCheckpointRef: vi.fn(),
@@ -228,6 +232,15 @@ async function waitForTaskSessionId(runtime: FakeClineSessionRuntimeController, 
 	return runtime.getTaskSessionId(taskId) ?? "session-1";
 }
 
+function setKanbanProcessContext(): void {
+	process.argv = ["node", "/Users/example/repo/dist/cli.js"];
+	process.execArgv = [];
+	Object.defineProperty(process, "execPath", {
+		configurable: true,
+		value: "/usr/local/bin/node",
+	});
+}
+
 describe("InMemoryClineTaskSessionService", () => {
 	const services: ClineTaskSessionService[] = [];
 
@@ -264,6 +277,12 @@ describe("InMemoryClineTaskSessionService", () => {
 				await service.dispose();
 			}),
 		);
+		process.argv = [...originalArgv];
+		process.execArgv = [...originalExecArgv];
+		Object.defineProperty(process, "execPath", {
+			configurable: true,
+			value: originalExecPath,
+		});
 	});
 
 	it("starts a cline session and captures initial prompt as a user message", async () => {
@@ -428,6 +447,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 	it("appends Kanban sidebar instructions for home sessions", async () => {
 		const { service, runtime } = createTrackedService();
+		setKanbanProcessContext();
 
 		await service.startTaskSession({
 			taskId: "__home_agent__:workspace-1:cline:abc123",
@@ -450,7 +470,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				systemPrompt: expect.stringContaining("kanban task create"),
+				systemPrompt: expect.stringContaining("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create"),
 			}),
 		);
 	});
