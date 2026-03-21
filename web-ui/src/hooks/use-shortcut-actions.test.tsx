@@ -125,7 +125,7 @@ describe("useShortcutActions", () => {
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
-	it("runs the shortcut directly for freshly opened terminals", async () => {
+	it("interrupts before running even for freshly opened terminals", async () => {
 		const prepareTerminalForShortcut = vi.fn(async () => ({
 			ok: true,
 			targetTaskId: "__home_terminal__",
@@ -150,9 +150,11 @@ describe("useShortcutActions", () => {
 			await requireSnapshot(latestSnapshot).handleRunShortcut("Ship");
 		});
 
-		expect(waitForTerminalLikelyPromptMock).not.toHaveBeenCalled();
-		expect(sendTaskSessionInput).toHaveBeenCalledTimes(1);
-		expect(sendTaskSessionInput).toHaveBeenCalledWith("__home_terminal__", "npm run ship", {
+		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
+		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "\u0003", {
+			appendNewline: false,
+		});
+		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "__home_terminal__", "npm run ship", {
 			appendNewline: true,
 		});
 	});
