@@ -1,7 +1,7 @@
 // Layout component for the native Cline chat panel.
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
 import { ClineChatComposer } from "@/components/detail-panels/cline-chat-composer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
@@ -24,6 +24,11 @@ const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 		</div>
 	);
 });
+
+export interface ClineAgentChatPanelHandle {
+	appendToDraft: (text: string) => void;
+	sendText: (text: string) => Promise<void>;
+}
 
 export interface ClineAgentChatPanelProps {
 	taskId: string;
@@ -56,7 +61,7 @@ export interface ClineAgentChatPanelProps {
 	showMoveToTrash?: boolean;
 }
 
-export function ClineAgentChatPanel({
+export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, ClineAgentChatPanelProps>(function ClineAgentChatPanel({
 	taskId,
 	summary,
 	taskColumnId = "in_progress",
@@ -81,7 +86,9 @@ export function ClineAgentChatPanel({
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
 	showMoveToTrash = false,
-}: ClineAgentChatPanelProps): ReactElement {
+},
+ref,
+): ReactElement {
 	const {
 		draft,
 		setDraft,
@@ -94,6 +101,7 @@ export function ClineAgentChatPanel({
 		showAgentProgressIndicator,
 		showActionFooter,
 		showCancelAutomaticAction,
+		handleSendText,
 		handleSendDraft,
 		handleCancelTurn,
 	} = useClineChatPanelController({
@@ -237,6 +245,46 @@ export function ClineAgentChatPanel({
 		[clineSettings.modelId, clineSettings.setModelId, persistSelectedModel],
 	);
 
+	const handleAppendToDraft = useCallback(
+		(text: string) => {
+			const trimmed = text.trim();
+			if (trimmed.length === 0) {
+				return;
+			}
+			if (draft.trim().length === 0) {
+				setDraft(trimmed);
+				return;
+			}
+			setDraft(`${draft.trimEnd()}\n\n${trimmed}`);
+		},
+		[draft, setDraft],
+	);
+
+	const handleSendComposerText = useCallback(
+		async (text: string): Promise<void> => {
+			if (isSavingModel) {
+				return;
+			}
+			if (clineSettings.hasUnsavedChanges) {
+				const saved = await persistSelectedModel();
+				if (!saved) {
+					return;
+				}
+			}
+			await handleSendText(text, mode);
+		},
+		[clineSettings.hasUnsavedChanges, handleSendText, isSavingModel, mode, persistSelectedModel],
+	);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			appendToDraft: handleAppendToDraft,
+			sendText: handleSendComposerText,
+		}),
+		[handleAppendToDraft, handleSendComposerText],
+	);
+
 	const handleComposerSend = useCallback(async () => {
 		if (isSavingModel) {
 			return;
@@ -332,4 +380,6 @@ export function ClineAgentChatPanel({
 			) : null}
 		</div>
 	);
-}
+});
+
+ClineAgentChatPanel.displayName = "ClineAgentChatPanel";

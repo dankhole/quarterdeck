@@ -42,6 +42,7 @@ interface UseClineChatPanelControllerResult {
 	showAgentProgressIndicator: boolean;
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
+	handleSendText: (text: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]) => Promise<boolean>;
 	handleSendDraft: (mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]) => Promise<boolean>;
 	handleCancelTurn: () => void;
 }
@@ -194,21 +195,28 @@ export function useClineChatPanelController({
 	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
 	const showCancelAutomaticAction = Boolean(cancelAutomaticActionLabel && onCancelAutomaticAction);
 
+	const handleSendText = useCallback(
+		async (text: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<boolean> => {
+			return sendMessage(
+				text,
+				mode || images?.length
+					? {
+						...(mode ? { mode } : {}),
+						...(images?.length ? { images } : {}),
+					}
+					: undefined,
+			);
+		},
+		[sendMessage],
+	);
+
 	const handleSendDraft = useCallback(async (mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<boolean> => {
-		const sent = await sendMessage(
-			draft,
-			mode || images?.length
-				? {
-					...(mode ? { mode } : {}),
-					...(images?.length ? { images } : {}),
-				}
-				: undefined,
-		);
+		const sent = await handleSendText(draft, mode, images);
 		if (sent) {
 			setDraft("");
 		}
 		return sent;
-	}, [draft, sendMessage]);
+	}, [draft, handleSendText]);
 
 	const handleCancelTurn = useCallback(() => {
 		void cancelTurn();
@@ -227,6 +235,7 @@ export function useClineChatPanelController({
 		showAgentProgressIndicator,
 		showActionFooter,
 		showCancelAutomaticAction,
+		handleSendText,
 		handleSendDraft,
 		handleCancelTurn,
 	};
