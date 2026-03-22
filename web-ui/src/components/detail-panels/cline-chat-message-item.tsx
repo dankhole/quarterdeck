@@ -12,6 +12,7 @@ import {
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { normalizeUserInput } from '@clinebot/shared'
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	const parsed = useMemo(() => parseToolMessageContent(message.content), [message.content]);
@@ -143,7 +144,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
 			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
-				{hasText ? <div className="whitespace-pre-wrap">{message.content}</div> : null}
+				{hasText ? <div className="whitespace-pre-wrap">{normalizeUserInput(message.content)}</div> : null}
 				{hasImages ? <TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} /> : null}
 			</div>
 		);
