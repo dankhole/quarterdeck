@@ -111,9 +111,9 @@ export function TaskInlineCreateCard({
 	const cardMarginBottom = mode === "create" ? 6 : 0;
 
 	useHotkeys(
-		"esc",
+		"escape",
 		(event) => {
-			if (!onCancel || mode === "edit") {
+			if (!onCancel) {
 				return;
 			}
 			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
@@ -122,7 +122,7 @@ export function TaskInlineCreateCard({
 			onCancel();
 		},
 		{
-			enabled: enabled && Boolean(onCancel) && mode !== "edit",
+			enabled: enabled && Boolean(onCancel),
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			ignoreEventWhen: (event) => event.defaultPrevented,
@@ -164,6 +164,7 @@ export function TaskInlineCreateCard({
 					onImagesChange={onImagesChange}
 					onSubmit={onCreate}
 					onSubmitAndStart={onCreateAndStart}
+					onEscape={onCancel}
 					placeholder="Describe the task..."
 					enabled={enabled}
 					autoFocus

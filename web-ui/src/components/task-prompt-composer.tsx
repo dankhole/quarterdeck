@@ -37,6 +37,7 @@ interface TaskPromptComposerProps {
 	onImagesChange?: (images: TaskImage[]) => void;
 	onSubmit?: () => void;
 	onSubmitAndStart?: () => void;
+	onEscape?: () => void;
 	placeholder?: string;
 	disabled?: boolean;
 	enabled?: boolean;
@@ -92,6 +93,7 @@ export function TaskPromptComposer({
 	onImagesChange,
 	onSubmit,
 	onSubmitAndStart,
+	onEscape,
 	placeholder,
 	disabled,
 	enabled = true,
@@ -284,9 +286,15 @@ export function TaskPromptComposer({
 			if (event.key === "Escape" && canShowSuggestions) {
 				event.preventDefault();
 				setIsSuggestionPickerOpen(false);
+				return;
+			}
+
+			if (event.key === "Escape") {
+				event.preventDefault();
+				onEscape?.();
 			}
 		},
-		[applySuggestion, isSuggestionPickerOpen, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
+		[applySuggestion, isSuggestionPickerOpen, onEscape, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
 	);
 
 	const appendImages = useCallback(
