@@ -603,6 +603,33 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(stopped?.reviewReason).toBe("interrupted");
 	});
 
+	it("rebinds persisted sessions before stopping when no in-memory entry exists", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-persisted",
+				status: "completed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+				cwd: "/tmp/worktree",
+				workspaceRoot: "/tmp/workspace-root",
+			},
+			messages: [
+				{
+					role: "user",
+					content: "Recovered prompt",
+				},
+			],
+		});
+
+		const stopped = await service.stopTaskSession("task-1");
+
+		expect(runtime.readPersistedTaskSessionMock).toHaveBeenCalledWith("task-1");
+		expect(runtime.stopTaskSessionMock).toHaveBeenCalledWith("task-1");
+		expect(stopped?.state).toBe("interrupted");
+		expect(stopped?.reviewReason).toBe("interrupted");
+	});
+
 	it("cancels only the active turn without interrupting or trashing the task", async () => {
 		const { service, runtime } = createTrackedService();
 

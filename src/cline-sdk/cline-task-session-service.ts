@@ -287,9 +287,18 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	}
 
 	async stopTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = this.messageRepository.getTaskEntry(taskId);
+		let entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
-			return null;
+			// Runtime restarts can clear in-memory task entries while the SDK still has a persisted
+			// session for this task. Rebind first so stop() can target that recovered session id.
+			const reboundSummary = await this.rebindPersistedTaskSession(taskId);
+			if (!reboundSummary) {
+				return null;
+			}
+			entry = this.messageRepository.getTaskEntry(taskId);
+			if (!entry) {
+				return reboundSummary;
+			}
 		}
 		this.pendingTurnCancelTaskIds.delete(taskId);
 		await this.sessionRuntime.stopTaskSession(taskId).catch(() => null);
