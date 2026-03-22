@@ -124,7 +124,7 @@ describe("useAppHotkeys", () => {
 		expect(handleCloseGitHistory).toHaveBeenCalledTimes(1);
 	});
 
-	it("starts all tasks on Alt+Shift+S", async () => {
+	it("starts all tasks on Mod+B", async () => {
 		const onStartAllTasks = vi.fn();
 
 		await act(async () => {
@@ -147,7 +147,7 @@ describe("useAppHotkeys", () => {
 			);
 		});
 
-		const startAllTasksCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "alt+shift+s");
+		const startAllTasksCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "mod+b");
 		if (!startAllTasksCall || typeof startAllTasksCall[1] !== "function") {
 			throw new Error("Expected start all tasks shortcut to be registered.");
 		}

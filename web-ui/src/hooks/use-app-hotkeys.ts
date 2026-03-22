@@ -55,7 +55,7 @@ export function useAppHotkeys({
 	);
 
 	useHotkeys(
-		"alt+shift+s",
+		"mod+b",
 		onStartAllTasks,
 		{
 			enableOnContentEditable: false,

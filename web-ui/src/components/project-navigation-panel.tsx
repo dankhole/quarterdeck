@@ -20,7 +20,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
-import { isMacPlatform, modifierKeyLabel, optionKeyLabel } from "@/utils/platform";
+import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
@@ -356,11 +356,10 @@ export function ProjectNavigationPanel({
 }
 
 const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
-const ALT = optionKeyLabel;
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
-	{ keys: [ALT, "Shift", "S"], label: "Start all tasks" },
+	{ keys: [MOD, "B"], label: "Start backlog tasks" },
 	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
