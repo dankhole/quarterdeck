@@ -338,6 +338,7 @@ export default function App(): ReactElement {
 		selectedCard,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
+		sendTaskChatMessage,
 		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
