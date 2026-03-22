@@ -22,6 +22,7 @@ import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js"
 
 const RUNTIME_HOME_PARENT_DIR = ".cline";
 const RUNTIME_HOME_DIR = "kanban";
+const RUNTIME_WORKTREES_DIR = "worktrees";
 const WORKSPACES_DIR = "workspaces";
 const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
@@ -159,6 +160,10 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 
 export function getRuntimeHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR);
+}
+
+export function getTaskWorktreesHomePath(): string {
+	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_WORKTREES_DIR);
 }
 
 export function getWorkspacesRootPath(): string {

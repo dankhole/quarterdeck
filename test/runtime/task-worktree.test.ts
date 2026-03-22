@@ -18,6 +18,7 @@ const lockedFileSystemMocks = vi.hoisted(() => ({
 
 const workspaceStateMocks = vi.hoisted(() => ({
 	getRuntimeHomePath: vi.fn(),
+	getTaskWorktreesHomePath: vi.fn(),
 	loadWorkspaceContext: vi.fn(),
 }));
 
@@ -41,6 +42,7 @@ vi.mock("../../src/fs/locked-file-system.js", () => ({
 
 vi.mock("../../src/state/workspace-state.js", () => ({
 	getRuntimeHomePath: workspaceStateMocks.getRuntimeHomePath,
+	getTaskWorktreesHomePath: workspaceStateMocks.getTaskWorktreesHomePath,
 	loadWorkspaceContext: workspaceStateMocks.loadWorkspaceContext,
 }));
 
@@ -92,6 +94,7 @@ describe.sequential("task-worktree serialization", () => {
 		lockedFileSystemMocks.withLock.mockReset();
 		lockedFileSystemMocks.writeTextFileAtomic.mockReset();
 		workspaceStateMocks.getRuntimeHomePath.mockReset();
+		workspaceStateMocks.getTaskWorktreesHomePath.mockReset();
 		workspaceStateMocks.loadWorkspaceContext.mockReset();
 		taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath.mockReset();
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
@@ -122,10 +125,13 @@ describe.sequential("task-worktree serialization", () => {
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const runtimeHomePath = join(sandboxRoot, "runtime-home");
+			const worktreesHomePath = join(sandboxRoot, "worktrees-home");
 			mkdirSync(join(repoPath, ".git"), { recursive: true });
 			mkdirSync(runtimeHomePath, { recursive: true });
+			mkdirSync(worktreesHomePath, { recursive: true });
 
 			workspaceStateMocks.getRuntimeHomePath.mockReturnValue(runtimeHomePath);
+			workspaceStateMocks.getTaskWorktreesHomePath.mockReturnValue(worktreesHomePath);
 			workspaceStateMocks.loadWorkspaceContext.mockResolvedValue({
 				repoPath,
 			});

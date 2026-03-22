@@ -7,10 +7,9 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
-import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
+import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 import {
 	getWorkspaceFolderLabelForWorktreePath,
-	KANBAN_TASK_WORKTREES_DIR_NAME,
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
@@ -113,11 +112,11 @@ async function withTaskWorktreeSetupLock<T>(repoPath: string, operation: () => P
 
 function getWorktreesRootPath(taskId: string): string {
 	const normalizedTaskId = normalizeTaskIdForWorktreePath(taskId);
-	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME, normalizedTaskId);
+	return join(getTaskWorktreesHomePath(), normalizedTaskId);
 }
 
 function getWorktreesBaseRootPath(): string {
-	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME);
+	return getTaskWorktreesHomePath();
 }
 
 function getTrashedTaskPatchesRootPath(): string {
