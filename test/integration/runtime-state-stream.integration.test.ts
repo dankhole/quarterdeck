@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -620,6 +620,73 @@ describe.sequential("runtime state stream integration", () => {
 				await secondStream.close();
 			}
 			await secondServer.stop();
+			cleanupRoot();
+			cleanupHome();
+		}
+	}, 45_000);
+
+	it("requires explicit confirmation before initializing git for a non-git added project", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-project-add-git-confirm-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-project-add-git-confirm-");
+
+		const projectAPath = join(tempRoot, "project-a");
+		const nonGitPath = join(tempRoot, "non-git-project");
+		mkdirSync(projectAPath, { recursive: true });
+		mkdirSync(nonGitPath, { recursive: true });
+		initGitRepository(projectAPath);
+
+		const port = await getAvailablePort();
+		const server = await startKanbanServer({
+			cwd: projectAPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let workspaceAId: string | null = null;
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			workspaceAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(workspaceAId).not.toBe("");
+
+			const addWithoutInitResponse = await requestJson<RuntimeProjectAddResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.add",
+				type: "mutation",
+				workspaceId: workspaceAId,
+				payload: {
+					path: nonGitPath,
+				},
+			});
+			expect(addWithoutInitResponse.status).toBe(200);
+			expect(addWithoutInitResponse.payload.ok).toBe(false);
+			expect(addWithoutInitResponse.payload.requiresGitInitialization).toBe(true);
+			expect(existsSync(join(nonGitPath, ".git"))).toBe(false);
+
+			const projectsAfterDeclinedInit = await requestJson<RuntimeProjectsResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
+				workspaceId: workspaceAId,
+			});
+			expect(projectsAfterDeclinedInit.status).toBe(200);
+			expect(projectsAfterDeclinedInit.payload.projects).toHaveLength(1);
+
+			const addWithInitResponse = await requestJson<RuntimeProjectAddResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.add",
+				type: "mutation",
+				workspaceId: workspaceAId,
+				payload: {
+					path: nonGitPath,
+					initializeGit: true,
+				},
+			});
+			expect(addWithInitResponse.status).toBe(200);
+			expect(addWithInitResponse.payload.ok).toBe(true);
+			expect(addWithInitResponse.payload.project).not.toBeNull();
+			expect(existsSync(join(nonGitPath, ".git"))).toBe(true);
+		} finally {
+			await server.stop();
 			cleanupRoot();
 			cleanupHome();
 		}

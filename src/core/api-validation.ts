@@ -174,6 +174,7 @@ export function parseProjectAddRequest(value: unknown): RuntimeProjectAddRequest
 	}
 	return {
 		path,
+		initializeGit: parsed.initializeGit,
 	};
 }
 

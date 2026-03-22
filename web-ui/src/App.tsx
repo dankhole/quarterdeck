@@ -23,6 +23,8 @@ import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogBody,
+	AlertDialogCancel,
+	AlertDialogDescription,
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
@@ -106,7 +108,11 @@ export default function App(): ReactElement {
 		isProjectSwitching,
 		handleSelectProject,
 		handleAddProject,
+		handleConfirmInitializeGitProject,
+		handleCancelInitializeGitProject,
 		handleRemoveProject,
+		pendingGitInitializationPath,
+		isInitializingGitProject,
 		resetProjectNavigationState,
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
@@ -1039,6 +1045,60 @@ export default function App(): ReactElement {
 				onSelectAgent={handleSelectOnboardingAgent}
 				onClineSetupSaved={handleOnboardingClineSetupSaved}
 			/>
+
+			<AlertDialog
+				open={pendingGitInitializationPath !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						handleCancelInitializeGitProject();
+					}
+				}}
+			>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Initialize git repository?</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<AlertDialogDescription asChild>
+						<div className="flex flex-col gap-3">
+							<p>
+								Cline requires git to manage worktrees for tasks. This folder is not a git
+								repository yet.
+							</p>
+							{pendingGitInitializationPath ? (
+								<p className="font-mono text-xs text-text-secondary break-all">
+									{pendingGitInitializationPath}
+								</p>
+							) : null}
+							<p>If you cancel, the project will not be added.</p>
+						</div>
+					</AlertDialogDescription>
+				</AlertDialogBody>
+				<AlertDialogFooter>
+					<AlertDialogCancel asChild>
+						<Button variant="default" disabled={isInitializingGitProject} onClick={handleCancelInitializeGitProject}>
+							Cancel
+						</Button>
+					</AlertDialogCancel>
+					<AlertDialogAction asChild>
+						<Button
+							variant="primary"
+							disabled={isInitializingGitProject}
+							onClick={() => {
+								void handleConfirmInitializeGitProject();
+							}}
+						>
+							{isInitializingGitProject ? (
+								<>
+									<Spinner size={14} />
+									Initializing...
+								</>
+							) : (
+								"Initialize git"
+							)}
+						</Button>
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialog>
 
 			<AlertDialog
 				open={gitActionError !== null}

@@ -366,12 +366,14 @@ export type RuntimeProjectsResponse = z.infer<typeof runtimeProjectsResponseSche
 
 export const runtimeProjectAddRequestSchema = z.object({
 	path: z.string(),
+	initializeGit: z.boolean().optional(),
 });
 export type RuntimeProjectAddRequest = z.infer<typeof runtimeProjectAddRequestSchema>;
 
 export const runtimeProjectAddResponseSchema = z.object({
 	ok: z.boolean(),
 	project: runtimeProjectSummarySchema.nullable(),
+	requiresGitInitialization: z.boolean().optional(),
 	error: z.string().optional(),
 });
 export type RuntimeProjectAddResponse = z.infer<typeof runtimeProjectAddResponseSchema>;

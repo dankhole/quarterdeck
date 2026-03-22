@@ -23,6 +23,8 @@ export interface UseProjectNavigationResult {
 	requestedProjectId: string | null;
 	navigationCurrentProjectId: string | null;
 	removingProjectId: string | null;
+	pendingGitInitializationPath: string | null;
+	isInitializingGitProject: boolean;
 	currentProjectId: string | null;
 	projects: ReturnType<typeof useRuntimeStateStream>["projects"];
 	workspaceState: ReturnType<typeof useRuntimeStateStream>["workspaceState"];
@@ -37,6 +39,8 @@ export interface UseProjectNavigationResult {
 	isProjectSwitching: boolean;
 	handleSelectProject: (projectId: string) => void;
 	handleAddProject: () => Promise<void>;
+	handleConfirmInitializeGitProject: () => Promise<void>;
+	handleCancelInitializeGitProject: () => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
 	resetProjectNavigationState: () => void;
 }
@@ -52,6 +56,8 @@ export function useProjectNavigation({
 	});
 	const [pendingAddedProjectId, setPendingAddedProjectId] = useState<string | null>(null);
 	const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
+	const [pendingGitInitializationPath, setPendingGitInitializationPath] = useState<string | null>(null);
+	const [isInitializingGitProject, setIsInitializingGitProject] = useState(false);
 
 	const {
 		currentProjectId,
@@ -81,6 +87,27 @@ export function useProjectNavigation({
 		[currentProjectId, onProjectSwitchStart],
 	);
 
+	const addProjectByPath = useCallback(
+		async (path: string, initializeGit = false) => {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const added = await trpcClient.projects.add.mutate({
+				path,
+				initializeGit,
+			});
+			if (!added.ok || !added.project) {
+				if (added.requiresGitInitialization) {
+					setPendingGitInitializationPath(path);
+					return;
+				}
+				throw new Error(added.error ?? "Could not add project.");
+			}
+			setPendingGitInitializationPath(null);
+			setPendingAddedProjectId(added.project.id);
+			handleSelectProject(added.project.id);
+		},
+		[currentProjectId, handleSelectProject],
+	);
+
 	const handleAddProject = useCallback(async () => {
 		try {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
@@ -91,13 +118,7 @@ export function useProjectNavigation({
 				}
 				return;
 			}
-
-			const added = await trpcClient.projects.add.mutate({ path: picked.path });
-			if (!added.ok || !added.project) {
-				throw new Error(added.error ?? "Could not add project.");
-			}
-			setPendingAddedProjectId(added.project.id);
-			handleSelectProject(added.project.id);
+			await addProjectByPath(picked.path);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			showAppToast({
@@ -107,7 +128,34 @@ export function useProjectNavigation({
 				timeout: 7000,
 			});
 		}
-	}, [currentProjectId, handleSelectProject]);
+	}, [addProjectByPath, currentProjectId]);
+
+	const handleConfirmInitializeGitProject = useCallback(async () => {
+		if (!pendingGitInitializationPath || isInitializingGitProject) {
+			return;
+		}
+		setIsInitializingGitProject(true);
+		try {
+			await addProjectByPath(pendingGitInitializationPath, true);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message,
+				timeout: 7000,
+			});
+		} finally {
+			setIsInitializingGitProject(false);
+		}
+	}, [addProjectByPath, isInitializingGitProject, pendingGitInitializationPath]);
+
+	const handleCancelInitializeGitProject = useCallback(() => {
+		if (isInitializingGitProject) {
+			return;
+		}
+		setPendingGitInitializationPath(null);
+	}, [isInitializingGitProject]);
 
 	const handleRemoveProject = useCallback(
 		async (projectId: string): Promise<boolean> => {
@@ -202,12 +250,16 @@ export function useProjectNavigation({
 
 	const resetProjectNavigationState = useCallback(() => {
 		setRemovingProjectId(null);
+		setPendingGitInitializationPath(null);
+		setIsInitializingGitProject(false);
 	}, []);
 
 	return {
 		requestedProjectId,
 		navigationCurrentProjectId,
 		removingProjectId,
+		pendingGitInitializationPath,
+		isInitializingGitProject,
 		currentProjectId,
 		projects,
 		workspaceState,
@@ -222,6 +274,8 @@ export function useProjectNavigation({
 		isProjectSwitching,
 		handleSelectProject,
 		handleAddProject,
+		handleConfirmInitializeGitProject,
+		handleCancelInitializeGitProject,
 		handleRemoveProject,
 		resetProjectNavigationState,
 	};

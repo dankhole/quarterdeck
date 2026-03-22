@@ -71,6 +71,15 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
 				await deps.assertPathIsDirectory(projectPath);
 				if (!deps.hasGitRepository(projectPath)) {
+					if (!body.initializeGit) {
+						return {
+							ok: false,
+							project: null,
+							requiresGitInitialization: true,
+							error:
+								"This folder is not a git repository. Cline requires git to manage worktrees. Initialize git to continue.",
+						} satisfies RuntimeProjectAddResponse;
+					}
 					const initResult = await initializeGitRepository(projectPath);
 					if (!initResult.ok) {
 						return {
