@@ -8,11 +8,9 @@ import type {
 } from "../core/api-contract.js";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
-import {
-	getWorkspaceFolderLabelForWorktreePath,
-	normalizeTaskIdForWorktreePath,
-} from "./task-worktree-path.js";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
+import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path.js";
+import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack.js";
 
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
@@ -180,7 +178,9 @@ function ensureTrailingNewline(value: string): string {
 
 async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 	// Original used runGitRaw (throws on failure).
-	const output = await getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], worktreePath, { trimStdout: false });
+	const output = await getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], worktreePath, {
+		trimStdout: false,
+	});
 	return output
 		.split("\0")
 		.map((path) => path.trim())
@@ -265,13 +265,10 @@ function getUniquePaths(relativePaths: string[]): string[] {
 }
 
 async function listIgnoredPaths(repoPath: string): Promise<string[]> {
-	const output = await getGitStdout([
-		"ls-files",
-		"--others",
-		"--ignored",
-		"--exclude-per-directory=.gitignore",
-		"--directory",
-	], repoPath);
+	const output = await getGitStdout(
+		["ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory"],
+		repoPath,
+	);
 	return output
 		.split("\n")
 		.map((line) => toPlatformRelativePath(line))
@@ -355,8 +352,11 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter(
 		(relativePath) => !shouldSkipSymlink(relativePath),
 	);
-	await syncManagedIgnoredPathExcludes(repoPath, ignoredPaths);
-	for (const relativePath of ignoredPaths) {
+	const turbopackNodeModulesSkipPaths = new Set(await listTurbopackNodeModulesSymlinkSkipPaths(repoPath));
+	const mirroredIgnoredPaths = ignoredPaths.filter((relativePath) => !turbopackNodeModulesSkipPaths.has(relativePath));
+
+	await syncManagedIgnoredPathExcludes(repoPath, mirroredIgnoredPaths);
+	for (const relativePath of mirroredIgnoredPaths) {
 		if (shouldSkipSymlink(relativePath)) {
 			continue;
 		}
@@ -469,14 +469,21 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				};
 			}
 
-			const baseRefResult = await runGit(context.repoPath, ["rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
+			const baseRefResult = await runGit(context.repoPath, [
+				"rev-parse",
+				"--verify",
+				`${requestedBaseRef}^{commit}`,
+			]);
 			if (!baseRefResult.ok) {
 				return {
 					ok: false,
 					path: null,
 					baseRef: requestedBaseRef,
 					baseCommit: null,
-					error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, baseRefResult.stderr || baseRefResult.output),
+					error: getWorktreeBaseRefResolutionErrorMessage(
+						requestedBaseRef,
+						baseRefResult.stderr || baseRefResult.output,
+					),
 				};
 			}
 			const requestedBaseCommit = baseRefResult.stdout;
