@@ -44,6 +44,19 @@ export interface AtomicTextWriteOptions {
 	executable?: boolean;
 }
 
+function createLockOptions(request: LockRequest, lockfilePath: string): LockOptions {
+	const options: LockOptions = {
+		stale: request.staleMs ?? DEFAULT_LOCK_STALE_MS,
+		retries: request.retries ?? DEFAULT_LOCK_RETRIES,
+		realpath: false,
+		lockfilePath,
+	};
+	if (typeof request.onCompromised === "function") {
+		options.onCompromised = request.onCompromised;
+	}
+	return options;
+}
+
 async function readFileIfExists(path: string): Promise<string | null> {
 	try {
 		return await readFile(path, "utf8");
@@ -62,13 +75,7 @@ export class LockedFileSystem {
 			const lockfilePath = request.lockfilePath ?? join(request.path, request.lockfileName ?? ".lock");
 			return {
 				path: request.path,
-				options: {
-					stale: request.staleMs ?? DEFAULT_LOCK_STALE_MS,
-					retries: request.retries ?? DEFAULT_LOCK_RETRIES,
-					realpath: false,
-					lockfilePath,
-					onCompromised: request.onCompromised,
-				},
+				options: createLockOptions(request, lockfilePath),
 				sortKey: lockfilePath,
 			};
 		}
@@ -77,13 +84,7 @@ export class LockedFileSystem {
 		const lockfilePath = request.lockfilePath ?? `${request.path}.lock`;
 		return {
 			path: request.path,
-			options: {
-				stale: request.staleMs ?? DEFAULT_LOCK_STALE_MS,
-				retries: request.retries ?? DEFAULT_LOCK_RETRIES,
-				realpath: false,
-				lockfilePath,
-				onCompromised: request.onCompromised,
-			},
+			options: createLockOptions(request, lockfilePath),
 			sortKey: lockfilePath,
 		};
 	}
