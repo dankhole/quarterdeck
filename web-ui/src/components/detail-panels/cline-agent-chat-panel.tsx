@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, us
 
 import { ClineChatComposer } from "@/components/detail-panels/cline-chat-composer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
+import { buildClineAgentModelPickerOptions } from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
@@ -140,14 +141,11 @@ ref,
 		config: runtimeConfig,
 	});
 
-	const modelOptions = useMemo(
-		() =>
-			clineSettings.providerModels.map((model) => ({
-				value: model.id,
-				label: model.name,
-			})),
-		[clineSettings.providerModels],
+	const modelPickerOptions = useMemo(
+		() => buildClineAgentModelPickerOptions(clineSettings.providerId, clineSettings.providerModels),
+		[clineSettings.providerId, clineSettings.providerModels],
 	);
+	const modelOptions = modelPickerOptions.options;
 
 	const selectedModel = useMemo(
 		() => clineSettings.providerModels.find((model) => model.id === clineSettings.modelId) ?? null,
@@ -351,6 +349,8 @@ ref,
 					onSend={handleComposerSend}
 					onCancel={handleCancelTurn}
 					modelOptions={modelOptions}
+					recommendedModelIds={modelPickerOptions.recommendedModelIds}
+					pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 					selectedModelId={clineSettings.modelId}
 					selectedModelButtonText={selectedModelButtonText}
 					onSelectModel={handleSelectModel}

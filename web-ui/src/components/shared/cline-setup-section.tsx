@@ -2,6 +2,7 @@ import { useMemo, type ReactElement } from "react";
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { Check, ExternalLink, Plus, X } from "lucide-react";
 
+import { buildClineAgentModelPickerOptions } from "@/components/detail-panels/cline-model-picker-options";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import type { RuntimeClineMcpServer } from "@/runtime/types";
@@ -68,14 +69,11 @@ export function ClineSetupSection({
 		return items;
 	}, [controller.providerCatalog, controller.providerId, controller.normalizedProviderId]);
 
-	const clineModelOptions = useMemo(
-		(): SearchSelectOption[] =>
-			controller.providerModels.map((model) => ({
-				value: model.id,
-				label: model.name,
-			})),
-		[controller.providerModels],
+	const modelPickerOptions = useMemo(
+		() => buildClineAgentModelPickerOptions(controller.providerId, controller.providerModels),
+		[controller.providerId, controller.providerModels],
 	);
+	const clineModelOptions = modelPickerOptions.options;
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -182,6 +180,9 @@ export function ClineSetupSection({
 						noResultsText="No matching models"
 						placeholder="Search models..."
 						showSelectedIndicator
+						pinSelectedToTop={modelPickerOptions.shouldPinSelectedModelToTop}
+						recommendedOptionValues={modelPickerOptions.recommendedModelIds}
+						recommendedHeading="Recommended models"
 					/>
 				</div>
 			</div>

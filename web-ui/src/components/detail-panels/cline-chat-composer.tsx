@@ -29,6 +29,8 @@ export function ClineChatComposer({
 	onSend,
 	onCancel,
 	modelOptions,
+	recommendedModelIds = [],
+	pinSelectedModelToTop = true,
 	selectedModelId,
 	selectedModelButtonText,
 	onSelectModel,
@@ -53,6 +55,8 @@ export function ClineChatComposer({
 	onSend: () => void | Promise<void>;
 	onCancel: () => void;
 	modelOptions: readonly SearchSelectOption[];
+	recommendedModelIds?: readonly string[];
+	pinSelectedModelToTop?: boolean;
 	selectedModelId: string;
 	selectedModelButtonText: string;
 	onSelectModel: (value: string) => void;
@@ -100,7 +104,6 @@ export function ClineChatComposer({
 		},
 		[images, onImagesChange],
 	);
-
 
 	const handlePaste = useCallback(
 		(event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -212,6 +215,9 @@ export function ClineChatComposer({
 						noResultsText="No matching models"
 						placeholder="Search models..."
 						showSelectedIndicator
+						pinSelectedToTop={pinSelectedModelToTop}
+						recommendedOptionValues={recommendedModelIds}
+						recommendedHeading="Recommended models"
 						matchTargetWidth={false}
 						collisionPadding={12}
 						dropdownStyle={{ minWidth: "220px", maxWidth: "320px" }}

@@ -35,6 +35,9 @@ export function SearchSelectDropdown({
 	emptyText = "No options available",
 	noResultsText = "No matching results",
 	showSelectedIndicator = false,
+	pinSelectedToTop = true,
+	recommendedOptionValues = [],
+	recommendedHeading = "Recommended models",
 	matchTargetWidth = true,
 	collisionPadding = 8,
 	dropdownStyle,
@@ -57,6 +60,9 @@ export function SearchSelectDropdown({
 	emptyText?: string;
 	noResultsText?: string;
 	showSelectedIndicator?: boolean;
+	pinSelectedToTop?: boolean;
+	recommendedOptionValues?: readonly string[];
+	recommendedHeading?: string;
 	matchTargetWidth?: boolean;
 	collisionPadding?: number;
 	dropdownStyle?: CSSProperties;
@@ -71,7 +77,7 @@ export function SearchSelectDropdown({
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const orderedOptions = useMemo(() => {
 		const items = options.slice();
-		if (!selectedValue) {
+		if (!pinSelectedToTop || !selectedValue) {
 			return items;
 		}
 		const selectedIndex = items.findIndex((option) => option.value === selectedValue);
@@ -84,10 +90,14 @@ export function SearchSelectDropdown({
 		}
 		items.unshift(selectedOption);
 		return items;
-	}, [options, selectedValue]);
+	}, [options, pinSelectedToTop, selectedValue]);
 	const selectedOption = useMemo(
 		() => orderedOptions.find((option) => option.value === selectedValue) ?? null,
 		[orderedOptions, selectedValue],
+	);
+	const recommendedOptionValueSet = useMemo(
+		() => new Set(recommendedOptionValues.map((value) => value.trim()).filter((value) => value.length > 0)),
+		[recommendedOptionValues],
 	);
 	const fuzzyMatches = useMemo(() => {
 		if (!query.trim()) {
@@ -104,10 +114,29 @@ export function SearchSelectDropdown({
 	);
 	const filteredItems = useMemo(() => {
 		if (!query.trim()) {
-			return orderedOptions;
+			if (recommendedOptionValueSet.size === 0) {
+				return orderedOptions;
+			}
+			const recommendedItems = orderedOptions.filter((item) => recommendedOptionValueSet.has(item.value));
+			const otherItems = orderedOptions.filter((item) => !recommendedOptionValueSet.has(item.value));
+			return [...recommendedItems, ...otherItems];
 		}
 		return fuzzyMatches.map((entry) => entry.item);
-	}, [fuzzyMatches, orderedOptions, query]);
+	}, [fuzzyMatches, orderedOptions, query, recommendedOptionValueSet]);
+	const isSearching = query.trim().length > 0;
+	const showRecommendedSection = !isSearching && recommendedOptionValueSet.size > 0;
+	const recommendedItems = useMemo(
+		() => filteredItems.filter((item) => recommendedOptionValueSet.has(item.value)),
+		[filteredItems, recommendedOptionValueSet],
+	);
+	const otherItems = useMemo(
+		() => filteredItems.filter((item) => !recommendedOptionValueSet.has(item.value)),
+		[filteredItems, recommendedOptionValueSet],
+	);
+	const filteredItemIndexByValue = useMemo(
+		() => new Map(filteredItems.map((item, index) => [item.value, index] as const)),
+		[filteredItems],
+	);
 	const resolvedButtonText = buttonText ?? selectedOption?.label ?? emptyText;
 
 	const handleOpenChange = useCallback(
@@ -218,6 +247,35 @@ export function SearchSelectDropdown({
 	}, []);
 
 	const resolvedIcon = icon !== undefined ? icon : undefined;
+	const renderOptionButton = (option: SearchSelectOption): ReactElement => {
+		const optionIndex = filteredItemIndexByValue.get(option.value) ?? 0;
+		const match = fuzzyMatchesByValue.get(option.value);
+		const isSelected = showSelectedIndicator && option.value === selectedValue;
+		const isActive = optionIndex === activeOptionIndex;
+		return (
+			<button
+				type="button"
+				key={option.value}
+				ref={(node) => {
+					optionRefs.current[optionIndex] = node;
+				}}
+				className={cn(
+					"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
+					isActive ? "bg-surface-3 text-text-primary" : "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+				)}
+				onMouseEnter={() => setActiveOptionIndex(optionIndex)}
+				onClick={() => {
+					onSelect(option.value);
+					handleOpenChange(false);
+				}}
+			>
+				<span className="flex-1 break-all">
+					{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
+				</span>
+				{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
+			</button>
+		);
+	};
 
 	return (
 		<RadixPopover.Root open={isOpen} onOpenChange={handleOpenChange}>
@@ -261,32 +319,23 @@ export function SearchSelectDropdown({
 						{filteredItems.length === 0 ? (
 							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
 						) : (
-							filteredItems.map((option, optionIndex) => {
-								const match = fuzzyMatchesByValue.get(option.value);
-								const isSelected = showSelectedIndicator && option.value === selectedValue;
-								const isActive = optionIndex === activeOptionIndex;
-								return (
-									<button
-										type="button"
-										key={option.value}
-										ref={(node) => {
-											optionRefs.current[optionIndex] = node;
-										}}
-										className={cn(
-											"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
-											isActive ? "bg-surface-3 text-text-primary" : "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
-										)}
-										onMouseEnter={() => setActiveOptionIndex(optionIndex)}
-										onClick={() => {
-											onSelect(option.value);
-											handleOpenChange(false);
-										}}
-									>
-										<span className="flex-1 break-all">{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}</span>
-										{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
-									</button>
-								);
-							})
+							<>
+								{showRecommendedSection && recommendedItems.length > 0 ? (
+									<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+										{recommendedHeading}
+									</div>
+								) : null}
+								{(showRecommendedSection ? recommendedItems : filteredItems).map((option) => renderOptionButton(option))}
+								{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
+									<>
+										<div className="my-1 border-t border-border" />
+										<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+											All models
+										</div>
+									</>
+								) : null}
+								{showRecommendedSection && otherItems.length > 0 ? otherItems.map((option) => renderOptionButton(option)) : null}
+							</>
 						)}
 					</div>
 				</RadixPopover.Content>
