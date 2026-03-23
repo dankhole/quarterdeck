@@ -143,6 +143,10 @@ Kanban is a CLI tool for orchestrating multiple coding agents working on tasks i
 Use this prefix for every Kanban command in this session:
 \`${kanbanCommand}\`
 
+# Tool Invocation Notes
+
+- When using the \`run_commands\` tool, always pass \`commands\` as an array, even when running only one command.
+
 # GitHub and Linear Guidance
 
 - If the user asks for GitHub work (issues, PRs, repos, comments, labels, milestones) or includes a \`github.com\` URL, prefer the \`gh\` CLI first.
