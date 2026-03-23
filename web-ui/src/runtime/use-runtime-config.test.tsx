@@ -176,14 +176,96 @@ describe("useRuntimeConfig", () => {
 				/>,
 			);
 			await Promise.resolve();
-			});
-
-			expect(fetchRuntimeConfigMock).toHaveBeenCalledWith(null);
-			if (latestSnapshot === null) {
-				throw new Error("Expected a runtime config snapshot.");
-			}
-			const snapshot = latestSnapshot as HookSnapshot;
-			expect(snapshot.config?.selectedAgentId).toBe("codex");
-			expect(snapshot.isLoading).toBe(false);
 		});
+
+		expect(fetchRuntimeConfigMock).toHaveBeenCalledWith(null);
+		if (latestSnapshot === null) {
+			throw new Error("Expected a runtime config snapshot.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.config?.selectedAgentId).toBe("codex");
+		expect(snapshot.isLoading).toBe(false);
+	});
+
+	it("retries once after an initial load error while settings stay open", async () => {
+		const startupConfig = createRuntimeConfigResponse("codex");
+		fetchRuntimeConfigMock.mockRejectedValueOnce(new Error("Runtime not ready."));
+		fetchRuntimeConfigMock.mockResolvedValueOnce(startupConfig);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(1, null);
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(2, null);
+		expect(fetchRuntimeConfigMock).toHaveBeenCalledTimes(2);
+		if (latestSnapshot === null) {
+			throw new Error("Expected a runtime config snapshot after retry.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.config?.selectedAgentId).toBe("codex");
+		expect(snapshot.isLoading).toBe(false);
+	});
+
+	it("retries once again after workspace changes", async () => {
+		const projectConfig = createRuntimeConfigResponse("claude");
+		const globalConfig = createRuntimeConfigResponse("codex");
+		fetchRuntimeConfigMock
+			.mockRejectedValueOnce(new Error("Project runtime not ready."))
+			.mockResolvedValueOnce(projectConfig)
+			.mockRejectedValueOnce(new Error("Global runtime not ready."))
+			.mockResolvedValueOnce(globalConfig);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="project-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(1, "project-1");
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(2, "project-1");
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(3, null);
+		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(4, null);
+		expect(fetchRuntimeConfigMock).toHaveBeenCalledTimes(4);
+		if (latestSnapshot === null) {
+			throw new Error("Expected a runtime config snapshot after workspace switch retry.");
+		}
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.config?.selectedAgentId).toBe("codex");
+		expect(snapshot.isLoading).toBe(false);
+	});
 	});
