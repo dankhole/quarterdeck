@@ -59,17 +59,6 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 	}
 }
 
-async function waitForCondition(condition: () => boolean, timeoutMs = 5000, intervalMs = 25): Promise<boolean> {
-	const start = Date.now();
-	while (Date.now() - start < timeoutMs) {
-		if (condition()) {
-			return true;
-		}
-		await new Promise((resolve) => setTimeout(resolve, intervalMs));
-	}
-	return condition();
-}
-
 describe.sequential("task-worktree integration", () => {
 	it("returns a friendly error when the repository has no initial commit", async () => {
 		await withTemporaryHome(async () => {
@@ -200,61 +189,6 @@ describe.sequential("task-worktree integration", () => {
 				}
 				if (existsSync(nodeModulesPath)) {
 					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
-				}
-			} finally {
-				cleanup();
-			}
-		});
-	});
-
-	it("replaces node_modules symlink in the background when Turbopack is detected", async () => {
-		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-turbopack-");
-			try {
-				const repoPath = join(sandboxRoot, "repo");
-				mkdirSync(repoPath, { recursive: true });
-
-				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
-
-				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
-				writeFileSync(
-					join(repoPath, "package.json"),
-					'{\n  "scripts": {\n    "dev": "next dev --turbopack"\n  }\n}\n',
-					"utf8",
-				);
-				writeFileSync(join(repoPath, ".gitignore"), "/node_modules/\n", "utf8");
-				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
-				writeFileSync(join(repoPath, "node_modules", "package.json"), '{\n  "name": "fixture"\n}\n', "utf8");
-
-				runGit(repoPath, ["add", "README.md", "package.json", ".gitignore"]);
-				runGit(repoPath, ["commit", "-m", "init"]);
-
-				const ensured = await ensureTaskWorktreeIfDoesntExist({
-					cwd: repoPath,
-					taskId: "task-3",
-					baseRef: "HEAD",
-				});
-				expect(ensured.ok).toBe(true);
-				if (!ensured.ok || !ensured.path) {
-					throw new Error("Task worktree was not created");
-				}
-
-				const nodeModulesPath = join(ensured.path, "node_modules");
-				if (process.platform === "win32" && !existsSync(nodeModulesPath)) {
-					return;
-				}
-
-				const replaced = await waitForCondition(
-					() => existsSync(nodeModulesPath) && !lstatSync(nodeModulesPath).isSymbolicLink(),
-					5000,
-				);
-				expect(replaced).toBe(true);
-				expect(readFileSync(join(nodeModulesPath, "package.json"), "utf8")).toContain('"fixture"');
-				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
-				if (existsSync(nodeModulesPath)) {
-					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("node_modules");
 				}
 			} finally {
 				cleanup();

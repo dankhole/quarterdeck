@@ -1,4 +1,4 @@
-import { access, lstat, mkdir, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import type {
@@ -12,7 +12,6 @@ import {
 	getWorkspaceFolderLabelForWorktreePath,
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
-import { repoUsesTurbopack, scheduleNodeModulesCopyReplacementIfNeeded } from "./task-worktree-turbopack.js";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
 
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
@@ -356,7 +355,6 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter(
 		(relativePath) => !shouldSkipSymlink(relativePath),
 	);
-	const shouldCopyNodeModulesInBackground = await repoUsesTurbopack(repoPath);
 	await syncManagedIgnoredPathExcludes(repoPath, ignoredPaths);
 	for (const relativePath of ignoredPaths) {
 		if (shouldSkipSymlink(relativePath)) {
@@ -370,30 +368,16 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 
 		const targetPath = join(worktreePath, relativePath);
 		if (await pathExists(targetPath)) {
-			scheduleNodeModulesCopyReplacementIfNeeded({
-				usesTurbopack: shouldCopyNodeModulesInBackground,
-				relativePath,
-				sourcePath,
-				targetPath,
-			});
 			continue;
 		}
 
 		const sourceStat = await lstat(sourcePath);
 		await mkdir(dirname(targetPath), { recursive: true });
-		const mirrored = await mirrorIgnoredPath({
+		await mirrorIgnoredPath({
 			sourcePath,
 			targetPath,
 			isDirectory: sourceStat.isDirectory(),
 		});
-		if (mirrored === "mirrored") {
-			scheduleNodeModulesCopyReplacementIfNeeded({
-				usesTurbopack: shouldCopyNodeModulesInBackground,
-				relativePath,
-				sourcePath,
-				targetPath,
-			});
-		}
 	}
 }
 
