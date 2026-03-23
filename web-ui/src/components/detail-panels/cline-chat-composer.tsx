@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 
-import { extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
+import { collectImageFilesFromDataTransfer, extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
@@ -103,13 +103,19 @@ export function ClineChatComposer({
 
 
 	const handlePaste = useCallback(
-		async (event: ClipboardEvent<HTMLTextAreaElement>) => {
-			const nextImages = await extractImagesFromDataTransfer(event.clipboardData);
-			if (nextImages.length === 0) {
+		(event: ClipboardEvent<HTMLTextAreaElement>) => {
+			if (!event.clipboardData) {
+				return;
+			}
+			const imageFiles = collectImageFilesFromDataTransfer(event.clipboardData);
+			if (imageFiles.length === 0) {
 				return;
 			}
 			event.preventDefault();
-			appendImages(nextImages);
+			void (async () => {
+				const nextImages = await extractImagesFromDataTransfer(event.clipboardData);
+				appendImages(nextImages);
+			})();
 		},
 		[appendImages],
 	);

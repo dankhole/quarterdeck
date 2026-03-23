@@ -4,7 +4,7 @@ import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent, ReactElemen
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { ACCEPTED_TASK_IMAGE_INPUT_ACCEPT, extractImagesFromDataTransfer, fileToTaskImage, isAcceptedTaskImageFile } from "@/components/task-image-input-utils";
+import { ACCEPTED_TASK_IMAGE_INPUT_ACCEPT, collectImageFilesFromDataTransfer, extractImagesFromDataTransfer, fileToTaskImage } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { TaskImage } from "@/types";
@@ -312,7 +312,7 @@ export function TaskPromptComposer({
 			if (!onImagesChange || !event.clipboardData) {
 				return;
 			}
-			const imageFiles = Array.from(event.clipboardData.files).filter((file) => isAcceptedTaskImageFile(file));
+			const imageFiles = collectImageFilesFromDataTransfer(event.clipboardData);
 			if (imageFiles.length === 0) {
 				return;
 			}
@@ -331,7 +331,7 @@ export function TaskPromptComposer({
 			if (!onImagesChange || !event.dataTransfer) {
 				return;
 			}
-			const imageFiles = Array.from(event.dataTransfer.files).filter((file) => isAcceptedTaskImageFile(file));
+			const imageFiles = collectImageFilesFromDataTransfer(event.dataTransfer);
 			if (imageFiles.length === 0) {
 				return;
 			}

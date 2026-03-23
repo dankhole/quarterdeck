@@ -44,12 +44,41 @@ export async function fileToTaskImage(file: File): Promise<TaskImage | null> {
 	});
 }
 
-export async function extractImagesFromDataTransfer(dataTransfer: DataTransfer): Promise<TaskImage[]> {
-	const images: TaskImage[] = [];
-	for (const file of Array.from(dataTransfer.files)) {
-		if (!isAcceptedTaskImageFile(file)) {
-			continue;
+/**
+ * Synchronously collect accepted image files from a DataTransfer.
+ * Checks `items` first (more reliable for clipboard paste events where
+ * `files` can be empty), then falls back to `files`.
+ * Must be called synchronously during the event -- browsers clear the
+ * DataTransfer after the synchronous dispatch window.
+ */
+export function collectImageFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
+	const files: File[] = [];
+	if (dataTransfer.items && dataTransfer.items.length > 0) {
+		for (let i = 0; i < dataTransfer.items.length; i++) {
+			const item = dataTransfer.items[i];
+			if (!item || item.kind !== "file") {
+				continue;
+			}
+			const file = item.getAsFile();
+			if (file && isAcceptedTaskImageFile(file)) {
+				files.push(file);
+			}
 		}
+	}
+	if (files.length === 0) {
+		for (const file of Array.from(dataTransfer.files)) {
+			if (isAcceptedTaskImageFile(file)) {
+				files.push(file);
+			}
+		}
+	}
+	return files;
+}
+
+export async function extractImagesFromDataTransfer(dataTransfer: DataTransfer): Promise<TaskImage[]> {
+	const files = collectImageFilesFromDataTransfer(dataTransfer);
+	const images: TaskImage[] = [];
+	for (const file of files) {
 		const image = await fileToTaskImage(file);
 		if (image) {
 			images.push(image);
