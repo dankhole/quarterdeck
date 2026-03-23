@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.32]
+
+- Fix concurrent task mutations (e.g. adding multiple tasks at the same time) failing due to write conflicts -- task mutations now use a workspace lock to safely handle simultaneous operations
+- Fix a bug where stopping a task that was restored from a previous session would fail because the session wasn't properly reconnected on startup
+- Fix a bug where restarting the app would show raw metadata in user messages for old Cline sessions that were reloaded
+- Fix worktrees for projects using Turbopack, where symlinked node_modules would cause build failures -- worktrees now fall back to copying node_modules for Turbopack projects
+- Fix SDK command parsing that could cause agent system prompts to be malformed
+- Fix Cmd+V image paste in the chat composer not working due to the paste handler running asynchronously, causing the browser to swallow the event
+- Fix proper-lockfile crashing due to accidentally passing undefined as the onCompromised handler
+- Require confirmation before git init when adding projects
+- Fix task card agent preview flickering to empty state
+- Cancel inline task edit on Escape key press
+- Move task worktrees to ~/.cline/worktrees
+- Update onboarding intro video and frame width
+- Change the start-all-tasks shortcut to Cmd+B
+
 ## [0.1.31]
 
 - Add ability to resume Cline tasks that were trashed
