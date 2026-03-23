@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.33]
+
+- Fixed task worktree setup for Turbopack projects no longer attempting slow background copies of node_modules; affected subproject dependencies are now correctly skipped instead of symlinked
+
 ## [0.1.32]
 
 - Fix concurrent task mutations (e.g. adding multiple tasks at the same time) failing due to write conflicts -- task mutations now use a workspace lock to safely handle simultaneous operations
