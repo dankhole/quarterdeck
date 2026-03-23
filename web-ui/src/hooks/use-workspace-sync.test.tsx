@@ -118,9 +118,13 @@ interface HookSnapshot {
 
 function HookHarness({
 	streamedWorkspaceState,
+	hasReceivedSnapshot = true,
+	isDocumentVisible = false,
 	onSnapshot,
 }: {
 	streamedWorkspaceState: RuntimeWorkspaceStateResponse | null;
+	hasReceivedSnapshot?: boolean;
+	isDocumentVisible?: boolean;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
@@ -130,7 +134,8 @@ function HookHarness({
 		currentProjectId: "project-a",
 		streamedWorkspaceState,
 		hasNoProjects: false,
-		isDocumentVisible: false,
+		hasReceivedSnapshot,
+		isDocumentVisible,
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
@@ -255,5 +260,25 @@ describe("useWorkspaceSync", () => {
 		}
 		const refreshedSnapshot: HookSnapshot = latestSnapshot;
 		expect(refreshedSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
+	});
+
+	it("does not refresh workspace state before the initial runtime snapshot resolves", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedWorkspaceState={null}
+					hasReceivedSnapshot={false}
+					isDocumentVisible={true}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		expect(fetchWorkspaceStateMock).not.toHaveBeenCalled();
+		expect(latestSnapshot).not.toBeNull();
 	});
 });

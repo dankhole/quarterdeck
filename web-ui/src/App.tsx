@@ -197,6 +197,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		streamedWorkspaceState,
 		hasNoProjects,
+		hasReceivedSnapshot,
 		isDocumentVisible,
 		setBoard,
 		setSessions,

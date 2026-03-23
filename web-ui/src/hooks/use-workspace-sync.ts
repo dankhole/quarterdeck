@@ -16,6 +16,7 @@ interface UseWorkspaceSyncInput {
 	currentProjectId: string | null;
 	streamedWorkspaceState: RuntimeWorkspaceStateResponse | null;
 	hasNoProjects: boolean;
+	hasReceivedSnapshot: boolean;
 	isDocumentVisible: boolean;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
@@ -52,6 +53,7 @@ export function useWorkspaceSync({
 	currentProjectId,
 	streamedWorkspaceState,
 	hasNoProjects,
+	hasReceivedSnapshot,
 	isDocumentVisible,
 	setBoard,
 	setSessions,
@@ -180,10 +182,11 @@ export function useWorkspaceSync({
 	}, [applyWorkspaceState, hasNoProjects, streamedWorkspaceState]);
 
 	useEffect(() => {
-		if (isDocumentVisible) {
-			void refreshWorkspaceState();
+		if (!hasReceivedSnapshot || !isDocumentVisible) {
+			return;
 		}
-	}, [isDocumentVisible, refreshWorkspaceState]);
+		void refreshWorkspaceState();
+	}, [hasReceivedSnapshot, isDocumentVisible, refreshWorkspaceState]);
 
 	return {
 		workspacePath,
