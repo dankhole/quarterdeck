@@ -29,6 +29,8 @@ export function useRuntimeConfig(
 	const previousWorkspaceIdRef = useRef<string | null>(null);
 	const didRetryAfterInitialErrorRef = useRef(false);
 	const lastLoggedErrorKeyRef = useRef<string | null>(null);
+	const lastLoggedRetryExhaustedErrorKeyRef = useRef<string | null>(null);
+	const lastRetriedScopeRef = useRef<string | null>(null);
 	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
 	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
 		enabled: open,
@@ -39,10 +41,20 @@ export function useRuntimeConfig(
 
 	useEffect(() => {
 		const workspaceChanged = previousWorkspaceIdRef.current !== workspaceId;
+		const previousWorkspaceId = previousWorkspaceIdRef.current;
 		previousWorkspaceIdRef.current = workspaceId;
 		if (workspaceChanged) {
+			if (open) {
+				const previousScopeLabel = previousWorkspaceId ?? "global";
+				const nextScopeLabel = workspaceId ?? "global";
+				console.warn(
+					`[kanban][settings] Settings scope changed from ${previousScopeLabel} to ${nextScopeLabel}; resetting runtime.getConfig retry state.`,
+				);
+			}
 			didRetryAfterInitialErrorRef.current = false;
 			lastLoggedErrorKeyRef.current = null;
+			lastLoggedRetryExhaustedErrorKeyRef.current = null;
+			lastRetriedScopeRef.current = null;
 			setConfigData(initialConfig);
 			return;
 		}
@@ -55,6 +67,10 @@ export function useRuntimeConfig(
 		if (!open || configQuery.data !== null) {
 			didRetryAfterInitialErrorRef.current = false;
 			lastLoggedErrorKeyRef.current = null;
+			lastLoggedRetryExhaustedErrorKeyRef.current = null;
+			if (!open) {
+				lastRetriedScopeRef.current = null;
+			}
 			return;
 		}
 		if (!configQuery.isError) {
@@ -68,12 +84,29 @@ export function useRuntimeConfig(
 			lastLoggedErrorKeyRef.current = errorKey;
 		}
 		if (didRetryAfterInitialErrorRef.current) {
+			if (lastLoggedRetryExhaustedErrorKeyRef.current !== errorKey) {
+				console.warn(`[kanban][settings] runtime.getConfig still failing after one retry for scope ${scopeLabel}.`);
+				lastLoggedRetryExhaustedErrorKeyRef.current = errorKey;
+			}
 			return;
 		}
 		didRetryAfterInitialErrorRef.current = true;
+		lastRetriedScopeRef.current = scopeLabel;
 		console.warn(`[kanban][settings] Retrying runtime.getConfig once for scope ${scopeLabel}.`);
 		void configQuery.refetch();
 	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, workspaceId]);
+
+	useEffect(() => {
+		if (!open || configQuery.data === null) {
+			return;
+		}
+		const scopeLabel = workspaceId ?? "global";
+		if (lastRetriedScopeRef.current !== scopeLabel) {
+			return;
+		}
+		console.warn(`[kanban][settings] runtime.getConfig recovered for scope ${scopeLabel} after retry.`);
+		lastRetriedScopeRef.current = null;
+	}, [configQuery.data, open, workspaceId]);
 
 	const save = useCallback(
 		async (nextConfig: {

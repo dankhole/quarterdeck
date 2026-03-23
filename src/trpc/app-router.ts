@@ -149,7 +149,12 @@ export interface RuntimeTrpcContext {
 	requestedWorkspaceId: string | null;
 	workspaceScope: RuntimeTrpcWorkspaceScope | null;
 	runtimeApi: {
-		loadConfig: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeConfigResponse>;
+		loadConfig: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			options?: {
+				requestedWorkspaceId?: string | null;
+			},
+		) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeConfigSaveRequest,
@@ -344,7 +349,9 @@ const gitSyncActionInputSchema = z.object({
 export const runtimeAppRouter = t.router({
 	runtime: t.router({
 		getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
-			return await ctx.runtimeApi.loadConfig(ctx.workspaceScope);
+			return await ctx.runtimeApi.loadConfig(ctx.workspaceScope, {
+				requestedWorkspaceId: ctx.requestedWorkspaceId,
+			});
 		}),
 		saveConfig: t.procedure
 			.input(runtimeConfigSaveRequestSchema)
