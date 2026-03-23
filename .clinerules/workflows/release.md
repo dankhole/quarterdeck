@@ -40,6 +40,8 @@ From the commit list, draft a user-facing changelog as a bullet list. This is pa
 - No grouping by category -- just a flat list of bullet points
 - Write entries as user-friendly descriptions (not raw commit messages). Describe what changed from the user's perspective, not implementation details
 - If a scope is present in the commit (e.g. `feat(web-ui): ...`), use it to inform the description but don't include the scope prefix in the changelog entry
+- When the commit message alone isn't descriptive enough to write a meaningful changelog entry, read the full commit (message body, diff, changed files) to understand what actually changed before writing the entry
+- Order entries from most impactful to least impactful. User-facing features and major bug fixes come first, minor UI tweaks and internal changes come last
 
 Present the draft changelog to the user:
 
