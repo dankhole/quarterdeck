@@ -347,7 +347,17 @@ export function BoardCard({
 		: null;
 	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
-	const sessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
+	const rawSessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
+	const lastSessionActivityRef = useRef<CardSessionActivity | null>(null);
+	const lastSessionActivityCardIdRef = useRef<string | null>(null);
+	if (lastSessionActivityCardIdRef.current !== card.id) {
+		lastSessionActivityCardIdRef.current = card.id;
+		lastSessionActivityRef.current = null;
+	}
+	if (rawSessionActivity) {
+		lastSessionActivityRef.current = rawSessionActivity;
+	}
+	const sessionActivity = rawSessionActivity ?? lastSessionActivityRef.current;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
 
