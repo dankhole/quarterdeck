@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
+import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
@@ -36,6 +37,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
@@ -134,6 +136,7 @@ export default function App(): ReactElement {
 		useRuntimeProjectConfig(settingsWorkspaceId);
 	const {
 		isStartupOnboardingDialogOpen,
+		handleOpenStartupOnboardingDialog,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
 		handleOnboardingClineSetupSaved,
@@ -144,6 +147,19 @@ export default function App(): ReactElement {
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
+	});
+	const {
+		debugModeEnabled,
+		isDebugDialogOpen,
+		isResetAllStatePending,
+		handleOpenDebugDialog,
+		handleShowStartupOnboardingDialog,
+		handleDebugDialogOpenChange,
+		handleResetAllState,
+	} = useDebugTools({
+		runtimeProjectConfig,
+		settingsRuntimeProjectConfig,
+		onOpenStartupOnboardingDialog: handleOpenStartupOnboardingDialog,
 	});
 	const {
 		markConnectionReady: markTerminalConnectionReady,
@@ -787,6 +803,8 @@ export default function App(): ReactElement {
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
+					showDebugButton={debugModeEnabled}
+					onOpenDebugDialog={debugModeEnabled ? handleOpenDebugDialog : undefined}
 					shortcuts={shortcuts}
 					selectedShortcutLabel={selectedShortcutLabel}
 					onSelectShortcutLabel={handleSelectShortcutLabel}
@@ -1005,6 +1023,13 @@ export default function App(): ReactElement {
 					refreshRuntimeProjectConfig();
 					refreshSettingsRuntimeProjectConfig();
 				}}
+			/>
+			<DebugDialog
+				open={isDebugDialogOpen}
+				onOpenChange={handleDebugDialogOpenChange}
+				isResetAllStatePending={isResetAllStatePending}
+				onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
+				onResetAllState={handleResetAllState}
 			/>
 			<TaskCreateDialog
 				open={isInlineTaskCreateOpen}

@@ -14,6 +14,7 @@ import type {
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
+	RuntimeDebugResetAllStateResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
 
@@ -105,4 +106,9 @@ export async function runClineMcpServerOAuth(
 ): Promise<RuntimeClineMcpOAuthResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.runClineMcpServerOAuth.mutate(input);
+}
+
+export async function resetRuntimeDebugState(workspaceId: string | null): Promise<RuntimeDebugResetAllStateResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.resetAllState.mutate();
 }

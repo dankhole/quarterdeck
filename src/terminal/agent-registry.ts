@@ -41,6 +41,16 @@ function joinCommand(binary: string, args: string[]): string {
 	return [binary, ...args.map(quoteForDisplay)].join(" ");
 }
 
+function parseBooleanEnvValue(value: string | undefined): boolean {
+	const normalized = value?.trim().toLowerCase();
+	return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function isRuntimeDebugModeEnabled(): boolean {
+	const debugModeValue = process.env.KANBAN_DEBUG_MODE ?? process.env.DEBUG_MODE ?? process.env.debug_mode;
+	return parseBooleanEnvValue(debugModeValue);
+}
+
 export function detectInstalledCommands(): string[] {
 	const candidates = [...RUNTIME_AGENT_CATALOG.map((entry) => entry.binary), "npx"];
 	const detected: string[] = [];
@@ -104,6 +114,7 @@ export function buildRuntimeConfigResponse(
 		selectedAgentId: runtimeConfig.selectedAgentId,
 		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
 		agentAutonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+		debugModeEnabled: isRuntimeDebugModeEnabled(),
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,

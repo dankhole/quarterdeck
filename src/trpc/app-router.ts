@@ -23,6 +23,7 @@ import type {
 	RuntimeClineProviderModelsResponse,
 	RuntimeClineProviderSettingsSaveRequest,
 	RuntimeClineProviderSettingsSaveResponse,
+	RuntimeDebugResetAllStateResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -90,6 +91,7 @@ import {
 	runtimeClineProviderModelsResponseSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeClineProviderSettingsSaveResponseSchema,
+	runtimeDebugResetAllStateResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -220,6 +222,9 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeCommandRunRequest,
 		) => Promise<RuntimeCommandRunResponse>;
+		resetAllState: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+		) => Promise<RuntimeDebugResetAllStateResponse>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -457,6 +462,11 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeCommandRunResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.runCommand(ctx.workspaceScope, input);
+			}),
+		resetAllState: t.procedure
+			.output(runtimeDebugResetAllStateResponseSchema)
+			.mutation(async ({ ctx }) => {
+				return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
 			}),
 	}),
 	workspace: t.router({

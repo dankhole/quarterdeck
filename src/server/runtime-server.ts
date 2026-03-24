@@ -129,13 +129,36 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}
 		return service;
 	};
-	const disposeClineTaskSessionService = (workspaceId: string): void => {
+	const disposeClineTaskSessionServiceAsync = async (workspaceId: string): Promise<void> => {
 		const service = clineTaskSessionServiceByWorkspaceId.get(workspaceId);
 		if (!service) {
 			return;
 		}
 		clineTaskSessionServiceByWorkspaceId.delete(workspaceId);
-		void service.dispose();
+		await service.dispose();
+	};
+	const disposeClineTaskSessionService = (workspaceId: string): void => {
+		void disposeClineTaskSessionServiceAsync(workspaceId);
+	};
+	const prepareForStateReset = async (): Promise<void> => {
+		const workspaceIds = new Set<string>();
+		for (const { workspaceId } of deps.workspaceRegistry.listManagedWorkspaces()) {
+			workspaceIds.add(workspaceId);
+		}
+		for (const workspaceId of clineTaskSessionServiceByWorkspaceId.keys()) {
+			workspaceIds.add(workspaceId);
+		}
+		const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
+		if (activeWorkspaceId) {
+			workspaceIds.add(activeWorkspaceId);
+		}
+		for (const workspaceId of workspaceIds) {
+			await disposeClineTaskSessionServiceAsync(workspaceId);
+			deps.disposeWorkspace(workspaceId, {
+				stopTerminalSessions: true,
+			});
+		}
+		deps.workspaceRegistry.clearActiveWorkspace();
 	};
 
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
@@ -153,6 +176,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
+				prepareForStateReset,
 				warn: deps.warn,
 			}),
 			workspaceApi: createWorkspaceApi({

@@ -3,6 +3,7 @@ import {
 	ArrowDown,
 	ArrowLeft,
 	ArrowUp,
+	Bug,
 	Check,
 	ChevronDown,
 	CircleArrowDown,
@@ -226,6 +227,8 @@ export function TopBar({
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
+	showDebugButton,
+	onOpenDebugDialog,
 	shortcuts,
 	selectedShortcutLabel,
 	onSelectShortcutLabel,
@@ -257,6 +260,8 @@ export function TopBar({
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
+	showDebugButton?: boolean;
+	onOpenDebugDialog?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	selectedShortcutLabel?: string | null;
 	onSelectShortcutLabel?: (shortcutLabel: string) => void;
@@ -465,6 +470,17 @@ export function TopBar({
 							className="ml-2"
 						/>
 					</Tooltip>
+				) : null}
+				{showDebugButton && onOpenDebugDialog ? (
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={<Bug size={16} />}
+						onClick={onOpenDebugDialog}
+						aria-label="Debug"
+						data-testid="open-debug-dialog-button"
+						className="ml-0.5 mr-0.5"
+					/>
 				) : null}
 				<Button
 					variant="ghost"

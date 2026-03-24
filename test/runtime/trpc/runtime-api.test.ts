@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
@@ -1409,5 +1410,87 @@ describe("createRuntimeApi startTaskSession", () => {
 				},
 			),
 		).rejects.toThrow("does not support OAuth browser flow");
+	});
+
+	it("runs reset teardown before deleting debug state paths", async () => {
+		const originalHome = process.env.HOME;
+		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+		process.env.HOME = tempHome;
+		mkdirSync(tempHome, { recursive: true });
+		const debugPaths = [join(tempHome, ".cline", "data"), join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		for (const path of debugPaths) {
+			mkdirSync(path, { recursive: true });
+			writeFileSync(join(path, "marker.txt"), "present");
+		}
+		const prepareForStateReset = vi.fn(async () => {
+			for (const path of debugPaths) {
+				expect(existsSync(path)).toBe(true);
+			}
+		});
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			prepareForStateReset,
+		});
+
+		try {
+			const response = await api.resetAllState(null);
+
+			expect(response.ok).toBe(true);
+			expect(prepareForStateReset).toHaveBeenCalledTimes(1);
+			for (const path of debugPaths) {
+				expect(existsSync(path)).toBe(false);
+			}
+		} finally {
+			if (originalHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = originalHome;
+			}
+			rmSync(tempHome, { recursive: true, force: true });
+		}
+	});
+
+	it("aborts reset path deletion when teardown fails", async () => {
+		const originalHome = process.env.HOME;
+		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+		process.env.HOME = tempHome;
+		mkdirSync(tempHome, { recursive: true });
+		const debugPaths = [join(tempHome, ".cline", "data"), join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		for (const path of debugPaths) {
+			mkdirSync(path, { recursive: true });
+			writeFileSync(join(path, "marker.txt"), "present");
+		}
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			prepareForStateReset: vi.fn(async () => {
+				throw new Error("teardown failed");
+			}),
+		});
+
+		try {
+			await expect(api.resetAllState(null)).rejects.toThrow("teardown failed");
+			for (const path of debugPaths) {
+				expect(existsSync(path)).toBe(true);
+			}
+		} finally {
+			if (originalHome === undefined) {
+				delete process.env.HOME;
+			} else {
+				process.env.HOME = originalHome;
+			}
+			rmSync(tempHome, { recursive: true, force: true });
+		}
 	});
 });

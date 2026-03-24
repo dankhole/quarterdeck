@@ -35,6 +35,9 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+	delete process.env.KANBAN_DEBUG_MODE;
+	delete process.env.DEBUG_MODE;
+	delete process.env.debug_mode;
 });
 
 describe("agent-registry", () => {
@@ -108,5 +111,37 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
+	});
+
+	it("sets debug mode from runtime environment variables", () => {
+		process.env.KANBAN_DEBUG_MODE = "true";
+		const response = buildRuntimeConfigResponse(createRuntimeConfigState(), {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+		expect(response.debugModeEnabled).toBe(true);
+	});
+
+	it("supports debug_mode fallback env name", () => {
+		process.env.debug_mode = "1";
+		const response = buildRuntimeConfigResponse(createRuntimeConfigState(), {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+		expect(response.debugModeEnabled).toBe(true);
 	});
 });

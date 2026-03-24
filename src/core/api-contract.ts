@@ -624,6 +624,12 @@ export const runtimeCommandRunResponseSchema = z.object({
 });
 export type RuntimeCommandRunResponse = z.infer<typeof runtimeCommandRunResponseSchema>;
 
+export const runtimeDebugResetAllStateResponseSchema = z.object({
+	ok: z.boolean(),
+	clearedPaths: z.array(z.string()),
+});
+export type RuntimeDebugResetAllStateResponse = z.infer<typeof runtimeDebugResetAllStateResponseSchema>;
+
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,
 	label: z.string(),
@@ -639,6 +645,7 @@ export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	selectedShortcutLabel: z.string().nullable(),
 	agentAutonomousModeEnabled: z.boolean(),
+	debugModeEnabled: z.boolean().optional(),
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
 	projectConfigPath: z.string().nullable(),

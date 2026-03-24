@@ -3,6 +3,9 @@
 // workspace actions, but detailed Cline, terminal, and config behavior
 // should stay in focused services instead of accumulating here.
 import { TRPCError } from "@trpc/server";
+import { rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service.js";
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service.js";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
@@ -44,6 +47,7 @@ export interface CreateRuntimeApiDependencies {
 	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
+	prepareForStateReset?: () => Promise<void>;
 	warn?: (message: string) => void;
 }
 
@@ -73,6 +77,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 	const clineProviderService = createClineProviderService();
 	const clineMcpSettingsService = createClineMcpSettingsService();
 	const clineMcpRuntimeService = createClineMcpRuntimeService();
+	const debugResetTargetPaths = [
+		join(homedir(), ".cline", "data"),
+		join(homedir(), ".cline", "kanban"),
+		join(homedir(), ".cline", "worktrees"),
+	] as const;
 
 	const buildConfigResponse = (runtimeConfig: RuntimeConfigState) =>
 		buildRuntimeConfigResponse(runtimeConfig, clineProviderService.getProviderSettingsSummary());
@@ -503,6 +512,18 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					message,
 				});
 			}
+		},
+		resetAllState: async (_workspaceScope) => {
+			await deps.prepareForStateReset?.();
+			await Promise.all(
+				debugResetTargetPaths.map(async (path) => {
+					await rm(path, { recursive: true, force: true });
+				}),
+			);
+			return {
+				ok: true,
+				clearedPaths: [...debugResetTargetPaths],
+			};
 		},
 	};
 }
