@@ -180,6 +180,28 @@ export function useRuntimeSettingsClineController(
 
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {
+			return;
+		}
+		if (providerId.trim().length > 0) {
+			return;
+		}
+		const defaultProvider =
+			providerCatalog.find((provider) => provider.id.trim().toLowerCase() === "cline") ??
+			providerCatalog[0] ??
+			null;
+		if (!defaultProvider) {
+			return;
+		}
+		const nextProviderId = defaultProvider.id.trim();
+		if (!nextProviderId) {
+			return;
+		}
+		setProviderId(nextProviderId);
+		setModelId(defaultProvider.defaultModelId?.trim() ?? "");
+	}, [open, providerCatalog, providerId, selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline") {
 			setProviderModels([]);
 			setIsLoadingProviderModels(false);
 			return;
