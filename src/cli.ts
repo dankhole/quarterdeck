@@ -3,7 +3,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
-import closeWithGrace from "close-with-grace";
 import { Command, Option } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 
@@ -12,6 +11,10 @@ import { registerTaskCommand } from "./commands/task.js";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config.js";
 import type { RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
+import {
+	installGracefulShutdownHandlers,
+	shouldSuppressImmediateDuplicateShutdownSignals,
+} from "./core/graceful-shutdown.js";
 import {
 	buildKanbanRuntimeUrl,
 	DEFAULT_KANBAN_RUNTIME_PORT,
@@ -455,43 +458,41 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	console.log("Press Ctrl+C to stop.");
 
 	let isShuttingDown = false;
-	const shutdown = async (signal: NodeJS.Signals | null) => {
+	const shutdown = async () => {
 		if (isShuttingDown) {
-			process.exit(130);
 			return;
 		}
 		isShuttingDown = true;
 		runPendingAutoUpdateOnShutdown();
-		try {
-			if (options.skipShutdownCleanup) {
-				console.warn("Skipping shutdown task cleanup for this instance.");
-			}
-			await runtime.shutdown({
-				skipSessionCleanup: options.skipShutdownCleanup,
-			});
-			process.exit(signal ? 130 : 0);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.error(`Shutdown failed: ${message}`);
-			process.exit(1);
+		if (options.skipShutdownCleanup) {
+			console.warn("Skipping shutdown task cleanup for this instance.");
 		}
+		await runtime.shutdown({
+			skipSessionCleanup: options.skipShutdownCleanup,
+		});
 	};
 
-	closeWithGrace(
-		{
-			delay: 10000,
-			skip: ["uncaughtException", "unhandledRejection", "beforeExit"],
-			onTimeout: (delayMs) => {
-				console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);
-			},
-			onSecondSignal: (signal) => {
-				console.error(`Forced exit on second signal: ${signal}`);
-			},
+	installGracefulShutdownHandlers({
+		process,
+		delayMs: 10000,
+		exit: (code) => {
+			process.exit(code);
 		},
-		async ({ signal }) => {
-			await shutdown(signal ?? null);
+		onShutdown: async () => {
+			await shutdown();
 		},
-	);
+		onShutdownError: (error) => {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Shutdown failed: ${message}`);
+		},
+		onTimeout: (delayMs) => {
+			console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);
+		},
+		onSecondSignal: (signal) => {
+			console.error(`Forced exit on second signal: ${signal}`);
+		},
+		suppressImmediateDuplicateSignals: shouldSuppressImmediateDuplicateShutdownSignals(),
+	});
 }
 
 function createProgram(invocationArgs: string[]): Command {
@@ -508,10 +509,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
 
-	program.addOption(
-		new Option("--agent <id>", "Deprecated compatibility flag. Ignored.")
-			.hideHelp(),
-	);
+	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
@@ -524,12 +522,15 @@ function createProgram(invocationArgs: string[]): Command {
 		});
 
 	program.action(async (options: RootCommandOptions) => {
-		await runMainCommand({
-			host: options.host ?? null,
-			port: options.port ?? null,
-			noOpen: options.open === false,
-			skipShutdownCleanup: options.skipShutdownCleanup === true,
-		}, shouldAutoOpenBrowser);
+		await runMainCommand(
+			{
+				host: options.host ?? null,
+				port: options.port ?? null,
+				noOpen: options.open === false,
+				skipShutdownCleanup: options.skipShutdownCleanup === true,
+			},
+			shouldAutoOpenBrowser,
+		);
 	});
 
 	return program;
