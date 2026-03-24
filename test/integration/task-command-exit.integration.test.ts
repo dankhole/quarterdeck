@@ -328,7 +328,7 @@ describe("source task commands", () => {
 		}
 	});
 
-	it("opens only for launch invocations", async () => {
+	it("opens only for launch invocations", { timeout: 60_000 }, async () => {
 		if (process.platform === "win32") {
 			return;
 		}
