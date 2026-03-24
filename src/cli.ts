@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
@@ -482,6 +483,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			await shutdown();
 		},
 		onShutdownError: (error) => {
+			captureNodeException(error, { area: "shutdown" });
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`Shutdown failed: ${message}`);
 		},
@@ -542,7 +544,9 @@ async function run(): Promise<void> {
 	await program.parseAsync(argv, { from: "user" });
 }
 
-run().catch((error) => {
+void run().catch(async (error) => {
+	captureNodeException(error, { area: "startup" });
+	await flushNodeTelemetry();
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`Failed to start Kanban: ${message}`);
 	process.exit(1);

@@ -65,6 +65,7 @@ export default defineConfig({
 		// production bundle, which breaks full-screen TUIs like OpenCode at runtime.
 		// Keep xterm unminified, but selectively minify the rest of the app below.
 		minify: false,
+		sourcemap: true,
 		rollupOptions: {
 			output: {
 				manualChunks(id) {

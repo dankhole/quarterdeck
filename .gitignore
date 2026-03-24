@@ -5,6 +5,7 @@ coverage
 test-results
 playwright-report
 .worktrees
+.sentry-artifacts
 .env
 .env.*
 !.env.example

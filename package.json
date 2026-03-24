@@ -47,7 +47,7 @@
   "scripts": {
     "clean": "shx rm -rf dist coverage",
     "install:all": "npm install && npm --prefix web-ui install",
-    "build": "npm run clean && npm run web:build && tsc -p tsconfig.build.json && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && shx chmod +x dist/cli.js",
+    "build": "npm run clean && npm run web:build && tsc -p tsconfig.build.json && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && node scripts/upload-sentry-sourcemaps.mjs && shx chmod +x dist/cli.js",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g kanban",
@@ -68,6 +68,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
+    "@sentry/cli": "^3.3.3",
     "@types/node": "^22.10.5",
     "@types/proper-lockfile": "^4.1.4",
     "@types/ws": "^8.18.1",
@@ -82,6 +83,7 @@
     "@clinebot/core": "^0.0.11",
     "@clinebot/llms": "^0.0.11",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "commander": "^14.0.3",

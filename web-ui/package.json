@@ -27,6 +27,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@sentry/react": "^10.45.0",
     "@tailwindcss/vite": "^4.2.1",
     "@trpc/client": "^11.11.0",
     "@xterm/addon-attach": "^0.12.0",
