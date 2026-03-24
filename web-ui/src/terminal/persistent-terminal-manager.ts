@@ -459,6 +459,10 @@ class PersistentTerminal {
 		this.terminal.clear();
 	}
 
+	reset(): void {
+		this.terminal.reset();
+	}
+
 	waitForLikelyPrompt(timeoutMs: number): Promise<boolean> {
 		if (timeoutMs <= 0) {
 			return Promise.resolve(false);

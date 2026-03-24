@@ -40,6 +40,13 @@ export function usePersistentTerminalSession({
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
+	const callbackRef = useRef<{
+		onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+		onConnectionReady?: (taskId: string) => void;
+	}>({
+		onSummary,
+		onConnectionReady,
+	});
 	const previousSessionRef = useRef<{
 		workspaceId: string;
 		taskId: string;
@@ -47,6 +54,10 @@ export function usePersistentTerminalSession({
 	} | null>(null);
 	const [lastError, setLastError] = useState<string | null>(null);
 	const [isStopping, setIsStopping] = useState(false);
+	callbackRef.current = {
+		onSummary,
+		onConnectionReady,
+	};
 
 	useEffect(() => {
 		if (!enabled) {
@@ -78,20 +89,21 @@ export function usePersistentTerminalSession({
 			return;
 		}
 		const previousSession = previousSessionRef.current;
-		if (
-			previousSession &&
+		const didSessionRestart =
+			previousSession !== null &&
 			previousSession.workspaceId === workspaceId &&
 			previousSession.taskId === taskId &&
-			previousSession.sessionStartedAt !== sessionStartedAt
-		) {
-			disposePersistentTerminal(workspaceId, taskId);
-		}
+			previousSession.sessionStartedAt !== sessionStartedAt;
+
 		const terminal = ensurePersistentTerminal({
 			taskId,
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
 		});
+		if (didSessionRestart) {
+			terminal.reset();
+		}
 		previousSessionRef.current = {
 			workspaceId,
 			taskId,
@@ -99,9 +111,13 @@ export function usePersistentTerminalSession({
 		};
 		terminalRef.current = terminal;
 		const unsubscribe = terminal.subscribe({
-			onConnectionReady,
+			onConnectionReady: (connectedTaskId) => {
+				callbackRef.current.onConnectionReady?.(connectedTaskId);
+			},
 			onLastError: setLastError,
-			onSummary,
+			onSummary: (summary) => {
+				callbackRef.current.onSummary?.(summary);
+			},
 		});
 		terminal.mount(
 			container,
@@ -128,8 +144,6 @@ export function usePersistentTerminalSession({
 		cursorColor,
 		enabled,
 		isVisible,
-		onConnectionReady,
-		onSummary,
 		sessionStartedAt,
 		taskId,
 		terminalBackgroundColor,
