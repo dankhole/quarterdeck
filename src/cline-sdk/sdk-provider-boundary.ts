@@ -10,7 +10,7 @@ import {
 	loginOpenAICodex,
 	ProviderSettingsManager,
 } from "@clinebot/core/node";
-import { models as llmsModels } from "@clinebot/llms";
+import { LlmsModels as llmsModels } from "@clinebot/llms";
 import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
 import * as coreNodeModule from "@clinebot/core/node";
 

@@ -14,7 +14,7 @@ import {
 	type SessionHost,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core/node";
-import type { providers as ClineSdkProviders } from "@clinebot/llms";
+import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
 
 export type ClineSdkSessionHost = SessionHost;
 export interface ClineSdkContentStartTextEvent {
