@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.36]
+
+- Added Sentry error reporting to help identify and fix crashes faster
+- Fixed terminal sessions sometimes failing to reconnect, which caused the terminal emulator to scroll to the top during card transitions before scrolling back down
+- Fixed onboarding to default to Cline as the AI provider and automatically set the provider's default model, preventing errors when switching providers without updating the model
+- Fixed Ctrl+C to wait for Cline to finish shutting down before fully exiting, preventing false double-interrupt exits
+- Upgraded Cline SDK from 0.0.7 to 0.0.11 with numerous fixes and improvements:
+  - Fixed prompt caching being broken for Anthropic models, meaning users were paying full price every turn. Cost calculation was also fixed (it was double-counting cache reads and ignoring cache writes)
+  - Fixed cancelling a request causing all subsequent requests in the session to immediately fail, due to a reused AbortController
+  - Fixed Gemini tool use failing for most non-trivial tool schemas. JSON Schema properties not in Gemini's allowed set (like `default`, `pattern`, `minLength`) caused Gemini to reject entire requests
+  - Fixed tools with no required parameters (like "list all") being silently dropped
+  - Fixed CLI hanging indefinitely in CI/Docker environments when stdin was detected as "not a TTY" but wasn't providing input
+  - Fixed Vercel AI Gateway being completely broken (base URL was `.app` instead of `.sh`, so all requests 404'd)
+  - Fixed internal metadata fields leaking into API requests sent to providers, wasting tokens
+  - Fixed multi-agent team tools failing when the orchestrator sent null for optional filter parameters. Also added concurrent run prevention and better error visibility for teammate failures
+  - Fixed MCP tool names with special characters or exceeding 128 chars causing provider schema validation errors (now sanitized with a hash suffix)
+  - Fixed OpenRouter and other gateway error messages showing opaque nested JSON blobs instead of the actual error
+  - Fixed `--json` mode output being impure (plain text warnings leaked into stdout, breaking JSONL parsing)
+  - Fixed SQLite crashing with a disk I/O error on first run instead of auto-creating the data directory
+  - Fixed "Sonic boom is not ready yet" error on CLI exit
+  - Removed hardcoded 8,192 max output tokens per turn cap, so models are no longer artificially limited
+  - Added OpenAI-compatible prompt caching support
+  - Added OpenAI-compatible providers now surface truncated responses (`finish_reason: "length"`) so callers can detect them
+  - Headless mode no longer requires a persisted API key -- env vars like `ANTHROPIC_API_KEY` now work
+  - Headless mode output cleaned up: model info, welcome line, and summary gated behind `--verbose`
+  - Config directory is now overridable via `--config` flag or `CLINE_DIR` env var for isolated config across multiple SDK instances
+  - `readFile` executor now supports optional `start_line`/`end_line` parameters, enabling models to read specific portions of large files
+
 ## [0.1.35]
 
 - Added runtime debug tools accessible from the top bar for troubleshooting configuration and agent state
