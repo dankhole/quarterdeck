@@ -271,7 +271,7 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["claude-sonnet-4-6"]);
 	});
 
-	it("falls back to empty provider settings when the config omits cline settings", async () => {
+	it("defaults provider settings to cline when the config omits cline settings", async () => {
 		const config = createLegacyRuntimeConfigResponse();
 		let latestSnapshot: HookSnapshot | null = null;
 		fetchClineProviderCatalogMock.mockResolvedValue([
@@ -304,12 +304,12 @@ describe("useRuntimeSettingsClineController", () => {
 		});
 
 		expect(fetchClineProviderCatalogMock).toHaveBeenCalledWith("workspace-1");
-		expect(fetchClineProviderModelsMock).not.toHaveBeenCalled();
-		expect(requireSnapshot(latestSnapshot).providerId).toBe("");
-		expect(requireSnapshot(latestSnapshot).modelId).toBe("");
+		expect(fetchClineProviderModelsMock).toHaveBeenCalledWith("workspace-1", "cline");
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("cline");
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("claude-sonnet-4-6");
 		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
-		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(false);
-		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(true);
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(true);
 	});
 
 	it("normalizes legacy base urls away for OAuth providers", async () => {

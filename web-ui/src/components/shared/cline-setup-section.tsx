@@ -147,7 +147,19 @@ export function ClineSetupSection({
 					<SearchSelectDropdown
 						options={clineProviderOptions}
 						selectedValue={controller.providerId}
-						onSelect={(value) => controller.setProviderId(value)}
+						onSelect={(value) => {
+							const normalizedProviderId = value.trim().toLowerCase();
+							if (normalizedProviderId === controller.normalizedProviderId) {
+								return;
+							}
+							controller.setProviderId(value);
+							const selectedProvider =
+								controller.providerCatalog.find(
+									(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
+								) ?? null;
+							const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
+							controller.setModelId(defaultModelId);
+						}}
 						disabled={controlsDisabled || controller.isLoadingProviderCatalog}
 						fill
 						size="sm"
