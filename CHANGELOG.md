@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.35]
+
+- Added runtime debug tools accessible from the top bar for troubleshooting configuration and agent state
+- Settings now automatically retry loading when the initial attempt fails, improving reliability on slower connections
+
 ## [0.1.34]
 
 - Model pickers now show recommended Cline models for quick selection
