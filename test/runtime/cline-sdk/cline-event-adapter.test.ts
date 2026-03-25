@@ -325,7 +325,7 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.content).toContain("Missing API key");
 	});
 
-	it("marks unrecoverable agent errors as failed", () => {
+	it("keeps unrecoverable agent errors resumable", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";
 		entry.activeAssistantMessageId = "assistant-1";
@@ -346,8 +346,9 @@ describe("applyClineSessionEvent", () => {
 			},
 		});
 
-		expect(result.entry.summary.state).toBe("failed");
+		expect(result.entry.summary.state).toBe("awaiting_review");
 		expect(result.entry.summary.reviewReason).toBe("error");
+		expect(result.entry.summary.warningMessage).toBe("Unauthorized");
 		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Unauthorized");
 		expect(result.entry.activeAssistantMessageId).toBeNull();
 	});

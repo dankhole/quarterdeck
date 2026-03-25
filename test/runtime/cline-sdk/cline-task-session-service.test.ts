@@ -867,7 +867,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		sendDeferred.resolve({ text: "done" });
 	});
 
-	it("marks the task failed when native Cline startup throws", async () => {
+	it("keeps the task resumable when native Cline startup throws", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Missing API key for provider \"cline\"."));
 
@@ -878,15 +878,39 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(service.getSummary("task-1")?.state).toBe("failed");
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
 		});
 
 		expect(service.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(service.getSummary("task-1")?.warningMessage).toContain("Missing API key");
 		expect(service.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("agent_error");
 		expect(service.getSummary("task-1")?.latestHookActivity?.finalMessage).toContain("Missing API key");
 		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK start failed"))).toBe(
 			true,
 		);
+	});
+
+	it("allows follow-up input after a startup error", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Maximum consecutive mistakes reached."));
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "Try again");
+
+		expect(nextSummary?.state).toBe("running");
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Try again", undefined, undefined);
+		});
+		expect(service.listMessages("task-1").map((message) => message.content)).toContain("Try again");
 	});
 
 	it("does not duplicate assistant output when stream and send result both include final text", async () => {

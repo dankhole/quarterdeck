@@ -153,15 +153,20 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		error: unknown,
 	): void {
 		const errorMessage = toErrorMessage(error);
-		const systemMessage = createMessage(taskId, "system", `Cline SDK ${context} failed: ${errorMessage}.`);
+		const systemMessage = createMessage(
+			taskId,
+			"system",
+			`Cline SDK ${context} failed: ${errorMessage}. You can send another message to continue the conversation.`,
+		);
 		entry.messages.push(systemMessage);
 		this.emitMessage(taskId, systemMessage);
 		clearActiveTurnState(entry);
-		const failedSummary = updateSummary(entry, {
-			state: "failed",
+		const errorSummary = updateSummary(entry, {
+			state: "awaiting_review",
 			reviewReason: "error",
 			lastOutputAt: now(),
 			lastHookAt: now(),
+			warningMessage: errorMessage,
 			latestHookActivity: {
 				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
 				toolName: null,
@@ -172,7 +177,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				source: "cline-sdk",
 			},
 		});
-		this.emitSummary(failedSummary);
+		this.emitSummary(errorSummary);
 	}
 
 	async startTaskSession(request: StartClineTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -376,7 +381,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (
 			entry.summary.state !== "running" &&
 			entry.summary.state !== "awaiting_review" &&
-			entry.summary.state !== "idle"
+			entry.summary.state !== "idle" &&
+			entry.summary.state !== "failed"
 		) {
 			return null;
 		}
@@ -442,25 +448,31 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
 		const existingEntry = this.messageRepository.getTaskEntry(taskId);
-		if (existingEntry) {
+		if (existingEntry && existingEntry.summary.state !== "failed") {
 			return cloneSummary(existingEntry.summary);
 		}
 		const snapshot = await this.sessionRuntime.resumeTaskSession(taskId);
 		if (!snapshot) {
-			return null;
+			return existingEntry ? cloneSummary(existingEntry.summary) : null;
 		}
 		const startedAt = Date.parse(snapshot.record.startedAt);
 		const updatedAt = Date.parse(snapshot.record.updatedAt || snapshot.record.startedAt);
 		const persistedCwd = typeof snapshot.record.cwd === "string" ? snapshot.record.cwd.trim() : "";
 		const persistedWorkspaceRoot =
 			typeof snapshot.record.workspaceRoot === "string" ? snapshot.record.workspaceRoot.trim() : "";
+		const reboundState = existingEntry?.summary.state === "failed" ? "failed" : "awaiting_review";
+		const reboundReviewReason = existingEntry?.summary.state === "failed" ? "error" : "attention";
 		const entry = createTaskEntryFromPersistedSession(taskId, snapshot.messages, {
 			agentId: "cline",
-			state: "awaiting_review",
-			reviewReason: "attention",
+			state: reboundState,
+			reviewReason: reboundReviewReason,
 			workspacePath: persistedCwd || persistedWorkspaceRoot || null,
 			startedAt: Number.isFinite(startedAt) ? startedAt : null,
 			lastOutputAt: Number.isFinite(updatedAt) ? updatedAt : null,
+			warningMessage: existingEntry?.summary.warningMessage ?? null,
+			latestHookActivity: existingEntry?.summary.latestHookActivity ?? null,
+			latestTurnCheckpoint: existingEntry?.summary.latestTurnCheckpoint ?? null,
+			previousTurnCheckpoint: existingEntry?.summary.previousTurnCheckpoint ?? null,
 		});
 		this.messageRepository.setTaskEntry(taskId, entry);
 		return cloneSummary(entry.summary);

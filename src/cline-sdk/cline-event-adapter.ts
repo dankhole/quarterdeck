@@ -189,8 +189,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			...(recoverable
 				? {}
 				: {
-						state: "failed",
+						state: "awaiting_review",
 						reviewReason: "error",
+						warningMessage: errorMessage ?? "Unknown agent error",
 					}),
 			lastOutputAt: now(),
 			lastHookAt: now(),
