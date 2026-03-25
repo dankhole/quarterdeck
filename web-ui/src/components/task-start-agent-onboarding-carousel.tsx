@@ -14,19 +14,26 @@ import type {
 	RuntimeConfigResponse,
 } from "@/runtime/types";
 
-interface OnboardingSlide {
+interface BaseOnboardingSlide {
+	kind: "media" | "agent-selection";
 	title: string;
 	description: string;
+}
+
+interface MediaOnboardingSlide extends BaseOnboardingSlide {
+	kind: "media";
 	assetVideoUrl?: string;
 	assetImageUrl?: string;
 	assetStemPath?: string;
-	assetAlt?: string;
-	assetWidthPx?: number;
-	assetHeightPx?: number;
+	assetAlt: string;
+	assetWidthPx: number;
+	assetHeightPx: number;
 	assetFrameWidthPx?: number;
 	assetFrameHeightPx?: number;
 	assetObjectFit?: "contain" | "cover";
 }
+
+type OnboardingSlide = BaseOnboardingSlide | MediaOnboardingSlide;
 
 interface AgentSelectionResult {
 	ok: boolean;
@@ -40,6 +47,17 @@ interface OnboardingDoneResult {
 
 export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	{
+		kind: "media",
+		title: "Create tasks with Kanban",
+		description:
+			"Press c to create a task yourself, or talk to the sidebar Kanban agent to plan work for you. It can pull projects and issues from Linear and GitHub, then turn them into tasks your coding agent can pick up.",
+		assetVideoUrl: "https://github.com/user-attachments/assets/4408930c-33cd-4af9-a343-e82b099eab8c",
+		assetAlt: "Talking to the sidebar Kanban agent to create tasks from Linear and GitHub",
+		assetWidthPx: 1908,
+		assetHeightPx: 720,
+	},
+	{
+		kind: "media",
 		title: "Auto commit and link",
 		description:
 			"Create dependency chains of linked tasks that start one another automatically. Agents can auto commit their work as they finish, so you can orchestrate tasks in order and watch the board burn them down automatically.",
@@ -49,18 +67,17 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		assetHeightPx: 720,
 	},
 	{
+		kind: "media",
 		title: "Review changes with comments",
 		description:
 			"Your workflow will feel like writing tickets, reviewing code, and shipping. Watch the agent work next to real-time diffs, then click lines to leave comments like you're reviewing a PR.",
 		assetVideoUrl: "https://github.com/user-attachments/assets/17992035-c1ca-449a-a48b-bb094007f0a1",
 		assetAlt: "Leaving comments on code diffs in Cline Kanban",
-		assetWidthPx: 1076,
-		assetHeightPx: 720,
-		assetFrameWidthPx: 1156,
-		assetFrameHeightPx: 720,
-		assetObjectFit: "cover",
+		assetWidthPx: 1616,
+		assetHeightPx: 1080,
 	},
 	{
+		kind: "agent-selection",
 		title: "Choose your agent",
 		description:
 			"Set up an agent to start tasks. Cline is the default for new users, and you can also use Claude Code or OpenAI Codex.",
@@ -69,9 +86,28 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 
 const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
+	kind: "agent-selection",
 	title: "",
 	description: "",
 };
+const ONBOARDING_MEDIA_SLIDES = TASK_START_ONBOARDING_SLIDES.filter(
+	(slide): slide is MediaOnboardingSlide => slide.kind === "media",
+);
+const ONBOARDING_MEDIA_FRAME_REFERENCE_SLIDE =
+	ONBOARDING_MEDIA_SLIDES.reduce<MediaOnboardingSlide | null>((tallestSlide, slide) => {
+		if (tallestSlide === null) {
+			return slide;
+		}
+		const tallestRelativeHeight = tallestSlide.assetHeightPx / tallestSlide.assetWidthPx;
+		const slideRelativeHeight = slide.assetHeightPx / slide.assetWidthPx;
+		return slideRelativeHeight > tallestRelativeHeight ? slide : tallestSlide;
+	}, null) ?? null;
+const ONBOARDING_MEDIA_FRAME_WIDTH_PX = ONBOARDING_MEDIA_FRAME_REFERENCE_SLIDE?.assetWidthPx ?? 0;
+const ONBOARDING_MEDIA_FRAME_HEIGHT_PX = ONBOARDING_MEDIA_FRAME_REFERENCE_SLIDE?.assetHeightPx ?? 0;
+
+function isMediaOnboardingSlide(slide: OnboardingSlide): slide is MediaOnboardingSlide {
+	return slide.kind === "media";
+}
 
 function AgentStatusBadge({ label, statusClassName }: { label: string; statusClassName: string }): ReactElement {
 	return (
@@ -165,14 +201,14 @@ function OnboardingMedia({
 	if (assetMode === "video") {
 		if (!videoPath) {
 			if (!imagePath) {
-				return (
-					<div className="flex w-full justify-center">
-						<div
-							className="flex min-h-[180px] w-full items-center justify-center rounded-md border border-dashed border-border-bright bg-surface-1 p-4 text-center"
-							style={mediaContainerStyle}
-						>
-							<p className="m-0 text-xs text-text-secondary">
-								Add onboarding media by setting a valid slide video or gif source.
+					return (
+						<div className="flex w-full justify-center">
+							<div
+								className="flex min-h-[180px] w-full items-center justify-center rounded-md border border-dashed border-border-bright bg-surface-1 p-4 text-center"
+								style={mediaContainerStyle}
+							>
+								<p className="m-0 text-xs text-text-secondary">
+									Add onboarding media by setting a valid slide video or gif source.
 							</p>
 						</div>
 					</div>
@@ -294,31 +330,10 @@ export function TaskStartAgentOnboardingCarousel({
 	const [selectionError, setSelectionError] = useState<string | null>(null);
 	const [clineSetupError, setClineSetupError] = useState<string | null>(null);
 	const selectionSavePromiseRef = useRef<Promise<AgentSelectionResult> | null>(null);
-	const preloadedVideoUrlsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		setActiveAgentId(selectedAgentId);
 	}, [selectedAgentId]);
-
-	useEffect(() => {
-		if (!open || typeof document === "undefined") {
-			return;
-		}
-
-		for (const slide of TASK_START_ONBOARDING_SLIDES) {
-			if (!slide.assetVideoUrl || preloadedVideoUrlsRef.current.has(slide.assetVideoUrl)) {
-				continue;
-			}
-
-			const preloadVideo = document.createElement("video");
-			preloadVideo.preload = "auto";
-			preloadVideo.muted = true;
-			preloadVideo.playsInline = true;
-			preloadVideo.src = slide.assetVideoUrl;
-			preloadVideo.load();
-			preloadedVideoUrlsRef.current.add(slide.assetVideoUrl);
-		}
-	}, [open]);
 
 	const currentSlide =
 		TASK_START_ONBOARDING_SLIDES[activeSlideIndex] ??
@@ -420,26 +435,36 @@ export function TaskStartAgentOnboardingCarousel({
 
 	return (
 		<div className="space-y-3">
+			{open ? (
+				<div aria-hidden="true" className="h-0 overflow-hidden opacity-0">
+					{ONBOARDING_MEDIA_SLIDES.map((slide) =>
+						slide.assetVideoUrl ? (
+							<video key={slide.assetVideoUrl} src={slide.assetVideoUrl} preload="auto" muted playsInline />
+						) : null,
+					)}
+				</div>
+			) : null}
+
 			<div>
 				<h4 className="m-0 text-[15px] font-semibold text-text-primary">{currentSlide?.title}</h4>
 				<p className="mt-1 mb-0 text-[13px] text-text-secondary">{currentSlide?.description}</p>
 			</div>
 
-			{activeSlideIndex < 2 && currentSlide.assetAlt ? (
+			{isMediaOnboardingSlide(currentSlide) ? (
 				<OnboardingMedia
 					assetStemPath={currentSlide.assetStemPath}
 					assetVideoUrl={currentSlide.assetVideoUrl}
 					assetImageUrl={currentSlide.assetImageUrl}
 					assetWidthPx={currentSlide.assetWidthPx}
 					assetHeightPx={currentSlide.assetHeightPx}
-					assetFrameWidthPx={currentSlide.assetFrameWidthPx}
-					assetFrameHeightPx={currentSlide.assetFrameHeightPx}
+					assetFrameWidthPx={currentSlide.assetFrameWidthPx ?? ONBOARDING_MEDIA_FRAME_WIDTH_PX}
+					assetFrameHeightPx={currentSlide.assetFrameHeightPx ?? ONBOARDING_MEDIA_FRAME_HEIGHT_PX}
 					assetObjectFit={currentSlide.assetObjectFit}
 					alt={currentSlide.assetAlt}
 				/>
 			) : null}
 
-			{activeSlideIndex === 2 ? (
+			{currentSlide.kind === "agent-selection" ? (
 				<div className="space-y-2">
 					{onboardingAgents.map((agent) => (
 						<div

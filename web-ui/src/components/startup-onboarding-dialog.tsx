@@ -82,7 +82,7 @@ export function StartupOnboardingDialog({
 			onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}
 		>
 			<DialogHeader title="Get started" />
-			<DialogBody>
+			<DialogBody className="px-4 pt-2 pb-4">
 				<TaskStartAgentOnboardingCarousel
 					open={open}
 					workspaceId={workspaceId ?? null}
