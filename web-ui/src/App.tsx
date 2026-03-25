@@ -849,7 +849,7 @@ export default function App(): ReactElement {
 											void handleAddProject();
 										}}
 									>
-										Add project
+										Add Project
 									</Button>
 								</div>
 							</div>

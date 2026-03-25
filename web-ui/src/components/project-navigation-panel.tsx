@@ -263,7 +263,7 @@ export function ProjectNavigationPanel({
 								disabled={removingProjectId !== null}
 							>
 								<Plus size={14} className="shrink-0" />
-								<span className="text-sm">Add project</span>
+								<span className="text-sm">Add Project</span>
 							</button>
 						) : null}
 					</div>
