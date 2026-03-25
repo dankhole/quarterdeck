@@ -2,9 +2,11 @@
 // The rest of Kanban should talk to the SDK through local service modules so
 // auth, catalog, and provider-settings behavior stay behind one boundary.
 import {
+	ClineAccountService,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
+	InMemoryMcpManager,
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
@@ -12,7 +14,6 @@ import {
 } from "@clinebot/core/node";
 import { LlmsModels as llmsModels } from "@clinebot/llms";
 import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
-import * as coreNodeModule from "@clinebot/core/node";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 
@@ -298,9 +299,7 @@ export function saveSdkProviderSettings(
 }
 
 export function createSdkInMemoryMcpManager(options: SdkMcpManagerOptions): SdkMcpManager {
-	type InMemoryMcpManagerConstructor = new (options: SdkMcpManagerOptions) => SdkMcpManager;
-	const managerConstructor = (coreNodeModule as unknown as { InMemoryMcpManager: InMemoryMcpManagerConstructor })
-		.InMemoryMcpManager;
+	const managerConstructor = InMemoryMcpManager;
 	if (!managerConstructor) {
 		throw new Error("InMemoryMcpManager is not available from @clinebot/core/node.");
 	}
@@ -314,15 +313,8 @@ export async function createSdkMcpTools(options: SdkCreateMcpToolsOptions): Prom
 export async function fetchSdkClineAccountProfile(input: {
 	apiBaseUrl: string;
 	accessToken: string;
-}): Promise<SdkClineAccountProfile> {
-	type ClineAccountServiceConstructor = new (options: {
-		apiBaseUrl: string;
-		getAuthToken: () => Promise<string | undefined | null>;
-	}) => {
-		fetchMe(): Promise<{ id: string; email: string; displayName: string }>;
-	};
-	const accountServiceConstructor = (coreNodeModule as unknown as { ClineAccountService?: ClineAccountServiceConstructor })
-		.ClineAccountService;
+}): Promise<SdkClineAccountProfile> {	
+	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {
 		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
 	}
