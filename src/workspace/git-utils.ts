@@ -11,12 +11,25 @@ interface GitCommandResult {
 	stderr: string;
 	output: string;
 	error: string | null;
-	exitCode: number
+	exitCode: number;
 }
 
 export interface RunGitOptions {
 	trimStdout?: boolean;
 	env?: NodeJS.ProcessEnv;
+}
+
+function normalizeProcessExitCode(code: unknown): number {
+	if (typeof code === "number" && Number.isFinite(code)) {
+		return code;
+	}
+	if (typeof code === "string") {
+		const parsed = Number(code);
+		if (Number.isInteger(parsed)) {
+			return parsed;
+		}
+	}
+	return -1;
 }
 
 export async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
@@ -39,12 +52,13 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		};
 	} catch (error) {
 		const candidate = error as { code?: string | number | null; stdout?: unknown; stderr?: unknown; message?: unknown };
-		const stdout = String(candidate.stdout ?? "").trim();
+		const rawStdout = String(candidate.stdout ?? "");
+		const stdout = options.trimStdout === false ? rawStdout : rawStdout.trim();
 		const stderr = String(candidate.stderr ?? "").trim();
 		const message = String(candidate.message ?? "").trim();
-		const command = `git ${args.join(" ")} failed`
-		const errorMessage = `Failed to run Git Command: \n Command: \n ${command} \n ${stderr || message}`
-		const exitCode = typeof candidate.code === "number" ? candidate.code : 1;
+		const command = `git ${args.join(" ")} failed`;
+		const errorMessage = `Failed to run Git Command: \n Command: \n ${command} \n ${stderr || message}`;
+		const exitCode = normalizeProcessExitCode(candidate.code);
 
 		return {
 			ok: false,
@@ -58,12 +72,12 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 }
 
 export async function getGitStdout(args: string[], cwd: string, options: RunGitOptions = {}): Promise<string> {
-	const result = await runGit(cwd, args, options)
-	if(!result.ok) {
-		throw new Error(result.error || result.stdout)
+	const result = await runGit(cwd, args, options);
+	if (!result.ok) {
+		throw new Error(result.error || result.stdout);
 	}
 
-	return result.stdout
+	return result.stdout;
 }
 
 export interface GitHeadInfo {

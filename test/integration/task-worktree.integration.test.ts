@@ -372,4 +372,80 @@ describe.sequential("task-worktree integration", () => {
 			}
 		});
 	});
+
+	it("resumes a trashed task even when the saved patch is invalid", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-invalid-patch-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				runGit(repoPath, ["add", "README.md"]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const taskId = `task-invalid-patch-${Date.now()}`;
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				const createdCommit = runGit(ensured.path, ["rev-parse", "HEAD"]);
+				const deleted = await deleteTaskWorktree({
+					repoPath,
+					taskId,
+				});
+				expect(deleted.ok).toBe(true);
+
+				const patchesDir = join(
+					process.env.HOME ?? sandboxRoot,
+					".cline",
+					"kanban",
+					"trashed-task-patches",
+				);
+				mkdirSync(patchesDir, { recursive: true });
+				const patchPath = join(patchesDir, `${taskId}.${createdCommit}.patch`);
+				writeFileSync(
+					patchPath,
+					[
+						"diff --git a/README.md b/README.md",
+						"new file mode 100644",
+						"index 0000000..1111111",
+						"--- /dev/null",
+						"+++ b/README.md",
+						"@@ -0,0 +1 @@",
+						"+hello",
+						"GIT binary patch",
+						"this-is-not-valid-binary-patch-data",
+						"",
+					].join("\n"),
+					"utf8",
+				);
+
+				const restored = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(restored.ok).toBe(true);
+				if (!restored.ok || !restored.path) {
+					throw new Error("Task worktree was not restored");
+				}
+
+				expect(restored.warning).toContain("Saved task changes could not be reapplied automatically.");
+				expect(runGit(restored.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
+			} finally {
+				cleanup();
+			}
+		});
+	});
 });
