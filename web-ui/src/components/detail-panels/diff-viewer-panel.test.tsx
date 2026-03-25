@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DiffViewerPanel, type DiffLineComment } from "@/components/detail-panels/diff-viewer-panel";
+import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 
 vi.mock("react-hotkeys-hook", () => ({
@@ -201,5 +201,34 @@ describe("DiffViewerPanel", () => {
 		expect(placeholderCell?.classList.contains("kb-diff-split-cell-placeholder")).toBe(true);
 		expect(placeholderCell?.childElementCount).toBe(0);
 		expect(placeholderCell?.querySelector(".kb-diff-line-number")).toBeNull();
+	});
+
+	it("does not render diff rows for binary file paths", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "assets/logo.png",
+				status: "modified",
+				additions: 0,
+				deletions: 0,
+				oldText: "not real image data",
+				newText: "still not real image data",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("assets/logo.png");
+		expect(container.textContent).toContain("Binary");
+		expect(container.querySelector(".kb-diff-row")).toBeNull();
 	});
 });

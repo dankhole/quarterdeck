@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, GitCommit, GitCompare, AlertCircle } from "lucide-react";
+import isBinaryPath from "is-binary-path";
+import { AlertCircle, ChevronDown, ChevronRight, GitCommit, GitCompare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import {
@@ -21,6 +22,9 @@ function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTM
 }
 
 function getFileRows(source: GitCommitDiffSource, path: string): UnifiedDiffRow[] {
+	if (isBinaryPath(path)) {
+		return [];
+	}
 	if (source.type === "commit") {
 		const file = source.files.find((f) => f.path === path);
 		if (!file) {
@@ -178,8 +182,19 @@ export function GitCommitDiffPanel({
 
 	if (!diffSource && !isLoading) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
-				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1 }}>
+			<div
+				style={{
+					display: "flex",
+					flex: "1.6 1 0",
+					minWidth: 0,
+					minHeight: 0,
+					background: "var(--color-surface-0)",
+				}}
+			>
+				<div
+					className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary"
+					style={{ flex: 1 }}
+				>
 					{errorMessage ? <AlertCircle size={48} /> : <GitCommit size={48} />}
 					<h3 className="font-semibold text-text-primary">
 						{errorMessage ? "Could not load diff" : "Select a commit"}
@@ -192,7 +207,15 @@ export function GitCommitDiffPanel({
 
 	if (isLoading) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+			<div
+				style={{
+					display: "flex",
+					flex: "1.6 1 0",
+					minWidth: 0,
+					minHeight: 0,
+					background: "var(--color-surface-0)",
+				}}
+			>
 				<div
 					style={{
 						display: "flex",
@@ -237,8 +260,19 @@ export function GitCommitDiffPanel({
 
 	if (files.length === 0) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
-				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1 }}>
+			<div
+				style={{
+					display: "flex",
+					flex: "1.6 1 0",
+					minWidth: 0,
+					minHeight: 0,
+					background: "var(--color-surface-0)",
+				}}
+			>
+				<div
+					className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary"
+					style={{ flex: 1 }}
+				>
 					<GitCompare size={48} />
 					<h3 className="font-semibold text-text-primary">No changes</h3>
 				</div>
@@ -247,7 +281,9 @@ export function GitCommitDiffPanel({
 	}
 
 	return (
-		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+		<div
+			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
+		>
 			<div
 				style={{
 					display: "flex",
@@ -269,6 +305,7 @@ export function GitCommitDiffPanel({
 						const stats = diffSource ? getFileStats(diffSource, path) : { additions: 0, deletions: 0 };
 						const rows = diffSource ? getFileRows(diffSource, path) : [];
 						const commitFile = getCommitFile(diffSource, path);
+						const isBinaryFile = isBinaryPath(path);
 
 						return (
 							<section
@@ -278,7 +315,10 @@ export function GitCommitDiffPanel({
 								}}
 								style={{ marginBottom: 12 }}
 							>
-								<div className="rounded-md border border-border bg-surface-1" style={{ overflow: "hidden", padding: 0 }}>
+								<div
+									className="rounded-md border border-border bg-surface-1"
+									style={{ overflow: "hidden", padding: 0 }}
+								>
 									<button
 										type="button"
 										className="kb-diff-file-header flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3"
@@ -300,17 +340,24 @@ export function GitCommitDiffPanel({
 											});
 										}}
 									>
-										{isExpanded ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+										{isExpanded ? (
+											<ChevronDown size={12} className="shrink-0" />
+										) : (
+											<ChevronRight size={12} className="shrink-0" />
+										)}
 										<span className="truncate flex-1" title={path}>
 											{truncatePathMiddle(path)}
 										</span>
 										<span className="shrink-0 text-xs">
 											{stats.additions > 0 ? (
-											<span className="text-status-green">+{stats.additions}</span>
+												<span className="text-status-green">+{stats.additions}</span>
 											) : null}
 											{stats.additions > 0 && stats.deletions > 0 ? " " : null}
 											{stats.deletions > 0 ? (
-											<span className="text-status-red">-{stats.deletions}</span>
+												<span className="text-status-red">-{stats.deletions}</span>
+											) : null}
+											{stats.additions === 0 && stats.deletions === 0 && isBinaryFile ? (
+												<span className="text-text-tertiary">Binary</span>
 											) : null}
 										</span>
 									</button>
@@ -321,28 +368,25 @@ export function GitCommitDiffPanel({
 													style={{
 														padding: "8px 12px 0",
 														fontSize: 12,
-												color: "var(--color-text-tertiary)",
+														color: "var(--color-text-tertiary)",
 													}}
 												>
-													Renamed from{" "}
-													<code className="font-mono">
-														{commitFile.previousPath}
-													</code>
+													Renamed from <code className="font-mono">{commitFile.previousPath}</code>
 												</div>
 											) : null}
-											{rows.length > 0 ? (
+											{!isBinaryFile && rows.length > 0 ? (
 												<ReadOnlyUnifiedDiff rows={rows} path={path} />
-											) : (
+											) : !isBinaryFile ? (
 												<div
 													style={{
 														padding: "12px",
 														fontSize: 12,
-												color: "var(--color-text-tertiary)",
+														color: "var(--color-text-tertiary)",
 													}}
 												>
 													No textual diff available.
 												</div>
-											)}
+											) : null}
 										</div>
 									) : null}
 								</div>

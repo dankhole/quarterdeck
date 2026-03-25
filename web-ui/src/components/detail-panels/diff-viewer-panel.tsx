@@ -1,3 +1,4 @@
+import isBinaryPath from "is-binary-path";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,13 +24,13 @@ interface FileDiffGroup {
 	path: string;
 	entries: Array<{
 		id: string;
+		isBinary: boolean;
 		oldText: string | null;
 		newText: string;
 	}>;
 	added: number;
 	removed: number;
 }
-
 
 export interface DiffLineComment {
 	filePath: string;
@@ -242,7 +243,13 @@ function UnifiedDiff({
 							fill
 							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 							onClick={() => toggleBlock(item.block.id)}
-							style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0, justifyContent: "flex-start" }}
+							style={{
+								fontSize: 12,
+								marginTop: 2,
+								marginBottom: 2,
+								borderRadius: 0,
+								justifyContent: "flex-start",
+							}}
 						>
 							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
 						</Button>
@@ -388,12 +395,14 @@ function SplitDiff({
 
 		return (
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }}
+				<div
+					className={rowClass}
+					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={
 						canClickRow
 							? () => {
-								onAddComment(rowLineNumber, row.text, row.variant);
-							}
+									onAddComment(rowLineNumber, row.text, row.variant);
+								}
 							: undefined
 					}
 				>
@@ -405,9 +414,9 @@ function SplitDiff({
 								onClick={
 									hasComment
 										? (event) => {
-											event.stopPropagation();
-											onDeleteComment(rowLineNumber, row.variant);
-										}
+												event.stopPropagation();
+												onDeleteComment(rowLineNumber, row.variant);
+											}
 										: undefined
 								}
 								style={hasComment ? { cursor: "pointer" } : undefined}
@@ -555,6 +564,7 @@ export function DiffViewerPanel({
 		return (workspaceFiles ?? []).map((file, index) => ({
 			id: `workspace-${file.path}-${index}`,
 			path: file.path,
+			isBinary: isBinaryPath(file.path),
 			oldText: file.oldText,
 			newText: file.newText ?? "",
 			timestamp: 0,
@@ -580,12 +590,15 @@ export function DiffViewerPanel({
 			}
 			group.entries.push({
 				id: entry.id,
+				isBinary: entry.isBinary,
 				oldText: entry.oldText,
 				newText: entry.newText,
 			});
-			const counts = countAddedRemoved(entry.oldText, entry.newText);
-			group.added += counts.added;
-			group.removed += counts.removed;
+			if (!entry.isBinary) {
+				const counts = countAddedRemoved(entry.oldText, entry.newText);
+				group.added += counts.added;
+				group.removed += counts.removed;
+			}
 		}
 		return Array.from(map.values()).sort((a, b) => {
 			const aIndex = orderIndex.get(a.path) ?? Number.MAX_SAFE_INTEGER;
@@ -806,7 +819,16 @@ export function DiffViewerPanel({
 			{groupedByPath.length === 0 ? (
 				<div className="kb-empty-state-center" style={{ flex: 1 }}>
 					<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
-						<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+						<svg
+							width="40"
+							height="40"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
 							<rect x="3" y="3" width="8" height="18" rx="1" />
 							<rect x="13" y="3" width="8" height="18" rx="1" />
 						</svg>
@@ -821,6 +843,7 @@ export function DiffViewerPanel({
 					>
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
+							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
 							return (
 								<section
 									key={group.path}
@@ -829,7 +852,10 @@ export function DiffViewerPanel({
 									}}
 									style={{ marginBottom: 12 }}
 								>
-									<div className="rounded-md border border-border bg-surface-1" style={{ overflow: "hidden", padding: 0 }}>
+									<div
+										className="rounded-md border border-border bg-surface-1"
+										style={{ overflow: "hidden", padding: 0 }}
+									>
 										<button
 											type="button"
 											className="kb-diff-file-header"
@@ -867,51 +893,58 @@ export function DiffViewerPanel({
 											}}
 										>
 											{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-											<span className="truncate" title={group.path} style={{ flex: "1 1 auto", minWidth: 0 }}>
+											<span
+												className="truncate"
+												title={group.path}
+												style={{ flex: "1 1 auto", minWidth: 0 }}
+											>
 												{truncatePathMiddle(group.path)}
 											</span>
 											<span style={{ flexShrink: 0 }}>
 												<span className="text-status-green">+{group.added}</span>{" "}
 												<span className="text-status-red">-{group.removed}</span>
+												{group.added === 0 && group.removed === 0 && hasBinaryEntry ? (
+													<span className="ml-2 text-text-tertiary">Binary</span>
+												) : null}
 											</span>
 										</button>
 										{isExpanded ? (
 											<div>
 												{group.entries.map((entry) => (
 													<div key={entry.id} className="kb-diff-entry">
-												{viewMode === "split" ? (
-													<SplitDiff
-														path={group.path}
-														oldText={entry.oldText}
-														newText={entry.newText}
-														comments={comments}
-														onAddComment={(lineNumber, lineText, variant) =>
-															handleAddComment(group.path, lineNumber, lineText, variant)
-														}
-														onUpdateComment={(lineNumber, variant, text) =>
-															handleUpdateComment(group.path, lineNumber, variant, text)
-														}
-														onDeleteComment={(lineNumber, variant) =>
-															handleDeleteComment(group.path, lineNumber, variant)
-														}
-													/>
-												) : (
-													<UnifiedDiff
-														path={group.path}
-														oldText={entry.oldText}
-														newText={entry.newText}
-														comments={comments}
-														onAddComment={(lineNumber, lineText, variant) =>
-															handleAddComment(group.path, lineNumber, lineText, variant)
-														}
-														onUpdateComment={(lineNumber, variant, text) =>
-															handleUpdateComment(group.path, lineNumber, variant, text)
-														}
-														onDeleteComment={(lineNumber, variant) =>
-															handleDeleteComment(group.path, lineNumber, variant)
-														}
-													/>
-												)}
+														{entry.isBinary ? null : viewMode === "split" ? (
+															<SplitDiff
+																path={group.path}
+																oldText={entry.oldText}
+																newText={entry.newText}
+																comments={comments}
+																onAddComment={(lineNumber, lineText, variant) =>
+																	handleAddComment(group.path, lineNumber, lineText, variant)
+																}
+																onUpdateComment={(lineNumber, variant, text) =>
+																	handleUpdateComment(group.path, lineNumber, variant, text)
+																}
+																onDeleteComment={(lineNumber, variant) =>
+																	handleDeleteComment(group.path, lineNumber, variant)
+																}
+															/>
+														) : (
+															<UnifiedDiff
+																path={group.path}
+																oldText={entry.oldText}
+																newText={entry.newText}
+																comments={comments}
+																onAddComment={(lineNumber, lineText, variant) =>
+																	handleAddComment(group.path, lineNumber, lineText, variant)
+																}
+																onUpdateComment={(lineNumber, variant, text) =>
+																	handleUpdateComment(group.path, lineNumber, variant, text)
+																}
+																onDeleteComment={(lineNumber, variant) =>
+																	handleDeleteComment(group.path, lineNumber, variant)
+																}
+															/>
+														)}
 													</div>
 												))}
 											</div>
@@ -927,11 +960,7 @@ export function DiffViewerPanel({
 								<span className="kb-diff-comments-count text-text-secondary">
 									{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
 								</span>
-								<Button
-									variant="danger"
-									size="sm"
-									onClick={handleClearAllComments}
-								>
+								<Button variant="danger" size="sm" onClick={handleClearAllComments}>
 									Clear All
 								</Button>
 							</div>
