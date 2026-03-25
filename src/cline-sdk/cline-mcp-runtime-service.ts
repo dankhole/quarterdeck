@@ -28,6 +28,7 @@ import {
 } from "./sdk-provider-boundary.js";
 
 const DEFAULT_AUTH_TIMEOUT_MS = 3 * 60 * 1000;
+const COMPLETED_CALLBACK_RETENTION_MS = 5 * 60 * 1000;
 const OAUTH_CALLBACK_PATH = "/kanban-mcp/mcp-oauth-callback";
 const OAUTH_CALLBACK_REQUEST_ID_PARAM = "requestId";
 
@@ -47,6 +48,13 @@ const pendingOauthCallbacksByRequestId = new Map<
 	{
 		resolveCode: (code: string) => void;
 		rejectCode: (error: Error) => void;
+		timeoutHandle: NodeJS.Timeout;
+	}
+>();
+const completedOauthCallbacksByRequestId = new Map<
+	string,
+	{
+		response: ClineMcpOauthCallbackResponse;
 		timeoutHandle: NodeJS.Timeout;
 	}
 >();
@@ -546,6 +554,22 @@ function buildMcpOauthCallbackUrl(requestId: string): string {
 	return callbackUrl.toString();
 }
 
+function rememberCompletedOauthCallback(requestId: string, response: ClineMcpOauthCallbackResponse): void {
+	const existing = completedOauthCallbacksByRequestId.get(requestId);
+	if (existing) {
+		clearTimeout(existing.timeoutHandle);
+	}
+
+	const timeoutHandle = setTimeout(() => {
+		completedOauthCallbacksByRequestId.delete(requestId);
+	}, COMPLETED_CALLBACK_RETENTION_MS);
+
+	completedOauthCallbacksByRequestId.set(requestId, {
+		response,
+		timeoutHandle,
+	});
+}
+
 export async function handleClineMcpOauthCallback(requestUrl: URL): Promise<ClineMcpOauthCallbackResponse | null> {
 	if (requestUrl.pathname !== OAUTH_CALLBACK_PATH) {
 		return null;
@@ -557,6 +581,11 @@ export async function handleClineMcpOauthCallback(requestUrl: URL): Promise<Clin
 			statusCode: 400,
 			body: CALLBACK_RESPONSE_HTML.missingRequestId,
 		};
+	}
+
+	const completed = completedOauthCallbacksByRequestId.get(requestId);
+	if (completed) {
+		return completed.response;
 	}
 
 	const pending = pendingOauthCallbacksByRequestId.get(requestId);
@@ -575,6 +604,11 @@ export async function handleClineMcpOauthCallback(requestUrl: URL): Promise<Clin
 	const code = requestUrl.searchParams.get("code")?.trim();
 
 	if (errorValue) {
+		const response = {
+			statusCode: 400,
+			body: CALLBACK_RESPONSE_HTML.failure,
+		} as const;
+		rememberCompletedOauthCallback(requestId, response);
 		pending.rejectCode(
 			new Error(
 				errorDescription
@@ -582,25 +616,26 @@ export async function handleClineMcpOauthCallback(requestUrl: URL): Promise<Clin
 					: `OAuth authorization failed: ${errorValue}`,
 			),
 		);
-		return {
-			statusCode: 400,
-			body: CALLBACK_RESPONSE_HTML.failure,
-		};
+		return response;
 	}
 
 	if (!code) {
-		pending.rejectCode(new Error("OAuth callback did not include an authorization code."));
-		return {
+		const response = {
 			statusCode: 400,
 			body: CALLBACK_RESPONSE_HTML.missingCode,
-		};
+		} as const;
+		rememberCompletedOauthCallback(requestId, response);
+		pending.rejectCode(new Error("OAuth callback did not include an authorization code."));
+		return response;
 	}
 
-	pending.resolveCode(code);
-	return {
+	const response = {
 		statusCode: 200,
 		body: CALLBACK_RESPONSE_HTML.success,
-	};
+	} as const;
+	rememberCompletedOauthCallback(requestId, response);
+	pending.resolveCode(code);
+	return response;
 }
 
 export async function startOauthCallbackListener(timeoutMs: number): Promise<{
