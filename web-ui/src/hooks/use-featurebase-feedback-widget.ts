@@ -194,17 +194,15 @@ export function useFeaturebaseFeedbackWidget(input: {
 	);
 
 	useEffect(() => {
-		if (isManagedClineOauth && !isClineProfileResolved) {
-			return;
-		}
 		const win = window as FeaturebaseWindow;
-		const featurebase = ensureFeaturebaseCommand(win);
+		ensureFeaturebaseCommand(win);
 		let cancelled = false;
 		void ensureFeaturebaseSdkLoaded()
 			.then(() => {
 				if (cancelled || lastInitializedSignatureRef.current === signature) {
 					return;
 				}
+				const featurebase = ensureFeaturebaseCommand(win);
 				lastInitializedSignatureRef.current = signature;
 				isFeaturebaseFeedbackWidgetReady = false;
 				if (shouldIdentifyClineUser) {

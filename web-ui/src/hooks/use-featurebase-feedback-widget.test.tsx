@@ -168,4 +168,62 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		expect(postMessageMock).toHaveBeenCalledTimes(2);
 	});
+
+	it("initializes immediately even while the managed Cline profile request is still pending", async () => {
+		const { module, fetchClineAccountProfileMock } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		const originalAppendChild = document.head.appendChild.bind(document.head);
+
+		fetchClineAccountProfileMock.mockReturnValue(new Promise(() => {}));
+
+		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
+			const result = originalAppendChild(node);
+			if (node instanceof HTMLScriptElement && node.id === "featurebase-sdk") {
+				(window as Window & { Featurebase?: unknown }).Featurebase = featurebaseMock;
+				node.dispatchEvent(new Event("load"));
+			}
+			return result;
+		});
+
+		function HookHarness(): null {
+			module.useFeaturebaseFeedbackWidget({
+				workspaceId: "workspace-1",
+				clineProviderSettings: {
+					...defaultClineProviderSettings,
+					oauthProvider: "cline",
+					oauthAccessTokenConfigured: true,
+					oauthAccountId: "account-123",
+				},
+			});
+			return null;
+		}
+
+		await act(async () => {
+			root.render(<HookHarness />);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(fetchClineAccountProfileMock).toHaveBeenCalledWith("workspace-1");
+		expect(featurebaseMock).toHaveBeenCalledWith(
+			"identify",
+			expect.objectContaining({
+				organization: "cline",
+				userId: "account-123",
+			}),
+		);
+		expect(featurebaseMock).toHaveBeenCalledWith(
+			"initialize_feedback_widget",
+			expect.objectContaining({
+				organization: "cline",
+				theme: "dark",
+				locale: "en",
+				metadata: expect.objectContaining({
+					app: "kanban",
+					cline_account_id: "account-123",
+				}),
+			}),
+			expect.any(Function),
+		);
+	});
 });
