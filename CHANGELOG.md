@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.40]
+
+- Sidebar agent now stays focused on board management and redirects coding requests to task creation, so dedicated agents handle implementation work in their own worktrees
+- Fixed feedback widget initialization for Cline-authenticated users
+
 ## [0.1.39]
 
 - Fixed the feedback widget not opening reliably when clicking "Share Feedback"
