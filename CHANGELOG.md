@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.41]
+
+- Cline agent sessions now automatically recover after a runtime teardown, so work isn't lost if the runtime restarts
+- Per-task plan/act mode now persists when switching between tasks
+- Chat messages sent while the agent is actively working are now queued and delivered when the turn completes, instead of being dropped
+- Fixed repeated MCP OAuth callbacks causing errors when the browser fires the redirect more than once
+- Fixed corrupt patch captures when trashing tasks in worktrees
+- Session IDs are now sanitized for Windows-safe file paths
+- Agent mistake tolerance increased from 3 to 6 consecutive errors, giving the agent more room to recover from transient failures
+- Fixed the navbar agent setup hint showing incorrect state
+- Use the `open` package for cross-platform URL opening instead of custom logic
+- Updated Cline SDK to 0.0.15 with file-based store fallbacks, remote config support, improved chat failure handling with message state rollback, and a new `maxConsecutiveMistakes` option to prevent agents from getting stuck in failure loops
+
 ## [0.1.40]
 
 - Sidebar agent now stays focused on board management and redirects coding requests to task creation, so dedicated agents handle implementation work in their own worktrees
