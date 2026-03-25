@@ -17,7 +17,7 @@ import {
 	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary.js";
 
-const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
+const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 
 function toSdkUserImages(images?: RuntimeTaskImage[]): string[] | undefined {
 	if (!images || images.length === 0) {
