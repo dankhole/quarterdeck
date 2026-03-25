@@ -3,10 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-	useRuntimeSettingsClineMcpController,
 	type LinearMcpPreset,
+	useRuntimeSettingsClineMcpController,
 } from "@/hooks/use-runtime-settings-cline-mcp-controller";
-import type { RuntimeAgentId, RuntimeClineMcpServer } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeClineMcpServer, RuntimeClineMcpServerAuthStatus } from "@/runtime/types";
 
 const fetchClineMcpSettingsMock = vi.hoisted(() => vi.fn());
 const fetchClineMcpAuthStatusesMock = vi.hoisted(() => vi.fn());
@@ -48,17 +48,20 @@ function HookHarness({
 	open,
 	workspaceId,
 	selectedAgentId,
+	liveAuthStatuses = null,
 	onSnapshot,
 }: {
 	open: boolean;
 	workspaceId: string | null;
 	selectedAgentId: RuntimeAgentId;
+	liveAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const state = useRuntimeSettingsClineMcpController({
 		open,
 		workspaceId,
 		selectedAgentId,
+		liveAuthStatuses,
 	});
 
 	useEffect(() => {
@@ -300,6 +303,92 @@ describe("useRuntimeSettingsClineMcpController", () => {
 		});
 		expect(fetchClineMcpAuthStatusesMock).toHaveBeenCalledTimes(2);
 		expect(requireSnapshot(latestSnapshot).authenticatingMcpServerName).toBeNull();
+	});
+
+	it("applies live auth status updates while OAuth is still in progress", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		let liveAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null = null;
+		let resolveOauth: (() => void) | null = null;
+		runClineMcpServerOAuthMock.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					resolveOauth = () => {
+						resolve({
+							serverName: "linear",
+							authorized: true,
+							message: "Authorized",
+						});
+					};
+				}),
+		);
+		fetchClineMcpSettingsMock.mockResolvedValue({
+			path: "/tmp/cline_mcp_settings.json",
+			servers: [
+				{
+					name: "linear",
+					disabled: false,
+					transport: {
+						type: "streamableHttp",
+						url: "https://mcp.linear.app/mcp",
+					},
+				},
+			],
+		});
+		fetchClineMcpAuthStatusesMock.mockResolvedValue({
+			statuses: [
+				{
+					serverName: "linear",
+					oauthSupported: true,
+					oauthConfigured: false,
+					lastError: null,
+					lastAuthenticatedAt: null,
+				},
+			],
+		});
+
+		const renderHarness = async () => {
+			await act(async () => {
+				root.render(
+					<HookHarness
+						open={true}
+						workspaceId="workspace-1"
+						selectedAgentId="cline"
+						liveAuthStatuses={liveAuthStatuses}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+				await flushAsyncWork();
+			});
+		};
+
+		await renderHarness();
+
+		await act(async () => {
+			void requireSnapshot(latestSnapshot).runMcpServerOauth("linear");
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).authenticatingMcpServerName).toBe("linear");
+
+		liveAuthStatuses = [
+			{
+				serverName: "linear",
+				oauthSupported: true,
+				oauthConfigured: true,
+				lastError: null,
+				lastAuthenticatedAt: 1_700_000_000_000,
+			},
+		];
+		await renderHarness();
+
+		expect(requireSnapshot(latestSnapshot).authenticatingMcpServerName).toBeNull();
+
+		await act(async () => {
+			resolveOauth?.();
+			await flushAsyncWork();
+		});
 	});
 
 	it("saves unsaved MCP settings before running OAuth", async () => {

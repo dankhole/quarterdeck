@@ -3,9 +3,11 @@
 // shared API contract, and fans out workspace-scoped snapshots and deltas.
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-
+import type { ClineTaskMessage, ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import type {
+	RuntimeClineMcpServerAuthStatus,
 	RuntimeStateStreamErrorMessage,
+	RuntimeStateStreamMcpAuthUpdatedMessage,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
@@ -16,7 +18,6 @@ import type {
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
-import type { ClineTaskMessage, ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor.js";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
@@ -50,6 +51,7 @@ export interface RuntimeStateHub {
 	disposeWorkspace: (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions) => void;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void>;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void>;
+	broadcastClineMcpAuthStatusesUpdated: (statuses: RuntimeClineMcpServerAuthStatus[]) => void;
 	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
 	close: () => Promise<void>;
 }
@@ -108,6 +110,19 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 		} catch {
 			// Ignore transient project summary failures; next update will resync.
+		}
+	};
+
+	const broadcastClineMcpAuthStatusesUpdated = (statuses: RuntimeClineMcpServerAuthStatus[]) => {
+		if (runtimeStateClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamMcpAuthUpdatedMessage = {
+			type: "mcp_auth_updated",
+			statuses,
+		};
+		for (const client of runtimeStateClients) {
+			sendRuntimeStateMessage(client, payload);
 		}
 	};
 
@@ -498,6 +513,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		disposeWorkspace,
 		broadcastRuntimeWorkspaceStateUpdated,
 		broadcastRuntimeProjectsUpdated,
+		broadcastClineMcpAuthStatusesUpdated,
 		broadcastTaskReadyForReview,
 		close: async () => {
 			for (const timer of taskSessionBroadcastTimersByWorkspaceId.values()) {

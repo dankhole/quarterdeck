@@ -1,7 +1,9 @@
 import { useEffect, useReducer } from "react";
 
 import type {
+	RuntimeClineMcpServerAuthStatus,
 	RuntimeProjectSummary,
+	RuntimeStateStreamMcpAuthUpdatedMessage,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
@@ -50,6 +52,7 @@ export interface UseRuntimeStateStreamResult {
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
 	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
+	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -63,6 +66,7 @@ interface RuntimeStateStreamStore {
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
 	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
+	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -80,6 +84,7 @@ type RuntimeStateStreamAction =
 	| { type: "task_chat_message"; payload: RuntimeStateStreamTaskChatMessage }
 	| { type: "workspace_metadata_updated"; workspaceMetadata: RuntimeWorkspaceMetadata }
 	| { type: "task_ready_for_review"; payload: RuntimeStateStreamTaskReadyForReviewMessage }
+	| { type: "mcp_auth_updated"; payload: RuntimeStateStreamMcpAuthUpdatedMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
 	| { type: "stream_error"; message: string }
@@ -94,6 +99,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		latestTaskChatMessage: null,
 		taskChatMessagesByTaskId: {},
 		latestTaskReadyForReview: null,
+		latestMcpAuthStatuses: null,
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
@@ -147,6 +153,7 @@ function runtimeStateStreamReducer(
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: false,
+			latestMcpAuthStatuses: state.latestMcpAuthStatuses,
 		};
 	}
 	if (action.type === "stream_connected") {
@@ -159,12 +166,12 @@ function runtimeStateStreamReducer(
 	if (action.type === "snapshot") {
 		const nextWorkspaceState = action.payload.workspaceState
 			? {
-				...action.payload.workspaceState,
-				sessions: mergeTaskSessionSummaries(
-					state.workspaceState?.sessions ?? {},
-					Object.values(action.payload.workspaceState.sessions ?? {}),
-				),
-			}
+					...action.payload.workspaceState,
+					sessions: mergeTaskSessionSummaries(
+						state.workspaceState?.sessions ?? {},
+						Object.values(action.payload.workspaceState.sessions ?? {}),
+					),
+				}
 			: null;
 		return {
 			currentProjectId: action.payload.currentProjectId,
@@ -174,6 +181,7 @@ function runtimeStateStreamReducer(
 			latestTaskChatMessage: null,
 			taskChatMessagesByTaskId: {},
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
+			latestMcpAuthStatuses: state.latestMcpAuthStatuses,
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
@@ -214,6 +222,12 @@ function runtimeStateStreamReducer(
 		return {
 			...state,
 			latestTaskReadyForReview: action.payload,
+		};
+	}
+	if (action.type === "mcp_auth_updated") {
+		return {
+			...state,
+			latestMcpAuthStatuses: action.payload.statuses,
 		};
 	}
 	if (action.type === "workspace_state_updated") {
@@ -396,6 +410,13 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						return;
 					}
+					if (payload.type === "mcp_auth_updated") {
+						dispatch({
+							type: "mcp_auth_updated",
+							payload,
+						});
+						return;
+					}
 					if (payload.type === "error") {
 						dispatch({
 							type: "stream_error",
@@ -446,6 +467,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		latestTaskChatMessage: state.latestTaskChatMessage,
 		taskChatMessagesByTaskId: state.taskChatMessagesByTaskId,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
+		latestMcpAuthStatuses: state.latestMcpAuthStatuses,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
 	fetchClineMcpAuthStatuses,
@@ -17,6 +17,7 @@ interface UseRuntimeSettingsClineMcpControllerOptions {
 	open: boolean;
 	workspaceId: string | null;
 	selectedAgentId: RuntimeAgentId;
+	liveAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 }
 
 const LINEAR_MCP_SERVER_NAME = "linear";
@@ -66,9 +67,7 @@ function normalizeMcpServer(server: RuntimeClineMcpServer): RuntimeClineMcpServe
 			transport: {
 				type: "stdio",
 				command: server.transport.command.trim(),
-				args: server.transport.args
-					?.map((value) => value.trim())
-					.filter((value) => value.length > 0),
+				args: server.transport.args?.map((value) => value.trim()).filter((value) => value.length > 0),
 				cwd: server.transport.cwd?.trim() || undefined,
 				env: normalizeRecord(server.transport.env),
 			},
@@ -134,7 +133,7 @@ function toSaveError(error: unknown): SaveResult {
 export function useRuntimeSettingsClineMcpController(
 	options: UseRuntimeSettingsClineMcpControllerOptions,
 ): UseRuntimeSettingsClineMcpControllerResult {
-	const { open, workspaceId, selectedAgentId } = options;
+	const { open, workspaceId, selectedAgentId, liveAuthStatuses = null } = options;
 	const [mcpSettingsPath, setMcpSettingsPath] = useState("");
 	const [mcpServers, setMcpServers] = useState<RuntimeClineMcpServer[]>([]);
 	const [initialMcpServers, setInitialMcpServers] = useState<RuntimeClineMcpServer[]>([]);
@@ -201,6 +200,29 @@ export function useRuntimeSettingsClineMcpController(
 			cancelled = true;
 		};
 	}, [open, selectedAgentId, workspaceId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline" || !liveAuthStatuses) {
+			return;
+		}
+
+		setMcpAuthStatusByServerName(
+			Object.fromEntries(liveAuthStatuses.map((status) => [status.serverName, status] as const)),
+		);
+		setAuthenticatingMcpServerName((current) => {
+			const normalizedCurrent = current?.trim().toLowerCase() ?? "";
+			if (!normalizedCurrent) {
+				return current;
+			}
+			const matchingStatus = liveAuthStatuses.find(
+				(status) => status.serverName.trim().toLowerCase() === normalizedCurrent,
+			);
+			if (!matchingStatus) {
+				return current;
+			}
+			return matchingStatus.oauthConfigured || matchingStatus.lastError ? null : current;
+		});
+	}, [liveAuthStatuses, open, selectedAgentId]);
 
 	const hasUnsavedChanges = useMemo(
 		() => !areMcpServersEqual(mcpServers, initialMcpServers),
@@ -305,9 +327,7 @@ export function useRuntimeSettingsClineMcpController(
 
 	const linearMcpPreset = useMemo((): LinearMcpPreset => {
 		const normalizedName = LINEAR_MCP_SERVER_NAME.toLowerCase();
-		const server = mcpServers.find(
-			(s) => s.name.trim().toLowerCase() === normalizedName,
-		);
+		const server = mcpServers.find((s) => s.name.trim().toLowerCase() === normalizedName);
 		const authStatus = server
 			? mcpAuthStatusByServerName[server.name]
 			: mcpAuthStatusByServerName[LINEAR_MCP_SERVER_NAME];
@@ -315,8 +335,7 @@ export function useRuntimeSettingsClineMcpController(
 			server?.disabled === false &&
 			server.transport.type === "streamableHttp" &&
 			server.transport.url.trim() === LINEAR_MCP_SERVER_URL;
-		const isSettingUp =
-			(authenticatingMcpServerName?.trim().toLowerCase() ?? "") === normalizedName;
+		const isSettingUp = (authenticatingMcpServerName?.trim().toLowerCase() ?? "") === normalizedName;
 
 		let status: LinearMcpPresetStatus;
 		if (isCorrectlyConfigured && authStatus?.oauthConfigured) {

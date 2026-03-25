@@ -1,19 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthClientProvider, OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type {
+	OAuthClientInformationMixed,
+	OAuthClientMetadata,
+	OAuthTokens,
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 import { z } from "zod";
 
-import { lockedFileSystem } from "../fs/locked-file-system.js";
 import type { RuntimeClineMcpServer } from "../core/api-contract.js";
+import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
+import { lockedFileSystem } from "../fs/locked-file-system.js";
 import { createClineMcpSettingsService, resolveMcpSettingsPath } from "./cline-mcp-settings-service.js";
 import {
 	createSdkInMemoryMcpManager,
@@ -25,8 +28,28 @@ import {
 } from "./sdk-provider-boundary.js";
 
 const DEFAULT_AUTH_TIMEOUT_MS = 3 * 60 * 1000;
-const OAUTH_CALLBACK_HOST = "127.0.0.1";
 const OAUTH_CALLBACK_PATH = "/kanban-mcp/mcp-oauth-callback";
+const OAUTH_CALLBACK_REQUEST_ID_PARAM = "requestId";
+
+const CALLBACK_RESPONSE_HTML = {
+	success:
+		"<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Cline.</p></body></html>",
+	failure: "<html><body><h1>OAuth failed</h1><p>You can close this tab.</p></body></html>",
+	missingCode: "<html><body><h1>Missing authorization code</h1><p>You can close this tab.</p></body></html>",
+	expired:
+		"<html><body><h1>Authorization session expired</h1><p>Return to Cline and run Connect OAuth again.</p></body></html>",
+	missingRequestId:
+		"<html><body><h1>Invalid authorization callback</h1><p>Return to Cline and run Connect OAuth again.</p></body></html>",
+} as const;
+
+const pendingOauthCallbacksByRequestId = new Map<
+	string,
+	{
+		resolveCode: (code: string) => void;
+		rejectCode: (error: Error) => void;
+		timeoutHandle: NodeJS.Timeout;
+	}
+>();
 
 const oauthServerStateSchema = z.object({
 	clientInformation: z.record(z.string(), z.unknown()).optional(),
@@ -76,6 +99,15 @@ export interface ClineMcpRuntimeService {
 		timeoutMs?: number;
 		onAuthorizationUrl?: (url: string) => void;
 	}): Promise<ClineMcpServerAuthResult>;
+}
+
+export interface ClineMcpOauthCallbackResponse {
+	statusCode: number;
+	body: string;
+}
+
+export interface CreateClineMcpRuntimeServiceOptions {
+	onAuthStatusesChanged?: (statuses: ClineMcpServerAuthStatus[]) => void | Promise<void>;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -188,10 +220,7 @@ function toMcpRegistration(server: RuntimeClineMcpServer): SdkMcpServerRegistrat
 	};
 }
 
-function createTransport(input: {
-	server: RuntimeClineMcpServer;
-	oauthProvider?: OAuthClientProvider;
-}): SdkTransport {
+function createTransport(input: { server: RuntimeClineMcpServer; oauthProvider?: OAuthClientProvider }): SdkTransport {
 	if (input.server.transport.type === "stdio") {
 		return new StdioClientTransport({
 			command: input.server.transport.command,
@@ -207,8 +236,8 @@ function createTransport(input: {
 			authProvider: input.oauthProvider,
 			requestInit: input.server.transport.headers
 				? {
-					headers: input.server.transport.headers,
-				}
+						headers: input.server.transport.headers,
+					}
 				: undefined,
 		});
 	}
@@ -217,8 +246,8 @@ function createTransport(input: {
 		authProvider: input.oauthProvider,
 		requestInit: input.server.transport.headers
 			? {
-				headers: input.server.transport.headers,
-			}
+					headers: input.server.transport.headers,
+				}
 			: undefined,
 	});
 }
@@ -254,9 +283,7 @@ async function createOauthProviderContext(input: {
 		});
 	};
 
-	const patch = async (
-		updater: (current: ClineMcpOauthServerState) => ClineMcpOauthServerState,
-	): Promise<void> => {
+	const patch = async (updater: (current: ClineMcpOauthServerState) => ClineMcpOauthServerState): Promise<void> => {
 		state = await updateOauthServerState({
 			path: input.settingsPath,
 			serverName: input.serverName,
@@ -329,7 +356,7 @@ async function createOauthProviderContext(input: {
 		saveDiscoveryState: async (discoveryState) => {
 			await patch((current) => ({
 				...current,
-					discoveryState: discoveryState as unknown as Record<string, unknown>,
+				discoveryState: discoveryState as unknown as Record<string, unknown>,
 			}));
 		},
 		discoveryState: () => state.discoveryState as OAuthDiscoveryState | undefined,
@@ -389,7 +416,7 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 			serverName: this.server.name,
 			redirectUrl:
 				parseOauthSettings(this.oauthSettingsPath).servers[this.server.name]?.redirectUrl ??
-				`http://${OAUTH_CALLBACK_HOST}${OAUTH_CALLBACK_PATH}`,
+				buildKanbanRuntimeUrl(OAUTH_CALLBACK_PATH),
 		});
 	}
 
@@ -400,9 +427,11 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 		return `MCP server "${this.server.name}" requires OAuth authorization. Open Settings and run Connect OAuth.`;
 	}
 
-	private async withErrorHandling<T>(operation: (context: {
-		authContext: Awaited<ReturnType<RuntimeMcpServerClient["createAuthProviderContext"]>>;
-	}) => Promise<T>): Promise<T> {
+	private async withErrorHandling<T>(
+		operation: (context: {
+			authContext: Awaited<ReturnType<RuntimeMcpServerClient["createAuthProviderContext"]>>;
+		}) => Promise<T>,
+	): Promise<T> {
 		const authContext = await this.createAuthProviderContext();
 		try {
 			const value = await operation({ authContext });
@@ -474,10 +503,7 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 		});
 	}
 
-	async callTool(request: {
-		name: string;
-		arguments?: Record<string, unknown>;
-	}): Promise<unknown> {
+	async callTool(request: { name: string; arguments?: Record<string, unknown> }): Promise<unknown> {
 		if (!this.client) {
 			await this.connect();
 		}
@@ -487,24 +513,88 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 			throw new Error(`MCP server "${this.server.name}" is not connected.`);
 		}
 
-		return await this.withErrorHandling(async () =>
-			await client.callTool({
-				name: request.name,
-				...(request.arguments ? { arguments: request.arguments } : {}),
-			}),
+		return await this.withErrorHandling(
+			async () =>
+				await client.callTool({
+					name: request.name,
+					...(request.arguments ? { arguments: request.arguments } : {}),
+				}),
 		);
 	}
 }
 
-async function startOauthCallbackListener(timeoutMs: number): Promise<{
+function buildMcpOauthCallbackUrl(requestId: string): string {
+	const callbackUrl = new URL(buildKanbanRuntimeUrl(OAUTH_CALLBACK_PATH));
+	callbackUrl.searchParams.set(OAUTH_CALLBACK_REQUEST_ID_PARAM, requestId);
+	return callbackUrl.toString();
+}
+
+export async function handleClineMcpOauthCallback(requestUrl: URL): Promise<ClineMcpOauthCallbackResponse | null> {
+	if (requestUrl.pathname !== OAUTH_CALLBACK_PATH) {
+		return null;
+	}
+
+	const requestId = requestUrl.searchParams.get(OAUTH_CALLBACK_REQUEST_ID_PARAM)?.trim();
+	if (!requestId) {
+		return {
+			statusCode: 400,
+			body: CALLBACK_RESPONSE_HTML.missingRequestId,
+		};
+	}
+
+	const pending = pendingOauthCallbacksByRequestId.get(requestId);
+	if (!pending) {
+		return {
+			statusCode: 410,
+			body: CALLBACK_RESPONSE_HTML.expired,
+		};
+	}
+
+	pendingOauthCallbacksByRequestId.delete(requestId);
+	clearTimeout(pending.timeoutHandle);
+
+	const errorValue = requestUrl.searchParams.get("error")?.trim();
+	const errorDescription = requestUrl.searchParams.get("error_description")?.trim();
+	const code = requestUrl.searchParams.get("code")?.trim();
+
+	if (errorValue) {
+		pending.rejectCode(
+			new Error(
+				errorDescription
+					? `OAuth authorization failed: ${errorValue} (${errorDescription})`
+					: `OAuth authorization failed: ${errorValue}`,
+			),
+		);
+		return {
+			statusCode: 400,
+			body: CALLBACK_RESPONSE_HTML.failure,
+		};
+	}
+
+	if (!code) {
+		pending.rejectCode(new Error("OAuth callback did not include an authorization code."));
+		return {
+			statusCode: 400,
+			body: CALLBACK_RESPONSE_HTML.missingCode,
+		};
+	}
+
+	pending.resolveCode(code);
+	return {
+		statusCode: 200,
+		body: CALLBACK_RESPONSE_HTML.success,
+	};
+}
+
+export async function startOauthCallbackListener(timeoutMs: number): Promise<{
 	redirectUrl: string;
 	awaitAuthorizationCode: () => Promise<string>;
 	close: () => Promise<void>;
 }> {
 	let resolveCode: ((code: string) => void) | null = null;
 	let rejectCode: ((error: Error) => void) | null = null;
-	let settled = false;
 	let timeoutHandle: NodeJS.Timeout | null = null;
+	const requestId = randomUUID();
 
 	const codePromise = new Promise<string>((resolve, reject) => {
 		resolveCode = resolve;
@@ -513,82 +603,21 @@ async function startOauthCallbackListener(timeoutMs: number): Promise<{
 		};
 	});
 
-	const server = createServer((request, response) => {
-		const requestUrl = new URL(request.url ?? "/", `http://${OAUTH_CALLBACK_HOST}`);
-		if (requestUrl.pathname !== OAUTH_CALLBACK_PATH) {
-			response.statusCode = 404;
-			response.setHeader("Content-Type", "text/plain; charset=utf-8");
-			response.end("Not Found");
-			return;
-		}
-
-		const errorValue = requestUrl.searchParams.get("error")?.trim();
-		const errorDescription = requestUrl.searchParams.get("error_description")?.trim();
-		const code = requestUrl.searchParams.get("code")?.trim();
-
-		if (errorValue) {
-			response.statusCode = 400;
-			response.setHeader("Content-Type", "text/html; charset=utf-8");
-			response.end("<html><body><h1>OAuth failed</h1><p>You can close this tab.</p></body></html>");
-			if (!settled) {
-				settled = true;
-				rejectCode?.(
-					new Error(
-						errorDescription
-							? `OAuth authorization failed: ${errorValue} (${errorDescription})`
-							: `OAuth authorization failed: ${errorValue}`,
-					),
-				);
-			}
-			return;
-		}
-
-		if (!code) {
-			response.statusCode = 400;
-			response.setHeader("Content-Type", "text/html; charset=utf-8");
-			response.end("<html><body><h1>Missing authorization code</h1><p>You can close this tab.</p></body></html>");
-			if (!settled) {
-				settled = true;
-				rejectCode?.(new Error("OAuth callback did not include an authorization code."));
-			}
-			return;
-		}
-
-		response.statusCode = 200;
-		response.setHeader("Content-Type", "text/html; charset=utf-8");
-		response.end("<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Kanban.</p></body></html>");
-		if (!settled) {
-			settled = true;
-			resolveCode?.(code);
-		}
-	});
-
-	await new Promise<void>((resolveListen, rejectListen) => {
-		server.once("error", (error: Error) => {
-			rejectListen(error);
-		});
-		server.listen(0, OAUTH_CALLBACK_HOST, () => {
-			resolveListen();
-		});
-	});
-
 	timeoutHandle = setTimeout(() => {
-		if (settled) {
+		if (!pendingOauthCallbacksByRequestId.delete(requestId)) {
 			return;
 		}
-		settled = true;
 		rejectCode?.(new Error("Timed out waiting for MCP OAuth authorization callback."));
 	}, timeoutMs);
-
-	const address = server.address();
-	if (!address || typeof address === "string") {
-		await new Promise<void>((resolveClose) => {
-			server.close(() => {
-				resolveClose();
-			});
-		});
-		throw new Error("Failed to determine MCP OAuth callback server address.");
-	}
+	pendingOauthCallbacksByRequestId.set(requestId, {
+		resolveCode: (code) => {
+			resolveCode?.(code);
+		},
+		rejectCode: (error) => {
+			rejectCode?.(error);
+		},
+		timeoutHandle,
+	});
 
 	let closed = false;
 	const close = async () => {
@@ -600,21 +629,19 @@ async function startOauthCallbackListener(timeoutMs: number): Promise<{
 			clearTimeout(timeoutHandle);
 			timeoutHandle = null;
 		}
-		await new Promise<void>((resolveClose) => {
-			server.close(() => {
-				resolveClose();
-			});
-		});
+		pendingOauthCallbacksByRequestId.delete(requestId);
 	};
 
 	return {
-		redirectUrl: `http://${OAUTH_CALLBACK_HOST}:${address.port}${OAUTH_CALLBACK_PATH}`,
+		redirectUrl: buildMcpOauthCallbackUrl(requestId),
 		awaitAuthorizationCode: async () => await codePromise,
 		close,
 	};
 }
 
-export function createClineMcpRuntimeService(): ClineMcpRuntimeService {
+export function createClineMcpRuntimeService(
+	options: CreateClineMcpRuntimeServiceOptions = {},
+): ClineMcpRuntimeService {
 	const settingsService = createClineMcpSettingsService();
 	const oauthSettingsPath = resolveMcpOauthSettingsPath();
 
@@ -624,6 +651,29 @@ export function createClineMcpRuntimeService(): ClineMcpRuntimeService {
 			throw new Error(`Unknown MCP server "${registration.name}".`);
 		}
 		return new RuntimeMcpServerClient(loaded, oauthSettingsPath);
+	};
+
+	const collectAuthStatuses = (): ClineMcpServerAuthStatus[] => {
+		const loadedSettings = settingsService.loadSettings();
+		const oauthSettings = parseOauthSettings(oauthSettingsPath);
+
+		return loadedSettings.servers
+			.map((server) => {
+				const authState = oauthSettings.servers[server.name];
+				const oauthSupported = server.transport.type !== "stdio";
+				return {
+					serverName: server.name,
+					oauthSupported,
+					oauthConfigured: oauthSupported ? hasAccessToken(authState?.tokens) : false,
+					lastError: authState?.lastError ?? null,
+					lastAuthenticatedAt: authState?.lastAuthenticatedAt ?? null,
+				};
+			})
+			.sort((left, right) => left.serverName.localeCompare(right.serverName));
+	};
+
+	const broadcastAuthStatuses = async () => {
+		await options.onAuthStatusesChanged?.(collectAuthStatuses());
 	};
 
 	return {
@@ -673,22 +723,7 @@ export function createClineMcpRuntimeService(): ClineMcpRuntimeService {
 		},
 
 		async getAuthStatuses(): Promise<ClineMcpServerAuthStatus[]> {
-			const loadedSettings = settingsService.loadSettings();
-			const oauthSettings = parseOauthSettings(oauthSettingsPath);
-
-			return loadedSettings.servers
-				.map((server) => {
-					const authState = oauthSettings.servers[server.name];
-					const oauthSupported = server.transport.type !== "stdio";
-					return {
-						serverName: server.name,
-						oauthSupported,
-						oauthConfigured: oauthSupported ? hasAccessToken(authState?.tokens) : false,
-						lastError: authState?.lastError ?? null,
-						lastAuthenticatedAt: authState?.lastAuthenticatedAt ?? null,
-					};
-				})
-				.sort((left, right) => left.serverName.localeCompare(right.serverName));
+			return collectAuthStatuses();
 		},
 
 		async authorizeServer(input): Promise<ClineMcpServerAuthResult> {
@@ -758,6 +793,7 @@ export function createClineMcpRuntimeService(): ClineMcpRuntimeService {
 
 					const authorizationCode = await callbackListener.awaitAuthorizationCode();
 					await transport.finishAuth(authorizationCode);
+					await broadcastAuthStatuses();
 
 					retryClient = new Client({
 						name: "kanban-mcp-oauth-client",
@@ -782,6 +818,7 @@ export function createClineMcpRuntimeService(): ClineMcpRuntimeService {
 			} catch (error) {
 				const message = toErrorMessage(error);
 				await oauthContext.markError(message);
+				await broadcastAuthStatuses().catch(() => undefined);
 				throw new Error(message);
 			} finally {
 				await client.close().catch(() => undefined);

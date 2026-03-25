@@ -295,6 +295,15 @@ export const runtimeWorkspaceMetadataSchema = z.object({
 });
 export type RuntimeWorkspaceMetadata = z.infer<typeof runtimeWorkspaceMetadataSchema>;
 
+export const runtimeClineMcpServerAuthStatusSchema = z.object({
+	serverName: z.string(),
+	oauthSupported: z.boolean(),
+	oauthConfigured: z.boolean(),
+	lastError: z.string().nullable(),
+	lastAuthenticatedAt: z.number().nullable(),
+});
+export type RuntimeClineMcpServerAuthStatus = z.infer<typeof runtimeClineMcpServerAuthStatusSchema>;
+
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
 	currentProjectId: z.string().nullable(),
@@ -352,6 +361,12 @@ export const runtimeStateStreamTaskChatMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskChatMessage = z.infer<typeof runtimeStateStreamTaskChatMessageSchema>;
 
+export const runtimeStateStreamMcpAuthUpdatedMessageSchema = z.object({
+	type: z.literal("mcp_auth_updated"),
+	statuses: z.array(runtimeClineMcpServerAuthStatusSchema),
+});
+export type RuntimeStateStreamMcpAuthUpdatedMessage = z.infer<typeof runtimeStateStreamMcpAuthUpdatedMessageSchema>;
+
 export const runtimeStateStreamErrorMessageSchema = z.object({
 	type: z.literal("error"),
 	message: z.string(),
@@ -366,6 +381,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamWorkspaceMetadataMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskChatMessageSchema,
+	runtimeStateStreamMcpAuthUpdatedMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
@@ -608,15 +624,6 @@ export type RuntimeClineMcpSettingsSaveRequest = z.infer<typeof runtimeClineMcpS
 
 export const runtimeClineMcpSettingsSaveResponseSchema = runtimeClineMcpSettingsResponseSchema;
 export type RuntimeClineMcpSettingsSaveResponse = z.infer<typeof runtimeClineMcpSettingsSaveResponseSchema>;
-
-export const runtimeClineMcpServerAuthStatusSchema = z.object({
-	serverName: z.string(),
-	oauthSupported: z.boolean(),
-	oauthConfigured: z.boolean(),
-	lastError: z.string().nullable(),
-	lastAuthenticatedAt: z.number().nullable(),
-});
-export type RuntimeClineMcpServerAuthStatus = z.infer<typeof runtimeClineMcpServerAuthStatusSchema>;
 
 export const runtimeClineMcpAuthStatusResponseSchema = z.object({
 	statuses: z.array(runtimeClineMcpServerAuthStatusSchema),

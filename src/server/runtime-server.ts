@@ -3,17 +3,17 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-
+import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service.js";
 import {
-	createInMemoryClineTaskSessionService,
 	type ClineTaskSessionService,
+	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service.js";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import {
 	buildKanbanRuntimeUrl,
+	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
-	getKanbanRuntimeHost,
 } from "../core/runtime-endpoint.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
@@ -176,6 +176,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
+				broadcastClineMcpAuthStatusesUpdated: deps.runtimeStateHub.broadcastClineMcpAuthStatusesUpdated,
 				prepareForStateReset,
 			}),
 			workspaceApi: createWorkspaceApi({
@@ -226,6 +227,15 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+			const oauthCallbackResponse = await handleClineMcpOauthCallback(requestUrl);
+			if (oauthCallbackResponse) {
+				res.writeHead(oauthCallbackResponse.statusCode, {
+					"Content-Type": "text/html; charset=utf-8",
+					"Cache-Control": "no-store",
+				});
+				res.end(oauthCallbackResponse.body);
+				return;
+			}
 			if (pathname.startsWith("/api/trpc")) {
 				await trpcHttpHandler(req, res);
 				return;
