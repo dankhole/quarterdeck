@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.38]
+
+- First-run onboarding for script shortcuts -- new users are guided through creating their first shortcut directly from the top bar
+- Settings file URLs can now be opened
+- Fixed terminal bottom pane content clearing when running script shortcuts
+
 ## [0.1.37]
 
 - Slash commands and file mentions in the client chat input field
