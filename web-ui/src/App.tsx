@@ -55,6 +55,7 @@ import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import {
+	getTaskAgentNavbarHint,
 	isTaskAgentSetupSatisfied,
 	selectLatestTaskChatMessageForTask,
 	selectTaskChatMessagesForTask,
@@ -652,13 +653,9 @@ export default function App(): ReactElement {
 	}, [selectedCard]);
 
 	const runtimeHint = useMemo(() => {
-		if (shouldUseNavigationPath || !runtimeProjectConfig) {
-			return undefined;
-		}
-		if (runtimeProjectConfig.effectiveCommand) {
-			return undefined;
-		}
-		return "No agent configured";
+		return getTaskAgentNavbarHint(runtimeProjectConfig, {
+			shouldUseNavigationPath,
+		});
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
 	const activeWorkspacePath = selectedCard

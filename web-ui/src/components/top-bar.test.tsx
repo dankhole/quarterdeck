@@ -103,4 +103,33 @@ describe("TopBar script shortcut onboarding", () => {
 		});
 		expect(onRunShortcut).not.toHaveBeenCalled();
 	});
+
+	it("opens settings when the runtime hint is clicked", async () => {
+		const onOpenSettings = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<TopBar
+					openTargetOptions={[]}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenWorkspace={() => {}}
+					canOpenWorkspace={false}
+					isOpeningWorkspace={false}
+					runtimeHint="No agent configured"
+					onOpenSettings={onOpenSettings}
+				/>,
+			);
+		});
+
+		const runtimeHintButton = findButtonByText(container, "No agent configured");
+		expect(runtimeHintButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			runtimeHintButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			runtimeHintButton?.click();
+		});
+
+		expect(onOpenSettings).toHaveBeenCalledTimes(1);
+	});
 });

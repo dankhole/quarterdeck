@@ -60,6 +60,22 @@ export function isTaskAgentSetupSatisfied(
 	return config.agents.some((agent) => isRuntimeAgentLaunchSupported(agent.id) && agent.installed);
 }
 
+export function getTaskAgentNavbarHint(
+	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents" | "clineProviderSettings"> | null | undefined,
+	options?: {
+		shouldUseNavigationPath?: boolean;
+	},
+): string | undefined {
+	if (options?.shouldUseNavigationPath) {
+		return undefined;
+	}
+	const isTaskAgentReady = isTaskAgentSetupSatisfied(config);
+	if (isTaskAgentReady === null || isTaskAgentReady) {
+		return undefined;
+	}
+	return "No agent configured";
+}
+
 export function selectLatestTaskChatMessageForTask(
 	taskId: string | null | undefined,
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null,

@@ -462,9 +462,19 @@ export function TopBar({
 					</span>
 				) : null}
 				{!hideProjectDependentActions && runtimeHint ? (
-					<span className="kb-navbar-tag inline-flex items-center rounded border border-status-orange/30 bg-status-orange/10 px-1.5 py-0.5 text-xs text-status-orange">
-						{runtimeHint}
-					</span>
+					onOpenSettings ? (
+						<button
+							type="button"
+							onClick={() => onOpenSettings()}
+							className="kb-navbar-tag inline-flex items-center rounded border border-status-orange/30 bg-status-orange/10 px-1.5 py-0.5 text-xs text-status-orange transition-colors hover:bg-status-orange/15 focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-0"
+						>
+							{runtimeHint}
+						</button>
+					) : (
+						<span className="kb-navbar-tag inline-flex items-center rounded border border-status-orange/30 bg-status-orange/10 px-1.5 py-0.5 text-xs text-status-orange">
+							{runtimeHint}
+						</span>
+					)
 				) : null}
 				{!hideProjectDependentActions ? (
 					<TopBarGitStatusSection
