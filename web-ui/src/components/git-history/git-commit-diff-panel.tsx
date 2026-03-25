@@ -1,4 +1,3 @@
-import isBinaryPath from "is-binary-path";
 import { AlertCircle, ChevronDown, ChevronRight, GitCommit, GitCompare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
@@ -10,6 +9,7 @@ import {
 	type UnifiedDiffRow,
 } from "@/components/shared/diff-renderer";
 import type { RuntimeGitCommitDiffFile, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 
 export type GitCommitDiffSource =
 	| { type: "commit"; files: RuntimeGitCommitDiffFile[] }
@@ -22,7 +22,7 @@ function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTM
 }
 
 function getFileRows(source: GitCommitDiffSource, path: string): UnifiedDiffRow[] {
-	if (isBinaryPath(path)) {
+	if (isBinaryFilePath(path)) {
 		return [];
 	}
 	if (source.type === "commit") {
@@ -305,7 +305,7 @@ export function GitCommitDiffPanel({
 						const stats = diffSource ? getFileStats(diffSource, path) : { additions: 0, deletions: 0 };
 						const rows = diffSource ? getFileRows(diffSource, path) : [];
 						const commitFile = getCommitFile(diffSource, path);
-						const isBinaryFile = isBinaryPath(path);
+						const isBinaryFile = isBinaryFilePath(path);
 
 						return (
 							<section

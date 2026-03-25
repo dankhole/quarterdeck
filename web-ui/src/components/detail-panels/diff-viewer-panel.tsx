@@ -1,4 +1,3 @@
-import isBinaryPath from "is-binary-path";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
+import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
 
 interface FileDiffGroup {
@@ -564,7 +564,7 @@ export function DiffViewerPanel({
 		return (workspaceFiles ?? []).map((file, index) => ({
 			id: `workspace-${file.path}-${index}`,
 			path: file.path,
-			isBinary: isBinaryPath(file.path),
+			isBinary: isBinaryFilePath(file.path),
 			oldText: file.oldText,
 			newText: file.newText ?? "",
 			timestamp: 0,
