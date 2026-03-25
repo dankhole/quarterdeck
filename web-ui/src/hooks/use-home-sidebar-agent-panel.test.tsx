@@ -33,6 +33,13 @@ describe("selectNewestTaskSessionSummary", () => {
 		expect(selectNewestTaskSessionSummary(localRunningSummary, streamedIdleSummary)).toEqual(streamedIdleSummary);
 	});
 
+	it("ignores a stale replayed summary when the live home sidebar session is newer", () => {
+		const liveRunningSummary = createSummary("running", 20);
+		const staleInterruptedSummary = createSummary("interrupted", 10);
+
+		expect(selectNewestTaskSessionSummary(liveRunningSummary, staleInterruptedSummary)).toEqual(liveRunningSummary);
+	});
+
 	it("keeps the available summary when only one source has session state", () => {
 		const localRunningSummary = createSummary("running", 10);
 

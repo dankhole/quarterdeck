@@ -262,6 +262,53 @@ describe("useWorkspaceSync", () => {
 		expect(refreshedSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
 	});
 
+	it("does not let an older streamed session summary overwrite a newer in-memory one", async () => {
+		const newerRunningSummary = createSessionSummary("task-1", 2000, null);
+		const staleInterruptedSummary = createSessionSummary("task-1", 1000, "Stale output");
+
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedWorkspaceState={createWorkspaceStateWithSessions("persisted-task", 1, {
+						"task-1": newerRunningSummary,
+					})}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected an initial hook snapshot.");
+		}
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		expect(initialSnapshot.sessions["task-1"]?.updatedAt).toBe(2000);
+		expect(initialSnapshot.sessions["task-1"]?.state).toBe("running");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedWorkspaceState={createWorkspaceStateWithSessions("persisted-task", 2, {
+						"task-1": staleInterruptedSummary,
+					})}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot after rerender.");
+		}
+		const rerenderedSnapshot: HookSnapshot = latestSnapshot;
+		expect(rerenderedSnapshot.sessions["task-1"]?.updatedAt).toBe(2000);
+		expect(rerenderedSnapshot.sessions["task-1"]?.state).toBe("running");
+	});
+
 	it("does not refresh workspace state before the initial runtime snapshot resolves", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
