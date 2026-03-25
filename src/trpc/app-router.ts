@@ -12,6 +12,7 @@ import type {
 	RuntimeConfigSaveRequest,
 	RuntimeClineOauthLoginRequest,
 	RuntimeClineOauthLoginResponse,
+	RuntimeClineAccountProfileResponse,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthRequest,
 	RuntimeClineMcpOAuthResponse,
@@ -80,6 +81,7 @@ import {
 	runtimeConfigSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineOauthLoginResponseSchema,
+	runtimeClineAccountProfileResponseSchema,
 	runtimeClineMcpAuthStatusResponseSchema,
 	runtimeClineMcpOAuthRequestSchema,
 	runtimeClineMcpOAuthResponseSchema,
@@ -189,6 +191,9 @@ export interface RuntimeTrpcContext {
 			input: RuntimeTaskChatCancelRequest,
 		) => Promise<RuntimeTaskChatCancelResponse>;
 		getClineProviderCatalog: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineProviderCatalogResponse>;
+		getClineAccountProfile: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+		) => Promise<RuntimeClineAccountProfileResponse>;
 		getClineProviderModels: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderModelsRequest,
@@ -409,6 +414,11 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeClineProviderCatalogResponseSchema)
 			.query(async ({ ctx }) => {
 				return await ctx.runtimeApi.getClineProviderCatalog(ctx.workspaceScope);
+			}),
+		getClineAccountProfile: t.procedure
+			.output(runtimeClineAccountProfileResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineAccountProfile(ctx.workspaceScope);
 			}),
 		getClineProviderModels: t.procedure
 			.input(runtimeClineProviderModelsRequestSchema)

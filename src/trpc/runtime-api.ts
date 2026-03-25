@@ -369,6 +369,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		getClineProviderCatalog: async (_workspaceScope) => {
 			return await clineProviderService.getProviderCatalog();
 		},
+		getClineAccountProfile: async (_workspaceScope) => {
+			return await clineProviderService.getClineAccountProfile();
+		},
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);
 			return await clineProviderService.getProviderModels(body.providerId);
