@@ -86,6 +86,21 @@ function getEffectiveProviderSettings(
 	return override ?? getRuntimeClineProviderSettings(config);
 }
 
+function getDefaultModelIdForProvider(
+	providers: RuntimeClineProviderCatalogItem[],
+	providerId: string,
+): string {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		return "";
+	}
+
+	return (
+		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.defaultModelId?.trim() ??
+		""
+	);
+}
+
 export function useRuntimeSettingsClineController(
 	options: UseRuntimeSettingsClineControllerOptions,
 ): UseRuntimeSettingsClineControllerResult {
@@ -202,6 +217,20 @@ export function useRuntimeSettingsClineController(
 
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {
+			return;
+		}
+		if (providerId.trim().length === 0 || modelId.trim().length > 0) {
+			return;
+		}
+		const defaultModelId = getDefaultModelIdForProvider(providerCatalog, providerId);
+		if (!defaultModelId) {
+			return;
+		}
+		setModelId(defaultModelId);
+	}, [modelId, open, providerCatalog, providerId, selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline") {
 			setProviderModels([]);
 			setIsLoadingProviderModels(false);
 			return;
@@ -301,8 +330,9 @@ export function useRuntimeSettingsClineController(
 			}
 			const nextSettings = response.settings ?? null;
 			if (nextSettings) {
-				setProviderId(nextSettings.providerId ?? nextSettings.oauthProvider ?? providerId.trim());
-				setModelId(nextSettings.modelId ?? "");
+				const nextProviderId = nextSettings.providerId ?? nextSettings.oauthProvider ?? providerId.trim();
+				setProviderId(nextProviderId);
+				setModelId(nextSettings.modelId ?? getDefaultModelIdForProvider(providerCatalog, nextProviderId));
 				setApiKey("");
 				setBaseUrl(nextSettings.baseUrl ?? "");
 			}
@@ -316,7 +346,7 @@ export function useRuntimeSettingsClineController(
 		} finally {
 			setIsRunningOauthLogin(false);
 		}
-	}, [managedOauthProvider, providerId, workspaceId]);
+	}, [managedOauthProvider, providerCatalog, providerId, workspaceId]);
 
 	return {
 		providerId,

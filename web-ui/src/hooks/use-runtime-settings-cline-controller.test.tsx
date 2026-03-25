@@ -339,6 +339,46 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 
+	it("defaults the model when Cline settings load with a blank model", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			modelId: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				oauthSupported: true,
+				enabled: true,
+				defaultModelId: "claude-sonnet-4-6",
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("cline");
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("claude-sonnet-4-6");
+	});
+
 	it("saves the current provider draft and clears dirty state using the saved override", async () => {
 		const config = createRuntimeConfigResponse({
 			providerId: "anthropic",
@@ -452,6 +492,71 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
 		expect(requireSnapshot(latestSnapshot).oauthAccountId).toBe("acct-123");
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("uses the provider default when OAuth login returns no model", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			modelId: "claude-sonnet-4-6",
+			oauthAccessTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				oauthSupported: true,
+				enabled: true,
+				defaultModelId: "claude-sonnet-4-6",
+			},
+		]);
+		runClineProviderOauthLoginMock.mockResolvedValue({
+			ok: true,
+			provider: "cline",
+			settings: {
+				providerId: "cline",
+				modelId: null,
+				baseUrl: null,
+				apiKeyConfigured: false,
+				oauthProvider: "cline",
+				oauthAccessTokenConfigured: true,
+				oauthRefreshTokenConfigured: true,
+				oauthAccountId: "acct-123",
+				oauthExpiresAt: 123456789,
+			},
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).runOauthLogin()).toEqual({ ok: true });
+		});
+
+		expect(runClineProviderOauthLoginMock).toHaveBeenCalledWith("workspace-1", {
+			provider: "cline",
+		});
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("claude-sonnet-4-6");
+		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
 	});
 
 	it("clears base url when saving an OAuth provider", async () => {
