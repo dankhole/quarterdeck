@@ -242,6 +242,52 @@ describe("InMemoryClineSessionRuntime", () => {
 		});
 	});
 
+	it("restarts using the latest mode selected on follow-up input", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => undefined),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			mode: "act",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+		await runtime.sendTaskSessionInput("task-1", "Switch to planning", "plan");
+		await runtime.restartTaskSession({
+			taskId: "task-1",
+			prompt: "Continue after restart",
+		});
+
+		expect(fakeHost.start).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				config: expect.objectContaining({
+					mode: "plan",
+				}),
+			}),
+		);
+	});
+
 	it("uses filesystem-safe session ids when task ids include windows-invalid characters", async () => {
 		let requestedSessionId: string | null = null;
 		const fakeHost = {

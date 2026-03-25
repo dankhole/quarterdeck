@@ -224,6 +224,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 		const providerId = request.providerId?.trim() || "anthropic";
 		const modelId = request.modelId?.trim() || "claude-sonnet-4-6";
+		const resolvedMode: RuntimeTaskSessionMode = request.mode ?? "act";
 		const persistedResumeSnapshot = request.resumeFromTrash
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
 			: null;
@@ -232,6 +233,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			request.resumeFromTrash && persistedResumeSnapshot
 				? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
 						state: "awaiting_review",
+						mode: resolvedMode,
 						workspacePath: request.cwd,
 						startedAt: now(),
 						lastOutputAt: now(),
@@ -241,6 +243,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 						summary: {
 							...createDefaultSummary(request.taskId),
 							state: request.resumeFromTrash ? "awaiting_review" : "running",
+							mode: resolvedMode,
 							workspacePath: request.cwd,
 							startedAt: now(),
 							lastOutputAt: now(),
@@ -304,7 +307,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					images: request.images,
 					providerId,
 					modelId,
-					mode: request.mode,
+					mode: resolvedMode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt,
@@ -437,6 +440,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.pendingTurnCancelTaskIds.delete(taskId);
 		const normalized = text.trim();
 		const hasImages = Boolean(images && images.length > 0);
+		const effectiveMode: RuntimeTaskSessionMode = mode ?? entry.summary.mode ?? "act";
 		if (normalized.length === 0 && !hasImages) {
 			return null;
 		}
@@ -448,6 +452,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			const queueDelivery = entry.summary.state === "running";
 			const waitingSummary = updateSummary(entry, {
 				state: "running",
+				mode: effectiveMode,
 				reviewReason: null,
 				warningMessage: null,
 				lastOutputAt: now(),
@@ -469,7 +474,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					return await this.dispatchResolvedTaskInput({
 						taskId,
 						prompt: runtimeSetup.resolvePrompt(normalized),
-						mode,
+						mode: effectiveMode,
 						images,
 						delivery: queueDelivery ? "queue" : undefined,
 					});
@@ -503,6 +508,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 		const summary = updateSummary(entry, {
 			state: "running",
+			mode: effectiveMode,
 			reviewReason: null,
 			lastOutputAt: now(),
 		});
@@ -529,6 +535,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		const entry = createTaskEntryFromPersistedSession(taskId, snapshot.messages, {
 			agentId: "cline",
 			state: reboundState,
+			mode: existingEntry?.summary.mode ?? null,
 			reviewReason: reboundReviewReason,
 			workspacePath: persistedCwd || persistedWorkspaceRoot || null,
 			startedAt: Number.isFinite(startedAt) ? startedAt : null,

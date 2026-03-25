@@ -129,10 +129,15 @@ ref,
 		showMoveToTrash,
 	});
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+	// TODO: Persist per-task mode immediately when toggled so page refresh restores unsent mode changes.
+	const modeByTaskIdRef = useRef<Map<string, RuntimeTaskSessionMode>>(new Map());
 	const [composerError, setComposerError] = useState<string | null>(null);
 	const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 	const [isSavingModel, setIsSavingModel] = useState(false);
-	const [mode, setMode] = useState<RuntimeTaskSessionMode>(defaultMode);
+	const [mode, setMode] = useState<RuntimeTaskSessionMode>(() => {
+		const persistedMode = modeByTaskIdRef.current.get(taskId);
+		return persistedMode ?? summary?.mode ?? defaultMode;
+	});
 	const [draftImages, setDraftImages] = useState<TaskImage[]>([]);
 	const clineSettings = useRuntimeSettingsClineController({
 		open: true,
@@ -213,9 +218,20 @@ ref,
 	}, [taskId]);
 
 	useEffect(() => {
-		setMode(defaultMode);
+		const persistedMode = modeByTaskIdRef.current.get(taskId);
+		const nextMode = persistedMode ?? summary?.mode ?? defaultMode;
+		modeByTaskIdRef.current.set(taskId, nextMode);
+		setMode(nextMode);
 		setDraftImages([]);
-	}, [defaultMode, taskId]);
+	}, [defaultMode, summary?.mode, taskId]);
+
+	const handleModeChange = useCallback(
+		(nextMode: RuntimeTaskSessionMode) => {
+			modeByTaskIdRef.current.set(taskId, nextMode);
+			setMode(nextMode);
+		},
+		[taskId],
+	);
 
 	const persistSelectedModel = useCallback(
 		async (nextModelId?: string): Promise<boolean> => {
@@ -342,7 +358,7 @@ ref,
 					onImagesChange={setDraftImages}
 					placeholder={composerPlaceholder}
 					mode={mode}
-					onModeChange={setMode}
+					onModeChange={handleModeChange}
 					showModeToggle={showComposerModeToggle}
 					canSend={canSend}
 					canCancel={canCancel}

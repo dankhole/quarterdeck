@@ -116,12 +116,13 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 
 	async startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult> {
 		const requestedSessionId = createSessionId(request.taskId);
+		const resolvedMode: RuntimeTaskSessionMode = request.mode ?? "act";
 		this.lastStartRequestByTaskId.set(request.taskId, {
 			taskId: request.taskId,
 			cwd: request.cwd,
 			providerId: request.providerId,
 			modelId: request.modelId,
-			mode: request.mode,
+			mode: resolvedMode,
 			apiKey: request.apiKey,
 			baseUrl: request.baseUrl,
 			systemPrompt: request.systemPrompt,
@@ -155,7 +156,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					apiKey: request.apiKey?.trim() || undefined,
 					baseUrl: request.baseUrl?.trim() || undefined,
 					cwd: request.cwd,
-					mode: request.mode ?? "act",
+					mode: resolvedMode,
 					enableTools: true,
 					enableSpawnAgent: false,
 					enableAgentTeams: false,
@@ -222,6 +223,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		const sessionHost = await this.ensureSessionHost();
 		if (mode) {
 			this.updateActiveSessionMode(sessionHost, sessionId, mode);
+			this.updateLastStartRequestMode(taskId, mode);
 		}
 		return await sessionHost.send({
 			sessionId,
@@ -397,6 +399,17 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		if (activeSession?.config) {
 			activeSession.config.mode = mode;
 		}
+	}
+
+	private updateLastStartRequestMode(taskId: string, mode: RuntimeTaskSessionMode): void {
+		const lastStartRequest = this.lastStartRequestByTaskId.get(taskId);
+		if (!lastStartRequest) {
+			return;
+		}
+		this.lastStartRequestByTaskId.set(taskId, {
+			...lastStartRequest,
+			mode,
+		});
 	}
 
 	private handleSessionEvent(event: unknown): void {

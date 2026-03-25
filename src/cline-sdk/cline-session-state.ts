@@ -57,6 +57,7 @@ export function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary 
 	return {
 		taskId,
 		state: "idle",
+		mode: null,
 		agentId: "cline",
 		workspacePath: null,
 		pid: null,

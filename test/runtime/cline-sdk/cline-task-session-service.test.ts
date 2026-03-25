@@ -135,7 +135,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 					cwd: request.cwd,
 					providerId: request.providerId,
 					modelId: request.modelId,
-					mode: request.mode,
+					mode: request.mode ?? "act",
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt: request.systemPrompt,
@@ -178,6 +178,15 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 				images?: RuntimeTaskImage[],
 				delivery?: "queue" | "steer",
 			): Promise<unknown> {
+				if (mode) {
+					const lastStartRequest = lastStartRequestByTaskId.get(taskId);
+					if (lastStartRequest) {
+						lastStartRequestByTaskId.set(taskId, {
+							...lastStartRequest,
+							mode,
+						});
+					}
+				}
 				if (delivery) {
 					return await sendTaskSessionInputMock(taskId, prompt, mode, images, delivery);
 				}
@@ -539,7 +548,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:Continue",
-				undefined,
+				"act",
 				[
 					{
 						id: "img-1",
@@ -571,12 +580,74 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:One more thing",
-				undefined,
+				"act",
 				undefined,
 				"queue",
 			);
 		});
 		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(false);
+	});
+
+	it("reuses the current task mode when follow-up input does not provide a mode override", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			mode: "plan",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		await service.sendTaskSessionInput("task-1", "Continue");
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
+				"task-1",
+				"resolved:Continue",
+				"plan",
+				undefined,
+				"queue",
+			);
+		});
+		expect(service.getSummary("task-1")?.mode).toBe("plan");
+	});
+
+	it("keeps the most recent mode for subsequent follow-up input", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		await service.sendTaskSessionInput("task-1", "Switch mode", "plan");
+		await service.sendTaskSessionInput("task-1", "Keep going");
+
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenNthCalledWith(
+				1,
+				"task-1",
+				"resolved:Switch mode",
+				"plan",
+				undefined,
+				"queue",
+			);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenNthCalledWith(
+				2,
+				"task-1",
+				"resolved:Keep going",
+				"plan",
+				undefined,
+				"queue",
+			);
+		});
+		expect(service.getSummary("task-1")?.mode).toBe("plan");
 	});
 
 	it("allows image-only follow-up chat input", async () => {
@@ -603,7 +674,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:",
-				undefined,
+				"act",
 				[
 					{
 						id: "img-1",
@@ -780,7 +851,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"workflow:/continue",
-				undefined,
+				"act",
 				undefined,
 				"queue",
 			);
