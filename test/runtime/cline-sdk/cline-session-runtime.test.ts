@@ -242,6 +242,45 @@ describe("InMemoryClineSessionRuntime", () => {
 		});
 	});
 
+	it("uses filesystem-safe session ids when task ids include windows-invalid characters", async () => {
+		let requestedSessionId: string | null = null;
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => {
+				requestedSessionId = input.config?.sessionId ?? null;
+				return {
+					sessionId: input.config?.sessionId ?? "session-1",
+					result: {},
+				};
+			}),
+			send: vi.fn(async () => undefined),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "__home_agent__:workspace-1:cline:abc123",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		expect(requestedSessionId).toBeTruthy();
+		expect(requestedSessionId ?? "").not.toMatch(/[<>:"/\\|?*]/);
+		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline_abc123-/);
+	});
+
 	it("clears the pending task binding when start fails", async () => {
 		const fakeHost = {
 			start: vi.fn(async () => {

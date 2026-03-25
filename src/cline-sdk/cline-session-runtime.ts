@@ -8,7 +8,7 @@ import {
 	type ClineMcpToolBundle,
 } from "./cline-mcp-runtime-service.js";
 import { extractClineSessionId } from "./cline-event-adapter.js";
-import { createSessionId } from "./cline-session-state.js";
+import { buildSessionIdPrefix, createSessionId } from "./cline-session-state.js";
 import {
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
@@ -361,7 +361,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			}
 		}
 
-		const sessionIdPrefix = `${taskId}-`;
+		const sessionIdPrefix = buildSessionIdPrefix(taskId);
 		const records: ClineSdkSessionRecord[] = await sessionHost.list();
 		const matchingRecord = records
 			.filter((record: ClineSdkSessionRecord) => record.sessionId.startsWith(sessionIdPrefix))
