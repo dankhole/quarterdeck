@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.39]
+
+- Fixed the feedback widget not opening reliably when clicking "Share Feedback"
+- Capitalized button labels for consistency ("Add Project", "Share Feedback")
+
 ## [0.1.38]
 
 - First-run onboarding for script shortcuts -- new users are guided through creating their first shortcut directly from the top bar
