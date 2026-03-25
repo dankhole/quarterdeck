@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.37]
+
+- Slash commands and file mentions in the client chat input field
+- Share Feedback button in the bottom left, powered by Featurebase and enriched with Cline account data like email so we can see who reports are coming from, with a Linear integration for automatic issue creation
+- MCP OAuth callbacks consolidated onto the main runtime server with real-time auth status updates
+- Linear MCP shortcut for one-click install setup
+- Updated startup onboarding carousel with a screen about using camera and the agent to add tasks
+- Conversation history always visible in detailed task view
+- Fixed an issue where adding MCPs wouldn't be available in existing Cline chats -- adding MCPs now resets Cline chats to use them
+- Fixed an issue where the client chat would get into a "task chat session is not running" error state. You can now send a message to continue the conversation when Cline fails a tool call
+- Fixed an issue where binary diffs would not show up in diff views
+- Diff renderer groups removals before additions for easier reading
+- Fixed default model selection when OAuth login leaves it blank
+- Updated Cline SDK with fixes for ask question tool being disabled in yolo mode, cost calculation, and tool description and truncation logic improvements
+
 ## [0.1.36]
 
 - Added Sentry error reporting to help identify and fix crashes faster
