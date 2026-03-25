@@ -138,6 +138,21 @@ export function ClineSetupSection({
 		})();
 	};
 
+	const handleSetupLinearMcp = () => {
+		void (async () => {
+			if (!mcpController) {
+				return;
+			}
+			onError?.(null);
+			const result = await mcpController.linearMcpPreset.setup();
+			if (!result.ok) {
+				onError?.(result.message ?? "Failed to set up Linear MCP.");
+				return;
+			}
+			onSaved?.();
+		})();
+	};
+
 	return (
 		<>
 			{showHeading ? <h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6> : null}
@@ -293,6 +308,31 @@ export function ClineSetupSection({
 							{mcpController.mcpSettingsPath}
 							<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 						</p>
+					) : null}
+					{mcpController.linearMcpPreset.status !== "connected" ? (
+						<div className="rounded-md border border-border bg-surface-1 px-3 py-2 mb-2">
+							<div className="flex items-center justify-between gap-3">
+								<div className="min-w-0">
+									<p className="text-text-primary text-[13px] font-medium mt-0 mb-0.5">Linear</p>
+									<p className="text-text-secondary text-[12px] mt-0 mb-0">
+										Connect Linear for project management tools.
+									</p>
+								</div>
+								<Button
+									variant="primary"
+									size="sm"
+									disabled={mcpControlsDisabled || mcpController.isLoadingMcpSettings || mcpController.linearMcpPreset.isSettingUp}
+									onClick={handleSetupLinearMcp}
+									className="shrink-0"
+								>
+									{mcpController.linearMcpPreset.isSettingUp
+										? "Setting up..."
+										: mcpController.linearMcpPreset.status === "configured"
+											? "Connect Linear"
+											: "Set up Linear"}
+								</Button>
+							</div>
+						</div>
 					) : null}
 
 					{mcpController.isLoadingMcpSettings ? (

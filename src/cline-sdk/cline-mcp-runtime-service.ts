@@ -229,7 +229,7 @@ function isAuthCapableTransport(transport: SdkTransport): transport is AuthCapab
 
 function createOauthClientMetadata(redirectUrl: string): OAuthClientMetadata {
 	return {
-		client_name: "Kanban MCP Client",
+		client_name: "Cline",
 		redirect_uris: [redirectUrl],
 		grant_types: ["authorization_code", "refresh_token"],
 		response_types: ["code"],

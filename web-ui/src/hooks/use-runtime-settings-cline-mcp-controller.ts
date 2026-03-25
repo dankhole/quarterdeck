@@ -19,6 +19,17 @@ interface UseRuntimeSettingsClineMcpControllerOptions {
 	selectedAgentId: RuntimeAgentId;
 }
 
+const LINEAR_MCP_SERVER_NAME = "linear";
+const LINEAR_MCP_SERVER_URL = "https://mcp.linear.app/mcp";
+
+export type LinearMcpPresetStatus = "not-configured" | "configured" | "connected";
+
+export interface LinearMcpPreset {
+	status: LinearMcpPresetStatus;
+	isSettingUp: boolean;
+	setup: () => Promise<SaveResult>;
+}
+
 export interface UseRuntimeSettingsClineMcpControllerResult {
 	mcpSettingsPath: string;
 	mcpServers: RuntimeClineMcpServer[];
@@ -30,6 +41,7 @@ export interface UseRuntimeSettingsClineMcpControllerResult {
 	hasUnsavedChanges: boolean;
 	saveMcpSettings: () => Promise<SaveResult>;
 	runMcpServerOauth: (serverName: string) => Promise<SaveResult>;
+	linearMcpPreset: LinearMcpPreset;
 }
 
 function normalizeRecord(record: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -76,6 +88,33 @@ function normalizeMcpServer(server: RuntimeClineMcpServer): RuntimeClineMcpServe
 
 function normalizeMcpServers(servers: RuntimeClineMcpServer[]): RuntimeClineMcpServer[] {
 	return servers.map(normalizeMcpServer).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function buildLinearMcpServer(): RuntimeClineMcpServer {
+	return {
+		name: LINEAR_MCP_SERVER_NAME,
+		disabled: false,
+		transport: {
+			type: "streamableHttp",
+			url: LINEAR_MCP_SERVER_URL,
+		},
+	};
+}
+
+function upsertServerByName(
+	servers: RuntimeClineMcpServer[],
+	nextServer: RuntimeClineMcpServer,
+): RuntimeClineMcpServer[] {
+	const normalizedName = nextServer.name.trim().toLowerCase();
+	let found = false;
+	const nextServers = servers.map((server) => {
+		if (server.name.trim().toLowerCase() !== normalizedName) {
+			return server;
+		}
+		found = true;
+		return nextServer;
+	});
+	return found ? nextServers : [...nextServers, nextServer];
 }
 
 function areMcpServersEqual(left: RuntimeClineMcpServer[], right: RuntimeClineMcpServer[]): boolean {
@@ -238,6 +277,59 @@ export function useRuntimeSettingsClineMcpController(
 		[hasUnsavedChanges, mcpServers, persistMcpSettings, reloadAuthStatuses, workspaceId],
 	);
 
+	const setupLinearMcpServer = useCallback(async (): Promise<SaveResult> => {
+		const nextServers = upsertServerByName(mcpServers, buildLinearMcpServer());
+		setMcpServers(nextServers);
+		setIsSavingMcpSettings(true);
+		setAuthenticatingMcpServerName(LINEAR_MCP_SERVER_NAME);
+		try {
+			const saveResult = await persistMcpSettings(nextServers);
+			if (!saveResult.ok) {
+				return saveResult;
+			}
+			await runClineMcpServerOAuth(workspaceId, {
+				serverName: LINEAR_MCP_SERVER_NAME,
+			});
+			await reloadAuthStatuses();
+			return {
+				ok: true,
+			};
+		} catch (error) {
+			await reloadAuthStatuses();
+			return toSaveError(error);
+		} finally {
+			setIsSavingMcpSettings(false);
+			setAuthenticatingMcpServerName(null);
+		}
+	}, [mcpServers, persistMcpSettings, reloadAuthStatuses, workspaceId]);
+
+	const linearMcpPreset = useMemo((): LinearMcpPreset => {
+		const normalizedName = LINEAR_MCP_SERVER_NAME.toLowerCase();
+		const server = mcpServers.find(
+			(s) => s.name.trim().toLowerCase() === normalizedName,
+		);
+		const authStatus = server
+			? mcpAuthStatusByServerName[server.name]
+			: mcpAuthStatusByServerName[LINEAR_MCP_SERVER_NAME];
+		const isCorrectlyConfigured =
+			server?.disabled === false &&
+			server.transport.type === "streamableHttp" &&
+			server.transport.url.trim() === LINEAR_MCP_SERVER_URL;
+		const isSettingUp =
+			(authenticatingMcpServerName?.trim().toLowerCase() ?? "") === normalizedName;
+
+		let status: LinearMcpPresetStatus;
+		if (isCorrectlyConfigured && authStatus?.oauthConfigured) {
+			status = "connected";
+		} else if (isCorrectlyConfigured) {
+			status = "configured";
+		} else {
+			status = "not-configured";
+		}
+
+		return { status, isSettingUp, setup: setupLinearMcpServer };
+	}, [mcpServers, mcpAuthStatusByServerName, authenticatingMcpServerName, setupLinearMcpServer]);
+
 	return {
 		mcpSettingsPath,
 		mcpServers,
@@ -249,5 +341,6 @@ export function useRuntimeSettingsClineMcpController(
 		hasUnsavedChanges,
 		saveMcpSettings,
 		runMcpServerOauth,
+		linearMcpPreset,
 	};
 }
