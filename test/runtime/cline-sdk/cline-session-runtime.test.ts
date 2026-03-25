@@ -202,6 +202,94 @@ describe("InMemoryClineSessionRuntime", () => {
 		);
 	});
 
+	it("clears the pending task binding when start fails", async () => {
+		const fakeHost = {
+			start: vi.fn(async () => {
+				throw new Error("Maximum consecutive mistakes reached.");
+			}),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await expect(
+			runtime.startTaskSession({
+				taskId: "task-1",
+				cwd: "/tmp/worktree",
+				prompt: "Investigate startup",
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-6",
+				systemPrompt: "You are a helpful coding assistant.",
+			}),
+		).rejects.toThrow("Maximum consecutive mistakes reached.");
+
+		expect(runtime.getTaskSessionId("task-1")).toBeNull();
+	});
+
+	it("clears the live task binding after the SDK emits ended", async () => {
+		let subscribedListener: ((event: unknown) => void) | null = null;
+
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn((listener: (event: unknown) => void) => {
+				subscribedListener = listener;
+				return () => {};
+			}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		expect(runtime.getTaskSessionId("task-1")).toBeTruthy();
+
+		if (!subscribedListener) {
+			throw new Error("Expected runtime to subscribe to host events.");
+		}
+
+		const liveSessionId = runtime.getTaskSessionId("task-1");
+		(subscribedListener as (event: unknown) => void)({
+			type: "ended",
+			payload: {
+				sessionId: liveSessionId,
+				reason: "error",
+				ts: Date.now(),
+			},
+		});
+
+		expect(runtime.getTaskSessionId("task-1")).toBeNull();
+	});
+
 	it("reads persisted task history by scanning task-prefixed SDK session ids", async () => {
 		const fakeHost = {
 			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
