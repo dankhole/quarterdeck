@@ -326,16 +326,16 @@ export function parseClineMcpSettingsSaveRequest(value: unknown): RuntimeClineMc
 			throw new Error("MCP server name cannot be empty.");
 		}
 
-		if (server.transport.type === "stdio") {
-			const command = server.transport.command.trim();
+		if (server.type === "stdio") {
+			const command = server.command.trim();
 			if (!command) {
 				throw new Error(`MCP server "${name}" requires a command.`);
 			}
-			const args = server.transport.args?.map((value) => value.trim()).filter((value) => value.length > 0);
-			const cwd = server.transport.cwd?.trim() || undefined;
-			const env = server.transport.env
+			const args = server.args?.map((value) => value.trim()).filter((value) => value.length > 0);
+			const cwd = server.cwd?.trim() || undefined;
+			const env = server.env
 				? Object.fromEntries(
-						Object.entries(server.transport.env)
+						Object.entries(server.env)
 							.map(([key, entry]) => [key.trim(), entry.trim()] as const)
 							.filter(([key, entry]) => key.length > 0 && entry.length > 0),
 					)
@@ -344,23 +344,21 @@ export function parseClineMcpSettingsSaveRequest(value: unknown): RuntimeClineMc
 			return {
 				name,
 				disabled: server.disabled,
-				transport: {
-					type: "stdio" as const,
-					command,
-					...(args && args.length > 0 ? { args } : {}),
-					...(cwd ? { cwd } : {}),
-					...(env && Object.keys(env).length > 0 ? { env } : {}),
-				},
+				type: "stdio" as const,
+				command,
+				...(args && args.length > 0 ? { args } : {}),
+				...(cwd ? { cwd } : {}),
+				...(env && Object.keys(env).length > 0 ? { env } : {}),
 			};
 		}
 
-		const url = server.transport.url.trim();
+		const url = server.url.trim();
 		if (!url) {
 			throw new Error(`MCP server "${name}" requires a URL.`);
 		}
-		const headers = server.transport.headers
+		const headers = server.headers
 			? Object.fromEntries(
-					Object.entries(server.transport.headers)
+					Object.entries(server.headers)
 						.map(([key, entry]) => [key.trim(), entry.trim()] as const)
 						.filter(([key, entry]) => key.length > 0 && entry.length > 0),
 				)
@@ -369,11 +367,9 @@ export function parseClineMcpSettingsSaveRequest(value: unknown): RuntimeClineMc
 		return {
 			name,
 			disabled: server.disabled,
-			transport: {
-				type: server.transport.type,
-				url,
-				...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-			},
+			type: server.type,
+			url,
+			...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
 		};
 	});
 

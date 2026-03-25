@@ -572,43 +572,30 @@ export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClin
 export const runtimeClineProviderSettingsSaveResponseSchema = runtimeClineProviderSettingsSchema;
 export type RuntimeClineProviderSettingsSaveResponse = z.infer<typeof runtimeClineProviderSettingsSaveResponseSchema>;
 
-export const runtimeClineMcpServerStdioTransportSchema = z.object({
-	type: z.literal("stdio"),
-	command: z.string(),
-	args: z.array(z.string()).optional(),
-	cwd: z.string().optional(),
-	env: z.record(z.string(), z.string()).optional(),
-});
-export type RuntimeClineMcpServerStdioTransport = z.infer<typeof runtimeClineMcpServerStdioTransportSchema>;
-
-export const runtimeClineMcpServerSseTransportSchema = z.object({
-	type: z.literal("sse"),
-	url: z.string().url(),
-	headers: z.record(z.string(), z.string()).optional(),
-});
-export type RuntimeClineMcpServerSseTransport = z.infer<typeof runtimeClineMcpServerSseTransportSchema>;
-
-export const runtimeClineMcpServerStreamableHttpTransportSchema = z.object({
-	type: z.literal("streamableHttp"),
-	url: z.string().url(),
-	headers: z.record(z.string(), z.string()).optional(),
-});
-export type RuntimeClineMcpServerStreamableHttpTransport = z.infer<
-	typeof runtimeClineMcpServerStreamableHttpTransportSchema
->;
-
-export const runtimeClineMcpServerTransportSchema = z.discriminatedUnion("type", [
-	runtimeClineMcpServerStdioTransportSchema,
-	runtimeClineMcpServerSseTransportSchema,
-	runtimeClineMcpServerStreamableHttpTransportSchema,
-]);
-export type RuntimeClineMcpServerTransport = z.infer<typeof runtimeClineMcpServerTransportSchema>;
-
-export const runtimeClineMcpServerSchema = z.object({
+const runtimeClineMcpServerBaseSchema = z.object({
 	name: z.string(),
 	disabled: z.boolean(),
-	transport: runtimeClineMcpServerTransportSchema,
 });
+
+export const runtimeClineMcpServerSchema = z.discriminatedUnion("type", [
+	runtimeClineMcpServerBaseSchema.extend({
+		type: z.literal("stdio"),
+		command: z.string(),
+		args: z.array(z.string()).optional(),
+		cwd: z.string().optional(),
+		env: z.record(z.string(), z.string()).optional(),
+	}),
+	runtimeClineMcpServerBaseSchema.extend({
+		type: z.literal("sse"),
+		url: z.string().url(),
+		headers: z.record(z.string(), z.string()).optional(),
+	}),
+	runtimeClineMcpServerBaseSchema.extend({
+		type: z.literal("streamableHttp"),
+		url: z.string().url(),
+		headers: z.record(z.string(), z.string()).optional(),
+	}),
+]);
 export type RuntimeClineMcpServer = z.infer<typeof runtimeClineMcpServerSchema>;
 
 export const runtimeClineMcpSettingsResponseSchema = z.object({

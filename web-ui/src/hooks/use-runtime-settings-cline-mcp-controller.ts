@@ -60,28 +60,24 @@ function normalizeRecord(record: Record<string, string> | undefined): Record<str
 }
 
 function normalizeMcpServer(server: RuntimeClineMcpServer): RuntimeClineMcpServer {
-	if (server.transport.type === "stdio") {
+	if (server.type === "stdio") {
 		return {
 			name: server.name.trim(),
 			disabled: server.disabled,
-			transport: {
-				type: "stdio",
-				command: server.transport.command.trim(),
-				args: server.transport.args?.map((value) => value.trim()).filter((value) => value.length > 0),
-				cwd: server.transport.cwd?.trim() || undefined,
-				env: normalizeRecord(server.transport.env),
-			},
+			type: "stdio",
+			command: server.command.trim(),
+			args: server.args?.map((value) => value.trim()).filter((value) => value.length > 0),
+			cwd: server.cwd?.trim() || undefined,
+			env: normalizeRecord(server.env),
 		};
 	}
 
 	return {
 		name: server.name.trim(),
 		disabled: server.disabled,
-		transport: {
-			type: server.transport.type,
-			url: server.transport.url.trim(),
-			headers: normalizeRecord(server.transport.headers),
-		},
+		type: server.type,
+		url: server.url.trim(),
+		headers: normalizeRecord(server.headers),
 	};
 }
 
@@ -93,10 +89,8 @@ function buildLinearMcpServer(): RuntimeClineMcpServer {
 	return {
 		name: LINEAR_MCP_SERVER_NAME,
 		disabled: false,
-		transport: {
-			type: "streamableHttp",
-			url: LINEAR_MCP_SERVER_URL,
-		},
+		type: "streamableHttp",
+		url: LINEAR_MCP_SERVER_URL,
 	};
 }
 
@@ -333,8 +327,8 @@ export function useRuntimeSettingsClineMcpController(
 			: mcpAuthStatusByServerName[LINEAR_MCP_SERVER_NAME];
 		const isCorrectlyConfigured =
 			server?.disabled === false &&
-			server.transport.type === "streamableHttp" &&
-			server.transport.url.trim() === LINEAR_MCP_SERVER_URL;
+			server.type === "streamableHttp" &&
+			server.url.trim() === LINEAR_MCP_SERVER_URL;
 		const isSettingUp = (authenticatingMcpServerName?.trim().toLowerCase() ?? "") === normalizedName;
 
 		let status: LinearMcpPresetStatus;

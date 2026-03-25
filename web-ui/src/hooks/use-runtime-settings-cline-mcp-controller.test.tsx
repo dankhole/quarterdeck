@@ -138,10 +138,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -183,10 +181,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -210,10 +206,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			]);
 			await flushAsyncWork();
@@ -230,10 +224,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -249,10 +241,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -327,10 +317,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -399,10 +387,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://old.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://old.linear.app/mcp",
 				},
 			],
 		});
@@ -412,10 +398,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -439,10 +423,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			]);
 			await flushAsyncWork();
@@ -458,10 +440,8 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -501,18 +481,14 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "github",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.github.com/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.github.com/mcp",
 				},
 				{
 					name: "linear",
 					disabled: true,
-					transport: {
-						type: "sse",
-						url: "https://old.linear.app/mcp",
-					},
+					type: "sse",
+					url: "https://old.linear.app/mcp",
 				},
 			],
 		});
@@ -522,18 +498,14 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "github",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.github.com/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.github.com/mcp",
 				},
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -591,18 +563,14 @@ describe("useRuntimeSettingsClineMcpController", () => {
 				{
 					name: "github",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.github.com/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.github.com/mcp",
 				},
 				{
 					name: "linear",
 					disabled: false,
-					transport: {
-						type: "streamableHttp",
-						url: "https://mcp.linear.app/mcp",
-					},
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
 				},
 			],
 		});
@@ -613,18 +581,14 @@ describe("useRuntimeSettingsClineMcpController", () => {
 			{
 				name: "github",
 				disabled: false,
-				transport: {
-					type: "streamableHttp",
-					url: "https://mcp.github.com/mcp",
-				},
+				type: "streamableHttp",
+				url: "https://mcp.github.com/mcp",
 			},
 			{
 				name: "linear",
 				disabled: false,
-				transport: {
-					type: "streamableHttp",
-					url: "https://mcp.linear.app/mcp",
-				},
+				type: "streamableHttp",
+				url: "https://mcp.linear.app/mcp",
 			},
 		]);
 		expect(requireSnapshot(latestSnapshot).authenticatingMcpServerName).toBeNull();

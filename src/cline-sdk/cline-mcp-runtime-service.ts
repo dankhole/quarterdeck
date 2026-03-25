@@ -213,40 +213,57 @@ function hasAccessToken(tokens: Record<string, unknown> | undefined): boolean {
 }
 
 function toMcpRegistration(server: RuntimeClineMcpServer): SdkMcpServerRegistration {
+	if (server.type === "stdio") {
+		return {
+			name: server.name,
+			disabled: server.disabled,
+			transport: {
+				type: "stdio",
+				command: server.command,
+				args: server.args,
+				cwd: server.cwd,
+				env: server.env,
+			},
+		};
+	}
 	return {
 		name: server.name,
 		disabled: server.disabled,
-		transport: server.transport,
+		transport: {
+			type: server.type,
+			url: server.url,
+			headers: server.headers,
+		},
 	};
 }
 
 function createTransport(input: { server: RuntimeClineMcpServer; oauthProvider?: OAuthClientProvider }): SdkTransport {
-	if (input.server.transport.type === "stdio") {
+	if (input.server.type === "stdio") {
 		return new StdioClientTransport({
-			command: input.server.transport.command,
-			...(input.server.transport.args ? { args: input.server.transport.args } : {}),
-			...(input.server.transport.cwd ? { cwd: input.server.transport.cwd } : {}),
-			...(input.server.transport.env ? { env: input.server.transport.env } : {}),
+			command: input.server.command,
+			...(input.server.args ? { args: input.server.args } : {}),
+			...(input.server.cwd ? { cwd: input.server.cwd } : {}),
+			...(input.server.env ? { env: input.server.env } : {}),
 			stderr: "ignore",
 		});
 	}
 
-	if (input.server.transport.type === "sse") {
-		return new SSEClientTransport(new URL(input.server.transport.url), {
+	if (input.server.type === "sse") {
+		return new SSEClientTransport(new URL(input.server.url), {
 			authProvider: input.oauthProvider,
-			requestInit: input.server.transport.headers
+			requestInit: input.server.headers
 				? {
-						headers: input.server.transport.headers,
+						headers: input.server.headers,
 					}
 				: undefined,
 		});
 	}
 
-	return new StreamableHTTPClientTransport(new URL(input.server.transport.url), {
+	return new StreamableHTTPClientTransport(new URL(input.server.url), {
 		authProvider: input.oauthProvider,
-		requestInit: input.server.transport.headers
+		requestInit: input.server.headers
 			? {
-					headers: input.server.transport.headers,
+					headers: input.server.headers,
 				}
 			: undefined,
 	});
@@ -407,7 +424,7 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 	) {}
 
 	private async createAuthProviderContext() {
-		if (this.server.transport.type === "stdio") {
+		if (this.server.type === "stdio") {
 			return null;
 		}
 
@@ -660,7 +677,7 @@ export function createClineMcpRuntimeService(
 		return loadedSettings.servers
 			.map((server) => {
 				const authState = oauthSettings.servers[server.name];
-				const oauthSupported = server.transport.type !== "stdio";
+				const oauthSupported = server.type !== "stdio";
 				return {
 					serverName: server.name,
 					oauthSupported,
@@ -740,7 +757,7 @@ export function createClineMcpRuntimeService(
 			if (server.disabled) {
 				throw new Error(`MCP server "${serverName}" is disabled. Enable it before running OAuth.`);
 			}
-			if (server.transport.type === "stdio") {
+			if (server.type === "stdio") {
 				throw new Error(`MCP server "${serverName}" uses stdio transport and does not support OAuth browser flow.`);
 			}
 

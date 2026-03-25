@@ -84,10 +84,8 @@ export function ClineSetupSection({
 			{
 				name: "",
 				disabled: false,
-				transport: {
-					type: "streamableHttp",
-					url: "",
-				},
+				type: "streamableHttp",
+				url: "",
 			},
 		]);
 	};
@@ -345,7 +343,7 @@ export function ClineSetupSection({
 
 					{mcpController.mcpServers.map((server, serverIndex) => {
 						const authStatus = mcpController.mcpAuthStatusByServerName[server.name];
-						const oauthSupported = server.transport.type !== "stdio";
+						const oauthSupported = server.type !== "stdio";
 						const oauthConfigured = authStatus?.oauthConfigured ?? false;
 						const isAuthenticating = mcpController.authenticatingMcpServerName === server.name;
 
@@ -371,25 +369,23 @@ export function ClineSetupSection({
 								<div className="min-w-0">
 									<p className="text-text-secondary text-[12px] mt-0 mb-1">Transport</p>
 									<select
-										value={server.transport.type}
+										value={server.type}
 										onChange={(event) => {
-											const nextType = event.target.value as RuntimeClineMcpServer["transport"]["type"];
+											const nextType = event.target.value as RuntimeClineMcpServer["type"];
 											updateMcpServer(serverIndex, (current) => {
 												if (nextType === "stdio") {
 													return {
-														...current,
-														transport: {
-															type: "stdio",
-															command: "",
-														},
+														name: current.name,
+														disabled: current.disabled,
+														type: "stdio",
+														command: "",
 													};
 												}
 												return {
-													...current,
-													transport: {
-														type: nextType,
-														url: "",
-													},
+													name: current.name,
+													disabled: current.disabled,
+													type: nextType,
+													url: "",
 												};
 											});
 										}}
@@ -403,23 +399,20 @@ export function ClineSetupSection({
 								</div>
 							</div>
 
-							{server.transport.type === "stdio" ? (
+							{server.type === "stdio" ? (
 								<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 									<div className="min-w-0">
 										<p className="text-text-secondary text-[12px] mt-0 mb-1">Command</p>
 										<input
-											value={server.transport.command}
+											value={server.command}
 											onChange={(event) => {
 												updateMcpServer(serverIndex, (current) => {
-													if (current.transport.type !== "stdio") {
+													if (current.type !== "stdio") {
 														return current;
 													}
 													return {
 														...current,
-														transport: {
-															...current.transport,
-															command: event.target.value,
-														},
+														command: event.target.value,
 													};
 												});
 											}}
@@ -431,21 +424,18 @@ export function ClineSetupSection({
 									<div className="min-w-0">
 										<p className="text-text-secondary text-[12px] mt-0 mb-1">Arguments</p>
 										<input
-											value={(server.transport.args ?? []).join(" ")}
+											value={(server.args ?? []).join(" ")}
 											onChange={(event) => {
 												updateMcpServer(serverIndex, (current) => {
-													if (current.transport.type !== "stdio") {
+													if (current.type !== "stdio") {
 														return current;
 													}
 													return {
 														...current,
-														transport: {
-															...current.transport,
-															args: event.target.value
-																.split(/\s+/)
-																.map((value) => value.trim())
-																.filter((value) => value.length > 0),
-														},
+														args: event.target.value
+															.split(/\s+/)
+															.map((value) => value.trim())
+															.filter((value) => value.length > 0),
 													};
 												});
 											}}
@@ -457,18 +447,15 @@ export function ClineSetupSection({
 									<div className="min-w-0" style={{ gridColumn: "1 / -1" }}>
 										<p className="text-text-secondary text-[12px] mt-0 mb-1">Working directory</p>
 										<input
-											value={server.transport.cwd ?? ""}
+											value={server.cwd ?? ""}
 											onChange={(event) => {
 												updateMcpServer(serverIndex, (current) => {
-													if (current.transport.type !== "stdio") {
+													if (current.type !== "stdio") {
 														return current;
 													}
 													return {
 														...current,
-														transport: {
-															...current.transport,
-															cwd: event.target.value,
-														},
+														cwd: event.target.value,
 													};
 												});
 											}}
@@ -482,18 +469,15 @@ export function ClineSetupSection({
 								<div className="min-w-0 mt-2">
 									<p className="text-text-secondary text-[12px] mt-0 mb-1">URL</p>
 									<input
-										value={server.transport.url}
+										value={server.url}
 										onChange={(event) => {
 											updateMcpServer(serverIndex, (current) => {
-												if (current.transport.type === "stdio") {
+												if (current.type === "stdio") {
 													return current;
 												}
 												return {
 													...current,
-													transport: {
-														...current.transport,
-														url: event.target.value,
-													},
+													url: event.target.value,
 												};
 											});
 										}}

@@ -1306,10 +1306,8 @@ describe("createRuntimeApi startTaskSession", () => {
 				{
 					mcpServers: {
 						linear: {
-							transport: {
-								type: "streamableHttp",
-								url: "https://mcp.linear.app/mcp",
-							},
+							type: "streamableHttp",
+							url: "https://mcp.linear.app/mcp",
 							disabled: false,
 						},
 					},
@@ -1339,10 +1337,8 @@ describe("createRuntimeApi startTaskSession", () => {
 			{
 				name: "linear",
 				disabled: false,
-				transport: {
-					type: "streamableHttp",
-					url: "https://mcp.linear.app/mcp",
-				},
+				type: "streamableHttp",
+				url: "https://mcp.linear.app/mcp",
 			},
 		]);
 	});
@@ -1368,10 +1364,8 @@ describe("createRuntimeApi startTaskSession", () => {
 					{
 						name: "linear",
 						disabled: false,
-						transport: {
-							type: "streamableHttp",
-							url: "https://mcp.linear.app/mcp",
-						},
+						type: "streamableHttp",
+						url: "https://mcp.linear.app/mcp",
 					},
 				],
 			},
@@ -1382,10 +1376,8 @@ describe("createRuntimeApi startTaskSession", () => {
 			{
 				name: "linear",
 				disabled: false,
-				transport: {
-					type: "streamableHttp",
-					url: "https://mcp.linear.app/mcp",
-				},
+				type: "streamableHttp",
+				url: "https://mcp.linear.app/mcp",
 			},
 		]);
 	});
@@ -1397,17 +1389,13 @@ describe("createRuntimeApi startTaskSession", () => {
 				{
 					mcpServers: {
 						linear: {
-							transport: {
-								type: "streamableHttp",
-								url: "https://mcp.linear.app/mcp",
-							},
+							type: "streamableHttp",
+							url: "https://mcp.linear.app/mcp",
 						},
 						filesystem: {
-							transport: {
-								type: "stdio",
-								command: "npx",
-								args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-							},
+							type: "stdio",
+							command: "npx",
+							args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
 						},
 					},
 				},
@@ -1474,11 +1462,9 @@ describe("createRuntimeApi startTaskSession", () => {
 				{
 					mcpServers: {
 						filesystem: {
-							transport: {
-								type: "stdio",
-								command: "npx",
-								args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-							},
+							type: "stdio",
+							command: "npx",
+							args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
 						},
 					},
 				},
