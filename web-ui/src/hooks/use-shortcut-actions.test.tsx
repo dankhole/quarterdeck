@@ -100,6 +100,7 @@ describe("useShortcutActions", () => {
 
 	it("interrupts reused terminals before sending the shortcut command", async () => {
 		const prepareTerminalForShortcut = vi.fn(async () => ({
+			hadExistingOpenTerminal: true,
 			ok: true,
 			targetTaskId: "__home_terminal__",
 		}));
@@ -132,8 +133,9 @@ describe("useShortcutActions", () => {
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
-	it("interrupts before running even for freshly opened terminals", async () => {
+	it("waits for a prompt without interrupting when it just opened the terminal", async () => {
 		const prepareTerminalForShortcut = vi.fn(async () => ({
+			hadExistingOpenTerminal: false,
 			ok: true,
 			targetTaskId: "__home_terminal__",
 		}));
@@ -157,10 +159,8 @@ describe("useShortcutActions", () => {
 		});
 
 		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "\u0003", {
-			appendNewline: false,
-		});
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "__home_terminal__", "npm run ship", {
+		expect(sendTaskSessionInput).toHaveBeenCalledTimes(1);
+		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "npm run ship", {
 			appendNewline: true,
 		});
 	});
@@ -171,6 +171,7 @@ describe("useShortcutActions", () => {
 			shortcuts: [{ label: "Run", command: "npm run dev", icon: "play" }],
 		});
 		const prepareTerminalForShortcut = vi.fn(async () => ({
+			hadExistingOpenTerminal: true,
 			ok: true,
 			targetTaskId: "__home_terminal__",
 		}));

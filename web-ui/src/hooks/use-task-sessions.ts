@@ -9,6 +9,7 @@ import {
 	type ClineChatActionResult,
 	useClineChatRuntimeActions,
 } from "@/hooks/use-cline-chat-runtime-actions";
+import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -76,12 +77,40 @@ export function useTaskSessions({
 	currentProjectId,
 	setSessions,
 }: UseTaskSessionsInput): UseTaskSessionsResult {
+	/*
+		This merge needs to stay monotonic.
+
+		We chased a nasty terminal bug where Home and Detail panes would appear to
+		clear themselves right after starting a task or shell command. The actual
+		sequence was:
+
+		1. A new live session started and the terminal correctly saw a new startedAt.
+		2. usePersistentTerminalSession reset the xterm instance for the new session.
+		3. A stale summary from an older interrupted session was replayed back into
+		   React state from workspace hydration or the persistent terminal cache.
+		4. That older summary overwrote the newer running one.
+		5. The UI then bounced between old and new session identities, causing extra
+		   cleanup, remount, and reset cycles that looked like the terminal output
+		   had vanished.
+
+		Because of that, every task/session summary write here must prefer the
+		newest summary and ignore older ones. If this ever becomes a plain
+		last-write-wins assignment again, the "terminal randomly clears out"
+		regression is very likely to come back.
+	*/
 	const upsertSession = useCallback(
 		(summary: RuntimeTaskSessionSummary) => {
-			setSessions((current) => ({
-				...current,
-				[summary.taskId]: summary,
-			}));
+			setSessions((current) => {
+				const previousSummary = current[summary.taskId] ?? null;
+				const newestSummary = selectNewestTaskSessionSummary(previousSummary, summary);
+				if (newestSummary !== summary) {
+					return current;
+				}
+				return {
+					...current,
+					[summary.taskId]: newestSummary,
+				};
+			});
 		},
 		[setSessions],
 	);

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
+import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeTaskSessionSummary,
@@ -41,9 +42,9 @@ function mergeTaskSessionSummaries(
 ): Record<string, RuntimeTaskSessionSummary> {
 	const mergedSessions = { ...currentSessions };
 	for (const [taskId, summary] of Object.entries(nextSessions)) {
-		const currentSummary = mergedSessions[taskId];
-		if (!currentSummary || currentSummary.updatedAt <= summary.updatedAt) {
-			mergedSessions[taskId] = summary;
+		const newestSummary = selectNewestTaskSessionSummary(mergedSessions[taskId] ?? null, summary);
+		if (newestSummary) {
+			mergedSessions[taskId] = newestSummary;
 		}
 	}
 	return mergedSessions;
@@ -107,7 +108,10 @@ export function useWorkspaceSync({
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
 			setWorkspaceGit(nextWorkspaceState.git);
-			setSessions((currentSessions) => mergeTaskSessionSummaries(currentSessions, nextWorkspaceState.sessions ?? {}));
+			setSessions((currentSessions) => {
+				const incomingSessions = nextWorkspaceState.sessions ?? {};
+				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
+			});
 			const shouldHydrateBoard = !isSameProject || currentRevision !== nextWorkspaceState.revision;
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();

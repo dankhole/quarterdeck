@@ -55,10 +55,17 @@ export function useHomeSidebarAgentPanel({
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
-		setSessionSummaries((currentSessions) => ({
-			...currentSessions,
-			[summary.taskId]: summary,
-		}));
+		setSessionSummaries((currentSessions) => {
+			const previousSummary = currentSessions[summary.taskId] ?? null;
+			const newestSummary = selectNewestTaskSessionSummary(previousSummary, summary);
+			if (newestSummary !== summary) {
+				return currentSessions;
+			}
+			return {
+				...currentSessions,
+				[summary.taskId]: newestSummary,
+			};
+		});
 	}, []);
 	const effectiveSessionSummaries = useMemo(() => {
 		const mergedSessionSummaries = { ...taskSessions };
