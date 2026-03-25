@@ -11,6 +11,7 @@ const TERMINAL_PROMPT_WAIT_TIMEOUT_MS = 3000;
 interface RuntimeShortcut {
 	label: string;
 	command: string;
+	icon?: string;
 }
 
 interface UseShortcutActionsInput {
@@ -33,6 +34,7 @@ interface UseShortcutActionsResult {
 	runningShortcutLabel: string | null;
 	handleSelectShortcutLabel: (shortcutLabel: string) => void;
 	handleRunShortcut: (shortcutLabel: string) => Promise<void>;
+	handleCreateShortcut: (shortcut: RuntimeShortcut) => Promise<{ ok: boolean; message?: string }>;
 }
 
 export function useShortcutActions({
@@ -45,6 +47,22 @@ export function useShortcutActions({
 	sendTaskSessionInput,
 }: UseShortcutActionsInput): UseShortcutActionsResult {
 	const [runningShortcutLabel, setRunningShortcutLabel] = useState<string | null>(null);
+
+	const getNextShortcutLabel = useCallback((baseLabel: string): string => {
+		const normalizedTakenLabels = new Set(
+			shortcuts.map((shortcut) => shortcut.label.trim().toLowerCase()).filter((label) => label.length > 0),
+		);
+		const normalizedBaseLabel = baseLabel.trim().toLowerCase();
+		if (!normalizedTakenLabels.has(normalizedBaseLabel)) {
+			return baseLabel;
+		}
+
+		let suffix = 2;
+		while (normalizedTakenLabels.has(`${normalizedBaseLabel} ${suffix}`)) {
+			suffix += 1;
+		}
+		return `${baseLabel} ${suffix}`;
+	}, [shortcuts]);
 
 	const saveSelectedShortcutPreference = useCallback(
 		async (nextShortcutLabel: string | null): Promise<boolean> => {
@@ -140,9 +158,52 @@ export function useShortcutActions({
 		],
 	);
 
+	const handleCreateShortcut = useCallback(
+		async (shortcut: RuntimeShortcut): Promise<{ ok: boolean; message?: string }> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "Select a project first." };
+			}
+			const normalizedCommand = shortcut.command.trim();
+			if (normalizedCommand.length === 0) {
+				return { ok: false, message: "Command is required." };
+			}
+			const baseLabel = shortcut.label.trim().length > 0 ? shortcut.label.trim() : "Run";
+			const nextLabel = getNextShortcutLabel(baseLabel);
+			try {
+				await saveRuntimeConfig(currentProjectId, {
+					shortcuts: [
+						...shortcuts,
+						{
+							label: nextLabel,
+							command: normalizedCommand,
+							icon: shortcut.icon,
+						},
+					],
+					selectedShortcutLabel: nextLabel,
+				});
+				refreshRuntimeProjectConfig();
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				showAppToast(
+					{
+						intent: "danger",
+						icon: "error",
+						message: `Could not save shortcut: ${message}`,
+						timeout: 5000,
+					},
+					"shortcut-save-failed",
+				);
+				return { ok: false, message: `Could not save shortcut: ${message}` };
+			}
+		},
+		[currentProjectId, getNextShortcutLabel, refreshRuntimeProjectConfig, shortcuts],
+	);
+
 	return {
 		runningShortcutLabel,
 		handleSelectShortcutLabel,
 		handleRunShortcut,
+		handleCreateShortcut,
 	};
 }

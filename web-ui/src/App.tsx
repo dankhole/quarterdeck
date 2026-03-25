@@ -424,7 +424,7 @@ export default function App(): ReactElement {
 		latestTaskChatMessage,
 		taskChatMessagesByTaskId,
 	});
-	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
+	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } = useShortcutActions({
 		currentProjectId,
 		selectedShortcutLabel: runtimeProjectConfig?.selectedShortcutLabel,
 		shortcuts,
@@ -814,6 +814,7 @@ export default function App(): ReactElement {
 					onSelectShortcutLabel={handleSelectShortcutLabel}
 					runningShortcutLabel={runningShortcutLabel}
 					onRunShortcut={handleRunShortcut}
+					onCreateFirstShortcut={currentProjectId ? handleCreateShortcut : undefined}
 					openTargetOptions={openTargetOptions}
 					selectedOpenTargetId={selectedOpenTargetId}
 					onSelectOpenTarget={onSelectOpenTarget}

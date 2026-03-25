@@ -14,11 +14,13 @@ export function Dialog({
 	onOpenChange,
 	children,
 	contentClassName,
+	contentAriaDescribedBy,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: ReactNode;
 	contentClassName?: string;
+	contentAriaDescribedBy?: string;
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -28,6 +30,7 @@ export function Dialog({
 					style={{ animation: "kb-overlay-show 150ms ease" }}
 				/>
 				<RadixDialog.Content
+					aria-describedby={contentAriaDescribedBy}
 					className={cn(
 						"fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-[#5A6572] bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,
