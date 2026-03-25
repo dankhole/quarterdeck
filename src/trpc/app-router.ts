@@ -25,6 +25,8 @@ import type {
 	RuntimeClineProviderSettingsSaveRequest,
 	RuntimeClineProviderSettingsSaveResponse,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeOpenFileRequest,
+	RuntimeOpenFileResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -95,6 +97,8 @@ import {
 	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeClineProviderSettingsSaveResponseSchema,
 	runtimeDebugResetAllStateResponseSchema,
+	runtimeOpenFileRequestSchema,
+	runtimeOpenFileResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -228,6 +232,7 @@ export interface RuntimeTrpcContext {
 		resetAllState: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 		) => Promise<RuntimeDebugResetAllStateResponse>;
+		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -476,6 +481,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeDebugResetAllStateResponseSchema)
 			.mutation(async ({ ctx }) => {
 				return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
+			}),
+		openFile: t.procedure
+			.input(runtimeOpenFileRequestSchema)
+			.output(runtimeOpenFileResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.openFile(input);
 			}),
 	}),
 	workspace: t.router({

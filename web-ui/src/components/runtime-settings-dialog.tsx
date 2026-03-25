@@ -29,7 +29,7 @@ import type {
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
-import { toFileUrl } from "@/utils/file-url";
+import { openFileOnHost } from "@/runtime/runtime-config-query";
 import {
 	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
@@ -582,6 +582,17 @@ export function RuntimeSettingsDialog({
 		})();
 	};
 
+	const handleOpenFilePath = useCallback(
+		(filePath: string) => {
+			setSaveError(null);
+			void openFileOnHost(workspaceId, filePath).catch((error) => {
+				const message = error instanceof Error ? error.message : String(error);
+				setSaveError(`Could not open file on host: ${message}`);
+			});
+		},
+		[workspaceId],
+	);
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />
@@ -592,7 +603,7 @@ export function RuntimeSettingsDialog({
 					style={{ cursor: config?.globalConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.globalConfigPath) {
-							window.open(toFileUrl(config.globalConfigPath));
+							handleOpenFilePath(config.globalConfigPath);
 						}
 					}}
 				>
@@ -640,6 +651,7 @@ export function RuntimeSettingsDialog({
 						controller={clineSettings}
 						mcpController={clineMcpSettings}
 						controlsDisabled={controlsDisabled}
+						workspaceId={workspaceId}
 						onError={setSaveError}
 					/>
 				) : null}
@@ -729,7 +741,7 @@ export function RuntimeSettingsDialog({
 					style={{ cursor: config?.projectConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.projectConfigPath) {
-							window.open(toFileUrl(config.projectConfigPath));
+							handleOpenFilePath(config.projectConfigPath);
 						}
 					}}
 				>

@@ -653,6 +653,16 @@ export const runtimeCommandRunResponseSchema = z.object({
 });
 export type RuntimeCommandRunResponse = z.infer<typeof runtimeCommandRunResponseSchema>;
 
+export const runtimeOpenFileRequestSchema = z.object({
+	filePath: z.string(),
+});
+export type RuntimeOpenFileRequest = z.infer<typeof runtimeOpenFileRequestSchema>;
+
+export const runtimeOpenFileResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimeOpenFileResponse = z.infer<typeof runtimeOpenFileResponseSchema>;
+
 export const runtimeDebugResetAllStateResponseSchema = z.object({
 	ok: z.boolean(),
 	clearedPaths: z.array(z.string()),

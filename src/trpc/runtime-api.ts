@@ -552,5 +552,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				clearedPaths: [...debugResetTargetPaths],
 			};
 		},
+		openFile: async (input) => {
+			const filePath = input.filePath.trim();
+			if (!filePath) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "File path cannot be empty.",
+				});
+			}
+			openInBrowser(filePath);
+			return { ok: true };
+		},
 	};
 }

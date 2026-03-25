@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { RuntimeClineMcpServer } from "@/runtime/types";
 import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
-import { toFileUrl } from "@/utils/file-url";
+import { openFileOnHost } from "@/runtime/runtime-config-query";
 
 function formatExpiry(value: string): string {
 	const trimmed = value.trim();
@@ -37,6 +37,7 @@ export function ClineSetupSection({
 	controller,
 	mcpController,
 	controlsDisabled,
+	workspaceId = null,
 	showHeading = true,
 	showMcpSettings = true,
 	onError,
@@ -45,6 +46,7 @@ export function ClineSetupSection({
 	controller: UseRuntimeSettingsClineControllerResult;
 	mcpController?: UseRuntimeSettingsClineMcpControllerResult;
 	controlsDisabled: boolean;
+	workspaceId?: string | null;
 	showHeading?: boolean;
 	showMcpSettings?: boolean;
 	onError?: (message: string | null) => void;
@@ -149,6 +151,14 @@ export function ClineSetupSection({
 			}
 			onSaved?.();
 		})();
+	};
+
+	const handleOpenFilePath = (filePath: string) => {
+		onError?.(null);
+		void openFileOnHost(workspaceId, filePath).catch((error) => {
+			const message = error instanceof Error ? error.message : String(error);
+			onError?.(`Could not open file on host: ${message}`);
+		});
 	};
 
 	return (
@@ -300,7 +310,7 @@ export function ClineSetupSection({
 							className="text-text-secondary font-mono text-xs mt-0 mb-2 break-all"
 							style={{ cursor: "pointer" }}
 							onClick={() => {
-								window.open(toFileUrl(mcpController.mcpSettingsPath));
+								handleOpenFilePath(mcpController.mcpSettingsPath);
 							}}
 						>
 							{mcpController.mcpSettingsPath}
