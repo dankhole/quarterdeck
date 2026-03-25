@@ -177,6 +177,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 				broadcastClineMcpAuthStatusesUpdated: deps.runtimeStateHub.broadcastClineMcpAuthStatusesUpdated,
+				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,
 			}),
 			workspaceApi: createWorkspaceApi({

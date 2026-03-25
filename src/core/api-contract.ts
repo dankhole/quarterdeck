@@ -310,6 +310,7 @@ export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	projects: z.array(runtimeProjectSummarySchema),
 	workspaceState: runtimeWorkspaceStateResponseSchema.nullable(),
 	workspaceMetadata: runtimeWorkspaceMetadataSchema.nullable(),
+	clineSessionContextVersion: z.number().int().nonnegative(),
 });
 export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
 
@@ -367,6 +368,14 @@ export const runtimeStateStreamMcpAuthUpdatedMessageSchema = z.object({
 });
 export type RuntimeStateStreamMcpAuthUpdatedMessage = z.infer<typeof runtimeStateStreamMcpAuthUpdatedMessageSchema>;
 
+export const runtimeStateStreamClineSessionContextUpdatedMessageSchema = z.object({
+	type: z.literal("cline_session_context_updated"),
+	version: z.number().int().nonnegative(),
+});
+export type RuntimeStateStreamClineSessionContextUpdatedMessage = z.infer<
+	typeof runtimeStateStreamClineSessionContextUpdatedMessageSchema
+>;
+
 export const runtimeStateStreamErrorMessageSchema = z.object({
 	type: z.literal("error"),
 	message: z.string(),
@@ -382,6 +391,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskChatMessageSchema,
 	runtimeStateStreamMcpAuthUpdatedMessageSchema,
+	runtimeStateStreamClineSessionContextUpdatedMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;

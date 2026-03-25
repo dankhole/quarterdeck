@@ -1344,6 +1344,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("saves Cline MCP settings", async () => {
+		const bumpClineSessionContextVersion = vi.fn();
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
@@ -1352,6 +1353,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
 			resolveInteractiveShellCommand: vi.fn(),
 			runCommand: vi.fn(),
+			bumpClineSessionContextVersion,
 		});
 
 		const response = await api.saveClineMcpSettings(
@@ -1380,6 +1382,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				url: "https://mcp.linear.app/mcp",
 			},
 		]);
+		expect(bumpClineSessionContextVersion).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns MCP auth statuses from persisted OAuth settings", async () => {

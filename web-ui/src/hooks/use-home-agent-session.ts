@@ -28,6 +28,7 @@ interface UseHomeAgentSessionInput {
 	currentProjectId: string | null;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
+	clineSessionContextVersion: number;
 	sessionSummaries: Record<string, RuntimeTaskSessionSummary>;
 	setSessionSummaries: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	upsertSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -49,13 +50,14 @@ interface HomeAgentWorkspaceDescriptor {
 	taskId: string;
 }
 
-function buildClineDescriptor(config: RuntimeConfigResponse): string {
+function buildClineDescriptor(config: RuntimeConfigResponse, clineSessionContextVersion: number): string {
 	const clineProviderSettings = getRuntimeClineProviderSettings(config);
 	return JSON.stringify({
 		agentId: config.selectedAgentId,
 		providerId: clineProviderSettings.providerId ?? clineProviderSettings.oauthProvider ?? "",
 		modelId: clineProviderSettings.modelId ?? "",
 		baseUrl: clineProviderSettings.baseUrl ?? "",
+		clineSessionContextVersion,
 	});
 }
 
@@ -112,6 +114,7 @@ export function useHomeAgentSession({
 	currentProjectId,
 	runtimeProjectConfig,
 	workspaceGit,
+	clineSessionContextVersion,
 	sessionSummaries,
 	setSessionSummaries,
 	upsertSessionSummary,
@@ -138,7 +141,7 @@ export function useHomeAgentSession({
 		let descriptorKey: string;
 		if (isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
-			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
+			descriptorKey = buildClineDescriptor(runtimeProjectConfig, clineSessionContextVersion);
 		} else {
 			if (!runtimeProjectConfig.effectiveCommand) {
 				return null;
@@ -172,6 +175,7 @@ export function useHomeAgentSession({
 			taskId,
 		};
 	}, [
+		clineSessionContextVersion,
 		currentProjectId,
 		clineProviderSettings.baseUrl,
 		clineProviderSettings.modelId,

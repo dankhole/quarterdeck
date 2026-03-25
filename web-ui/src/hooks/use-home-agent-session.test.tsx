@@ -159,11 +159,13 @@ function requireTaskId(taskId: string | null): string {
 
 function HookHarness({
 	config,
+	clineSessionContextVersion = 0,
 	currentProjectId,
 	onSnapshot,
 	workspaceGit = DEFAULT_WORKSPACE_GIT,
 }: {
 	config: RuntimeConfigResponse | null;
+	clineSessionContextVersion?: number;
 	currentProjectId: string | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	workspaceGit?: RuntimeGitRepositoryInfo | null;
@@ -179,6 +181,7 @@ function HookHarness({
 		currentProjectId,
 		runtimeProjectConfig: config,
 		workspaceGit,
+		clineSessionContextVersion,
 		sessionSummaries,
 		setSessionSummaries,
 		upsertSessionSummary,
@@ -383,6 +386,57 @@ describe("useHomeAgentSession", () => {
 		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({
 			workspaceId: "workspace-1",
 			taskId: anthropicTaskId,
+		});
+		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+	});
+
+	it("rotates the home cline chat session when the Cline session context version changes", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig({
+						selectedAgentId: "cline",
+						effectiveCommand: "cline",
+					})}
+					clineSessionContextVersion={0}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const firstTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
+		expect(firstTaskId).toMatch(/^__home_agent__:workspace-1:cline:/);
+		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig({
+						selectedAgentId: "cline",
+						effectiveCommand: "cline",
+					})}
+					clineSessionContextVersion={1}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const secondTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
+		expect(secondTaskId).toMatch(/^__home_agent__:workspace-1:cline:/);
+		expect(secondTaskId).not.toBe(firstTaskId);
+		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({
+			workspaceId: "workspace-1",
+			taskId: firstTaskId,
 		});
 		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
 	});

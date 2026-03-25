@@ -55,6 +55,7 @@ export interface CreateRuntimeApiDependencies {
 	broadcastClineMcpAuthStatusesUpdated?: (
 		statuses: Awaited<ReturnType<ReturnType<typeof createClineMcpRuntimeService>["getAuthStatuses"]>>,
 	) => void;
+	bumpClineSessionContextVersion?: () => void;
 	prepareForStateReset?: () => Promise<void>;
 }
 
@@ -407,19 +408,23 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		runClineMcpServerOAuth: async (_workspaceScope, input) => {
 			const body = parseClineMcpOAuthRequest(input);
-			return await clineMcpRuntimeService.authorizeServer({
+			const response = await clineMcpRuntimeService.authorizeServer({
 				serverName: body.serverName,
 				onAuthorizationUrl: (url: string) => {
 					openInBrowser(url);
 				},
 			});
+			deps.bumpClineSessionContextVersion?.();
+			return response;
 		},
 		getClineMcpSettings: async (_workspaceScope) => {
 			return clineMcpSettingsService.loadSettings();
 		},
 		saveClineMcpSettings: async (_workspaceScope, input) => {
 			const body = parseClineMcpSettingsSaveRequest(input);
-			return await clineMcpSettingsService.saveSettings(body);
+			const response = await clineMcpSettingsService.saveSettings(body);
+			deps.bumpClineSessionContextVersion?.();
+			return response;
 		},
 		runClineProviderOAuthLogin: async (_workspaceScope, input) => {
 			const body = parseClineOauthLoginRequest(input);

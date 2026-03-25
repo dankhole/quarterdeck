@@ -26,6 +26,7 @@ interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
 	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
+	clineSessionContextVersion: number;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
@@ -46,6 +47,7 @@ export function useHomeSidebarAgentPanel({
 	currentProjectId,
 	hasNoProjects,
 	runtimeProjectConfig,
+	clineSessionContextVersion,
 	taskSessions,
 	workspaceGit,
 	latestTaskChatMessage,
@@ -72,6 +74,7 @@ export function useHomeSidebarAgentPanel({
 		currentProjectId,
 		runtimeProjectConfig,
 		workspaceGit,
+		clineSessionContextVersion,
 		sessionSummaries: effectiveSessionSummaries,
 		setSessionSummaries,
 		upsertSessionSummary,
