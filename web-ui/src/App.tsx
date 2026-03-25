@@ -658,10 +658,6 @@ export default function App(): ReactElement {
 		if (runtimeProjectConfig.effectiveCommand) {
 			return undefined;
 		}
-		const detected = runtimeProjectConfig.detectedCommands?.join(", ");
-		if (detected) {
-			return `No agent configured (${detected})`;
-		}
 		return "No agent configured";
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
