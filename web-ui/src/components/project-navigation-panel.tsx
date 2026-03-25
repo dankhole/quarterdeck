@@ -216,7 +216,7 @@ export function ProjectNavigationPanel({
 					</div>
 				</div>
 				{activeSection === "agent" ? (
-					<p className="text-text-tertiary text-xs" style={{ padding: "8px 12px 0" }}>
+					<p className="text-text-tertiary text-xs" style={{ padding: "8px 4px 0" }}>
 						Add tasks, link dependencies, break work down, and manage your board. Try asking to
 						create and link some tasks to get started.
 					</p>
