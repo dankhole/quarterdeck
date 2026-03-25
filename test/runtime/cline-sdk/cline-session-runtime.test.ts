@@ -202,6 +202,46 @@ describe("InMemoryClineSessionRuntime", () => {
 		);
 	});
 
+	it("forwards queued delivery when sending follow-up input", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => undefined),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		await runtime.sendTaskSessionInput("task-1", "Queue this", undefined, undefined, "queue");
+
+		expect(fakeHost.send).toHaveBeenCalledWith({
+			sessionId: expect.stringMatching(/^task-1-/),
+			prompt: "Queue this",
+			userImages: undefined,
+			delivery: "queue",
+		});
+	});
+
 	it("clears the pending task binding when start fails", async () => {
 		const fakeHost = {
 			start: vi.fn(async () => {

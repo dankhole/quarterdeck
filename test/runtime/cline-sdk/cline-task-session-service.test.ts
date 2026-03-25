@@ -44,7 +44,15 @@ function createDeferred<T>() {
 type StartTaskSessionMock = Mock<
 	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
 >;
-type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]) => Promise<unknown>>;
+type SendTaskSessionInputMock = Mock<
+	(
+		taskId: string,
+		prompt: string,
+		mode?: RuntimeTaskSessionMode,
+		images?: RuntimeTaskImage[],
+		delivery?: "queue" | "steer",
+	) => Promise<unknown>
+>;
 type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
@@ -163,7 +171,16 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 					mode: input.mode ?? lastStartRequest.mode,
 				});
 			},
-			async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<unknown> {
+			async sendTaskSessionInput(
+				taskId: string,
+				prompt: string,
+				mode?: RuntimeTaskSessionMode,
+				images?: RuntimeTaskImage[],
+				delivery?: "queue" | "steer",
+			): Promise<unknown> {
+				if (delivery) {
+					return await sendTaskSessionInputMock(taskId, prompt, mode, images, delivery);
+				}
 				return await sendTaskSessionInputMock(taskId, prompt, mode, images);
 			},
 			async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
@@ -519,14 +536,47 @@ describe("InMemoryClineTaskSessionService", () => {
 		]);
 
 		await vi.waitFor(() => {
-			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "resolved:Continue", undefined, [
-				{
-					id: "img-1",
-					data: "abc123",
-					mimeType: "image/png",
-				},
-			]);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
+				"task-1",
+				"resolved:Continue",
+				undefined,
+				[
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+				"queue",
+			);
 		});
+	});
+
+	it("queues follow-up chat input while the agent is still running", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "One more thing");
+
+		expect(nextSummary?.state).toBe("running");
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
+				"task-1",
+				"resolved:One more thing",
+				undefined,
+				undefined,
+				"queue",
+			);
+		});
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(false);
 	});
 
 	it("allows image-only follow-up chat input", async () => {
@@ -550,13 +600,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		]);
 
 		await vi.waitFor(() => {
-			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "resolved:", undefined, [
-				{
-					id: "img-1",
-					data: "abc123",
-					mimeType: "image/png",
-				},
-			]);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
+				"task-1",
+				"resolved:",
+				undefined,
+				[
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+				"queue",
+			);
 		});
 	});
 
@@ -721,7 +777,13 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
 		await service.sendTaskSessionInput("task-1", "/continue");
 		await vi.waitFor(() => {
-			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "workflow:/continue", undefined, undefined);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
+				"task-1",
+				"workflow:/continue",
+				undefined,
+				undefined,
+				"queue",
+			);
 		});
 	});
 	it("marks session interrupted when stopped", async () => {

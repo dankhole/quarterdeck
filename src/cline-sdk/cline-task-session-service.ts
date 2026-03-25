@@ -185,13 +185,20 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		prompt: string;
 		mode?: RuntimeTaskSessionMode;
 		images?: RuntimeTaskImage[];
+		delivery?: "queue" | "steer";
 	}): Promise<{
 		result: unknown;
 		warnings?: string[];
 	}> {
 		if (this.sessionRuntime.getTaskSessionId(input.taskId)) {
 			return {
-				result: await this.sessionRuntime.sendTaskSessionInput(input.taskId, input.prompt, input.mode, input.images),
+				result: await this.sessionRuntime.sendTaskSessionInput(
+					input.taskId,
+					input.prompt,
+					input.mode,
+					input.images,
+					input.delivery,
+				),
 			};
 		}
 
@@ -438,9 +445,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			entry.messages.push(message);
 			this.emitMessage(taskId, message);
 			clearActiveTurnState(entry);
+			const queueDelivery = entry.summary.state === "running";
 			const waitingSummary = updateSummary(entry, {
 				state: "running",
 				reviewReason: null,
+				warningMessage: null,
 				lastOutputAt: now(),
 				lastHookAt: now(),
 				latestHookActivity: {
@@ -462,6 +471,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 						prompt: runtimeSetup.resolvePrompt(normalized),
 						mode,
 						images,
+						delivery: queueDelivery ? "queue" : undefined,
 					});
 				})
 				.then(({ result, warnings }) => {

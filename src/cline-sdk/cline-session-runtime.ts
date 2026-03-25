@@ -72,7 +72,13 @@ export interface ClineSessionRuntime {
 		images?: RuntimeTaskImage[];
 		mode?: RuntimeTaskSessionMode;
 	}): Promise<StartClineSessionRuntimeResult>;
-	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<unknown>;
+	sendTaskSessionInput(
+		taskId: string,
+		prompt: string,
+		mode?: RuntimeTaskSessionMode,
+		images?: RuntimeTaskImage[],
+		delivery?: "queue" | "steer",
+	): Promise<unknown>;
 	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
@@ -207,6 +213,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		prompt: string,
 		mode?: RuntimeTaskSessionMode,
 		images?: RuntimeTaskImage[],
+		delivery?: "queue" | "steer",
 	): Promise<unknown> {
 		const sessionId = this.sessionIdByTaskId.get(taskId);
 		if (!sessionId) {
@@ -220,6 +227,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			sessionId,
 			prompt,
 			userImages: toSdkUserImages(images),
+			...(delivery ? { delivery } : {}),
 		});
 	}
 
