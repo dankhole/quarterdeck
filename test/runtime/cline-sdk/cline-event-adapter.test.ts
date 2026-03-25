@@ -188,6 +188,40 @@ describe("applyClineSessionEvent", () => {
 		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe("src/index.ts");
 	});
 
+	it("summarizes read_files tool calls from the SDK files payload", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "tool",
+						toolCallId: "tool-1",
+						toolName: "read_files",
+						input: {
+							files: [
+								{ path: "src/index.ts", start_line: 3, end_line: 8 },
+								{ path: "src/app.ts" },
+							],
+						},
+					},
+				},
+			},
+		});
+
+		expect(result.summaries.at(-1)?.latestHookActivity?.activityText).toBe(
+			"Using read_files(src/index.ts:3-8, src/app.ts)",
+		);
+		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe(
+			"src/index.ts:3-8, src/app.ts",
+		);
+	});
+
 	it("converts aborted done events with pending cancel state back to idle", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

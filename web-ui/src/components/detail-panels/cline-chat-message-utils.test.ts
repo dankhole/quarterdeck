@@ -98,6 +98,31 @@ describe("getToolSummary", () => {
 			"/tmp/a.ts, /tmp/b.ts",
 		);
 	});
+
+	it("shows ranged read_files requests from the SDK files payload", () => {
+		expect(
+			getToolSummary(
+				"read_files",
+				JSON.stringify({
+					files: [
+						{ path: "/tmp/a.ts", start_line: 3, end_line: 5 },
+						{ path: "/tmp/b.ts", end_line: 20 },
+					],
+				}),
+			),
+		).toBe("/tmp/a.ts:3-5, /tmp/b.ts:1-20");
+	});
+
+	it("accepts filePath aliases in read_files requests", () => {
+		expect(
+			getToolSummary(
+				"read_files",
+				JSON.stringify({
+					files: [{ filePath: "/tmp/a.ts", start_line: 2, end_line: 4 }],
+				}),
+			),
+		).toBe("/tmp/a.ts:2-4");
+	});
 });
 
 describe("formatToolInputForDisplay", () => {
