@@ -427,7 +427,7 @@ function FeedbackCard(): React.ReactElement {
 				data-featurebase-feedback
 				onClick={handleOpenFeedback}
 			>
-				Share feedback
+				Share Feedback
 			</Button>
 		</div>
 	);
