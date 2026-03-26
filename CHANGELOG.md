@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.45]
+
+- Fixed kanban access validation to only apply restrictions to enterprise customers, so non-enterprise users are no longer incorrectly blocked
+
 ## [0.1.44]
 
 - Fixed remote configuration not being applied correctly
