@@ -211,6 +211,34 @@ describe("DiffViewerPanel", () => {
 		expect(placeholderCell?.querySelector(".kb-diff-line-number")).toBeNull();
 	});
 
+	it("does not mark the last line changed when only the final newline differs", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 0,
+				deletions: 0,
+				oldText: "const value = 1;",
+				newText: "const value = 1;\n",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector(".kb-diff-row-added")).toBeNull();
+		expect(container.querySelector(".kb-diff-row-removed")).toBeNull();
+	});
+
 	it("does not render diff rows for binary file paths", async () => {
 		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
 			{
