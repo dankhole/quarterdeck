@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.44]
+
+- Fixed remote configuration not being applied correctly
+
 ## [0.1.43]
 
 - Kanban access can now be gated via Cline remote config
