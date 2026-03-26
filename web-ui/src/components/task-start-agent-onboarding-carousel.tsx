@@ -80,7 +80,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		kind: "agent-selection",
 		title: "Choose your agent",
 		description:
-			"Set up an agent to start tasks. Cline is the default for new users, and you can also use Claude Code or OpenAI Codex.",
+			"Choose a coding agent to complete your tasks. You can change this anytime in Settings.",
 	},
 ];
 
@@ -282,13 +282,13 @@ function OnboardingMedia({
 
 function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "cline") {
-		return "Built in. Configure your Cline provider settings below.";
+		return "Built-in agent with support for any LLM provider. No CLI install needed.";
 	}
 	if (agentId === "claude") {
-		return "Anthropics coding agent with access to Claude models.";
+		return "Anthropic's coding agent CLI with access to Claude models.";
 	}
 	if (agentId === "codex") {
-		return "OpenAI coding agent with access to the latest GPT models.";
+		return "OpenAI's coding agent CLI with access to the latest GPT models.";
 	}
 	return "Install from the official docs.";
 }
