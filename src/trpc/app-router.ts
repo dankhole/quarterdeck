@@ -13,6 +13,7 @@ import type {
 	RuntimeClineOauthLoginRequest,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthRequest,
 	RuntimeClineMcpOAuthResponse,
@@ -85,6 +86,7 @@ import {
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineOauthLoginResponseSchema,
 	runtimeClineAccountProfileResponseSchema,
+	runtimeClineKanbanAccessResponseSchema,
 	runtimeClineMcpAuthStatusResponseSchema,
 	runtimeClineMcpOAuthRequestSchema,
 	runtimeClineMcpOAuthResponseSchema,
@@ -201,6 +203,9 @@ export interface RuntimeTrpcContext {
 		getClineAccountProfile: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 		) => Promise<RuntimeClineAccountProfileResponse>;
+		getClineKanbanAccess: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+		) => Promise<RuntimeClineKanbanAccessResponse>;
 		getClineProviderModels: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderModelsRequest,
@@ -430,6 +435,11 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeClineAccountProfileResponseSchema)
 			.query(async ({ ctx }) => {
 				return await ctx.runtimeApi.getClineAccountProfile(ctx.workspaceScope);
+			}),
+		getClineKanbanAccess: t.procedure
+			.output(runtimeClineKanbanAccessResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineKanbanAccess(ctx.workspaceScope);
 			}),
 		getClineProviderModels: t.procedure
 			.input(runtimeClineProviderModelsRequestSchema)

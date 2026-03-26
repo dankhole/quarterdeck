@@ -3,6 +3,7 @@
 // config without leaking SDK details into runtime-api.ts or the UI.
 import type {
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineKanbanAccessResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderCatalogResponse,
@@ -12,8 +13,10 @@ import type {
 	RuntimeClineProviderSettingsSaveResponse,
 } from "../core/api-contract.js";
 import { openInBrowser } from "../server/browser.js";
+import { z } from "zod";
 import {
 	fetchSdkClineAccountProfile,
+	fetchSdkClineUserRemoteConfig,
 	type ManagedClineOauthProviderId,
 	type SdkProviderSettings,
 	getLastUsedSdkProviderSettings,
@@ -32,6 +35,11 @@ const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly st
 	oca: ["OCA_API_KEY"],
 	"openai-codex": [],
 };
+const CLINE_REMOTE_CONFIG_SCHEMA = z.object({
+	kanbanEnabled: z.boolean().optional(),
+});
+
+type ClineRemoteConfig = z.infer<typeof CLINE_REMOTE_CONFIG_SCHEMA>;
 
 export interface ResolvedClineLaunchConfig {
 	providerId: string;
@@ -45,6 +53,11 @@ function toErrorMessage(error: unknown): string {
 		return error.message;
 	}
 	return String(error);
+}
+
+function parseClineRemoteConfigValue(value: string): ClineRemoteConfig {
+	const parsed = JSON.parse(value) as unknown;
+	return CLINE_REMOTE_CONFIG_SCHEMA.parse(parsed);
 }
 
 function isManagedOauthProviderId(providerId: string): providerId is ManagedClineOauthProviderId {
@@ -346,6 +359,42 @@ export function createClineProviderService() {
 			} catch (error) {
 				return {
 					profile: null,
+					error: toErrorMessage(error),
+				};
+			}
+		},
+
+		async getClineKanbanAccess(): Promise<RuntimeClineKanbanAccessResponse> {
+			try {
+				const selectedSettings = getSelectedProviderSettings();
+				if (!selectedSettings) {
+					return { enabled: true };
+				}
+
+				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+				if (normalizedProviderId !== "cline") {
+					return { enabled: true };
+				}
+
+				const rawAccessToken = selectedSettings.auth?.accessToken?.trim() ?? "";
+				if (!rawAccessToken) {
+					return { enabled: true };
+				}
+
+				const remoteConfigResponse = await fetchSdkClineUserRemoteConfig({
+					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+					accessToken: ensureWorkosPrefix(rawAccessToken),
+				});
+				if (!remoteConfigResponse.enabled) {
+					return { enabled: true };
+				}
+				const parsedRemoteConfig = parseClineRemoteConfigValue(remoteConfigResponse.value);
+				return {
+					enabled: parsedRemoteConfig.kanbanEnabled === true,
+				};
+			} catch (error) {
+				return {
+					enabled: true,
 					error: toErrorMessage(error),
 				};
 			}

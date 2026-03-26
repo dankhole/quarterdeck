@@ -525,6 +525,12 @@ export const runtimeClineAccountProfileResponseSchema = z.object({
 });
 export type RuntimeClineAccountProfileResponse = z.infer<typeof runtimeClineAccountProfileResponseSchema>;
 
+export const runtimeClineKanbanAccessResponseSchema = z.object({
+	enabled: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeClineKanbanAccessResponse = z.infer<typeof runtimeClineKanbanAccessResponseSchema>;
+
 export const runtimeClineProviderCatalogItemSchema = z.object({
 	id: z.string(),
 	name: z.string(),

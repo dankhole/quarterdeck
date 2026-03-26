@@ -6,6 +6,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpOAuthResponse,
 	RuntimeClineMcpServer,
 	RuntimeClineMcpSettingsResponse,
@@ -62,6 +63,11 @@ export async function fetchClineProviderCatalog(workspaceId: string | null): Pro
 export async function fetchClineAccountProfile(workspaceId: string | null): Promise<RuntimeClineAccountProfileResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getClineAccountProfile.query();
+}
+
+export async function fetchClineKanbanAccess(workspaceId: string | null): Promise<RuntimeClineKanbanAccessResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getClineKanbanAccess.query();
 }
 
 export async function fetchClineProviderModels(

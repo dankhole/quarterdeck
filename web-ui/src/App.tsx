@@ -33,6 +33,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
+import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
@@ -40,6 +41,7 @@ import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
+import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
@@ -132,6 +134,10 @@ export default function App(): ReactElement {
 		isLoading: isRuntimeProjectConfigLoading,
 		refresh: refreshRuntimeProjectConfig,
 	} = useRuntimeProjectConfig(currentProjectId);
+	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
+		workspaceId: currentProjectId,
+		clineProviderSettings: runtimeProjectConfig?.clineProviderSettings ?? null,
+	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
@@ -734,6 +740,9 @@ export default function App(): ReactElement {
 
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
+	}
+	if (isKanbanAccessBlocked) {
+		return <KanbanAccessBlockedFallback />;
 	}
 
 	return (

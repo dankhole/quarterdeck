@@ -39,6 +39,7 @@ const llmsModelMocks = vi.hoisted(() => ({
 
 const clineAccountMocks = vi.hoisted(() => ({
 	fetchMe: vi.fn(),
+	fetchRemoteConfig: vi.fn(),
 	constructedOptions: [] as Array<{ apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }>,
 }));
 
@@ -73,6 +74,7 @@ vi.mock("@clinebot/core/node", () => ({
 			clineAccountMocks.constructedOptions.push(options);
 		}
 		fetchMe = clineAccountMocks.fetchMe;
+		fetchRemoteConfig = clineAccountMocks.fetchRemoteConfig;
 	},
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
@@ -209,6 +211,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.getProviderSettings.mockReset();
 		oauthMocks.getLastUsedProviderSettings.mockReset();
 		clineAccountMocks.fetchMe.mockReset();
+		clineAccountMocks.fetchRemoteConfig.mockReset();
 		clineAccountMocks.constructedOptions.length = 0;
 		llmsModelMocks.getAllProviders.mockReset();
 		llmsModelMocks.getModelsForProvider.mockReset();
@@ -271,6 +274,13 @@ describe("createRuntimeApi startTaskSession", () => {
 			id: "acct-1",
 			email: "saoud@example.com",
 			displayName: "Saoud",
+		});
+		clineAccountMocks.fetchRemoteConfig.mockResolvedValue({
+			organizationId: "org-1",
+			enabled: true,
+			value: JSON.stringify({
+				kanbanEnabled: true,
+			}),
 		});
 		setSelectedProviderSettings(null);
 		llmsModelMocks.getAllProviders.mockResolvedValue([
@@ -1243,6 +1253,109 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(oauthMocks.getValidClineCredentials).toHaveBeenCalledTimes(1);
 		const refreshedGetAuthToken = clineAccountMocks.constructedOptions[1]?.getAuthToken;
 		await expect(refreshedGetAuthToken?.()).resolves.toBe("workos:oauth-access");
+	});
+
+	it("blocks kanban when remote config explicitly disables it", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+		clineAccountMocks.fetchRemoteConfig.mockResolvedValueOnce({
+			organizationId: "org-1",
+			enabled: true,
+			value: JSON.stringify({
+				kanbanEnabled: false,
+			}),
+		});
+
+		const response = await api.getClineKanbanAccess({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.enabled).toBe(false);
+		expect(clineAccountMocks.fetchRemoteConfig).toHaveBeenCalledTimes(1);
+	});
+
+	it("allows kanban when remote config fetch fails", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+		clineAccountMocks.fetchRemoteConfig
+			.mockResolvedValueOnce({
+				organizationId: "org-1",
+				enabled: true,
+				value: JSON.stringify({
+					kanbanEnabled: false,
+				}),
+			})
+			.mockRejectedValueOnce(new Error("remote config request failed"));
+
+		const initialResponse = await api.getClineKanbanAccess({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+		const failedFetchResponse = await api.getClineKanbanAccess({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(initialResponse.enabled).toBe(false);
+		expect(failedFetchResponse.enabled).toBe(true);
+		expect(clineAccountMocks.fetchRemoteConfig).toHaveBeenCalledTimes(2);
+	});
+
+	it("allows kanban by default for non-cline providers", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "anthropic",
+			apiKey: "anthropic-api-key",
+		});
+
+		const response = await api.getClineKanbanAccess({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.enabled).toBe(true);
+		expect(clineAccountMocks.fetchRemoteConfig).not.toHaveBeenCalled();
 	});
 
 	it("runs oauth login for selected provider and persists provider settings", async () => {

@@ -43,6 +43,12 @@ export interface SdkClineAccountProfile {
 	displayName: string;
 }
 
+export interface SdkUserRemoteConfigResponse {
+	organizationId: string;
+	value: string;
+	enabled: boolean;
+}
+
 export type SdkProviderModelRecord = Record<
 	string,
 	{ name?: string; capabilities?: string[] } | unknown
@@ -328,4 +334,19 @@ export async function fetchSdkClineAccountProfile(input: {
 		email: me.email,
 		displayName: me.displayName,
 	};
+}
+
+export async function fetchSdkClineUserRemoteConfig(input: {
+	apiBaseUrl: string;
+	accessToken: string;
+}): Promise<SdkUserRemoteConfigResponse> {
+	const accountServiceConstructor = ClineAccountService;
+	if (!accountServiceConstructor) {
+		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
+	}
+	const accountService = new accountServiceConstructor({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchRemoteConfig();
 }
