@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.42]
+
+- Fixed auto-update failing on Windows by using the correct `.cmd` extensions for package manager commands (npm, pnpm, yarn)
+
 ## [0.1.41]
 
 - Cline agent sessions now automatically recover after a runtime teardown, so work isn't lost if the runtime restarts

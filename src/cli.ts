@@ -443,7 +443,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		}
 		throw error;
 	}
-	console.log(`Kanban running at ${runtime.url}`);
+	console.log(`Cline Kanban running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
 		try {
 			openInBrowser(runtime.url, {

@@ -188,7 +188,7 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 			} else {
 				stderr += text;
 			}
-			const match = stdout.match(/Kanban running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
+			const match = stdout.match(/Cline Kanban running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
 			if (!match || settled) {
 				return;
 			}
