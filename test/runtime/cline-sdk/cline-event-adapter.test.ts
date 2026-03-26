@@ -274,6 +274,41 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
 	});
 
+	it("keeps the previous preview when done events have no final text", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		entry.summary.latestHookActivity = {
+			activityText: "Reviewing the final diff",
+			toolName: "Read",
+			toolInputSummary: "src/index.ts",
+			finalMessage: "Reviewing the final diff",
+			hookEventName: "assistant_delta",
+			notificationType: null,
+			source: "cline-sdk",
+		};
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "done",
+						reason: "completed",
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("hook");
+		expect(result.entry.summary.latestHookActivity?.activityText).toBe("Reviewing the final diff");
+		expect(result.entry.summary.latestHookActivity?.toolName).toBe("Read");
+		expect(result.entry.summary.latestHookActivity?.toolInputSummary).toBe("src/index.ts");
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_end");
+	});
+
 	it("keeps awaiting-review sessions in review when a stale running status event arrives", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "awaiting_review";

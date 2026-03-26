@@ -307,21 +307,21 @@ function inferActivityText(
 		normalizedHookEvent === "subagentstop" ||
 		normalizedHookEvent === "afteragent"
 	) {
-		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review";
+		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : null;
 	}
 	if (normalizedHookEvent === "taskcomplete") {
-		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review";
+		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : null;
 	}
 
 	if (notificationType === "permission_prompt" || notificationType === "permission.asked") {
 		return "Waiting for approval";
 	}
 	if (notificationType === "user_attention") {
-		return "Waiting for review";
+		return null;
 	}
 
 	if (event === "to_review") {
-		return "Waiting for review";
+		return null;
 	}
 	if (event === "to_in_progress") {
 		return "Agent active";
@@ -725,7 +725,7 @@ export function parseCodexEventLine(
 			metadata: {
 				source: "codex",
 				hookEventName: type,
-				activityText: finalText ? `Final: ${truncateText(finalText, 140)}` : "Waiting for review",
+				activityText: finalText ? `Final: ${truncateText(finalText, 140)}` : undefined,
 				finalMessage: finalText || undefined,
 			},
 		};

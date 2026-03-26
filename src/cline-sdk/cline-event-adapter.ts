@@ -279,14 +279,15 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			return;
 		}
 
+		const previousHookActivity = entry.summary.latestHookActivity;
 		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: finalText ? `Final: ${finalText}` : "Waiting for review",
-				toolName: null,
-				toolInputSummary: null,
-				finalMessage: finalText || null,
+				activityText: finalText ? `Final: ${finalText}` : (previousHookActivity?.activityText ?? null),
+				toolName: previousHookActivity?.toolName ?? null,
+				toolInputSummary: previousHookActivity?.toolInputSummary ?? null,
+				finalMessage: finalText || (previousHookActivity?.finalMessage ?? null),
 				hookEventName: "agent_end",
 				notificationType: null,
 				source: "cline-sdk",
