@@ -5,7 +5,6 @@ import { type ReactNode, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
-import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	AlertDialog,
@@ -268,7 +267,6 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
-					<FeedbackCard />
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -408,27 +406,6 @@ function ShortcutsCard(): React.ReactElement {
 					</Collapsible.Trigger>
 				</Collapsible.Root>
 			</div>
-		</div>
-	);
-}
-
-function FeedbackCard(): React.ReactElement {
-	const handleOpenFeedback = useCallback(() => {
-		openFeaturebaseFeedbackWidget();
-	}, []);
-
-	return (
-		<div style={{ padding: "0 12px 10px" }}>
-			<Button
-				fill
-				size="sm"
-				variant="ghost"
-				className="!border !border-border-bright bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-				data-featurebase-feedback
-				onClick={handleOpenFeedback}
-			>
-				Share Feedback
-			</Button>
 		</div>
 	);
 }
