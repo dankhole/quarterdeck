@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.43]
+
+- Kanban access can now be gated via Cline remote config
+- Fixed "C" (create task) keyboard shortcut crashing when no projects exist
+- Fixed macOS directory picker treating cancel as an error instead of a normal cancellation
+- Improved agent selection copy during onboarding
+- File paths in the settings dialog now display with `~` instead of the full home directory
+- Fixed incorrect "kanban" branding in the disconnected screen (now says "Cline")
+- Fixed cancel button showing wrong label in detail view panels
+- Temporarily disabled Featurebase feedback widget
+
 ## [0.1.42]
 
 - Fixed auto-update failing on Windows by using the correct `.cmd` extensions for package manager commands (npm, pnpm, yarn)
