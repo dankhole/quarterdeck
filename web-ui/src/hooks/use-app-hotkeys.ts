@@ -11,6 +11,7 @@ interface UseAppHotkeysInput {
 	isDetailTerminalOpen: boolean;
 	isHomeTerminalOpen: boolean;
 	isHomeGitHistoryOpen: boolean;
+	canUseCreateTaskShortcut: boolean;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
 	handleToggleExpandDetailTerminal: () => void;
@@ -27,6 +28,7 @@ export function useAppHotkeys({
 	isDetailTerminalOpen,
 	isHomeTerminalOpen,
 	isHomeGitHistoryOpen,
+	canUseCreateTaskShortcut,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
 	handleToggleExpandDetailTerminal,
@@ -95,10 +97,13 @@ export function useAppHotkeys({
 	useHotkeys(
 		"c",
 		() => {
+			if (!canUseCreateTaskShortcut) {
+				return;
+			}
 			handleOpenCreateTask();
 		},
 		{ preventDefault: true },
-		[handleOpenCreateTask],
+		[canUseCreateTaskShortcut, handleOpenCreateTask],
 	);
 
 	useHotkeys(

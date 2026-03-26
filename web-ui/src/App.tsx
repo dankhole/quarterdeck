@@ -615,6 +615,7 @@ export default function App(): ReactElement {
 		isDetailTerminalOpen,
 		isHomeTerminalOpen: showHomeBottomTerminal,
 		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
+		canUseCreateTaskShortcut: !hasNoProjects && currentProjectId !== null,
 		handleToggleDetailTerminal,
 		handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal,
