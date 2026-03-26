@@ -30,6 +30,7 @@ import type {
 } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
+import { formatPathForDisplay } from "@/utils/path-display";
 import {
 	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
@@ -607,7 +608,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath ?? "~/.cline/kanban/config.json"}
+					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.cline/kanban/config.json"}
 					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -745,7 +746,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.projectConfigPath ?? "<project>/.cline/kanban/config.json"}
+					{config?.projectConfigPath ? formatPathForDisplay(config.projectConfigPath) : "<project>/.cline/kanban/config.json"}
 					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 

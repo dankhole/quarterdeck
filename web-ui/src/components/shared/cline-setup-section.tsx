@@ -9,6 +9,7 @@ import type { RuntimeClineMcpServer } from "@/runtime/types";
 import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
+import { formatPathForDisplay } from "@/utils/path-display";
 
 function formatExpiry(value: string): string {
 	const trimmed = value.trim();
@@ -313,7 +314,7 @@ export function ClineSetupSection({
 								handleOpenFilePath(mcpController.mcpSettingsPath);
 							}}
 						>
-							{mcpController.mcpSettingsPath}
+							{formatPathForDisplay(mcpController.mcpSettingsPath)}
 							<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 						</p>
 					) : null}
