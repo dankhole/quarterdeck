@@ -186,12 +186,6 @@ function AgentTerminalPanelLayout({
 		}
 		return normalizedCommand.split(/\s+/)[0] ?? null;
 	}, [agentCommand]);
-	const cancelAutomaticActionButtonLabel = useMemo(() => {
-		if (!cancelAutomaticActionLabel) {
-			return null;
-		}
-		return cancelAutomaticActionLabel.replace(/\b\w/g, (character) => character.toUpperCase());
-	}, [cancelAutomaticActionLabel]);
 
 	return (
 		<div
@@ -342,7 +336,7 @@ function AgentTerminalPanelLayout({
 							fill
 							onClick={onCancelAutomaticAction}
 						>
-							{`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}
+							{cancelAutomaticActionLabel}
 						</Button>
 					) : null}
 					<Button

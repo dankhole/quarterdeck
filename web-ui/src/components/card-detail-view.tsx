@@ -23,7 +23,7 @@ import type {
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewActionLabel } from "@/types";
+import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
@@ -602,7 +602,7 @@ export function CardDetailView({
 											}
 											cancelAutomaticActionLabel={
 												selection.card.autoReviewEnabled === true
-													? getTaskAutoReviewActionLabel(selection.card.autoReviewMode)
+													? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 													: null
 											}
 										/>
@@ -629,7 +629,7 @@ export function CardDetailView({
 											}
 											cancelAutomaticActionLabel={
 												selection.card.autoReviewEnabled === true
-													? getTaskAutoReviewActionLabel(selection.card.autoReviewMode)
+													? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 													: null
 											}
 											panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
