@@ -65,6 +65,10 @@ function runDirectoryPickerCommand(
 	if (result.status !== 0) {
 		const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
 		if (stderr) {
+			const stderrLower = stderr.toLowerCase();
+			if (stderrLower.includes("user cancel") || stderrLower.includes("(-128)")) {
+				return { kind: "cancelled" };
+			}
 			throw new Error(`Could not open directory picker via ${candidate.command}: ${stderr}`);
 		}
 		return { kind: "cancelled" };
