@@ -475,13 +475,28 @@ async function fetchLatestVersionFromRegistry(input: FetchLatestVersionInput): P
 }
 
 function spawnDetachedUpdate(command: string, args: string[]): void {
-	const child = spawn(command, args, {
+	const child = spawn(resolveUpdateCommandForPlatform(command), args, {
 		detached: true,
 		stdio: "ignore",
 		env: process.env,
 		windowsHide: true,
 	});
 	child.unref();
+}
+
+export function resolveUpdateCommandForPlatform(
+	command: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	if (platform !== "win32") {
+		return command;
+	}
+
+	if (command === "npm" || command === "pnpm" || command === "yarn") {
+		return `${command}.cmd`;
+	}
+
+	return command;
 }
 
 function schedulePendingShutdownAutoUpdate(update: PendingShutdownAutoUpdate): void {

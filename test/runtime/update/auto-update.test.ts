@@ -4,6 +4,7 @@ import {
 	AutoUpdatePackageManager,
 	compareVersions,
 	detectAutoUpdateInstallation,
+	resolveUpdateCommandForPlatform,
 	runAutoUpdateCheck,
 	runPendingAutoUpdateOnShutdown,
 } from "../../../src/update/auto-update.js";
@@ -30,6 +31,24 @@ describe("compareVersions", () => {
 		expect(compareVersions("1.0.1", "1.0.0")).toBeGreaterThan(0);
 		expect(compareVersions("1.0.0-nightly.12", "1.0.0")).toBeLessThan(0);
 		expect(compareVersions("1.0.0-nightly.12", "1.0.0-nightly.2")).toBeGreaterThan(0);
+	});
+});
+
+describe("resolveUpdateCommandForPlatform", () => {
+	it("keeps command names unchanged on non-windows platforms", () => {
+		expect(resolveUpdateCommandForPlatform("npm", "darwin")).toBe("npm");
+		expect(resolveUpdateCommandForPlatform("pnpm", "linux")).toBe("pnpm");
+	});
+
+	it("maps package manager commands to .cmd on windows", () => {
+		expect(resolveUpdateCommandForPlatform("npm", "win32")).toBe("npm.cmd");
+		expect(resolveUpdateCommandForPlatform("pnpm", "win32")).toBe("pnpm.cmd");
+		expect(resolveUpdateCommandForPlatform("yarn", "win32")).toBe("yarn.cmd");
+	});
+
+	it("does not rewrite non-cmd commands on windows", () => {
+		expect(resolveUpdateCommandForPlatform("bun", "win32")).toBe("bun");
+		expect(resolveUpdateCommandForPlatform(process.execPath, "win32")).toBe(process.execPath);
 	});
 });
 
