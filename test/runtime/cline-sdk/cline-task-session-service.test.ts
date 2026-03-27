@@ -199,7 +199,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 					if (!lastStartRequestByTaskId.has(taskId)) {
 						const record =
 							snapshot.record && typeof snapshot.record === "object"
-								? (snapshot.record as Record<string, unknown>)
+								? (snapshot.record as unknown as Record<string, unknown>)
 								: null;
 						const persistedCwd = typeof record?.cwd === "string" ? record.cwd : "";
 						const persistedWorkspaceRoot = typeof record?.workspaceRoot === "string" ? record.workspaceRoot : "";
@@ -419,11 +419,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -794,11 +802,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "task-1-persisted-cwd",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -881,11 +897,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -1195,11 +1219,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-failed",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "failed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{

@@ -183,10 +183,9 @@ function hydratePersistedMessage(
 	taskId: string,
 	message: ClineSdkPersistedMessage,
 ): void {
-	const record = message && typeof message === "object" ? (message as Record<string, unknown>) : null;
 	const persistedMetadata =
-		record?.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
-			? (record.metadata as Record<string, unknown>)
+		message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
+			? message.metadata
 			: null;
 	const persistedDisplayRole =
 		typeof persistedMetadata?.displayRole === "string" ? persistedMetadata.displayRole.trim().toLowerCase() : "";
@@ -323,7 +322,9 @@ function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: s
 	);
 }
 
-function stringifyPersistedToolResult(content: string | Array<{ type: string; [key: string]: unknown }>): string {
+function stringifyPersistedToolResult(
+	content: string | Array<{ type: string; text?: string; path?: string; mediaType?: string }>,
+): string {
 	if (typeof content === "string") {
 		return content;
 	}

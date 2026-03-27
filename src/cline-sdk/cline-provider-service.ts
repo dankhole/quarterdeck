@@ -27,6 +27,7 @@ import {
 	loginManagedOauthProvider,
 	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	type SdkProviderModelRecord,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
 	supportsSdkModelThinking,
@@ -44,6 +45,7 @@ const CLINE_REMOTE_CONFIG_SCHEMA = z.object({
 });
 
 type ClineRemoteConfig = z.infer<typeof CLINE_REMOTE_CONFIG_SCHEMA>;
+type SdkReasoningEffort = NonNullable<NonNullable<SdkProviderSettings["reasoning"]>["effort"]>;
 
 export interface ResolvedClineLaunchConfig {
 	providerId: string;
@@ -131,6 +133,13 @@ function readEnvApiKey(envKey: string): string | null {
 	return apiKey.length > 0 ? apiKey : null;
 }
 
+function toRuntimeReasoningEffort(effort: SdkReasoningEffort | null | undefined): RuntimeClineReasoningEffort | null {
+	if (!effort || effort === "none") {
+		return null;
+	}
+	return effort;
+}
+
 function resolveManagedProviderEnvApiKey(providerId: ManagedClineOauthProviderId): string | null {
 	for (const envKey of MANAGED_PROVIDER_ENV_KEYS[providerId]) {
 		const apiKey = readEnvApiKey(envKey);
@@ -167,10 +176,7 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
 }
 
-function toRuntimeProviderModel(
-	modelId: string,
-	modelInfo: { name?: string; capabilities?: string[]; thinkingConfig?: unknown },
-): RuntimeClineProviderModel {
+function toRuntimeProviderModel(modelId: string, modelInfo: SdkProviderModelRecord[string]): RuntimeClineProviderModel {
 	const capabilities = new Set(modelInfo.capabilities ?? []);
 	const supportsVision = capabilities.has("images");
 	const supportsAttachments = capabilities.has("files") || supportsVision;
@@ -211,7 +217,7 @@ function toProviderSettingsSummary(settings: SdkProviderSettings | null): Runtim
 		providerId,
 		modelId: settings.model?.trim() || null,
 		baseUrl: settings.baseUrl?.trim() || null,
-		reasoningEffort: settings.reasoning?.effort ?? null,
+		reasoningEffort: toRuntimeReasoningEffort(settings.reasoning?.effort),
 		apiKeyConfigured: Boolean(resolveVisibleApiKey(settings)),
 		oauthProvider,
 		oauthAccessTokenConfigured: hasOauthAccessToken(settings),
@@ -440,7 +446,7 @@ export function createClineProviderService() {
 				modelId: resolvedSettings.model?.trim() || null,
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
-				reasoningEffort: resolvedSettings.reasoning?.effort ?? null,
+				reasoningEffort: toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort),
 			};
 		},
 

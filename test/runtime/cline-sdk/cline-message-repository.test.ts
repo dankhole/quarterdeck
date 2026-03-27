@@ -14,7 +14,7 @@ function createPersistedSnapshot(
 	return {
 		record: {
 			sessionId: "task-1-abc123",
-			source: "core",
+			source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 			status: "completed",
 			startedAt: "2026-03-17T10:00:00.000Z",
 			updatedAt: "2026-03-17T10:05:00.000Z",

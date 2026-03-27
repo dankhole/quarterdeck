@@ -7,6 +7,12 @@ import {
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
+	DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
+	DEFAULT_EXTERNAL_IDCS_SCOPES,
+	DEFAULT_EXTERNAL_IDCS_URL,
+	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
+	DEFAULT_INTERNAL_IDCS_SCOPES,
+	DEFAULT_INTERNAL_IDCS_URL,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -14,18 +20,19 @@ import {
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
+	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
 } from "@clinebot/core/node";
 import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
-export type SdkReasoningEffort = NonNullable<LlmsProviders.ReasoningSettings["effort"]>;
+export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
 
 export interface ManagedOauthCredentials {
 	access: string;
 	refresh: string;
 	expires: number;
-	accountId?: string | null;
+	accountId?: string;
 }
 
 export interface ManagedOauthCallbacks {
@@ -122,15 +129,7 @@ export interface SdkMcpManager {
 
 export type SdkCreateMcpToolsOptions = CreateMcpToolsOptions;
 
-function buildOcaOauthConfig(baseUrl: string | null | undefined):
-	| {
-			mode: "internal" | "external";
-			config: {
-				internal: { baseUrl: string };
-				external: { baseUrl: string };
-			};
-	  }
-	| undefined {
+function buildOcaOauthConfig(baseUrl: string | null | undefined): OcaOAuthProviderOptions | undefined {
 	const normalizedBaseUrl = baseUrl?.trim() ?? "";
 	if (!normalizedBaseUrl) {
 		return undefined;
@@ -138,8 +137,18 @@ function buildOcaOauthConfig(baseUrl: string | null | undefined):
 	return {
 		mode: normalizedBaseUrl.includes("code-internal") ? "internal" : "external",
 		config: {
-			internal: { baseUrl: normalizedBaseUrl },
-			external: { baseUrl: normalizedBaseUrl },
+			internal: {
+				clientId: DEFAULT_INTERNAL_IDCS_CLIENT_ID,
+				idcsUrl: DEFAULT_INTERNAL_IDCS_URL,
+				scopes: DEFAULT_INTERNAL_IDCS_SCOPES,
+				baseUrl: normalizedBaseUrl,
+			},
+			external: {
+				clientId: DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
+				idcsUrl: DEFAULT_EXTERNAL_IDCS_URL,
+				scopes: DEFAULT_EXTERNAL_IDCS_SCOPES,
+				baseUrl: normalizedBaseUrl,
+			},
 		},
 	};
 }
