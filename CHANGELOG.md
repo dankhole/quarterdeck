@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.47]
+
+- Fixed browser open failing on Linux systems where `xdg-open` is not available
+
 ## [0.1.46]
 
 - Added reasoning level dropdown to Cline provider settings and the model selector in the chat composer
