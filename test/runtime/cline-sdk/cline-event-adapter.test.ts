@@ -92,6 +92,32 @@ describe("applyClineSessionEvent", () => {
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
 	});
 
+	it("keeps the full streamed assistant message in summary metadata", () => {
+		const entry = createEntry("task-1");
+		const longText = `${"Detailed handoff sentence ".repeat(12)}tail`;
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "text",
+						text: longText,
+						accumulated: longText,
+					},
+				},
+			},
+		});
+
+		const latestHookActivity = result.summaries.at(-1)?.latestHookActivity;
+		expect(latestHookActivity?.finalMessage).toBe(longText.trim());
+		expect((latestHookActivity?.activityText?.length ?? 0)).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
+		expect(latestHookActivity?.activityText).toContain("…");
+	});
+
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

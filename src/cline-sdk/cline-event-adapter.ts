@@ -24,11 +24,16 @@ import {
 	updateSummary,
 } from "./cline-session-state.js";
 
-function toPreviewText(value: string | null | undefined, maxLength = 160): string | null {
+function normalizePreviewText(value: string | null | undefined): string | null {
 	if (typeof value !== "string") {
 		return null;
 	}
 	const normalized = value.replace(/\s+/g, " ").trim();
+	return normalized || null;
+}
+
+function toPreviewText(value: string | null | undefined, maxLength = 160): string | null {
+	const normalized = normalizePreviewText(value);
 	if (!normalized) {
 		return null;
 	}
@@ -221,7 +226,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
-		const previewText = toPreviewText(accumulated ?? text);
+		const fullPreviewText = normalizePreviewText(accumulated ?? text);
+		const previewText = toPreviewText(fullPreviewText);
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
@@ -231,7 +237,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				activityText: previewText ?? "Agent active",
 				toolName: retainedToolActivity.toolName,
 				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: previewText,
+				finalMessage: fullPreviewText,
 				hookEventName: "assistant_delta",
 				notificationType: null,
 				source: "cline-sdk",
@@ -433,7 +439,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			return;
 		}
 		input.emitMessage(taskId, appendAssistantChunk(entry, taskId, chunk));
-		const previewText = toPreviewText(chunk);
+		const fullPreviewText = normalizePreviewText(chunk);
+		const previewText = toPreviewText(fullPreviewText);
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
@@ -443,7 +450,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				activityText: previewText ?? "Agent active",
 				toolName: retainedToolActivity.toolName,
 				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: previewText,
+				finalMessage: fullPreviewText,
 				hookEventName: "assistant_delta",
 				notificationType: null,
 				source: "cline-sdk",

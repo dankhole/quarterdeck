@@ -17,7 +17,6 @@ const CODEX_LOG_WAIT_ATTEMPTS = 200;
 const CODEX_LOG_WAIT_DELAY_MS = 50;
 const CODEX_LOG_POLL_INTERVAL_MS = 200;
 const MAX_ACTIVITY_TEXT_LENGTH = 200;
-const MAX_FINAL_MESSAGE_LENGTH = 600;
 
 interface HooksIngestArgs {
 	event: RuntimeHookEvent;
@@ -181,7 +180,7 @@ function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): Par
 		metadata.toolName = truncateText(normalizeWhitespace(toolName), 120);
 	}
 	if (finalMessage) {
-		metadata.finalMessage = truncateText(normalizeWhitespace(finalMessage), MAX_FINAL_MESSAGE_LENGTH);
+		metadata.finalMessage = normalizeWhitespace(finalMessage);
 	}
 	if (hookEventName) {
 		metadata.hookEventName = truncateText(normalizeWhitespace(hookEventName), 120);
@@ -384,7 +383,7 @@ function normalizeHookMetadata(
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage:
 			flagMetadata.finalMessage ??
-			(finalMessage ? truncateText(normalizeWhitespace(finalMessage), MAX_FINAL_MESSAGE_LENGTH) : null),
+			(finalMessage ? normalizeWhitespace(finalMessage) : null),
 		activityText:
 			flagMetadata.activityText ??
 			(activityText ? truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH) : null),
