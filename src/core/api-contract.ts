@@ -813,6 +813,18 @@ export const runtimeTaskChatSendResponseSchema = z.object({
 });
 export type RuntimeTaskChatSendResponse = z.infer<typeof runtimeTaskChatSendResponseSchema>;
 
+export const runtimeTaskChatReloadRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeTaskChatReloadRequest = z.infer<typeof runtimeTaskChatReloadRequestSchema>;
+
+export const runtimeTaskChatReloadResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskChatReloadResponse = z.infer<typeof runtimeTaskChatReloadResponseSchema>;
+
 export const runtimeTaskChatAbortRequestSchema = z.object({
 	taskId: z.string(),
 });

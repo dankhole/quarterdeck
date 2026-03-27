@@ -65,6 +65,7 @@ export interface ClineTaskSessionService {
 		mode?: RuntimeTaskSessionMode,
 		images?: RuntimeTaskImage[],
 	): Promise<RuntimeTaskSessionSummary | null>;
+	reloadTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
@@ -514,6 +515,46 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		});
 		this.emitSummary(summary);
 		return summary;
+	}
+
+	async reloadTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
+		let entry = this.messageRepository.getTaskEntry(taskId);
+		if (!entry) {
+			const reboundSummary = await this.rebindPersistedTaskSession(taskId);
+			if (!reboundSummary) {
+				return null;
+			}
+			entry = this.messageRepository.getTaskEntry(taskId);
+			if (!entry) {
+				return reboundSummary;
+			}
+		}
+
+		this.pendingTurnCancelTaskIds.delete(taskId);
+		await this.sessionRuntime.stopTaskSession(taskId).catch(() => null);
+		clearActiveTurnState(entry);
+
+		const effectiveMode: RuntimeTaskSessionMode = entry.summary.mode ?? "act";
+		try {
+			const { warnings } = await this.dispatchResolvedTaskInput({
+				taskId,
+				prompt: "",
+				mode: effectiveMode,
+			});
+			const warningMessage = formatStartWarnings(warnings);
+			const summary = updateSummary(entry, {
+				state: "idle",
+				mode: effectiveMode,
+				reviewReason: null,
+				warningMessage: warningMessage ?? null,
+				lastOutputAt: now(),
+			});
+			this.emitSummary(summary);
+			return cloneSummary(summary);
+		} catch (error) {
+			this.emitTaskFailure(taskId, entry, "start", error);
+			return cloneSummary(entry.summary);
+		}
 	}
 
 	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {

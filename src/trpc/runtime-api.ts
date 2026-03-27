@@ -28,6 +28,7 @@ import {
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
 	parseTaskChatAbortRequest,
+	parseTaskChatReloadRequest,
 	parseTaskChatCancelRequest,
 	parseTaskChatMessagesRequest,
 	parseTaskChatSendRequest,
@@ -340,6 +341,31 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			return {
 				commands: listClineSdkWorkflowSlashCommands(watcher),
 			};
+		},
+		reloadTaskChatSession: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatReloadRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const summary = await clineTaskSessionService.reloadTaskSession(body.taskId);
+				if (!summary) {
+					return {
+						ok: false,
+						summary: null,
+						error: "Task chat session is not available.",
+					};
+				}
+				return {
+					ok: true,
+					summary,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
 		},
 		abortTaskChatTurn: async (workspaceScope, input) => {
 			try {
