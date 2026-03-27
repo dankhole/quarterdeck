@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime.js";
+import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime";
 
 function createNoopMcpRuntimeService() {
 	return {

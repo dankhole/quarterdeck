@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter.js";
+import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter";
 import {
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
 	createDefaultSummary,
-} from "../../../src/cline-sdk/cline-session-state.js";
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+} from "../../../src/cline-sdk/cline-session-state";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 
 function createEntry(taskId: string): ClineTaskSessionEntry {
 	return {

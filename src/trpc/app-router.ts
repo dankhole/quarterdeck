@@ -79,7 +79,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 import {
 	runtimeClineAccountProfileResponseSchema,
 	runtimeClineKanbanAccessResponseSchema,
@@ -154,7 +154,7 @@ import {
 	runtimeWorktreeDeleteResponseSchema,
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;

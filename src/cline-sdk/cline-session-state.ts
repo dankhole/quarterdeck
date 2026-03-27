@@ -1,7 +1,7 @@
 // Pure state helpers for native Cline sessions.
 // This module owns the in-memory summary and message shape plus the low-level
 // mutations shared by the event adapter and the message repository.
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
 const WINDOWS_INVALID_SESSION_ID_CHARS = /[<>:"/\\|?*]/g;

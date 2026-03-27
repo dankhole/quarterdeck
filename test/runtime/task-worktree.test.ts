@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createTempDir } from "../utilities/temp-dir.js";
+import { createTempDir } from "../utilities/temp-dir";
 
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock("../../src/workspace/task-worktree-path.js", () => ({
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
-import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
+import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
 
 type ExecFileOptions = {
 	cwd?: string;

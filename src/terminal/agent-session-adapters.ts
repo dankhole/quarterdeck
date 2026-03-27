@@ -7,21 +7,21 @@ import type {
 	RuntimeHookEvent,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
-} from "../core/api-contract.js";
-import { buildKanbanCommandParts } from "../core/kanban-command.js";
-import { quoteShellArg } from "../core/shell.js";
-import { lockedFileSystem } from "../fs/locked-file-system.js";
-import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
-import { getRuntimeHomePath } from "../state/workspace-state.js";
-import { createHookRuntimeEnv } from "./hook-runtime-context.js";
+} from "../core/api-contract";
+import { buildKanbanCommandParts } from "../core/kanban-command";
+import { quoteShellArg } from "../core/shell";
+import { lockedFileSystem } from "../fs/locked-file-system";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
+import { getRuntimeHomePath } from "../state/workspace-state";
+import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
-} from "./opencode-paths.js";
-import { stripAnsi } from "./output-utils.js";
-import type { SessionTransitionEvent } from "./session-state-machine.js";
-import { prepareTaskPromptWithImages } from "./task-image-prompt.js";
+} from "./opencode-paths";
+import { stripAnsi } from "./output-utils";
+import type { SessionTransitionEvent } from "./session-state-machine";
+import { prepareTaskPromptWithImages } from "./task-image-prompt";
 
 export interface AgentAdapterLaunchInput {
 	taskId: string;

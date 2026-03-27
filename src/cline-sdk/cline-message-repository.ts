@@ -1,8 +1,8 @@
 // Stores the Kanban-side view of native Cline chat state.
 // It combines live in-memory updates with hydration from persisted SDK
 // session artifacts so the rest of the backend can read one repository shape.
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
-import type { ClinePersistedTaskSessionSnapshot } from "./cline-session-runtime.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract";
+import type { ClinePersistedTaskSessionSnapshot } from "./cline-session-runtime";
 import {
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
@@ -14,8 +14,8 @@ import {
 	finishToolCallMessage,
 	startToolCallMessage,
 	updateSummary,
-} from "./cline-session-state.js";
-import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary.js";
+} from "./cline-session-state";
+import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary";
 
 export interface ClineMessageRepository {
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;

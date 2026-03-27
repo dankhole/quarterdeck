@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
-import { buildShellCommandLine } from "../../../src/core/shell.js";
-import { TerminalSessionManager } from "../../../src/terminal/session-manager.js";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import { buildShellCommandLine } from "../../../src/core/shell";
+import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

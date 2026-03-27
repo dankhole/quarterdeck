@@ -6,7 +6,7 @@ import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
-} from "../../../src/terminal/opencode-paths.js";
+} from "../../../src/terminal/opencode-paths";
 
 describe("opencode path candidates", () => {
 	it("prioritizes explicit and env config paths before platform defaults", () => {

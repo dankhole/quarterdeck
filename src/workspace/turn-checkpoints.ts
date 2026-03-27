@@ -2,9 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
-import { getGitStdout, type RunGitOptions } from "./git-utils.js";
+import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract";
+import { createGitProcessEnv } from "../core/git-process-env";
+import { getGitStdout, type RunGitOptions } from "./git-utils";
 
 const CHECKPOINT_AUTHOR_NAME = "kanban-checkpoint";
 const CHECKPOINT_AUTHOR_EMAIL = "kanban-checkpoint@local";

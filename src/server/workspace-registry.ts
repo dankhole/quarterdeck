@@ -1,11 +1,11 @@
-import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config/runtime-config.js";
+import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config/runtime-config";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
 	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -13,8 +13,8 @@ import {
 	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
-} from "../state/workspace-state.js";
-import { TerminalSessionManager } from "../terminal/session-manager.js";
+} from "../state/workspace-state";
+import { TerminalSessionManager } from "../terminal/session-manager";
 
 export interface WorkspaceRegistryScope {
 	workspaceId: string;

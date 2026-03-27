@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+import type { RuntimeConfigState } from "../../../src/config/runtime-config";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: browserMocks.openInBrowser,
 }));
 
-import { createRuntimeApi } from "../../../src/trpc/runtime-api.js";
+import { createRuntimeApi } from "../../../src/trpc/runtime-api";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

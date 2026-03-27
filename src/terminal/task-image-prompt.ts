@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 
-import type { RuntimeTaskImage } from "../core/api-contract.js";
+import type { RuntimeTaskImage } from "../core/api-contract";
 
 const IMAGE_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
 	"image/gif": ".gif",

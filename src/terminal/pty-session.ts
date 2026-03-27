@@ -4,7 +4,7 @@ import {
 	buildWindowsCmdArgsCommandLine,
 	resolveWindowsComSpec,
 	shouldUseWindowsCmdLaunch,
-} from "../core/windows-cmd-launch.js";
+} from "../core/windows-cmd-launch";
 
 const MAX_HISTORY_BYTES = 1024 * 1024;
 

@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract.js";
-import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator.js";
-import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state.js";
-import type { TerminalSessionManager } from "../../src/terminal/session-manager.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
+import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator";
+import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state";
+import type { TerminalSessionManager } from "../../src/terminal/session-manager";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 	const { path: tempHome, cleanup } = createTempDir("kanban-home-shutdown-");

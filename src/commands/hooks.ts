@@ -6,16 +6,12 @@ import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
 
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract.js";
-import { buildKanbanCommandParts } from "../core/kanban-command.js";
-import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
-import {
-	buildWindowsCmdArgsArray,
-	resolveWindowsComSpec,
-	shouldUseWindowsCmdLaunch,
-} from "../core/windows-cmd-launch.js";
-import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
-import type { RuntimeAppRouter } from "../trpc/app-router.js";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
+import { buildKanbanCommandParts } from "../core/kanban-command";
+import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
+import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
+import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
+import type { RuntimeAppRouter } from "../trpc/app-router";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 const CODEX_LOG_WAIT_ATTEMPTS = 200;

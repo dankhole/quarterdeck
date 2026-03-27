@@ -55,7 +55,7 @@ import {
 	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeEnsureRequestSchema,
-} from "./api-contract.js";
+} from "./api-contract";
 
 const trimmedStringSchema = z.string().transform((value) => value.trim());
 const positiveIntegerFromQuerySchema = z.coerce.number().int().positive();

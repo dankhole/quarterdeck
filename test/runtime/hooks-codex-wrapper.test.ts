@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCodexWrapperChildArgs, buildCodexWrapperSpawn } from "../../src/commands/hooks.js";
+import { buildCodexWrapperChildArgs, buildCodexWrapperSpawn } from "../../src/commands/hooks";
 
 describe("buildCodexWrapperChildArgs", () => {
 	it("does not inject notify config when session log watching is enabled", () => {

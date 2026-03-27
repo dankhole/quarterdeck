@@ -3,8 +3,8 @@ import type {
 	RuntimeProjectAddResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
-} from "../core/api-contract.js";
-import { parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation.js";
+} from "../core/api-contract";
+import { parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -12,11 +12,11 @@ import {
 	loadWorkspaceState,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
-} from "../state/workspace-state.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo.js";
-import { deleteTaskWorktree } from "../workspace/task-worktree.js";
-import type { RuntimeTrpcContext } from "./app-router.js";
+} from "../state/workspace-state";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
+import { deleteTaskWorktree } from "../workspace/task-worktree";
+import type { RuntimeTrpcContext } from "./app-router";
 
 interface DisposeWorkspaceOptions {
 	stopTerminalSessions?: boolean;

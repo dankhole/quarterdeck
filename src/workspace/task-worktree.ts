@@ -5,12 +5,12 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
-} from "../core/api-contract.js";
-import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
-import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
-import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
-import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path.js";
-import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack.js";
+} from "../core/api-contract";
+import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
+import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state";
+import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
+import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";

@@ -25,9 +25,9 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorktreeEnsureResponse,
-} from "../../src/core/api-contract.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+} from "../../src/core/api-contract";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 const requireFromHere = createRequire(import.meta.url);
 

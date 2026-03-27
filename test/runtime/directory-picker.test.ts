@@ -2,7 +2,7 @@ import type { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-import { pickDirectoryPathFromSystemDialog } from "../../src/server/directory-picker.js";
+import { pickDirectoryPathFromSystemDialog } from "../../src/server/directory-picker";
 
 interface RecordedCommand {
 	command: string;

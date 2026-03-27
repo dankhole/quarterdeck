@@ -1,21 +1,21 @@
 // Owns the live SDK session host plus taskId to sessionId bindings.
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
-import type { RuntimeClineReasoningEffort, RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract.js";
-import { extractClineSessionId } from "./cline-event-adapter.js";
+import type { RuntimeClineReasoningEffort, RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract";
+import { extractClineSessionId } from "./cline-event-adapter";
 import {
 	type ClineMcpRuntimeService,
 	type ClineMcpToolBundle,
 	createClineMcpRuntimeService,
-} from "./cline-mcp-runtime-service.js";
-import { buildSessionIdPrefix, createSessionId } from "./cline-session-state.js";
+} from "./cline-mcp-runtime-service";
+import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
 import {
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
 	type ClineSdkSessionRecord,
 	type ClineSdkUserInstructionWatcher,
 	createClineSdkSessionHost,
-} from "./sdk-runtime-boundary.js";
+} from "./sdk-runtime-boundary";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 

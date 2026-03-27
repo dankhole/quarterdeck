@@ -1,8 +1,8 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
 
-import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
+import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -13,10 +13,10 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
-} from "../core/task-board-mutations.js";
-import { resolveProjectInputPath } from "../projects/project-path.js";
-import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state.js";
-import type { RuntimeAppRouter } from "../trpc/app-router.js";
+} from "../core/task-board-mutations";
+import { resolveProjectInputPath } from "../projects/project-path";
+import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
+import type { RuntimeAppRouter } from "../trpc/app-router";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
 type ListTaskColumn = (typeof LIST_TASK_COLUMNS)[number];

@@ -7,17 +7,17 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { TRPCError } from "@trpc/server";
-import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service.js";
-import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service.js";
-import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
-import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
+import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service";
+import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
+import { createClineProviderService } from "../cline-sdk/cline-provider-service";
+import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import {
 	createClineSdkUserInstructionWatcher,
 	listClineSdkWorkflowSlashCommands,
-} from "../cline-sdk/sdk-runtime-boundary.js";
-import type { RuntimeConfigState } from "../config/runtime-config.js";
-import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
-import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
+} from "../cline-sdk/sdk-runtime-boundary";
+import type { RuntimeConfigState } from "../config/runtime-config";
+import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
+import type { RuntimeCommandRunResponse } from "../core/api-contract";
 import {
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
@@ -35,14 +35,14 @@ import {
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
-} from "../core/api-validation.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { openInBrowser } from "../server/browser.js";
-import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { resolveTaskCwd } from "../workspace/task-worktree.js";
-import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints.js";
-import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
+} from "../core/api-validation";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { openInBrowser } from "../server/browser";
+import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { resolveTaskCwd } from "../workspace/task-worktree";
+import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
+import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
 export interface CreateRuntimeApiDependencies {
 	getActiveWorkspaceId: () => string | null;

@@ -5,7 +5,7 @@ import {
 	createClineSdkUserInstructionWatcher,
 	loadClineSdkRulesForSystemPrompt,
 	resolveClineSdkWorkflowSlashCommand,
-} from "./sdk-runtime-boundary.js";
+} from "./sdk-runtime-boundary";
 
 export interface ClineRuntimeSetup {
 	watcher: ClineSdkUserInstructionWatcher;

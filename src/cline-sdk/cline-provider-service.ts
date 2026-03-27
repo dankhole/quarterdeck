@@ -14,8 +14,8 @@ import type {
 	RuntimeClineProviderSettings,
 	RuntimeClineProviderSettingsSaveResponse,
 	RuntimeClineReasoningEffort,
-} from "../core/api-contract.js";
-import { openInBrowser } from "../server/browser.js";
+} from "../core/api-contract";
+import { openInBrowser } from "../server/browser";
 import {
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
@@ -30,7 +30,7 @@ import {
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
 	supportsSdkModelThinking,
-} from "./sdk-provider-boundary.js";
+} from "./sdk-provider-boundary";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
 const DEFAULT_CLINE_API_BASE_URL = "https://api.cline.bot";

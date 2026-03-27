@@ -7,8 +7,8 @@ import type {
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
-} from "../core/api-contract.js";
-import { runGit } from "./git-utils.js";
+} from "../core/api-contract";
+import { runGit } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;

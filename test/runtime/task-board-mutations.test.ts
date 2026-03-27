@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData } from "../../src/core/api-contract.js";
+import type { RuntimeBoardData } from "../../src/core/api-contract";
 import {
 	addTaskDependency,
 	addTaskToColumn,
 	deleteTasksFromBoard,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
-} from "../../src/core/task-board-mutations.js";
+} from "../../src/core/task-board-mutations";
 
 function createBoard(): RuntimeBoardData {
 	return {

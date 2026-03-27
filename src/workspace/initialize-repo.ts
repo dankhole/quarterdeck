@@ -1,4 +1,4 @@
-import { runGit } from "./git-utils.js";
+import { runGit } from "./git-utils";
 
 interface InitializeRepoResult {
 	ok: boolean;

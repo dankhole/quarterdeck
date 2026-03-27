@@ -1,17 +1,17 @@
 import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup.js";
+import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup";
 import type {
 	ClinePersistedTaskSessionSnapshot,
 	ClineSessionRuntime,
 	CreateInMemoryClineSessionRuntimeOptions,
 	StartClineSessionRuntimeRequest,
 	StartClineSessionRuntimeResult,
-} from "../../../src/cline-sdk/cline-session-runtime.js";
-import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
-import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
-import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
-import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
+} from "../../../src/cline-sdk/cline-session-runtime";
+import { createSessionId } from "../../../src/cline-sdk/cline-session-state";
+import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract";
 
 const originalArgv = [...process.argv];
 const originalExecArgv = [...process.execArgv];
