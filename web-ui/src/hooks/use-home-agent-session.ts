@@ -57,6 +57,7 @@ function buildClineDescriptor(config: RuntimeConfigResponse): string {
 		providerId: clineProviderSettings.providerId ?? clineProviderSettings.oauthProvider ?? "",
 		modelId: clineProviderSettings.modelId ?? "",
 		baseUrl: clineProviderSettings.baseUrl ?? "",
+		reasoningEffort: clineProviderSettings.reasoningEffort ?? null,
 	});
 }
 
@@ -178,6 +179,7 @@ export function useHomeAgentSession({
 		currentProjectId,
 		clineProviderSettings.baseUrl,
 		clineProviderSettings.modelId,
+		clineProviderSettings.reasoningEffort,
 		clineProviderSettings.oauthProvider,
 		clineProviderSettings.providerId,
 		runtimeProjectConfig?.effectiveCommand,

@@ -7,6 +7,7 @@ import type {
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
+	RuntimeClineReasoningEffort,
 } from "../core/api-contract.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
@@ -50,6 +51,7 @@ export interface StartClineTaskSessionRequest {
 	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
+	reasoningEffort?: RuntimeClineReasoningEffort | null;
 }
 
 export interface ClineTaskSessionService {
@@ -311,6 +313,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					mode: resolvedMode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
+					reasoningEffort: request.reasoningEffort,
 					systemPrompt,
 					userInstructionWatcher: runtimeSetup.watcher,
 					requestToolApproval: runtimeSetup.requestToolApproval,

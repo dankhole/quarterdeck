@@ -14,6 +14,7 @@ import type {
 	RuntimeClineOauthProvider,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
+	RuntimeClineReasoningEffort,
 	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
@@ -48,6 +49,7 @@ export async function saveClineProviderSettings(
 		modelId?: string | null;
 		apiKey?: string | null;
 		baseUrl?: string | null;
+		reasoningEffort?: RuntimeClineReasoningEffort | null;
 	},
 ): Promise<RuntimeClineProviderSettings> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
