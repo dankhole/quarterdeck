@@ -2,12 +2,12 @@
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
 import type { RuntimeClineReasoningEffort, RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract.js";
+import { extractClineSessionId } from "./cline-event-adapter.js";
 import {
-	createClineMcpRuntimeService,
 	type ClineMcpRuntimeService,
 	type ClineMcpToolBundle,
+	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service.js";
-import { extractClineSessionId } from "./cline-event-adapter.js";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state.js";
 import {
 	type ClineSdkPersistedMessage,
@@ -166,14 +166,14 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 					systemPrompt: request.systemPrompt,
 					...(mcpToolBundle && mcpToolBundle.tools.length > 0 ? { extraTools: mcpToolBundle.tools } : {}),
-					},
-					prompt: request.prompt,
-					initialMessages: request.initialMessages,
-					interactive: true,
-					userImages: toSdkUserImages(request.images),
-					userInstructionWatcher: request.userInstructionWatcher,
-					requestToolApproval: request.requestToolApproval,
-				});
+				},
+				prompt: request.prompt,
+				initialMessages: request.initialMessages,
+				interactive: true,
+				userImages: toSdkUserImages(request.images),
+				userInstructionWatcher: request.userInstructionWatcher,
+				requestToolApproval: request.requestToolApproval,
+			});
 		} catch (error) {
 			this.clearTaskSessionBinding(request.taskId, requestedSessionId);
 			await this.releaseTaskMcpToolBundle(request.taskId);
@@ -424,8 +424,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		if (!taskId) {
 			return;
 		}
-		const eventRecord =
-			event && typeof event === "object" ? (event as { type?: unknown }) : null;
+		const eventRecord = event && typeof event === "object" ? (event as { type?: unknown }) : null;
 		const ended = eventRecord?.type === "ended";
 		if (this.onTaskEvent) {
 			this.onTaskEvent(taskId, event);

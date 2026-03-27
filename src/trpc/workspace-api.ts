@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-
+import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
@@ -18,7 +18,6 @@ import {
 } from "../core/api-validation.js";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,

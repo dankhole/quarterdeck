@@ -1,8 +1,5 @@
 import type { RuntimeConfigState } from "../config/runtime-config.js";
-import {
-	getRuntimeLaunchSupportedAgentCatalog,
-	RUNTIME_AGENT_CATALOG,
-} from "../core/agent-catalog.js";
+import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,

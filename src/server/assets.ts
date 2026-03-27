@@ -31,8 +31,7 @@ export function getWebUiDir(): string {
 	const packagedBuildPath = resolve(here, "../web-ui");
 	const repoBuildPath = resolve(here, "../../web-ui/dist");
 	const repoSourcePath = resolve(here, "../../web-ui");
-	const hasAssets = (dir: string) =>
-		existsSync(join(dir, "index.html")) && existsSync(join(dir, "assets"));
+	const hasAssets = (dir: string) => existsSync(join(dir, "index.html")) && existsSync(join(dir, "assets"));
 	if (hasAssets(bundledPath)) {
 		return bundledPath;
 	}

@@ -1,10 +1,8 @@
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { Command, Option } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-
 import { registerHooksCommand } from "./commands/hooks.js";
 import { registerTaskCommand } from "./commands/task.js";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config.js";
@@ -26,6 +24,7 @@ import {
 } from "./core/runtime-endpoint.js";
 import { terminateProcessForTimeout } from "./server/process-termination.js";
 import type { RuntimeStateHub } from "./server/runtime-state-hub.js";
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager.js";
 
 interface CliOptions {

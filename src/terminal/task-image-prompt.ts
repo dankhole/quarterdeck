@@ -30,9 +30,7 @@ function resolveTaskImageExtension(image: RuntimeTaskImage): string {
 function buildTaskImageFileName(image: RuntimeTaskImage, index: number): string {
 	const displayName = image.name?.trim();
 	const extension = resolveTaskImageExtension(image);
-	const baseName = displayName
-		? basename(displayName, extname(displayName))
-		: `image-${index + 1}`;
+	const baseName = displayName ? basename(displayName, extname(displayName)) : `image-${index + 1}`;
 	return `${String(index + 1).padStart(2, "0")}-${sanitizeFileNameSegment(baseName)}${extension}`;
 }
 

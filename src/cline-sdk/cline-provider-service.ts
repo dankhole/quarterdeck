@@ -1,6 +1,8 @@
 // Kanban-facing facade over the SDK-backed provider store.
 // It resolves provider settings, model catalogs, OAuth flows, and launch
 // config without leaking SDK details into runtime-api.ts or the UI.
+
+import { z } from "zod";
 import type {
 	RuntimeClineAccountProfileResponse,
 	RuntimeClineKanbanAccessResponse,
@@ -14,20 +16,19 @@ import type {
 	RuntimeClineReasoningEffort,
 } from "../core/api-contract.js";
 import { openInBrowser } from "../server/browser.js";
-import { z } from "zod";
 import {
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
-	type ManagedClineOauthProviderId,
-	type SdkProviderSettings,
+	fetchSdkOrgData,
 	getLastUsedSdkProviderSettings,
 	getSdkProviderSettings,
 	listSdkProviderCatalog,
 	listSdkProviderModels,
 	loginManagedOauthProvider,
+	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	type SdkProviderSettings,
 	saveSdkProviderSettings,
-	fetchSdkOrgData,
 	supportsSdkModelThinking,
 } from "./sdk-provider-boundary.js";
 
@@ -377,7 +378,7 @@ export function createClineProviderService() {
 				const selectedSettings = getSelectedProviderSettings();
 				if (!selectedSettings) {
 					return { enabled: true };
-				}	
+				}
 
 				const rawAccessToken = selectedSettings.auth?.accessToken?.trim() ?? "";
 				if (!rawAccessToken) {
@@ -395,11 +396,11 @@ export function createClineProviderService() {
 				const orgData = await fetchSdkOrgData({
 					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 					accessToken: ensureWorkosPrefix(rawAccessToken),
-					organizatinId: remoteConfigResponse.organizationId
+					organizatinId: remoteConfigResponse.organizationId,
 				});
 
 				const parsedRemoteConfig = parseClineRemoteConfigValue(remoteConfigResponse.value);
-				const isEnterpriseCustomer = !!orgData?.externalOrganizationId
+				const isEnterpriseCustomer = !!orgData?.externalOrganizationId;
 				return {
 					enabled: !parsedRemoteConfig || !isEnterpriseCustomer || parsedRemoteConfig.kanbanEnabled === true,
 				};
@@ -490,8 +491,8 @@ export function createClineProviderService() {
 					? await listSdkProviderModels(normalizedProviderId)
 							.then((sdkModels) =>
 								Object.entries(sdkModels)
-							.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
-							.sort((left, right) => left.name.localeCompare(right.name)),
+									.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
+									.sort((left, right) => left.name.localeCompare(right.name)),
 							)
 							.catch(() => [])
 					: [];

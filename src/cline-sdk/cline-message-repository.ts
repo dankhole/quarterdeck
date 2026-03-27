@@ -3,8 +3,9 @@
 // session artifacts so the rest of the backend can read one repository shape.
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
 import type { ClinePersistedTaskSessionSnapshot } from "./cline-session-runtime.js";
-import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary.js";
 import {
+	type ClineTaskMessage,
+	type ClineTaskSessionEntry,
 	cloneMessage,
 	cloneSummary,
 	createDefaultSummary,
@@ -12,10 +13,9 @@ import {
 	createMessageWithMeta,
 	finishToolCallMessage,
 	startToolCallMessage,
-	type ClineTaskMessage,
-	type ClineTaskSessionEntry,
 	updateSummary,
 } from "./cline-session-state.js";
+import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary.js";
 
 export interface ClineMessageRepository {
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;
@@ -183,25 +183,30 @@ function hydratePersistedMessage(
 	taskId: string,
 	message: ClineSdkPersistedMessage,
 ): void {
-	const record =
-		message && typeof message === "object" ? (message as Record<string, unknown>) : null;
+	const record = message && typeof message === "object" ? (message as Record<string, unknown>) : null;
 	const persistedMetadata =
 		record?.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
 			? (record.metadata as Record<string, unknown>)
 			: null;
 	const persistedDisplayRole =
 		typeof persistedMetadata?.displayRole === "string" ? persistedMetadata.displayRole.trim().toLowerCase() : "";
-	const persistedReason =
-		typeof persistedMetadata?.reason === "string" ? persistedMetadata.reason.trim() : null;
-	const persistedMessageKind =
-		typeof persistedMetadata?.kind === "string" ? persistedMetadata.kind.trim() : null;
+	const persistedReason = typeof persistedMetadata?.reason === "string" ? persistedMetadata.reason.trim() : null;
+	const persistedMessageKind = typeof persistedMetadata?.kind === "string" ? persistedMetadata.kind.trim() : null;
 	const hydratedRole =
 		persistedDisplayRole === "system" || persistedDisplayRole === "status"
 			? (persistedDisplayRole as "system" | "status")
 			: message.role;
 
 	if (typeof message.content === "string") {
-		appendPersistedTextMessage(entry, taskId, hydratedRole, message.content, persistedMetadata, persistedReason, persistedMessageKind);
+		appendPersistedTextMessage(
+			entry,
+			taskId,
+			hydratedRole,
+			message.content,
+			persistedMetadata,
+			persistedReason,
+			persistedMessageKind,
+		);
 		return;
 	}
 
@@ -300,9 +305,11 @@ function appendPersistedTextMessage(
 					messageKind: messageKind ?? null,
 					displayRole: typeof metadata?.displayRole === "string" ? metadata.displayRole : null,
 					reason: reason ?? null,
-			  }
+				}
 			: null;
-	entry.messages.push(meta ? createMessageWithMeta(taskId, role, content, meta, images) : createMessage(taskId, role, content, images));
+	entry.messages.push(
+		meta ? createMessageWithMeta(taskId, role, content, meta, images) : createMessage(taskId, role, content, images),
+	);
 }
 
 function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: string, content: string): void {
@@ -316,9 +323,7 @@ function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: s
 	);
 }
 
-function stringifyPersistedToolResult(
-	content: string | Array<{ type: string; [key: string]: unknown }>,
-): string {
+function stringifyPersistedToolResult(content: string | Array<{ type: string; [key: string]: unknown }>): string {
 	if (typeof content === "string") {
 		return content;
 	}

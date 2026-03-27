@@ -16,10 +16,7 @@ export function openInBrowser(url: string, deps?: BrowserOpenDeps): void {
 
 	// On Linux the `open` package ships a bundled xdg-open fallback.
 	// Prefer system xdg-open when present so PATH-based overrides still work.
-	const options =
-		platform === "linux" && isBinaryAvailable("xdg-open")
-			? { app: { name: "xdg-open" } }
-			: undefined;
+	const options = platform === "linux" && isBinaryAvailable("xdg-open") ? { app: { name: "xdg-open" } } : undefined;
 
 	void openUrl(url, options).catch(() => {
 		warn(`Could not open browser automatically. Open this URL manually: ${url}`);

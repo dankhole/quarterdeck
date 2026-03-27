@@ -354,14 +354,7 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		};
 	}
 
-	const restoreResult = await runGit(repoRoot, [
-		"restore",
-		"--source=HEAD",
-		"--staged",
-		"--worktree",
-		"--",
-		".",
-	]);
+	const restoreResult = await runGit(repoRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", "."]);
 	const cleanResult = restoreResult.ok ? await runGit(repoRoot, ["clean", "-fd", "--", "."]) : null;
 	const nextSummary = await getGitSyncSummary(repoRoot);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");

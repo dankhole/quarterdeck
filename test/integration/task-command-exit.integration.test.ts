@@ -166,7 +166,9 @@ async function waitForBrowserOpenCount(logPath: string, expectedCount: number, t
 			setTimeout(resolve, 25);
 		});
 	}
-	throw new Error(`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`);
+	throw new Error(
+		`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`,
+	);
 }
 
 async function waitForExit(process: ChildProcess, timeoutMs: number): Promise<boolean> {

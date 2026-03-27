@@ -9,7 +9,11 @@ import type { Command } from "commander";
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
-import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch.js";
+import {
+	buildWindowsCmdArgsArray,
+	resolveWindowsComSpec,
+	shouldUseWindowsCmdLaunch,
+} from "../core/windows-cmd-launch.js";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
@@ -382,9 +386,7 @@ function normalizeHookMetadata(
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
-		finalMessage:
-			flagMetadata.finalMessage ??
-			(finalMessage ? normalizeWhitespace(finalMessage) : null),
+		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
 		activityText:
 			flagMetadata.activityText ??
 			(activityText ? truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH) : null),

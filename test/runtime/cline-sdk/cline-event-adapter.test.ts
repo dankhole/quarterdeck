@@ -114,7 +114,7 @@ describe("applyClineSessionEvent", () => {
 
 		const latestHookActivity = result.summaries.at(-1)?.latestHookActivity;
 		expect(latestHookActivity?.finalMessage).toBe(longText.trim());
-		expect((latestHookActivity?.activityText?.length ?? 0)).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
+		expect(latestHookActivity?.activityText?.length ?? 0).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
 		expect(latestHookActivity?.activityText).toContain("…");
 	});
 
@@ -230,10 +230,7 @@ describe("applyClineSessionEvent", () => {
 						toolCallId: "tool-1",
 						toolName: "read_files",
 						input: {
-							files: [
-								{ path: "src/index.ts", start_line: 3, end_line: 8 },
-								{ path: "src/app.ts" },
-							],
+							files: [{ path: "src/index.ts", start_line: 3, end_line: 8 }, { path: "src/app.ts" }],
 						},
 					},
 				},
@@ -243,9 +240,7 @@ describe("applyClineSessionEvent", () => {
 		expect(result.summaries.at(-1)?.latestHookActivity?.activityText).toBe(
 			"Using read_files(src/index.ts:3-8, src/app.ts)",
 		);
-		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe(
-			"src/index.ts:3-8, src/app.ts",
-		);
+		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe("src/index.ts:3-8, src/app.ts");
 	});
 
 	it("converts aborted done events with pending cancel state back to idle", () => {
@@ -368,7 +363,7 @@ describe("applyClineSessionEvent", () => {
 					sessionId: "session-1",
 					event: {
 						type: "error",
-						error: new Error("Missing API key for provider \"cline\"."),
+						error: new Error('Missing API key for provider "cline".'),
 						recoverable: true,
 						iteration: 1,
 					},

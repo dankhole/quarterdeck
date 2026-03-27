@@ -28,9 +28,9 @@ import {
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
 	parseTaskChatAbortRequest,
-	parseTaskChatReloadRequest,
 	parseTaskChatCancelRequest,
 	parseTaskChatMessagesRequest,
+	parseTaskChatReloadRequest,
 	parseTaskChatSendRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
@@ -167,7 +167,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				let useClinePath = effectiveAgentId === "cline";
 				if (body.resumeFromTrash && !useClinePath) {
 					const clineSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-					const persistedSession = await clineSessionService.rebindPersistedTaskSession(body.taskId).catch(() => null);
+					const persistedSession = await clineSessionService
+						.rebindPersistedTaskSession(body.taskId)
+						.catch(() => null);
 					if (persistedSession) {
 						useClinePath = true;
 					}

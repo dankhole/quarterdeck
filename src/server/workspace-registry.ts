@@ -1,4 +1,4 @@
-import { toGlobalRuntimeConfigState, type RuntimeConfigState } from "../config/runtime-config.js";
+import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config/runtime-config.js";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -194,7 +194,9 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 	let activeWorkspaceId: string | null = initialWorkspace?.workspaceId ?? indexedWorkspace?.workspaceId ?? null;
 	let activeWorkspacePath: string | null = initialWorkspace?.repoPath ?? indexedWorkspace?.repoPath ?? null;
 	let globalRuntimeConfig = await deps.loadGlobalRuntimeConfig();
-	let activeRuntimeConfig = activeWorkspacePath ? await deps.loadRuntimeConfig(activeWorkspacePath) : globalRuntimeConfig;
+	let activeRuntimeConfig = activeWorkspacePath
+		? await deps.loadRuntimeConfig(activeWorkspacePath)
+		: globalRuntimeConfig;
 	const workspacePathsById = new Map<string, string>(
 		activeWorkspaceId && activeWorkspacePath ? [[activeWorkspaceId, activeWorkspacePath]] : [],
 	);

@@ -206,10 +206,14 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 
 	await Promise.all(
 		interruptedByWorkspace.map(async (workspace) => {
-			const worktreeTaskIds = await persistInterruptedSessions(workspace.workspacePath, workspace.interruptedTaskIds, {
-				workspaceState: workspace.workspaceState,
-				resolveSummary: workspace.resolveSummary,
-			});
+			const worktreeTaskIds = await persistInterruptedSessions(
+				workspace.workspacePath,
+				workspace.interruptedTaskIds,
+				{
+					workspaceState: workspace.workspaceState,
+					resolveSummary: workspace.resolveSummary,
+				},
+			);
 			await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds, deps.warn);
 		}),
 	);

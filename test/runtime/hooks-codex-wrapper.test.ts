@@ -18,13 +18,9 @@ describe("buildCodexWrapperChildArgs", () => {
 	});
 
 	it("uses ComSpec on Windows for npm shim binaries", () => {
-		const launch = buildCodexWrapperSpawn(
-			"codex",
-			["exec", "fix the bug"],
-			true,
-			"win32",
-			{ ComSpec: "C:\\Windows\\System32\\cmd.exe" },
-		);
+		const launch = buildCodexWrapperSpawn("codex", ["exec", "fix the bug"], true, "win32", {
+			ComSpec: "C:\\Windows\\System32\\cmd.exe",
+		});
 
 		expect(launch.binary).toBe("C:\\Windows\\System32\\cmd.exe");
 		expect(launch.args[0]).toBe("/d");
@@ -35,13 +31,9 @@ describe("buildCodexWrapperChildArgs", () => {
 	});
 
 	it("does not wrap cmd itself on Windows", () => {
-		const launch = buildCodexWrapperSpawn(
-			"cmd.exe",
-			["/c", "echo hi"],
-			true,
-			"win32",
-			{ ComSpec: "C:\\Windows\\System32\\cmd.exe" },
-		);
+		const launch = buildCodexWrapperSpawn("cmd.exe", ["/c", "echo hi"], true, "win32", {
+			ComSpec: "C:\\Windows\\System32\\cmd.exe",
+		});
 
 		expect(launch.binary).toBe("cmd.exe");
 		expect(launch.args).toEqual(["/c", "echo hi"]);

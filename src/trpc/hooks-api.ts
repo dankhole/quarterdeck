@@ -32,9 +32,7 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 	}
 	return (
 		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" ||
-			summary.reviewReason === "hook" ||
-			summary.reviewReason === "error")
+		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
 	);
 }
 

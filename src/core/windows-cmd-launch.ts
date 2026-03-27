@@ -10,7 +10,7 @@ function escapeWindowsCommand(value: string): string {
 
 function escapeWindowsArgument(value: string): string {
 	let escaped = normalizeWindowsCmdArgument(`${value}`);
-	escaped = escaped.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
+	escaped = escaped.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
 	escaped = escaped.replace(/(?=(\\+?)?)\1$/g, "$1$1");
 	escaped = `"${escaped}"`;
 	escaped = escaped.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");

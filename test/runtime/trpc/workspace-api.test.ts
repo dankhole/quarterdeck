@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-	RuntimeTaskSessionSummary,
-	RuntimeWorkspaceChangesResponse,
-} from "../../../src/core/api-contract.js";
+import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesResponse } from "../../../src/core/api-contract.js";
 
 const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -294,5 +291,4 @@ describe("createWorkspaceApi loadChanges", () => {
 			toRef: "cline-3",
 		});
 	});
-
 });

@@ -14,7 +14,7 @@ export async function initializeGitRepository(projectPath: string): Promise<Init
 		};
 	}
 
-    return ensureInitialCommit(projectPath)
+	return ensureInitialCommit(projectPath);
 }
 
 export async function ensureInitialCommit(projectPath: string): Promise<InitializeRepoResult> {

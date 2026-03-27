@@ -10,12 +10,12 @@ const CHECKPOINT_AUTHOR_NAME = "kanban-checkpoint";
 const CHECKPOINT_AUTHOR_EMAIL = "kanban-checkpoint@local";
 
 function runGit(cwd: string, args: string[], options: RunGitOptions = {}) {
-	return getGitStdout(args, cwd, options)
+	return getGitStdout(args, cwd, options);
 }
 
 async function tryRunGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<string | null> {
 	try {
-		return await getGitStdout(args, cwd, options)
+		return await getGitStdout(args, cwd, options);
 	} catch {
 		return null;
 	}

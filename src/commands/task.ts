@@ -453,7 +453,8 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
 	const removedDependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
-		const dependency = runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
+		const dependency =
+			runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
 		if (!dependency) {
 			throw new Error(`Dependency "${input.dependencyId}" was not found in workspace ${workspaceRepoPath}.`);
 		}
@@ -794,7 +795,9 @@ async function deleteTaskCommand(input: {
 			};
 		}
 
-		const deletedTasks = latestTargetRecords.map(({ task, columnId }) => formatTaskRecord(latestState, task, columnId));
+		const deletedTasks = latestTargetRecords.map(({ task, columnId }) =>
+			formatTaskRecord(latestState, task, columnId),
+		);
 		return {
 			board: deleted.board,
 			value: {
@@ -818,7 +821,9 @@ async function deleteTaskCommand(input: {
 		};
 	}
 
-	await Promise.all(mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
+	await Promise.all(
+		mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)),
+	);
 
 	const workspaceCleanupResults = await Promise.all(
 		mutation.value.deletedTaskIds.map(async (taskId) => ({

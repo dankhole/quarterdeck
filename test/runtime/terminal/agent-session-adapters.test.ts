@@ -99,7 +99,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
 		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
 		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[appendPromptIndex + 1]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+		expect(launch.args[appendPromptIndex + 1]).toContain(
+			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+		);
 	});
 
 	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
@@ -118,7 +120,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(configArgIndex).toBeGreaterThanOrEqual(0);
 		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
 		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[configArgIndex + 1]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+		expect(launch.args[configArgIndex + 1]).toContain(
+			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+		);
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {
@@ -314,7 +318,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const imagePath = imagePathMatch?.[1] ?? "";
 		expect(existsSync(imagePath)).toBe(true);
 		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
-
 	});
 
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {

@@ -100,19 +100,21 @@ describe.sequential("task-worktree serialization", () => {
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
 
 		let lockQueue = Promise.resolve();
-		lockedFileSystemMocks.withLock.mockImplementation(async (_request: unknown, operation: () => Promise<unknown>) => {
-			const waitForTurn = lockQueue;
-			let releaseLock: () => void = () => {};
-			lockQueue = new Promise<void>((resolve) => {
-				releaseLock = resolve;
-			});
-			await waitForTurn;
-			try {
-				return await operation();
-			} finally {
-				releaseLock();
-			}
-		});
+		lockedFileSystemMocks.withLock.mockImplementation(
+			async (_request: unknown, operation: () => Promise<unknown>) => {
+				const waitForTurn = lockQueue;
+				let releaseLock: () => void = () => {};
+				lockQueue = new Promise<void>((resolve) => {
+					releaseLock = resolve;
+				});
+				await waitForTurn;
+				try {
+					return await operation();
+				} finally {
+					releaseLock();
+				}
+			},
+		);
 		lockedFileSystemMocks.writeTextFileAtomic.mockResolvedValue(undefined);
 	});
 
@@ -192,7 +194,7 @@ describe.sequential("task-worktree serialization", () => {
 
 					if (command[0] === "config" && command[1] === "--file") {
 						return {
-							stdout: 'submodule.evals/cline-bench.path evals/cline-bench\n',
+							stdout: "submodule.evals/cline-bench.path evals/cline-bench\n",
 							stderr: "",
 						};
 					}

@@ -14,8 +14,8 @@ import {
 	removeWorkspaceStateFiles,
 } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { deleteTaskWorktree } from "../workspace/task-worktree.js";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo.js";
+import { deleteTaskWorktree } from "../workspace/task-worktree.js";
 import type { RuntimeTrpcContext } from "./app-router.js";
 
 interface DisposeWorkspaceOptions {
@@ -76,8 +76,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							ok: false,
 							project: null,
 							requiresGitInitialization: true,
-							error:
-								"This folder is not a git repository. Cline requires git to manage worktrees. Initialize git to continue.",
+							error: "This folder is not a git repository. Cline requires git to manage worktrees. Initialize git to continue.",
 						} satisfies RuntimeProjectAddResponse;
 					}
 					const initResult = await initializeGitRepository(projectPath);

@@ -3,10 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
-import type {
-	RuntimeClineMcpServer,
-	RuntimeClineMcpSettingsResponse,
-} from "../core/api-contract.js";
+import type { RuntimeClineMcpServer, RuntimeClineMcpSettingsResponse } from "../core/api-contract.js";
 import { lockedFileSystem } from "../fs/locked-file-system.js";
 
 const stringRecordSchema = z.record(z.string(), z.string());
@@ -38,9 +35,7 @@ const persistedSettingsSchema = z.object({
 	mcpServers: z.record(z.string(), persistedServerSchema),
 });
 
-function resolveUrlServerType(
-	raw: z.infer<typeof persistedUrlServerSchema>,
-): "sse" | "streamableHttp" {
+function resolveUrlServerType(raw: z.infer<typeof persistedUrlServerSchema>): "sse" | "streamableHttp" {
 	if (raw.type === "streamableHttp" || raw.type === "sse") {
 		return raw.type;
 	}
@@ -168,9 +163,7 @@ export function createClineMcpSettingsService(): ClineMcpSettingsService {
 			};
 		},
 
-		async saveSettings(input: {
-			servers: RuntimeClineMcpServer[];
-		}): Promise<RuntimeClineMcpSettingsResponse> {
+		async saveSettings(input: { servers: RuntimeClineMcpServer[] }): Promise<RuntimeClineMcpSettingsResponse> {
 			const path = resolveMcpSettingsPath();
 			const servers = normalizeServers(input.servers);
 			const mcpServers = Object.fromEntries(

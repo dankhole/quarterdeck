@@ -33,9 +33,7 @@ describe("opencode path candidates", () => {
 		} as NodeJS.ProcessEnv;
 
 		const modelStatePaths = getOpenCodeModelStatePathCandidates({ env, homePath: "/home/dev" });
-		expect(modelStatePaths).toContain(
-			join("C:\\Users\\dev\\AppData\\Local", "opencode", "state", "model.json"),
-		);
+		expect(modelStatePaths).toContain(join("C:\\Users\\dev\\AppData\\Local", "opencode", "state", "model.json"));
 		expect(modelStatePaths).toContain(join("/home/dev", ".local", "state", "opencode", "model.json"));
 
 		const authPaths = getOpenCodeAuthPathCandidates({ env, homePath: "/home/dev" });

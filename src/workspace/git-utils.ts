@@ -51,7 +51,12 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			exitCode: 0,
 		};
 	} catch (error) {
-		const candidate = error as { code?: string | number | null; stdout?: unknown; stderr?: unknown; message?: unknown };
+		const candidate = error as {
+			code?: string | number | null;
+			stdout?: unknown;
+			stderr?: unknown;
+			message?: unknown;
+		};
 		const rawStdout = String(candidate.stdout ?? "");
 		const stdout = options.trimStdout === false ? rawStdout : rawStdout.trim();
 		const stderr = String(candidate.stderr ?? "").trim();

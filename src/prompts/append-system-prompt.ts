@@ -3,9 +3,9 @@ import { realpathSync } from "node:fs";
 import packageJson from "../../package.json" with { type: "json" };
 
 import type { RuntimeAgentId } from "../core/api-contract.js";
+import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveKanbanCommandParts } from "../core/kanban-command.js";
 import { buildShellCommandLine } from "../core/shell.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
@@ -24,14 +24,7 @@ export interface RenderAppendSystemPromptOptions {
 	agentId?: RuntimeAgentId | null;
 }
 
-const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"claude",
-	"codex",
-	"cline",
-	"droid",
-	"gemini",
-	"opencode",
-];
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "cline", "droid", "gemini", "opencode"];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
 	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
@@ -121,10 +114,7 @@ export function resolveAppendSystemPromptCommandPrefix(
 	return fallbackCommandPrefix;
 }
 
-export function renderAppendSystemPrompt(
-	commandPrefix: string,
-	options: RenderAppendSystemPromptOptions = {},
-): string {
+export function renderAppendSystemPrompt(commandPrefix: string, options: RenderAppendSystemPromptOptions = {}): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	const selectedAgentId = options.agentId ?? null;
 	return `# Kanban Sidebar

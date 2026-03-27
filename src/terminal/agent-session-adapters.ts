@@ -2,7 +2,12 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type {
+	RuntimeAgentId,
+	RuntimeHookEvent,
+	RuntimeTaskImage,
+	RuntimeTaskSessionSummary,
+} from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
 import { lockedFileSystem } from "../fs/locked-file-system.js";
@@ -727,9 +732,7 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
 	return (
 		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" ||
-			summary.reviewReason === "hook" ||
-			summary.reviewReason === "error")
+		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
 	);
 }
 

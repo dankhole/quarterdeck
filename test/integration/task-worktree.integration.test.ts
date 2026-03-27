@@ -406,12 +406,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(deleted.ok).toBe(true);
 
-				const patchesDir = join(
-					process.env.HOME ?? sandboxRoot,
-					".cline",
-					"kanban",
-					"trashed-task-patches",
-				);
+				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".cline", "kanban", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });
 				const patchPath = join(patchesDir, `${taskId}.${createdCommit}.patch`);
 				writeFileSync(

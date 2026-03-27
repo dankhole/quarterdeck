@@ -55,7 +55,6 @@ describe("deleteTasksFromBoard", () => {
 	});
 });
 
-
 describe("task images", () => {
 	it("preserves images when creating and updating tasks", () => {
 		const created = addTaskToColumn(

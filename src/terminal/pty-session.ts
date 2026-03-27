@@ -101,9 +101,7 @@ export class PtySession {
 		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
 		const useWindowsShellLaunch = shouldUseWindowsCmdLaunch(binary);
 		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec() : binary;
-		const spawnArgs = useWindowsShellLaunch
-			? buildWindowsCmdArgsCommandLine(binary, normalizedArgs)
-			: normalizedArgs;
+		const spawnArgs = useWindowsShellLaunch ? buildWindowsCmdArgsCommandLine(binary, normalizedArgs) : normalizedArgs;
 		const ptyOptions: pty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,

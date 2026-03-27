@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryClineMessageRepository } from "../../../src/cline-sdk/cline-message-repository.js";
 import type { ClinePersistedTaskSessionSnapshot } from "../../../src/cline-sdk/cline-session-runtime.js";
-import { createDefaultSummary, createMessage, type ClineTaskSessionEntry } from "../../../src/cline-sdk/cline-session-state.js";
+import {
+	type ClineTaskSessionEntry,
+	createDefaultSummary,
+	createMessage,
+} from "../../../src/cline-sdk/cline-session-state.js";
 
 function createPersistedSnapshot(
 	messages: NonNullable<ClinePersistedTaskSessionSnapshot>["messages"],
