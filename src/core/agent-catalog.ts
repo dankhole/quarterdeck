@@ -66,8 +66,8 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
-	"droid",
 	// "opencode",
+	// "droid",
 	// "gemini",
 ];
 
