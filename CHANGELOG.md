@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.48]
+
+- Fixed sidebar agent attempting to edit files and write code instead of staying focused on Kanban board management
+
 ## [0.1.47]
 
 - Fixed browser open failing on Linux systems where `xdg-open` is not available
