@@ -31,13 +31,14 @@ import {
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
+import { TerminalStateMirror } from "./terminal-state-mirror";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 // OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
-// We intercept that startup probe during history replay and early PTY output, synthesize a
-// background-color reply, then disable the filter once a live terminal listener has attached.
+// We intercept that startup probe during early PTY output, synthesize a background-color
+// reply, then disable the filter once a live terminal listener has attached.
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 
 type RestartableSessionRequest =
@@ -61,6 +62,7 @@ interface ActiveProcessState {
 interface SessionEntry {
 	summary: RuntimeTaskSessionSummary;
 	active: ActiveProcessState | null;
+	terminalStateMirror: TerminalStateMirror | null;
 	listenerIdCounter: number;
 	listeners: Map<number, TerminalSessionListener>;
 	restartRequest: RestartableSessionRequest | null;
@@ -190,6 +192,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
 
+	private hasLiveOutputListener(entry: SessionEntry): boolean {
+		for (const listener of entry.listeners.values()) {
+			if (listener.onOutput) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
 		this.summaryListeners.add(listener);
 		return () => {
@@ -202,6 +213,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			this.entries.set(taskId, {
 				summary: cloneSummary(summary),
 				active: null,
+				terminalStateMirror: null,
 				listenerIdCounter: 1,
 				listeners: new Map(),
 				restartRequest: null,
@@ -225,18 +237,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const entry = this.ensureEntry(taskId);
 
 		listener.onState?.(cloneSummary(entry.summary));
-		const replayFilterState = createTerminalProtocolFilterState({
-			interceptOsc11BackgroundQueries: true,
-			suppressDeviceAttributeQueries: entry.active?.terminalProtocolFilter.suppressDeviceAttributeQueries ?? false,
-		});
-		for (const chunk of entry.active?.session.getOutputHistory() ?? []) {
-			const filteredChunk = filterTerminalProtocolOutput(replayFilterState, chunk, {
-				onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
-			});
-			if (filteredChunk.byteLength > 0) {
-				listener.onOutput?.(filteredChunk);
-			}
-		}
 		if (entry.active && listener.onOutput) {
 			disableOsc11BackgroundQueryIntercept(entry.active.terminalProtocolFilter);
 		}
@@ -248,6 +248,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return () => {
 			entry.listeners.delete(listenerId);
 		};
+	}
+
+	async getRestoreSnapshot(taskId: string) {
+		const entry = this.entries.get(taskId);
+		if (!entry?.terminalStateMirror) {
+			return null;
+		}
+		return await entry.terminalStateMirror.getSnapshot();
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -265,9 +273,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entry.active.session.stop();
 			entry.active = null;
 		}
+		entry.terminalStateMirror?.dispose();
+		entry.terminalStateMirror = null;
 
 		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
 		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
+		const terminalStateMirror = new TerminalStateMirror(cols, rows, {
+			onInputResponse: (data) => {
+				if (!entry.active || this.hasLiveOutputListener(entry)) {
+					return;
+				}
+				entry.active.session.write(data);
+			},
+		});
 
 		const launch = await prepareAgentLaunch({
 			taskId: request.taskId,
@@ -313,6 +331,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (filteredChunk.byteLength === 0) {
 						return;
 					}
+					entry.terminalStateMirror?.applyOutput(filteredChunk);
 
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
@@ -411,6 +430,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					// Best effort: cleanup failure is non-critical.
 				});
 			}
+			terminalStateMirror.dispose();
 			const summary = updateSummary(entry, {
 				state: "failed",
 				agentId: request.agentId,
@@ -451,6 +471,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
+		entry.terminalStateMirror = terminalStateMirror;
 
 		const startedAt = now();
 		updateSummary(entry, {
@@ -488,9 +509,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entry.active.session.stop();
 			entry.active = null;
 		}
+		entry.terminalStateMirror?.dispose();
+		entry.terminalStateMirror = null;
 
 		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
 		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
+		const terminalStateMirror = new TerminalStateMirror(cols, rows, {
+			onInputResponse: (data) => {
+				if (!entry.active || this.hasLiveOutputListener(entry)) {
+					return;
+				}
+				entry.active.session.write(data);
+			},
+		});
 		const env = buildTerminalEnvironment(request.env);
 
 		let session: PtySession;
@@ -513,6 +544,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (filteredChunk.byteLength === 0) {
 						return;
 					}
+					entry.terminalStateMirror?.applyOutput(filteredChunk);
 
 					if (entry.active.workspaceTrustBuffer !== null) {
 						entry.active.workspaceTrustBuffer += filteredChunk.toString("utf8");
@@ -555,6 +587,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				},
 			});
 		} catch (error) {
+			terminalStateMirror.dispose();
 			const summary = updateSummary(entry, {
 				state: "failed",
 				agentId: null,
@@ -589,6 +622,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
+		entry.terminalStateMirror = terminalStateMirror;
 
 		updateSummary(entry, {
 			state: "running",
@@ -675,6 +709,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const normalizedPixelWidth = safePixelWidth !== undefined && safePixelWidth > 0 ? safePixelWidth : undefined;
 		const normalizedPixelHeight = safePixelHeight !== undefined && safePixelHeight > 0 ? safePixelHeight : undefined;
 		entry.active.session.resize(safeCols, safeRows, normalizedPixelWidth, normalizedPixelHeight);
+		entry.terminalStateMirror?.resize(safeCols, safeRows);
 		entry.active.cols = safeCols;
 		entry.active.rows = safeRows;
 		return true;
@@ -874,6 +909,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const created: SessionEntry = {
 			summary: createDefaultSummary(taskId),
 			active: null,
+			terminalStateMirror: null,
 			listenerIdCounter: 1,
 			listeners: new Map(),
 			restartRequest: null,
