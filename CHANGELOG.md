@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.51]
+
+- Terminal TUI state is now preserved across reconnects, so you no longer lose your terminal view when the connection drops and re-establishes
+- Switched to esbuild for faster builds
+- Claude agent hyperlinks now render correctly in Kanban terminals
+- Fixed screen flickering and unnecessary polling when viewing trashed tasks
+- Fixed restoring tasks from trash using the wrong agent
+- Fixed stale git worktree registrations that could cause worktree operations to fail
+
 ## [0.1.50]
 
 - Updated Cline SDK from 0.0.21 to 0.0.22, which includes: fixed hook worker process launching to use a more robust internal launch mechanism
