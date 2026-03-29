@@ -347,7 +347,7 @@ const ALT = isMacPlatform ? "⌥" : "Alt";
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
 	{ keys: [MOD, "B"], label: "Start backlog tasks" },
-	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
+	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
