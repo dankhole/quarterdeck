@@ -612,7 +612,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("starts home agent sessions in the workspace root without resolving a task worktree", async () => {
-		const homeTaskId = "__home_agent__:workspace-1:codex:abc123";
+		const homeTaskId = "__home_agent__:workspace-1:codex";
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ taskId: homeTaskId })),
 			applyTurnCheckpoint: vi.fn(),
