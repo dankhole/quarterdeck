@@ -47,19 +47,28 @@ interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	workspaceId: string;
 }
 
-function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string): string {
+function generateTerminalClientId(): string {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return crypto.randomUUID();
+	}
+	return `terminal-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/io`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
+	url.searchParams.set("clientId", clientId);
 	return url.toString();
 }
 
-function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string): string {
+function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/control`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
+	url.searchParams.set("clientId", clientId);
 	return url.toString();
 }
 
@@ -134,6 +143,10 @@ class PersistentTerminal {
 	private readonly subscribers = new Set<PersistentTerminalSubscriber>();
 	private readonly parkingRoot: HTMLDivElement;
 	private readonly unicode11Addon = new Unicode11Addon();
+	// This identifies one browser viewer, not the PTY session itself.
+	// The server uses it to keep per-tab restore and socket state while all tabs
+	// still share the same taskId backed PTY.
+	private readonly clientId = generateTerminalClientId();
 	private appearance: PersistentTerminalAppearance;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
@@ -334,7 +347,7 @@ class PersistentTerminal {
 		if (this.ioSocket) {
 			return;
 		}
-		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId));
+		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		ioSocket.binaryType = "arraybuffer";
 		ioSocket.addEventListener("message", (event) => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
@@ -385,7 +398,7 @@ class PersistentTerminal {
 	}
 
 	private connectControl(): void {
-		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId));
+		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {

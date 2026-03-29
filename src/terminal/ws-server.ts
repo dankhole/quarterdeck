@@ -12,6 +12,7 @@ import type { TerminalSessionService } from "./terminal-session-service";
 interface TerminalWebSocketConnectionContext {
 	taskId: string;
 	workspaceId: string;
+	clientId: string;
 	terminalManager: TerminalSessionService;
 }
 
@@ -36,13 +37,23 @@ interface IoOutputState {
 	dispose: () => void;
 }
 
-interface TerminalStreamState {
+// One PTY session can have many browser viewers at the same time.
+// Keep shared stream ownership at the task level, then isolate restore,
+// buffering, and socket replacement per clientId so one tab cannot evict another.
+interface TerminalViewerState {
+	clientId: string;
 	pendingOutputChunks: Buffer[];
 	restoreComplete: boolean;
-	controlConnected: boolean;
 	ioState: IoOutputState | null;
-	detachOutputListener: (() => void) | null;
+	ioSocket: WebSocket | null;
+	controlSocket: WebSocket | null;
+	detachControlListener: (() => void) | null;
 	flushPendingOutput: () => void;
+}
+
+interface TerminalStreamState {
+	viewers: Map<string, TerminalViewerState>;
+	detachOutputListener: (() => void) | null;
 }
 
 const OUTPUT_BATCH_INTERVAL_MS = 4;
@@ -93,6 +104,10 @@ function buildConnectionKey(workspaceId: string, taskId: string): string {
 	return `${workspaceId}:${taskId}`;
 }
 
+function getTerminalClientId(url: URL): string {
+	return url.searchParams.get("clientId")?.trim() || "legacy";
+}
+
 export function createTerminalWebSocketBridge({
 	server,
 	resolveTerminalManager,
@@ -118,11 +133,36 @@ export function createTerminalWebSocketBridge({
 			return existing;
 		}
 		const created: TerminalStreamState = {
+			viewers: new Map(),
+			detachOutputListener: null,
+		};
+		terminalStreamStates.set(connectionKey, created);
+		return created;
+	};
+
+	const cleanupTerminalStreamStateIfUnused = (connectionKey: string): void => {
+		const state = terminalStreamStates.get(connectionKey);
+		if (!state || state.viewers.size > 0) {
+			return;
+		}
+		state.detachOutputListener?.();
+		state.detachOutputListener = null;
+		terminalStreamStates.delete(connectionKey);
+	};
+
+	const getOrCreateViewerState = (streamState: TerminalStreamState, clientId: string): TerminalViewerState => {
+		const existing = streamState.viewers.get(clientId);
+		if (existing) {
+			return existing;
+		}
+		const created: TerminalViewerState = {
+			clientId,
 			pendingOutputChunks: [],
 			restoreComplete: false,
-			controlConnected: false,
 			ioState: null,
-			detachOutputListener: null,
+			ioSocket: null,
+			controlSocket: null,
+			detachControlListener: null,
 			flushPendingOutput: () => {
 				if (!created.restoreComplete || !created.ioState || created.pendingOutputChunks.length === 0) {
 					return;
@@ -133,18 +173,22 @@ export function createTerminalWebSocketBridge({
 				created.pendingOutputChunks = [];
 			},
 		};
-		terminalStreamStates.set(connectionKey, created);
+		streamState.viewers.set(clientId, created);
 		return created;
 	};
 
-	const cleanupTerminalStreamStateIfUnused = (connectionKey: string): void => {
-		const state = terminalStreamStates.get(connectionKey);
-		if (!state || state.controlConnected || state.ioState) {
+	const cleanupViewerStateIfUnused = (
+		connectionKey: string,
+		streamState: TerminalStreamState,
+		viewerState: TerminalViewerState,
+	): void => {
+		if (viewerState.ioSocket || viewerState.controlSocket) {
 			return;
 		}
-		state.detachOutputListener?.();
-		state.detachOutputListener = null;
-		terminalStreamStates.delete(connectionKey);
+		viewerState.detachControlListener?.();
+		viewerState.detachControlListener = null;
+		streamState.viewers.delete(viewerState.clientId);
+		cleanupTerminalStreamStateIfUnused(connectionKey);
 	};
 
 	const createIoOutputState = (
@@ -273,6 +317,30 @@ export function createTerminalWebSocketBridge({
 		};
 	};
 
+	const ensureOutputListener = (
+		streamState: TerminalStreamState,
+		taskId: string,
+		terminalManager: TerminalSessionService,
+	): void => {
+		if (streamState.detachOutputListener) {
+			return;
+		}
+		// Attach PTY output once per task session and fan it out to every viewer.
+		// Earlier code attached per websocket, which made the same task effectively
+		// last-viewer-wins across tabs.
+		streamState.detachOutputListener = terminalManager.attach(taskId, {
+			onOutput: (chunk) => {
+				for (const viewerState of streamState.viewers.values()) {
+					if (viewerState.restoreComplete && viewerState.ioState) {
+						viewerState.ioState.enqueueOutput(chunk);
+						continue;
+					}
+					viewerState.pendingOutputChunks.push(chunk);
+				}
+			},
+		});
+	};
+
 	server.on("upgrade", (request, socket, head) => {
 		try {
 			(socket as Socket).setNoDelay(true);
@@ -299,8 +367,9 @@ export function createTerminalWebSocketBridge({
 			}
 
 			const targetServer = isIoRequest ? ioServer : controlServer;
+			const clientId = getTerminalClientId(url);
 			targetServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-				targetServer.emit("connection", ws, { taskId, workspaceId, terminalManager });
+				targetServer.emit("connection", ws, { taskId, workspaceId, clientId, terminalManager });
 			});
 		} catch {
 			socket.destroy();
@@ -310,13 +379,21 @@ export function createTerminalWebSocketBridge({
 	ioServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
 		const workspaceId = (context as TerminalWebSocketConnectionContext).workspaceId;
+		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(workspaceId, taskId);
 		terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
-		streamState.ioState?.dispose();
-		streamState.ioState = createIoOutputState(ws, taskId, terminalManager);
-		streamState.flushPendingOutput();
+		const viewerState = getOrCreateViewerState(streamState, clientId);
+		const previousIoSocket = viewerState.ioSocket;
+		viewerState.ioState?.dispose();
+		viewerState.ioState = createIoOutputState(ws, taskId, terminalManager);
+		viewerState.ioSocket = ws;
+		viewerState.flushPendingOutput();
+		ensureOutputListener(streamState, taskId, terminalManager);
+		if (previousIoSocket && previousIoSocket !== ws) {
+			previousIoSocket.close(1000, "Replaced by newer terminal stream.");
+		}
 
 		ws.on("message", (rawMessage: RawData) => {
 			try {
@@ -331,35 +408,32 @@ export function createTerminalWebSocketBridge({
 		});
 
 		ws.on("close", () => {
-			if (streamState.ioState) {
-				streamState.ioState.dispose();
-				streamState.ioState = null;
+			if (viewerState.ioSocket !== ws) {
+				return;
 			}
-			cleanupTerminalStreamStateIfUnused(connectionKey);
+			viewerState.ioSocket = null;
+			viewerState.ioState?.dispose();
+			viewerState.ioState = null;
+			cleanupViewerStateIfUnused(connectionKey, streamState, viewerState);
 		});
 	});
 
 	controlServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
 		const workspaceId = (context as TerminalWebSocketConnectionContext).workspaceId;
+		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(workspaceId, taskId);
 		terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
-		streamState.restoreComplete = false;
-		streamState.controlConnected = true;
-		streamState.pendingOutputChunks = [];
-		streamState.detachOutputListener?.();
-		streamState.detachOutputListener = terminalManager.attach(taskId, {
-			onOutput: (chunk) => {
-				if (streamState.restoreComplete && streamState.ioState) {
-					streamState.ioState.enqueueOutput(chunk);
-					return;
-				}
-				streamState.pendingOutputChunks.push(chunk);
-			},
-		});
-		const detachControlListener = terminalManager.attach(taskId, {
+		const viewerState = getOrCreateViewerState(streamState, clientId);
+		const previousControlSocket = viewerState.controlSocket;
+		viewerState.restoreComplete = false;
+		viewerState.pendingOutputChunks = [];
+		viewerState.controlSocket = ws;
+		ensureOutputListener(streamState, taskId, terminalManager);
+		viewerState.detachControlListener?.();
+		viewerState.detachControlListener = terminalManager.attach(taskId, {
 			onState: (summary) => {
 				sendControlMessage(ws, {
 					type: "state",
@@ -373,6 +447,9 @@ export function createTerminalWebSocketBridge({
 				});
 			},
 		});
+		if (previousControlSocket && previousControlSocket !== ws) {
+			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
+		}
 
 		void terminalManager
 			.getRestoreSnapshot(taskId)
@@ -414,24 +491,24 @@ export function createTerminalWebSocketBridge({
 			}
 
 			if (message.type === "output_ack") {
-				streamState.ioState?.acknowledgeOutput(message.bytes);
+				viewerState.ioState?.acknowledgeOutput(message.bytes);
 				return;
 			}
 
 			if (message.type === "restore_complete") {
-				streamState.restoreComplete = true;
-				streamState.flushPendingOutput();
+				viewerState.restoreComplete = true;
+				viewerState.flushPendingOutput();
 			}
 		});
 
 		ws.on("close", () => {
-			detachControlListener?.();
-			streamState.controlConnected = false;
-			if (!streamState.ioState) {
-				streamState.detachOutputListener?.();
-				streamState.detachOutputListener = null;
+			if (viewerState.controlSocket !== ws) {
+				return;
 			}
-			cleanupTerminalStreamStateIfUnused(connectionKey);
+			viewerState.controlSocket = null;
+			viewerState.detachControlListener?.();
+			viewerState.detachControlListener = null;
+			cleanupViewerStateIfUnused(connectionKey, streamState, viewerState);
 		});
 	});
 
