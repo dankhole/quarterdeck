@@ -541,14 +541,15 @@ body.kb-dependency-link-mode {
 }
 
 .kb-diff-file-header {
+	position: sticky;
+	top: 0;
+	z-index: 10;
 	border-bottom: 1px solid var(--color-border);
 	font-size: 12px;
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
 }
 
 .kb-diff-file-header[aria-expanded="false"] {
-	border-bottom: none;
+	border-radius: var(--radius-md);
 }
 
 .kb-diff-inline-comment {
