@@ -53,6 +53,14 @@ interface TerminalViewerState {
 
 interface TerminalStreamState {
 	viewers: Map<string, TerminalViewerState>;
+	// There is one real terminal process, but many browser tabs can watch it.
+	// If one tab falls behind, we pause the shared PTY so it does not get flooded.
+	// We cannot let a faster tab resume on its own, because the slower tab is still behind.
+	// VS Code does the same basic thing for one terminal view by tracking unacknowledged
+	// output and pausing once it crosses a high watermark, then resuming below a low watermark.
+	// Our extra wrinkle is that one PTY can have many viewers, so we track every backpressured
+	// viewer here and only resume once the last slow viewer catches up or disconnects.
+	backpressuredViewerIds: Set<string>;
 	detachOutputListener: (() => void) | null;
 }
 
@@ -134,6 +142,7 @@ export function createTerminalWebSocketBridge({
 		}
 		const created: TerminalStreamState = {
 			viewers: new Map(),
+			backpressuredViewerIds: new Set(),
 			detachOutputListener: null,
 		};
 		terminalStreamStates.set(connectionKey, created);
@@ -193,6 +202,8 @@ export function createTerminalWebSocketBridge({
 
 	const createIoOutputState = (
 		ws: WebSocket,
+		streamState: TerminalStreamState,
+		clientId: string,
 		taskId: string,
 		terminalManager: TerminalSessionService,
 	): IoOutputState => {
@@ -201,6 +212,9 @@ export function createTerminalWebSocketBridge({
 		let lastOutputSentAt = 0;
 		let outputPaused = false;
 		let resumeCheckTimer: ReturnType<typeof setTimeout> | null = null;
+		// Same idea as VS Code terminal flow control: count output that has been sent
+		// but not yet acknowledged as committed by the terminal renderer. We also look
+		// at the websocket's own bufferedAmount so we catch both xterm lag and socket lag.
 		let unacknowledgedOutputBytes = 0;
 
 		const shouldPauseOutput = () =>
@@ -231,7 +245,10 @@ export function createTerminalWebSocketBridge({
 			if (canResumeOutput()) {
 				outputPaused = false;
 				clearResumeCheck();
-				terminalManager.resumeOutput(taskId);
+				streamState.backpressuredViewerIds.delete(clientId);
+				if (streamState.backpressuredViewerIds.size === 0) {
+					terminalManager.resumeOutput(taskId);
+				}
 				return;
 			}
 			scheduleResumeCheck();
@@ -257,7 +274,11 @@ export function createTerminalWebSocketBridge({
 			unacknowledgedOutputBytes += chunk.byteLength;
 			if (shouldPauseOutput()) {
 				outputPaused = true;
-				terminalManager.pauseOutput(taskId);
+				const previouslyPaused = streamState.backpressuredViewerIds.size > 0;
+				streamState.backpressuredViewerIds.add(clientId);
+				if (!previouslyPaused) {
+					terminalManager.pauseOutput(taskId);
+				}
 				scheduleResumeCheck();
 			}
 		};
@@ -310,7 +331,10 @@ export function createTerminalWebSocketBridge({
 				clearResumeCheck();
 				if (outputPaused) {
 					outputPaused = false;
-					terminalManager.resumeOutput(taskId);
+					streamState.backpressuredViewerIds.delete(clientId);
+					if (streamState.backpressuredViewerIds.size === 0) {
+						terminalManager.resumeOutput(taskId);
+					}
 				}
 				pendingOutputChunks = [];
 			},
@@ -387,7 +411,7 @@ export function createTerminalWebSocketBridge({
 		const viewerState = getOrCreateViewerState(streamState, clientId);
 		const previousIoSocket = viewerState.ioSocket;
 		viewerState.ioState?.dispose();
-		viewerState.ioState = createIoOutputState(ws, taskId, terminalManager);
+		viewerState.ioState = createIoOutputState(ws, streamState, clientId, taskId, terminalManager);
 		viewerState.ioSocket = ws;
 		viewerState.flushPendingOutput();
 		ensureOutputListener(streamState, taskId, terminalManager);

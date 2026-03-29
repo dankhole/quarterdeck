@@ -175,6 +175,24 @@ async function closeSocket(socket: WebSocket): Promise<void> {
 	await once(socket, "close");
 }
 
+async function waitForAssertion(assertion: () => void, timeoutMs = 250): Promise<void> {
+	const startedAt = Date.now();
+	let lastError: unknown = null;
+	while (Date.now() - startedAt < timeoutMs) {
+		try {
+			assertion();
+			return;
+		} catch (error) {
+			lastError = error;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
+	if (lastError) {
+		throw lastError;
+	}
+	assertion();
+}
+
 describe("createTerminalWebSocketBridge", () => {
 	let server: Server;
 	let bridge: TerminalWebSocketBridge;
@@ -243,6 +261,46 @@ describe("createTerminalWebSocketBridge", () => {
 
 		await expect(waitForIoMessage(ioSocketB)).resolves.toEqual(Buffer.from("world", "utf8"));
 
+		await closeSocket(ioSocketB.socket);
+		await closeSocket(controlSocketB.socket);
+	});
+
+	it("keeps the PTY paused until every backpressured viewer drains", async () => {
+		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-a`;
+		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-a`;
+		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-b`;
+		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-b`;
+
+		const ioSocketA = await openQueuedWebSocket(ioUrlA);
+		const controlSocketA = await openQueuedWebSocket(controlUrlA);
+		const ioSocketB = await openQueuedWebSocket(ioUrlB);
+		const controlSocketB = await openQueuedWebSocket(controlUrlB);
+
+		await waitForControlMessage(controlSocketA, (message) => message.type === "restore");
+		await waitForControlMessage(controlSocketB, (message) => message.type === "restore");
+		controlSocketA.socket.send(JSON.stringify({ type: "restore_complete" }));
+		controlSocketB.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+		const output = "x".repeat(120_000);
+		terminalManager.emitOutput(TASK_ID, output);
+
+		const outputA = await waitForIoMessage(ioSocketA);
+		const outputB = await waitForIoMessage(ioSocketB);
+		expect(outputA.byteLength).toBe(Buffer.byteLength(output));
+		expect(outputB.byteLength).toBe(Buffer.byteLength(output));
+		expect(terminalManager.pauseOutput).toHaveBeenCalledTimes(1);
+
+		controlSocketA.socket.send(JSON.stringify({ type: "output_ack", bytes: outputA.byteLength }));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(terminalManager.resumeOutput).not.toHaveBeenCalled();
+
+		controlSocketB.socket.send(JSON.stringify({ type: "output_ack", bytes: outputB.byteLength }));
+		await waitForAssertion(() => {
+			expect(terminalManager.resumeOutput).toHaveBeenCalledTimes(1);
+		});
+
+		await closeSocket(ioSocketA.socket);
+		await closeSocket(controlSocketA.socket);
 		await closeSocket(ioSocketB.socket);
 		await closeSocket(controlSocketB.socket);
 	});
