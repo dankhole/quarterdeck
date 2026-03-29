@@ -1,22 +1,28 @@
 import { spawn } from "node:child_process";
-import type { Stats } from "node:fs";
-import { access, open, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
-
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
 import { buildKanbanCommandParts } from "../core/kanban-command";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
 import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
 import type { RuntimeAppRouter } from "../trpc/app-router";
+import {
+	type CodexMappedHookEvent,
+	resolveCodexRolloutFinalMessageForCwd,
+	startCodexSessionWatcher,
+} from "./codex-hook-events";
+
+export {
+	createCodexWatcherState,
+	parseCodexEventLine,
+	resolveCodexRolloutFinalMessageForCwd,
+	startCodexSessionWatcher,
+} from "./codex-hook-events";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
-const CODEX_LOG_WAIT_ATTEMPTS = 200;
-const CODEX_LOG_WAIT_DELAY_MS = 50;
-const CODEX_LOG_POLL_INTERVAL_MS = 200;
 const MAX_ACTIVITY_TEXT_LENGTH = 200;
 
 interface HooksIngestArgs {
@@ -39,40 +45,6 @@ interface HookCommandMetadataOptionValues {
 interface CodexWrapperArgs {
 	realBinary: string;
 	agentArgs: string[];
-}
-
-interface CodexWatcherState {
-	lastTurnId: string;
-	lastApprovalId: string;
-	lastExecCallId: string;
-	lastActivityFingerprint: string;
-	approvalFallbackSeq: number;
-	offset: number;
-	remainder: string;
-	currentSessionScope: "unknown" | "root" | "descendant";
-}
-
-interface CodexEventPayload {
-	type?: unknown;
-	turn_id?: unknown;
-	id?: unknown;
-	approval_id?: unknown;
-	call_id?: unknown;
-	last_agent_message?: unknown;
-	message?: unknown;
-	command?: unknown;
-	item?: unknown;
-}
-
-interface CodexSessionLogLine {
-	dir?: unknown;
-	kind?: unknown;
-	msg?: unknown;
-	payload?: unknown;
-	turn_id?: unknown;
-	id?: unknown;
-	approval_id?: unknown;
-	call_id?: unknown;
 }
 
 function formatError(error: unknown): string {
@@ -99,12 +71,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 			clearTimeout(timeoutHandle);
 		}
 	}
-}
-
-async function sleep(ms: number): Promise<void> {
-	await new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
 }
 
 function parseHookEvent(value: string): RuntimeHookEvent {
@@ -493,405 +459,51 @@ function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookA
 	return args;
 }
 
-function getString(value: unknown): string {
-	return typeof value === "string" ? value : "";
+function notifyCodexSessionWatcherEvent(mapped: CodexMappedHookEvent): void {
+	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 }
 
-function parseCodexSessionLogLine(line: string): CodexSessionLogLine | null {
-	try {
-		const parsed = JSON.parse(line) as CodexSessionLogLine;
-		const dir = getString(parsed.dir);
-		const kind = getString(parsed.kind);
-		const hasStructuredMsg = Boolean(parsed.msg && typeof parsed.msg === "object" && !Array.isArray(parsed.msg));
-		const isCodexEventLine =
-			(kind === "codex_event" && (dir === "to_tui" || dir === "")) ||
-			(kind === "" && hasStructuredMsg) ||
-			(dir === "to_tui" && hasStructuredMsg);
-		if (!isCodexEventLine) {
-			return null;
-		}
-		return parsed;
-	} catch {
-		return null;
+async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Promise<HooksIngestArgs> {
+	if (args.event !== "to_review") {
+		return args;
 	}
-}
-
-function parseCodexEventPayload(line: CodexSessionLogLine): CodexEventPayload | null {
-	const payload = asRecord(line.payload);
-	if (payload) {
-		const payloadMsg = asRecord(payload.msg);
-		if (payloadMsg) {
-			return payloadMsg as CodexEventPayload;
-		}
-		if (typeof payload.type === "string") {
-			return payload as CodexEventPayload;
-		}
+	const metadata = args.metadata ?? {};
+	const source = metadata.source?.toLowerCase();
+	if (source !== "codex") {
+		return args;
+	}
+	const existingFinalMessage =
+		typeof metadata.finalMessage === "string" && metadata.finalMessage.trim().length > 0
+			? metadata.finalMessage
+			: null;
+	if (existingFinalMessage) {
+		return {
+			...args,
+			metadata: {
+				...metadata,
+				activityText: metadata.activityText ?? `Final: ${truncateText(existingFinalMessage, 140)}`,
+			},
+		};
 	}
 
-	if (line.msg && typeof line.msg === "object" && !Array.isArray(line.msg)) {
-		return line.msg as CodexEventPayload;
-	}
-	if (typeof line === "object" && line !== null && "type" in line) {
-		return line as CodexEventPayload;
-	}
-	return null;
-}
-
-function parseJsonString(value: string): Record<string, unknown> | null {
-	try {
-		const parsed = JSON.parse(value) as unknown;
-		return asRecord(parsed);
-	} catch {
-		return null;
-	}
-}
-
-function extractCodexCommandSnippet(message: CodexEventPayload, line: string): string | null {
-	const directCommand = pickFirstString([
-		extractJsonStringField(line, "command"),
-		extractJsonStringField(line, "cmd"),
-		message.command,
-	]);
-	if (directCommand) {
-		return directCommand;
+	const fallbackFinalMessage = await resolveCodexRolloutFinalMessageForCwd(cwd);
+	if (!fallbackFinalMessage) {
+		return {
+			...args,
+			metadata: {
+				...metadata,
+				activityText: metadata.activityText ?? "Waiting for review",
+			},
+		};
 	}
 
-	if (Array.isArray(message.command)) {
-		const commandText = message.command
-			.filter((part): part is string => typeof part === "string")
-			.join(" ")
-			.trim();
-		if (commandText) {
-			return commandText;
-		}
-	}
-
-	const item = asRecord(message.item);
-	if (item?.type === "function_call") {
-		const argsRaw = typeof item.arguments === "string" ? item.arguments : "";
-		const args = argsRaw ? parseJsonString(argsRaw) : null;
-		const cmd = args ? readStringField(args, "cmd") : null;
-		if (cmd) {
-			return cmd;
-		}
-	}
-
-	return null;
-}
-
-function pickFirstString(values: unknown[]): string {
-	for (const value of values) {
-		if (typeof value === "string" && value.trim()) {
-			return value;
-		}
-	}
-	return "";
-}
-
-function extractJsonStringField(line: string, field: string): string {
-	const pattern = new RegExp(`"${field}"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"`);
-	const match = line.match(pattern);
-	if (!match?.[1]) {
-		return "";
-	}
-	try {
-		return JSON.parse(`"${match[1]}"`) as string;
-	} catch {
-		return match[1];
-	}
-}
-
-function isCodexDescendantSession(message: unknown): boolean {
-	const messageRecord = asRecord(message);
-	const payload = messageRecord ? asRecord(messageRecord.payload) : null;
-	const source = payload ? asRecord(payload.source) : null;
-	const subagent = source ? asRecord(source.subagent) : null;
-	const threadSpawn = subagent ? asRecord(subagent.thread_spawn) : null;
-	return threadSpawn !== null;
-}
-
-export function createCodexWatcherState(): CodexWatcherState {
 	return {
-		lastTurnId: "",
-		lastApprovalId: "",
-		lastExecCallId: "",
-		lastActivityFingerprint: "",
-		approvalFallbackSeq: 0,
-		offset: 0,
-		remainder: "",
-		currentSessionScope: "unknown",
-	};
-}
-
-export function parseCodexEventLine(
-	line: string,
-	state: CodexWatcherState,
-): { event: RuntimeHookEvent; metadata?: Partial<RuntimeTaskHookActivity> } | null {
-	const parsed = parseCodexSessionLogLine(line);
-	if (!parsed) {
-		return null;
-	}
-	const message = parseCodexEventPayload(parsed);
-	if (!message) {
-		return null;
-	}
-	const type = getString(message?.type);
-	if (!type) {
-		return null;
-	}
-	const normalizedType = type.toLowerCase();
-	if (normalizedType === "session_meta") {
-		state.currentSessionScope = isCodexDescendantSession(message) ? "descendant" : "root";
-		return null;
-	}
-	if (state.currentSessionScope === "descendant") {
-		if (normalizedType === "task_complete" || normalizedType === "turn_aborted") {
-			state.currentSessionScope = "unknown";
-		}
-		return null;
-	}
-	const command = extractCodexCommandSnippet(message, line);
-	const messageText = typeof message.message === "string" ? normalizeWhitespace(message.message) : "";
-	const lastAgentMessage =
-		typeof message.last_agent_message === "string" ? normalizeWhitespace(message.last_agent_message) : "";
-
-	if (normalizedType === "task_started" || normalizedType === "turn_started" || normalizedType === "turn_begin") {
-		const turnId = pickFirstString([
-			extractJsonStringField(line, "turn_id"),
-			message?.turn_id,
-			parsed.turn_id,
-			normalizedType,
-		]);
-		if (turnId !== state.lastTurnId) {
-			state.lastTurnId = turnId;
-			return {
-				event: "to_in_progress",
-				metadata: {
-					source: "codex",
-					activityText: command ? `Working on task: ${truncateText(command, 120)}` : "Working on task",
-					hookEventName: type,
-				},
-			};
-		}
-		return null;
-	}
-
-	if (normalizedType === "raw_response_item") {
-		const item = asRecord(message.item);
-		if (item?.type === "function_call") {
-			const callId = readStringField(item, "call_id") ?? pickFirstString([message.call_id, parsed.call_id]);
-			const name = readStringField(item, "name") ?? "tool";
-			const fingerprint = callId || `${name}:${command ?? ""}`;
-			if (fingerprint === state.lastActivityFingerprint) {
-				return null;
-			}
-			state.lastActivityFingerprint = fingerprint;
-			return {
-				event: "activity",
-				metadata: {
-					source: "codex",
-					hookEventName: type,
-					activityText: command
-						? `Calling ${name}: ${truncateText(command, 120)}`
-						: `Calling ${truncateText(name, 48)}`,
-				},
-			};
-		}
-		return null;
-	}
-
-	if (normalizedType === "agent_message" && messageText) {
-		const fingerprint = `${normalizedType}:${truncateText(messageText, 120)}`;
-		if (fingerprint === state.lastActivityFingerprint) {
-			return null;
-		}
-		state.lastActivityFingerprint = fingerprint;
-		return {
-			event: "activity",
-			metadata: {
-				source: "codex",
-				hookEventName: type,
-				activityText: `Agent: ${truncateText(messageText, 140)}`,
-			},
-		};
-	}
-
-	if (normalizedType === "task_complete") {
-		const finalText = lastAgentMessage || messageText;
-		return {
-			event: "to_review",
-			metadata: {
-				source: "codex",
-				hookEventName: type,
-				activityText: finalText ? `Final: ${truncateText(finalText, 140)}` : undefined,
-				finalMessage: finalText || undefined,
-			},
-		};
-	}
-
-	if (
-		normalizedType.endsWith("_approval_request") ||
-		normalizedType === "approval_request" ||
-		normalizedType === "permission_request" ||
-		normalizedType === "approval_requested"
-	) {
-		let approvalId = pickFirstString([
-			extractJsonStringField(line, "id"),
-			extractJsonStringField(line, "approval_id"),
-			extractJsonStringField(line, "call_id"),
-			message?.id,
-			message?.approval_id,
-			message?.call_id,
-			parsed.id,
-			parsed.approval_id,
-			parsed.call_id,
-		]);
-		if (!approvalId) {
-			state.approvalFallbackSeq += 1;
-			approvalId = `approval_request_${state.approvalFallbackSeq}`;
-		}
-		if (approvalId !== state.lastApprovalId) {
-			state.lastApprovalId = approvalId;
-			return {
-				event: "to_review",
-				metadata: {
-					source: "codex",
-					activityText: "Waiting for approval",
-					hookEventName: type,
-				},
-			};
-		}
-		return null;
-	}
-
-	if (normalizedType === "exec_command_begin" || normalizedType === "exec_command_start") {
-		const callId = pickFirstString([extractJsonStringField(line, "call_id"), message?.call_id, parsed.call_id]);
-		if (!callId || callId !== state.lastExecCallId) {
-			state.lastExecCallId = callId;
-			return {
-				event: "activity",
-				metadata: {
-					source: "codex",
-					activityText: command ? `Running command: ${truncateText(command, 120)}` : "Running command",
-					hookEventName: type,
-				},
-			};
-		}
-		return null;
-	}
-
-	if (normalizedType === "exec_command_end") {
-		const callId = pickFirstString([extractJsonStringField(line, "call_id"), message.call_id, parsed.call_id]);
-		const status = pickFirstString([
-			extractJsonStringField(line, "status"),
-			(message as Record<string, unknown>).status,
-		]);
-		const failed = status.toLowerCase() === "failed";
-		const fingerprint = `${normalizedType}:${callId}:${status}`;
-		if (fingerprint === state.lastActivityFingerprint) {
-			return null;
-		}
-		state.lastActivityFingerprint = fingerprint;
-		return {
-			event: "activity",
-			metadata: {
-				source: "codex",
-				hookEventName: type,
-				activityText: failed
-					? command
-						? `Command failed: ${truncateText(command, 120)}`
-						: "Command failed"
-					: command
-						? `Command finished: ${truncateText(command, 120)}`
-						: "Command finished",
-			},
-		};
-	}
-
-	if (normalizedType.includes("tool") || normalizedType.includes("exec") || normalizedType.includes("command")) {
-		const fingerprint = pickFirstString([
-			extractJsonStringField(line, "call_id"),
-			extractJsonStringField(line, "id"),
-			type,
-		]);
-		if (fingerprint === state.lastActivityFingerprint) {
-			return null;
-		}
-		state.lastActivityFingerprint = fingerprint;
-		return {
-			event: "activity",
-			metadata: {
-				source: "codex",
-				activityText: command
-					? `Codex ${type}: ${truncateText(command, 120)}`
-					: `Codex activity: ${truncateText(type, 64)}`,
-				hookEventName: type,
-			},
-		};
-	}
-
-	return null;
-}
-
-async function waitForFile(path: string): Promise<boolean> {
-	for (let attempt = 0; attempt < CODEX_LOG_WAIT_ATTEMPTS; attempt += 1) {
-		try {
-			await access(path);
-			return true;
-		} catch {
-			await sleep(CODEX_LOG_WAIT_DELAY_MS);
-		}
-	}
-	return false;
-}
-
-async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
-	const state = createCodexWatcherState();
-
-	const poll = async () => {
-		let fileStat: Stats;
-		try {
-			fileStat = await stat(logPath);
-		} catch {
-			return;
-		}
-		if (fileStat.size < state.offset) {
-			state.offset = 0;
-			state.remainder = "";
-		}
-		if (fileStat.size === state.offset) {
-			return;
-		}
-
-		let handle: Awaited<ReturnType<typeof open>> | null = null;
-		try {
-			handle = await open(logPath, "r");
-			const byteLength = fileStat.size - state.offset;
-			const buffer = Buffer.alloc(byteLength);
-			await handle.read(buffer, 0, byteLength, state.offset);
-			state.offset = fileStat.size;
-			const combined = state.remainder + buffer.toString("utf8");
-			const lines = combined.split(/\r?\n/);
-			state.remainder = lines.pop() ?? "";
-			for (const line of lines) {
-				const mapped = parseCodexEventLine(line, state);
-				if (mapped) {
-					spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
-				}
-			}
-		} catch {
-			// Ignore transient session log read errors.
-		} finally {
-			await handle?.close();
-		}
-	};
-
-	const timer = setInterval(() => {
-		void poll();
-	}, CODEX_LOG_POLL_INTERVAL_MS);
-	void poll();
-	return () => {
-		clearInterval(timer);
+		...args,
+		metadata: {
+			...metadata,
+			finalMessage: fallbackFinalMessage,
+			activityText: metadata.activityText ?? `Final: ${truncateText(fallbackFinalMessage, 140)}`,
+		},
 	};
 }
 
@@ -902,7 +514,8 @@ async function runHooksNotify(
 ): Promise<void> {
 	try {
 		const stdinPayload = await readStdinText();
-		const args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
+		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
+		const args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 		await ingestHookEvent(args);
 	} catch {
 		// Best effort only.
@@ -971,11 +584,20 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
-export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessionLog: boolean): string[] {
+export function buildCodexWrapperChildArgs(agentArgs: string[]): string[] {
 	const childArgs = [...agentArgs];
-	if (shouldWatchSessionLog) {
+	const hasNotifyOverride = childArgs.some((arg, index) => {
+		if (arg === "-c" || arg === "--config") {
+			const next = childArgs[index + 1];
+			return typeof next === "string" && next.startsWith("notify=");
+		}
+		return arg.startsWith("-cnotify=") || arg.startsWith("--config=notify=");
+	});
+	if (hasNotifyOverride) {
 		return childArgs;
 	}
+	// Session log formats can change across Codex versions. Always wire legacy notify
+	// so task completion still transitions to review when watcher parsing misses events.
 	const reviewNotifyCommandParts = buildKanbanCommandParts([
 		"hooks",
 		"notify",
@@ -993,11 +615,10 @@ export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessi
 export function buildCodexWrapperSpawn(
 	realBinary: string,
 	agentArgs: string[],
-	shouldWatchSessionLog: boolean,
 	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = process.env,
 ): { binary: string; args: string[] } {
-	const childArgs = buildCodexWrapperChildArgs(agentArgs, shouldWatchSessionLog);
+	const childArgs = buildCodexWrapperChildArgs(agentArgs);
 	if (!shouldUseWindowsCmdLaunch(realBinary, platform, env)) {
 		return {
 			binary: realBinary,
@@ -1013,7 +634,8 @@ export function buildCodexWrapperSpawn(
 async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise<void> {
 	const childEnv: NodeJS.ProcessEnv = { ...process.env };
 	let shuttingDown = false;
-	let stopWatcher = () => {};
+	let stopWatcher: () => Promise<void> = async () => {};
+	let watcherStartPromise: Promise<void> | null = null;
 
 	let shouldWatchSessionLog = false;
 	try {
@@ -1033,20 +655,27 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		}
 		const sessionLogPath = childEnv.CODEX_TUI_SESSION_LOG_PATH;
 		if (sessionLogPath) {
-			void (async () => {
-				const exists = await waitForFile(sessionLogPath);
-				if (!exists || shuttingDown) {
+			watcherStartPromise = (async () => {
+				const startedStopWatcher = await startCodexSessionWatcher(
+					sessionLogPath,
+					notifyCodexSessionWatcherEvent,
+					undefined,
+					{
+						cwd: process.cwd(),
+					},
+				);
+				if (shuttingDown) {
+					await startedStopWatcher();
 					return;
 				}
-				stopWatcher = await startCodexSessionWatcher(sessionLogPath);
-				if (shuttingDown) {
-					stopWatcher();
-				}
-			})();
+				stopWatcher = startedStopWatcher;
+			})().catch(() => {
+				// Best effort only.
+			});
 		}
 	}
 
-	const childLaunch = buildCodexWrapperSpawn(wrapperArgs.realBinary, wrapperArgs.agentArgs, shouldWatchSessionLog);
+	const childLaunch = buildCodexWrapperSpawn(wrapperArgs.realBinary, wrapperArgs.agentArgs);
 	const child = spawn(childLaunch.binary, childLaunch.args, {
 		stdio: "inherit",
 		env: childEnv,
@@ -1068,23 +697,33 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 	process.on("SIGINT", onSigint);
 	process.on("SIGTERM", onSigterm);
 
-	const cleanup = () => {
+	const cleanup = async () => {
 		shuttingDown = true;
-		stopWatcher();
+		await watcherStartPromise;
+		await stopWatcher();
 		process.off("SIGINT", onSigint);
 		process.off("SIGTERM", onSigterm);
 	};
 
 	await new Promise<void>((resolve) => {
+		let finished = false;
+		const finish = (exitCode: number) => {
+			if (finished) {
+				return;
+			}
+			finished = true;
+			void (async () => {
+				await cleanup();
+				process.exitCode = exitCode;
+				resolve();
+			})();
+		};
+
 		child.on("error", () => {
-			cleanup();
-			process.exitCode = 1;
-			resolve();
+			finish(1);
 		});
 		child.on("exit", (code) => {
-			cleanup();
-			process.exitCode = code ?? 1;
-			resolve();
+			finish(code ?? 1);
 		});
 	});
 }
@@ -1097,7 +736,8 @@ async function runHooksIngest(
 	let args: HooksIngestArgs;
 	try {
 		const stdinPayload = await readStdinText();
-		args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
+		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
+		args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 	} catch (error) {
 		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;

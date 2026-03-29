@@ -10,6 +10,14 @@ function createCodexLogLine(message: Record<string, unknown>): string {
 	});
 }
 
+function createCodexOpLine(payload: Record<string, unknown>): string {
+	return JSON.stringify({
+		dir: "from_tui",
+		kind: "op",
+		payload,
+	});
+}
+
 describe("parseCodexEventLine", () => {
 	it("keeps handling root events when no session metadata is present", () => {
 		const state = createCodexWatcherState();
@@ -33,7 +41,7 @@ describe("parseCodexEventLine", () => {
 		});
 	});
 
-	it("omits the waiting placeholder when codex completes without final text", () => {
+	it("marks waiting for review when codex completes without final text", () => {
 		const state = createCodexWatcherState();
 
 		const event = parseCodexEventLine(
@@ -48,6 +56,7 @@ describe("parseCodexEventLine", () => {
 			metadata: {
 				source: "codex",
 				hookEventName: "task_complete",
+				activityText: "Waiting for review",
 				finalMessage: undefined,
 			},
 		});
@@ -134,6 +143,27 @@ describe("parseCodexEventLine", () => {
 				hookEventName: "task_complete",
 				activityText: "Final: Root complete",
 				finalMessage: "Root complete",
+			},
+		});
+	});
+
+	it("maps user_turn operations in modern session logs to in-progress", () => {
+		const state = createCodexWatcherState();
+
+		const event = parseCodexEventLine(
+			createCodexOpLine({
+				type: "user_turn",
+				items: [{ type: "text", text: "continue" }],
+			}),
+			state,
+		);
+
+		expect(event).toEqual({
+			event: "to_in_progress",
+			metadata: {
+				source: "codex",
+				hookEventName: "user_turn",
+				activityText: "Resumed after user input",
 			},
 		});
 	});
