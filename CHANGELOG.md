@@ -2,7 +2,10 @@
 
 ## [0.1.51]
 
+- Task terminals now support multiple simultaneous viewers, so opening the same task in several browser tabs no longer causes disconnections
 - Terminal TUI state is now preserved across reconnects, so you no longer lose your terminal view when the connection drops and re-establishes
+- Fixed Codex CLI content disappearing or rendering incorrectly -- PTY sessions are now fully server-side, so you can refresh the page, switch between tasks, and unmount terminals without losing any output
+- Fixed home sidebar terminal sessions not reconnecting after navigation
 - Switched to esbuild for faster builds
 - Claude agent hyperlinks now render correctly in Kanban terminals
 - Fixed screen flickering and unnecessary polling when viewing trashed tasks
