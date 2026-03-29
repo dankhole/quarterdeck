@@ -19,6 +19,47 @@ function createCodexOpLine(payload: Record<string, unknown>): string {
 }
 
 describe("parseCodexEventLine", () => {
+	it("keeps full codex activity text for long agent and final messages", () => {
+		const state = createCodexWatcherState();
+		const longAgentMessage =
+			"This is a very long codex commentary message that should remain intact in the activity metadata without truncation when shown in the task card preview.";
+		const longFinalMessage =
+			"This is a very long final response that should remain intact in the activity metadata so expanding the task card preview can reveal the complete text.";
+
+		const activityEvent = parseCodexEventLine(
+			createCodexLogLine({
+				type: "agent_message",
+				message: longAgentMessage,
+			}),
+			state,
+		);
+		const reviewEvent = parseCodexEventLine(
+			createCodexLogLine({
+				type: "task_complete",
+				last_agent_message: longFinalMessage,
+			}),
+			state,
+		);
+
+		expect(activityEvent).toEqual({
+			event: "activity",
+			metadata: {
+				source: "codex",
+				hookEventName: "agent_message",
+				activityText: `Agent: ${longAgentMessage}`,
+			},
+		});
+		expect(reviewEvent).toEqual({
+			event: "to_review",
+			metadata: {
+				source: "codex",
+				hookEventName: "task_complete",
+				activityText: `Final: ${longFinalMessage}`,
+				finalMessage: longFinalMessage,
+			},
+		});
+	});
+
 	it("keeps handling root events when no session metadata is present", () => {
 		const state = createCodexWatcherState();
 

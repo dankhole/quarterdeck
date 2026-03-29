@@ -226,7 +226,7 @@ function extractRolloutCommandFromArgsString(argsRaw: string | null): string | n
 		return null;
 	}
 	const command = readStringField(args, "cmd") ?? readStringField(args, "command") ?? readStringField(args, "query");
-	return command ? truncateText(command, 120) : null;
+	return command || null;
 }
 
 function extractRolloutCommandFromPayload(payload: Record<string, unknown>): string | null {
@@ -239,7 +239,7 @@ function extractRolloutCommandFromPayload(payload: Record<string, unknown>): str
 			}
 			const parsedCommand = readStringField(parsedItem, "cmd");
 			if (parsedCommand) {
-				return truncateText(parsedCommand, 120);
+				return parsedCommand;
 			}
 		}
 	}
@@ -250,18 +250,18 @@ function extractRolloutCommandFromPayload(payload: Record<string, unknown>): str
 		if (commandParts.length >= 3 && commandParts[1] === "-lc") {
 			const shellCommand = normalizeWhitespace(commandParts[2] ?? "");
 			if (shellCommand) {
-				return truncateText(shellCommand, 120);
+				return shellCommand;
 			}
 		}
 		const combined = normalizeWhitespace(commandParts.join(" "));
 		if (combined) {
-			return truncateText(combined, 120);
+			return combined;
 		}
 	}
 
 	const command =
 		readStringField(payload, "cmd") ?? readStringField(payload, "command") ?? readStringField(payload, "query");
-	return command ? truncateText(command, 120) : null;
+	return command || null;
 }
 
 export async function resolveCodexRolloutFinalMessageForCwd(
@@ -386,7 +386,7 @@ function mapCodexRolloutActivityLine(line: string): { mapped: CodexMappedHookEve
 						metadata: {
 							source: "codex",
 							hookEventName: payloadType,
-							activityText: `Final: ${truncateText(message, 140)}`,
+							activityText: `Final: ${message}`,
 							finalMessage: message,
 						},
 					},
@@ -400,7 +400,7 @@ function mapCodexRolloutActivityLine(line: string): { mapped: CodexMappedHookEve
 						metadata: {
 							source: "codex",
 							hookEventName: payloadType,
-							activityText: `Agent: ${truncateText(message, 140)}`,
+							activityText: `Agent: ${message}`,
 						},
 					},
 				};
@@ -416,7 +416,7 @@ function mapCodexRolloutActivityLine(line: string): { mapped: CodexMappedHookEve
 					metadata: {
 						source: "codex",
 						hookEventName: payloadType,
-						activityText: finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review",
+						activityText: finalMessage ? `Final: ${finalMessage}` : "Waiting for review",
 						finalMessage: finalMessage ?? undefined,
 					},
 				},
@@ -479,7 +479,7 @@ function mapCodexRolloutActivityLine(line: string): { mapped: CodexMappedHookEve
 					metadata: {
 						source: "codex",
 						hookEventName: payloadType,
-						activityText: command ? `Calling ${name}: ${command}` : `Calling ${truncateText(name, 48)}`,
+						activityText: command ? `Calling ${name}: ${command}` : `Calling ${name}`,
 					},
 				},
 			};
@@ -666,7 +666,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 				event: "to_in_progress",
 				metadata: {
 					source: "codex",
-					activityText: command ? `Working on task: ${truncateText(command, 120)}` : "Working on task",
+					activityText: command ? `Working on task: ${command}` : "Working on task",
 					hookEventName: type,
 				},
 			};
@@ -700,9 +700,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 				metadata: {
 					source: "codex",
 					hookEventName: type,
-					activityText: command
-						? `Calling ${name}: ${truncateText(command, 120)}`
-						: `Calling ${truncateText(name, 48)}`,
+					activityText: command ? `Calling ${name}: ${command}` : `Calling ${name}`,
 				},
 			};
 		}
@@ -720,7 +718,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 			metadata: {
 				source: "codex",
 				hookEventName: type,
-				activityText: `Agent: ${truncateText(messageText, 140)}`,
+				activityText: `Agent: ${messageText}`,
 			},
 		};
 	}
@@ -732,7 +730,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 			metadata: {
 				source: "codex",
 				hookEventName: type,
-				activityText: finalText ? `Final: ${truncateText(finalText, 140)}` : "Waiting for review",
+				activityText: finalText ? `Final: ${finalText}` : "Waiting for review",
 				finalMessage: finalText || undefined,
 			},
 		};
@@ -781,7 +779,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 				event: "activity",
 				metadata: {
 					source: "codex",
-					activityText: command ? `Running command: ${truncateText(command, 120)}` : "Running command",
+					activityText: command ? `Running command: ${command}` : "Running command",
 					hookEventName: type,
 				},
 			};
@@ -808,10 +806,10 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 				hookEventName: type,
 				activityText: failed
 					? command
-						? `Command failed: ${truncateText(command, 120)}`
+						? `Command failed: ${command}`
 						: "Command failed"
 					: command
-						? `Command finished: ${truncateText(command, 120)}`
+						? `Command finished: ${command}`
 						: "Command finished",
 			},
 		};
@@ -831,9 +829,7 @@ export function parseCodexEventLine(line: string, state: CodexWatcherState): Cod
 			event: "activity",
 			metadata: {
 				source: "codex",
-				activityText: command
-					? `Codex ${type}: ${truncateText(command, 120)}`
-					: `Codex activity: ${truncateText(type, 64)}`,
+				activityText: command ? `Codex ${type}: ${command}` : `Codex activity: ${type}`,
 				hookEventName: type,
 			},
 		};

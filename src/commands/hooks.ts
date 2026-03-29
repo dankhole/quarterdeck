@@ -23,7 +23,6 @@ export {
 } from "./codex-hook-events";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
-const MAX_ACTIVITY_TEXT_LENGTH = 200;
 
 interface HooksIngestArgs {
 	event: RuntimeHookEvent;
@@ -84,13 +83,6 @@ function normalizeWhitespace(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
-function truncateText(value: string, maxLength: number): string {
-	if (value.length <= maxLength) {
-		return value;
-	}
-	return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return null;
@@ -141,22 +133,22 @@ function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): Par
 	const source = options.source;
 
 	if (activityText) {
-		metadata.activityText = truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH);
+		metadata.activityText = normalizeWhitespace(activityText);
 	}
 	if (toolName) {
-		metadata.toolName = truncateText(normalizeWhitespace(toolName), 120);
+		metadata.toolName = normalizeWhitespace(toolName);
 	}
 	if (finalMessage) {
 		metadata.finalMessage = normalizeWhitespace(finalMessage);
 	}
 	if (hookEventName) {
-		metadata.hookEventName = truncateText(normalizeWhitespace(hookEventName), 120);
+		metadata.hookEventName = normalizeWhitespace(hookEventName);
 	}
 	if (notificationType) {
-		metadata.notificationType = truncateText(normalizeWhitespace(notificationType), 120);
+		metadata.notificationType = normalizeWhitespace(notificationType);
 	}
 	if (source) {
-		metadata.source = truncateText(normalizeWhitespace(source), 64);
+		metadata.source = normalizeWhitespace(source);
 	}
 
 	return metadata;
@@ -204,7 +196,7 @@ function describeToolOperation(toolName: string | null, toolInput: Record<string
 		readStringField(toolInput, "query") ??
 		readStringField(toolInput, "description");
 	if (command) {
-		return `${toolName}: ${truncateText(command, 120)}`;
+		return `${toolName}: ${command}`;
 	}
 
 	const filePath =
@@ -212,7 +204,7 @@ function describeToolOperation(toolName: string | null, toolInput: Record<string
 		readStringField(toolInput, "filePath") ??
 		readStringField(toolInput, "path");
 	if (filePath) {
-		return `${toolName}: ${truncateText(filePath, 120)}`;
+		return `${toolName}: ${filePath}`;
 	}
 
 	return toolName;
@@ -255,12 +247,12 @@ function inferActivityText(
 	if (normalizedHookEvent === "posttoolusefailure") {
 		const error = payload ? readStringField(payload, "error") : null;
 		if (toolOperation && error) {
-			return `Failed ${toolOperation}: ${truncateText(error, 100)}`;
+			return `Failed ${toolOperation}: ${error}`;
 		}
 		if (toolOperation) {
 			return `Failed ${toolOperation}`;
 		}
-		return error ? `Tool failed: ${truncateText(error, 100)}` : "Tool failed";
+		return error ? `Tool failed: ${error}` : "Tool failed";
 	}
 	if (normalizedHookEvent === "permissionrequest") {
 		return "Waiting for approval";
@@ -273,10 +265,10 @@ function inferActivityText(
 		normalizedHookEvent === "subagentstop" ||
 		normalizedHookEvent === "afteragent"
 	) {
-		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : null;
+		return finalMessage ? `Final: ${finalMessage}` : null;
 	}
 	if (normalizedHookEvent === "taskcomplete") {
-		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : null;
+		return finalMessage ? `Final: ${finalMessage}` : null;
 	}
 
 	if (notificationType === "permission_prompt" || notificationType === "permission.asked") {
@@ -349,27 +341,12 @@ function normalizeHookMetadata(
 		toolName: flagMetadata.toolName ?? toolName ?? null,
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage: flagMetadata.finalMessage ?? (finalMessage ? normalizeWhitespace(finalMessage) : null),
-		activityText:
-			flagMetadata.activityText ??
-			(activityText ? truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH) : null),
+		activityText: flagMetadata.activityText ?? (activityText ? normalizeWhitespace(activityText) : null),
 	};
 
 	const hasValue = Object.values(merged).some((value) => typeof value === "string" && value.trim().length > 0);
 	if (!hasValue) {
 		return undefined;
-	}
-
-	if (typeof merged.source === "string") {
-		merged.source = truncateText(merged.source, 64);
-	}
-	if (typeof merged.hookEventName === "string") {
-		merged.hookEventName = truncateText(merged.hookEventName, 120);
-	}
-	if (typeof merged.toolName === "string") {
-		merged.toolName = truncateText(merged.toolName, 120);
-	}
-	if (typeof merged.notificationType === "string") {
-		merged.notificationType = truncateText(merged.notificationType, 120);
 	}
 
 	return merged;
@@ -481,7 +458,7 @@ async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Pr
 			...args,
 			metadata: {
 				...metadata,
-				activityText: metadata.activityText ?? `Final: ${truncateText(existingFinalMessage, 140)}`,
+				activityText: metadata.activityText ?? `Final: ${existingFinalMessage}`,
 			},
 		};
 	}
@@ -502,7 +479,7 @@ async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Pr
 		metadata: {
 			...metadata,
 			finalMessage: fallbackFinalMessage,
-			activityText: metadata.activityText ?? `Final: ${truncateText(fallbackFinalMessage, 140)}`,
+			activityText: metadata.activityText ?? `Final: ${fallbackFinalMessage}`,
 		},
 	};
 }
