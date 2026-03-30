@@ -36,12 +36,12 @@ import {
 	setOrCreateAssistantMessage,
 	updateSummary,
 } from "./cline-session-state";
-import { SDK_DEFAULT_MODEL_ID, SDK_DEFAULT_PROVIDER_ID } from "./sdk-provider-boundary";
 import {
 	type ClineRuntimeSetupLease,
 	type ClineWatcherRegistry,
 	createClineWatcherRegistry,
 } from "./cline-watcher-registry";
+import { SDK_DEFAULT_MODEL_ID, SDK_DEFAULT_PROVIDER_ID } from "./sdk-provider-boundary";
 import {
 	type ClineSdkPersistedMessage,
 	type ClineSdkSlashCommand,
@@ -81,6 +81,7 @@ export interface ClineTaskSessionService {
 		images?: RuntimeTaskImage[],
 	): Promise<RuntimeTaskSessionSummary | null>;
 	reloadTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
+	clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
@@ -579,6 +580,31 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			this.emitTaskFailure(taskId, entry, "start", error);
 			return cloneSummary(entry.summary);
 		}
+	}
+
+	async clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
+		const existingEntry = this.messageRepository.getTaskEntry(taskId);
+		this.pendingTurnCancelTaskIds.delete(taskId);
+		await this.sessionRuntime.clearTaskSessions(taskId).catch(() => undefined);
+		if (!existingEntry) {
+			return null;
+		}
+
+		const clearedEntry: ClineTaskSessionEntry = {
+			summary: {
+				...createDefaultSummary(taskId),
+				mode: existingEntry.summary.mode,
+				workspacePath: existingEntry.summary.workspacePath,
+			},
+			messages: [],
+			activeAssistantMessageId: null,
+			activeReasoningMessageId: null,
+			toolMessageIdByToolCallId: new Map<string, string>(),
+			toolInputByToolCallId: new Map<string, unknown>(),
+		};
+		this.messageRepository.setTaskEntry(taskId, clearedEntry);
+		this.emitSummary(clearedEntry.summary);
+		return cloneSummary(clearedEntry.summary);
 	}
 
 	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {

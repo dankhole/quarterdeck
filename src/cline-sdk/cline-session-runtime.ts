@@ -27,6 +27,7 @@ interface ClineSessionHostBoundary {
 	send(input: Parameters<ClineSdkSessionHost["send"]>[0]): Promise<unknown>;
 	stop(sessionId: string): Promise<void>;
 	abort(sessionId: string): Promise<void>;
+	delete(sessionId: string): Promise<boolean>;
 	dispose(reason?: string): Promise<void>;
 	get(sessionId: string): Promise<ClineSdkSessionRecord | undefined>;
 	list(limit?: number): Promise<ClineSdkSessionRecord[]>;
@@ -98,6 +99,7 @@ export interface ClineSessionRuntime {
 	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
+	clearTaskSessions(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
 	readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	dispose(): Promise<void>;
@@ -293,6 +295,27 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		}
 		const sessionHost = await this.ensureSessionHost();
 		await sessionHost.abort(sessionId);
+		await this.releaseTaskMcpToolBundle(taskId);
+	}
+
+	async clearTaskSessions(taskId: string): Promise<void> {
+		const sessionHost = await this.ensureSessionHost();
+		const sessionIdPrefix = buildSessionIdPrefix(taskId);
+		const records = await sessionHost.list();
+		const matchingSessionIds = new Set(
+			records.filter((record) => record.sessionId.startsWith(sessionIdPrefix)).map((record) => record.sessionId),
+		);
+		const activeSessionId = this.sessionIdByTaskId.get(taskId);
+		if (activeSessionId) {
+			matchingSessionIds.add(activeSessionId);
+			await sessionHost.abort(activeSessionId).catch(() => undefined);
+		}
+
+		for (const sessionId of matchingSessionIds) {
+			await sessionHost.delete(sessionId).catch(() => false);
+			this.taskIdBySessionId.delete(sessionId);
+		}
+		this.clearTaskSessionBinding(taskId);
 		await this.releaseTaskMcpToolBundle(taskId);
 	}
 

@@ -56,6 +56,7 @@ type SendTaskSessionInputMock = Mock<
 >;
 type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
+type ClearTaskSessionsMock = Mock<(taskId: string) => Promise<void>>;
 type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
 type DisposeMock = Mock<() => Promise<void>>;
 
@@ -66,6 +67,7 @@ interface FakeClineSessionRuntimeController {
 	sendTaskSessionInputMock: SendTaskSessionInputMock;
 	stopTaskSessionMock: StopTaskSessionMock;
 	abortTaskSessionMock: AbortTaskSessionMock;
+	clearTaskSessionsMock: ClearTaskSessionsMock;
 	readPersistedTaskSessionMock: ReadPersistedTaskSessionMock;
 	disposeMock: DisposeMock;
 	createRuntime(options: CreateInMemoryClineSessionRuntimeOptions): ClineSessionRuntime;
@@ -123,6 +125,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 	const sendTaskSessionInputMock: SendTaskSessionInputMock = vi.fn(async () => ({}));
 	const stopTaskSessionMock: StopTaskSessionMock = vi.fn(async () => {});
 	const abortTaskSessionMock: AbortTaskSessionMock = vi.fn(async () => {});
+	const clearTaskSessionsMock: ClearTaskSessionsMock = vi.fn(async (_taskId: string) => {});
 	const readPersistedTaskSessionMock: ReadPersistedTaskSessionMock = vi.fn(async () => null);
 	const disposeMock: DisposeMock = vi.fn(async () => {});
 
@@ -226,6 +229,10 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 			async abortTaskSession(taskId: string): Promise<void> {
 				await abortTaskSessionMock(taskId);
 			},
+			async clearTaskSessions(taskId: string): Promise<void> {
+				await clearTaskSessionsMock(taskId);
+				clearTaskSessionBinding(taskId);
+			},
 			getTaskSessionId(taskId: string): string | null {
 				return sessionIdByTaskId.get(taskId) ?? null;
 			},
@@ -284,6 +291,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 		sendTaskSessionInputMock,
 		stopTaskSessionMock,
 		abortTaskSessionMock,
+		clearTaskSessionsMock,
 		readPersistedTaskSessionMock,
 		disposeMock,
 		createRuntime,
@@ -422,6 +430,20 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
 	});
 
+	it("includes built-in clear slash command when listing commands", async () => {
+		const { service } = createTrackedService();
+
+		const commands = await service.listSlashCommands("/tmp/worktree");
+
+		expect(commands).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: "clear",
+				}),
+			]),
+		);
+	});
+
 	it("reuses one runtime setup per workspace across services when sharing a watcher registry", async () => {
 		const runtimeA = createFakeClineSessionRuntime();
 		const runtimeB = createFakeClineSessionRuntime();
@@ -450,6 +472,36 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		await serviceB.dispose();
 		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("clears a task session, removes history, and allows a fresh turn", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		await waitForTaskSessionId(runtime, "task-1");
+
+		const clearedSummary = await service.clearTaskSession("task-1");
+
+		expect(runtime.clearTaskSessionsMock).toHaveBeenCalledWith("task-1");
+		expect(clearedSummary?.state).toBe("idle");
+		expect(clearedSummary?.workspacePath).toBe("/tmp/worktree");
+		expect(service.listMessages("task-1")).toEqual([]);
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "Fresh start");
+		expect(nextSummary?.state).toBe("running");
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(2);
+		});
+		expect(runtime.startTaskSessionMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: "task-1",
+				prompt: "resolved:Fresh start",
+			}),
+		);
 	});
 
 	it("keeps resume-from-trash sessions awaiting review until the user sends a message", async () => {
@@ -913,15 +965,15 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 		services.push(service);
 
-			await service.startTaskSession({
-				taskId: "task-1",
-				cwd: "/tmp/worktree",
-				prompt: "Initial prompt",
-			});
-			await waitForTaskSessionId(runtime, "task-1");
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+		await waitForTaskSessionId(runtime, "task-1");
 
-			runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
-			await service.sendTaskSessionInput("task-1", "/continue");
+		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
+		await service.sendTaskSessionInput("task-1", "/continue");
 		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",

@@ -70,6 +70,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -149,6 +150,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -244,6 +246,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => undefined),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -284,6 +287,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => undefined),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -334,6 +338,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => undefined),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -368,6 +373,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -405,6 +411,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
@@ -448,6 +455,61 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(runtime.getTaskSessionId("task-1")).toBeNull();
 	});
 
+	it("deletes persisted task sessions when clearing a task session", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => [
+				createPersistedRecord({
+					sessionId: "task-1-old",
+					status: "completed",
+					startedAt: "2026-03-17T10:00:00.000Z",
+					updatedAt: "2026-03-17T10:05:00.000Z",
+				}),
+				createPersistedRecord({
+					sessionId: "task-2-old",
+					status: "completed",
+					startedAt: "2026-03-17T10:00:00.000Z",
+					updatedAt: "2026-03-17T10:05:00.000Z",
+				}),
+			]),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+		const liveSessionId = runtime.getTaskSessionId("task-1");
+		expect(liveSessionId).toBeTruthy();
+
+		await runtime.clearTaskSessions("task-1");
+
+		expect(fakeHost.abort).toHaveBeenCalledWith(liveSessionId);
+		expect(fakeHost.delete).toHaveBeenCalledWith("task-1-old");
+		expect(fakeHost.delete).toHaveBeenCalledWith(liveSessionId);
+		expect(fakeHost.delete).not.toHaveBeenCalledWith("task-2-old");
+		expect(runtime.getTaskSessionId("task-1")).toBeNull();
+	});
+
 	it("reads persisted task history by scanning task-prefixed SDK session ids", async () => {
 		const fakeHost = {
 			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
@@ -457,6 +519,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
@@ -514,6 +577,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
@@ -558,6 +622,7 @@ describe("InMemoryClineSessionRuntime", () => {
 			send: vi.fn(async () => ({})),
 			stop: vi.fn(async () => {}),
 			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => []),
