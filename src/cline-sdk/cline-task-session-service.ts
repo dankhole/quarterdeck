@@ -12,6 +12,10 @@ import type {
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
+import {
+	compactPersistedMessagesForContextOverflow,
+	isContextOverflowError,
+} from "./cline-context-overflow-compaction";
 import { applyClineSessionEvent, isClineInsufficientBalanceError } from "./cline-event-adapter";
 import {
 	type ClineMessageRepository,
@@ -269,6 +273,37 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			mode: input.mode,
 			images: input.images,
 			initialMessages: persistedSnapshot?.messages,
+		});
+		return {
+			result: restartedSession.result,
+			warnings: restartedSession.warnings,
+		};
+	}
+
+	private async retryAfterContextOverflow(input: {
+		taskId: string;
+		prompt: string;
+		mode: RuntimeTaskSessionMode;
+		images?: RuntimeTaskImage[];
+		error: unknown;
+	}): Promise<{ result: unknown; warnings?: string[] } | null> {
+		if (!isContextOverflowError(input.error)) {
+			return null;
+		}
+
+		const persistedSnapshot = await this.sessionRuntime.readPersistedTaskSession(input.taskId).catch(() => null);
+		const compactedMessages = compactPersistedMessagesForContextOverflow(persistedSnapshot?.messages ?? []);
+		if (!compactedMessages) {
+			return null;
+		}
+
+		await this.sessionRuntime.stopTaskSession(input.taskId).catch(() => null);
+		const restartedSession = await this.sessionRuntime.restartTaskSession({
+			taskId: input.taskId,
+			prompt: input.prompt,
+			mode: input.mode,
+			images: input.images,
+			initialMessages: compactedMessages,
 		});
 		return {
 			result: restartedSession.result,
@@ -534,13 +569,28 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
 			void this.ensureRuntimeSetup(entry.summary.workspacePath ?? "")
 				.then(async (runtimeSetup) => {
-					return await this.dispatchResolvedTaskInput({
-						taskId,
-						prompt: runtimeSetup.resolvePrompt(normalized),
-						mode: effectiveMode,
-						images,
-						delivery: queueDelivery ? "queue" : undefined,
-					});
+					const resolvedPrompt = runtimeSetup.resolvePrompt(normalized);
+					try {
+						return await this.dispatchResolvedTaskInput({
+							taskId,
+							prompt: resolvedPrompt,
+							mode: effectiveMode,
+							images,
+							delivery: queueDelivery ? "queue" : undefined,
+						});
+					} catch (error) {
+						const recovered = await this.retryAfterContextOverflow({
+							taskId,
+							prompt: resolvedPrompt,
+							mode: effectiveMode,
+							images,
+							error,
+						});
+						if (recovered) {
+							return recovered;
+						}
+						throw error;
+					}
 				})
 				.then(({ result, warnings }) => {
 					const warningMessage = formatStartWarnings(warnings);
