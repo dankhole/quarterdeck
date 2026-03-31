@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.55]
+
+- Fixed non-ASCII file paths (e.g. Japanese, Chinese, Korean characters) rendering as garbled octal escape sequences in the diff view
+
 ## [0.1.54]
 
 - Task agent chat panel resizing now persists when navigating between tasks
