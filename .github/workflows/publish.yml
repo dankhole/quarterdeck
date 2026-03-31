@@ -140,7 +140,6 @@ jobs:
                 text:
                   type: "mrkdwn"
                   text: "*Kanban ${{ steps.resolve_tag.outputs.tag }}*"
-              - type: "divider"
               - type: "section"
                 text:
                   type: "mrkdwn"
@@ -148,4 +147,4 @@ jobs:
               - type: "context"
                 elements:
                   - type: "mrkdwn"
-                    text: "<https://github.com/${{ github.repository }}/releases/tag/${{ steps.resolve_tag.outputs.tag }}|Full Changelog>: ${{ steps.compare.outputs.link }}"
+                    text: "${{ steps.compare.outputs.link }}"
