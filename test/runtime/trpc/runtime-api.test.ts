@@ -891,6 +891,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				apiKey: "workos:oauth-access",
 			}),
 		);
+		expect(clineAccountMocks.fetchMe).not.toHaveBeenCalled();
 		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
 			expect.objectContaining({
 				provider: "cline",
