@@ -226,7 +226,9 @@ describe("InMemoryClineSessionRuntime", () => {
 			expect.objectContaining({
 				userImages: ["data:image/png;base64,abc123"],
 				config: expect.objectContaining({
-					maxConsecutiveMistakes: 6,
+					execution: expect.objectContaining({
+						maxConsecutiveMistakes: 6,
+					}),
 					logger: expect.objectContaining({
 						info: expect.any(Function),
 						warn: expect.any(Function),

@@ -87,9 +87,6 @@ vi.mock("@clinebot/core/node", () => ({
 		getProviderSettings = oauthMocks.getProviderSettings;
 		getLastUsedProviderSettings = oauthMocks.getLastUsedProviderSettings;
 	},
-}));
-
-vi.mock("@clinebot/llms", () => ({
 	LlmsModels: {
 		CLINE_DEFAULT_MODEL: "anthropic/claude-sonnet-4.6",
 		getAllProviders: llmsModelMocks.getAllProviders,
@@ -1449,7 +1446,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(oauthMocks.addLocalProvider).toHaveBeenCalledWith(
 			expect.any(Object),
 			expect.objectContaining({
-				action: "addProvider",
 				providerId: "my-provider",
 				name: "My Provider",
 				baseUrl: "http://localhost:8000/v1",

@@ -3,25 +3,27 @@
 // flow through this boundary so the rest of Kanban stays decoupled from the
 // SDK package layout.
 
-import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
-import { getClineDefaultSystemPrompt } from "@clinebot/agents";
 import {
 	buildWorkspaceMetadata,
+	type LlmsProviders as ClineSdkProviders,
+	createSessionHost,
 	createUserInstructionConfigWatcher,
+	getClineDefaultSystemPrompt,
 	listAvailableRuntimeCommandsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
 	resolveRuntimeSlashCommandFromWatcher,
 	type SessionHost,
 	type StartSessionInput,
+	type ToolApprovalRequest,
+	type ToolApprovalResult,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core";
-import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
 import type { BasicLogger } from "@clinebot/shared";
 import { resolveClineDataDir } from "@clinebot/shared/storage";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
+import { getCliTelemetryService } from "./cline-telemetry-service";
 
-export { createSessionHost, LoggerTelemetryAdapter } from "@clinebot/core";
-export { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
+export { LoggerTelemetryAdapter, TelemetryService } from "@clinebot/core";
 
 export type ClineSdkSessionHost = SessionHost;
 export type ClineSdkStartSessionInput = StartSessionInput;
@@ -201,6 +203,14 @@ export interface ClineSdkSlashCommand {
 }
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
+
+export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
+	return await createSessionHost({
+		backendMode: "auto",
+		rpc: { autoStart: true },
+		telemetry: getCliTelemetryService(),
+	});
+}
 
 export function resolveClineSdkDataDir(): string {
 	return resolveClineDataDir();

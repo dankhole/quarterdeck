@@ -2,12 +2,13 @@
 // The rest of Kanban should talk to the SDK through local service modules so
 // auth, catalog, and provider-settings behavior stay behind one boundary.
 
-import { type CreateMcpToolsOptions, createMcpTools, type Tool } from "@clinebot/agents";
 import {
 	addLocalProvider,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
+	type CreateMcpToolsOptions,
+	createMcpTools,
 	DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
 	DEFAULT_EXTERNAL_IDCS_SCOPES,
 	DEFAULT_EXTERNAL_IDCS_URL,
@@ -19,18 +20,20 @@ import {
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
 	InMemoryMcpManager,
+	LlmsModels,
+	LlmsProviders,
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
+	type Tool,
 } from "@clinebot/core/node";
-import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
-export const SDK_DEFAULT_MODEL_ID = llmsModels.CLINE_DEFAULT_MODEL;
+export const SDK_DEFAULT_MODEL_ID = LlmsModels.CLINE_DEFAULT_MODEL;
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -228,13 +231,11 @@ export async function loginManagedOauthProvider(input: {
 }
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
-	await ensureCustomProvidersLoaded(providerManager);
-	return await llmsModels.getAllProviders();
+	return await LlmsModels.getAllProviders();
 }
 
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
-	await ensureCustomProvidersLoaded(providerManager);
-	return await llmsModels.getModelsForProvider(providerId);
+	return await LlmsModels.getModelsForProvider(providerId);
 }
 
 export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): boolean {
@@ -245,7 +246,6 @@ const providerManager = new ProviderSettingsManager();
 
 export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
 	await addLocalProvider(providerManager, {
-		action: "addProvider",
 		providerId: input.providerId,
 		name: input.name,
 		baseUrl: input.baseUrl,

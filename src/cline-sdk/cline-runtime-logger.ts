@@ -35,17 +35,6 @@ function isLoggingEnabled(): boolean {
 	return configured === "1" || configured === "true" || configured === "yes" || configured === "on";
 }
 
-function safeSerializeMetadata(metadata: Record<string, unknown> | undefined): string | undefined {
-	if (!metadata) {
-		return undefined;
-	}
-	try {
-		return JSON.stringify(metadata);
-	} catch {
-		return JSON.stringify({ metadata: "[unserializable]" });
-	}
-}
-
 function writeLogLine(level: LogLevel, message: string, metadata?: Record<string, unknown>): void {
 	if (!isLoggingEnabled()) {
 		return;
@@ -65,27 +54,9 @@ function writeLogLine(level: LogLevel, message: string, metadata?: Record<string
 	}
 }
 
-function logToConsole(level: LogLevel, message: string, metadata?: Record<string, unknown>): void {
-	const serializedMetadata = safeSerializeMetadata(metadata);
-	const parts = [`[cline-sdk:${level}]`, message];
-	if (serializedMetadata) {
-		parts.push(serializedMetadata);
-	}
-	const line = parts.join(" ");
-	switch (level) {
-		case "debug":
-			// console.debug(line);
-			break;
-		case "info":
-			// console.info(line);
-			break;
-		case "warn":
-			// console.warn(line);
-			break;
-		case "error":
-			// console.error(line);
-			break;
-	}
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function logToConsole(_level: LogLevel, _message: string, _metadata?: Record<string, unknown>): void {
+	// Console logging intentionally disabled; re-enable by routing to console.debug/info/warn/error.
 }
 
 export function createKanbanClineLogger(bindings?: Record<string, unknown>): BasicLogger {
