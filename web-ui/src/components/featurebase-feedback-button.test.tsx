@@ -33,6 +33,17 @@ const tokensOnlySettings: RuntimeClineProviderSettings = {
 	oauthRefreshTokenConfigured: true,
 };
 
+function createFeaturebaseFeedbackState(authState: FeaturebaseFeedbackState["authState"]): {
+	state: FeaturebaseFeedbackState;
+} {
+	return {
+		state: {
+			authState,
+			widgetOpenCount: 0,
+		},
+	};
+}
+
 describe("FeaturebaseFeedbackButton", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -63,7 +74,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	}
 
 	it("renders nothing when selected agent is not Cline", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -77,7 +88,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders nothing when not authenticated", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -91,7 +102,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders nothing when tokens exist but oauthProvider is not cline", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -105,7 +116,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders nothing when Featurebase state is idle", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "idle" };
+		const { state: fbState } = createFeaturebaseFeedbackState("idle");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -119,7 +130,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders nothing when Featurebase state is loading", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "loading" };
+		const { state: fbState } = createFeaturebaseFeedbackState("loading");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -133,7 +144,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders nothing when Featurebase state is error", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "error" };
+		const { state: fbState } = createFeaturebaseFeedbackState("error");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -147,7 +158,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders enabled Share Feedback when fully authenticated and Featurebase is ready", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -164,7 +175,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("renders data-featurebase-feedback attribute on the Share Feedback button", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(
 				<FeaturebaseFeedbackButton
@@ -180,7 +191,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	});
 
 	it("forwards click events when visible", () => {
-		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		const handleClick = vi.fn();
 		act(() => {
 			root.render(
