@@ -4,7 +4,7 @@
 
 - More panels are now resizable (agent chat, git history, and more) and your layout preferences persist across sessions
 - Adds full Factory Droid CLI agent support
-- Add, edit, and delete custom AI providers directly from the UI
+- Add, edit, and delete custom OpenAI Compatible providers from the settings dialog
 - Fixed trashed task cards being openable from the board
 - Fixed git history cache not clearing when closing the view
 - Terminal cursor defaults now match VS Code behavior
