@@ -11,6 +11,8 @@ describe("createKanbanTerminalOptions", () => {
 		});
 
 		expect(options.allowProposedApi).toBe(true);
+		expect(options.cursorBlink).toBe(false);
+		expect(options.cursorInactiveStyle).toBe("outline");
 		expect(options.cursorStyle).toBe("block");
 		expect(options.scrollback).toBe(10_000);
 		expect(options.macOptionIsMeta).toBe(true);
