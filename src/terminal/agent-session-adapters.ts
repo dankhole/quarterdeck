@@ -1250,15 +1250,14 @@ const droidAdapter: AgentSessionAdapter = {
 			}
 		}
 
-		// TODO uncomment when Droid supports --append-system-prompt.
-		// const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
-		// if (
-		// 	appendedSystemPrompt &&
-		// 	!hasCliOption(args, "--append-system-prompt") &&
-		// 	!hasCliOption(args, "--system-prompt")
-		// ) {
-		// 	args.push("--append-system-prompt", appendedSystemPrompt);
-		// }
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (
+			appendedSystemPrompt &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", appendedSystemPrompt);
+		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
 		return {

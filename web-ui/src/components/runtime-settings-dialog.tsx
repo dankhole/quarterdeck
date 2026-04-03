@@ -354,10 +354,8 @@ export function RuntimeSettingsDialog({
 				binary: agent.binary,
 				installed: agent.id === "cline" ? true : null,
 			}));
-		// FIXME: remove after adding droid support
-		const visibleAgents = agents.filter((agent) => agent.id !== "droid" || agent.installed === true);
 		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
-		const orderedAgents = [...visibleAgents].sort((left, right) => {
+		const orderedAgents = [...agents].sort((left, right) => {
 			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
 			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
 			return leftOrderIndex - rightOrderIndex;
