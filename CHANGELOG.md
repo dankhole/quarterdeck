@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.58]
+
+- More panels are now resizable (agent chat, git history, and more) and your layout preferences persist across sessions
+- Adds full Factory Droid CLI agent support
+- Add, edit, and delete custom AI providers directly from the UI
+- Fixed trashed task cards being openable from the board
+- Fixed git history cache not clearing when closing the view
+- Terminal cursor defaults now match VS Code behavior
+- Feedback widget no longer triggers authentication until you actually click it
+- Updated Cline SDK from 0.0.24 to 0.0.28, which includes: OpenAI-compatible provider support via AI SDK, custom provider CRUD in core, better handling of overloaded and insufficient-credits errors, fixed tool schema format for OpenAI-compatible providers, accurate input token reporting
+
 ## [0.1.57]
 
 - Added `kanban --update` command so you can check for and install updates manually
