@@ -532,7 +532,15 @@ export function RuntimeSettingsDialog({
 
 	const handleFeaturebaseFeedbackClick = useCallback(() => {
 		pendingCloseAfterFeedbackOpenRef.current = true;
-	}, []);
+		const openPromise = featurebaseFeedbackState?.openFeedbackWidget();
+		if (!openPromise) {
+			pendingCloseAfterFeedbackOpenRef.current = false;
+			return;
+		}
+		void openPromise.catch(() => {
+			pendingCloseAfterFeedbackOpenRef.current = false;
+		});
+	}, [featurebaseFeedbackState]);
 
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {

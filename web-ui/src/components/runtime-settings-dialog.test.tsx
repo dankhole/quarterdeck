@@ -164,7 +164,11 @@ describe("RuntimeSettingsDialog", () => {
 					open={true}
 					workspaceId={"workspace-1"}
 					initialConfig={savedClineOauthConfig}
-					featurebaseFeedbackState={{ authState: "ready", widgetOpenCount: 0 }}
+					featurebaseFeedbackState={{
+						authState: "ready",
+						widgetOpenCount: 0,
+						openFeedbackWidget: vi.fn(async () => {}),
+					}}
 					onOpenChange={() => {}}
 				/>,
 			);

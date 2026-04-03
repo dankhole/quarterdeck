@@ -16,8 +16,7 @@ export function canShowFeaturebaseFeedbackButton({
 }: FeaturebaseFeedbackVisibilityInput): boolean {
 	const isClineAgent = isNativeClineAgentSelected(selectedAgentId);
 	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
-	const isReady = (featurebaseFeedbackState?.authState ?? "idle") === "ready";
-	return isClineAgent && isAuthenticated && isReady;
+	return isClineAgent && isAuthenticated && featurebaseFeedbackState !== undefined;
 }
 
 interface FeaturebaseFeedbackButtonProps extends FeaturebaseFeedbackVisibilityInput {
@@ -46,9 +45,11 @@ export function FeaturebaseFeedbackButton({
 		return null;
 	}
 
+	const isOpening = featurebaseFeedbackState?.authState === "loading";
+
 	return (
-		<Button size={size} variant={variant} className={className} onClick={onClick} data-featurebase-feedback>
-			Share Feedback
+		<Button size={size} variant={variant} className={className} onClick={onClick} disabled={isOpening}>
+			{isOpening ? "Opening..." : "Share Feedback"}
 		</Button>
 	);
 }

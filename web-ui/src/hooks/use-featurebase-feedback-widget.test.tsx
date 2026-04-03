@@ -94,21 +94,100 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 	}
 
-	it("initializes the feedback widget on mount", async () => {
-		const { module } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
+	async function renderHook(
+		module: Awaited<ReturnType<typeof importFeaturebaseModule>>["module"],
+		input: {
+			workspaceId: string | null;
+			clineProviderSettings: RuntimeClineProviderSettings;
+		},
+	): Promise<{ getState: () => FeaturebaseFeedbackState }> {
+		let hookResult: FeaturebaseFeedbackState | null = null;
 
 		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: defaultClineProviderSettings,
-			});
+			hookResult = module.useFeaturebaseFeedbackWidget(input);
 			return null;
 		}
 
 		await act(async () => {
 			root.render(<HookHarness />);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		return {
+			getState: () => {
+				if (!hookResult) {
+					throw new Error("Hook state not available");
+				}
+				return hookResult;
+			},
+		};
+	}
+
+	it("stays idle on mount for authenticated users until feedback is opened", async () => {
+		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
+
+		expect(getState().authState).toBe("idle");
+		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
+		expect(featurebaseMock).not.toHaveBeenCalled();
+	});
+
+	it("returns idle state when unauthenticated", async () => {
+		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: defaultClineProviderSettings,
+		});
+
+		expect(getState().authState).toBe("idle");
+		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
+		expect(featurebaseMock).not.toHaveBeenCalled();
+	});
+
+	it("requires oauthProvider=cline before opening", async () => {
+		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: tokensOnlySettings,
+		});
+
+		await act(async () => {
+			await getState().openFeedbackWidget();
+			await Promise.resolve();
+		});
+
+		expect(getState().authState).toBe("idle");
+		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
+		expect(featurebaseMock).not.toHaveBeenCalled();
+	});
+
+	it("initializes the feedback widget and identifies only after openFeedbackWidget is called", async () => {
+		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
+		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
+
+		let openPromise: Promise<void> | null = null;
+		await act(async () => {
+			openPromise = getState().openFeedbackWidget();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
@@ -123,115 +202,56 @@ describe("useFeaturebaseFeedbackWidget", () => {
 				metadata: { app: "kanban" },
 			}),
 		);
-		expect(typeof initCall?.[2]).toBe("function");
-	});
 
-	it("returns idle state when unauthenticated", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
+		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
+		expect(identifyCall).toBeTruthy();
+		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: defaultClineProviderSettings,
-			});
-			return null;
-		}
-
+		const postMessageSpy = vi.spyOn(window, "postMessage");
 		await act(async () => {
-			root.render(<HookHarness />);
-			await Promise.resolve();
+			(identifyCall?.[2] as (error: unknown) => void)?.(null);
+			await openPromise;
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
+		expect(getState().authState).toBe("ready");
+		expect(postMessageSpy).toHaveBeenCalledWith(
+			{
+				target: "FeaturebaseWidget",
+				data: { action: "openFeedbackWidget" },
+			},
+			window.location.origin,
+		);
 	});
 
-	it("requires oauthProvider=cline (tokens alone stay idle)", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: tokensOnlySettings,
-			});
-			return null;
-		}
-
-		await act(async () => {
-			root.render(<HookHarness />);
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(hookResult!.authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-	});
-
-	it("transitions to ready on successful pre-identify (no retries scheduled)", async () => {
+	it("increments widgetOpenCount when the SDK reports widgetOpened", async () => {
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
 		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
-
-		await act(async () => {
-			root.render(<HookHarness />);
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
 		});
 
-		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		expect(identifyCall).toBeTruthy();
-
+		let openPromise: Promise<void> | null = null;
 		await act(async () => {
-			(identifyCall?.[2] as (error: unknown) => void)?.(null);
-			await Promise.resolve();
-		});
-
-		expect(hookResult!.authState).toBe("ready");
-		expect(hookResult!.widgetOpenCount).toBe(0);
-		// Only one token fetch — no retries needed
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-	});
-
-	it("increments widgetOpenCount when the SDK reports widgetOpened", async () => {
-		const { module } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: defaultClineProviderSettings,
-			});
-			return null;
-		}
-
-		await act(async () => {
-			root.render(<HookHarness />);
+			openPromise = getState().openFeedbackWidget();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
 		const initCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "initialize_feedback_widget");
+		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
 		expect(initCall).toBeTruthy();
+		expect(identifyCall).toBeTruthy();
+
+		await act(async () => {
+			(identifyCall?.[2] as (error: unknown) => void)?.(null);
+			await openPromise;
+			await Promise.resolve();
+		});
 
 		await act(async () => {
 			(initCall?.[2] as (error: unknown, callback?: { action?: string } | null) => void)?.(null, {
@@ -240,26 +260,32 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.widgetOpenCount).toBe(1);
+		expect(getState().widgetOpenCount).toBe(1);
 	});
 
 	it("closes the feedback widget when the visible overlay backdrop is clicked", async () => {
-		const { module } = await importFeaturebaseModule();
+		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
+		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 		const postMessageSpy = vi.spyOn(window, "postMessage");
 
-		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: defaultClineProviderSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
+		let openPromise: Promise<void> | null = null;
 		await act(async () => {
-			root.render(<HookHarness />);
+			openPromise = getState().openFeedbackWidget();
 			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
+		await act(async () => {
+			(identifyCall?.[2] as (error: unknown) => void)?.(null);
+			await openPromise;
 			await Promise.resolve();
 		});
 
@@ -283,35 +309,32 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		overlay.remove();
 	});
 
-	it("transitions to error on token fetch failure then auto-retries", async () => {
+	it("retries after token fetch failures only after openFeedbackWidget is called", async () => {
 		vi.useFakeTimers();
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		// All attempts fail
 		fetchFeaturebaseTokenMock.mockRejectedValue(new Error("Network error"));
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
+
+		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
 
 		await act(async () => {
-			root.render(<HookHarness />);
+			void getState()
+				.openFeedbackWidget()
+				.catch(() => {});
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
-		// Initial attempt failed
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 
-		// Advance past first retry delay (2s)
 		await act(async () => {
 			vi.advanceTimersByTime(2_000);
 			await Promise.resolve();
@@ -320,9 +343,8 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 
-		// Advance past second retry delay (5s)
 		await act(async () => {
 			vi.advanceTimersByTime(5_000);
 			await Promise.resolve();
@@ -330,48 +352,41 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			await Promise.resolve();
 		});
 
-		// 3 total attempts (initial + 2 retries), then stops
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(3);
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 
-		// No more retries after that
 		await act(async () => {
 			vi.advanceTimersByTime(30_000);
 			await Promise.resolve();
 		});
+
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(3);
 	});
 
-	it("first attempt fails, auto-retry succeeds => becomes ready", async () => {
+	it("becomes ready when a retry succeeds", async () => {
 		vi.useFakeTimers();
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		// First call fails, second succeeds
 		fetchFeaturebaseTokenMock
 			.mockRejectedValueOnce(new Error("Transient error"))
 			.mockResolvedValueOnce({ featurebaseJwt: "jwt-retry-ok" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
+		const openPromise = getState().openFeedbackWidget();
 		await act(async () => {
-			root.render(<HookHarness />);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 
-		// Advance past first retry delay (2s)
 		await act(async () => {
 			vi.advanceTimersByTime(2_000);
 			await Promise.resolve();
@@ -379,43 +394,39 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			await Promise.resolve();
 		});
 
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
-
-		// Identify should have been called on the retry
 		const identifyCalls = featurebaseMock.mock.calls.filter((call: unknown[]) => call[0] === "identify");
+		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
 		expect(identifyCalls.length).toBeGreaterThanOrEqual(1);
 
-		// Simulate identify success
 		const latestIdentify = identifyCalls[identifyCalls.length - 1];
 		await act(async () => {
 			(latestIdentify?.[2] as (error: unknown) => void)?.(null);
+			await openPromise;
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("ready");
+		expect(getState().authState).toBe("ready");
 	});
 
-	it("transitions to error on identify callback error (silent degradation)", async () => {
+	it("transitions to error on identify callback error", async () => {
+		vi.useFakeTimers();
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
 		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
+		const openPromise = getState().openFeedbackWidget();
 		await act(async () => {
-			root.render(<HookHarness />);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
+		void openPromise.catch(() => {});
 
 		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
 		await act(async () => {
@@ -423,49 +434,41 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 	});
 
-	it("auto-retries after identify callback error and transitions to ready on success", async () => {
+	it("retries after identify callback error and becomes ready on success", async () => {
 		vi.useFakeTimers();
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		// Both token fetches succeed
 		fetchFeaturebaseTokenMock
 			.mockResolvedValueOnce({ featurebaseJwt: "jwt-first" })
 			.mockResolvedValueOnce({ featurebaseJwt: "jwt-second" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
+		const openPromise = getState().openFeedbackWidget();
 		await act(async () => {
-			root.render(<HookHarness />);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
-		// First identify call should have happened
 		const firstIdentifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
 		expect(firstIdentifyCall).toBeTruthy();
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 
-		// Invoke the first identify callback with an error
 		await act(async () => {
 			(firstIdentifyCall?.[2] as (error: unknown) => void)?.(new Error("identify failed"));
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("error");
+		expect(getState().authState).toBe("error");
 
-		// Advance timers by the first retry delay (2s)
 		await act(async () => {
 			vi.advanceTimersByTime(2_000);
 			await Promise.resolve();
@@ -473,43 +476,38 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			await Promise.resolve();
 		});
 
-		// Token should be fetched again and a second identify call issued
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
 		const identifyCalls = featurebaseMock.mock.calls.filter((call: unknown[]) => call[0] === "identify");
 		expect(identifyCalls.length).toBe(2);
 
-		// Invoke the second identify callback with null (success)
 		const secondIdentifyCall = identifyCalls[1];
 		await act(async () => {
 			(secondIdentifyCall?.[2] as (error: unknown) => void)?.(null);
+			await openPromise;
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("ready");
+		expect(getState().authState).toBe("ready");
 	});
 
-	it("does not pre-identify when workspaceId is null", async () => {
+	it("does not identify when workspaceId is null", async () => {
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		let hookResult: FeaturebaseFeedbackState | null = null;
-		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: null,
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
 		await act(async () => {
-			root.render(<HookHarness />);
-			await Promise.resolve();
+			await getState().openFeedbackWidget();
 			await Promise.resolve();
 		});
 
-		expect(hookResult!.authState).toBe("idle");
+		expect(getState().authState).toBe("idle");
 		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
+		expect(featurebaseMock).not.toHaveBeenCalled();
 	});
 
 	it("cancels retry timers on unmount", async () => {
@@ -519,16 +517,15 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
 
-		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: authenticatedClineSettings,
-			});
-			return null;
-		}
+		const { getState } = await renderHook(module, {
+			workspaceId: "workspace-1",
+			clineProviderSettings: authenticatedClineSettings,
+		});
 
 		await act(async () => {
-			root.render(<HookHarness />);
+			void getState()
+				.openFeedbackWidget()
+				.catch(() => {});
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
@@ -536,13 +533,11 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 
-		// Unmount before retry fires
 		await act(async () => {
 			root.render(<></>);
 			await Promise.resolve();
 		});
 
-		// Advance timers — retry should NOT fire
 		await act(async () => {
 			vi.advanceTimersByTime(10_000);
 			await Promise.resolve();

@@ -40,6 +40,7 @@ function createFeaturebaseFeedbackState(authState: FeaturebaseFeedbackState["aut
 		state: {
 			authState,
 			widgetOpenCount: 0,
+			openFeedbackWidget: vi.fn(async () => {}),
 		},
 	};
 }
@@ -66,7 +67,7 @@ describe("FeaturebaseFeedbackButton", () => {
 	function getFeedbackButton(): HTMLButtonElement | null {
 		const buttons = container.querySelectorAll("button");
 		for (const button of buttons) {
-			if (button.textContent?.includes("Share Feedback")) {
+			if (button.textContent?.includes("Share Feedback") || button.textContent?.includes("Opening...")) {
 				return button;
 			}
 		}
@@ -115,7 +116,7 @@ describe("FeaturebaseFeedbackButton", () => {
 		expect(container.innerHTML).toBe("");
 	});
 
-	it("renders nothing when Featurebase state is idle", () => {
+	it("renders Share Feedback when Featurebase state is idle", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("idle");
 		act(() => {
 			root.render(
@@ -126,10 +127,12 @@ describe("FeaturebaseFeedbackButton", () => {
 				/>,
 			);
 		});
-		expect(container.innerHTML).toBe("");
+		const button = getFeedbackButton();
+		expect(button).toBeTruthy();
+		expect(button?.disabled).toBe(false);
 	});
 
-	it("renders nothing when Featurebase state is loading", () => {
+	it("renders disabled Opening state while feedback is loading", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("loading");
 		act(() => {
 			root.render(
@@ -140,10 +143,13 @@ describe("FeaturebaseFeedbackButton", () => {
 				/>,
 			);
 		});
-		expect(container.innerHTML).toBe("");
+		const button = getFeedbackButton();
+		expect(button).toBeTruthy();
+		expect(button?.disabled).toBe(true);
+		expect(button?.textContent).toContain("Opening...");
 	});
 
-	it("renders nothing when Featurebase state is error", () => {
+	it("renders Share Feedback when Featurebase state is error", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("error");
 		act(() => {
 			root.render(
@@ -154,7 +160,9 @@ describe("FeaturebaseFeedbackButton", () => {
 				/>,
 			);
 		});
-		expect(container.innerHTML).toBe("");
+		const button = getFeedbackButton();
+		expect(button).toBeTruthy();
+		expect(button?.disabled).toBe(false);
 	});
 
 	it("renders enabled Share Feedback when fully authenticated and Featurebase is ready", () => {
@@ -172,22 +180,6 @@ describe("FeaturebaseFeedbackButton", () => {
 		expect(button).toBeTruthy();
 		expect(button?.disabled).toBe(false);
 		expect(button?.textContent).toContain("Share Feedback");
-	});
-
-	it("renders data-featurebase-feedback attribute on the Share Feedback button", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("ready");
-		act(() => {
-			root.render(
-				<FeaturebaseFeedbackButton
-					selectedAgentId={"cline"}
-					clineProviderSettings={authenticatedClineSettings}
-					featurebaseFeedbackState={fbState}
-				/>,
-			);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		expect(button?.hasAttribute("data-featurebase-feedback")).toBe(true);
 	});
 
 	it("forwards click events when visible", () => {

@@ -24,10 +24,12 @@ export const RETRY_DELAYS = [2_000, 5_000] as const;
 export type FeaturebaseAuthState = "idle" | "loading" | "ready" | "error";
 
 export interface FeaturebaseFeedbackState {
-	/** Current pre-identify readiness. */
+	/** Current identify readiness. */
 	authState: FeaturebaseAuthState;
 	/** Increments whenever the SDK confirms that the feedback widget opened. */
 	widgetOpenCount: number;
+	/** Authenticates the current user, then opens the feedback widget. */
+	openFeedbackWidget: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,11 +108,19 @@ function ensureFeaturebaseSdkLoaded(): Promise<void> {
 }
 
 function closeFeaturebaseFeedbackWidget(win: Window): void {
+	postFeaturebaseWidgetAction(win, "closeWidget");
+}
+
+function openFeaturebaseFeedbackWidget(win: Window): void {
+	postFeaturebaseWidgetAction(win, "openFeedbackWidget");
+}
+
+function postFeaturebaseWidgetAction(win: Window, action: string): void {
 	// The SDK accepts same-window postMessage commands for the feedback widget.
 	win.postMessage(
 		{
 			target: "FeaturebaseWidget",
-			data: { action: "closeWidget" },
+			data: { action },
 		},
 		win.location.origin,
 	);
@@ -130,10 +140,10 @@ export function useFeaturebaseFeedbackWidget(input: {
 	const [authState, setAuthState] = useState<FeaturebaseAuthState>("idle");
 	const [widgetOpenCount, setWidgetOpenCount] = useState(0);
 
-	// Track the latest attempt so we can cancel stale ones.
-	const attemptRef = useRef(0);
-	// Track the pending retry timer so we can cancel it on cleanup.
+	const widgetInitializedRef = useRef(false);
 	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const openAttemptRef = useRef(0);
+	const mountedRef = useRef(true);
 
 	function clearRetryTimer() {
 		if (retryTimerRef.current !== null) {
@@ -142,38 +152,40 @@ export function useFeaturebaseFeedbackWidget(input: {
 		}
 	}
 
-	// Initialize the Featurebase feedback widget once on mount.
-	useEffect(() => {
+	const ensureFeedbackWidgetInitialized = useCallback(async (): Promise<void> => {
+		if (widgetInitializedRef.current) {
+			return;
+		}
+
 		const win = window as FeaturebaseWindow;
 		ensureFeaturebaseCommand(win);
-		let cancelled = false;
+		await ensureFeaturebaseSdkLoaded();
 
-		void ensureFeaturebaseSdkLoaded()
-			.then(() => {
-				if (cancelled) {
-					return;
-				}
-				const featurebase = ensureFeaturebaseCommand(win);
-				featurebase(
-					"initialize_feedback_widget",
-					{
-						organization: FEATUREBASE_ORGANIZATION,
-						theme: "dark",
-						locale: "en",
-						metadata: { app: "kanban" },
-					},
-					(_error, callback) => {
-						if (cancelled || callback?.action !== "widgetOpened") {
-							return;
-						}
+		await new Promise<void>((resolve) => {
+			const featurebase = ensureFeaturebaseCommand(win);
+			featurebase(
+				"initialize_feedback_widget",
+				{
+					organization: FEATUREBASE_ORGANIZATION,
+					theme: "dark",
+					locale: "en",
+					metadata: { app: "kanban" },
+				},
+				(_error, callback) => {
+					if (callback?.action === "widgetOpened" && mountedRef.current) {
 						setWidgetOpenCount((current) => current + 1);
-					},
-				);
-			})
-			.catch(() => {});
+					}
+				},
+			);
+			widgetInitializedRef.current = true;
+			resolve();
+		});
+	}, []);
 
+	useEffect(() => {
 		return () => {
-			cancelled = true;
+			mountedRef.current = false;
+			clearRetryTimer();
 		};
 	}, []);
 
@@ -198,41 +210,32 @@ export function useFeaturebaseFeedbackWidget(input: {
 		};
 	}, []);
 
-	// Core pre-identify routine with bounded automatic retries.
-	const runPreIdentify = useCallback(
-		(attempt: number, retryIndex: number) => {
+	useEffect(() => {
+		clearRetryTimer();
+		openAttemptRef.current += 1;
+		setAuthState("idle");
+	}, [workspaceId, isAuthenticated]);
+
+	const identifyWithRetries = useCallback(
+		async (attempt: number, retryIndex: number): Promise<void> => {
 			if (!workspaceId || !isAuthenticated) {
 				return;
 			}
 
-			setAuthState("loading");
-			const win = window as FeaturebaseWindow;
-
-			const scheduleRetry = () => {
-				if (attemptRef.current !== attempt) {
+			try {
+				await ensureFeedbackWidgetInitialized();
+				if (openAttemptRef.current !== attempt) {
 					return;
 				}
-				if (retryIndex < RETRY_DELAYS.length) {
-					const delay = RETRY_DELAYS[retryIndex];
-					retryTimerRef.current = setTimeout(() => {
-						if (attemptRef.current !== attempt) {
-							return;
-						}
-						runPreIdentify(attempt, retryIndex + 1);
-					}, delay);
-				}
-			};
 
-			void ensureFeaturebaseSdkLoaded()
-				.then(async () => {
-					if (attemptRef.current !== attempt) {
-						return;
-					}
-					const tokenResponse = await fetchFeaturebaseToken(workspaceId);
-					if (attemptRef.current !== attempt) {
-						return;
-					}
-					const featurebase = ensureFeaturebaseCommand(win);
+				const tokenResponse = await fetchFeaturebaseToken(workspaceId);
+				if (openAttemptRef.current !== attempt) {
+					return;
+				}
+
+				const win = window as FeaturebaseWindow;
+				const featurebase = ensureFeaturebaseCommand(win);
+				await new Promise<void>((resolve, reject) => {
 					featurebase(
 						"identify",
 						{
@@ -240,50 +243,64 @@ export function useFeaturebaseFeedbackWidget(input: {
 							featurebaseJwt: tokenResponse.featurebaseJwt,
 						},
 						(error) => {
-							if (attemptRef.current !== attempt) {
+							if (openAttemptRef.current !== attempt) {
+								resolve();
 								return;
 							}
 							if (error) {
-								setAuthState("error");
-								scheduleRetry();
+								reject(error);
 								return;
 							}
-							clearRetryTimer();
-							setAuthState("ready");
+							resolve();
 						},
 					);
-				})
-				.catch(() => {
-					if (attemptRef.current !== attempt) {
-						return;
-					}
-					setAuthState("error");
-					scheduleRetry();
 				});
+
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+				clearRetryTimer();
+				setAuthState("ready");
+			} catch (error) {
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+
+				if (retryIndex >= RETRY_DELAYS.length) {
+					setAuthState("error");
+					throw error;
+				}
+
+				setAuthState("error");
+				const delay = RETRY_DELAYS[retryIndex];
+				await new Promise<void>((resolve) => {
+					retryTimerRef.current = setTimeout(resolve, delay);
+				});
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+				await identifyWithRetries(attempt, retryIndex + 1);
+			}
 		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- retryTimerRef is a ref
-		[workspaceId, isAuthenticated],
+		[ensureFeedbackWidgetInitialized, isAuthenticated, workspaceId],
 	);
 
-	// Pre-identify whenever auth state or workspace changes.
-	useEffect(() => {
-		clearRetryTimer();
-
+	const openFeedbackWidget = useCallback(async (): Promise<void> => {
 		if (!workspaceId || !isAuthenticated) {
-			// Reset to idle when the user signs out or workspace disappears.
-			setAuthState("idle");
 			return;
 		}
 
-		const attempt = ++attemptRef.current;
-		runPreIdentify(attempt, 0);
+		const attempt = ++openAttemptRef.current;
+		clearRetryTimer();
+		setAuthState("loading");
 
-		return () => {
-			// Cancel this attempt and any pending retries.
-			attemptRef.current++;
-			clearRetryTimer();
-		};
-	}, [workspaceId, isAuthenticated, runPreIdentify]);
+		await identifyWithRetries(attempt, 0);
+		if (openAttemptRef.current !== attempt || !mountedRef.current) {
+			return;
+		}
 
-	return { authState, widgetOpenCount };
+		openFeaturebaseFeedbackWidget(window);
+	}, [identifyWithRetries, isAuthenticated, workspaceId]);
+
+	return { authState, widgetOpenCount, openFeedbackWidget };
 }
