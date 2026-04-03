@@ -24,12 +24,13 @@ import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-act
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
+import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
-	RuntimeClineProviderSettings,
 	RuntimeClineMcpServerAuthStatus,
+	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
@@ -302,6 +303,7 @@ export function RuntimeSettingsDialog({
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
+	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
@@ -382,7 +384,9 @@ export function RuntimeSettingsDialog({
 		config,
 	});
 	const liveClineProviderSettings = useMemo<RuntimeClineProviderSettings>(() => {
-		return selectedAgentId === "cline" ? clineSettings.currentProviderSettings : getRuntimeClineProviderSettings(config);
+		return selectedAgentId === "cline"
+			? clineSettings.currentProviderSettings
+			: getRuntimeClineProviderSettings(config);
 	}, [clineSettings.currentProviderSettings, config, selectedAgentId]);
 	const clineMcpSettings = useRuntimeSettingsClineMcpController({
 		open,
@@ -651,7 +655,7 @@ export function RuntimeSettingsDialog({
 					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
-				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent runtime</h6>
+				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent</h6>
 				{displayedAgents.map((agent) => (
 					<AgentRow
 						key={agent.id}
@@ -774,6 +778,14 @@ export function RuntimeSettingsDialog({
 						/>
 					) : null}
 				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout</h6>
+				<Button size="sm" onClick={resetLayoutCustomizations}>
+					Reset layout
+				</Button>
+				<p className="text-text-secondary text-[13px] mt-2 mb-0">
+					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+				</p>
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p

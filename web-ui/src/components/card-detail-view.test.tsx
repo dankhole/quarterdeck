@@ -56,7 +56,7 @@ vi.mock("@/components/detail-panels/file-tree-panel", () => ({
 	FileTreePanel: () => <div data-testid="file-tree-panel" />,
 }));
 
-vi.mock("@/components/resizable-bottom-pane", () => ({
+vi.mock("@/resize/resizable-bottom-pane", () => ({
 	ResizableBottomPane: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
@@ -66,6 +66,10 @@ vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
 
 vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceStateVersionValue: () => 0,
+}));
+
+vi.mock("@/resize/layout-customizations", () => ({
+	useLayoutResetEffect: () => {},
 }));
 
 function createCard(id: string): BoardCard {
@@ -136,6 +140,23 @@ function requireAgentPanel(container: HTMLElement): HTMLElement {
 	const panel = separator.previousElementSibling;
 	if (!(panel instanceof HTMLElement)) {
 		throw new Error("Expected an agent panel element.");
+	}
+	return panel;
+}
+
+function requireDetailDiffSeparator(container: HTMLElement): HTMLElement {
+	const separator = container.querySelector('[aria-label="Resize detail diff panels"]');
+	if (!(separator instanceof HTMLElement)) {
+		throw new Error("Expected a detail diff resize separator.");
+	}
+	return separator;
+}
+
+function requireDetailDiffFileTreePanel(container: HTMLElement): HTMLElement {
+	const separator = requireDetailDiffSeparator(container);
+	const panel = separator.nextElementSibling;
+	if (!(panel instanceof HTMLElement)) {
+		throw new Error("Expected a detail diff file tree panel element.");
 	}
 	return panel;
 }
@@ -631,5 +652,43 @@ describe("CardDetailView", () => {
 		const restoredWidth = requireAgentPanel(container).style.width;
 		const restoredRatio = Number.parseFloat(restoredWidth) / 100;
 		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
+	});
+
+	it("uses separate file-tree ratios for collapsed and expanded diff layouts", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailDiffFileTreePanelRatio, "0.42");
+		window.localStorage.setItem(LocalStorageKey.DetailExpandedDiffFileTreePanelRatio, "0.18");
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(requireDetailDiffFileTreePanel(container).style.flex).toBe("0 0 42%");
+
+		const expandButton = container.querySelector('button[aria-label="Expand split diff view"]');
+		expect(expandButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(expandButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected an expand diff button.");
+		}
+
+		await act(async () => {
+			expandButton.click();
+		});
+
+		expect(requireDetailDiffFileTreePanel(container).style.flex).toBe("0 0 18%");
 	});
 });

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeSettingsDialog } from "@/components/runtime-settings-dialog";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 
+const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
 		id: agentId,
@@ -49,6 +51,13 @@ vi.mock("@/hooks/use-runtime-settings-cline-mcp-controller", () => ({
 	useRuntimeSettingsClineMcpController: () => ({
 		hasUnsavedChanges: false,
 		saveMcpSettings: vi.fn(async () => ({ ok: true })),
+	}),
+}));
+
+vi.mock("@/resize/layout-customizations", () => ({
+	useLayoutCustomizations: () => ({
+		layoutResetNonce: 0,
+		resetLayoutCustomizations: resetLayoutCustomizationsMock,
 	}),
 }));
 
@@ -125,6 +134,7 @@ describe("RuntimeSettingsDialog", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		resetLayoutCustomizationsMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -163,5 +173,27 @@ describe("RuntimeSettingsDialog", () => {
 		expect(findButtonByText(document.body, "Share Feedback")).toBeNull();
 		expect(findButtonByText(document.body, "Report Issue")).toBeInstanceOf(HTMLButtonElement);
 		expect(findButtonByText(document.body, "Feature Request")).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("calls the layout reset callback when reset layout is clicked", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const resetButton = findButtonByText(document.body, "Reset layout");
+		expect(resetButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			resetButton?.click();
+		});
+
+		expect(resetLayoutCustomizationsMock).toHaveBeenCalledTimes(1);
 	});
 });

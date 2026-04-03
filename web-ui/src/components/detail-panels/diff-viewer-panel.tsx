@@ -833,7 +833,6 @@ export function DiffViewerPanel({
 				minWidth: 0,
 				minHeight: 0,
 				background: "var(--color-surface-0)",
-				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
 			{groupedByPath.length === 0 ? (

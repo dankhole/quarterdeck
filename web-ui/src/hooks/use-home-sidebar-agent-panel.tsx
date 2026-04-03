@@ -163,7 +163,6 @@ export function useHomeSidebarAgentPanel({
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
 				incomingMessages={homeTaskChatMessages}
-				showRightBorder={false}
 				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
 			/>
 		);
@@ -182,7 +181,6 @@ export function useHomeSidebarAgentPanel({
 				panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 				terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 				cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-				showRightBorder={false}
 			/>
 		);
 	}

@@ -85,7 +85,6 @@ export interface ClineAgentChatPanelProps {
 	defaultMode?: RuntimeTaskSessionMode;
 	composerPlaceholder?: string;
 	showComposerModeToggle?: boolean;
-	showRightBorder?: boolean;
 	workspaceId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
 	onClineSettingsSaved?: () => void;
@@ -118,7 +117,6 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			defaultMode = "act",
 			composerPlaceholder = "Ask Cline to add, edit, start, or link tasks",
 			showComposerModeToggle = true,
-			showRightBorder = true,
 			workspaceId = null,
 			runtimeConfig = null,
 			onClineSettingsSaved,
@@ -423,10 +421,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		]);
 
 		return (
-			<div
-				className="flex min-h-0 min-w-0 flex-1 flex-col"
-				style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
-			>
+			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<div
 					ref={scrollContainerRef}
 					className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"

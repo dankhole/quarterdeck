@@ -1,10 +1,14 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+
+vi.mock("@/resize/layout-customizations", () => ({
+	useLayoutResetEffect: () => {},
+}));
 
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;

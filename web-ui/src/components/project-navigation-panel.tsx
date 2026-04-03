@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import type { RuntimeProjectSummary } from "@/runtime/types";
-import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
@@ -27,38 +27,6 @@ const COLLAPSED_WIDTH = 48;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
-const SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK = 280;
-const BOARD_SURFACE_HORIZONTAL_PADDING_PX = 16;
-const BOARD_SURFACE_COLUMN_GAPS_PX = 24;
-const BOARD_SURFACE_HORIZONTAL_CHROME_PX = BOARD_SURFACE_HORIZONTAL_PADDING_PX + BOARD_SURFACE_COLUMN_GAPS_PX;
-
-function clampExpandedSidebarWidth(width: number): number {
-	return Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, width));
-}
-
-function getDefaultExpandedSidebarWidth(): number {
-	if (typeof window === "undefined" || !Number.isFinite(window.innerWidth)) {
-		return SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK;
-	}
-	const proportionalWidth = Math.round((window.innerWidth - BOARD_SURFACE_HORIZONTAL_CHROME_PX) / 5);
-	return clampExpandedSidebarWidth(proportionalWidth);
-}
-
-function loadExpandedSidebarWidth(): number {
-	const storedValue = readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth);
-	if (!storedValue) {
-		return getDefaultExpandedSidebarWidth();
-	}
-	const parsedWidth = Number(storedValue);
-	if (!Number.isFinite(parsedWidth)) {
-		return getDefaultExpandedSidebarWidth();
-	}
-	return clampExpandedSidebarWidth(parsedWidth);
-}
-
-function loadSidebarCollapsed(): boolean {
-	return readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed) === "true";
-}
 
 interface TaskCountBadge {
 	id: string;
@@ -104,22 +72,10 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
-	const [sidebarWidth, setSidebarWidth] = useState(loadExpandedSidebarWidth);
-	const [isCollapsed, setIsCollapsed] = useState(loadSidebarCollapsed);
+	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
 	const [isDragging, setIsDragging] = useState(false);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
-
-	const setSidebarCollapsed = useCallback((collapsed: boolean) => {
-		setIsCollapsed(collapsed);
-		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed, String(collapsed));
-	}, []);
-
-	const setExpandedSidebarWidth = useCallback((width: number) => {
-		const normalizedWidth = clampExpandedSidebarWidth(width);
-		setSidebarWidth(normalizedWidth);
-		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth, String(normalizedWidth));
-	}, []);
 
 	const stopDrag = useCallback(() => {
 		setIsDragging(false);
@@ -202,7 +158,7 @@ export function ProjectNavigationPanel({
 					aria-orientation="vertical"
 					aria-label="Resize sidebar"
 					onMouseDown={startDrag}
-					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
 				/>
 				{sortedProjects.map((project) => {
 					const isCurrent = currentProjectId === project.id;
@@ -252,7 +208,7 @@ export function ProjectNavigationPanel({
 				aria-orientation="vertical"
 				aria-label="Resize sidebar"
 				onMouseDown={startDrag}
-				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
 			/>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
