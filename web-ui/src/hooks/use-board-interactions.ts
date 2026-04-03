@@ -735,10 +735,14 @@ export function useBoardInteractions({
 
 	const handleCardSelect = useCallback(
 		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || selection.column.id === "trash") {
+				return;
+			}
 			setSelectedTaskId(taskId);
 			setIsGitHistoryOpen(false);
 		},
-		[setIsGitHistoryOpen, setSelectedTaskId],
+		[board, setIsGitHistoryOpen, setSelectedTaskId],
 	);
 
 	const handleMoveToTrash = useCallback(() => {

@@ -456,6 +456,9 @@ export function BoardCard({
 							onDependencyPointerDown?.(card.id, event);
 						}}
 						onClick={(event) => {
+							if (!isCardInteractive) {
+								return;
+							}
 							if (isDependencyLinking) {
 								event.preventDefault();
 								event.stopPropagation();
