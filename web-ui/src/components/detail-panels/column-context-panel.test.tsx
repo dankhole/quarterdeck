@@ -3,8 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type CardDetailContextValue, CardDetailProvider } from "@/components/detail-panels/card-detail-context";
-import { TasksPanel } from "@/components/detail-panels/tasks-panel";
+import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import type { BoardColumn, CardSelection } from "@/types";
 
 vi.mock("@/components/board-card", () => ({
@@ -61,39 +60,7 @@ function createSelection(columns: BoardColumn[], taskId: string): CardSelection 
 	throw new Error(`Could not find task ${taskId}.`);
 }
 
-function createContextValue(selection: CardSelection): CardDetailContextValue {
-	return {
-		selection,
-		onCardSelect: () => {},
-		taskSessions: {},
-		onTaskDragEnd: () => {},
-		showClineAgentChatPanel: false,
-		sessionSummary: null,
-		currentProjectId: null,
-		showMoveToTrashActions: false,
-		onMoveToTrash: () => {},
-		isTaskTerminalEnabled: false,
-		onSessionSummary: () => {},
-		clineAgentChatPanelRef: { current: null },
-		isRuntimeAvailable: false,
-		diffMode: "working_copy",
-		setDiffMode: () => {},
-		isFileTreeVisible: true,
-		handleToggleFileTree: () => {},
-		isWorkspaceChangesPending: false,
-		hasNoWorkspaceFileChanges: true,
-		emptyDiffTitle: "No changes",
-		runtimeFiles: null,
-		selectedPath: null,
-		setSelectedPath: () => {},
-		handleAddDiffComments: () => {},
-		handleSendDiffComments: () => {},
-		diffComments: new Map(),
-		setDiffComments: () => {},
-	};
-}
-
-describe("TasksPanel", () => {
+describe("ColumnContextPanel", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
@@ -142,9 +109,12 @@ describe("TasksPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<CardDetailProvider value={createContextValue(createSelection(columns, "task-2"))}>
-					<TasksPanel />
-				</CardDetailProvider>,
+				<ColumnContextPanel
+					selection={createSelection(columns, "task-2")}
+					onCardSelect={() => {}}
+					taskSessions={{}}
+					onTaskDragEnd={() => {}}
+				/>,
 			);
 		});
 
@@ -156,9 +126,12 @@ describe("TasksPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<CardDetailProvider value={createContextValue(createSelection(columns, "task-3"))}>
-					<TasksPanel />
-				</CardDetailProvider>,
+				<ColumnContextPanel
+					selection={createSelection(columns, "task-3")}
+					onCardSelect={() => {}}
+					taskSessions={{}}
+					onTaskDragEnd={() => {}}
+				/>,
 			);
 		});
 
