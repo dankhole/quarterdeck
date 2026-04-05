@@ -60,7 +60,20 @@ function describeState(summary: RuntimeTaskSessionSummary | null): string {
 		return "Running";
 	}
 	if (summary.state === "awaiting_review") {
-		return "Ready for review";
+		switch (summary.reviewReason) {
+			case "exit":
+				return "Completed";
+			case "hook":
+				return "Needs input";
+			case "attention":
+				return "Needs attention";
+			case "error":
+				return "Error";
+			case "interrupted":
+				return "Interrupted";
+			default:
+				return "Ready for review";
+		}
 	}
 	if (summary.state === "interrupted") {
 		return "Interrupted";
@@ -81,7 +94,16 @@ function getStateTagStyle(summary: RuntimeTaskSessionSummary | null): StatusTagS
 		return "success";
 	}
 	if (summary.state === "awaiting_review") {
-		return "warning";
+		switch (summary.reviewReason) {
+			case "exit":
+				return "success";
+			case "error":
+				return "danger";
+			case "interrupted":
+				return "neutral";
+			default:
+				return "warning";
+		}
 	}
 	if (summary.state === "interrupted" || summary.state === "failed") {
 		return "danger";
