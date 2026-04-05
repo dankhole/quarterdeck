@@ -17,6 +17,8 @@ export interface UseRuntimeConfigResult {
 		readyForReviewNotificationsEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
+		terminalFontFamily?: string;
+		terminalFontSize?: number;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
@@ -84,6 +86,8 @@ export function useRuntimeConfig(
 			readyForReviewNotificationsEnabled?: boolean;
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
+			terminalFontFamily?: string;
+			terminalFontSize?: number;
 		}): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {
