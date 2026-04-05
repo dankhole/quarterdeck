@@ -16,6 +16,8 @@ interface UsePersistentTerminalSessionInput {
 	sessionStartedAt?: number | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
+	fontFamily?: string;
+	fontSize?: number;
 }
 
 export interface UsePersistentTerminalSessionResult {
@@ -37,6 +39,8 @@ export function usePersistentTerminalSession({
 	sessionStartedAt = null,
 	terminalBackgroundColor,
 	cursorColor,
+	fontFamily,
+	fontSize,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
@@ -100,6 +104,8 @@ export function usePersistentTerminalSession({
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
+			fontFamily,
+			fontSize,
 		});
 		if (didSessionRestart) {
 			terminal.reset();
@@ -124,6 +130,8 @@ export function usePersistentTerminalSession({
 			{
 				cursorColor,
 				terminalBackgroundColor,
+				fontFamily,
+				fontSize,
 			},
 			{
 				autoFocus,
@@ -139,7 +147,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
+	}, [autoFocus, cursorColor, enabled, fontFamily, fontSize, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {

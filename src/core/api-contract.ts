@@ -787,6 +787,10 @@ export const runtimeConfigResponseSchema = z.object({
 	openPrPromptTemplate: z.string(),
 	commitPromptTemplateDefault: z.string(),
 	openPrPromptTemplateDefault: z.string(),
+	terminalFontFamily: z.string(),
+	terminalFontSize: z.number(),
+	terminalFontFamilyDefault: z.string(),
+	terminalFontSizeDefault: z.number(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
@@ -798,6 +802,8 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
+	terminalFontFamily: z.string().optional(),
+	terminalFontSize: z.number().int().min(8).max(32).optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 
