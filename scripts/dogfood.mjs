@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { open, readFile, unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -335,6 +335,11 @@ function buildDogfoodRuntimeEnv(baseEnv) {
 		}
 		runtimeEnv[key] = stripNodeModulesBinFromPath(runtimeEnv[key]);
 		break;
+	}
+	// Isolate dogfood state from the user's real kanban session so that
+	// testing feature branches doesn't clobber in-flight board state.
+	if (!runtimeEnv.KANBAN_STATE_HOME) {
+		runtimeEnv.KANBAN_STATE_HOME = resolve(homedir(), ".cline", "kanban-dogfood");
 	}
 	return runtimeEnv;
 }
