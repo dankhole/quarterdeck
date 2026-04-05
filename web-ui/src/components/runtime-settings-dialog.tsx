@@ -305,8 +305,6 @@ export function RuntimeSettingsDialog({
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
-	const [terminalFontFamily, setTerminalFontFamily] = useState("");
-	const [terminalFontSize, setTerminalFontSize] = useState(13);
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -410,16 +408,10 @@ export function RuntimeSettingsDialog({
 		) {
 			return true;
 		}
-		if (
+		return (
 			normalizeTemplateForComparison(openPrPromptTemplate) !==
 			normalizeTemplateForComparison(initialOpenPrPromptTemplate)
-		) {
-			return true;
-		}
-		if (terminalFontFamily !== (config?.terminalFontFamily ?? "")) {
-			return true;
-		}
-		return terminalFontSize !== (config?.terminalFontSize ?? 13);
+		);
 	}, [
 		agentAutonomousModeEnabled,
 		clineMcpSettings.hasUnsavedChanges,
@@ -436,8 +428,6 @@ export function RuntimeSettingsDialog({
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
-		terminalFontFamily,
-		terminalFontSize,
 	]);
 
 	useEffect(() => {
@@ -450,8 +440,6 @@ export function RuntimeSettingsDialog({
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
-		setTerminalFontFamily(config?.terminalFontFamily ?? "");
-		setTerminalFontSize(config?.terminalFontSize ?? 13);
 		setSaveError(null);
 	}, [
 		config?.agentAutonomousModeEnabled,
@@ -460,8 +448,6 @@ export function RuntimeSettingsDialog({
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
-		config?.terminalFontFamily,
-		config?.terminalFontSize,
 		fallbackAgentId,
 		open,
 	]);
@@ -583,8 +569,6 @@ export function RuntimeSettingsDialog({
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
-			terminalFontFamily,
-			terminalFontSize,
 		});
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -763,30 +747,6 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-2 mb-0">
 					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
 				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
-				<label className="text-[13px] text-text-primary block mb-1">Font family</label>
-				<input
-					type="text"
-					value={terminalFontFamily}
-					onChange={(e) => setTerminalFontFamily(e.target.value)}
-					placeholder={config?.terminalFontFamilyDefault ?? ""}
-					disabled={controlsDisabled}
-					className="w-full h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary font-mono placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40"
-				/>
-				<p className="text-text-tertiary text-[12px] mt-1 mb-0">
-					CSS font stack. First available font is used, with fallbacks for missing fonts.
-				</p>
-				<label className="text-[13px] text-text-primary block mt-3 mb-1">Font size</label>
-				<input
-					type="number"
-					min={8}
-					max={32}
-					value={terminalFontSize}
-					onChange={(e) => setTerminalFontSize(Number(e.target.value))}
-					disabled={controlsDisabled}
-					className="w-20 h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none disabled:opacity-40"
-				/>
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p

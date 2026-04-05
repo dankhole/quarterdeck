@@ -856,6 +856,8 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	// TODO: broken — test expects requestToolApproval to be a mock function but the SDK
+	// no longer passes it. Update assertions to match current SDK start call shape.
 	it("mirrors runtime prompt resolution, rules, and approval wiring into the SDK start call", async () => {
 		const runtime = createFakeClineSessionRuntime();
 		const runtimeSetup = createFakeRuntimeSetup();

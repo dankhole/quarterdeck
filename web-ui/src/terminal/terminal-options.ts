@@ -6,8 +6,6 @@ interface CreateKanbanTerminalOptionsInput {
 	cursorColor: string;
 	isMacPlatform: boolean;
 	terminalBackgroundColor: string;
-	fontFamily?: string;
-	fontSize?: number;
 }
 
 const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
@@ -18,8 +16,6 @@ export function createKanbanTerminalOptions({
 	cursorColor,
 	isMacPlatform,
 	terminalBackgroundColor,
-	fontFamily,
-	fontSize,
 }: CreateKanbanTerminalOptionsInput): ITerminalOptions {
 	return {
 		allowProposedApi: true,
@@ -29,8 +25,8 @@ export function createKanbanTerminalOptions({
 		cursorInactiveStyle: "outline",
 		cursorStyle: "block",
 		disableStdin: false,
-		fontFamily: fontFamily || TERMINAL_FONT_FAMILY,
-		fontSize: fontSize || 13,
+		fontFamily: TERMINAL_FONT_FAMILY,
+		fontSize: 13,
 		fontWeight: "normal",
 		fontWeightBold: "bold",
 		letterSpacing: 0,

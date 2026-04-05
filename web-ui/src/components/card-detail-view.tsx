@@ -680,8 +680,6 @@ export function CardDetailView({
 										}
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										fontFamily={runtimeConfig?.terminalFontFamily}
-										fontSize={runtimeConfig?.terminalFontSize}
 										taskColumnId={selection.column.id}
 									/>
 								)}
@@ -801,8 +799,6 @@ export function CardDetailView({
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-										fontFamily={runtimeConfig?.terminalFontFamily}
-										fontSize={runtimeConfig?.terminalFontSize}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}

@@ -28,8 +28,6 @@ const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 interface PersistentTerminalAppearance {
 	cursorColor: string;
 	terminalBackgroundColor: string;
-	fontFamily?: string;
-	fontSize?: number;
 }
 
 interface PersistentTerminalSubscriber {
@@ -183,8 +181,6 @@ class PersistentTerminal {
 				cursorColor: this.appearance.cursorColor,
 				isMacPlatform,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
-				fontFamily: this.appearance.fontFamily,
-				fontSize: this.appearance.fontSize,
 			}),
 			cols: initialGeometry.cols,
 			rows: initialGeometry.rows,
@@ -491,19 +487,14 @@ class PersistentTerminal {
 
 	private updateAppearance(appearance: PersistentTerminalAppearance): void {
 		this.appearance = appearance;
-		const options = createKanbanTerminalOptions({
-			cursorColor: appearance.cursorColor,
-			isMacPlatform,
-			terminalBackgroundColor: appearance.terminalBackgroundColor,
-			fontFamily: appearance.fontFamily,
-			fontSize: appearance.fontSize,
-		});
 		this.terminal.options.theme = {
 			...this.terminal.options.theme,
-			...options.theme,
+			...createKanbanTerminalOptions({
+				cursorColor: appearance.cursorColor,
+				isMacPlatform,
+				terminalBackgroundColor: appearance.terminalBackgroundColor,
+			}).theme,
 		};
-		this.terminal.options.fontFamily = options.fontFamily;
-		this.terminal.options.fontSize = options.fontSize;
 	}
 
 	setAppearance(appearance: PersistentTerminalAppearance): void {
