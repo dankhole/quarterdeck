@@ -1,12 +1,10 @@
 import { TRPCError } from "@trpc/server";
-import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
-	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
@@ -37,10 +35,6 @@ import type { RuntimeTrpcContext } from "./app-router";
 
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
-	getScopedClineTaskSessionService: (scope: {
-		workspaceId: string;
-		workspacePath: string;
-	}) => Promise<ClineTaskSessionService>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void> | void;
 	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
@@ -86,34 +80,6 @@ function normalizeRequiredTaskWorkspaceScopeInput(input: {
 		baseRef,
 		mode,
 	};
-}
-
-function isActiveTaskSessionState(summary: RuntimeTaskSessionSummary | null): boolean {
-	return summary?.state === "running" || summary?.state === "awaiting_review";
-}
-
-function selectLastTurnSummary(
-	terminalSummary: RuntimeTaskSessionSummary | null,
-	clineSummary: RuntimeTaskSessionSummary | null,
-): RuntimeTaskSessionSummary | null {
-	if (!terminalSummary) {
-		return clineSummary;
-	}
-	if (!clineSummary) {
-		return terminalSummary;
-	}
-	const terminalIsActive = isActiveTaskSessionState(terminalSummary);
-	const clineIsActive = isActiveTaskSessionState(clineSummary);
-	if (terminalIsActive !== clineIsActive) {
-		return clineIsActive ? clineSummary : terminalSummary;
-	}
-	if (terminalSummary.updatedAt !== clineSummary.updatedAt) {
-		return terminalSummary.updatedAt > clineSummary.updatedAt ? terminalSummary : clineSummary;
-	}
-	if (clineSummary.agentId === "cline" && terminalSummary.agentId !== "cline") {
-		return clineSummary;
-	}
-	return terminalSummary;
 }
 
 function createEmptyGitSummaryErrorResponse(error: unknown): RuntimeGitSummaryResponse {
@@ -294,11 +260,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					workspaceScope.workspaceId,
 					workspaceScope.workspacePath,
 				);
-				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				const summary = selectLastTurnSummary(
-					terminalManager.getSummary(normalizedInput.taskId),
-					clineTaskSessionService.getSummary(normalizedInput.taskId),
-				);
+				const summary = terminalManager.getSummary(normalizedInput.taskId);
 				const fromCheckpoint = summary?.previousTurnCheckpoint;
 				const toCheckpoint = summary?.latestTurnCheckpoint;
 				if (!toCheckpoint) {
