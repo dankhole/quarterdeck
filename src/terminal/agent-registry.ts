@@ -124,5 +124,9 @@ export function buildRuntimeConfigResponse(
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
 		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
+		terminalFontFamily: runtimeConfig.terminalFontFamily,
+		terminalFontSize: runtimeConfig.terminalFontSize,
+		terminalFontFamilyDefault: runtimeConfig.terminalFontFamilyDefault,
+		terminalFontSizeDefault: runtimeConfig.terminalFontSizeDefault,
 	};
 }

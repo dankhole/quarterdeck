@@ -44,6 +44,8 @@ export interface AgentTerminalPanelProps {
 	panelBackgroundColor?: string;
 	terminalBackgroundColor?: string;
 	cursorColor?: string;
+	fontFamily?: string;
+	fontSize?: number;
 	isVisible?: boolean;
 	onConnectionReady?: (taskId: string) => void;
 	agentCommand?: string | null;
@@ -374,6 +376,8 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		sessionStartedAt: props.summary?.startedAt ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
+		fontFamily: props.fontFamily,
+		fontSize: props.fontSize,
 	});
 
 	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;
