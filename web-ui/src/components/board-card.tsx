@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
@@ -121,6 +121,22 @@ function resolveToolCallLabel(
 	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
 }
 
+function getReviewReasonDotColor(reviewReason: RuntimeTaskSessionReviewReason): string {
+	switch (reviewReason) {
+		case "exit":
+			return SESSION_ACTIVITY_COLOR.success;
+		case "hook":
+		case "attention":
+			return SESSION_ACTIVITY_COLOR.waiting;
+		case "error":
+			return SESSION_ACTIVITY_COLOR.error;
+		case "interrupted":
+			return SESSION_ACTIVITY_COLOR.muted;
+		default:
+			return SESSION_ACTIVITY_COLOR.success;
+	}
+}
+
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
 	if (!summary) {
 		return null;
@@ -132,7 +148,7 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	const finalMessage = hookActivity?.finalMessage?.trim();
 	const hookEventName = hookActivity?.hookEventName?.trim() ?? null;
 	if (summary.state === "awaiting_review" && finalMessage) {
-		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: finalMessage };
+		return { dotColor: getReviewReasonDotColor(summary.reviewReason), text: finalMessage };
 	}
 	if (
 		finalMessage &&
@@ -146,7 +162,11 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	}
 	if (activityText) {
 		let dotColor: string =
-			summary.state === "failed" ? SESSION_ACTIVITY_COLOR.error : SESSION_ACTIVITY_COLOR.thinking;
+			summary.state === "failed"
+				? SESSION_ACTIVITY_COLOR.error
+				: summary.state === "awaiting_review"
+					? getReviewReasonDotColor(summary.reviewReason)
+					: SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
 		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
 		if (toolCallLabel) {
@@ -179,7 +199,20 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		return { dotColor: SESSION_ACTIVITY_COLOR.error, text: failedText };
 	}
 	if (summary.state === "awaiting_review") {
-		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
+		switch (summary.reviewReason) {
+			case "exit":
+				return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Completed — ready for review" };
+			case "hook":
+				return { dotColor: SESSION_ACTIVITY_COLOR.waiting, text: "Waiting for approval" };
+			case "attention":
+				return { dotColor: SESSION_ACTIVITY_COLOR.waiting, text: "Needs attention" };
+			case "error":
+				return { dotColor: SESSION_ACTIVITY_COLOR.error, text: "Agent error — check terminal" };
+			case "interrupted":
+				return { dotColor: SESSION_ACTIVITY_COLOR.muted, text: "Interrupted" };
+			default:
+				return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
+		}
 	}
 	if (summary.state === "running") {
 		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
