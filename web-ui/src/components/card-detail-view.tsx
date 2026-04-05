@@ -6,6 +6,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
+import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
@@ -301,71 +302,46 @@ export function CardDetailView({
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
 	const {
-		taskCardsPanelRatio,
-		setTaskCardsPanelRatio,
-		agentPanelRatio,
-		setAgentPanelRatio,
+		activeDetailPanel,
+		setActiveDetailPanel,
+		sidePanelRatio,
+		setSidePanelRatio,
 		detailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
 	} = useCardDetailLayout({
 		isDiffExpanded,
 	});
-	const { startDrag: startTaskCardsPanelResize } = useResizeDrag();
-	const { startDrag: startAgentPanelResize } = useResizeDrag();
+	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { startDrag: startDetailDiffResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
 
-	const handleSeparatorMouseDown = useCallback(
+	const handleSidePanelSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
 			const container = detailLayoutRef.current;
 			if (!container) {
 				return;
 			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
+			// Subtract toolbar width from container width so the ratio applies to the resizable area only
+			const containerWidth = Math.max(container.offsetWidth - TOOLBAR_WIDTH, 1);
 			const startX = event.clientX;
-			const startRatio = taskCardsPanelRatio;
-			startTaskCardsPanelResize(event, {
+			const startRatio = sidePanelRatio;
+			startSidePanelResize(event, {
 				axis: "x",
 				cursor: "ew-resize",
 				onMove: (pointerX) => {
 					const deltaRatio = (pointerX - startX) / containerWidth;
-					setTaskCardsPanelRatio(startRatio + deltaRatio);
+					setSidePanelRatio(startRatio + deltaRatio);
 				},
 				onEnd: (pointerX) => {
 					const deltaRatio = (pointerX - startX) / containerWidth;
-					setTaskCardsPanelRatio(startRatio + deltaRatio);
+					setSidePanelRatio(startRatio + deltaRatio);
 				},
 			});
 		},
-		[setTaskCardsPanelRatio, startTaskCardsPanelResize, taskCardsPanelRatio],
-	);
-
-	const handleAgentDiffSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = mainRowRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = agentPanelRatio;
-			startAgentPanelResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setAgentPanelRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setAgentPanelRatio(startRatio + deltaRatio);
-				},
-			});
-		},
-		[agentPanelRatio, setAgentPanelRatio, startAgentPanelResize],
+		[setSidePanelRatio, startSidePanelResize, sidePanelRatio],
 	);
 
 	const handleDetailDiffSeparatorMouseDown = useCallback(
@@ -416,13 +392,11 @@ export function CardDetailView({
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
 	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
-	const taskCardsPanelPercent = `${(taskCardsPanelRatio * 100).toFixed(1)}%`;
-	const detailContentPanelPercent = `${((1 - taskCardsPanelRatio) * 100).toFixed(1)}%`;
-	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
-	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
+	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
 	const detailDiffFileTreePanelPercent = `${(detailDiffFileTreeRatio * 100).toFixed(1)}%`;
 	const detailDiffContentPanelPercent = `${((1 - detailDiffFileTreeRatio) * 100).toFixed(1)}%`;
 	const detailDiffFileTreePanelFlex = `0 0 ${detailDiffFileTreePanelPercent}`;
+	const isSidePanelOpen = activeDetailPanel !== null;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const showClineAgentChatPanel = isNativeClineAgentSelected(sessionSummary?.agentId ?? selectedAgentId);
@@ -555,52 +529,133 @@ export function CardDetailView({
 				background: "var(--color-surface-0)",
 			}}
 		>
+			{/* Toolbar — always visible unless diff is expanded */}
 			{!isDiffExpanded ? (
+				<DetailToolbar activePanel={activeDetailPanel} onPanelChange={setActiveDetailPanel} />
+			) : null}
+
+			{/* Side panel — kanban or changes, shown when activeDetailPanel is set */}
+			{!isDiffExpanded && isSidePanelOpen ? (
 				<>
 					<div
 						style={{
 							display: "flex",
-							width: taskCardsPanelPercent,
+							flexDirection: "column",
+							width: sidePanelPercent,
 							minWidth: 0,
 							minHeight: 0,
+							overflow: "hidden",
 						}}
 					>
-						<ColumnContextPanel
-							selection={selection}
-							workspacePath={workspacePath}
-							onCardSelect={onCardSelect}
-							taskSessions={taskSessions}
-							onTaskDragEnd={onTaskDragEnd}
-							onCreateTask={onCreateTask}
-							onStartTask={onStartTask}
-							onStartAllTasks={onStartAllTasks}
-							onClearTrash={onClearTrash}
-							editingTaskId={editingTaskId}
-							inlineTaskEditor={inlineTaskEditor}
-							onEditTask={onEditTask}
-							onCommitTask={onCommitTask}
-							onOpenPrTask={onOpenPrTask}
-							onMoveToTrashTask={onMoveReviewCardToTrash}
-							onRestoreFromTrashTask={onRestoreTaskFromTrash}
-							commitTaskLoadingById={commitTaskLoadingById}
-							openPrTaskLoadingById={openPrTaskLoadingById}
-							moveToTrashLoadingById={moveToTrashLoadingById}
-							panelWidth="100%"
-						/>
+						{activeDetailPanel === "kanban" ? (
+							<ColumnContextPanel
+								selection={selection}
+								workspacePath={workspacePath}
+								onCardSelect={onCardSelect}
+								taskSessions={taskSessions}
+								onTaskDragEnd={onTaskDragEnd}
+								onCreateTask={onCreateTask}
+								onStartTask={onStartTask}
+								onStartAllTasks={onStartAllTasks}
+								onClearTrash={onClearTrash}
+								editingTaskId={editingTaskId}
+								inlineTaskEditor={inlineTaskEditor}
+								onEditTask={onEditTask}
+								onCommitTask={onCommitTask}
+								onOpenPrTask={onOpenPrTask}
+								onMoveToTrashTask={onMoveReviewCardToTrash}
+								onRestoreFromTrashTask={onRestoreTaskFromTrash}
+								commitTaskLoadingById={commitTaskLoadingById}
+								openPrTaskLoadingById={openPrTaskLoadingById}
+								moveToTrashLoadingById={moveToTrashLoadingById}
+								panelWidth="100%"
+							/>
+						) : activeDetailPanel === "changes" ? (
+							<>
+								{isRuntimeAvailable ? (
+									<DiffToolbar
+										mode={diffMode}
+										onModeChange={setDiffMode}
+										isExpanded={isDiffExpanded}
+										onToggleExpand={handleToggleDiffExpand}
+									/>
+								) : null}
+								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+									{isWorkspaceChangesPending ? (
+										<WorkspaceChangesLoadingPanel panelFlex={detailDiffFileTreePanelFlex} />
+									) : hasNoWorkspaceFileChanges ? (
+										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
+									) : (
+										<div ref={detailDiffRowRef} style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffContentPanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<DiffViewerPanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectedPathChange={setSelectedPath}
+													viewMode="unified"
+													onAddToTerminal={
+														onAddReviewComments || showClineAgentChatPanel
+															? handleAddDiffComments
+															: undefined
+													}
+													onSendToTerminal={
+														onSendReviewComments || showClineAgentChatPanel
+															? handleSendDiffComments
+															: undefined
+													}
+													comments={diffComments}
+													onCommentsChange={setDiffComments}
+												/>
+											</div>
+											<ResizeHandle
+												orientation="vertical"
+												ariaLabel="Resize detail diff panels"
+												onMouseDown={handleDetailDiffSeparatorMouseDown}
+												className="z-10"
+											/>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex="1 1 0"
+												/>
+											</div>
+										</div>
+									)}
+								</div>
+							</>
+						) : null}
 					</div>
 					<ResizeHandle
 						orientation="vertical"
-						ariaLabel="Resize task cards and detail panels"
-						onMouseDown={handleSeparatorMouseDown}
+						ariaLabel="Resize side panel"
+						onMouseDown={handleSidePanelSeparatorMouseDown}
 						className="z-10"
 					/>
 				</>
 			) : null}
+
+			{/* Main content area — agent panel + optional bottom terminal */}
 			<div
 				style={{
 					display: "flex",
 					flexDirection: "column",
-					width: isDiffExpanded ? "100%" : detailContentPanelPercent,
+					flex: "1 1 0",
 					minWidth: 0,
 					minHeight: 0,
 					overflow: "hidden",
@@ -608,13 +663,94 @@ export function CardDetailView({
 			>
 				{gitHistoryPanel ? (
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
+				) : isDiffExpanded ? (
+					<>
+						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+							<div
+								style={{
+									display: "flex",
+									width: "100%",
+									minWidth: 0,
+									minHeight: 0,
+									flexDirection: "column",
+								}}
+							>
+								{isRuntimeAvailable ? (
+									<DiffToolbar
+										mode={diffMode}
+										onModeChange={setDiffMode}
+										isExpanded={isDiffExpanded}
+										onToggleExpand={handleToggleDiffExpand}
+									/>
+								) : null}
+								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+									{isWorkspaceChangesPending ? (
+										<WorkspaceChangesLoadingPanel panelFlex={detailDiffFileTreePanelFlex} />
+									) : hasNoWorkspaceFileChanges ? (
+										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
+									) : (
+										<div ref={detailDiffRowRef} style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffContentPanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<DiffViewerPanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectedPathChange={setSelectedPath}
+													viewMode="split"
+													onAddToTerminal={
+														onAddReviewComments || showClineAgentChatPanel
+															? handleAddDiffComments
+															: undefined
+													}
+													onSendToTerminal={
+														onSendReviewComments || showClineAgentChatPanel
+															? handleSendDiffComments
+															: undefined
+													}
+													comments={diffComments}
+													onCommentsChange={setDiffComments}
+												/>
+											</div>
+											<ResizeHandle
+												orientation="vertical"
+												ariaLabel="Resize detail diff panels"
+												onMouseDown={handleDetailDiffSeparatorMouseDown}
+												className="z-10"
+											/>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex="1 1 0"
+												/>
+											</div>
+										</div>
+									)}
+								</div>
+							</div>
+						</div>
+					</>
 				) : (
 					<>
 						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 							<div
 								style={{
-									display: isDiffExpanded ? "none" : "flex",
-									width: agentPanelPercent,
+									display: "flex",
+									flex: "1 1 0",
 									minWidth: 0,
 									minHeight: 0,
 								}}
@@ -683,90 +819,6 @@ export function CardDetailView({
 										taskColumnId={selection.column.id}
 									/>
 								)}
-							</div>
-							{!isDiffExpanded ? (
-								<ResizeHandle
-									orientation="vertical"
-									ariaLabel="Resize agent and diff panels"
-									onMouseDown={handleAgentDiffSeparatorMouseDown}
-									className="z-10"
-								/>
-							) : null}
-							<div
-								style={{
-									display: "flex",
-									width: isDiffExpanded ? "100%" : diffPanelPercent,
-									minWidth: 0,
-									minHeight: 0,
-									flexDirection: "column",
-								}}
-							>
-								{isRuntimeAvailable ? (
-									<DiffToolbar
-										mode={diffMode}
-										onModeChange={setDiffMode}
-										isExpanded={isDiffExpanded}
-										onToggleExpand={handleToggleDiffExpand}
-									/>
-								) : null}
-								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-									{isWorkspaceChangesPending ? (
-										<WorkspaceChangesLoadingPanel panelFlex={detailDiffFileTreePanelFlex} />
-									) : hasNoWorkspaceFileChanges ? (
-										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
-									) : (
-										<div ref={detailDiffRowRef} style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>
-											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffContentPanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
-											>
-												<DiffViewerPanel
-													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-													selectedPath={selectedPath}
-													onSelectedPathChange={setSelectedPath}
-													viewMode={isDiffExpanded ? "split" : "unified"}
-													onAddToTerminal={
-														onAddReviewComments || showClineAgentChatPanel
-															? handleAddDiffComments
-															: undefined
-													}
-													onSendToTerminal={
-														onSendReviewComments || showClineAgentChatPanel
-															? handleSendDiffComments
-															: undefined
-													}
-													comments={diffComments}
-													onCommentsChange={setDiffComments}
-												/>
-											</div>
-											<ResizeHandle
-												orientation="vertical"
-												ariaLabel="Resize detail diff panels"
-												onMouseDown={handleDetailDiffSeparatorMouseDown}
-												className="z-10"
-											/>
-											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
-											>
-												<FileTreePanel
-													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-													selectedPath={selectedPath}
-													onSelectPath={setSelectedPath}
-													panelFlex="1 1 0"
-												/>
-											</div>
-										</div>
-									)}
-								</div>
 							</div>
 						</div>
 						{bottomTerminalOpen && bottomTerminalTaskId ? (
