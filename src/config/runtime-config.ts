@@ -63,7 +63,7 @@ const PROJECT_CONFIG_DIR = "kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid"];
-const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
+const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_TERMINAL_FONT_FAMILY =
 	"'JetBrainsMono Nerd Font', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace";
