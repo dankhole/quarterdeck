@@ -69,6 +69,7 @@ export interface StartClineTaskSessionRequest {
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
 	systemPrompt?: string | null;
+	autonomousModeEnabled?: boolean;
 }
 
 export interface ClineTaskSessionService {
@@ -410,7 +411,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					reasoningEffort: request.reasoningEffort,
 					systemPrompt,
 					userInstructionWatcher: runtimeSetup.watcher,
-					requestToolApproval: runtimeSetup.requestToolApproval,
+					requestToolApproval: request.autonomousModeEnabled
+						? runtimeSetup.requestToolApproval
+						: undefined,
 				});
 				const warningMessage = formatStartWarnings(startResult.warnings);
 				if (warningMessage) {
