@@ -39,7 +39,7 @@ import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { resolveTaskCwd } from "../workspace/task-worktree";
+import { createTaskBranch, resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
@@ -155,14 +155,32 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const body = parseTaskSessionStartRequest(input);
 				const requestedTaskMode = body.mode ?? (body.startInPlanMode ? "plan" : "act");
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				const taskCwd = isHomeAgentSessionId(body.taskId)
-					? workspaceScope.workspacePath
-					: await resolveExistingTaskCwdOrEnsure({
-							cwd: workspaceScope.workspacePath,
-							taskId: body.taskId,
-							baseRef: body.baseRef,
-						});
-				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
+				const useWorktree = body.useWorktree !== false;
+				const isHomeSession = isHomeAgentSessionId(body.taskId);
+				let taskCwd: string;
+				if (isHomeSession) {
+					taskCwd = workspaceScope.workspacePath;
+				} else if (useWorktree) {
+					taskCwd = await resolveExistingTaskCwdOrEnsure({
+						cwd: workspaceScope.workspacePath,
+						taskId: body.taskId,
+						baseRef: body.baseRef,
+					});
+				} else {
+					taskCwd = workspaceScope.workspacePath;
+				}
+				// Create feature branch after workspace is resolved (first start only).
+				if (body.branchName && !body.resumeFromTrash && !isHomeSession) {
+					const branchResult = await createTaskBranch({
+						cwd: taskCwd,
+						branchName: body.branchName,
+					});
+					// Branch may already exist from a previous start — not fatal.
+					if (!branchResult.ok && branchResult.error && !branchResult.error.includes("already exists")) {
+						return { ok: false, summary: null, error: `Failed to create branch: ${branchResult.error}` };
+					}
+				}
+				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeSession;
 
 				// When restoring from trash, resume with the original agent so conversation
 				// history is preserved. Terminal agents have their agentId preserved in the

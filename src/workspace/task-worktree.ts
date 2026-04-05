@@ -555,6 +555,17 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 	}
 }
 
+export async function createTaskBranch(options: {
+	cwd: string;
+	branchName: string;
+}): Promise<{ ok: boolean; error?: string }> {
+	const result = await runGit(options.cwd, ["checkout", "-b", options.branchName]);
+	if (!result.ok) {
+		return { ok: false, error: result.stderr || result.output };
+	}
+	return { ok: true };
+}
+
 export async function deleteTaskWorktree(options: {
 	repoPath: string;
 	taskId: string;

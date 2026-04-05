@@ -292,6 +292,12 @@ export default function App(): ReactElement {
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskUseWorktree,
+		setNewTaskUseWorktree,
+		newTaskCreateFeatureBranch,
+		setNewTaskCreateFeatureBranch,
+		newTaskBranchName,
+		setNewTaskBranchName,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -306,6 +312,12 @@ export default function App(): ReactElement {
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
 		isEditTaskStartInPlanModeDisabled,
+		editTaskUseWorktree,
+		setEditTaskUseWorktree,
+		editTaskCreateFeatureBranch,
+		setEditTaskCreateFeatureBranch,
+		editTaskBranchName,
+		setEditTaskBranchName,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -731,6 +743,12 @@ export default function App(): ReactElement {
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			autoReviewMode={editTaskAutoReviewMode}
 			onAutoReviewModeChange={setEditTaskAutoReviewMode}
+			useWorktree={editTaskUseWorktree}
+			onUseWorktreeChange={setEditTaskUseWorktree}
+			createFeatureBranch={editTaskCreateFeatureBranch}
+			onCreateFeatureBranchChange={setEditTaskCreateFeatureBranch}
+			branchName={editTaskBranchName}
+			onBranchNameChange={setEditTaskBranchName}
 			workspaceId={currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -1060,6 +1078,12 @@ export default function App(): ReactElement {
 					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 					autoReviewMode={newTaskAutoReviewMode}
 					onAutoReviewModeChange={setNewTaskAutoReviewMode}
+					useWorktree={newTaskUseWorktree}
+					onUseWorktreeChange={setNewTaskUseWorktree}
+					createFeatureBranch={newTaskCreateFeatureBranch}
+					onCreateFeatureBranchChange={setNewTaskCreateFeatureBranch}
+					branchName={newTaskBranchName}
+					onBranchNameChange={setNewTaskBranchName}
 					workspaceId={currentProjectId}
 					branchRef={newTaskBranchRef}
 					branchOptions={createTaskBranchOptions}

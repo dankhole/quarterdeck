@@ -9,6 +9,7 @@ import {
 } from "@/hooks/app-utils";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -46,6 +47,12 @@ export interface UseTaskEditorResult {
 	newTaskAutoReviewMode: TaskAutoReviewMode;
 	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	isNewTaskStartInPlanModeDisabled: boolean;
+	newTaskUseWorktree: boolean;
+	setNewTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
+	newTaskCreateFeatureBranch: boolean;
+	setNewTaskCreateFeatureBranch: Dispatch<SetStateAction<boolean>>;
+	newTaskBranchName: string;
+	setNewTaskBranchName: Dispatch<SetStateAction<string>>;
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
@@ -60,6 +67,12 @@ export interface UseTaskEditorResult {
 	editTaskAutoReviewMode: TaskAutoReviewMode;
 	setEditTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	isEditTaskStartInPlanModeDisabled: boolean;
+	editTaskUseWorktree: boolean;
+	setEditTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
+	editTaskCreateFeatureBranch: boolean;
+	setEditTaskCreateFeatureBranch: Dispatch<SetStateAction<boolean>>;
+	editTaskBranchName: string;
+	setEditTaskBranchName: Dispatch<SetStateAction<string>>;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
 	handleOpenCreateTask: () => void;
@@ -99,6 +112,15 @@ export function useTaskEditor({
 		"commit",
 		normalizeStoredTaskAutoReviewMode,
 	);
+	const [newTaskUseWorktree, setNewTaskUseWorktree] = useBooleanLocalStorageValue(
+		LocalStorageKey.TaskUseWorktree,
+		true,
+	);
+	const [newTaskCreateFeatureBranch, setNewTaskCreateFeatureBranch] = useBooleanLocalStorageValue(
+		LocalStorageKey.TaskCreateFeatureBranch,
+		true,
+	);
+	const [newTaskBranchName, setNewTaskBranchName] = useState("");
 	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
@@ -108,6 +130,9 @@ export function useTaskEditor({
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
+	const [editTaskUseWorktree, setEditTaskUseWorktree] = useState(true);
+	const [editTaskCreateFeatureBranch, setEditTaskCreateFeatureBranch] = useState(true);
+	const [editTaskBranchName, setEditTaskBranchName] = useState("");
 	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
@@ -181,6 +206,9 @@ export function useTaskEditor({
 			setEditTaskStartInPlanMode(false);
 			setEditTaskAutoReviewEnabled(false);
 			setEditTaskAutoReviewMode("commit");
+			setEditTaskUseWorktree(true);
+			setEditTaskCreateFeatureBranch(true);
+			setEditTaskBranchName("");
 			setEditTaskImages([]);
 			setEditTaskBranchRef("");
 		}
@@ -197,6 +225,7 @@ export function useTaskEditor({
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
+		setNewTaskBranchName("");
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
 
@@ -215,6 +244,9 @@ export function useTaskEditor({
 			setEditTaskStartInPlanMode(task.startInPlanMode);
 			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
 			setEditTaskAutoReviewMode(resolveTaskAutoReviewMode(task.autoReviewMode));
+			setEditTaskUseWorktree(task.useWorktree !== false);
+			setEditTaskCreateFeatureBranch(task.branchName !== undefined);
+			setEditTaskBranchName(task.branchName ?? "");
 			const fallbackBranch = task.baseRef || resolvedDefaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
@@ -227,6 +259,9 @@ export function useTaskEditor({
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskUseWorktree(true);
+		setEditTaskCreateFeatureBranch(true);
+		setEditTaskBranchName("");
 		setEditTaskImages([]);
 		setEditTaskBranchRef("");
 	}, []);
@@ -254,6 +289,8 @@ export function useTaskEditor({
 				autoReviewMode: editTaskAutoReviewMode,
 				images: editTaskImages,
 				baseRef,
+				useWorktree: editTaskUseWorktree,
+				branchName: editTaskCreateFeatureBranch ? editTaskBranchName || undefined : undefined,
 			});
 			return updated.updated ? updated.board : currentBoard;
 		});
@@ -261,15 +298,21 @@ export function useTaskEditor({
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskUseWorktree(true);
+		setEditTaskCreateFeatureBranch(true);
+		setEditTaskBranchName("");
 		setEditTaskImages([]);
 		return savedTaskId;
 	}, [
 		editTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		editTaskBranchRef,
+		editTaskBranchName,
+		editTaskCreateFeatureBranch,
 		editTaskPrompt,
 		editTaskImages,
 		editTaskStartInPlanMode,
+		editTaskUseWorktree,
 		editingTaskId,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
@@ -300,6 +343,8 @@ export function useTaskEditor({
 				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
 				baseRef,
+				useWorktree: newTaskUseWorktree,
+				branchName: newTaskCreateFeatureBranch ? newTaskBranchName || undefined : undefined,
 			});
 			setBoard(created.board);
 			trackTaskCreated({
@@ -316,6 +361,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskBranchName("");
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
@@ -327,10 +373,13 @@ export function useTaskEditor({
 			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
+			newTaskBranchName,
 			newTaskBranchRef,
+			newTaskCreateFeatureBranch,
 			newTaskImages,
 			newTaskPrompt,
 			newTaskStartInPlanMode,
+			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
 			setBoard,
@@ -357,6 +406,8 @@ export function useTaskEditor({
 					autoReviewMode: newTaskAutoReviewMode,
 					images: newTaskImages,
 					baseRef,
+					useWorktree: newTaskUseWorktree,
+					branchName: newTaskCreateFeatureBranch ? newTaskBranchName || undefined : undefined,
 				});
 				updatedBoard = created.board;
 				createdTaskIds.push(created.task.id);
@@ -378,6 +429,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskBranchName("");
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
@@ -389,9 +441,12 @@ export function useTaskEditor({
 			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
+			newTaskBranchName,
 			newTaskBranchRef,
+			newTaskCreateFeatureBranch,
 			newTaskImages,
 			newTaskStartInPlanMode,
+			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
 			setBoard,
@@ -405,9 +460,13 @@ export function useTaskEditor({
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskUseWorktree(true);
+		setEditTaskCreateFeatureBranch(true);
+		setEditTaskBranchName("");
 		setEditTaskImages([]);
 		setEditTaskBranchRef("");
 		setNewTaskImages([]);
+		setNewTaskBranchName("");
 	}, []);
 
 	return {
@@ -423,6 +482,12 @@ export function useTaskEditor({
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskUseWorktree,
+		setNewTaskUseWorktree,
+		newTaskCreateFeatureBranch,
+		setNewTaskCreateFeatureBranch,
+		newTaskBranchName,
+		setNewTaskBranchName,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -437,6 +502,12 @@ export function useTaskEditor({
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
 		isEditTaskStartInPlanModeDisabled,
+		editTaskUseWorktree,
+		setEditTaskUseWorktree,
+		editTaskCreateFeatureBranch,
+		setEditTaskCreateFeatureBranch,
+		editTaskBranchName,
+		setEditTaskBranchName,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,

@@ -111,6 +111,12 @@ export function TaskCreateDialog({
 	autoReviewMode,
 	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
+	useWorktree,
+	onUseWorktreeChange,
+	createFeatureBranch,
+	onCreateFeatureBranchChange,
+	branchName,
+	onBranchNameChange,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -134,6 +140,12 @@ export function TaskCreateDialog({
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
+	useWorktree: boolean;
+	onUseWorktreeChange: (value: boolean) => void;
+	createFeatureBranch: boolean;
+	onCreateFeatureBranchChange: (value: boolean) => void;
+	branchName: string;
+	onBranchNameChange: (value: string) => void;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -146,6 +158,8 @@ export function TaskCreateDialog({
 	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
+	const useWorktreeId = useId();
+	const createFeatureBranchId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
 	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
@@ -501,6 +515,51 @@ export function TaskCreateDialog({
 							size="sm"
 							emptyText="No branches detected"
 						/>
+					</div>
+
+					<label
+						htmlFor={useWorktreeId}
+						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+					>
+						<RadixCheckbox.Root
+							id={useWorktreeId}
+							checked={useWorktree}
+							onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
+							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={10} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						Use isolated worktree
+					</label>
+
+					<div className="flex items-center gap-2">
+						<label
+							htmlFor={createFeatureBranchId}
+							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none shrink-0"
+						>
+							<RadixCheckbox.Root
+								id={createFeatureBranchId}
+								checked={createFeatureBranch}
+								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
+								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+							>
+								<RadixCheckbox.Indicator>
+									<Check size={10} className="text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							Feature branch
+						</label>
+						{createFeatureBranch ? (
+							<input
+								type="text"
+								value={branchName}
+								onChange={(e) => onBranchNameChange(e.target.value)}
+								placeholder="Leave blank to use task ID"
+								className="flex-1 min-w-0 h-7 rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						) : null}
 					</div>
 
 					<div className="flex items-center gap-2 flex-wrap">
