@@ -112,10 +112,7 @@ export function useTaskEditor({
 		"commit",
 		normalizeStoredTaskAutoReviewMode,
 	);
-	const [newTaskUseWorktree, setNewTaskUseWorktree] = useBooleanLocalStorageValue(
-		LocalStorageKey.TaskUseWorktree,
-		true,
-	);
+	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [newTaskCreateFeatureBranch, setNewTaskCreateFeatureBranch] = useBooleanLocalStorageValue(
 		LocalStorageKey.TaskCreateFeatureBranch,
 		true,
@@ -225,6 +222,7 @@ export function useTaskEditor({
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
+		setNewTaskUseWorktree(true);
 		setNewTaskBranchName("");
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
@@ -361,6 +359,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskUseWorktree(true);
 			setNewTaskBranchName("");
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
@@ -429,6 +428,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskUseWorktree(true);
 			setNewTaskBranchName("");
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {

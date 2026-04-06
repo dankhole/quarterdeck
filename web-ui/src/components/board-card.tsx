@@ -533,6 +533,13 @@ export function BoardCard({
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
+								{card.useWorktree === false ? (
+									<Tooltip content="Running without isolated worktree">
+										<span className="inline-flex items-center shrink-0 rounded bg-status-orange/15 px-1 py-px text-[10px] font-medium text-status-orange leading-tight">
+											No WT
+										</span>
+									</Tooltip>
+								) : null}
 								<div ref={titleContainerRef} className="flex-1 min-w-0">
 									<p
 										ref={titleRef}
