@@ -544,7 +544,6 @@ export default function App(): ReactElement {
 		handleStartAllBacklogTasks,
 		handleDetailTaskDragEnd,
 		handleCardSelect,
-		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
@@ -960,8 +959,6 @@ export default function App(): ReactElement {
 									onSendReviewComments={(taskId: string, text: string) => {
 										void handleSendReviewComments(taskId, text);
 									}}
-									onMoveToTrash={handleMoveToTrash}
-									isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 									gitHistoryPanel={
 										isGitHistoryOpen ? (
 											<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />

@@ -5,7 +5,6 @@ import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
@@ -32,11 +31,8 @@ export interface AgentTerminalPanelProps {
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	taskColumnId?: string;
-	onMoveToTrash?: () => void;
-	isMoveToTrashLoading?: boolean;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
-	showMoveToTrash?: boolean;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
 	autoFocus?: boolean;
@@ -76,7 +72,7 @@ function AgentTerminalReviewActions({
 	}
 
 	return (
-		<div style={{ display: "flex", gap: 6 }}>
+		<div className="flex gap-1.5 px-3 py-2">
 			<Button
 				variant="primary"
 				size="sm"
@@ -108,11 +104,8 @@ function AgentTerminalPanelLayout({
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	taskColumnId = "in_progress",
-	onMoveToTrash,
-	isMoveToTrashLoading = false,
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
-	showMoveToTrash,
 	showSessionToolbar = true,
 	onClose,
 	autoFocus: _autoFocus = false,
@@ -271,23 +264,18 @@ function AgentTerminalPanelLayout({
 					{lastError}
 				</div>
 			) : null}
-			{showMoveToTrash && onMoveToTrash ? (
-				<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
-					<AgentTerminalReviewActions
-						taskId={taskId}
-						taskColumnId={taskColumnId}
-						onCommit={onCommit}
-						onOpenPr={onOpenPr}
-						isCommitLoading={isCommitLoading}
-						isOpenPrLoading={isOpenPrLoading}
-					/>
-					{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-						<Button variant="default" fill onClick={onCancelAutomaticAction}>
-							{cancelAutomaticActionLabel}
-						</Button>
-					) : null}
-					<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
-						{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
+			<AgentTerminalReviewActions
+				taskId={taskId}
+				taskColumnId={taskColumnId}
+				onCommit={onCommit}
+				onOpenPr={onOpenPr}
+				isCommitLoading={isCommitLoading}
+				isOpenPrLoading={isOpenPrLoading}
+			/>
+			{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
+				<div className="px-3 py-2">
+					<Button variant="default" fill onClick={onCancelAutomaticAction}>
+						{cancelAutomaticActionLabel}
 					</Button>
 				</div>
 			) : null}
