@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
 import type { RuntimeFileContentResponse } from "../core/api-contract";
@@ -87,20 +87,27 @@ function isBinaryBuffer(buffer: Buffer): boolean {
 	return false;
 }
 
-function validatePath(worktreePath: string, relativePath: string): string {
+async function validatePath(worktreePath: string, relativePath: string): Promise<string> {
 	const absolutePath = resolve(worktreePath, normalize(relativePath));
 	const rel = relative(worktreePath, absolutePath);
 	if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
-	return absolutePath;
+	// Resolve symlinks so a link inside the worktree cannot escape to an arbitrary target
+	const realWorktree = await realpath(worktreePath);
+	const realAbsolute = await realpath(absolutePath);
+	const realRel = relative(realWorktree, realAbsolute);
+	if (!realRel || realRel.startsWith("..") || isAbsolute(realRel)) {
+		throw new Error("Path resolves outside the worktree.");
+	}
+	return realAbsolute;
 }
 
 export async function readWorkspaceFile(
 	worktreePath: string,
 	relativePath: string,
 ): Promise<RuntimeFileContentResponse> {
-	const absolutePath = validatePath(worktreePath, relativePath);
+	const absolutePath = await validatePath(worktreePath, relativePath);
 	const fileStat = await stat(absolutePath);
 	if (!fileStat.isFile()) {
 		throw new Error("Path is not a regular file.");
