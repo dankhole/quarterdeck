@@ -849,6 +849,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 		const before = entry.summary;
+		// Clear latestHookActivity before transitioning so stale permission-related
+		// fields (hookEventName, notificationType) from a previous event don't leak
+		// into the new review state — applyHookActivity runs after this and would
+		// otherwise carry forward the old values when the new hook has no event name.
+		if (entry.summary.latestHookActivity) {
+			updateSummary(entry, { latestHookActivity: null });
+		}
 		const summary = this.applySessionEvent(entry, { type: "hook.to_review" });
 		if (summary !== before && entry.active) {
 			for (const listener of entry.listeners.values()) {
