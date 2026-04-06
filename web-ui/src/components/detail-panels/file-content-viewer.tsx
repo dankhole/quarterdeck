@@ -165,11 +165,10 @@ export function FileContentViewer({
 									{lineNumber}
 								</span>
 								<span
-									className="text-text-primary pr-4"
-									style={{
-										whiteSpace: wordWrap ? "pre-wrap" : "pre",
-										wordBreak: wordWrap ? "break-all" : undefined,
-									}}
+									className={cn(
+										"text-text-primary pr-4",
+										wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+									)}
 								>
 									{line || " "}
 								</span>

@@ -10,55 +10,38 @@ interface FlatTreeItem {
 	depth: number;
 }
 
-function flattenVisibleNodes(nodes: FileTreeNode[], expandedDirs: Set<string>, depth: number): FlatTreeItem[] {
-	const result: FlatTreeItem[] = [];
+/** Single-pass traversal that produces both the visible item list and the file-only path list. */
+function flattenVisible(
+	nodes: FileTreeNode[],
+	expandedDirs: Set<string>,
+	depth: number,
+	items: FlatTreeItem[],
+	filePaths: string[],
+): void {
 	for (const node of nodes) {
-		result.push({ node, depth });
-		if (node.type === "directory" && expandedDirs.has(node.path) && node.children.length > 0) {
-			result.push(...flattenVisibleNodes(node.children, expandedDirs, depth + 1));
+		items.push({ node, depth });
+		if (node.type === "file") {
+			filePaths.push(node.path);
+		} else if (expandedDirs.has(node.path) && node.children.length > 0) {
+			flattenVisible(node.children, expandedDirs, depth + 1, items, filePaths);
 		}
 	}
-	return result;
-}
-
-function collectAllDirectoryPaths(nodes: FileTreeNode[]): string[] {
-	const paths: string[] = [];
-	for (const node of nodes) {
-		if (node.type === "directory") {
-			paths.push(node.path);
-			paths.push(...collectAllDirectoryPaths(node.children));
-		}
-	}
-	return paths;
 }
 
 const INITIAL_EXPANSION_DEPTH = 2;
 
-function collectDirectoryPathsToDepth(nodes: FileTreeNode[], maxDepth: number, currentDepth = 0): string[] {
-	if (currentDepth >= maxDepth) {
+function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE_INFINITY, depth = 0): string[] {
+	if (depth >= maxDepth) {
 		return [];
 	}
 	const paths: string[] = [];
 	for (const node of nodes) {
 		if (node.type === "directory") {
 			paths.push(node.path);
-			paths.push(...collectDirectoryPathsToDepth(node.children, maxDepth, currentDepth + 1));
+			paths.push(...collectDirectoryPaths(node.children, maxDepth, depth + 1));
 		}
 	}
 	return paths;
-}
-
-function flattenFilePaths(nodes: FileTreeNode[], expandedDirs: Set<string>): string[] {
-	const result: string[] = [];
-	for (const node of nodes) {
-		if (node.type === "file") {
-			result.push(node.path);
-		}
-		if (node.type === "directory" && expandedDirs.has(node.path) && node.children.length > 0) {
-			result.push(...flattenFilePaths(node.children, expandedDirs));
-		}
-	}
-	return result;
 }
 
 const ROW_HEIGHT = 28;
@@ -104,15 +87,19 @@ export function FileBrowserTreePanel({
 	// Auto-expand directories on first load (limited depth) or fully when searching
 	useEffect(() => {
 		if (debouncedQuery.trim()) {
-			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
+			setExpandedDirs(new Set(collectDirectoryPaths(tree)));
 		} else if (!hasInitializedExpansion && tree.length > 0) {
-			setExpandedDirs(new Set(collectDirectoryPathsToDepth(tree, INITIAL_EXPANSION_DEPTH)));
+			setExpandedDirs(new Set(collectDirectoryPaths(tree, INITIAL_EXPANSION_DEPTH)));
 			setHasInitializedExpansion(true);
 		}
 	}, [tree, debouncedQuery, hasInitializedExpansion]);
 
-	const visibleItems = useMemo(() => flattenVisibleNodes(tree, expandedDirs, 0), [tree, expandedDirs]);
-	const flatFilePaths = useMemo(() => flattenFilePaths(tree, expandedDirs), [tree, expandedDirs]);
+	const { visibleItems, flatFilePaths } = useMemo(() => {
+		const items: FlatTreeItem[] = [];
+		const paths: string[] = [];
+		flattenVisible(tree, expandedDirs, 0, items, paths);
+		return { visibleItems: items, flatFilePaths: paths };
+	}, [tree, expandedDirs]);
 
 	const focusedPath =
 		focusedIndex >= 0 && focusedIndex < flatFilePaths.length ? (flatFilePaths[focusedIndex] ?? null) : null;
