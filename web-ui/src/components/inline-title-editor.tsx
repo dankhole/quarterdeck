@@ -61,7 +61,19 @@ export function InlineTitleEditor({
 	);
 
 	return (
-		<div className="flex flex-1 items-center gap-1 min-w-0" onMouseDown={stopEvent} onClick={stopEvent}>
+		<div
+			className="flex flex-1 items-center gap-1 min-w-0"
+			onMouseDown={(event) => {
+				// Only preventDefault when the mousedown target is NOT the input itself.
+				// Preventing default on the input blocks the browser's native click-to-place-cursor behavior.
+				if (event.target !== inputRef.current) {
+					stopEvent(event);
+				} else {
+					event.stopPropagation();
+				}
+			}}
+			onClick={stopEvent}
+		>
 			<input
 				ref={inputRef}
 				type="text"
