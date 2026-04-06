@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, FileText, FolderOpen, Search, X } from "luci
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui/cn";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
+import { useDebouncedEffect } from "@/utils/react-use";
 
 interface FlatTreeItem {
 	node: FileTreeNode;
@@ -58,32 +59,41 @@ export function FileBrowserTreePanel({
 	panelFlex?: string;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
+	const [debouncedQuery, setDebouncedQuery] = useState("");
 	const [focusedIndex, setFocusedIndex] = useState(-1);
 	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 	const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+	useDebouncedEffect(
+		() => {
+			setDebouncedQuery(searchQuery);
+		},
+		150,
+		[searchQuery],
+	);
+
 	const filteredFiles = useMemo(() => {
 		const allFiles = files ?? [];
-		if (!searchQuery.trim()) {
+		if (!debouncedQuery.trim()) {
 			return allFiles;
 		}
-		const query = searchQuery.toLowerCase();
+		const query = debouncedQuery.toLowerCase();
 		return allFiles.filter((path) => path.toLowerCase().includes(query));
-	}, [files, searchQuery]);
+	}, [files, debouncedQuery]);
 
 	const tree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
 
 	// Auto-expand all directories on first load or when searching
 	useEffect(() => {
-		if (searchQuery.trim()) {
+		if (debouncedQuery.trim()) {
 			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
 		} else if (!hasInitializedExpansion && tree.length > 0) {
 			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
 			setHasInitializedExpansion(true);
 		}
-	}, [tree, searchQuery, hasInitializedExpansion]);
+	}, [tree, debouncedQuery, hasInitializedExpansion]);
 
 	const visibleItems = useMemo(() => flattenVisibleNodes(tree, expandedDirs, 0), [tree, expandedDirs]);
 	const flatFilePaths = useMemo(() => flattenFilePaths(tree, expandedDirs), [tree, expandedDirs]);
