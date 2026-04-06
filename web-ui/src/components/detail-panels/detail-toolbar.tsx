@@ -1,4 +1,4 @@
-import { GitCompareArrows, LayoutGrid } from "lucide-react";
+import { FolderOpen, GitCompareArrows, LayoutGrid } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DetailPanelId } from "@/resize/use-card-detail-layout";
@@ -79,6 +79,13 @@ export function DetailToolbar({
 				icon={<GitCompareArrows size={18} />}
 				label="Changes"
 				showBadge={hasUncommittedChanges}
+			/>
+			<ToolbarButton
+				panelId="files"
+				activePanel={activePanel}
+				onPanelChange={onPanelChange}
+				icon={<FolderOpen size={18} />}
+				label="Files"
 			/>
 		</aside>
 	);
