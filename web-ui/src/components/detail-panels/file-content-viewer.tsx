@@ -61,9 +61,10 @@ export function FileContentViewer({
 		if (!filePath) {
 			return;
 		}
-		void navigator.clipboard.writeText(filePath).then(() => {
-			toast.success("Path copied to clipboard");
-		});
+		void navigator.clipboard.writeText(filePath).then(
+			() => toast.success("Path copied to clipboard"),
+			() => toast.error("Failed to copy path"),
+		);
 	}, [filePath]);
 
 	if (!filePath) {

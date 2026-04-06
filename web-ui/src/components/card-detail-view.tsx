@@ -179,7 +179,7 @@ function FileBrowserToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center gap-1 px-2 py-1 border-b border-divider">
+		<div className="flex items-center gap-1 px-2 py-1 border-b border-border">
 			{isExpanded ? (
 				<Button
 					variant="ghost"
@@ -561,14 +561,14 @@ export function CardDetailView({
 			);
 		}
 		return (
-			<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+			<div ref={fileBrowserRowRef} className="flex flex-1 min-h-0">
 				<FileBrowserPanel
 					key={selection.card.id}
 					taskId={selection.card.id}
 					baseRef={selection.card.baseRef}
 					workspaceId={currentProjectId}
 					selectedPath={fileBrowserSelectedPath}
-					onSelectedPathChange={setFileBrowserSelectedPath}
+					onSelectPath={setFileBrowserSelectedPath}
 					treePanelFlex={fileBrowserTreePanelPercent}
 					contentPanelFlex={fileBrowserContentPanelPercent}
 					onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}

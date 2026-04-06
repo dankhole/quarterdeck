@@ -14,7 +14,7 @@ export function FileBrowserPanel({
 	baseRef,
 	workspaceId,
 	selectedPath,
-	onSelectedPathChange,
+	onSelectPath,
 	treePanelFlex,
 	contentPanelFlex,
 	onTreeResizeStart,
@@ -23,7 +23,7 @@ export function FileBrowserPanel({
 	baseRef: string;
 	workspaceId: string;
 	selectedPath: string | null;
-	onSelectedPathChange: (path: string | null) => void;
+	onSelectPath: (path: string | null) => void;
 	treePanelFlex: string;
 	contentPanelFlex: string;
 	onTreeResizeStart: (e: ReactMouseEvent<HTMLDivElement>) => void;
@@ -38,17 +38,14 @@ export function FileBrowserPanel({
 		queryFn: listFilesQueryFn,
 	});
 
-	const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const refetchRef = useRef(fileListQuery.refetch);
+	refetchRef.current = fileListQuery.refetch;
 	useEffect(() => {
-		pollTimerRef.current = setInterval(() => {
-			fileListQuery.refetch();
+		const id = setInterval(() => {
+			refetchRef.current();
 		}, FILE_LIST_POLL_INTERVAL_MS);
-		return () => {
-			if (pollTimerRef.current) {
-				clearInterval(pollTimerRef.current);
-			}
-		};
-	}, [fileListQuery.refetch]);
+		return () => clearInterval(id);
+	}, []);
 
 	const fileContentQueryFn = useCallback(async () => {
 		if (!selectedPath) {
@@ -78,7 +75,7 @@ export function FileBrowserPanel({
 				<FileBrowserTreePanel
 					files={fileListQuery.data?.files ?? null}
 					selectedPath={selectedPath}
-					onSelectPath={onSelectedPathChange}
+					onSelectPath={onSelectPath}
 					panelFlex="1 1 0"
 				/>
 			</div>

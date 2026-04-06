@@ -21,19 +21,11 @@ interface FlatTreeItem {
 }
 
 /** Single-pass traversal that produces both the visible item list and the file-only path list. */
-function flattenVisible(
-	nodes: FileTreeNode[],
-	expandedDirs: Set<string>,
-	depth: number,
-	items: FlatTreeItem[],
-	filePaths: string[],
-): void {
+function flattenVisible(nodes: FileTreeNode[], expandedDirs: Set<string>, depth: number, items: FlatTreeItem[]): void {
 	for (const node of nodes) {
 		items.push({ node, depth });
-		if (node.type === "file") {
-			filePaths.push(node.path);
-		} else if (expandedDirs.has(node.path) && node.children.length > 0) {
-			flattenVisible(node.children, expandedDirs, depth + 1, items, filePaths);
+		if (node.type === "directory" && expandedDirs.has(node.path) && node.children.length > 0) {
+			flattenVisible(node.children, expandedDirs, depth + 1, items);
 		}
 	}
 }
@@ -104,15 +96,15 @@ export function FileBrowserTreePanel({
 		}
 	}, [tree, debouncedQuery, hasInitializedExpansion]);
 
-	const { visibleItems, flatFilePaths } = useMemo(() => {
+	const visibleItems = useMemo(() => {
 		const items: FlatTreeItem[] = [];
-		const paths: string[] = [];
-		flattenVisible(tree, expandedDirs, 0, items, paths);
-		return { visibleItems: items, flatFilePaths: paths };
+		flattenVisible(tree, expandedDirs, 0, items);
+		return items;
 	}, [tree, expandedDirs]);
 
-	const focusedPath =
-		focusedIndex >= 0 && focusedIndex < flatFilePaths.length ? (flatFilePaths[focusedIndex] ?? null) : null;
+	const focusedItem =
+		focusedIndex >= 0 && focusedIndex < visibleItems.length ? (visibleItems[focusedIndex] ?? null) : null;
+	const focusedPath = focusedItem?.node.path ?? null;
 
 	const allDirectoryPaths = useMemo(() => collectDirectoryPaths(tree), [tree]);
 	const hasDirectories = allDirectoryPaths.length > 0;
@@ -150,21 +142,25 @@ export function FileBrowserTreePanel({
 				}
 				return;
 			}
-			if (flatFilePaths.length === 0) {
+			if (visibleItems.length === 0) {
 				return;
 			}
 			if (event.key === "ArrowDown") {
 				event.preventDefault();
-				setFocusedIndex((prev) => (prev + 1 < flatFilePaths.length ? prev + 1 : 0));
+				setFocusedIndex((prev) => (prev + 1 < visibleItems.length ? prev + 1 : 0));
 			} else if (event.key === "ArrowUp") {
 				event.preventDefault();
-				setFocusedIndex((prev) => (prev > 0 ? prev - 1 : flatFilePaths.length - 1));
-			} else if (event.key === "Enter" && focusedPath) {
+				setFocusedIndex((prev) => (prev > 0 ? prev - 1 : visibleItems.length - 1));
+			} else if (event.key === "Enter" && focusedItem) {
 				event.preventDefault();
-				onSelectPath(focusedPath);
+				if (focusedItem.node.type === "directory") {
+					toggleDirectory(focusedItem.node.path);
+				} else {
+					onSelectPath(focusedItem.node.path);
+				}
 			}
 		},
-		[flatFilePaths, focusedPath, onSelectPath, searchQuery],
+		[visibleItems, focusedItem, onSelectPath, searchQuery, toggleDirectory],
 	);
 
 	const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,7 +244,7 @@ export function FileBrowserTreePanel({
 							const isDirectory = node.type === "directory";
 							const isExpanded = expandedDirs.has(node.path);
 							const isSelected = !isDirectory && node.path === selectedPath;
-							const isFocused = !isDirectory && node.path === focusedPath;
+							const isFocused = node.path === focusedPath;
 
 							return (
 								<button
