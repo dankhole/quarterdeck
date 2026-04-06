@@ -26,9 +26,7 @@ import {
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager";
-import { runOnDemandUpdate } from "./update/update";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -59,7 +57,6 @@ interface RootCommandOptions {
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
-	update?: boolean;
 }
 
 type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
@@ -466,19 +463,12 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Binding to host ${options.host}.`);
 	}
 
-	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
-		import("./server/browser.js"),
-		import("./update/update.js"),
-	]);
+	const { openInBrowser } = await import("./server/browser.js");
 
 	const selectedPort = await applyRuntimePortOption(options.port);
 	if (selectedPort !== null) {
 		console.log(`Using runtime port ${selectedPort}.`);
 	}
-
-	autoUpdateOnStartup({
-		currentVersion: KANBAN_VERSION,
-	});
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
 	try {
@@ -515,7 +505,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			return;
 		}
 		isShuttingDown = true;
-		runPendingAutoUpdateOnShutdown();
 		if (options.skipShutdownCleanup) {
 			console.warn("Skipping shutdown task cleanup for this instance.");
 		}
@@ -543,7 +532,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		},
 		onShutdownError: (error) => {
 			shutdownIndicator.stop("failed");
-			captureNodeException(error, { area: "shutdown" });
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`Shutdown failed: ${message}`);
 		},
@@ -559,19 +547,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	});
 }
 
-async function runUpdateCommand(): Promise<void> {
-	const result = await runOnDemandUpdate({
-		currentVersion: KANBAN_VERSION,
-	});
-
-	if (result.status === "updated" || result.status === "already_up_to_date" || result.status === "cache_refreshed") {
-		console.log(result.message);
-		return;
-	}
-
-	throw new Error(result.message);
-}
-
 function createProgram(invocationArgs: string[]): Command {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
 	const program = new Command();
@@ -583,7 +558,6 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
-		.option("--update", "Update Kanban to the latest published version and exit.")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
 
@@ -599,18 +573,7 @@ function createProgram(invocationArgs: string[]): Command {
 			console.warn("Deprecated. Please uninstall Kanban MCP.");
 		});
 
-	program
-		.command("update")
-		.description("Update Kanban to the latest published version.")
-		.action(async () => {
-			await runUpdateCommand();
-		});
-
 	program.action(async (options: RootCommandOptions) => {
-		if (options.update === true) {
-			await runUpdateCommand();
-			return;
-		}
 		await runMainCommand(
 			{
 				host: options.host ?? null,
@@ -630,14 +593,13 @@ async function run(): Promise<void> {
 	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
 	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
-		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
+		await disposeCliTelemetryService().catch(() => {});
 		process.exit(process.exitCode ?? 0);
 	}
 }
 
 void run().catch(async (error) => {
-	captureNodeException(error, { area: "startup" });
-	await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
+	await disposeCliTelemetryService().catch(() => {});
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`Failed to start Kanban: ${message}`);
 	process.exit(1);

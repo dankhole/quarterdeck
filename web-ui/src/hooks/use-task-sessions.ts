@@ -17,7 +17,6 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
-import { trackTaskResumedFromTrash } from "@/telemetry/events";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
@@ -171,9 +170,6 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					};
 				}
 				upsertSession(payload.summary);
-				if (options?.resumeFromTrash) {
-					trackTaskResumedFromTrash();
-				}
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
