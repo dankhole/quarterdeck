@@ -129,6 +129,47 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.toolInputSummary).toBe("src/main.ts");
 	});
 
+	it("clears latestHookActivity on transitionToReview so stale permission fields do not persist", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "running",
+				latestHookActivity: {
+					source: "claude",
+					activityText: "Waiting for approval",
+					hookEventName: "PermissionRequest",
+					notificationType: "permission_prompt",
+					toolName: "Bash",
+					toolInputSummary: null,
+					finalMessage: null,
+				},
+			}),
+		});
+
+		// Transition to review (simulates a to_review hook event)
+		const reviewed = manager.transitionToReview("task-1", "hook");
+		expect(reviewed?.state).toBe("awaiting_review");
+		expect(reviewed?.reviewReason).toBe("hook");
+		// The stale permission fields must be gone
+		expect(reviewed?.latestHookActivity).toBeNull();
+
+		// Now apply the new hook's metadata (no hookEventName/notificationType)
+		const updated = manager.applyHookActivity("task-1", {
+			source: "claude",
+			activityText: "Task complete",
+			finalMessage: "Done with the work",
+		});
+
+		// Without the fix, hookEventName/notificationType would carry forward
+		// from the previous permission event, causing isPermissionRequest() to
+		// return true and the UI to show "Waiting for approval" instead of
+		// "Ready for review".
+		expect(updated?.latestHookActivity?.hookEventName).toBeNull();
+		expect(updated?.latestHookActivity?.notificationType).toBeNull();
+		expect(updated?.latestHookActivity?.activityText).toBe("Task complete");
+		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");
+	});
+
 	it("resets stale running sessions without active processes", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
