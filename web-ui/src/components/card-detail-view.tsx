@@ -357,54 +357,55 @@ export function CardDetailView({
 		[setSidePanelRatio, startSidePanelResize, sidePanelRatio],
 	);
 
-	const handleDetailDiffSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = detailDiffRowRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = detailDiffFileTreeRatio;
-			startDetailDiffResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio + deltaRatio);
-				},
-			});
+	const createRatioResizeHandler = useCallback(
+		(
+			containerRef: React.RefObject<HTMLDivElement | null>,
+			currentRatio: number,
+			setRatio: (ratio: number) => void,
+			startDrag: ReturnType<typeof useResizeDrag>["startDrag"],
+		) => {
+			return (event: ReactMouseEvent<HTMLDivElement>) => {
+				const container = containerRef.current;
+				if (!container) {
+					return;
+				}
+				const containerWidth = Math.max(container.offsetWidth, 1);
+				const startX = event.clientX;
+				startDrag(event, {
+					axis: "x",
+					cursor: "ew-resize",
+					onMove: (pointerX) => {
+						setRatio(currentRatio + (pointerX - startX) / containerWidth);
+					},
+					onEnd: (pointerX) => {
+						setRatio(currentRatio + (pointerX - startX) / containerWidth);
+					},
+				});
+			};
 		},
-		[detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
+		[],
 	);
 
-	const handleFileBrowserTreeSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = fileBrowserRowRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = detailFileBrowserTreeRatio;
-			startFileBrowserTreeResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailFileBrowserTreeRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailFileBrowserTreeRatio(startRatio + deltaRatio);
-				},
-			});
-		},
-		[detailFileBrowserTreeRatio, setDetailFileBrowserTreeRatio, startFileBrowserTreeResize],
+	const handleDetailDiffSeparatorMouseDown = useMemo(
+		() =>
+			createRatioResizeHandler(
+				detailDiffRowRef,
+				detailDiffFileTreeRatio,
+				setDetailDiffFileTreeRatio,
+				startDetailDiffResize,
+			),
+		[createRatioResizeHandler, detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
+	);
+
+	const handleFileBrowserTreeSeparatorMouseDown = useMemo(
+		() =>
+			createRatioResizeHandler(
+				fileBrowserRowRef,
+				detailFileBrowserTreeRatio,
+				setDetailFileBrowserTreeRatio,
+				startFileBrowserTreeResize,
+			),
+		[createRatioResizeHandler, detailFileBrowserTreeRatio, setDetailFileBrowserTreeRatio, startFileBrowserTreeResize],
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const lastTurnViewKey =
@@ -548,6 +549,42 @@ export function CardDetailView({
 		setIsFileBrowserExpanded((previous) => !previous);
 	}, [bottomTerminalOpen, isFileBrowserExpanded, onBottomTerminalClose]);
 
+	const fileBrowserContent = useMemo(() => {
+		if (!currentProjectId) {
+			return (
+				<div className="flex flex-1 items-center justify-center text-text-tertiary">
+					<div className="flex flex-col items-center gap-3 py-12">
+						<FolderOpen size={40} />
+						<span className="text-sm text-text-secondary font-semibold">No project selected</span>
+					</div>
+				</div>
+			);
+		}
+		return (
+			<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+				<FileBrowserPanel
+					key={selection.card.id}
+					taskId={selection.card.id}
+					baseRef={selection.card.baseRef}
+					workspaceId={currentProjectId}
+					selectedPath={fileBrowserSelectedPath}
+					onSelectedPathChange={setFileBrowserSelectedPath}
+					treePanelFlex={fileBrowserTreePanelPercent}
+					contentPanelFlex={fileBrowserContentPanelPercent}
+					onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+				/>
+			</div>
+		);
+	}, [
+		currentProjectId,
+		selection.card.id,
+		selection.card.baseRef,
+		fileBrowserSelectedPath,
+		fileBrowserTreePanelPercent,
+		fileBrowserContentPanelPercent,
+		handleFileBrowserTreeSeparatorMouseDown,
+	]);
+
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
 			onAddReviewComments?.(selection.card.id, formatted);
@@ -683,34 +720,13 @@ export function CardDetailView({
 								</div>
 							</>
 						) : activeDetailPanel === "files" ? (
-							currentProjectId ? (
-								<>
-									<FileBrowserToolbar
-										isExpanded={isFileBrowserExpanded}
-										onToggleExpand={handleToggleFileBrowserExpand}
-									/>
-									<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-										<FileBrowserPanel
-											key={selection.card.id}
-											taskId={selection.card.id}
-											baseRef={selection.card.baseRef}
-											workspaceId={currentProjectId}
-											selectedPath={fileBrowserSelectedPath}
-											onSelectedPathChange={setFileBrowserSelectedPath}
-											treePanelFlex={fileBrowserTreePanelPercent}
-											contentPanelFlex={fileBrowserContentPanelPercent}
-											onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
-										/>
-									</div>
-								</>
-							) : (
-								<div className="flex flex-1 items-center justify-center text-text-tertiary">
-									<div className="flex flex-col items-center gap-3 py-12">
-										<FolderOpen size={40} />
-										<span className="text-sm text-text-secondary font-semibold">No project selected</span>
-									</div>
-								</div>
-							)
+							<>
+								<FileBrowserToolbar
+									isExpanded={isFileBrowserExpanded}
+									onToggleExpand={handleToggleFileBrowserExpand}
+								/>
+								{fileBrowserContent}
+							</>
 						) : null}
 					</div>
 					<ResizeHandle
@@ -824,28 +840,7 @@ export function CardDetailView({
 									isExpanded={isFileBrowserExpanded}
 									onToggleExpand={handleToggleFileBrowserExpand}
 								/>
-								{currentProjectId ? (
-									<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-										<FileBrowserPanel
-											key={selection.card.id}
-											taskId={selection.card.id}
-											baseRef={selection.card.baseRef}
-											workspaceId={currentProjectId}
-											selectedPath={fileBrowserSelectedPath}
-											onSelectedPathChange={setFileBrowserSelectedPath}
-											treePanelFlex={fileBrowserTreePanelPercent}
-											contentPanelFlex={fileBrowserContentPanelPercent}
-											onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
-										/>
-									</div>
-								) : (
-									<div className="flex flex-1 items-center justify-center text-text-tertiary">
-										<div className="flex flex-col items-center gap-3 py-12">
-											<FolderOpen size={40} />
-											<span className="text-sm text-text-secondary font-semibold">No project selected</span>
-										</div>
-									</div>
-								)}
+								{fileBrowserContent}
 							</div>
 						</div>
 					</>
