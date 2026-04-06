@@ -43,6 +43,8 @@ export interface UseTaskEditorResult {
 	newTaskAutoReviewMode: TaskAutoReviewMode;
 	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	isNewTaskStartInPlanModeDisabled: boolean;
+	newTaskUseWorktree: boolean;
+	setNewTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
@@ -95,6 +97,7 @@ export function useTaskEditor({
 		"commit",
 		normalizeStoredTaskAutoReviewMode,
 	);
+	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
@@ -193,6 +196,7 @@ export function useTaskEditor({
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
+		setNewTaskUseWorktree(true);
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
 
@@ -296,6 +300,7 @@ export function useTaskEditor({
 				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
 				baseRef,
+				useWorktree: newTaskUseWorktree,
 			});
 			setBoard(created.board);
 			if (currentProjectId) {
@@ -306,6 +311,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskUseWorktree(true);
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
@@ -321,6 +327,7 @@ export function useTaskEditor({
 			newTaskImages,
 			newTaskPrompt,
 			newTaskStartInPlanMode,
+			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
 		],
@@ -346,6 +353,7 @@ export function useTaskEditor({
 					autoReviewMode: newTaskAutoReviewMode,
 					images: newTaskImages,
 					baseRef,
+					useWorktree: newTaskUseWorktree,
 				});
 				updatedBoard = created.board;
 				createdTaskIds.push(created.task.id);
@@ -359,6 +367,7 @@ export function useTaskEditor({
 			}
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
+			setNewTaskUseWorktree(true);
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
@@ -373,6 +382,7 @@ export function useTaskEditor({
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskStartInPlanMode,
+			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
 		],
@@ -403,6 +413,8 @@ export function useTaskEditor({
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskUseWorktree,
+		setNewTaskUseWorktree,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,

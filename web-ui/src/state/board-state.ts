@@ -24,6 +24,7 @@ export interface TaskDraft {
 	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 }
 
 export interface TaskMoveEvent {
@@ -99,6 +100,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const card = rawCard as {
 		id?: unknown;
+		title?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
@@ -121,6 +123,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
+		title: typeof card.title === "string" ? card.title : null,
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
@@ -274,6 +277,7 @@ export function addTaskToColumnWithResult(
 			autoReviewMode: draft.autoReviewMode,
 			images: draft.images,
 			baseRef: draft.baseRef,
+			useWorktree: draft.useWorktree,
 		},
 		createBrowserUuid,
 	);
@@ -468,6 +472,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 							? draft.images.map((image) => ({ ...image }))
 							: undefined,
 				baseRef,
+				useWorktree: draft.useWorktree ?? card.useWorktree,
 				updatedAt: Date.now(),
 			};
 		});
@@ -493,6 +498,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
 		images: selection.card.images,
 		baseRef: selection.card.baseRef,
+		useWorktree: selection.card.useWorktree,
 	});
 }
 

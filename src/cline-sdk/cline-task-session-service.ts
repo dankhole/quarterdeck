@@ -411,9 +411,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					reasoningEffort: request.reasoningEffort,
 					systemPrompt,
 					userInstructionWatcher: runtimeSetup.watcher,
-					requestToolApproval: request.autonomousModeEnabled
-						? runtimeSetup.requestToolApproval
-						: undefined,
+					requestToolApproval: request.autonomousModeEnabled ? runtimeSetup.requestToolApproval : undefined,
 				});
 				const warningMessage = formatStartWarnings(startResult.warnings);
 				if (warningMessage) {

@@ -89,12 +89,14 @@ export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
+	title: z.string().nullable().default(null),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
 	autoReviewEnabled: z.boolean().optional(),
 	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
+	useWorktree: z.boolean().optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
@@ -809,6 +811,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	mode: runtimeTaskSessionModeSchema.optional(),
 	resumeFromTrash: z.boolean().optional(),
 	baseRef: z.string(),
+	useWorktree: z.boolean().optional(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 });

@@ -9,6 +9,7 @@ import type { BoardCard, BoardData, BoardDependency } from "@/types";
 function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
 	return {
 		id: taskId,
+		title: null,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

@@ -160,6 +160,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
 					resumeFromTrash: options?.resumeFromTrash,
 					baseRef: task.baseRef,
+					useWorktree: task.useWorktree,
 					cols: geometry.cols,
 					rows: geometry.rows,
 				});

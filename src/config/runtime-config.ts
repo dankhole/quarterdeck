@@ -56,13 +56,18 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
+const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit the working changes onto {{base_ref}}.
+
+First, check your current git state: run \`git status\` and \`git branch --show-current\`.
+
+- If you are on a branch (not detached HEAD), stage and commit your changes directly on that branch. If the branch is not {{base_ref}}, cherry-pick the commit onto {{base_ref}} using the worktree commit flow below.
+- If you are on a detached HEAD in a worktree, follow the full worktree commit flow below.
 
 - Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
 - Do not edit files outside git workflows unless required for conflict resolution.
 - Preserve any pre-existing user uncommitted changes in the base worktree.
 
-Steps:
+Worktree commit flow (detached HEAD or when cherry-picking to {{base_ref}}):
 1. In the current task worktree, stage and create a commit for the pending task changes.
 2. Find where {{base_ref}} is checked out:
    - Run: git worktree list --porcelain
@@ -80,15 +85,15 @@ Steps:
    - Whether stash was used
    - Whether conflicts were resolved
    - Any remaining manual follow-up needed`;
-const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, open a pull request against {{base_ref}}.
+const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `When you are finished with the task, open a pull request against {{base_ref}}.
 
 - Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
 - Do not modify the base worktree.
-- Keep all PR preparation in the current task worktree.
+- Keep all PR preparation in the current worktree.
 
 Steps:
-1. Ensure all intended changes are committed in the current task worktree.
-2. If currently on detached HEAD, create a branch at the current commit in this worktree.
+1. Ensure all intended changes are committed.
+2. If currently on detached HEAD, create a branch at the current commit.
 3. Push the branch to origin and set upstream.
 4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
 5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.

@@ -159,6 +159,7 @@ describe("KanbanBoard", () => {
 					cards: [
 						{
 							id: "source-task",
+							title: null,
 							prompt: "Source task",
 							startInPlanMode: false,
 							autoReviewEnabled: false,
@@ -175,6 +176,7 @@ describe("KanbanBoard", () => {
 					cards: [
 						{
 							id: "target-task-1",
+							title: null,
 							prompt: "Target task 1",
 							startInPlanMode: false,
 							autoReviewEnabled: false,
