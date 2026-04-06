@@ -691,6 +691,7 @@ export function CardDetailView({
 									/>
 									<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 										<FileBrowserPanel
+											key={selection.card.id}
 											taskId={selection.card.id}
 											baseRef={selection.card.baseRef}
 											workspaceId={currentProjectId}
@@ -826,6 +827,7 @@ export function CardDetailView({
 								{currentProjectId ? (
 									<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 										<FileBrowserPanel
+											key={selection.card.id}
 											taskId={selection.card.id}
 											baseRef={selection.card.baseRef}
 											workspaceId={currentProjectId}
