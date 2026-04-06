@@ -1,6 +1,4 @@
 import { Draggable } from "@hello-pangea/dnd";
-
-import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
