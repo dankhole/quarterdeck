@@ -107,6 +107,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		autoReviewMode?: unknown;
 		images?: unknown;
 		baseRef?: unknown;
+		useWorktree?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
 	};
@@ -132,6 +133,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		),
 		images: normalizeTaskImages(card.images),
 		baseRef,
+		useWorktree: typeof card.useWorktree === "boolean" ? card.useWorktree : undefined,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};
