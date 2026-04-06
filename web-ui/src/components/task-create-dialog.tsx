@@ -30,7 +30,7 @@ import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
 const DIALOG_STYLE: CSSProperties = {
-	minWidth: 400,
+	minWidth: "400px",
 	minHeight: "30vh",
 	width: "30vw",
 	maxWidth: "80vw",
@@ -403,7 +403,7 @@ export function TaskCreateDialog({
 		<Dialog
 			open={open}
 			onOpenChange={onOpenChange}
-			contentClassName="resize overflow-hidden"
+			contentClassName="resize overflow-auto"
 			contentStyle={DIALOG_STYLE}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
