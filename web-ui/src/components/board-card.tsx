@@ -15,13 +15,13 @@ import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
-const SESSION_ACTIVITY_COLOR = {
+const CARD_TEXT_COLOR = {
 	muted: "var(--color-text-tertiary)",
 	secondary: "var(--color-text-secondary)",
 } as const;
 
 function shortenBranchName(branch: string): string {
-	return branch.replace(/^(?:feature|fix|chore|hotfix|bugfix|release|refactor|feat)\//i, "");
+	return branch.replace(/^(?:feature|fix|chore|hotfix|bugfix|release|refactor|feat)\//i, "") || branch;
 }
 
 function extractToolInputSummaryFromActivityText(activityText: string, toolName: string): string | null {
@@ -380,21 +380,21 @@ export function BoardCard({
 										margin: "4px 0 0",
 										fontSize: 12,
 										lineHeight: 1.4,
-										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
+										color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
 									}}
 								>
 									<GitBranch
 										size={10}
 										style={{
 											display: "inline",
-											color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : SESSION_ACTIVITY_COLOR.secondary,
+											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
 											margin: "0px 4px 2px 0",
 											verticalAlign: "middle",
 										}}
 									/>
 									<span
 										style={{
-											color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : SESSION_ACTIVITY_COLOR.secondary,
+											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
 											textDecoration: isTrashCard ? "line-through" : undefined,
 										}}
 									>
@@ -402,10 +402,8 @@ export function BoardCard({
 									</span>
 									{reviewChangeSummary && !isTrashCard ? (
 										<>
-											<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}> · </span>
-											<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>
-												{reviewChangeSummary.filesLabel}
-											</span>
+											<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+											<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
 											<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
 											<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
 										</>
