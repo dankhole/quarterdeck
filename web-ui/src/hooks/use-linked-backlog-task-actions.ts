@@ -10,7 +10,6 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
-import { trackTaskDependencyCreated, trackTasksAutoStartedFromDependency } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 
@@ -87,7 +86,6 @@ export function useLinkedBacklogTaskActions({
 				const latestResult = addTaskDependency(currentBoard, fromTaskId, toTaskId);
 				return latestResult.added ? latestResult.board : currentBoard;
 			});
-			trackTaskDependencyCreated();
 		},
 		[setBoard],
 	);
@@ -128,7 +126,6 @@ export function useLinkedBacklogTaskActions({
 
 			if (readyTasks.length > 0) {
 				maybeRequestNotificationPermissionForTaskStart();
-				let startedTaskCount = 0;
 				if (startBacklogTaskWithAnimation) {
 					const startedTaskPromises: Promise<boolean>[] = [];
 					for (const [index, readyTask] of readyTasks.entries()) {
@@ -137,8 +134,7 @@ export function useLinkedBacklogTaskActions({
 							await waitForBacklogStartAnimationAvailability?.();
 						}
 					}
-					const startedTasks = await Promise.all(startedTaskPromises);
-					startedTaskCount = startedTasks.filter(Boolean).length;
+					await Promise.all(startedTaskPromises);
 				} else {
 					setBoard((currentBoardState) => {
 						let nextBoardState = currentBoardState;
@@ -153,16 +149,10 @@ export function useLinkedBacklogTaskActions({
 						return nextBoardState;
 					});
 					for (const readyTask of readyTasks) {
-						const started = await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
+						await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
 							optimisticMove: true,
 						});
-						if (started) {
-							startedTaskCount += 1;
-						}
 					}
-				}
-				if (startedTaskCount > 0) {
-					trackTasksAutoStartedFromDependency(startedTaskCount);
 				}
 			}
 
