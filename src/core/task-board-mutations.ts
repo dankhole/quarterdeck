@@ -17,6 +17,7 @@ export interface RuntimeCreateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 }
 
 export interface RuntimeUpdateTaskInput {
@@ -27,6 +28,7 @@ export interface RuntimeUpdateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
@@ -288,6 +290,7 @@ export function addTaskToColumn(
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 		images: cloneTaskImages(input.images),
 		baseRef,
+		useWorktree: input.useWorktree,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -602,6 +605,7 @@ export function updateTask(
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
+				useWorktree: input.useWorktree,
 				updatedAt: now,
 			};
 			return updatedTask;
