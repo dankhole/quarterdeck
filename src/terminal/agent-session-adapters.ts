@@ -421,6 +421,14 @@ function buildOpenCodePluginContent(
       if (output?.status === "ask") {
         const sessionID = typeof _permission?.sessionID === "string" ? _permission.sessionID : null;
         if (await isChildSession(sessionID)) {
+          // Child session needs permission — still surface to board so the task
+          // doesn't sit stuck in "in progress" waiting for input the user can't see.
+          if (sessionID) {
+            await notifyReview(sessionID, {
+              hook_event_name: "PermissionRequest",
+              notification_type: "permission.asked",
+            });
+          }
           return;
         }
         await handleReview(
