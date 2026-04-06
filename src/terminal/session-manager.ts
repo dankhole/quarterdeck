@@ -37,6 +37,12 @@ import { TerminalStateMirror } from "./terminal-state-mirror";
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
+const INTERRUPT_RECOVERY_DELAY_MS = 5_000;
+const STALE_PROCESS_CHECK_INTERVAL_MS = 30_000;
+const SIGINT_BYTE = 0x03;
+const ESC_BYTE = 0x1b;
+// Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
+const MAX_SIGINT_DETECT_BUFFER_SIZE = 4;
 // TUI apps (Codex, OpenCode) can query OSC 10/11 before the browser terminal is attached
 // and ready to answer. We intercept those startup probes during early PTY output, synthesize
 // foreground/background color replies, then disable the filter once a live terminal listener
@@ -61,6 +67,7 @@ interface ActiveProcessState {
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	interruptRecoveryTimer: NodeJS.Timeout | null;
 }
 
 interface SessionEntry {
@@ -202,9 +209,26 @@ function hasCodexStartupUiRendered(text: string): boolean {
 	return stripped.includes("openai codex (v");
 }
 
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
+	if (active.interruptRecoveryTimer) {
+		clearTimeout(active.interruptRecoveryTimer);
+		active.interruptRecoveryTimer = null;
+	}
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+	private staleProcessCheckTimer: NodeJS.Timeout | null = null;
 
 	private trySendDeferredCodexStartupInput(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
@@ -304,6 +328,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		if (entry.active) {
 			stopWorkspaceTrustTimers(entry.active);
+			clearInterruptRecoveryTimer(entry.active);
 			entry.active.session.stop();
 			entry.active = null;
 		}
@@ -452,6 +477,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 					stopWorkspaceTrustTimers(currentActive);
+					clearInterruptRecoveryTimer(currentActive);
 
 					const summary = this.applySessionEvent(currentEntry, {
 						type: "process.exit",
@@ -525,6 +551,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			interruptRecoveryTimer: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
@@ -562,6 +589,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		if (entry.active) {
 			stopWorkspaceTrustTimers(entry.active);
+			clearInterruptRecoveryTimer(entry.active);
 			entry.active.session.stop();
 			entry.active = null;
 		}
@@ -627,6 +655,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 					stopWorkspaceTrustTimers(currentActive);
+					clearInterruptRecoveryTimer(currentActive);
 
 					const summary = updateSummary(currentEntry, {
 						state: currentActive.session.wasInterrupted() ? "interrupted" : "idle",
@@ -678,6 +707,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			interruptRecoveryTimer: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
@@ -749,6 +779,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
 		}
+
+		// Detect user interrupt signals — suppress auto-restart and schedule recovery
+		// so that cards don't get stuck in "running" after user interrupts.
+		// Ctrl+C (0x03) arrives as 1–3 bytes; Escape (0x1B) as exactly 1 byte
+		// (longer buffers starting with 0x1B are ANSI escape sequences, not bare Escape).
+		const isCtrlC = data.length <= MAX_SIGINT_DETECT_BUFFER_SIZE && data.includes(SIGINT_BYTE);
+		const isBareEscape = data.length === 1 && data[0] === ESC_BYTE;
+		if (entry.summary.state === "running" && (isCtrlC || isBareEscape)) {
+			entry.suppressAutoRestartOnExit = true;
+			this.scheduleInterruptRecovery(entry);
+		}
+
 		entry.active.session.write(data);
 		return cloneSummary(entry.summary);
 	}
@@ -922,6 +964,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
 		stopWorkspaceTrustTimers(entry.active);
+		clearInterruptRecoveryTimer(entry.active);
 		entry.active.session.stop();
 		if (cleanupFn) {
 			cleanupFn().catch(() => {
@@ -938,6 +981,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				continue;
 			}
 			stopWorkspaceTrustTimers(entry.active);
+			clearInterruptRecoveryTimer(entry.active);
 			entry.active.session.stop({ interrupted: true });
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
@@ -1029,6 +1073,84 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}
 		})();
 		entry.pendingAutoRestart = pendingAutoRestart;
+	}
+
+	startStaleProcessWatchdog(): void {
+		if (this.staleProcessCheckTimer) {
+			return;
+		}
+		this.staleProcessCheckTimer = setInterval(() => {
+			this.recoverStaleProcesses();
+		}, STALE_PROCESS_CHECK_INTERVAL_MS);
+		this.staleProcessCheckTimer.unref();
+	}
+
+	stopStaleProcessWatchdog(): void {
+		if (this.staleProcessCheckTimer) {
+			clearInterval(this.staleProcessCheckTimer);
+			this.staleProcessCheckTimer = null;
+		}
+	}
+
+	private recoverStaleProcesses(): void {
+		for (const entry of this.entries.values()) {
+			if (entry.summary.state !== "running" || !entry.active) {
+				continue;
+			}
+			const pid = entry.summary.pid;
+			if (pid == null || isProcessAlive(pid)) {
+				continue;
+			}
+			// Process is dead but we never received an exit event — recover the card.
+			// exitCode: null signals "unknown" and maps to reviewReason "error" in the
+			// state machine (any non-zero-equivalent exit is treated as an error).
+			stopWorkspaceTrustTimers(entry.active);
+			clearInterruptRecoveryTimer(entry.active);
+			const cleanupFn = entry.active.onSessionCleanup;
+			entry.active.onSessionCleanup = null;
+			const summary = this.applySessionEvent(entry, {
+				type: "process.exit",
+				exitCode: null,
+				interrupted: false,
+			});
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+				listener.onExit?.(null);
+			}
+			entry.active = null;
+			this.emitSummary(summary);
+			if (cleanupFn) {
+				cleanupFn().catch(() => {
+					// Best effort: cleanup failure is non-critical.
+				});
+			}
+		}
+	}
+
+	private scheduleInterruptRecovery(entry: SessionEntry): void {
+		if (!entry.active) {
+			return;
+		}
+		clearInterruptRecoveryTimer(entry.active);
+		const taskId = entry.summary.taskId;
+		entry.active.interruptRecoveryTimer = setTimeout(() => {
+			const current = this.entries.get(taskId);
+			if (!current?.active) {
+				return;
+			}
+			current.active.interruptRecoveryTimer = null;
+			if (current.summary.state !== "running") {
+				return;
+			}
+			// Always transition — even if the agent produced output after the interrupt
+			// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
+			// still working, its next hook will move the card back to running.
+			const summary = this.applySessionEvent(current, { type: "interrupt.recovery" });
+			for (const listener of current.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
+		}, INTERRUPT_RECOVERY_DELAY_MS);
 	}
 
 	private emitSummary(summary: RuntimeTaskSessionSummary): void {

@@ -133,6 +133,7 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				let didCloseRuntimeServer = false;
 				const managedTerminalManager = {
+					stopStaleProcessWatchdog: () => {},
 					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
 					listSummaries: () => [createSession("managed-running", "running")],
 					getSummary: (taskId: string) => {

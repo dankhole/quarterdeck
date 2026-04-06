@@ -4,7 +4,8 @@ export type SessionTransitionEvent =
 	| { type: "hook.to_review" }
 	| { type: "hook.to_in_progress" }
 	| { type: "agent.prompt-ready" }
-	| { type: "process.exit"; exitCode: number | null; interrupted: boolean };
+	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
+	| { type: "interrupt.recovery" };
 
 export interface SessionTransitionResult {
 	changed: boolean;
@@ -51,6 +52,19 @@ export function reduceSessionTransition(
 				patch: {
 					state: "running",
 					reviewReason: null,
+				},
+				clearAttentionBuffer: true,
+			};
+		}
+		case "interrupt.recovery": {
+			if (summary.state !== "running") {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "attention",
 				},
 				clearAttentionBuffer: true,
 			};
