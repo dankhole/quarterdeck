@@ -569,7 +569,7 @@ describe("CardDetailView", () => {
 			);
 		});
 
-		expect(requireSidePanel(container).style.width).toBe("30%");
+		expect(requireSidePanel(container).style.flex).toBe("0 0 30%");
 	});
 
 	it("persists the resized side panel ratio globally", async () => {
@@ -660,8 +660,8 @@ describe("CardDetailView", () => {
 
 		await renderDetail();
 
-		const restoredWidth = requireSidePanel(container).style.width;
-		const restoredRatio = Number.parseFloat(restoredWidth) / 100;
+		const restoredFlex = requireSidePanel(container).style.flex;
+		const restoredRatio = Number.parseFloat(restoredFlex.split(" ").pop() ?? "") / 100;
 		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
 	});
 

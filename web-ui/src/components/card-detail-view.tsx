@@ -541,7 +541,7 @@ export function CardDetailView({
 						style={{
 							display: "flex",
 							flexDirection: "column",
-							width: sidePanelPercent,
+							flex: `0 0 ${sidePanelPercent}`,
 							minWidth: 0,
 							minHeight: 0,
 							overflow: "hidden",
