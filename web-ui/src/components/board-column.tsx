@@ -151,10 +151,10 @@ export function BoardColumn({
 							{(() => {
 								const items: ReactNode[] = [];
 								let draggableIndex = 0;
-								const cards =
-									column.id === "trash"
-										? [...column.cards].sort((a, b) => b.updatedAt - a.updatedAt)
-										: column.cards;
+								const sortByRecent = ["in_progress", "review", "trash"].includes(column.id);
+								const cards = sortByRecent
+									? [...column.cards].sort((a, b) => b.updatedAt - a.updatedAt)
+									: column.cards;
 								for (const card of cards) {
 									if (column.id === "backlog" && editingTaskId === card.id) {
 										items.push(

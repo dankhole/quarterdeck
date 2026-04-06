@@ -69,6 +69,66 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
+	it("clears stale event-identity fields when a new hook event arrives", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running" }),
+		});
+
+		// Simulate a permission prompt event
+		manager.applyHookActivity("task-1", {
+			source: "claude",
+			activityText: "Waiting for approval",
+			hookEventName: "PermissionRequest",
+			notificationType: "permission_prompt",
+			toolName: "Bash",
+		});
+
+		// Simulate a subsequent to_review event that only carries hookEventName + activityText
+		const updated = manager.applyHookActivity("task-1", {
+			hookEventName: "agent_end",
+			activityText: "Task complete",
+			finalMessage: "Done with the work",
+		});
+
+		// Event-identity fields should reflect the new event, not the stale permission values
+		expect(updated?.latestHookActivity?.hookEventName).toBe("agent_end");
+		expect(updated?.latestHookActivity?.activityText).toBe("Task complete");
+		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");
+		expect(updated?.latestHookActivity?.notificationType).toBeNull();
+		// Contextual fields carry forward
+		expect(updated?.latestHookActivity?.source).toBe("claude");
+		expect(updated?.latestHookActivity?.toolName).toBe("Bash");
+	});
+
+	it("preserves previous fields for non-event activity updates", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running" }),
+		});
+
+		// Set initial state with event fields
+		manager.applyHookActivity("task-1", {
+			source: "claude",
+			hookEventName: "PostToolUse",
+			activityText: "Using Read",
+			toolName: "Read",
+			toolInputSummary: "src/index.ts",
+		});
+
+		// Activity update with only tool info (no hookEventName or notificationType)
+		const updated = manager.applyHookActivity("task-1", {
+			toolName: "Write",
+			toolInputSummary: "src/main.ts",
+		});
+
+		// Previous event-identity fields should carry forward since this is not a new event
+		expect(updated?.latestHookActivity?.hookEventName).toBe("PostToolUse");
+		expect(updated?.latestHookActivity?.activityText).toBe("Using Read");
+		expect(updated?.latestHookActivity?.toolName).toBe("Write");
+		expect(updated?.latestHookActivity?.toolInputSummary).toBe("src/main.ts");
+	});
+
 	it("resets stale running sessions without active processes", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({

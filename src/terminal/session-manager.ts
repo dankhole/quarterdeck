@@ -871,22 +871,40 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		const previous = entry.summary.latestHookActivity;
+		const isNewEvent = typeof activity.hookEventName === "string" || typeof activity.notificationType === "string";
 		const next: RuntimeTaskHookActivity = {
 			activityText:
-				typeof activity.activityText === "string" ? activity.activityText : (previous?.activityText ?? null),
+				typeof activity.activityText === "string"
+					? activity.activityText
+					: isNewEvent
+						? null
+						: (previous?.activityText ?? null),
+			// NOTE: toolName and toolInputSummary always carry forward (not cleared on new events).
+			// The UI doesn't currently render these, but if it starts to, they should be cleared
+			// on new events like activityText/finalMessage above to avoid showing stale tool context.
 			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
 			toolInputSummary:
 				typeof activity.toolInputSummary === "string"
 					? activity.toolInputSummary
 					: (previous?.toolInputSummary ?? null),
 			finalMessage:
-				typeof activity.finalMessage === "string" ? activity.finalMessage : (previous?.finalMessage ?? null),
+				typeof activity.finalMessage === "string"
+					? activity.finalMessage
+					: isNewEvent
+						? null
+						: (previous?.finalMessage ?? null),
 			hookEventName:
-				typeof activity.hookEventName === "string" ? activity.hookEventName : (previous?.hookEventName ?? null),
+				typeof activity.hookEventName === "string"
+					? activity.hookEventName
+					: isNewEvent
+						? null
+						: (previous?.hookEventName ?? null),
 			notificationType:
 				typeof activity.notificationType === "string"
 					? activity.notificationType
-					: (previous?.notificationType ?? null),
+					: isNewEvent
+						? null
+						: (previous?.notificationType ?? null),
 			source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
 		};
 
