@@ -103,6 +103,7 @@ async function validatePath(worktreePath: string, relativePath: string): Promise
 	return realAbsolute;
 }
 
+// TODO: add unit tests for validatePath (traversal, symlink escape) and readWorkspaceFile (binary detection, truncation, UTF-8 boundary)
 export async function readWorkspaceFile(
 	worktreePath: string,
 	relativePath: string,
