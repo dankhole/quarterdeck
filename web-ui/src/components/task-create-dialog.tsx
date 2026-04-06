@@ -391,7 +391,12 @@ export function TaskCreateDialog({
 	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-2xl">
+		<Dialog
+			open={open}
+			onOpenChange={onOpenChange}
+			contentClassName="resize overflow-hidden"
+			contentStyle={{ minWidth: "20vw", minHeight: "30vh", width: "30vw", height: "52vh" }}
+		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
 			<DialogBody>
 				{mode === "single" ? (

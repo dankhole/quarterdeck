@@ -388,7 +388,7 @@ export function TaskPromptComposer({
 							isDragOver ? "border-accent border-dashed" : "border-border-bright",
 						)}
 						style={{
-							minHeight: 80,
+							minHeight: 125,
 							maxHeight: TEXTAREA_MAX_HEIGHT,
 							resize: "none",
 							overflowY: "auto",
