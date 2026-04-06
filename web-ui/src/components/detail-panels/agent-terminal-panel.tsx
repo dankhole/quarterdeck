@@ -11,6 +11,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
+import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
 
 interface AgentTerminalSessionControls {
 	clearTerminal: () => void;
@@ -51,72 +52,6 @@ export interface AgentTerminalPanelProps {
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 }
-
-function describeState(summary: RuntimeTaskSessionSummary | null): string {
-	if (!summary) {
-		return "No session yet";
-	}
-	if (summary.state === "running") {
-		return "Running";
-	}
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "exit":
-				return "Completed";
-			case "hook":
-				return "Needs input";
-			case "attention":
-				return "Needs attention";
-			case "error":
-				return "Error";
-			case "interrupted":
-				return "Interrupted";
-			default:
-				return "Ready for review";
-		}
-	}
-	if (summary.state === "interrupted") {
-		return "Interrupted";
-	}
-	if (summary.state === "failed") {
-		return "Failed";
-	}
-	return "Idle";
-}
-
-type StatusTagStyle = "neutral" | "success" | "warning" | "danger";
-
-function getStateTagStyle(summary: RuntimeTaskSessionSummary | null): StatusTagStyle {
-	if (!summary) {
-		return "neutral";
-	}
-	if (summary.state === "running") {
-		return "success";
-	}
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "exit":
-				return "success";
-			case "error":
-				return "danger";
-			case "interrupted":
-				return "neutral";
-			default:
-				return "warning";
-		}
-	}
-	if (summary.state === "interrupted" || summary.state === "failed") {
-		return "danger";
-	}
-	return "neutral";
-}
-
-const statusTagColors: Record<StatusTagStyle, string> = {
-	neutral: "bg-surface-3 text-text-secondary",
-	success: "bg-status-green/15 text-status-green",
-	warning: "bg-status-orange/15 text-status-orange",
-	danger: "bg-status-red/15 text-status-red",
-};
 
 function AgentTerminalReviewActions({
 	taskId,
@@ -196,8 +131,8 @@ function AgentTerminalPanelLayout({
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
-	const statusLabel = useMemo(() => describeState(summary), [summary]);
-	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
+	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
+	const statusTagStyle = useMemo(() => getSessionStatusTagStyle(summary), [summary]);
 	const agentLabel = useMemo(() => {
 		const normalizedCommand = agentCommand?.trim();
 		if (!normalizedCommand) {
@@ -230,7 +165,7 @@ function AgentTerminalPanelLayout({
 					>
 						<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
 							<span
-								className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${statusTagColors[statusTagStyle]}`}
+								className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${sessionStatusTagColors[statusTagStyle]}`}
 							>
 								{statusLabel}
 							</span>

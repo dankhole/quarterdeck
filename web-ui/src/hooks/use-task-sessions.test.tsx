@@ -33,6 +33,7 @@ interface HookSnapshot {
 function createTask(): BoardCard {
 	return {
 		id: "task-1",
+		title: null,
 		prompt: "Resume me",
 		startInPlanMode: false,
 		autoReviewEnabled: false,

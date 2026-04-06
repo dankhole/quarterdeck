@@ -10,6 +10,7 @@ import { createUniqueTaskId } from "./task-id";
 
 export interface RuntimeCreateTaskInput {
 	taskId?: string;
+	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -20,6 +21,7 @@ export interface RuntimeCreateTaskInput {
 }
 
 export interface RuntimeUpdateTaskInput {
+	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -281,6 +283,7 @@ export function addTaskToColumn(
 	}
 	const task: RuntimeBoardCard = {
 		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
+		title: input.title?.trim() || null,
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
@@ -595,6 +598,7 @@ export function updateTask(
 			columnUpdated = true;
 			updatedTask = {
 				...card,
+				title: input.title === undefined ? card.title : input.title?.trim() || null,
 				prompt,
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),

@@ -100,6 +100,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const card = rawCard as {
 		id?: unknown;
+		title?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
@@ -122,6 +123,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
+		title: typeof card.title === "string" ? card.title : null,
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
