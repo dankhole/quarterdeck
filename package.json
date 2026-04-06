@@ -89,10 +89,6 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.28",
-    "@clinebot/core": "^0.0.28",
-    "@clinebot/llms": "^0.0.28",
-    "@clinebot/shared": "^0.0.28",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",

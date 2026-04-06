@@ -14,40 +14,13 @@ The following were previously present and have been removed:
 - **PostHog** — product analytics to `data.cline.bot`
 - **OpenTelemetry** — build-time configured metrics/logs export
 - **NPM auto-update check** — startup version check to `registry.npmjs.org`
+- **Cline Account API** — authenticated calls to `https://api.cline.bot`
+- **Cline SDK Telemetry** — telemetry inside `@clinebot/core` package
+- **Featurebase** — feedback widget loading `https://do.featurebase.app/js/sdk.js` (JWT auth required Cline OAuth; hook is now a no-op stub)
+- **`@clinebot/*` packages** — `@clinebot/agents`, `@clinebot/core`, `@clinebot/llms`, `@clinebot/shared` all uninstalled
 
 ---
 
-## Remaining (Cline-specific)
+## Remaining
 
-### 1. Featurebase — Feedback Widget
-
-**Web UI only. Loads external SDK dynamically.**
-
-| Component | Target |
-|-----------|--------|
-| SDK script | `https://do.featurebase.app/js/sdk.js` |
-| Organization | `"cline"` |
-| Hook | `web-ui/src/hooks/use-featurebase-feedback-widget.ts` |
-
-### 2. Cline Account API
-
-**Runtime. Authenticated with Cline OAuth bearer token.**
-
-| Endpoint | `https://api.cline.bot` |
-|----------|--------|
-
-### 3. Cline SDK Telemetry
-
-**Runtime. Destination is inside external `@clinebot/core` package.**
-
-| File | `src/cline-sdk/cline-telemetry-service.ts` |
-|------|---------------------------------------------|
-
-### Black Boxes
-
-The following external packages may contain additional phone-home behavior not auditable from this codebase:
-
-- `@clinebot/agents`
-- `@clinebot/core`
-- `@clinebot/llms`
-- `@clinebot/shared`
+**None.** The runtime and web UI make no outbound network requests beyond what the user's own agent processes (PTY sessions) produce.
