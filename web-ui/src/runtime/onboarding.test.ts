@@ -3,13 +3,10 @@ import { describe, expect, it } from "vitest";
 import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 
 describe("runtime onboarding helpers", () => {
-	it("treats non-cline selections as authenticated", () => {
+	it("treats all agent selections as authenticated", () => {
 		expect(isSelectedAgentAuthenticated("claude")).toBe(true);
 		expect(isSelectedAgentAuthenticated("codex")).toBe(true);
-	});
-
-	it("treats cline selection as authenticated", () => {
-		expect(isSelectedAgentAuthenticated("cline")).toBe(true);
+		expect(isSelectedAgentAuthenticated("droid")).toBe(true);
 	});
 
 	it("shows startup onboarding at least once for configured users", () => {

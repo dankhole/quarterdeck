@@ -798,7 +798,7 @@ export function RuntimeSettingsDialog({
 					variant="ghost"
 					className="mr-auto mt-[3px]"
 					icon={<ExternalLink size={14} />}
-					onClick={() => window.open("https://docs.cline.bot/kanban/overview", "_blank")}
+					onClick={() => window.open("https://github.com/cline/kanban", "_blank")}
 				>
 					Read the docs
 				</Button>

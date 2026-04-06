@@ -1,6 +1,6 @@
 // Persists Kanban-owned runtime preferences on disk.
 // This module should store Kanban settings such as selected agents,
-// shortcuts, and prompt templates, not SDK-owned Cline secrets or OAuth data.
+// shortcuts, and prompt templates.
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -105,8 +105,7 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 			agentId === "codex" ||
 			agentId === "gemini" ||
 			agentId === "opencode" ||
-			agentId === "droid" ||
-			agentId === "cline") &&
+			agentId === "droid") &&
 		isRuntimeAgentLaunchSupported(agentId)
 	) {
 		return agentId;

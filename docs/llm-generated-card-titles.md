@@ -24,7 +24,7 @@ The goal is to auto-generate a short (3-8 word) task title via an LLM call, so c
 
 ### 1. Which API key / provider to use?
 
-The runtime currently has **no direct LLM API client**. Agents run as spawned PTY processes with their own credentials. The Cline SDK (which had provider management) is being removed.
+The runtime currently has **no direct LLM API client**. Agents run as spawned PTY processes with their own credentials.
 
 **Options:**
 - **Environment variable**: Use `ANTHROPIC_API_KEY` from env with raw `fetch()` to Anthropic API. Simplest, zero dependencies. Downside: only works for users with Anthropic keys, not OpenAI/etc.

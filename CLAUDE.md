@@ -1,6 +1,6 @@
 # Kanban
 
-A CLI-based kanban board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid, Cline) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
+A CLI-based kanban board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
 
 Published to npm as `npx kanban`. Repository: https://github.com/cline/kanban
 
@@ -108,7 +108,6 @@ test/                        # Runtime test suites (Vitest)
 | Toasts | Sonner |
 | Linting/formatting | Biome (tabs, indent width 3, line width 120) |
 | Testing | Vitest (runtime + web UI unit), Playwright (E2E) |
-| Telemetry | Cline SDK telemetry (see `src/cline-sdk/`) |
 | Build | esbuild (runtime), Vite (web UI) |
 
 ## Development workflow
