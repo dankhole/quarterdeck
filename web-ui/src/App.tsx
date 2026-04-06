@@ -52,6 +52,7 @@ import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useTitleActions } from "@/hooks/use-title-actions";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
@@ -590,6 +591,8 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 	});
 
+	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({ currentProjectId });
+
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
@@ -858,6 +861,8 @@ export default function App(): ReactElement {
 												onCommitTask={handleCommitTask}
 												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+												onRegenerateTitleTask={handleRegenerateTitleTask}
+												onUpdateTaskTitle={handleUpdateTaskTitle}
 												commitTaskLoadingById={commitTaskLoadingById}
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												moveToTrashLoadingById={moveToTrashLoadingById}
@@ -947,6 +952,8 @@ export default function App(): ReactElement {
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+									onRegenerateTitleTask={handleRegenerateTitleTask}
+									onUpdateTaskTitle={handleUpdateTaskTitle}
 									onAddReviewComments={(taskId: string, text: string) => {
 										void handleAddReviewComments(taskId, text);
 									}}

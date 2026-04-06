@@ -15,7 +15,7 @@ import {
 	Plus,
 	X,
 } from "lucide-react";
-import type { Dispatch, ReactElement, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
@@ -28,6 +28,15 @@ import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
+
+const DIALOG_STYLE: CSSProperties = {
+	width: "580px",
+	height: "520px",
+	minWidth: "400px",
+	minHeight: "300px",
+	maxWidth: "90vw",
+	maxHeight: "85vh",
+};
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -391,7 +400,12 @@ export function TaskCreateDialog({
 	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-2xl">
+		<Dialog
+			open={open}
+			onOpenChange={onOpenChange}
+			contentClassName="resize overflow-auto"
+			contentStyle={DIALOG_STYLE}
+		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
 			<DialogBody>
 				{mode === "single" ? (

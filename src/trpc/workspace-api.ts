@@ -14,8 +14,10 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
-import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
+import { findCardInBoard } from "../core/task-board-mutations";
+import { mutateWorkspaceState, saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { generateTaskTitle } from "../title/title-generator";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,
@@ -32,6 +34,8 @@ import {
 	resolveTaskCwd,
 } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
+
+const MAX_CONCURRENT_TITLE_REQUESTS = 3;
 
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
@@ -334,6 +338,38 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const response = await saveWorkspaceState(workspaceScope.workspacePath, input);
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
 				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
+
+				// Fire-and-forget: generate titles for any new cards that have title === null.
+				// Cap concurrency to avoid flooding the LLM proxy when many cards are created at once.
+				const untitledCards = input.board.columns.flatMap((col) => col.cards.filter((card) => card.title === null));
+				const generateTitle = async (card: (typeof untitledCards)[number]) => {
+					const title = await generateTaskTitle(card.prompt);
+					if (!title) {
+						return;
+					}
+					await mutateWorkspaceState(workspaceScope.workspacePath, (state) => {
+						const board = structuredClone(state.board);
+						const target = findCardInBoard(board, card.id);
+						if (target && target.title === null) {
+							target.title = title;
+							target.updatedAt = Date.now();
+						}
+						return { board, value: null };
+					});
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				};
+				if (untitledCards.length > 0) {
+					void (async () => {
+						for (let i = 0; i < untitledCards.length; i += MAX_CONCURRENT_TITLE_REQUESTS) {
+							const batch = untitledCards.slice(i, i + MAX_CONCURRENT_TITLE_REQUESTS);
+							await Promise.allSettled(batch.map(generateTitle));
+						}
+					})();
+				}
+
 				return response;
 			} catch (error) {
 				if (error instanceof WorkspaceStateConflictError) {

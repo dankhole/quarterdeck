@@ -153,6 +153,11 @@ function findTaskLocation(
 	return null;
 }
 
+/** Find a card by ID across all board columns. Returns the card or null. */
+export function findCardInBoard(board: RuntimeBoardData, taskId: string): RuntimeBoardCard | null {
+	return findTaskLocation(board, taskId)?.task ?? null;
+}
+
 function resolveDependencyEndpoints(
 	board: RuntimeBoardData,
 	firstTaskId: string,

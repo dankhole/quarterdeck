@@ -1,8 +1,9 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { InlineTitleEditor } from "@/components/inline-title-editor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -89,6 +90,22 @@ function resolveToolCallLabel(
 	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
 }
 
+/** Tooltip content for card hover: "Thinking..." if running, finalMessage if completed. */
+function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
+	if (!summary) {
+		return null;
+	}
+	if (summary.state === "running") {
+		return "Thinking\u2026";
+	}
+	const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
+	if (finalMessage) {
+		const maxLength = 200;
+		return finalMessage.length > maxLength ? `${finalMessage.slice(0, maxLength)}\u2026` : finalMessage;
+	}
+	return null;
+}
+
 /** Short activity label for running cards (e.g. "Reading src/auth.ts"). */
 function getRunningActivityLabel(summary: RuntimeTaskSessionSummary | undefined): string | null {
 	if (!summary || summary.state !== "running") {
@@ -130,6 +147,8 @@ export function BoardCard({
 	onCommit,
 	onOpenPr,
 	onCancelAutomaticAction,
+	onRegenerateTitle,
+	onUpdateTitle,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
@@ -151,6 +170,8 @@ export function BoardCard({
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
+	onRegenerateTitle?: (taskId: string) => void;
+	onUpdateTitle?: (taskId: string, title: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
@@ -162,6 +183,11 @@ export function BoardCard({
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
+	const closeTitleEditor = useCallback(() => setIsEditingTitle(false), []);
+
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -173,6 +199,7 @@ export function BoardCard({
 	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
+	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
@@ -292,16 +319,44 @@ export function BoardCard({
 										</span>
 									</Tooltip>
 								) : null}
-								<div className="flex-1 min-w-0">
-									<p
-										className={cn(
-											"kb-line-clamp-1 m-0 font-medium text-sm",
-											isTrashCard && "line-through text-text-tertiary",
-										)}
-									>
-										{displayTitle}
-									</p>
-								</div>
+								{isEditingTitle && onUpdateTitle ? (
+									<InlineTitleEditor
+										cardId={card.id}
+										currentTitle={card.title}
+										onSave={onUpdateTitle}
+										onClose={closeTitleEditor}
+										onRegenerate={onRegenerateTitle}
+										stopEvent={stopEvent}
+									/>
+								) : (
+									<Tooltip content={cardHoverTooltip ?? undefined} side="top">
+										<div className="flex flex-1 items-center gap-1 min-w-0">
+											<div className="flex-1 min-w-0">
+												<p
+													className={cn(
+														"kb-line-clamp-1 m-0 font-medium text-sm",
+														isTrashCard && "line-through text-text-tertiary",
+													)}
+												>
+													{displayTitle}
+												</p>
+											</div>
+											{isHovered && !isTrashCard && onUpdateTitle ? (
+												<Button
+													icon={<Pencil size={12} />}
+													variant="ghost"
+													size="sm"
+													aria-label="Edit title"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														openTitleEditor();
+													}}
+												/>
+											) : null}
+										</div>
+									</Tooltip>
+								)}
 								{columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}
