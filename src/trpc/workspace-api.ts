@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import type {
+	RuntimeBoardData,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
@@ -35,6 +36,15 @@ import {
 import type { RuntimeTrpcContext } from "./app-router";
 
 const MAX_CONCURRENT_TITLE_REQUESTS = 3;
+
+/** Find a card by ID across all board columns. */
+function findCardInBoard(board: RuntimeBoardData, taskId: string) {
+	for (const col of board.columns) {
+		const card = col.cards.find((c) => c.id === taskId);
+		if (card) return card;
+	}
+	return null;
+}
 
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
@@ -348,13 +358,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					}
 					await mutateWorkspaceState(workspaceScope.workspacePath, (state) => {
 						const board = structuredClone(state.board);
-						for (const col of board.columns) {
-							const target = col.cards.find((c) => c.id === card.id);
-							if (target && target.title === null) {
-								target.title = title;
-								target.updatedAt = Date.now();
-								break;
-							}
+						const target = findCardInBoard(board, card.id);
+						if (target && target.title === null) {
+							target.title = title;
+							target.updatedAt = Date.now();
 						}
 						return { board, value: null };
 					});

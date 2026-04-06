@@ -4,8 +4,9 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-
 import type {
+	RuntimeBoardCard,
+	RuntimeBoardData,
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
@@ -105,6 +106,15 @@ import {
 } from "../core/api-contract";
 import { mutateWorkspaceState } from "../state/workspace-state";
 import { generateTaskTitle } from "../title/title-generator";
+
+/** Find a card by ID across all board columns. */
+function findCardInBoard(board: RuntimeBoardData, taskId: string): RuntimeBoardCard | null {
+	for (const col of board.columns) {
+		const card = col.cards.find((c) => c.id === taskId);
+		if (card) return card;
+	}
+	return null;
+}
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -415,20 +425,12 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				// Prompt is needed before the LLM call; mutateWorkspaceState re-reads for atomicity.
 				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
-				let prompt: string | null = null;
-				let finalMessage: string | null = null;
-				for (const col of state.board.columns) {
-					const card = col.cards.find((c) => c.id === input.taskId);
-					if (card) {
-						prompt = card.prompt;
-						const session = state.sessions[card.id];
-						finalMessage = session?.latestHookActivity?.finalMessage ?? null;
-						break;
-					}
-				}
-				if (!prompt) {
+				const card = findCardInBoard(state.board, input.taskId);
+				if (!card) {
 					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
 				}
+				const prompt = card.prompt;
+				const finalMessage = state.sessions[card.id]?.latestHookActivity?.finalMessage ?? null;
 
 				const context = finalMessage ? `${prompt}\n\nAgent response: ${finalMessage}` : prompt;
 				const title = await generateTaskTitle(context);
@@ -438,13 +440,10 @@ export const runtimeAppRouter = t.router({
 
 				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
 					const board = structuredClone(currentState.board);
-					for (const col of board.columns) {
-						const target = col.cards.find((c) => c.id === input.taskId);
-						if (target) {
-							target.title = title;
-							target.updatedAt = Date.now();
-							break;
-						}
+					const target = findCardInBoard(board, input.taskId);
+					if (target) {
+						target.title = title;
+						target.updatedAt = Date.now();
 					}
 					return { board, value: null };
 				});
@@ -457,13 +456,11 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				const found = await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
 					const board = structuredClone(currentState.board);
-					for (const col of board.columns) {
-						const target = col.cards.find((c) => c.id === input.taskId);
-						if (target) {
-							target.title = input.title;
-							target.updatedAt = Date.now();
-							return { board, value: true };
-						}
+					const target = findCardInBoard(board, input.taskId);
+					if (target) {
+						target.title = input.title;
+						target.updatedAt = Date.now();
+						return { board, value: true };
 					}
 					return { board, value: false };
 				});
