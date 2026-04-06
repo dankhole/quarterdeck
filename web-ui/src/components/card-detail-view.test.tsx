@@ -56,6 +56,11 @@ vi.mock("@/components/detail-panels/file-tree-panel", () => ({
 	FileTreePanel: () => <div data-testid="file-tree-panel" />,
 }));
 
+vi.mock("@/components/detail-panels/detail-toolbar", () => ({
+	DetailToolbar: () => <div data-testid="detail-toolbar" />,
+	TOOLBAR_WIDTH: 40,
+}));
+
 vi.mock("@/resize/resizable-bottom-pane", () => ({
 	ResizableBottomPane: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -128,19 +133,19 @@ function getLastMockFirstArg<T>(mockFn: { mock: { calls: unknown[][] } }): T {
 	return lastCall?.[0] as T;
 }
 
-function requireResizeSeparator(container: HTMLElement): HTMLElement {
-	const separator = container.querySelector('[aria-label="Resize agent and diff panels"]');
+function requireSidePanelSeparator(container: HTMLElement): HTMLElement {
+	const separator = container.querySelector('[aria-label="Resize side panel"]');
 	if (!(separator instanceof HTMLElement)) {
-		throw new Error("Expected a resize separator.");
+		throw new Error("Expected a side panel resize separator.");
 	}
 	return separator;
 }
 
-function requireAgentPanel(container: HTMLElement): HTMLElement {
-	const separator = requireResizeSeparator(container);
+function requireSidePanel(container: HTMLElement): HTMLElement {
+	const separator = requireSidePanelSeparator(container);
 	const panel = separator.previousElementSibling;
 	if (!(panel instanceof HTMLElement)) {
-		throw new Error("Expected an agent panel element.");
+		throw new Error("Expected a side panel element.");
 	}
 	return panel;
 }
@@ -218,6 +223,8 @@ describe("CardDetailView", () => {
 	});
 
 	it("collapses the expanded diff on Escape without closing the detail view", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
+
 		await act(async () => {
 			root.render(
 				<CardDetailView
@@ -263,6 +270,8 @@ describe("CardDetailView", () => {
 	});
 
 	it("clears stale diff content when switching from all changes to last turn", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
+
 		await act(async () => {
 			root.render(
 				<CardDetailView
@@ -466,6 +475,7 @@ describe("CardDetailView", () => {
 	});
 
 	it("queues Add diff comments into the cline composer without sending them", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 		const onAddReviewComments = vi.fn();
 
 		await act(async () => {
@@ -501,6 +511,7 @@ describe("CardDetailView", () => {
 	});
 
 	it("routes Send diff comments through the mounted cline panel", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 		const onSendReviewComments = vi.fn();
 
 		await act(async () => {
@@ -536,8 +547,8 @@ describe("CardDetailView", () => {
 		expect(mockClineSendText).toHaveBeenCalledWith("src/example.ts:8 | done\n> Ship this");
 	});
 
-	it("loads the saved agent-to-diff panel ratio from local storage", async () => {
-		window.localStorage.setItem(LocalStorageKey.DetailAgentPanelRatio, "0.62");
+	it("loads the saved side panel ratio from local storage", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailSidePanelRatio, "0.30");
 
 		await act(async () => {
 			root.render(
@@ -558,10 +569,10 @@ describe("CardDetailView", () => {
 			);
 		});
 
-		expect(requireAgentPanel(container).style.width).toBe("62%");
+		expect(requireSidePanel(container).style.flex).toBe("0 0 30%");
 	});
 
-	it("persists the resized agent-to-diff panel ratio globally", async () => {
+	it("persists the resized side panel ratio globally", async () => {
 		await act(async () => {
 			root.render(
 				<CardDetailView
@@ -581,7 +592,7 @@ describe("CardDetailView", () => {
 			);
 		});
 
-		const separator = requireResizeSeparator(container);
+		const separator = requireSidePanelSeparator(container);
 		const dragHandle = separator.firstElementChild;
 		expect(dragHandle).toBeInstanceOf(HTMLDivElement);
 		if (!(dragHandle instanceof HTMLDivElement)) {
@@ -596,15 +607,14 @@ describe("CardDetailView", () => {
 			window.dispatchEvent(new MouseEvent("mouseup", { clientX: 320 }));
 		});
 
-		const savedRatioRaw = window.localStorage.getItem(LocalStorageKey.DetailAgentPanelRatio);
+		const savedRatioRaw = window.localStorage.getItem(LocalStorageKey.DetailSidePanelRatio);
 		expect(savedRatioRaw).not.toBeNull();
 		const savedRatio = Number(savedRatioRaw);
-		expect(savedRatio).toBeGreaterThan(0.4);
-		expect(savedRatio).toBeLessThanOrEqual(0.75);
-		expect(requireAgentPanel(container).style.width).not.toBe("40%");
+		expect(savedRatio).toBeGreaterThan(0.25);
+		expect(savedRatio).toBeLessThanOrEqual(0.45);
 	});
 
-	it("keeps the saved divider position after leaving and reopening task detail", async () => {
+	it("keeps the saved side panel position after leaving and reopening task detail", async () => {
 		const renderDetail = async (): Promise<void> => {
 			await act(async () => {
 				root.render(
@@ -628,7 +638,7 @@ describe("CardDetailView", () => {
 
 		await renderDetail();
 
-		const separator = requireResizeSeparator(container);
+		const separator = requireSidePanelSeparator(container);
 		const dragHandle = separator.firstElementChild;
 		expect(dragHandle).toBeInstanceOf(HTMLDivElement);
 		if (!(dragHandle instanceof HTMLDivElement)) {
@@ -640,7 +650,7 @@ describe("CardDetailView", () => {
 			window.dispatchEvent(new MouseEvent("mouseup", { clientX: 420 }));
 		});
 
-		const expectedRatio = window.localStorage.getItem(LocalStorageKey.DetailAgentPanelRatio);
+		const expectedRatio = window.localStorage.getItem(LocalStorageKey.DetailSidePanelRatio);
 		expect(expectedRatio).not.toBeNull();
 
 		await act(async () => {
@@ -650,12 +660,13 @@ describe("CardDetailView", () => {
 
 		await renderDetail();
 
-		const restoredWidth = requireAgentPanel(container).style.width;
-		const restoredRatio = Number.parseFloat(restoredWidth) / 100;
+		const restoredFlex = requireSidePanel(container).style.flex;
+		const restoredRatio = Number.parseFloat(restoredFlex.split(" ").pop() ?? "") / 100;
 		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
 	});
 
 	it("uses separate file-tree ratios for collapsed and expanded diff layouts", async () => {
+		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 		window.localStorage.setItem(LocalStorageKey.DetailDiffFileTreePanelRatio, "0.42");
 		window.localStorage.setItem(LocalStorageKey.DetailExpandedDiffFileTreePanelRatio, "0.18");
 
