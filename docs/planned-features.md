@@ -83,6 +83,10 @@ When an agent spawns a sub-agent that needs user permissions (e.g. tool approval
 
 The beta support footer (`ProjectSupportFooter`) was removed from the project navigation panel. Re-add a feedback card that links to d.cole's Slack channel for direct user feedback.
 
-## 12. Remove all Cline references and dependencies
+## 13. Agent CWD mismatch detection
+
+Detect when a running agent's actual working directory has diverged from the card's configured worktree path. Show a warning badge on the card (like the existing "No WT" tag). Uses `readlink /proc/<pid>/cwd` on Linux and `lsof` on macOS — PID and expected path are already tracked. See [docs/agent-cwd-mismatch-detection.md](agent-cwd-mismatch-detection.md) for full writeup.
+
+## 14. Remove all Cline references and dependencies
 
 Strip out all references to Cline from the codebase — the `@clinebot/*` SDK packages, the `src/cline-sdk/` boundary layer, Cline-specific agent adapters, and any branding or documentation references. Kanban should be agent-agnostic with no hard dependency on Cline.
