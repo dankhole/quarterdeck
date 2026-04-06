@@ -217,6 +217,7 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand,
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
+	onBottomTerminalRestart,
 	isDocumentVisible = true,
 }: {
 	selection: CardSelection;
@@ -265,6 +266,7 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand?: () => void;
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
+	onBottomTerminalRestart?: () => void;
 	isDocumentVisible?: boolean;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -764,6 +766,7 @@ export function CardDetailView({
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
+										onRestart={onBottomTerminalRestart}
 									/>
 								</div>
 							</ResizableBottomPane>

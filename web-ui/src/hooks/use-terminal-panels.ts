@@ -111,6 +111,8 @@ export interface UseTerminalPanelsResult {
 	handleToggleDetailTerminal: () => void;
 	handleSendAgentCommandToHomeTerminal: () => void;
 	handleSendAgentCommandToDetailTerminal: () => void;
+	handleRestartHomeTerminal: () => void;
+	handleRestartDetailTerminal: () => void;
 	prepareTerminalForShortcut: (input: PrepareTerminalForShortcutInput) => Promise<PrepareTerminalForShortcutResult>;
 	resetBottomTerminalLayoutCustomizations: () => void;
 	collapseHomeTerminal: () => void;
@@ -393,6 +395,30 @@ export function useTerminalPanels({
 		})();
 	}, [closeHomeTerminal, currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
+	const handleRestartHomeTerminal = useCallback(() => {
+		if (!currentProjectId) {
+			return;
+		}
+		void (async () => {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			await trpcClient.runtime.stopTaskSession.mutate({ taskId: HOME_TERMINAL_TASK_ID });
+			await startHomeTerminalSession();
+		})();
+	}, [currentProjectId, startHomeTerminalSession]);
+
+	const handleRestartDetailTerminal = useCallback(() => {
+		if (!currentProjectId || !selectedCard) {
+			return;
+		}
+		const card = selectedCard.card;
+		const targetTaskId = getDetailTerminalTaskId(card.id);
+		void (async () => {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			await trpcClient.runtime.stopTaskSession.mutate({ taskId: targetTaskId });
+			await startDetailTerminalForCard(card);
+		})();
+	}, [currentProjectId, selectedCard, startDetailTerminalForCard]);
+
 	const handleSendAgentCommandToHomeTerminal = useCallback(() => {
 		if (!agentCommand) {
 			return;
@@ -511,6 +537,8 @@ export function useTerminalPanels({
 		handleToggleDetailTerminal,
 		handleSendAgentCommandToHomeTerminal,
 		handleSendAgentCommandToDetailTerminal,
+		handleRestartHomeTerminal,
+		handleRestartDetailTerminal,
 		prepareTerminalForShortcut,
 		resetBottomTerminalLayoutCustomizations,
 		collapseHomeTerminal,

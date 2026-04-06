@@ -381,6 +381,8 @@ export default function App(): ReactElement {
 		handleToggleDetailTerminal,
 		handleSendAgentCommandToHomeTerminal,
 		handleSendAgentCommandToDetailTerminal,
+		handleRestartHomeTerminal,
+		handleRestartDetailTerminal,
 		prepareTerminalForShortcut,
 		resetBottomTerminalLayoutCustomizations,
 		collapseHomeTerminal,
@@ -912,6 +914,7 @@ export default function App(): ReactElement {
 													onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
 													isExpanded={isHomeTerminalExpanded}
 													onToggleExpand={handleToggleExpandHomeTerminal}
+													onRestart={handleRestartHomeTerminal}
 												/>
 											</div>
 										</ResizableBottomPane>
@@ -978,6 +981,7 @@ export default function App(): ReactElement {
 									onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
 									isBottomTerminalExpanded={isDetailTerminalExpanded}
 									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
+									onBottomTerminalRestart={handleRestartDetailTerminal}
 									isDocumentVisible={isDocumentVisible}
 								/>
 							</div>
