@@ -9,7 +9,10 @@ const titleModel = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
  * Requires ANTHROPIC_BEDROCK_BASE_URL + ANTHROPIC_AUTH_TOKEN env vars.
  * Returns null on any failure — never throws.
  */
+const MAX_PROMPT_LENGTH = 500;
+
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
+	prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
 	const baseUrl = process.env.ANTHROPIC_BEDROCK_BASE_URL;
 	const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
 	if (!baseUrl || !authToken) {
