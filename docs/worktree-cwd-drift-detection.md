@@ -57,6 +57,51 @@ When `sessionSummary.outsideWorktree === true`, show a warning badge next to the
 | `src/terminal/claude-workspace-trust.ts` | Export `isTaskWorktreePath` |
 | `web-ui/src/components/board-card.tsx` | Render "Left WT" badge |
 
-## Open question
+## Branch persistence on cards
 
-Does Claude Code change its process-level cwd when using the Bash tool to `cd`, or does it track working directory internally without calling `process.chdir()`? If the latter, polling the OS-level process cwd won't catch the drift. This needs to be validated before or during implementation.
+### Problem
+
+The current working branch for a task lives only in the workspace metadata monitor — polled from git every 1s, held in memory, never persisted. On restart it's re-probed from the worktree, but if the worktree has been cleaned up, the branch info is lost entirely. The card itself only stores `baseRef` (the target branch like `main`), not which branch the agent was working on.
+
+### Goal
+
+Persist the working branch on the card so it survives restarts and worktree cleanup. This moves toward cards holding more complete task definition.
+
+### Design
+
+**API contract — `src/core/api-contract.ts`**
+
+Add a new field to `runtimeBoardCardSchema`:
+
+```typescript
+branch: z.string().nullable().optional()
+```
+
+- `null` / undefined — no branch assigned yet (task hasn't started, or non-worktree task)
+- `string` — the branch the agent is working on
+
+**Workspace metadata monitor — `src/server/workspace-metadata-monitor.ts`**
+
+When the monitor probes a task's worktree and detects the current branch (via `git symbolic-ref`), write it back to the card if it differs from the stored value. This keeps the card's `branch` field up to date as the agent works.
+
+**State persistence — `src/state/workspace-state.ts`**
+
+The card's `branch` field persists to `board.json` automatically since it's part of the card schema. No extra persistence work needed.
+
+**Frontend — `web-ui/src/components/board-card.tsx`**
+
+On startup (before metadata monitor has re-probed), use `card.branch` as the initial display value. Once live metadata arrives, prefer that. On restart with a cleaned-up worktree, `card.branch` still shows the last known branch.
+
+### Files touched
+
+| File | Change |
+|------|--------|
+| `src/core/api-contract.ts` | Add `branch` to card schema |
+| `src/server/workspace-metadata-monitor.ts` | Write detected branch back to card |
+| `web-ui/src/components/board-card.tsx` | Fall back to `card.branch` when metadata unavailable |
+
+## Open questions
+
+1. Does Claude Code change its process-level cwd when using the Bash tool to `cd`, or does it track working directory internally without calling `process.chdir()`? If the latter, polling the OS-level process cwd won't catch the drift. This needs to be validated before or during implementation.
+
+2. Should the card's `branch` field be cleared when a task is moved to trash/done and its worktree is removed, or kept as a historical record?
