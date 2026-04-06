@@ -1,13 +1,21 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { type ComponentPropsWithoutRef, type ElementRef, forwardRef, type ReactNode } from "react";
+import { type ComponentPropsWithoutRef, type CSSProperties, type ElementRef, forwardRef, type ReactNode } from "react";
 
 import { cn } from "@/components/ui/cn";
 
 /* ------------------------------------------------------------------ */
 /* Dialog                                                              */
 /* ------------------------------------------------------------------ */
+
+const BASE_DIALOG_STYLE: CSSProperties = {
+	animation: "kb-dialog-show 150ms ease",
+	transform: "translate(-50%, -50%)",
+	width: "90vw",
+	maxWidth: "32rem",
+	maxHeight: "85vh",
+};
 
 export function Dialog({
 	open,
@@ -22,8 +30,7 @@ export function Dialog({
 	children: ReactNode;
 	contentClassName?: string;
 	contentAriaDescribedBy?: string;
-	/** Dimension overrides — spreads after base sizing defaults */
-	contentStyle?: React.CSSProperties;
+	contentStyle?: CSSProperties;
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -38,14 +45,7 @@ export function Dialog({
 						"fixed left-1/2 top-1/2 z-50 flex flex-col rounded-lg border border-[#5A6572] bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,
 					)}
-					style={{
-						animation: "kb-dialog-show 150ms ease",
-						transform: "translate(-50%, -50%)",
-						width: "90vw",
-						maxWidth: "32rem",
-						maxHeight: "85vh",
-						...contentStyle,
-					}}
+					style={contentStyle ? { ...BASE_DIALOG_STYLE, ...contentStyle } : BASE_DIALOG_STYLE}
 				>
 					{children}
 				</RadixDialog.Content>
