@@ -80,12 +80,17 @@ The runtime currently has **no direct LLM API client**. Agents run as spawned PT
 1. **Detail panel**: Add click-to-edit on the task title. Save via existing `updateTask` tRPC mutation with `title` field.
 2. **Regenerate button**: In the detail panel header, a small refresh icon that calls `runtime.regenerateTaskTitle`.
 3. **Optimistic update**: Show "Generating..." placeholder while the LLM call is in flight.
+4. **Card hover tooltip**: On mouseover, show a tooltip/popover with the agent's most recent response. This gives a quick status glance without opening the detail panel or terminal. The tooltip should:
+   - For completed tasks: display the `finalMessage` or last meaningful agent output, truncated to ~2-3 lines with ellipsis
+   - For running tasks: show a simple "Thinking..." or similar indicator (no need to stream live output into the tooltip)
+   - Only appear after a short hover delay (~300ms) to avoid flickering during drag or fast mouse movement
+   - Show "No activity yet" if the agent hasn't produced any output
 
 ### Key files to modify
 - `src/title/title-generator.ts` — new, LLM call logic
 - `src/trpc/runtime-router.ts` — hook into createCard, add regenerateTaskTitle mutation
 - `web-ui/src/components/detail-panels/` — inline title editing + regenerate button
-- `web-ui/src/components/board-card.tsx` — may need minor tweaks for loading state
+- `web-ui/src/components/board-card.tsx` — hover tooltip with latest agent response, loading state tweaks
 
 ## Open Questions
 
@@ -93,3 +98,4 @@ The runtime currently has **no direct LLM API client**. Agents run as spawned PT
 - Should the "ask the agent" approach (via system prompt + hook) be explored as an alternative to a separate LLM call? It's zero cost but harder to control.
 - Should title generation be opt-in (config flag) or on-by-default with graceful fallback?
 - When regenerating, should we include the agent's `finalMessage` as additional context, or just the original prompt?
+- For the hover tooltip on completed tasks: should it use `finalMessage` directly, or summarize it via an LLM call (like we do for titles)?
