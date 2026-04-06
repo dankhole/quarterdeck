@@ -1,6 +1,5 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
-import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
@@ -13,24 +12,16 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
-import { formatPathForDisplay } from "@/utils/path-display";
 import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
-const SESSION_ACTIVITY_COLOR = {
+const CARD_TEXT_COLOR = {
 	muted: "var(--color-text-tertiary)",
 	secondary: "var(--color-text-secondary)",
 } as const;
 
-function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
-	if (!workspacePath) {
-		return null;
-	}
-	try {
-		return buildTaskWorktreeDisplayPath(taskId, workspacePath);
-	} catch {
-		return null;
-	}
+function shortenBranchName(branch: string): string {
+	return branch.replace(/^(?:feature|fix|chore|hotfix|bugfix|release|refactor|feat)\//i, "") || branch;
 }
 
 function extractToolInputSummaryFromActivityText(activityText: string, toolName: string): string | null {
@@ -150,7 +141,6 @@ export function BoardCard({
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
-	workspacePath,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -181,11 +171,8 @@ export function BoardCard({
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
-	const statusLabel = useMemo(() => (sessionSummary ? describeSessionState(sessionSummary) : null), [sessionSummary]);
-	const statusTagStyle = useMemo(
-		() => (sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null),
-		[sessionSummary],
-	);
+	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
+	const statusTagStyle = sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null;
 	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
@@ -201,12 +188,9 @@ export function BoardCard({
 	};
 	const statusMarker = renderStatusMarker();
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const reviewWorkspacePath = reviewWorkspaceSnapshot
-		? formatPathForDisplay(reviewWorkspaceSnapshot.path)
-		: isTrashCard
-			? reconstructTaskWorktreeDisplayPath(card.id, workspacePath)
-			: null;
-	const reviewRefLabel = reviewWorkspaceSnapshot?.branch ?? reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "HEAD";
+	const reviewBranchLabel = reviewWorkspaceSnapshot?.branch
+		? shortenBranchName(reviewWorkspaceSnapshot.branch)
+		: (reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? null);
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null
 			? null
@@ -386,51 +370,39 @@ export function BoardCard({
 									) : null}
 								</div>
 							) : null}
-							{showWorkspaceStatus && reviewWorkspacePath ? (
+							{showWorkspaceStatus && reviewBranchLabel ? (
 								<p
-									className="font-mono"
+									className="font-mono kb-line-clamp-1"
 									style={{
 										margin: "4px 0 0",
 										fontSize: 12,
 										lineHeight: 1.4,
-										whiteSpace: "normal",
-										overflowWrap: "anywhere",
-										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
+										color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
 									}}
 								>
-									{isTrashCard ? (
-										<span
-											style={{
-												color: SESSION_ACTIVITY_COLOR.muted,
-												textDecoration: "line-through",
-											}}
-										>
-											{reviewWorkspacePath}
-										</span>
-									) : reviewWorkspaceSnapshot ? (
+									<GitBranch
+										size={10}
+										style={{
+											display: "inline",
+											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+											margin: "0px 4px 2px 0",
+											verticalAlign: "middle",
+										}}
+									/>
+									<span
+										style={{
+											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+											textDecoration: isTrashCard ? "line-through" : undefined,
+										}}
+									>
+										{reviewBranchLabel}
+									</span>
+									{reviewChangeSummary && !isTrashCard ? (
 										<>
-											<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
-											<GitBranch
-												size={10}
-												style={{
-													display: "inline",
-													color: SESSION_ACTIVITY_COLOR.secondary,
-													margin: "0px 4px 2px",
-													verticalAlign: "middle",
-												}}
-											/>
-											<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewRefLabel}</span>
-											{reviewChangeSummary ? (
-												<>
-													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}> (</span>
-													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>
-														{reviewChangeSummary.filesLabel}
-													</span>
-													<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-													<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>)</span>
-												</>
-											) : null}
+											<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+											<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
+											<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+											<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
 										</>
 									) : null}
 								</p>

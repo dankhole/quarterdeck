@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
 
@@ -170,23 +169,6 @@ describe("BoardCard", () => {
 		expect(trashButton).toBeInstanceOf(HTMLButtonElement);
 		expect((trashButton as HTMLButtonElement | null)?.disabled).toBe(true);
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
-	});
-
-	it("reconstructs and shows trashed worktree path when workspace metadata is not tracked", async () => {
-		await act(async () => {
-			root.render(
-				<TooltipProvider>
-					<BoardCard
-						card={createCard({ id: "trash-task-1" })}
-						index={0}
-						columnId="trash"
-						workspacePath="/Users/alice/projects/kanban"
-					/>
-				</TooltipProvider>,
-			);
-		});
-
-		expect(container.textContent).toContain("~/.cline/worktrees/trash-task-1/kanban");
 	});
 
 	it("shows tool input details in the session preview text", async () => {
