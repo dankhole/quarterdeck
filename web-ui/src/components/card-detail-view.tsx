@@ -193,6 +193,8 @@ export function CardDetailView({
 	onMoveReviewCardToTrash,
 	onRestoreTaskFromTrash,
 	onCancelAutomaticTaskAction,
+	onRegenerateTitleTask,
+	onUpdateTaskTitle,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	agentCommitTaskLoadingById,
@@ -241,6 +243,8 @@ export function CardDetailView({
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	onRestoreTaskFromTrash?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
+	onRegenerateTitleTask?: (taskId: string) => void;
+	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	agentCommitTaskLoadingById?: Record<string, boolean>;
@@ -526,6 +530,8 @@ export function CardDetailView({
 								onOpenPrTask={onOpenPrTask}
 								onMoveToTrashTask={onMoveReviewCardToTrash}
 								onRestoreFromTrashTask={onRestoreTaskFromTrash}
+								onRegenerateTitleTask={onRegenerateTitleTask}
+								onUpdateTaskTitle={onUpdateTaskTitle}
 								commitTaskLoadingById={commitTaskLoadingById}
 								openPrTaskLoadingById={openPrTaskLoadingById}
 								moveToTrashLoadingById={moveToTrashLoadingById}

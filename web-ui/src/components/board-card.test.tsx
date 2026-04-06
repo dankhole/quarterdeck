@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
 
@@ -99,6 +100,11 @@ function Harness(): React.ReactElement {
 	);
 }
 
+/** Wrap content in providers required by BoardCard's tooltip usage. */
+function Providers({ children }: { children: ReactNode }): React.ReactElement {
+	return <TooltipProvider>{children}</TooltipProvider>;
+}
+
 describe("BoardCard", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -141,7 +147,11 @@ describe("BoardCard", () => {
 
 	it("shows a mode-specific cancel button and hides it after canceling auto review", async () => {
 		await act(async () => {
-			root.render(<Harness />);
+			root.render(
+				<Providers>
+					<Harness />
+				</Providers>,
+			);
 		});
 
 		const cancelButton = Array.from(container.querySelectorAll("button")).find(
@@ -162,7 +172,11 @@ describe("BoardCard", () => {
 
 	it("shows a loading state on the review trash button while moving to trash", async () => {
 		await act(async () => {
-			root.render(<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />);
+			root.render(
+				<Providers>
+					<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />
+				</Providers>,
+			);
 		});
 
 		const trashButton = container.querySelector('button[aria-label="Move task to trash"]');
@@ -174,35 +188,37 @@ describe("BoardCard", () => {
 	it("shows tool input details in the session preview text", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={{
-						taskId: "task-1",
-						state: "running",
-						agentId: "claude",
-						workspacePath: "/tmp/worktree",
-						pid: null,
-						startedAt: Date.now(),
-						updatedAt: Date.now(),
-						lastOutputAt: Date.now(),
-						reviewReason: null,
-						exitCode: null,
-						lastHookAt: Date.now(),
-						latestHookActivity: {
-							activityText: "Using Read",
-							toolName: "Read",
-							toolInputSummary: "src/index.ts",
-							finalMessage: null,
-							hookEventName: "tool_call",
-							notificationType: null,
-							source: "hook",
-						},
-						latestTurnCheckpoint: null,
-						previousTurnCheckpoint: null,
-					}}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={{
+							taskId: "task-1",
+							state: "running",
+							agentId: "claude",
+							workspacePath: "/tmp/worktree",
+							pid: null,
+							startedAt: Date.now(),
+							updatedAt: Date.now(),
+							lastOutputAt: Date.now(),
+							reviewReason: null,
+							exitCode: null,
+							lastHookAt: Date.now(),
+							latestHookActivity: {
+								activityText: "Using Read",
+								toolName: "Read",
+								toolInputSummary: "src/index.ts",
+								finalMessage: null,
+								hookEventName: "tool_call",
+								notificationType: null,
+								source: "hook",
+							},
+							latestTurnCheckpoint: null,
+							previousTurnCheckpoint: null,
+						}}
+					/>
+				</Providers>,
 			);
 		});
 
@@ -213,23 +229,25 @@ describe("BoardCard", () => {
 	it("shows tool activity in the compact tool label format", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={createSummary("running", {
-						agentId: "claude",
-						latestHookActivity: {
-							activityText: "Completed Read: src/index.ts",
-							toolName: "Read",
-							toolInputSummary: null,
-							finalMessage: null,
-							hookEventName: "PostToolUse",
-							notificationType: null,
-							source: "claude",
-						},
-					})}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							agentId: "claude",
+							latestHookActivity: {
+								activityText: "Completed Read: src/index.ts",
+								toolName: "Read",
+								toolInputSummary: null,
+								finalMessage: null,
+								hookEventName: "PostToolUse",
+								notificationType: null,
+								source: "claude",
+							},
+						})}
+					/>
+				</Providers>,
 			);
 		});
 
@@ -240,23 +258,25 @@ describe("BoardCard", () => {
 	it("parses codex tool activity into the compact tool label format", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={createSummary("running", {
-						agentId: "codex",
-						latestHookActivity: {
-							activityText: "Calling Read: src/index.ts",
-							toolName: null,
-							toolInputSummary: null,
-							finalMessage: null,
-							hookEventName: "raw_response_item",
-							notificationType: null,
-							source: "codex",
-						},
-					})}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							agentId: "codex",
+							latestHookActivity: {
+								activityText: "Calling Read: src/index.ts",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								hookEventName: "raw_response_item",
+								notificationType: null,
+								source: "codex",
+							},
+						})}
+					/>
+				</Providers>,
 			);
 		});
 
@@ -267,35 +287,37 @@ describe("BoardCard", () => {
 	it("keeps showing the last tool label during assistant streaming", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={{
-						taskId: "task-1",
-						state: "running",
-						agentId: "claude",
-						workspacePath: "/tmp/worktree",
-						pid: null,
-						startedAt: Date.now(),
-						updatedAt: Date.now(),
-						lastOutputAt: Date.now(),
-						reviewReason: null,
-						exitCode: null,
-						lastHookAt: Date.now(),
-						latestHookActivity: {
-							activityText: "Agent active",
-							toolName: "Read",
-							toolInputSummary: "src/index.ts",
-							finalMessage: "Looking at the file now",
-							hookEventName: "assistant_delta",
-							notificationType: null,
-							source: "hook",
-						},
-						latestTurnCheckpoint: null,
-						previousTurnCheckpoint: null,
-					}}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={{
+							taskId: "task-1",
+							state: "running",
+							agentId: "claude",
+							workspacePath: "/tmp/worktree",
+							pid: null,
+							startedAt: Date.now(),
+							updatedAt: Date.now(),
+							lastOutputAt: Date.now(),
+							reviewReason: null,
+							exitCode: null,
+							lastHookAt: Date.now(),
+							latestHookActivity: {
+								activityText: "Agent active",
+								toolName: "Read",
+								toolInputSummary: "src/index.ts",
+								finalMessage: "Looking at the file now",
+								hookEventName: "assistant_delta",
+								notificationType: null,
+								source: "hook",
+							},
+							latestTurnCheckpoint: null,
+							previousTurnCheckpoint: null,
+						}}
+					/>
+				</Providers>,
 			);
 		});
 
@@ -306,22 +328,24 @@ describe("BoardCard", () => {
 	it("shows the latest assistant preview on active task cards", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={createSummary("running", {
-						latestHookActivity: {
-							activityText: "Reviewing the final diff",
-							toolName: null,
-							toolInputSummary: null,
-							finalMessage: "Reviewing the final diff",
-							hookEventName: "assistant_delta",
-							notificationType: null,
-							source: "hook",
-						},
-					})}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							latestHookActivity: {
+								activityText: "Reviewing the final diff",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: "Reviewing the final diff",
+								hookEventName: "assistant_delta",
+								notificationType: null,
+								source: "hook",
+							},
+						})}
+					/>
+				</Providers>,
 			);
 		});
 
@@ -332,23 +356,25 @@ describe("BoardCard", () => {
 	it("shows normal agent messages without the agent prefix", async () => {
 		await act(async () => {
 			root.render(
-				<BoardCard
-					card={createCard()}
-					index={0}
-					columnId="in_progress"
-					sessionSummary={createSummary("running", {
-						agentId: "codex",
-						latestHookActivity: {
-							activityText: "Agent: checking the next file",
-							toolName: null,
-							toolInputSummary: null,
-							finalMessage: null,
-							hookEventName: "agent_message",
-							notificationType: null,
-							source: "codex",
-						},
-					})}
-				/>,
+				<Providers>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							agentId: "codex",
+							latestHookActivity: {
+								activityText: "Agent: checking the next file",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								hookEventName: "agent_message",
+								notificationType: null,
+								source: "codex",
+							},
+						})}
+					/>
+				</Providers>,
 			);
 		});
 

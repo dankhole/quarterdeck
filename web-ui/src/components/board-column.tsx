@@ -22,6 +22,8 @@ export function BoardColumn({
 	onCommitTask,
 	onOpenPrTask,
 	onCancelAutomaticTaskAction,
+	onRegenerateTitleTask,
+	onUpdateTaskTitle,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
@@ -50,6 +52,8 @@ export function BoardColumn({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
+	onRegenerateTitleTask?: (taskId: string) => void;
+	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
@@ -174,6 +178,8 @@ export function BoardColumn({
 											onCommit={onCommitTask}
 											onOpenPr={onOpenPrTask}
 											onCancelAutomaticAction={onCancelAutomaticTaskAction}
+											onRegenerateTitle={onRegenerateTitleTask}
+											onUpdateTitle={onUpdateTaskTitle}
 											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 											isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
