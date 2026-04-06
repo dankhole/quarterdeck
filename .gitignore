@@ -13,3 +13,4 @@ web-ui/.env
 web-ui/.env.*
 !web-ui/.env.example
 .idea
+docs/archive
