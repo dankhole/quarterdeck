@@ -34,6 +34,8 @@ const DIALOG_STYLE: CSSProperties = {
 	height: "520px",
 	minWidth: "400px",
 	minHeight: "300px",
+	maxWidth: "90vw",
+	maxHeight: "85vh",
 };
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
