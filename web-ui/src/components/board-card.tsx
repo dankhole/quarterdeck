@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Play, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import type { MouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, GitBranch, Pencil, Play, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import type { MouseEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -147,6 +147,7 @@ export function BoardCard({
 	onOpenPr,
 	onCancelAutomaticAction,
 	onRegenerateTitle,
+	onUpdateTitle,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
@@ -169,6 +170,7 @@ export function BoardCard({
 	onOpenPr?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
+	onUpdateTitle?: (taskId: string, title: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
@@ -180,13 +182,51 @@ export function BoardCard({
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const [isEditingTitle, setIsEditingTitle] = useState(false);
+	const [editTitleValue, setEditTitleValue] = useState("");
 	const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
+	const editInputRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
 		if (isRegeneratingTitle) {
 			setIsRegeneratingTitle(false);
 		}
 	}, [card.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const openTitleEditor = useCallback(() => {
+		setEditTitleValue(card.title || "");
+		setIsEditingTitle(true);
+		requestAnimationFrame(() => {
+			editInputRef.current?.focus();
+			editInputRef.current?.select();
+		});
+	}, [card.title]);
+
+	const closeTitleEditor = useCallback(() => {
+		setIsEditingTitle(false);
+	}, []);
+
+	const submitTitleEdit = useCallback(() => {
+		const trimmed = editTitleValue.trim();
+		if (trimmed && trimmed !== (card.title || "") && onUpdateTitle) {
+			onUpdateTitle(card.id, trimmed);
+		}
+		setIsEditingTitle(false);
+	}, [card.id, card.title, editTitleValue, onUpdateTitle]);
+
+	const handleEditKeyDown = useCallback(
+		(event: ReactKeyboardEvent<HTMLInputElement>) => {
+			if (event.key === "Enter") {
+				event.preventDefault();
+				submitTitleEdit();
+			} else if (event.key === "Escape") {
+				event.preventDefault();
+				closeTitleEditor();
+			}
+		},
+		[submitTitleEdit, closeTitleEditor],
+	);
+
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -318,42 +358,72 @@ export function BoardCard({
 										</span>
 									</Tooltip>
 								) : null}
-								<Tooltip content={cardHoverTooltip} side="top">
-									<div className="flex-1 min-w-0">
-										<p
-											className={cn(
-												"kb-line-clamp-1 m-0 font-medium text-sm",
-												isTrashCard && "line-through text-text-tertiary",
-											)}
-										>
-											{displayTitle}
-										</p>
-									</div>
-								</Tooltip>
-								{isHovered && !isTrashCard && onRegenerateTitle ? (
-									<Tooltip
-										content={
-											sessionSummary?.state === "running"
-												? "Ask agent to suggest a title"
-												: "Generate title from prompt and agent response"
-										}
-										side="top"
+								{isEditingTitle ? (
+									<div
+										className="flex flex-1 items-center gap-1 min-w-0"
+										onMouseDown={stopEvent}
+										onClick={stopEvent}
 									>
-										<Button
-											icon={isRegeneratingTitle ? <Spinner size={12} /> : <RefreshCw size={12} />}
-											variant="ghost"
-											size="sm"
-											disabled={isRegeneratingTitle}
-											aria-label="Regenerate title"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												setIsRegeneratingTitle(true);
-												onRegenerateTitle(card.id);
-											}}
+										<input
+											ref={editInputRef}
+											type="text"
+											value={editTitleValue}
+											onChange={(event) => setEditTitleValue(event.target.value)}
+											onKeyDown={handleEditKeyDown}
+											onBlur={submitTitleEdit}
+											className="flex-1 min-w-0 rounded border border-border-focus bg-surface-0 px-1.5 py-0.5 text-sm text-text-primary outline-none"
+											placeholder="Task title…"
 										/>
-									</Tooltip>
-								) : null}
+										{onRegenerateTitle ? (
+											<Tooltip content="Auto-generate title" side="top">
+												<Button
+													icon={isRegeneratingTitle ? <Spinner size={12} /> : <RefreshCw size={12} />}
+													variant="ghost"
+													size="sm"
+													disabled={isRegeneratingTitle}
+													aria-label="Auto-generate title"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														setIsRegeneratingTitle(true);
+														setIsEditingTitle(false);
+														onRegenerateTitle(card.id);
+													}}
+												/>
+											</Tooltip>
+										) : null}
+									</div>
+								) : (
+									<>
+										<Tooltip content={cardHoverTooltip} side="top">
+											<div className="flex-1 min-w-0">
+												<p
+													className={cn(
+														"kb-line-clamp-1 m-0 font-medium text-sm",
+														isTrashCard && "line-through text-text-tertiary",
+													)}
+												>
+													{displayTitle}
+												</p>
+											</div>
+										</Tooltip>
+										{isHovered && !isTrashCard && onUpdateTitle ? (
+											<Tooltip content="Edit title" side="top">
+												<Button
+													icon={<Pencil size={12} />}
+													variant="ghost"
+													size="sm"
+													aria-label="Edit title"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														openTitleEditor();
+													}}
+												/>
+											</Tooltip>
+										) : null}
+									</>
+								)}
 								{columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}
