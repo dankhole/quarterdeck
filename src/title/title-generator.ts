@@ -2,28 +2,33 @@ const TITLE_SYSTEM_PROMPT =
 	"Generate a concise 2-4 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
 
 /**
- * Generate a short task title from a prompt using the Anthropic API (Haiku).
+ * Generate a short task title from a prompt via the Bedrock/LiteLLM proxy.
+ * Requires ANTHROPIC_BEDROCK_BASE_URL + ANTHROPIC_AUTH_TOKEN env vars.
  * Returns null on any failure — never throws.
  */
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
-	const apiKey = process.env.ANTHROPIC_API_KEY;
-	if (!apiKey) {
+	const baseUrl = process.env.ANTHROPIC_BEDROCK_BASE_URL;
+	const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+	if (!baseUrl || !authToken) {
 		return null;
 	}
 
 	try {
-		const response = await fetch("https://api.anthropic.com/v1/messages", {
+		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
+		const response = await fetch(`${origin}/v1/chat/completions`, {
 			method: "POST",
+			signal: AbortSignal.timeout(3_000),
 			headers: {
 				"content-type": "application/json",
-				"x-api-key": apiKey,
-				"anthropic-version": "2023-06-01",
+				authorization: `Bearer ${authToken}`,
 			},
 			body: JSON.stringify({
-				model: "claude-haiku-4-5-20241022",
+				model: "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
 				max_tokens: 20,
-				system: TITLE_SYSTEM_PROMPT,
-				messages: [{ role: "user", content: prompt }],
+				messages: [
+					{ role: "system", content: TITLE_SYSTEM_PROMPT },
+					{ role: "user", content: prompt },
+				],
 			}),
 		});
 
@@ -31,13 +36,10 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 			return null;
 		}
 
-		const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
-		const text = data.content?.find((block) => block.type === "text")?.text?.trim();
-		if (!text || text.length === 0) {
-			return null;
-		}
-
-		return text;
+		const data = (await response.json()) as {
+			choices?: Array<{ message?: { content?: string } }>;
+		};
+		return data.choices?.[0]?.message?.content?.trim() || null;
 	} catch {
 		return null;
 	}
