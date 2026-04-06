@@ -823,18 +823,27 @@ export function CardDetailView({
 									isExpanded={isFileBrowserExpanded}
 									onToggleExpand={handleToggleFileBrowserExpand}
 								/>
-								<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-									<FileBrowserPanel
-										taskId={selection.card.id}
-										baseRef={selection.card.baseRef}
-										workspaceId={currentProjectId!}
-										selectedPath={fileBrowserSelectedPath}
-										onSelectedPathChange={setFileBrowserSelectedPath}
-										treePanelFlex={fileBrowserTreePanelPercent}
-										contentPanelFlex={fileBrowserContentPanelPercent}
-										onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
-									/>
-								</div>
+								{currentProjectId ? (
+									<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+										<FileBrowserPanel
+											taskId={selection.card.id}
+											baseRef={selection.card.baseRef}
+											workspaceId={currentProjectId}
+											selectedPath={fileBrowserSelectedPath}
+											onSelectedPathChange={setFileBrowserSelectedPath}
+											treePanelFlex={fileBrowserTreePanelPercent}
+											contentPanelFlex={fileBrowserContentPanelPercent}
+											onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+										/>
+									</div>
+								) : (
+									<div className="flex flex-1 items-center justify-center text-text-tertiary">
+										<div className="flex flex-col items-center gap-3 py-12">
+											<FolderOpen size={40} />
+											<span className="text-sm text-text-secondary font-semibold">No project selected</span>
+										</div>
+									</div>
+								)}
 							</div>
 						</div>
 					</>

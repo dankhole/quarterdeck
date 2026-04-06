@@ -5,7 +5,7 @@ import type { RuntimeWorkspaceFileSearchMatch } from "../core/api-contract";
 import { createGitProcessEnv } from "../core/git-process-env";
 
 const execFileAsync = promisify(execFile);
-const CACHE_TTL_MS = 10_000;
+const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 

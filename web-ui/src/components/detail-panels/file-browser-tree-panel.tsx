@@ -195,13 +195,7 @@ export function FileBrowserTreePanel({
 						</div>
 					</div>
 				) : (
-					<div
-						style={{
-							height: virtualizer.getTotalSize(),
-							width: "100%",
-							position: "relative",
-						}}
-					>
+					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
 						{virtualizer.getVirtualItems().map((virtualItem) => {
 							const item = visibleItems[virtualItem.index]!;
 							const { node, depth } = item;
@@ -215,16 +209,12 @@ export function FileBrowserTreePanel({
 									key={node.path}
 									type="button"
 									className={cn(
-										"kb-file-tree-row",
+										"kb-file-tree-row absolute top-0 left-0 w-full",
 										isDirectory && "kb-file-tree-row-directory",
 										isSelected && "kb-file-tree-row-selected",
 										isFocused && !isSelected && "ring-1 ring-inset ring-border-focus",
 									)}
 									style={{
-										position: "absolute",
-										top: 0,
-										left: 0,
-										width: "100%",
 										height: ROW_HEIGHT,
 										transform: `translateY(${virtualItem.start}px)`,
 										paddingLeft: depth * 12 + 8,

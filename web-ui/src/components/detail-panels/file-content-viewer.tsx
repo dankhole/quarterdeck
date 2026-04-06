@@ -117,38 +117,23 @@ export function FileContentViewer({
 				</div>
 			) : null}
 			<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
-				<div
-					style={{
-						height: virtualizer.getTotalSize(),
-						width: "100%",
-						position: "relative",
-					}}
-				>
+				<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
 					{virtualizer.getVirtualItems().map((virtualItem) => {
 						const lineNumber = virtualItem.index + 1;
 						const line = lines[virtualItem.index] ?? "";
 						return (
 							<div
 								key={lineNumber}
-								className="flex font-mono"
+								className="absolute top-0 left-0 w-full flex font-mono text-xs"
 								style={{
-									position: "absolute",
-									top: 0,
-									left: 0,
-									width: "100%",
 									height: LINE_HEIGHT,
 									transform: `translateY(${virtualItem.start}px)`,
-									fontSize: 12,
 									lineHeight: `${LINE_HEIGHT}px`,
 								}}
 							>
 								<span
-									className="select-none text-right text-text-tertiary shrink-0"
-									style={{
-										width: gutterWidth,
-										paddingRight: 12,
-										paddingLeft: 8,
-									}}
+									className="select-none text-right text-text-tertiary shrink-0 pr-3 pl-2"
+									style={{ width: gutterWidth }}
 								>
 									{lineNumber}
 								</span>
