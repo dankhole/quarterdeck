@@ -14,21 +14,8 @@ Kanban persists all board state (cards, sessions, workspace metadata) in `~/.cli
 
 Branch: `feature/dogfood-state-isolation`
 
-## Problem: Claude Code worktrees are invisible to kanban
+## Note: Cross-worktree diffs work fine
 
-Kanban and Claude Code both create git worktrees, but independently:
+Initially we suspected that Claude Code's `EnterWorktree` (which creates worktrees in `<repo>/.claude/worktrees/`) would be invisible to kanban's diff viewer. This turned out to be wrong.
 
-- **Kanban** creates task worktrees in `~/.cline/worktrees/` and tracks them via sessions, diffs, and the board UI
-- **Claude Code** creates worktrees in `<repo>/.claude/worktrees/` via its `EnterWorktree` tool, with no kanban integration
-
-When Claude Code is used as an agent within a kanban-managed project, any worktree it creates is invisible to kanban's UI. File changes, diffs, and session state don't show up in the board. This is confusing when dogfooding (using kanban to develop kanban with Claude Code as the agent).
-
-### Possible approaches
-
-1. **Kanban discovers external worktrees** — On startup or via a manual "link worktree" action, scan known worktree locations (`.claude/worktrees/`, or enumerate via `git worktree list`) and let the user attach an existing worktree to a kanban task. Quickest win, no changes needed on the Claude Code side.
-
-2. **Claude Code delegates to kanban** — If a kanban server is running, Claude Code could call kanban's tRPC API to create worktrees through kanban's task system, getting session/diff tracking for free. Deeper integration but requires coordination between the two tools.
-
-3. **Shared worktree convention** — Both tools agree on a common worktree root and naming scheme so kanban can passively discover worktrees it didn't create. Lower coupling than option 2 but needs a spec both tools implement.
-
-No decision has been made yet. This doc captures the problem and options for future work.
+Kanban's diff is **ref-based, not directory-based**. It runs `git diff` against branch refs/HEAD in the task worktree, and since all git worktrees share the same underlying object database, commits made from any worktree are visible as long as they're on the same branch. So an agent that creates a Claude Code worktree and commits to the task branch still shows up correctly in kanban's changes viewer.
