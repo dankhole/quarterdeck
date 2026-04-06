@@ -9,6 +9,7 @@ import {
 } from "@/utils/notification-badge-sync";
 import { getBrowserNotificationPermission } from "@/utils/notification-permission";
 import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/utils/react-use";
+import { isApprovalState } from "@/utils/session-status";
 import {
 	createTabPresenceId,
 	hasVisibleKanbanTabForWorkspace,
@@ -188,7 +189,13 @@ export function useReviewReadyNotifications({
 			taskSessions,
 		);
 		setPendingReviewReadyNotificationCount((current) => current + 1);
-		const notificationTitle = workspaceTitle ? `${workspaceTitle} ready for review` : "Ready for review";
+		const session = taskSessions[latestTaskReadyForReview.taskId] ?? null;
+		const isApproval = isApprovalState(session);
+		const notificationTitle = workspaceTitle
+			? `${workspaceTitle} ${isApproval ? "waiting for approval" : "ready for review"}`
+			: isApproval
+				? "Waiting for approval"
+				: "Ready for review";
 		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, notificationBody);
 	}, [
 		activeWorkspaceId,

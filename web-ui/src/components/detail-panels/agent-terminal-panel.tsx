@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
+import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RotateCw, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
@@ -47,6 +47,7 @@ export interface AgentTerminalPanelProps {
 	onSendAgentCommand?: () => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
+	onRestart?: () => void;
 }
 
 function AgentTerminalReviewActions({
@@ -120,6 +121,7 @@ function AgentTerminalPanelLayout({
 	onSendAgentCommand,
 	isExpanded = false,
 	onToggleExpand,
+	onRestart,
 	sessionControls,
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
@@ -214,6 +216,26 @@ function AgentTerminalPanelLayout({
 									size="sm"
 									onClick={onSendAgentCommand}
 									aria-label={`Run ${agentLabel}`}
+								/>
+							</Tooltip>
+						) : null}
+						<Tooltip side="top" content="Clear">
+							<Button
+								icon={<Eraser size={12} />}
+								variant="ghost"
+								size="sm"
+								onClick={clearTerminal}
+								aria-label="Clear terminal"
+							/>
+						</Tooltip>
+						{onRestart ? (
+							<Tooltip side="top" content="Restart">
+								<Button
+									icon={<RotateCw size={12} />}
+									variant="ghost"
+									size="sm"
+									onClick={onRestart}
+									aria-label="Restart terminal"
 								/>
 							</Tooltip>
 						) : null}
