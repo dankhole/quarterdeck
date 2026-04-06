@@ -11,26 +11,26 @@ function createRuntimeConfigResponse(
 		selectedAgentId,
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
-		effectiveCommand: selectedAgentId === "cline" ? null : selectedAgentId,
+		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: ["claude", "codex"],
 		agents: [
 			{
-				id: "cline",
-				label: "Cline",
-				binary: "cline",
-				command: "cline",
-				defaultArgs: [],
-				installed: false,
-				configured: true,
-			},
-			{
 				id: "claude",
 				label: "Claude Code",
 				binary: "claude",
 				command: "claude",
+				defaultArgs: [],
+				installed: true,
+				configured: true,
+			},
+			{
+				id: "codex",
+				label: "OpenAI Codex",
+				binary: "codex",
+				command: "codex",
 				defaultArgs: [],
 				installed: true,
 				configured: true,
@@ -49,23 +49,23 @@ function createRuntimeConfigResponse(
 }
 
 describe("native-agent helpers", () => {
-	it("treats selected cline as task-ready when cline authentication is configured", () => {
-		expect(isTaskAgentSetupSatisfied(createRuntimeConfigResponse("cline"))).toBe(true);
+	it("treats selected agent as task-ready when agent is installed", () => {
+		expect(isTaskAgentSetupSatisfied(createRuntimeConfigResponse("claude"))).toBe(true);
 		expect(isTaskAgentSetupSatisfied(null)).toBeNull();
 	});
 
-	it("does not show the navbar setup hint when cline is configured through the native SDK path", () => {
-		expect(getTaskAgentNavbarHint(createRuntimeConfigResponse("cline"))).toBeUndefined();
+	it("does not show the navbar setup hint when agent is configured", () => {
+		expect(getTaskAgentNavbarHint(createRuntimeConfigResponse("claude"))).toBeUndefined();
 	});
 
 	it("shows the navbar setup hint when no task agent path is ready", () => {
-		const config = createRuntimeConfigResponse("cline", {
+		const config = createRuntimeConfigResponse("claude", {
 			agents: [
 				{
-					id: "cline",
-					label: "Cline",
-					binary: "cline",
-					command: "cline",
+					id: "claude",
+					label: "Claude Code",
+					binary: "claude",
+					command: "claude",
 					defaultArgs: [],
 					installed: false,
 					configured: true,
