@@ -1,23 +1,14 @@
-import { realpathSync } from "node:fs";
-
-import packageJson from "../../package.json" with { type: "json" };
-
 import type { RuntimeAgentId } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveKanbanCommandParts } from "../core/kanban-command";
 import { buildShellCommandLine } from "../core/shell";
-import { detectAutoUpdateInstallation, UpdatePackageManager } from "../update/update";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
-const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 export interface ResolveAppendSystemPromptCommandPrefixOptions {
-	currentVersion?: string;
 	argv?: string[];
 	execArgv?: string[];
 	execPath?: string;
-	cwd?: string;
-	resolveRealPath?: (path: string) => string;
 }
 
 export interface RenderAppendSystemPromptOptions {
@@ -65,53 +56,12 @@ export function resolveAppendSystemPromptCommandPrefix(
 	options: ResolveAppendSystemPromptCommandPrefixOptions = {},
 ): string {
 	const argv = options.argv ?? process.argv;
-	const fallbackCommandParts = resolveKanbanCommandParts({
+	const commandParts = resolveKanbanCommandParts({
 		execPath: options.execPath ?? process.execPath,
 		argv,
 		execArgv: options.execArgv ?? process.execArgv,
 	});
-	const fallbackCommandPrefix = buildShellCommandLine(
-		fallbackCommandParts[0] ?? DEFAULT_COMMAND_PREFIX,
-		fallbackCommandParts.slice(1),
-	);
-	const entrypointArg = argv[1];
-	if (!entrypointArg) {
-		return fallbackCommandPrefix;
-	}
-
-	const resolveRealPath = options.resolveRealPath ?? realpathSync;
-	let entrypointPath: string;
-	try {
-		entrypointPath = resolveRealPath(entrypointArg);
-	} catch {
-		return fallbackCommandPrefix;
-	}
-
-	const installation = detectAutoUpdateInstallation({
-		currentVersion: options.currentVersion ?? KANBAN_VERSION,
-		packageName: "kanban",
-		entrypointPath,
-		cwd: options.cwd ?? process.cwd(),
-	});
-
-	if (installation.updateTiming !== "shutdown") {
-		return fallbackCommandPrefix;
-	}
-
-	if (installation.packageManager === UpdatePackageManager.NPX) {
-		return "npx -y kanban";
-	}
-	if (installation.packageManager === UpdatePackageManager.PNPM) {
-		return "pnpm dlx kanban";
-	}
-	if (installation.packageManager === UpdatePackageManager.YARN) {
-		return "yarn dlx kanban";
-	}
-	if (installation.packageManager === UpdatePackageManager.BUN) {
-		return "bun x kanban";
-	}
-
-	return fallbackCommandPrefix;
+	return buildShellCommandLine(commandParts[0] ?? DEFAULT_COMMAND_PREFIX, commandParts.slice(1));
 }
 
 export function renderAppendSystemPrompt(commandPrefix: string, options: RenderAppendSystemPromptOptions = {}): string {
