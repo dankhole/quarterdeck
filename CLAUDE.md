@@ -55,10 +55,8 @@ src/                         # Runtime (Node.js TypeScript)
 ├── prompts/                 # System prompt injection for agents
 ├── server/                  # HTTP server, runtime state hub, workspace registry
 ├── state/                   # Workspace state persistence (JSON in .cline/kanban/)
-├── telemetry/               # Sentry + OpenTelemetry
 ├── terminal/                # PTY sessions, agent registry, adapters, state machine
 ├── trpc/                    # tRPC API routers (runtime, workspace, projects, hooks)
-├── update/                  # Self-update logic
 └── workspace/               # Worktree lifecycle, git sync, history, file changes
 
 web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
@@ -71,7 +69,6 @@ web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
 │   ├── stores/              # External store (workspace metadata, useSyncExternalStore)
 │   ├── terminal/            # xterm.js wrapper, terminal panels
 │   ├── styles/              # Tailwind CSS (globals.css with @theme tokens)
-│   ├── telemetry/           # PostHog + Sentry
 │   └── types/               # Type definitions
 └── tests/                   # E2E tests (Playwright)
 
@@ -112,7 +109,7 @@ test/                        # Runtime test suites (Vitest)
 | Toasts | Sonner |
 | Linting/formatting | Biome (tabs, indent width 3, line width 120) |
 | Testing | Vitest (runtime + web UI unit), Playwright (E2E) |
-| Telemetry | Sentry, PostHog, OpenTelemetry |
+| Telemetry | Cline SDK telemetry (see `src/cline-sdk/`) |
 | Build | esbuild (runtime), Vite (web UI) |
 | Cline SDK | @clinebot/core, @clinebot/agents, @clinebot/llms |
 

@@ -3,7 +3,6 @@ import * as esbuild from "esbuild";
 /** Modules that must stay external (native addons, large runtime deps). */
 const external = [
 	"node-pty",
-	"@sentry/node",
 	"proper-lockfile",
 	"tree-kill",
 	"ws",
@@ -15,16 +14,8 @@ const external = [
 	"zod",
 ];
 
-/** Bake OTEL telemetry env vars into the bundle at build time. */
 const define = {
 	"process.env.NODE_ENV": '"production"',
-	"process.env.OTEL_TELEMETRY_ENABLED": JSON.stringify(process.env.OTEL_TELEMETRY_ENABLED ?? ""),
-	"process.env.OTEL_EXPORTER_OTLP_ENDPOINT": JSON.stringify(process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? ""),
-	"process.env.OTEL_METRICS_EXPORTER": JSON.stringify(process.env.OTEL_METRICS_EXPORTER ?? ""),
-	"process.env.OTEL_LOGS_EXPORTER": JSON.stringify(process.env.OTEL_LOGS_EXPORTER ?? ""),
-	"process.env.OTEL_EXPORTER_OTLP_PROTOCOL": JSON.stringify(process.env.OTEL_EXPORTER_OTLP_PROTOCOL ?? ""),
-	"process.env.OTEL_METRIC_EXPORT_INTERVAL": JSON.stringify(process.env.OTEL_METRIC_EXPORT_INTERVAL ?? ""),
-	"process.env.OTEL_EXPORTER_OTLP_HEADERS": JSON.stringify(process.env.OTEL_EXPORTER_OTLP_HEADERS ?? ""),
 };
 
 /**

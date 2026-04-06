@@ -201,21 +201,3 @@ For a full technical breakdown, see:
 
 - `.plan/docs/runtime-hooks-architecture.md`
 
-## PostHog telemetry config
-
-The web UI reads PostHog settings at build time:
-
-- `POSTHOG_KEY`
-- `POSTHOG_HOST`
-
-Local development:
-- Set these in `web-ui/.env.local` (see `web-ui/.env.example`).
-- If `POSTHOG_KEY` is missing, telemetry does not initialize.
-
-Release builds:
-- The publish workflow injects `POSTHOG_KEY` and `POSTHOG_HOST` from GitHub Secrets.
-- `POSTHOG_HOST` is optional and defaults to `https://data.cline.bot`.
-
-Result:
-- Official releases have telemetry enabled.
-- Forks and source builds have telemetry disabled unless a key is explicitly provided.

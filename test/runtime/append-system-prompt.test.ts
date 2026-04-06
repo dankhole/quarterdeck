@@ -7,50 +7,13 @@ import {
 } from "../../src/prompts/append-system-prompt";
 
 describe("resolveAppendSystemPromptCommandPrefix", () => {
-	it("returns npx prefix for npx transient installs", () => {
+	it("returns the resolved command prefix from argv", () => {
 		const prefix = resolveAppendSystemPromptCommandPrefix({
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
-			argv: ["node", "/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
-			resolveRealPath: (path) => path,
-		});
-		expect(prefix).toBe("npx -y kanban");
-	});
-
-	it("returns bun x prefix for bun x transient installs", () => {
-		const prefix = resolveAppendSystemPromptCommandPrefix({
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
-			argv: ["node", "/private/tmp/bunx-501-kanban@1.0.0/node_modules/kanban/dist/cli.js"],
-			resolveRealPath: (path) => path,
-		});
-		expect(prefix).toBe("bun x kanban");
-	});
-
-	it("falls back to the current runnable invocation for local entrypoints", () => {
-		const prefix = resolveAppendSystemPromptCommandPrefix({
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
 			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
-			resolveRealPath: (path) => path,
 		});
 		expect(prefix).toBe("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js'");
-	});
-
-	it("falls back to the current runnable invocation when realpath resolution fails", () => {
-		const prefix = resolveAppendSystemPromptCommandPrefix({
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
-			execPath: "/usr/local/bin/node",
-			execArgv: [],
-			argv: ["node", "/tmp/missing-kanban-cli.js"],
-			resolveRealPath: () => {
-				throw new Error("missing");
-			},
-		});
-		expect(prefix).toBe("'/usr/local/bin/node' '/tmp/missing-kanban-cli.js'");
 	});
 });
 
@@ -93,12 +56,9 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 
 	it("returns the appended prompt for current home sidebar sessions", () => {
 		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:codex", {
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
 			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
-			resolveRealPath: (path) => path,
 		});
 		expect(prompt).toContain("Kanban sidebar agent");
 		expect(prompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task list");
@@ -109,12 +69,9 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 
 	it("returns active-agent guidance for droid home sidebar sessions", () => {
 		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:droid", {
-			currentVersion: "0.1.10",
-			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
 			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
-			resolveRealPath: (path) => path,
 		});
 		expect(prompt).toContain("Current home agent: `droid`");
 		expect(prompt).toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
