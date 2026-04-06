@@ -1,5 +1,5 @@
 const TITLE_SYSTEM_PROMPT =
-	"Generate a concise 3-8 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
+	"Generate a concise 2-4 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
 
 /**
  * Generate a short task title from a prompt using the Anthropic API (Haiku).
@@ -21,7 +21,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 			},
 			body: JSON.stringify({
 				model: "claude-haiku-4-5-20241022",
-				max_tokens: 30,
+				max_tokens: 20,
 				system: TITLE_SYSTEM_PROMPT,
 				messages: [{ role: "user", content: prompt }],
 			}),

@@ -56,6 +56,7 @@ import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -590,6 +591,19 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 	});
 
+	const handleRegenerateTitleTask = useCallback(
+		(taskId: string) => {
+			if (!currentProjectId) {
+				return;
+			}
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
+				showAppToast({ message: "Could not regenerate title", intent: "danger" });
+			});
+		},
+		[currentProjectId],
+	);
+
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
@@ -858,6 +872,7 @@ export default function App(): ReactElement {
 												onCommitTask={handleCommitTask}
 												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+												onRegenerateTitleTask={handleRegenerateTitleTask}
 												commitTaskLoadingById={commitTaskLoadingById}
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												moveToTrashLoadingById={moveToTrashLoadingById}
