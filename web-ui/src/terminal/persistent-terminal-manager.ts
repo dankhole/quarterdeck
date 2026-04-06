@@ -12,7 +12,7 @@ import type {
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
-import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
+import { createKanbanTerminalOptions, TERMINAL_FONT_SIZE, TERMINAL_PRIMARY_FONT } from "@/terminal/terminal-options";
 import {
 	appendTerminalHeuristicText,
 	hasInterruptAcknowledgement,
@@ -22,6 +22,7 @@ import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
+const FONT_READY_TIMEOUT_MS = 3000;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 
@@ -190,7 +191,6 @@ class PersistentTerminal {
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
-		this.terminal.open(this.hostElement);
 		this.terminal.onData((data) => {
 			this.sendIoData(data);
 		});
@@ -217,17 +217,47 @@ class PersistentTerminal {
 			return true;
 		});
 
-		try {
-			const webglAddon = new WebglAddon();
-			webglAddon.onContextLoss(() => {
-				webglAddon.dispose();
-			});
-			this.terminal.loadAddon(webglAddon);
-		} catch {
-			// Fall back to the default renderer when WebGL is unavailable.
-		}
-
+		this.openTerminalWhenFontsReady();
 		this.ensureConnected();
+	}
+
+	private openTerminalWhenFontsReady(): void {
+		const fontCheckString = `${TERMINAL_FONT_SIZE}px '${TERMINAL_PRIMARY_FONT}'`;
+
+		const openAndAttachWebgl = () => {
+			if (this.disposed) {
+				return;
+			}
+			this.terminal.open(this.hostElement);
+			try {
+				const webglAddon = new WebglAddon();
+				webglAddon.onContextLoss(() => {
+					webglAddon.dispose();
+				});
+				this.terminal.loadAddon(webglAddon);
+			} catch {
+				// Fall back to the default renderer when WebGL is unavailable.
+			}
+			if (this.visibleContainer) {
+				this.fitAddon.fit();
+			}
+		};
+
+		const refitAfterFontsReady = () => {
+			void document.fonts.ready.then(() => {
+				if (!this.disposed && this.visibleContainer) {
+					this.fitAddon.fit();
+				}
+			});
+		};
+
+		if (document.fonts.check(fontCheckString)) {
+			openAndAttachWebgl();
+		} else {
+			const timeout = new Promise<void>((r) => setTimeout(r, FONT_READY_TIMEOUT_MS));
+			void Promise.race([document.fonts.ready, timeout]).then(openAndAttachWebgl);
+			refitAfterFontsReady();
+		}
 	}
 
 	private notifyLastError(): void {
