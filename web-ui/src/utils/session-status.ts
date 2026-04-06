@@ -2,6 +2,11 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export type SessionStatusTagStyle = "neutral" | "success" | "warning" | "danger" | "info";
 
+export function isApprovalState(summary: RuntimeTaskSessionSummary | null): boolean {
+	if (!summary) return false;
+	return summary.state === "awaiting_review" && summary.reviewReason === "hook" && isPermissionRequest(summary);
+}
+
 function isPermissionRequest(summary: RuntimeTaskSessionSummary): boolean {
 	const activity = summary.latestHookActivity;
 	if (!activity) return false;
