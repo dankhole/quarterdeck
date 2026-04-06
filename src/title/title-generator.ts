@@ -1,8 +1,8 @@
 const TITLE_SYSTEM_PROMPT =
 	"Generate a concise 2-4 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
 
-/** Default model for title generation. Override via KANBAN_TITLE_MODEL env var. */
 const DEFAULT_TITLE_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
+const titleModel = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
 
 /**
  * Generate a short task title from a prompt via the Bedrock/LiteLLM proxy.
@@ -16,8 +16,6 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 		return null;
 	}
 
-	const model = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
-
 	try {
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
 		const response = await fetch(`${origin}/v1/chat/completions`, {
@@ -28,7 +26,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 				authorization: `Bearer ${authToken}`,
 			},
 			body: JSON.stringify({
-				model,
+				model: titleModel,
 				max_tokens: 20,
 				messages: [
 					{ role: "system", content: TITLE_SYSTEM_PROMPT },

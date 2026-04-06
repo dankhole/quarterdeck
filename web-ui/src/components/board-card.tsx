@@ -189,7 +189,7 @@ export function BoardCard({
 	const isClickingGenerateRef = useRef(false);
 	const regenerateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	// Clear regenerating state when title changes (success) or after a timeout (failure).
+	// Clear regenerating state when title changes (success). Cleanup timeout on unmount.
 	useEffect(() => {
 		if (isRegeneratingTitle) {
 			setIsRegeneratingTitle(false);
@@ -198,15 +198,12 @@ export function BoardCard({
 				regenerateTimeoutRef.current = null;
 			}
 		}
-	}, [card.title]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	useEffect(() => {
 		return () => {
 			if (regenerateTimeoutRef.current) {
 				clearTimeout(regenerateTimeoutRef.current);
 			}
 		};
-	}, []);
+	}, [card.title]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const openTitleEditor = useCallback(() => {
 		setEditTitleValue(card.title || "");

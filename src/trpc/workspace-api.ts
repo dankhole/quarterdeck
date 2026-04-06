@@ -34,6 +34,8 @@ import {
 } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
 
+const MAX_CONCURRENT_TITLE_REQUESTS = 3;
+
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
@@ -341,7 +343,6 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const untitledCards = input.board.columns.flatMap((col) =>
 					col.cards.filter((card) => card.title === null || card.title === undefined),
 				);
-				const MAX_CONCURRENT_TITLE_REQUESTS = 3;
 				const generateTitle = async (card: (typeof untitledCards)[number]) => {
 					const title = await generateTaskTitle(card.prompt);
 					if (!title) {

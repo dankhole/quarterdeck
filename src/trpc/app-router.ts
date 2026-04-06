@@ -413,8 +413,7 @@ export const runtimeAppRouter = t.router({
 			.input(z.object({ taskId: z.string() }))
 			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
 			.mutation(async ({ ctx, input }) => {
-				// Read state to extract the prompt before the LLM call. mutateWorkspaceState
-				// below loads state again for the atomic update — the double-read is intentional.
+				// Prompt is needed before the LLM call; mutateWorkspaceState re-reads for atomicity.
 				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
 				let prompt: string | null = null;
 				let finalMessage: string | null = null;
