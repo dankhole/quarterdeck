@@ -52,11 +52,11 @@ import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useTitleActions } from "@/hooks/use-title-actions";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -591,31 +591,7 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 	});
 
-	const handleRegenerateTitleTask = useCallback(
-		(taskId: string) => {
-			if (!currentProjectId) {
-				return;
-			}
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
-				showAppToast({ message: "Could not regenerate title", intent: "danger" });
-			});
-		},
-		[currentProjectId],
-	);
-
-	const handleUpdateTaskTitle = useCallback(
-		(taskId: string, title: string) => {
-			if (!currentProjectId) {
-				return;
-			}
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.workspace.updateTaskTitle.mutate({ taskId, title }).catch(() => {
-				showAppToast({ message: "Could not update title", intent: "danger" });
-			});
-		},
-		[currentProjectId],
-	);
+	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({ currentProjectId });
 
 	useAppHotkeys({
 		selectedCard,

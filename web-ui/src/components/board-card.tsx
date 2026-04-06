@@ -186,12 +186,27 @@ export function BoardCard({
 	const [editTitleValue, setEditTitleValue] = useState("");
 	const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
 	const editInputRef = useRef<HTMLInputElement | null>(null);
+	const isClickingGenerateRef = useRef(false);
+	const regenerateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Clear regenerating state when title changes (success) or after a timeout (failure).
 	useEffect(() => {
 		if (isRegeneratingTitle) {
 			setIsRegeneratingTitle(false);
+			if (regenerateTimeoutRef.current) {
+				clearTimeout(regenerateTimeoutRef.current);
+				regenerateTimeoutRef.current = null;
+			}
 		}
 	}, [card.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useEffect(() => {
+		return () => {
+			if (regenerateTimeoutRef.current) {
+				clearTimeout(regenerateTimeoutRef.current);
+			}
+		};
+	}, []);
 
 	const openTitleEditor = useCallback(() => {
 		setEditTitleValue(card.title || "");
@@ -207,6 +222,11 @@ export function BoardCard({
 	}, []);
 
 	const submitTitleEdit = useCallback(() => {
+		// Skip save when the user is clicking the auto-generate button — that mouseDown
+		// sets the ref so blur doesn't race with the generate action.
+		if (isClickingGenerateRef.current) {
+			return;
+		}
 		const trimmed = editTitleValue.trim();
 		if (trimmed && trimmed !== (card.title || "") && onUpdateTitle) {
 			onUpdateTitle(card.id, trimmed);
@@ -382,20 +402,32 @@ export function BoardCard({
 													size="sm"
 													disabled={isRegeneratingTitle}
 													aria-label="Auto-generate title"
-													onMouseDown={stopEvent}
+													onMouseDown={(event) => {
+														stopEvent(event);
+														// Flag so the input's onBlur skips the save — we're about to regenerate.
+														isClickingGenerateRef.current = true;
+														requestAnimationFrame(() => {
+															isClickingGenerateRef.current = false;
+														});
+													}}
 													onClick={(event) => {
 														stopEvent(event);
 														setIsRegeneratingTitle(true);
 														setIsEditingTitle(false);
 														onRegenerateTitle(card.id);
+														// Timeout fallback: clear spinner if title never changes (LLM failure).
+														regenerateTimeoutRef.current = setTimeout(() => {
+															setIsRegeneratingTitle(false);
+															regenerateTimeoutRef.current = null;
+														}, 5_000);
 													}}
 												/>
 											</Tooltip>
 										) : null}
 									</div>
 								) : (
-									<>
-										<Tooltip content={cardHoverTooltip} side="top">
+									<Tooltip content={cardHoverTooltip ?? undefined} side="top">
+										<div className="flex flex-1 items-center gap-1 min-w-0">
 											<div className="flex-1 min-w-0">
 												<p
 													className={cn(
@@ -406,9 +438,7 @@ export function BoardCard({
 													{displayTitle}
 												</p>
 											</div>
-										</Tooltip>
-										{isHovered && !isTrashCard && onUpdateTitle ? (
-											<Tooltip content="Edit title" side="top">
+											{isHovered && !isTrashCard && onUpdateTitle ? (
 												<Button
 													icon={<Pencil size={12} />}
 													variant="ghost"
@@ -420,9 +450,9 @@ export function BoardCard({
 														openTitleEditor();
 													}}
 												/>
-											</Tooltip>
-										) : null}
-									</>
+											) : null}
+										</div>
+									</Tooltip>
 								)}
 								{columnId === "backlog" ? (
 									<Button
