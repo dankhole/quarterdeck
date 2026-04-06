@@ -1,3 +1,0 @@
-`process.exit($code)` where {
-	register_diagnostic(span=$code, message="Avoid process.exit outside CLI entrypoints.")
-}
