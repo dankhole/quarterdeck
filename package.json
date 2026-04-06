@@ -71,7 +71,6 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
-    "@sentry/cli": "^3.3.3",
     "@types/node": "^22.10.5",
     "@types/proper-lockfile": "^4.1.4",
     "@types/ws": "^8.18.1",
@@ -95,7 +94,6 @@
     "@clinebot/llms": "^0.0.28",
     "@clinebot/shared": "^0.0.28",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "@xterm/addon-serialize": "^0.14.0",

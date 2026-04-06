@@ -573,6 +573,13 @@ function createProgram(invocationArgs: string[]): Command {
 			console.warn("Deprecated. Please uninstall Kanban MCP.");
 		});
 
+	program
+		.command("update")
+		.description("Deprecated. Auto-update has been removed.")
+		.action(() => {
+			console.warn("The update command has been removed. To update Kanban, re-run: npx kanban@latest");
+		});
+
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand(
 			{

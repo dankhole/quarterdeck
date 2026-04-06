@@ -55,10 +55,8 @@ src/                         # Runtime (Node.js TypeScript)
 ├── prompts/                 # System prompt injection for agents
 ├── server/                  # HTTP server, runtime state hub, workspace registry
 ├── state/                   # Workspace state persistence (JSON in .cline/kanban/)
-├── telemetry/               # Cline SDK telemetry
 ├── terminal/                # PTY sessions, agent registry, adapters, state machine
 ├── trpc/                    # tRPC API routers (runtime, workspace, projects, hooks)
-├── update/                  # Self-update logic
 └── workspace/               # Worktree lifecycle, git sync, history, file changes
 
 web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
@@ -71,7 +69,6 @@ web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
 │   ├── stores/              # External store (workspace metadata, useSyncExternalStore)
 │   ├── terminal/            # xterm.js wrapper, terminal panels
 │   ├── styles/              # Tailwind CSS (globals.css with @theme tokens)
-│   ├── telemetry/           # (removed)
 │   └── types/               # Type definitions
 └── tests/                   # E2E tests (Playwright)
 
