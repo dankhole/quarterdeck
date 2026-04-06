@@ -43,33 +43,6 @@
 			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
 		},
 		{
-			"includes": ["src/**/*.ts", "src/**/*.tsx", "!src/cline-sdk/**/*.ts"],
-			"linter": {
-				"rules": {
-					"style": {
-						"noRestrictedImports": {
-							"level": "error",
-							"options": {
-								"patterns": [
-									{
-										"group": [
-											"@clinebot/agents",
-											"@clinebot/agents/**",
-											"@clinebot/core",
-											"@clinebot/core/**",
-											"@clinebot/llms",
-											"@clinebot/llms/**"
-										],
-										"message": "Import Cline SDK packages only through src/cline-sdk/sdk-provider-boundary.ts or src/cline-sdk/sdk-runtime-boundary.ts."
-									}
-								]
-							}
-						}
-					}
-				}
-			}
-		},
-		{
 			"includes": ["web-ui/src/**/*.ts", "web-ui/src/**/*.tsx", "web-ui/tests/**/*.ts"],
 			"linter": {
 				"rules": {

@@ -1,33 +1,18 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-async function importFeaturebaseModule() {
-	const fetchFeaturebaseTokenMock = vi.fn();
-	vi.resetModules();
-	vi.doMock("@/runtime/runtime-config-query", () => ({
-		fetchFeaturebaseToken: fetchFeaturebaseTokenMock,
-	}));
-	const module = await import("@/hooks/use-featurebase-feedback-widget");
-	return {
-		module,
-		fetchFeaturebaseTokenMock,
-	};
-}
+import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
+import { useFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 
 describe("useFeaturebaseFeedbackWidget", () => {
 	let container: HTMLDivElement;
 	let root: Root;
-	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		document.head.querySelector("#featurebase-sdk")?.remove();
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
-		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 	});
 
@@ -36,467 +21,63 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			root.unmount();
 		});
 		container.remove();
-		vi.useRealTimers();
-		vi.restoreAllMocks();
-		vi.resetModules();
-		delete (window as Window & { Featurebase?: unknown }).Featurebase;
-		document.head.querySelector("#featurebase-sdk")?.remove();
-		if (previousActEnvironment === undefined) {
-			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
-			return;
-		}
-		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-			previousActEnvironment;
+		delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	function mockSdkLoad(featurebaseMock: ReturnType<typeof vi.fn>) {
-		const originalAppendChild = document.head.appendChild.bind(document.head);
-		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
-			const result = originalAppendChild(node);
-			if (node instanceof HTMLScriptElement && node.id === "featurebase-sdk") {
-				(window as Window & { Featurebase?: unknown }).Featurebase = featurebaseMock;
-				node.dispatchEvent(new Event("load"));
-			}
-			return result;
-		});
-	}
-
-	async function renderHook(
-		module: Awaited<ReturnType<typeof importFeaturebaseModule>>["module"],
-		input: {
-			workspaceId: string | null;
-		},
-	): Promise<{ getState: () => FeaturebaseFeedbackState }> {
+	it("returns a stable idle stub since Featurebase auth is unavailable without Cline OAuth", async () => {
 		let hookResult: FeaturebaseFeedbackState | null = null;
 
 		function HookHarness(): null {
-			hookResult = module.useFeaturebaseFeedbackWidget(input);
+			hookResult = useFeaturebaseFeedbackWidget({ workspaceId: "workspace-1" });
 			return null;
 		}
 
 		await act(async () => {
 			root.render(<HookHarness />);
 			await Promise.resolve();
-			await Promise.resolve();
 		});
 
-		return {
-			getState: () => {
-				if (!hookResult) {
-					throw new Error("Hook state not available");
-				}
-				return hookResult;
-			},
-		};
-	}
-
-	it("stays idle on mount for authenticated users until feedback is opened", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		expect(getState().authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-		expect(featurebaseMock).not.toHaveBeenCalled();
+		expect(hookResult).not.toBeNull();
+		expect(hookResult!.authState).toBe("idle");
+		expect(hookResult!.widgetOpenCount).toBe(0);
+		expect(typeof hookResult!.openFeedbackWidget).toBe("function");
 	});
 
-	it("returns idle state when unauthenticated", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
+	it("openFeedbackWidget is a no-op that resolves immediately", async () => {
+		let hookResult: FeaturebaseFeedbackState | null = null;
 
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
+		function HookHarness(): null {
+			hookResult = useFeaturebaseFeedbackWidget({ workspaceId: "workspace-1" });
+			return null;
+		}
+
+		await act(async () => {
+			root.render(<HookHarness />);
+			await Promise.resolve();
 		});
 
-		expect(getState().authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-		expect(featurebaseMock).not.toHaveBeenCalled();
+		await act(async () => {
+			await hookResult!.openFeedbackWidget();
+		});
+
+		expect(hookResult!.authState).toBe("idle");
+		expect(hookResult!.widgetOpenCount).toBe(0);
 	});
 
-	it("requires oauthProvider=cline before opening", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
+	it("returns idle state when workspaceId is null", async () => {
+		let hookResult: FeaturebaseFeedbackState | null = null;
 
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		await act(async () => {
-			await getState().openFeedbackWidget();
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-		expect(featurebaseMock).not.toHaveBeenCalled();
-	});
-
-	it("initializes the feedback widget and identifies only after openFeedbackWidget is called", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		let openPromise: Promise<void> | null = null;
-		await act(async () => {
-			openPromise = getState().openFeedbackWidget();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		const initCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "initialize_feedback_widget");
-		expect(initCall).toBeTruthy();
-		expect(initCall?.[1]).toEqual(
-			expect.objectContaining({
-				organization: "cline",
-				theme: "dark",
-				locale: "en",
-				metadata: { app: "kanban" },
-			}),
-		);
-
-		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		expect(identifyCall).toBeTruthy();
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-
-		const postMessageSpy = vi.spyOn(window, "postMessage");
-		await act(async () => {
-			(identifyCall?.[2] as (error: unknown) => void)?.(null);
-			await openPromise;
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("ready");
-		expect(postMessageSpy).toHaveBeenCalledWith(
-			{
-				target: "FeaturebaseWidget",
-				data: { action: "openFeedbackWidget" },
-			},
-			window.location.origin,
-		);
-	});
-
-	it("increments widgetOpenCount when the SDK reports widgetOpened", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		let openPromise: Promise<void> | null = null;
-		await act(async () => {
-			openPromise = getState().openFeedbackWidget();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		const initCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "initialize_feedback_widget");
-		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		expect(initCall).toBeTruthy();
-		expect(identifyCall).toBeTruthy();
+		function HookHarness(): null {
+			hookResult = useFeaturebaseFeedbackWidget({ workspaceId: null });
+			return null;
+		}
 
 		await act(async () => {
-			(identifyCall?.[2] as (error: unknown) => void)?.(null);
-			await openPromise;
+			root.render(<HookHarness />);
 			await Promise.resolve();
 		});
 
-		await act(async () => {
-			(initCall?.[2] as (error: unknown, callback?: { action?: string } | null) => void)?.(null, {
-				action: "widgetOpened",
-			});
-			await Promise.resolve();
-		});
-
-		expect(getState().widgetOpenCount).toBe(1);
-	});
-
-	it("closes the feedback widget when the visible overlay backdrop is clicked", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-		const postMessageSpy = vi.spyOn(window, "postMessage");
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		let openPromise: Promise<void> | null = null;
-		await act(async () => {
-			openPromise = getState().openFeedbackWidget();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		await act(async () => {
-			(identifyCall?.[2] as (error: unknown) => void)?.(null);
-			await openPromise;
-			await Promise.resolve();
-		});
-
-		const overlay = document.createElement("div");
-		overlay.className = "fb-feedback-widget-overlay";
-		document.body.appendChild(overlay);
-
-		await act(async () => {
-			overlay.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-			await Promise.resolve();
-		});
-
-		expect(postMessageSpy).toHaveBeenCalledWith(
-			{
-				target: "FeaturebaseWidget",
-				data: { action: "closeWidget" },
-			},
-			window.location.origin,
-		);
-
-		overlay.remove();
-	});
-
-	it("retries after token fetch failures only after openFeedbackWidget is called", async () => {
-		vi.useFakeTimers();
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockRejectedValue(new Error("Network error"));
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-
-		await act(async () => {
-			void getState()
-				.openFeedbackWidget()
-				.catch(() => {});
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("error");
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			vi.advanceTimersByTime(2_000);
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
-		expect(getState().authState).toBe("error");
-
-		await act(async () => {
-			vi.advanceTimersByTime(5_000);
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(3);
-		expect(getState().authState).toBe("error");
-
-		await act(async () => {
-			vi.advanceTimersByTime(30_000);
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(3);
-	});
-
-	it("becomes ready when a retry succeeds", async () => {
-		vi.useFakeTimers();
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock
-			.mockRejectedValueOnce(new Error("Transient error"))
-			.mockResolvedValueOnce({ featurebaseJwt: "jwt-retry-ok" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		const openPromise = getState().openFeedbackWidget();
-		await act(async () => {
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("error");
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			vi.advanceTimersByTime(2_000);
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		const identifyCalls = featurebaseMock.mock.calls.filter((call: unknown[]) => call[0] === "identify");
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
-		expect(identifyCalls.length).toBeGreaterThanOrEqual(1);
-
-		const latestIdentify = identifyCalls[identifyCalls.length - 1];
-		await act(async () => {
-			(latestIdentify?.[2] as (error: unknown) => void)?.(null);
-			await openPromise;
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("ready");
-	});
-
-	it("transitions to error on identify callback error", async () => {
-		vi.useFakeTimers();
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		const openPromise = getState().openFeedbackWidget();
-		await act(async () => {
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-		void openPromise.catch(() => {});
-
-		const identifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		await act(async () => {
-			(identifyCall?.[2] as (error: unknown) => void)?.(new Error("Featurebase error"));
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("error");
-	});
-
-	it("retries after identify callback error and becomes ready on success", async () => {
-		vi.useFakeTimers();
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock
-			.mockResolvedValueOnce({ featurebaseJwt: "jwt-first" })
-			.mockResolvedValueOnce({ featurebaseJwt: "jwt-second" });
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		const openPromise = getState().openFeedbackWidget();
-		await act(async () => {
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		const firstIdentifyCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "identify");
-		expect(firstIdentifyCall).toBeTruthy();
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			(firstIdentifyCall?.[2] as (error: unknown) => void)?.(new Error("identify failed"));
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("error");
-
-		await act(async () => {
-			vi.advanceTimersByTime(2_000);
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(2);
-		const identifyCalls = featurebaseMock.mock.calls.filter((call: unknown[]) => call[0] === "identify");
-		expect(identifyCalls.length).toBe(2);
-
-		const secondIdentifyCall = identifyCalls[1];
-		await act(async () => {
-			(secondIdentifyCall?.[2] as (error: unknown) => void)?.(null);
-			await openPromise;
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("ready");
-	});
-
-	it("does not identify when workspaceId is null", async () => {
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: null,
-		});
-
-		await act(async () => {
-			await getState().openFeedbackWidget();
-			await Promise.resolve();
-		});
-
-		expect(getState().authState).toBe("idle");
-		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
-		expect(featurebaseMock).not.toHaveBeenCalled();
-	});
-
-	it("cancels retry timers on unmount", async () => {
-		vi.useFakeTimers();
-		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
-		fetchFeaturebaseTokenMock.mockRejectedValue(new Error("Network error"));
-		const featurebaseMock = vi.fn();
-		mockSdkLoad(featurebaseMock);
-
-		const { getState } = await renderHook(module, {
-			workspaceId: "workspace-1",
-		});
-
-		await act(async () => {
-			void getState()
-				.openFeedbackWidget()
-				.catch(() => {});
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			root.render(<></>);
-			await Promise.resolve();
-		});
-
-		await act(async () => {
-			vi.advanceTimersByTime(10_000);
-			await Promise.resolve();
-		});
-
-		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
+		expect(hookResult!.authState).toBe("idle");
+		expect(hookResult!.widgetOpenCount).toBe(0);
 	});
 });

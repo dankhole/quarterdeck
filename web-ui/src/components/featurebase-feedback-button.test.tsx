@@ -36,16 +36,6 @@ describe("FeaturebaseFeedbackButton", () => {
 		delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	function getFeedbackButton(): HTMLButtonElement | null {
-		const buttons = container.querySelectorAll("button");
-		for (const button of buttons) {
-			if (button.textContent?.includes("Send feedback") || button.textContent?.includes("Opening...")) {
-				return button;
-			}
-		}
-		return null;
-	}
-
 	it("renders nothing when selected agent is not Cline", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
@@ -54,82 +44,12 @@ describe("FeaturebaseFeedbackButton", () => {
 		expect(container.innerHTML).toBe("");
 	});
 
-	it("renders nothing when not authenticated", () => {
+	it("renders nothing for any agent since Featurebase auth is unavailable without Cline OAuth", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
 		});
 		expect(container.innerHTML).toBe("");
-	});
-
-	it("renders nothing when tokens exist but oauthProvider is not cline", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("ready");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		expect(container.innerHTML).toBe("");
-	});
-
-	it("renders Send feedback when Featurebase state is idle", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("idle");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		expect(button?.disabled).toBe(false);
-	});
-
-	it("renders disabled Opening state while feedback is loading", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("loading");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		expect(button?.disabled).toBe(true);
-		expect(button?.textContent).toContain("Opening...");
-	});
-
-	it("renders Send feedback when Featurebase state is error", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("error");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		expect(button?.disabled).toBe(false);
-	});
-
-	it("renders enabled Send feedback when fully authenticated and Featurebase is ready", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("ready");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		expect(button?.disabled).toBe(false);
-		expect(button?.textContent).toContain("Send feedback");
-	});
-
-	it("forwards click events when visible", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("ready");
-		const handleClick = vi.fn();
-		act(() => {
-			root.render(
-				<FeaturebaseFeedbackButton
-					selectedAgentId={"cline"}
-					featurebaseFeedbackState={fbState}
-					onClick={handleClick}
-				/>,
-			);
-		});
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-		act(() => {
-			button?.click();
-		});
-		expect(handleClick).toHaveBeenCalledTimes(1);
 	});
 
 	it("renders nothing when featurebaseFeedbackState is undefined", () => {

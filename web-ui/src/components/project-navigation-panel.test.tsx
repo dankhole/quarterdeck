@@ -162,7 +162,7 @@ describe("ProjectNavigationPanel width persistence", () => {
 		expect(container.textContent).toContain("Report issue");
 	});
 
-	it("shows send feedback instead of report issue when Cline OAuth is available", () => {
+	it("always shows report issue since Featurebase auth is unavailable without Cline OAuth", () => {
 		renderPanel({
 			selectedAgentId: "cline",
 			featurebaseFeedbackState: {
@@ -172,7 +172,7 @@ describe("ProjectNavigationPanel width persistence", () => {
 			},
 		});
 		expect(container.textContent).toContain("Kanban is in beta. Help us improve by sharing your experience.");
-		expect(container.textContent).toContain("Send feedback");
-		expect(container.textContent).not.toContain("Report issue");
+		expect(container.textContent).toContain("Report issue");
+		expect(container.textContent).not.toContain("Send feedback");
 	});
 });
