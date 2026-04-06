@@ -1,7 +1,17 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, FileText, FolderOpen, Search, X } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronRight,
+	ChevronsDownUp,
+	ChevronsUpDown,
+	FileText,
+	FolderOpen,
+	Search,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui/cn";
+import { Tooltip } from "@/components/ui/tooltip";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 import { useDebouncedEffect } from "@/utils/react-use";
 
@@ -104,6 +114,17 @@ export function FileBrowserTreePanel({
 	const focusedPath =
 		focusedIndex >= 0 && focusedIndex < flatFilePaths.length ? (flatFilePaths[focusedIndex] ?? null) : null;
 
+	const allDirectoryPaths = useMemo(() => collectDirectoryPaths(tree), [tree]);
+	const hasDirectories = allDirectoryPaths.length > 0;
+
+	const handleExpandAll = useCallback(() => {
+		setExpandedDirs(new Set(allDirectoryPaths));
+	}, [allDirectoryPaths]);
+
+	const handleCollapseAll = useCallback(() => {
+		setExpandedDirs(new Set());
+	}, []);
+
 	const toggleDirectory = useCallback((dirPath: string) => {
 		setExpandedDirs((prev) => {
 			const next = new Set(prev);
@@ -186,6 +207,28 @@ export function FileBrowserTreePanel({
 						>
 							<X size={12} />
 						</button>
+					) : null}
+					{hasDirectories ? (
+						<>
+							<Tooltip content="Expand all">
+								<button
+									type="button"
+									onClick={handleExpandAll}
+									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
+								>
+									<ChevronsUpDown size={12} />
+								</button>
+							</Tooltip>
+							<Tooltip content="Collapse all">
+								<button
+									type="button"
+									onClick={handleCollapseAll}
+									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
+								>
+									<ChevronsDownUp size={12} />
+								</button>
+							</Tooltip>
+						</>
 					) : null}
 				</div>
 			) : null}
