@@ -346,9 +346,8 @@ async function startServer(): Promise<{
 
 		A regression in 25ba59f showed that eagerly importing the runtime stack here
 		could leave the source CLI process alive after the command had already printed
-		its JSON result. The issue first appeared after the native Cline SDK runtime
-		was added to the server import graph. We have not yet isolated the deepest
-		handle creator inside that graph, so we keep command-style subcommands on the
+		its JSON result. We have not yet isolated the deepest handle creator inside
+		the server import graph, so we keep command-style subcommands on the
 		lightweight path and only load the server stack when we actually start Kanban.
 	*/
 	const [

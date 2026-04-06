@@ -45,7 +45,6 @@ Hook Events (kanban hooks ingest --event <to_review|to_in_progress>)
 src/                         # Runtime (Node.js TypeScript)
 ├── cli.ts                   # CLI entry point (Commander.js)
 ├── index.ts                 # Package export (api-contract only)
-├── cline-sdk/               # Cline native SDK integration boundary
 ├── commands/                # CLI subcommands (hooks, task)
 ├── config/                  # Runtime configuration persistence
 ├── core/                    # Domain logic: API contracts, task mutations, shutdown
@@ -114,7 +113,6 @@ test/                        # Runtime test suites (Vitest)
 | Testing | Vitest (runtime + web UI unit), Playwright (E2E) |
 | Telemetry | Sentry, PostHog, OpenTelemetry |
 | Build | esbuild (runtime), Vite (web UI) |
-| Cline SDK | @clinebot/core, @clinebot/agents, @clinebot/llms |
 
 ## Development workflow
 

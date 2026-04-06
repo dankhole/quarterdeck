@@ -7,7 +7,6 @@ import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessio
 
 const startTaskSessionMutateMock = vi.hoisted(() => vi.fn());
 const stopTaskSessionMutateMock = vi.hoisted(() => vi.fn());
-const reloadTaskChatSessionMutateMock = vi.hoisted(() => vi.fn());
 const notifyErrorMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
@@ -18,9 +17,6 @@ vi.mock("@/runtime/trpc-client", () => ({
 			},
 			stopTaskSession: {
 				mutate: (input: object) => stopTaskSessionMutateMock({ workspaceId, ...input }),
-			},
-			reloadTaskChatSession: {
-				mutate: (input: object) => reloadTaskChatSessionMutateMock({ workspaceId, ...input }),
 			},
 		},
 	}),
@@ -105,10 +101,6 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		openPrPromptTemplateDefault: "pr",
 		...overrides,
 	};
-}
-
-function createLegacyRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): RuntimeConfigResponse {
-	return createRuntimeConfig(overrides);
 }
 
 const DEFAULT_WORKSPACE_GIT: RuntimeGitRepositoryInfo = {
@@ -204,14 +196,9 @@ describe("useHomeAgentSession", () => {
 	beforeEach(() => {
 		startTaskSessionMutateMock.mockReset();
 		stopTaskSessionMutateMock.mockReset();
-		reloadTaskChatSessionMutateMock.mockReset();
 		startTaskSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
 			ok: true,
 			summary: createSummary(taskId, "codex"),
-		}));
-		reloadTaskChatSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
-			ok: true,
-			summary: createSummary(taskId, "cline"),
 		}));
 		notifyErrorMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -360,7 +347,7 @@ describe("useHomeAgentSession", () => {
 		);
 	});
 
-	it("keeps the same cline home chat session id when the provider changes", async () => {
+	it("keeps the same cline home terminal session id on no-op rerender", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
@@ -379,11 +366,11 @@ describe("useHomeAgentSession", () => {
 			await createFlushPromises();
 		});
 
-		const anthropicSnapshot = requireSnapshot(latestSnapshot);
-		const anthropicTaskId = anthropicSnapshot.taskId;
-		expect(anthropicSnapshot.panelMode).toBe("chat");
-		expect(anthropicTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+		const initialSnapshot = requireSnapshot(latestSnapshot);
+		const initialTaskId = initialSnapshot.taskId;
+		expect(initialSnapshot.panelMode).toBe("terminal");
+		expect(initialTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
+		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 
 		await act(async () => {
 			root.render(
@@ -402,72 +389,20 @@ describe("useHomeAgentSession", () => {
 		});
 
 		const updatedSnapshot = requireSnapshot(latestSnapshot);
-		expect(updatedSnapshot.panelMode).toBe("chat");
+		expect(updatedSnapshot.panelMode).toBe("terminal");
 		expect(updatedSnapshot.taskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(updatedSnapshot.taskId).toBe(anthropicTaskId);
+		expect(updatedSnapshot.taskId).toBe(initialTaskId);
 		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
-		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 	});
 
-	it("reloads the home cline chat session when the Cline session context version changes", async () => {
+	it("starts a cline home terminal session like any other agent", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
-					})}
-					currentProjectId="workspace-1"
-					seedSessionSummary
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await createFlushPromises();
-		});
-
-		const firstTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
-		expect(firstTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
-					})}
-					currentProjectId="workspace-1"
-					seedSessionSummary
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await createFlushPromises();
-		});
-
-		const secondTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
-		expect(secondTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(secondTaskId).toBe(firstTaskId);
-		expect(reloadTaskChatSessionMutateMock).toHaveBeenCalledWith({
-			workspaceId: "workspace-1",
-			taskId: firstTaskId,
-		});
-		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
-		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
-	});
-
-	it("falls back to empty cline settings when older config shapes omit them", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					config={createLegacyRuntimeConfig({
 						selectedAgentId: "cline",
 						effectiveCommand: "cline",
 					})}
@@ -481,58 +416,16 @@ describe("useHomeAgentSession", () => {
 		});
 
 		const snapshot = requireSnapshot(latestSnapshot);
-		expect(snapshot.panelMode).toBe("chat");
+		expect(snapshot.panelMode).toBe("terminal");
 		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
-	});
-
-	it("reuses the same home chat session id after remounting the app", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
-					})}
-					currentProjectId="workspace-1"
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await createFlushPromises();
-		});
-
-		const firstTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
-
-		await act(async () => {
-			root.unmount();
-		});
-		root = createRoot(container);
-		latestSnapshot = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
-					})}
-					currentProjectId="workspace-1"
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await createFlushPromises();
-		});
-
-		const secondTaskId = requireTaskId(requireSnapshot(latestSnapshot).taskId);
-		expect(secondTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
-		expect(secondTaskId).toBe(firstTaskId);
-		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
+		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: snapshot.taskId,
+				prompt: "",
+				baseRef: "main",
+			}),
+		);
 	});
 
 	it("stops stale terminal starts when the selected agent changes mid-launch", async () => {
