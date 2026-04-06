@@ -2,11 +2,16 @@ const TITLE_SYSTEM_PROMPT =
 	"Generate a concise 2-4 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
 
 const DEFAULT_TITLE_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
-const titleModel = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
 
 /**
  * Generate a short task title from a prompt via the Bedrock/LiteLLM proxy.
  * Requires ANTHROPIC_BEDROCK_BASE_URL + ANTHROPIC_AUTH_TOKEN env vars.
+ *
+ * ANTHROPIC_BEDROCK_BASE_URL is expected to end with `/bedrock` (e.g.
+ * "https://proxy.example.com/bedrock"). The `/bedrock` suffix is stripped
+ * to derive the origin for the OpenAI-compatible `/v1/chat/completions`
+ * endpoint. If the URL doesn't end with `/bedrock`, it's used as-is.
+ *
  * Returns null on any failure — never throws.
  */
 const MAX_PROMPT_LENGTH = 500;
@@ -18,6 +23,8 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	if (!baseUrl || !authToken) {
 		return null;
 	}
+
+	const titleModel = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
 
 	try {
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
