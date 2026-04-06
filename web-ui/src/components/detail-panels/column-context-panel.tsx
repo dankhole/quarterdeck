@@ -310,6 +310,7 @@ export function ColumnContextPanel({
 				display: "flex",
 				flexDirection: "column",
 				width: panelWidth ?? "20%",
+				flex: "1 1 0",
 				minHeight: 0,
 				overflow: "hidden",
 				background: "var(--color-surface-0)",
