@@ -179,7 +179,7 @@ function FileBrowserToolbar({
 	onToggleExpand: () => void;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
+		<div className="flex items-center gap-1 px-2 py-1 border-b border-divider">
 			{isExpanded ? (
 				<Button
 					variant="ghost"

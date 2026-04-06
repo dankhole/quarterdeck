@@ -72,7 +72,7 @@ export type RuntimeListFilesResponse = z.infer<typeof runtimeListFilesResponseSc
 export const runtimeFileContentRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),
-	path: z.string(),
+	path: z.string().min(1),
 });
 export type RuntimeFileContentRequest = z.infer<typeof runtimeFileContentRequestSchema>;
 

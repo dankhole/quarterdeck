@@ -339,15 +339,8 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			return { files } satisfies RuntimeListFilesResponse;
 		},
 		getFileContent: async (workspaceScope, input) => {
-			const taskId = input.taskId.trim();
-			const baseRef = input.baseRef.trim();
+			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			const filePath = input.path.trim();
-			if (!taskId) {
-				throw new Error("Missing taskId parameter.");
-			}
-			if (!baseRef) {
-				throw new Error("Missing baseRef parameter.");
-			}
 			if (!filePath) {
 				throw new Error("Missing path parameter.");
 			}
@@ -355,8 +348,8 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			try {
 				taskCwd = await resolveTaskCwd({
 					cwd: workspaceScope.workspacePath,
-					taskId,
-					baseRef,
+					taskId: normalizedInput.taskId,
+					baseRef: normalizedInput.baseRef,
 					ensure: false,
 				});
 			} catch (error) {

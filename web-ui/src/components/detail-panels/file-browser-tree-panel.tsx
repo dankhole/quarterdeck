@@ -32,6 +32,22 @@ function collectAllDirectoryPaths(nodes: FileTreeNode[]): string[] {
 	return paths;
 }
 
+const INITIAL_EXPANSION_DEPTH = 2;
+
+function collectDirectoryPathsToDepth(nodes: FileTreeNode[], maxDepth: number, currentDepth = 0): string[] {
+	if (currentDepth >= maxDepth) {
+		return [];
+	}
+	const paths: string[] = [];
+	for (const node of nodes) {
+		if (node.type === "directory") {
+			paths.push(node.path);
+			paths.push(...collectDirectoryPathsToDepth(node.children, maxDepth, currentDepth + 1));
+		}
+	}
+	return paths;
+}
+
 function flattenFilePaths(nodes: FileTreeNode[], expandedDirs: Set<string>): string[] {
 	const result: string[] = [];
 	for (const node of nodes) {
@@ -85,12 +101,12 @@ export function FileBrowserTreePanel({
 
 	const tree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
 
-	// Auto-expand all directories on first load or when searching
+	// Auto-expand directories on first load (limited depth) or fully when searching
 	useEffect(() => {
 		if (debouncedQuery.trim()) {
 			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
 		} else if (!hasInitializedExpansion && tree.length > 0) {
-			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
+			setExpandedDirs(new Set(collectDirectoryPathsToDepth(tree, INITIAL_EXPANSION_DEPTH)));
 			setHasInitializedExpansion(true);
 		}
 	}, [tree, debouncedQuery, hasInitializedExpansion]);

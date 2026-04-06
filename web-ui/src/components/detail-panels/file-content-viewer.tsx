@@ -1,7 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, FileText, WrapText } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -44,7 +45,15 @@ export function FileContentViewer({
 		getScrollElement: () => scrollContainerRef.current,
 		estimateSize: () => LINE_HEIGHT,
 		overscan: 40,
+		// When word wrap is on, lines can exceed the fixed LINE_HEIGHT.
+		// Use dynamic measurement so the virtualizer calculates correct positions.
+		measureElement: wordWrap ? (element: Element) => element.getBoundingClientRect().height : undefined,
 	});
+
+	// Re-measure all items when word wrap is toggled so stale heights are discarded.
+	useEffect(() => {
+		virtualizer.measure();
+	}, [wordWrap, virtualizer]);
 
 	const handleCopyPath = useCallback(() => {
 		if (!filePath) {
@@ -105,7 +114,10 @@ export function FileContentViewer({
 					<button
 						type="button"
 						onClick={() => setWordWrap((prev) => !prev)}
-						className={`shrink-0 p-0.5 rounded ${wordWrap ? "text-accent" : "text-text-tertiary hover:text-text-secondary"}`}
+						className={cn(
+							"shrink-0 p-0.5 rounded",
+							wordWrap ? "text-accent" : "text-text-tertiary hover:text-text-secondary",
+						)}
 					>
 						<WrapText size={13} />
 					</button>
@@ -123,10 +135,12 @@ export function FileContentViewer({
 						const line = lines[virtualItem.index] ?? "";
 						return (
 							<div
-								key={lineNumber}
+								key={virtualItem.key}
+								data-index={virtualItem.index}
+								ref={wordWrap ? virtualizer.measureElement : undefined}
 								className="absolute top-0 left-0 w-full flex font-mono text-xs"
 								style={{
-									height: LINE_HEIGHT,
+									...(wordWrap ? { minHeight: LINE_HEIGHT } : { height: LINE_HEIGHT }),
 									transform: `translateY(${virtualItem.start}px)`,
 									lineHeight: `${LINE_HEIGHT}px`,
 								}}

@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
 import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -63,16 +63,18 @@ export function FileBrowserPanel({
 		queryFn: fileContentQueryFn,
 	});
 
+	// Clear stale content immediately when the selected file changes so the
+	// viewer never flashes the previous file's content while the new request
+	// is in flight.
+	const [prevSelectedPath, setPrevSelectedPath] = useState(selectedPath);
+	if (selectedPath !== prevSelectedPath) {
+		setPrevSelectedPath(selectedPath);
+		fileContentQuery.setData(null);
+	}
+
 	return (
 		<div className="flex flex-1 min-w-0 min-h-0">
-			<div
-				style={{
-					display: "flex",
-					flex: `0 0 ${treePanelFlex}`,
-					minWidth: 0,
-					minHeight: 0,
-				}}
-			>
+			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${treePanelFlex}` }}>
 				<FileBrowserTreePanel
 					files={fileListQuery.data?.files ?? null}
 					selectedPath={selectedPath}
@@ -86,14 +88,7 @@ export function FileBrowserPanel({
 				onMouseDown={onTreeResizeStart}
 				className="z-10"
 			/>
-			<div
-				style={{
-					display: "flex",
-					flex: `0 0 ${contentPanelFlex}`,
-					minWidth: 0,
-					minHeight: 0,
-				}}
-			>
+			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${contentPanelFlex}` }}>
 				<FileContentViewer
 					content={fileContentQuery.data?.content ?? null}
 					binary={fileContentQuery.data?.binary ?? false}
