@@ -202,8 +202,6 @@ export function CardDetailView({
 	moveToTrashLoadingById,
 	onAddReviewComments,
 	onSendReviewComments,
-	onMoveToTrash,
-	isMoveToTrashLoading,
 	gitHistoryPanel,
 	onCloseGitHistory,
 	bottomTerminalOpen,
@@ -252,8 +250,6 @@ export function CardDetailView({
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
-	onMoveToTrash: () => void;
-	isMoveToTrashLoading?: boolean;
 	gitHistoryPanel?: ReactNode;
 	onCloseGitHistory?: () => void;
 	bottomTerminalOpen: boolean;
@@ -369,7 +365,6 @@ export function CardDetailView({
 	const detailDiffContentPanelPercent = `${((1 - detailDiffFileTreeRatio) * 100).toFixed(1)}%`;
 	const detailDiffFileTreePanelFlex = `0 0 ${detailDiffFileTreePanelPercent}`;
 	const isSidePanelOpen = activeDetailPanel !== null;
-	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
@@ -718,9 +713,6 @@ export function CardDetailView({
 									isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
 									showSessionToolbar={false}
 									autoFocus
-									showMoveToTrash={showMoveToTrashActions}
-									onMoveToTrash={onMoveToTrash}
-									isMoveToTrashLoading={isMoveToTrashLoading}
 									onCancelAutomaticAction={
 										selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
 											? () => onCancelAutomaticTaskAction(selection.card.id)

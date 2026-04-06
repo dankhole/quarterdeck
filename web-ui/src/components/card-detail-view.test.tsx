@@ -198,7 +198,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -245,7 +244,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -285,7 +283,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					gitHistoryPanel={<div data-testid="git-history-panel">Git history</div>}
 					onCloseGitHistory={onCloseGitHistory}
 					bottomTerminalOpen={false}
@@ -318,7 +315,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -347,7 +343,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -370,7 +365,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -413,7 +407,6 @@ describe("CardDetailView", () => {
 						onSessionSummary={() => {}}
 						onCardSelect={() => {}}
 						onTaskDragEnd={() => {}}
-						onMoveToTrash={() => {}}
 						bottomTerminalOpen={false}
 						bottomTerminalTaskId={null}
 						bottomTerminalSummary={null}
@@ -467,7 +460,6 @@ describe("CardDetailView", () => {
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
