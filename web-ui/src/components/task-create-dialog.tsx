@@ -2,6 +2,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import {
+	AlertTriangle,
 	ArrowBigUp,
 	ArrowLeft,
 	Check,
@@ -111,6 +112,8 @@ export function TaskCreateDialog({
 	autoReviewMode,
 	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
+	useWorktree,
+	onUseWorktreeChange,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -134,6 +137,8 @@ export function TaskCreateDialog({
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
+	useWorktree: boolean;
+	onUseWorktreeChange: (value: boolean) => void;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -146,6 +151,7 @@ export function TaskCreateDialog({
 	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
+	const useWorktreeId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
 	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
@@ -539,6 +545,33 @@ export function TaskCreateDialog({
 							/>
 						</div>
 					</div>
+				</div>
+				<div>
+					<label
+						htmlFor={useWorktreeId}
+						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+					>
+						<RadixCheckbox.Root
+							id={useWorktreeId}
+							checked={useWorktree}
+							onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
+							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={10} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						Use isolated worktree
+					</label>
+					{!useWorktree ? (
+						<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
+							<AlertTriangle size={12} className="mt-0.5 shrink-0" />
+							<span>
+								Without a worktree, the task runs in your main checkout. Running multiple tasks at once may
+								cause file conflicts.
+							</span>
+						</div>
+					) : null}
 				</div>
 			</DialogBody>
 			<DialogFooter>
