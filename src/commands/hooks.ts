@@ -14,7 +14,6 @@ import {
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
 } from "./codex-hook-events";
-import { enrichDroidReviewMetadata } from "./droid-hook-events";
 
 export {
 	createCodexWatcherState,
@@ -309,9 +308,6 @@ export function inferHookSourceFromPayload(payload: Record<string, unknown> | nu
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
 		return "claude";
 	}
-	if (normalizedTranscriptPath?.includes("/.factory/")) {
-		return "droid";
-	}
 	if (payload && readStringField(payload, "type") === "agent-turn-complete") {
 		return "codex";
 	}
@@ -513,8 +509,7 @@ async function runHooksNotify(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
-		const args = await enrichDroidReviewMetadata(codexEnrichedArgs);
+		const args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 		await ingestHookEvent(args);
 	} catch {
 		// Best effort only.
@@ -736,8 +731,7 @@ async function runHooksIngest(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
-		args = await enrichDroidReviewMetadata(codexEnrichedArgs);
+		args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 	} catch (error) {
 		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;

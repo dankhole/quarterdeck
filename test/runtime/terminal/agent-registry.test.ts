@@ -47,7 +47,7 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(6);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(5);
 	});
 
 	it("treats shell-only agents as unavailable", () => {
@@ -68,10 +68,9 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = buildRuntimeConfigResponse(config);
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "droid"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
-		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 	});
 
 	it("omits autonomous flags from curated agent commands when disabled", () => {
@@ -83,13 +82,11 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = buildRuntimeConfigResponse(config);
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "droid"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
-		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
-		expect(response.agents.find((agent) => agent.id === "droid")?.command).toBe("droid");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {

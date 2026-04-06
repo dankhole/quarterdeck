@@ -49,11 +49,10 @@ export interface RuntimeConfigUpdateInput {
 }
 
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_PARENT_DIR = ".cline";
-const PROJECT_CONFIG_DIR = "kanban";
+const PROJECT_CONFIG_DIR = ".kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
-const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid"];
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
@@ -101,11 +100,7 @@ export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly 
 
 function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
 	if (
-		(agentId === "claude" ||
-			agentId === "codex" ||
-			agentId === "gemini" ||
-			agentId === "opencode" ||
-			agentId === "droid") &&
+		(agentId === "claude" || agentId === "codex" || agentId === "gemini" || agentId === "opencode") &&
 		isRuntimeAgentLaunchSupported(agentId)
 	) {
 		return agentId;
@@ -186,7 +181,7 @@ export function getRuntimeGlobalConfigPath(): string {
 }
 
 export function getRuntimeProjectConfigPath(cwd: string): string {
-	return join(resolve(cwd), PROJECT_CONFIG_PARENT_DIR, PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
+	return join(resolve(cwd), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
 }
 
 interface RuntimeConfigPaths {

@@ -2,7 +2,7 @@
 
 A CLI-based kanban board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
 
-Published to npm as `npx kanban`. Repository: https://github.com/cline/kanban
+Published to npm as `npx kanban`. Repository: https://github.com/kanban-org/kanban
 
 ## Quick reference
 
@@ -53,7 +53,7 @@ src/                         # Runtime (Node.js TypeScript)
 ├── projects/                # Project detection & discovery
 ├── prompts/                 # System prompt injection for agents
 ├── server/                  # HTTP server, runtime state hub, workspace registry
-├── state/                   # Workspace state persistence (JSON in .cline/kanban/)
+├── state/                   # Workspace state persistence (JSON in .kanban/)
 ├── terminal/                # PTY sessions, agent registry, adapters, state machine
 ├── trpc/                    # tRPC API routers (runtime, workspace, projects, hooks)
 └── workspace/               # Worktree lifecycle, git sync, history, file changes
@@ -87,7 +87,7 @@ test/                        # Runtime test suites (Vitest)
 
 ### State management
 
-- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeWorkspaceState` (JSON persistence in `.cline/kanban/workspaces/`)
+- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeWorkspaceState` (JSON persistence in `.kanban/workspaces/`)
 - **Frontend board**: Custom Immer-based reducer (`web-ui/src/state/board-state.ts`), not Redux/Zustand
 - **Frontend workspace metadata**: `useSyncExternalStore` pattern (`web-ui/src/stores/workspace-metadata-store.ts`)
 - **Runtime-to-frontend sync**: tRPC subscriptions + WebSocket for terminal output

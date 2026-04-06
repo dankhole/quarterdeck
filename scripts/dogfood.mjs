@@ -339,7 +339,7 @@ function buildDogfoodRuntimeEnv(baseEnv) {
 	// Isolate dogfood state from the user's real kanban session so that
 	// testing feature branches doesn't clobber in-flight board state.
 	if (!runtimeEnv.KANBAN_STATE_HOME) {
-		runtimeEnv.KANBAN_STATE_HOME = resolve(homedir(), ".cline", "kanban-dogfood");
+		runtimeEnv.KANBAN_STATE_HOME = resolve(homedir(), ".kanban-dogfood");
 	}
 	return runtimeEnv;
 }

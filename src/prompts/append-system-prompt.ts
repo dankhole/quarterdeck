@@ -15,7 +15,7 @@ export interface RenderAppendSystemPromptOptions {
 	agentId?: RuntimeAgentId | null;
 }
 
-const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "droid", "gemini", "opencode"];
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode"];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
 	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
@@ -43,8 +43,6 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
 		case "opencode":
 			return "- If Linear MCP is not available in the current agent (OpenCode), suggest running `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
-		case "droid":
-			return "- If Linear MCP is not available in the current agent (Droid), suggest running: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}
@@ -83,7 +81,7 @@ If the user asks you to write code, fix a bug, implement a feature, refactor, or
 - Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. If both linked tasks are in backlog, Kanban preserves the order you pass to the command: \`--task-id\` waits on \`--linked-task-id\`, and on the board the arrow points into \`--linked-task-id\`. Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite. The board arrow points into the prerequisite task so the user can see what must finish first. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
 - How linking works: when a task in the review column is moved to trash, any linked backlog tasks automatically start. This is how you chain work so tasks kick off autonomously without manual intervention.
 - Tasks can also enable automatic review actions: auto-commit, auto-open-pr, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks. Combining auto-review with linking is how you can set up fully autonomous pipelines when the user wants it. For example, enabling auto-commit on each task in a chain: task A finishes, auto-commits and is trashed, task B auto-starts from backlog, auto-commits and is trashed, task C auto-starts, and so on.
-- If your current working directory is inside \`.cline/worktrees/\`, you are inside a Kanban task worktree. In that case, create or manage tasks against the main workspace path, not the task worktree path. Pass the main workspace with \`--project-path\`.
+- If your current working directory is inside \`.kanban/worktrees/\`, you are inside a Kanban task worktree. In that case, create or manage tasks against the main workspace path, not the task worktree path. Pass the main workspace with \`--project-path\`.
 - If a task command fails because the runtime is unavailable, tell the user to start Kanban in that workspace first with \`${kanbanCommand}\`, then retry the task command.
 
 # Command Prefix
