@@ -292,6 +292,8 @@ export default function App(): ReactElement {
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskUseWorktree,
+		setNewTaskUseWorktree,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -1060,6 +1062,8 @@ export default function App(): ReactElement {
 					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 					autoReviewMode={newTaskAutoReviewMode}
 					onAutoReviewModeChange={setNewTaskAutoReviewMode}
+					useWorktree={newTaskUseWorktree}
+					onUseWorktreeChange={setNewTaskUseWorktree}
 					workspaceId={currentProjectId}
 					branchRef={newTaskBranchRef}
 					branchOptions={createTaskBranchOptions}
