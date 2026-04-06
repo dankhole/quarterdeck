@@ -89,6 +89,7 @@ export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
+	title: z.string().nullable().default(null),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
 	autoReviewEnabled: z.boolean().optional(),
