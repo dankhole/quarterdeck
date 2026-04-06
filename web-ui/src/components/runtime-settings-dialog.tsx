@@ -558,9 +558,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath
-						? formatPathForDisplay(config.globalConfigPath)
-						: "~/.cline/kanban/config.json"}
+					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.kanban/config.json"}
 					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -698,7 +696,7 @@ export function RuntimeSettingsDialog({
 				>
 					{config?.projectConfigPath
 						? formatPathForDisplay(config.projectConfigPath)
-						: "<project>/.cline/kanban/config.json"}
+						: "<project>/.kanban/config.json"}
 					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -798,7 +796,7 @@ export function RuntimeSettingsDialog({
 					variant="ghost"
 					className="mr-auto mt-[3px]"
 					icon={<ExternalLink size={14} />}
-					onClick={() => window.open("https://github.com/cline/kanban", "_blank")}
+					onClick={() => window.open("https://github.com/kanban-org/kanban", "_blank")}
 				>
 					Read the docs
 				</Button>

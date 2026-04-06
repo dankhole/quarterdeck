@@ -49,8 +49,7 @@ export interface RuntimeConfigUpdateInput {
 }
 
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_PARENT_DIR = ".cline";
-const PROJECT_CONFIG_DIR = "kanban";
+const PROJECT_CONFIG_DIR = ".kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid"];
@@ -186,7 +185,7 @@ export function getRuntimeGlobalConfigPath(): string {
 }
 
 export function getRuntimeProjectConfigPath(cwd: string): string {
-	return join(resolve(cwd), PROJECT_CONFIG_PARENT_DIR, PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
+	return join(resolve(cwd), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
 }
 
 interface RuntimeConfigPaths {
