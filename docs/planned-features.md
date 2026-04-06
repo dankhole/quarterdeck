@@ -79,6 +79,10 @@ When an agent spawns a sub-agent that needs user permissions (e.g. tool approval
 - Ensure permission requests from sub-agents bubble up to the Kanban review flow
 - Surface a clear prompt in the UI so the user can approve/deny without switching to a raw terminal
 
-## 11. Remove all Cline references and dependencies
+## 11. Re-add report issue / feedback card with Slack link
+
+The beta support footer (`ProjectSupportFooter`) was removed from the project navigation panel. Re-add a feedback card that links to d.cole's Slack channel for direct user feedback.
+
+## 12. Remove all Cline references and dependencies
 
 Strip out all references to Cline from the codebase — the `@clinebot/*` SDK packages, the `src/cline-sdk/` boundary layer, Cline-specific agent adapters, and any branding or documentation references. Kanban should be agent-agnostic with no hard dependency on Cline.
