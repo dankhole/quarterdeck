@@ -596,12 +596,31 @@ export default function App(): ReactElement {
 			if (!currentProjectId) {
 				return;
 			}
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
-				showAppToast({ message: "Could not regenerate title", intent: "danger" });
-			});
+			const session = sessions[taskId];
+			if (session?.state === "running") {
+				// Agent is busy — inject a title prompt into the session (like commit does)
+				const prompt =
+					"Summarize this task in 2-4 words. Reply with ONLY the title text, nothing else. No quotes, no punctuation.";
+				void (async () => {
+					const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
+					if (!typed.ok) {
+						showAppToast({ message: "Could not send title prompt to agent", intent: "danger" });
+						return;
+					}
+					await new Promise<void>((resolve) => {
+						window.setTimeout(resolve, 200);
+					});
+					await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+				})();
+			} else {
+				// Agent idle — use server-side Bedrock call
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
+					showAppToast({ message: "Could not regenerate title", intent: "danger" });
+				});
+			}
 		},
-		[currentProjectId],
+		[currentProjectId, sessions, sendTaskSessionInput],
 	);
 
 	useAppHotkeys({
