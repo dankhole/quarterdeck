@@ -288,7 +288,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await saveRuntimeConfig(tempProject, {
 					selectedAgentId: "claude",
 					selectedShortcutLabel: null,
-					agentAutonomousModeEnabled: true,
+					agentAutonomousModeEnabled: false,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
 					commitPromptTemplate: current.commitPromptTemplateDefault,
@@ -412,28 +412,28 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
-	it("persists autonomous mode when disabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-autonomous-disabled-");
+	it("persists autonomous mode when enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-autonomous-enabled-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-autonomous-disabled-",
+			"kanban-project-runtime-config-autonomous-enabled-",
 		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const updated = await updateRuntimeConfig(tempProject, {
-					agentAutonomousModeEnabled: false,
+					agentAutonomousModeEnabled: true,
 				});
-				expect(updated.agentAutonomousModeEnabled).toBe(false);
+				expect(updated.agentAutonomousModeEnabled).toBe(true);
 
 				const globalPayload = JSON.parse(
 					readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8"),
 				) as {
 					agentAutonomousModeEnabled?: boolean;
 				};
-				expect(globalPayload.agentAutonomousModeEnabled).toBe(false);
+				expect(globalPayload.agentAutonomousModeEnabled).toBe(true);
 
 				const reloaded = await loadRuntimeConfig(tempProject);
-				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
+				expect(reloaded.agentAutonomousModeEnabled).toBe(true);
 			});
 		} finally {
 			cleanupProject();

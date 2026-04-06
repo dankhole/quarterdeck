@@ -10,21 +10,25 @@ import { createUniqueTaskId } from "./task-id";
 
 export interface RuntimeCreateTaskInput {
 	taskId?: string;
+	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 }
 
 export interface RuntimeUpdateTaskInput {
+	title?: string | null;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
@@ -279,12 +283,14 @@ export function addTaskToColumn(
 	}
 	const task: RuntimeBoardCard = {
 		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
+		title: input.title?.trim() || null,
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 		images: cloneTaskImages(input.images),
 		baseRef,
+		useWorktree: input.useWorktree,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -592,12 +598,14 @@ export function updateTask(
 			columnUpdated = true;
 			updatedTask = {
 				...card,
+				title: input.title === undefined ? card.title : input.title?.trim() || null,
 				prompt,
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
+				useWorktree: input.useWorktree,
 				updatedAt: now,
 			};
 			return updatedTask;

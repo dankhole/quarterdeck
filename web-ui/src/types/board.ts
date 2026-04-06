@@ -38,12 +38,14 @@ export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | nu
 
 export interface BoardCard {
 	id: string;
+	title: string | null;
 	prompt: string;
 	startInPlanMode: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
+	useWorktree?: boolean;
 	createdAt: number;
 	updatedAt: number;
 }
