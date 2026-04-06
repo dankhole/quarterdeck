@@ -27,14 +27,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/openai/codex",
 	},
 	{
-		id: "cline",
-		label: "Cline",
-		binary: "cline",
-		baseArgs: [],
-		autonomousArgs: ["--auto-approve-all"],
-		installUrl: "https://github.com/cline/cline",
-	},
-	{
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
@@ -63,7 +55,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 // Temporarily keep launch support scoped to the core agent set.
 // Re-enable additional CLIs by uncommenting entries below when ready.
 export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"cline",
 	"claude",
 	"codex",
 	"droid",

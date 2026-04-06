@@ -14,8 +14,8 @@ vi.mock("@runtime-agent-catalog", () => ({
 		autonomousArgs: [],
 	})),
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
-		{ id: "cline", label: "Cline", binary: "cline" },
 		{ id: "claude", label: "Claude Code", binary: "claude" },
+		{ id: "codex", label: "OpenAI Codex", binary: "codex" },
 	]),
 }));
 
@@ -53,12 +53,12 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 		null) as HTMLButtonElement | null;
 }
 
-const savedClineOauthConfig = {
-	selectedAgentId: "cline",
+const savedConfig = {
+	selectedAgentId: "claude",
 	selectedShortcutLabel: null,
 	agentAutonomousModeEnabled: true,
 	readyForReviewNotificationsEnabled: false,
-	effectiveCommand: "cline",
+	effectiveCommand: "claude",
 	detectedCommands: [],
 	shortcuts: [],
 	commitPromptTemplate: "",
@@ -69,17 +69,17 @@ const savedClineOauthConfig = {
 	projectConfigPath: null,
 	agents: [
 		{
-			id: "cline",
-			label: "Cline",
-			binary: "cline",
-			command: "cline",
-			installed: true,
-		},
-		{
 			id: "claude",
 			label: "Claude Code",
 			binary: "claude",
 			command: "claude",
+			installed: true,
+		},
+		{
+			id: "codex",
+			label: "OpenAI Codex",
+			binary: "codex",
+			command: "codex",
 			installed: true,
 		},
 	],
@@ -120,7 +120,7 @@ describe("RuntimeSettingsDialog", () => {
 				<RuntimeSettingsDialog
 					open={true}
 					workspaceId={"workspace-1"}
-					initialConfig={savedClineOauthConfig}
+					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
 			);
@@ -136,7 +136,7 @@ describe("RuntimeSettingsDialog", () => {
 				<RuntimeSettingsDialog
 					open={true}
 					workspaceId={"workspace-1"}
-					initialConfig={savedClineOauthConfig}
+					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
 			);

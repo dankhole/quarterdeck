@@ -78,7 +78,3 @@ When a user interrupts an agent (e.g. Ctrl+C on Claude), the agent doesn't alway
 When an agent spawns a sub-agent that needs user permissions (e.g. tool approvals), the permission prompt may not be surfaced to the Kanban UI. The sub-agent blocks waiting for input the user never sees. Need to:
 - Ensure permission requests from sub-agents bubble up to the Kanban review flow
 - Surface a clear prompt in the UI so the user can approve/deny without switching to a raw terminal
-
-## 11. Remove all Cline references and dependencies
-
-Strip out all references to Cline from the codebase — the `@clinebot/*` SDK packages, the `src/cline-sdk/` boundary layer, Cline-specific agent adapters, and any branding or documentation references. Kanban should be agent-agnostic with no hard dependency on Cline.

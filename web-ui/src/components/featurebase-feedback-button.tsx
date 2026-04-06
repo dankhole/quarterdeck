@@ -8,7 +8,7 @@ interface FeaturebaseFeedbackVisibilityInput {
 }
 
 export function canShowFeaturebaseFeedbackButton(_input: FeaturebaseFeedbackVisibilityInput): boolean {
-	// Without Cline OAuth, the Featurebase JWT authentication flow is not available.
+	// Featurebase JWT authentication flow is not currently available.
 	return false;
 }
 

@@ -162,9 +162,9 @@ describe("ProjectNavigationPanel width persistence", () => {
 		expect(container.textContent).toContain("Report issue");
 	});
 
-	it("always shows report issue since Featurebase auth is unavailable without Cline OAuth", () => {
+	it("always shows report issue since Featurebase auth is unavailable", () => {
 		renderPanel({
-			selectedAgentId: "cline",
+			selectedAgentId: "claude",
 			featurebaseFeedbackState: {
 				authState: "ready",
 				widgetOpenCount: 0,

@@ -2,7 +2,7 @@
 
 ## Context
 
-Kanban spawns CLI agents (Claude Code, Codex, Gemini, OpenCode, Cline) in terminal emulators to work on tasks. Currently, the output monitor (`output-monitor.ts`) uses regex pattern matching against PTY output to detect when agents need attention (e.g., permission prompts). This is fragile -- it relies on matching strings like "permission", "y/n", etc.
+Kanban spawns CLI agents (Claude Code, Codex, Gemini, OpenCode) in terminal emulators to work on tasks. Currently, the output monitor (`output-monitor.ts`) uses regex pattern matching against PTY output to detect when agents need attention (e.g., permission prompts). This is fragile -- it relies on matching strings like "permission", "y/n", etc.
 
 CLI agents have proper hook systems that fire events at specific lifecycle points. By injecting hook configs via CLI flags when spawning agents, we can reliably detect state transitions and move cards between columns automatically:
 - In Progress -> Review: agent finished, needs permission, or needs input
@@ -39,7 +39,6 @@ kanban hooks ingest --task-id <id> --event inprogress --port <port>
 | Codex | `-c 'notify=[...]'` inline TOML | `notify` (agent-turn-complete) |
 | Gemini | `--config <temp-file>` (temp JSON settings file) | `AfterAgent`, `Notification` |
 | OpenCode | Temp JS plugin file in `<taskCwd>/.opencode/plugins/` | `session.idle`, `permission.asked` |
-| Cline | Stub (no inline hook injection) | Falls back to existing output-monitor |
 
 ### Review -> In Progress
 
@@ -49,7 +48,6 @@ kanban hooks ingest --task-id <id> --event inprogress --port <port>
 | Codex | PTY output detection | Detect "›" character at start of line in output (Codex renders this before user messages) |
 | Gemini | `--config <temp-file>` hook injection | `BeforeAgent` |
 | OpenCode | Same temp JS plugin file | `permission.replied` |
-| Cline | Stub | Extend existing `writeInput()` -- any PTY input while in review moves back |
 
 ## Implementation Plan
 
@@ -106,8 +104,6 @@ For Codex: build notify array and append `-c 'notify=[...]'` to args with `--eve
 For Gemini: handled separately (see 4d) since it needs a temp file.
 
 For OpenCode: handled separately (see 4e) since it needs a temp plugin file.
-
-For Cline: no injection (stub).
 
 The hook command string format:
 ```
@@ -210,7 +206,7 @@ At the call site (around line 1193), add:
 
 ### 6. Keep existing output-monitor as fallback
 
-The existing `output-monitor.ts` pattern detection remains as a fallback for Cline (which has no inline hook injection) and as a secondary signal for agents with hooks. The hook-based transitions take precedence when they fire, but the output monitor still works for edge cases where hooks don't cover a particular scenario.
+The existing `output-monitor.ts` pattern detection remains as a secondary signal for agents with hooks. The hook-based transitions take precedence when they fire, but the output monitor still works for edge cases where hooks don't cover a particular scenario.
 
 ## Files to Modify
 
@@ -229,5 +225,4 @@ The existing `output-monitor.ts` pattern detection remains as a fallback for Cli
 5. Repeat with Codex: verify `-c 'notify=[...]'` is passed, verify card moves to Review on agent-turn-complete, verify card moves back when you send a message ("›" detection in output)
 6. Repeat with Gemini: verify temp config file is created, `--config` is passed, card transitions work, temp file is cleaned up on exit
 7. Repeat with OpenCode: verify temp plugin file is created in `.opencode/plugins/`, card transitions work via `session.idle`/`permission.asked`/`permission.replied` events, plugin file is cleaned up on exit
-8. Verify Cline falls back to existing output-monitor behavior
-9. Run existing tests to ensure nothing is broken
+8. Run existing tests to ensure nothing is broken

@@ -63,7 +63,7 @@ function createSessionSummary(
 	return {
 		taskId,
 		state: finalMessage ? "awaiting_review" : "running",
-		agentId: "cline",
+		agentId: "claude",
 		workspacePath: "/tmp/project-a",
 		pid: null,
 		startedAt: updatedAt - 100,
@@ -80,7 +80,7 @@ function createSessionSummary(
 					finalMessage,
 					hookEventName: "agent_end",
 					notificationType: null,
-					source: "cline-sdk",
+					source: "hook",
 				}
 			: null,
 		latestTurnCheckpoint: null,
