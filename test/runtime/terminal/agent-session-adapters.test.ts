@@ -80,7 +80,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launchCommand).toContain("codex");
 		expect(launchCommand).toContain("--");
 
-		const wrapperPath = join(homedir(), ".cline", "kanban", "hooks", "codex", "codex-wrapper.mjs");
+		const wrapperPath = join(homedir(), ".kanban", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
@@ -137,7 +137,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".cline", "kanban", "hooks", "claude", "settings.json");
+		const settingsPath = join(homedir(), ".kanban", "hooks", "claude", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, unknown>;
 		};
@@ -159,14 +159,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "settings.json");
+		const settingsPath = join(homedir(), ".kanban", "hooks", "gemini", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
 		};
 		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
 		expect(afterToolCommand).toContain("hooks");
 		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "gemini-hook.mjs");
+		const hookScriptPath = join(homedir(), ".kanban", "hooks", "gemini", "gemini-hook.mjs");
 		expect(existsSync(hookScriptPath)).toBe(false);
 	});
 
@@ -182,7 +182,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const pluginPath = join(homedir(), ".cline", "kanban", "hooks", "opencode", "kanban.js");
+		const pluginPath = join(homedir(), ".kanban", "hooks", "opencode", "kanban.js");
 		const plugin = readFileSync(pluginPath, "utf8");
 		expect(plugin).toContain("parentID");
 		expect(plugin).toContain('"permission.ask"');

@@ -2,7 +2,7 @@
 
 ## Symptom
 
-When running `npm run dogfood` from inside a `.cline/worktrees/<id>/kanban` directory, after the dogfood instance exits cleanly (`✔ Cleaning up... done`), the user's shell loses its CWD:
+When running `npm run dogfood` from inside a `.kanban/worktrees/<id>/kanban` directory, after the dogfood instance exits cleanly (`✔ Cleaning up... done`), the user's shell loses its CWD:
 
 ```
 ✔ Cleaning up... done
@@ -16,14 +16,14 @@ The shell prompt loses branch info (`worktrees/330dd/kanban` instead of `kanban 
 
 ## Root Cause
 
-The dogfood Kanban instance shares the same `.cline/` state directory as the main Kanban instance. During shutdown, `shutdownRuntimeServer()` in `src/server/shutdown-coordinator.ts` runs cleanup on all managed workspaces:
+The dogfood Kanban instance shares the same `.kanban/` state directory as the main Kanban instance. During shutdown, `shutdownRuntimeServer()` in `src/server/shutdown-coordinator.ts` runs cleanup on all managed workspaces:
 
 1. `collectProjectWorktreeTaskIdsForRemoval()` finds all tasks in `in_progress` and `review` columns
 2. `persistInterruptedSessions()` moves those tasks to trash
 3. `cleanupInterruptedTaskWorktrees()` calls `deleteTaskWorktree()` for each task
 4. `deleteTaskWorktree()` in `src/workspace/task-worktree.ts` runs `git worktree remove --force` then `rm -r` on the worktree path
 
-If the main Kanban instance has tasks using worktrees under `.cline/worktrees/`, the dogfood instance sees those same workspaces and trashes their tasks + deletes their worktrees on exit. This includes the very worktree the developer is running dogfood from.
+If the main Kanban instance has tasks using worktrees under `.kanban/worktrees/`, the dogfood instance sees those same workspaces and trashes their tasks + deletes their worktrees on exit. This includes the very worktree the developer is running dogfood from.
 
 ## Why the directory still exists after
 

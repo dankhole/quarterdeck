@@ -20,8 +20,7 @@ import { createGitProcessEnv } from "../core/git-process-env";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 
-const RUNTIME_HOME_PARENT_DIR = ".cline";
-const RUNTIME_HOME_DIR = "kanban";
+const RUNTIME_HOME_DIR = ".kanban";
 const RUNTIME_WORKTREES_DIR = "worktrees";
 const WORKSPACES_DIR = "workspaces";
 const INDEX_FILENAME = "index.json";
@@ -163,7 +162,7 @@ export function getRuntimeHomePath(): string {
 	if (override) {
 		return resolve(override);
 	}
-	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR);
+	return join(homedir(), RUNTIME_HOME_DIR);
 }
 
 export function getTaskWorktreesHomePath(): string {
@@ -171,7 +170,7 @@ export function getTaskWorktreesHomePath(): string {
 	if (override) {
 		return join(resolve(override), RUNTIME_WORKTREES_DIR);
 	}
-	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_WORKTREES_DIR);
+	return join(homedir(), RUNTIME_HOME_DIR, RUNTIME_WORKTREES_DIR);
 }
 
 export function getWorkspacesRootPath(): string {

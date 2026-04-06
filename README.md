@@ -7,7 +7,7 @@
 A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
 
 > [!WARNING]
-> Kanban is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback in #kanban on our [discord](https://discord.gg/cline).
+> Kanban is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback in #kanban on our [discord](https://discord.gg/kanban).
 
 <div align="left">
 <table>
@@ -16,19 +16,19 @@ A replacement for your IDE better suited for running many agents in parallel and
 <a href="https://www.npmjs.com/package/kanban" target="_blank">NPM</a>
 </td>
 <td align="center">
-<a href="https://github.com/cline/kanban" target="_blank">GitHub</a>
+<a href="https://github.com/kanban-org/kanban" target="_blank">GitHub</a>
 </td>
 <td align="center">
-<a href="https://github.com/cline/kanban/issues" target="_blank">Issues</a>
+<a href="https://github.com/kanban-org/kanban/issues" target="_blank">Issues</a>
 </td>
 <td align="center">
-<a href="https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank">Feature Requests</a>
+<a href="https://github.com/kanban-org/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank">Feature Requests</a>
 </td>
 <td align="center">
-<a href="https://discord.gg/cline" target="_blank">Discord</a>
+<a href="https://discord.gg/kanban" target="_blank">Discord</a>
 </td>
 <td align="center">
-<a href="https://x.com/cline" target="_blank">@cline</a>
+<a href="https://x.com/kanban" target="_blank">@kanban</a>
 </td>
 </tbody>
 </table>

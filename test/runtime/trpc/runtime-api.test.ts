@@ -280,7 +280,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		const debugPaths = [join(tempHome, ".kanban"), join(tempHome, ".kanban", "worktrees")];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
@@ -323,7 +323,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		const debugPaths = [join(tempHome, ".kanban"), join(tempHome, ".kanban", "worktrees")];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
