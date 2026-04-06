@@ -35,14 +35,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/sst/opencode",
 	},
 	{
-		id: "droid",
-		label: "Factory Droid",
-		binary: "droid",
-		baseArgs: [],
-		autonomousArgs: ["--auto", "high"],
-		installUrl: "https://docs.factory.ai/cli/getting-started/quickstart",
-	},
-	{
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
@@ -57,7 +49,6 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"claude",
 	"codex",
-	"droid",
 	// "opencode",
 	// "gemini",
 ];

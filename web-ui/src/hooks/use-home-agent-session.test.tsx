@@ -64,7 +64,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 		readyForReviewNotificationsEnabled: true,
-		detectedCommands: ["codex", "claude", "droid"],
+		detectedCommands: ["codex", "claude"],
 		agents: [
 			{
 				id: "codex",
@@ -80,15 +80,6 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 				label: "Claude Code",
 				binary: "claude",
 				command: "claude --dangerously-skip-permissions",
-				defaultArgs: [],
-				installed: true,
-				configured: false,
-			},
-			{
-				id: "droid",
-				label: "Factory Droid",
-				binary: "droid",
-				command: "droid",
 				defaultArgs: [],
 				installed: true,
 				configured: false,
@@ -354,8 +345,8 @@ describe("useHomeAgentSession", () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "droid",
-						effectiveCommand: "droid",
+						selectedAgentId: "claude",
+						effectiveCommand: "claude --dangerously-skip-permissions",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -369,15 +360,15 @@ describe("useHomeAgentSession", () => {
 		const initialSnapshot = requireSnapshot(latestSnapshot);
 		const initialTaskId = initialSnapshot.taskId;
 		expect(initialSnapshot.panelMode).toBe("terminal");
-		expect(initialTaskId).toMatch(/^__home_agent__:workspace-1:droid$/);
+		expect(initialTaskId).toMatch(/^__home_agent__:workspace-1:claude$/);
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "droid",
-						effectiveCommand: "droid",
+						selectedAgentId: "claude",
+						effectiveCommand: "claude --dangerously-skip-permissions",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -390,7 +381,7 @@ describe("useHomeAgentSession", () => {
 
 		const updatedSnapshot = requireSnapshot(latestSnapshot);
 		expect(updatedSnapshot.panelMode).toBe("terminal");
-		expect(updatedSnapshot.taskId).toMatch(/^__home_agent__:workspace-1:droid$/);
+		expect(updatedSnapshot.taskId).toMatch(/^__home_agent__:workspace-1:claude$/);
 		expect(updatedSnapshot.taskId).toBe(initialTaskId);
 		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
@@ -403,8 +394,8 @@ describe("useHomeAgentSession", () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "droid",
-						effectiveCommand: "droid",
+						selectedAgentId: "claude",
+						effectiveCommand: "claude --dangerously-skip-permissions",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -417,7 +408,7 @@ describe("useHomeAgentSession", () => {
 
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.panelMode).toBe("terminal");
-		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:droid$/);
+		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:claude$/);
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
 			expect.objectContaining({

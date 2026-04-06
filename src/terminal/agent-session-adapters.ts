@@ -1046,94 +1046,11 @@ const opencodeAdapter: AgentSessionAdapter = {
 	},
 };
 
-const droidAdapter: AgentSessionAdapter = {
-	async prepare(input) {
-		const args = [...input.args];
-		const env: Record<string, string | undefined> = {};
-
-		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "-r")) {
-			args.push("--resume");
-		}
-
-		const hooks = resolveHookContext(input);
-		const shouldWriteSettings = Boolean(hooks) || input.startInPlanMode || input.autonomousModeEnabled !== undefined;
-		if (shouldWriteSettings) {
-			const settingsPath = join(getHookAgentDirectory("droid"), "settings.json");
-			const settings: Record<string, unknown> = {
-				autonomyMode: input.startInPlanMode ? "spec" : input.autonomousModeEnabled ? "auto-high" : "normal",
-			};
-
-			if (hooks) {
-				const droidActiveToolMatcher = "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create";
-				const reviewNotifyCommand = buildHooksCommand(["notify", "--event", "to_review", "--source", "droid"]);
-				const inProgressNotifyCommand = buildHooksCommand([
-					"notify",
-					"--event",
-					"to_in_progress",
-					"--source",
-					"droid",
-				]);
-				const activityNotifyCommand = buildHooksCommand(["notify", "--event", "activity", "--source", "droid"]);
-				settings.hooks = {
-					Stop: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
-					Notification: [
-						{ hooks: [{ type: "command", command: activityNotifyCommand }] },
-						{ hooks: [{ type: "command", command: reviewNotifyCommand }] },
-					],
-					PreToolUse: [
-						{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] },
-						{ matcher: droidActiveToolMatcher, hooks: [{ type: "command", command: inProgressNotifyCommand }] },
-						{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] },
-					],
-					PostToolUse: [
-						{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] },
-						{ matcher: "AskUser", hooks: [{ type: "command", command: inProgressNotifyCommand }] },
-					],
-					PostToolUseFailure: [{ matcher: "*", hooks: [{ type: "command", command: activityNotifyCommand }] }],
-					UserPromptSubmit: [{ hooks: [{ type: "command", command: inProgressNotifyCommand }] }],
-				};
-
-				Object.assign(
-					env,
-					createHookRuntimeEnv({
-						taskId: hooks.taskId,
-						workspaceId: hooks.workspaceId,
-					}),
-				);
-			}
-
-			await ensureTextFile(settingsPath, JSON.stringify(settings, null, 2));
-			if (!hasCliOption(args, "--settings")) {
-				args.push("--settings", settingsPath);
-			}
-		}
-
-		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
-		if (
-			appendedSystemPrompt &&
-			!hasCliOption(args, "--append-system-prompt") &&
-			!hasCliOption(args, "--system-prompt")
-		) {
-			args.push("--append-system-prompt", appendedSystemPrompt);
-		}
-
-		const withPromptLaunch = withPrompt(args, input.prompt, "append");
-		return {
-			...withPromptLaunch,
-			env: {
-				...withPromptLaunch.env,
-				...env,
-			},
-		};
-	},
-};
-
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
-	droid: droidAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
