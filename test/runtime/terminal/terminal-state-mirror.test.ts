@@ -24,10 +24,10 @@ describe("TerminalStateMirror", () => {
 
 		const snapshot = await mirror.getSnapshot();
 
-		expect(snapshot.cols).toBe(100);
-		expect(snapshot.rows).toBe(30);
-		expect(snapshot.snapshot).toContain("hello");
-		expect(snapshot.snapshot).toContain("world");
+		expect(snapshot?.cols).toBe(100);
+		expect(snapshot?.rows).toBe(30);
+		expect(snapshot?.snapshot).toContain("hello");
+		expect(snapshot?.snapshot).toContain("world");
 	});
 
 	it("preserves alternate-screen state when the active buffer is alternate", async () => {
@@ -37,8 +37,8 @@ describe("TerminalStateMirror", () => {
 
 		const snapshot = await mirror.getSnapshot();
 
-		expect(snapshot.snapshot).toContain("\u001b[?1049h");
-		expect(snapshot.snapshot).toContain("fullscreen");
+		expect(snapshot?.snapshot).toContain("\u001b[?1049h");
+		expect(snapshot?.snapshot).toContain("fullscreen");
 	});
 
 	it("applies queued resizes before generating a snapshot", async () => {
@@ -50,9 +50,9 @@ describe("TerminalStateMirror", () => {
 
 		const snapshot = await mirror.getSnapshot();
 
-		expect(snapshot.cols).toBe(120);
-		expect(snapshot.rows).toBe(40);
-		expect(snapshot.snapshot).toContain("after resize");
+		expect(snapshot?.cols).toBe(120);
+		expect(snapshot?.rows).toBe(40);
+		expect(snapshot?.snapshot).toContain("after resize");
 	});
 
 	it("emits terminal query responses through the optional callback", async () => {

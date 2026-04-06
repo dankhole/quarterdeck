@@ -33,7 +33,8 @@ function ColumnSection({
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
 	activeDragSourceColumnId,
-	workspacePath,
+	onMigrateWorkingDirectory,
+	migratingTaskId,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -57,7 +58,8 @@ function ColumnSection({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	activeDragSourceColumnId?: BoardColumnId | null;
-	workspacePath?: string | null;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	migratingTaskId?: string | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
@@ -198,9 +200,10 @@ function ColumnSection({
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
+												onMigrateWorkingDirectory={onMigrateWorkingDirectory}
+												isMigrateLoading={migratingTaskId === card.id}
 												onRegenerateTitle={onRegenerateTitleTask}
 												onUpdateTitle={onUpdateTaskTitle}
-												workspacePath={workspacePath}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -229,7 +232,6 @@ function ColumnSection({
 
 export function ColumnContextPanel({
 	selection,
-	workspacePath,
 	onCardSelect,
 	taskSessions,
 	onTaskDragEnd,
@@ -249,10 +251,11 @@ export function ColumnContextPanel({
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
+	onMigrateWorkingDirectory,
+	migratingTaskId,
 	panelWidth,
 }: {
 	selection: CardSelection;
-	workspacePath?: string | null;
 	onCardSelect: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
@@ -272,6 +275,8 @@ export function ColumnContextPanel({
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	migratingTaskId?: string | null;
 	panelWidth?: string;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
@@ -363,7 +368,8 @@ export function ColumnContextPanel({
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 							activeDragSourceColumnId={activeDragSourceColumnId}
-							workspacePath={workspacePath}
+							onMigrateWorkingDirectory={onMigrateWorkingDirectory}
+							migratingTaskId={migratingTaskId}
 						/>
 					))}
 				</div>

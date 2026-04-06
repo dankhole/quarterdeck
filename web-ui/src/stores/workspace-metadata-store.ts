@@ -12,6 +12,7 @@ type StoreListener = () => void;
 type TaskMetadataListener = (taskId: string) => void;
 
 interface WorkspaceMetadataState {
+	workspacePath: string | null;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	homeGitStateVersion: number;
 	taskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorkspaceInfoResponse | null>;
@@ -20,6 +21,7 @@ interface WorkspaceMetadataState {
 }
 
 const workspaceMetadataState: WorkspaceMetadataState = {
+	workspacePath: null,
 	homeGitSummary: null,
 	homeGitStateVersion: 0,
 	taskWorkspaceInfoByTaskId: {},
@@ -149,6 +151,14 @@ function areTaskWorkspaceSnapshotsEqual(
 		a.additions === b.additions &&
 		a.deletions === b.deletions
 	);
+}
+
+export function getWorkspacePath(): string | null {
+	return workspaceMetadataState.workspacePath;
+}
+
+export function setWorkspacePath(path: string | null): void {
+	workspaceMetadataState.workspacePath = path;
 }
 
 export function getHomeGitStateVersion(): number {

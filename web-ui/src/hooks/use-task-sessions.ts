@@ -22,6 +22,8 @@ import type { BoardCard } from "@/types";
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
+	/** Called after startTaskSession resolves the working directory so the caller can persist it on the card. */
+	onWorkingDirectoryResolved?: (taskId: string, workingDirectory: string) => void;
 }
 
 interface EnsureTaskWorkspaceResult {
@@ -58,7 +60,11 @@ export interface UseTaskSessionsResult {
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 }
 
-export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessionsInput): UseTaskSessionsResult {
+export function useTaskSessions({
+	currentProjectId,
+	setSessions,
+	onWorkingDirectoryResolved,
+}: UseTaskSessionsInput): UseTaskSessionsResult {
 	/*
 		This merge needs to stay monotonic.
 
@@ -151,13 +157,18 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					};
 				}
 				upsertSession(payload.summary);
+				// The server resolves the working directory but no longer persists
+				// it — the client caches it on the card through its normal persist.
+				if (payload.summary.workspacePath) {
+					onWorkingDirectoryResolved?.(task.id, payload.summary.workspacePath);
+				}
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return { ok: false, message };
 			}
 		},
-		[currentProjectId, upsertSession],
+		[currentProjectId, onWorkingDirectoryResolved, upsertSession],
 	);
 
 	const stopTaskSession = useCallback(

@@ -12,6 +12,7 @@ import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
+import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
@@ -41,6 +42,7 @@ import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
+import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
@@ -51,7 +53,7 @@ import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
-import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { getDetailTerminalTaskId, useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useTitleActions } from "@/hooks/use-title-actions";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
@@ -62,12 +64,15 @@ import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { findCardSelection } from "@/state/board-state";
+import { findCardSelection, reconcileTaskWorkingDirectory } from "@/state/board-state";
 import {
-	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
+	getWorkspacePath,
 	replaceWorkspaceMetadata,
 	resetWorkspaceMetadataStore,
+	subscribeToAnyTaskMetadata,
+	useTaskWorkspaceInfoValue,
+	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
@@ -186,6 +191,12 @@ export default function App(): ReactElement {
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
+		onWorkingDirectoryResolved: (taskId, workingDirectory) => {
+			setBoard((current) => {
+				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, workspacePath);
+				return result.updated ? result.board : current;
+			});
+		},
 	});
 
 	const selectedCard = useMemo(() => {
@@ -194,6 +205,11 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+
+	// Reactive subscriptions — re-render when the metadata store updates for the selected task.
+	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+
 	const {
 		workspacePath,
 		workspaceGit,
@@ -215,9 +231,35 @@ export default function App(): ReactElement {
 		setCanPersistWorkspaceState,
 	});
 
+	// Ref so hooks declared before useWorkspaceSync can call refreshWorkspaceState.
+	const refreshWorkspaceStateRef = useRef<(() => Promise<void>) | null>(null);
+	refreshWorkspaceStateRef.current = refreshWorkspaceState;
+
 	useEffect(() => {
 		replaceWorkspaceMetadata(workspaceMetadata);
 	}, [workspaceMetadata]);
+
+	// Self-heal card.workingDirectory when metadata monitor reports a different
+	// path than what the card has persisted. This catches drift after migration,
+	// manual worktree changes, or any server-side CWD resolution that the UI
+	// missed.
+	useEffect(() => {
+		return subscribeToAnyTaskMetadata((taskId) => {
+			const snapshot = getTaskWorkspaceSnapshot(taskId);
+			if (!snapshot?.path) {
+				return;
+			}
+			setBoard((currentBoard) => {
+				const { board: updatedBoard, updated } = reconcileTaskWorkingDirectory(
+					currentBoard,
+					taskId,
+					snapshot.path,
+					getWorkspacePath(),
+				);
+				return updated ? updatedBoard : currentBoard;
+			});
+		});
+	}, [setBoard]);
 
 	useEffect(() => {
 		if (!isProjectSwitching) {
@@ -422,12 +464,17 @@ export default function App(): ReactElement {
 			await saveWorkspaceState(input.workspaceId, input.payload),
 		[],
 	);
+	const serverMutationInFlightRef = useRef(false);
 	const handleWorkspaceStateConflict = useCallback(() => {
+		// Suppress the conflict toast when a server-side mutation (e.g. migration)
+		// is in flight — the state change was triggered by the user and will sync.
+		if (serverMutationInFlightRef.current) return;
 		showAppToast(
 			{
 				intent: "warning",
 				icon: "warning-sign",
-				message: "Workspace changed elsewhere. Synced latest state. Retry your last edit if needed.",
+				message:
+					"Workspace changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
 				timeout: 5000,
 			},
 			"workspace-state-conflict",
@@ -594,6 +641,28 @@ export default function App(): ReactElement {
 
 	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({ currentProjectId });
 
+	const { migrate: migrateWorkingDirectory, migratingTaskId } = useMigrateWorkingDirectory(currentProjectId);
+	const [pendingMigrate, setPendingMigrate] = useState<{
+		taskId: string;
+		direction: MigrateDirection;
+	} | null>(null);
+	const handleMigrateWorkingDirectory = useCallback((taskId: string, direction: "isolate" | "de-isolate") => {
+		setPendingMigrate({ taskId, direction });
+	}, []);
+	const handleConfirmMigrate = useCallback(() => {
+		if (pendingMigrate) {
+			serverMutationInFlightRef.current = true;
+			void migrateWorkingDirectory(pendingMigrate.taskId, pendingMigrate.direction).finally(() => {
+				serverMutationInFlightRef.current = false;
+				// Stop any open detail shell for this task so the next open
+				// spawns in the new working directory.
+				void stopTaskSession(getDetailTerminalTaskId(pendingMigrate.taskId));
+				void refreshWorkspaceState();
+			});
+			setPendingMigrate(null);
+		}
+	}, [pendingMigrate, migrateWorkingDirectory, refreshWorkspaceState, stopTaskSession]);
+
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
@@ -627,16 +696,7 @@ export default function App(): ReactElement {
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
-	const detailTerminalSubtitle = useMemo(() => {
-		if (!selectedCard) {
-			return null;
-		}
-		return (
-			getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
-			getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
-			null
-		);
-	}, [selectedCard]);
+	const detailTerminalSubtitle = selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? null;
 
 	const runtimeHint = useMemo(() => {
 		return getTaskAgentNavbarHint(runtimeProjectConfig, {
@@ -645,10 +705,7 @@ export default function App(): ReactElement {
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
 	const activeWorkspacePath = selectedCard
-		? (getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
-			getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
-			workspacePath ??
-			undefined)
+		? (selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? workspacePath ?? undefined)
 		: shouldUseNavigationPath
 			? (navigationProjectPath ?? undefined)
 			: (workspacePath ?? undefined);
@@ -657,15 +714,14 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return undefined;
 		}
-		const activeSelectedTaskWorkspaceInfo = getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef);
-		if (!activeSelectedTaskWorkspaceInfo) {
+		if (!selectedTaskWorkspaceInfo) {
 			return undefined;
 		}
-		if (!activeSelectedTaskWorkspaceInfo.exists) {
-			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
+		if (!selectedTaskWorkspaceInfo.exists) {
+			return selectedCard.column.id === "trash" ? "Task workspace deleted" : "Task workspace not created yet";
 		}
 		return undefined;
-	}, [selectedCard]);
+	}, [selectedCard, selectedTaskWorkspaceInfo]);
 
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
@@ -850,7 +906,6 @@ export default function App(): ReactElement {
 											<KanbanBoard
 												data={board}
 												taskSessions={sessions}
-												workspacePath={workspacePath}
 												onCardSelect={handleCardSelect}
 												onCreateTask={handleOpenCreateTask}
 												onStartTask={handleStartTaskFromBoard}
@@ -869,6 +924,8 @@ export default function App(): ReactElement {
 												moveToTrashLoadingById={moveToTrashLoadingById}
 												onMoveToTrashTask={handleMoveReviewCardToTrash}
 												onRestoreFromTrashTask={handleRestoreTaskFromTrash}
+												onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
+												migratingTaskId={migratingTaskId}
 												dependencies={board.dependencies}
 												onCreateDependency={handleCreateDependency}
 												onDeleteDependency={handleDeleteDependency}
@@ -927,7 +984,6 @@ export default function App(): ReactElement {
 								<CardDetailView
 									selection={selectedCard}
 									currentProjectId={currentProjectId}
-									workspacePath={workspacePath}
 									sessionSummary={detailSession}
 									taskSessions={sessions}
 									onSessionSummary={upsertSession}
@@ -951,6 +1007,8 @@ export default function App(): ReactElement {
 									agentCommitTaskLoadingById={agentCommitTaskLoadingById}
 									agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 									moveToTrashLoadingById={moveToTrashLoadingById}
+									onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
+									migratingTaskId={migratingTaskId}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
@@ -1043,6 +1101,13 @@ export default function App(): ReactElement {
 					onCancel={() => setIsClearTrashDialogOpen(false)}
 					onConfirm={handleConfirmClearTrash}
 				/>
+				<MigrateWorkingDirectoryDialog
+					open={pendingMigrate !== null}
+					direction={pendingMigrate?.direction ?? "isolate"}
+					isMigrating={migratingTaskId !== null}
+					onCancel={() => setPendingMigrate(null)}
+					onConfirm={handleConfirmMigrate}
+				/>
 				<StartupOnboardingDialog
 					open={isStartupOnboardingDialogOpen}
 					onClose={handleCloseStartupOnboardingDialog}
@@ -1068,7 +1133,7 @@ export default function App(): ReactElement {
 						<AlertDialogDescription asChild>
 							<div className="flex flex-col gap-3">
 								<p>
-									Kanban requires git to manage worktrees for tasks. This folder is not a git repository yet.
+									Kanban requires git to manage workspaces for tasks. This folder is not a git repository yet.
 								</p>
 								{pendingGitInitializationPath ? (
 									<p className="font-mono text-xs text-text-secondary break-all">

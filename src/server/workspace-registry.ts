@@ -129,6 +129,7 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 			continue;
 		}
 		for (const card of column.cards) {
+			// De-isolated tasks may still have an orphaned worktree on disk.
 			taskIds.add(card.id);
 		}
 	}

@@ -37,8 +37,9 @@ export function BoardColumn({
 	onDependencyPointerEnter,
 	dependencySourceTaskId,
 	dependencyTargetTaskId,
+	onMigrateWorkingDirectory,
+	migratingTaskId,
 	isDependencyLinking,
-	workspacePath,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -67,8 +68,9 @@ export function BoardColumn({
 	onDependencyPointerEnter?: (taskId: string) => void;
 	dependencySourceTaskId?: string | null;
 	dependencyTargetTaskId?: string | null;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	migratingTaskId?: string | null;
 	isDependencyLinking?: boolean;
-	workspacePath?: string | null;
 }): React.ReactElement {
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -191,8 +193,9 @@ export function BoardColumn({
 											onDependencyPointerEnter={onDependencyPointerEnter}
 											isDependencySource={dependencySourceTaskId === card.id}
 											isDependencyTarget={dependencyTargetTaskId === card.id}
+											onMigrateWorkingDirectory={onMigrateWorkingDirectory}
+											isMigrateLoading={migratingTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
-											workspacePath={workspacePath}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

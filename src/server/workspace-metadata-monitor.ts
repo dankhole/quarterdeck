@@ -5,13 +5,14 @@ import type {
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
 import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
-import { getTaskWorkspacePathInfo } from "../workspace/task-worktree";
+import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
 const WORKSPACE_METADATA_POLL_INTERVAL_MS = 1_000;
 
 interface TrackedTaskWorkspace {
 	taskId: string;
 	baseRef: string;
+	workingDirectory: string | null;
 }
 
 interface CachedHomeGitMetadata {
@@ -68,6 +69,7 @@ function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorkspace[] {
 			tracked.push({
 				taskId: card.id,
 				baseRef: card.baseRef,
+				workingDirectory: card.workingDirectory ?? null,
 			});
 		}
 	}
@@ -179,16 +181,29 @@ async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<Cache
 	}
 }
 
+async function resolveTaskPath(
+	workspacePath: string,
+	task: TrackedTaskWorkspace,
+): Promise<{ path: string; exists: boolean; baseRef: string }> {
+	// Use the card's workingDirectory if available (set at session start).
+	if (task.workingDirectory) {
+		const exists = await pathExists(task.workingDirectory);
+		return { path: task.workingDirectory, exists, baseRef: task.baseRef };
+	}
+	// Fallback for tasks started before workingDirectory was persisted.
+	return await getTaskWorkspacePathInfo({
+		cwd: workspacePath,
+		taskId: task.taskId,
+		baseRef: task.baseRef,
+	});
+}
+
 async function loadTaskWorkspaceMetadata(
 	workspacePath: string,
 	task: TrackedTaskWorkspace,
 	current: CachedTaskWorkspaceMetadata | null,
 ): Promise<CachedTaskWorkspaceMetadata | null> {
-	const pathInfo = await getTaskWorkspacePathInfo({
-		cwd: workspacePath,
-		taskId: task.taskId,
-		baseRef: task.baseRef,
-	});
+	const pathInfo = await resolveTaskPath(workspacePath, task);
 
 	if (!pathInfo.exists) {
 		if (

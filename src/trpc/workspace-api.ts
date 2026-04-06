@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import type {
 	RuntimeFileContentResponse,
@@ -17,7 +18,12 @@ import {
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
 import { findCardInBoard } from "../core/task-board-mutations";
-import { mutateWorkspaceState, saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
+import {
+	loadWorkspaceState,
+	mutateWorkspaceState,
+	saveWorkspaceState,
+	WorkspaceStateConflictError,
+} from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { generateTaskTitle } from "../title/title-generator";
 import {
@@ -33,7 +39,9 @@ import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
+	getTaskWorkingDirectory,
 	getTaskWorkspaceInfo,
+	pathExists,
 	resolveTaskCwd,
 } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -162,6 +170,37 @@ function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardRe
 	};
 }
 
+async function resolveTaskWorkingDirectory(
+	workspacePath: string,
+	taskScope: { taskId: string; baseRef: string },
+): Promise<string> {
+	const state = await loadWorkspaceState(workspacePath);
+	const persisted = getTaskWorkingDirectory(state.board, taskScope.taskId);
+	if (persisted && (await pathExists(persisted))) return resolve(persisted);
+
+	// Fallback for tasks started before workingDirectory was persisted.
+	try {
+		return resolve(
+			await resolveTaskCwd({
+				cwd: workspacePath,
+				taskId: taskScope.taskId,
+				baseRef: taskScope.baseRef,
+				ensure: false,
+			}),
+		);
+	} catch (error) {
+		// Legacy non-worktree tasks (useWorktree === false) have no persisted
+		// workingDirectory and no worktree on disk. They use the workspace path.
+		if (isMissingTaskWorktreeError(error)) {
+			const card = findCardInBoard(state.board, taskScope.taskId);
+			if (card && card.useWorktree === false) {
+				return resolve(workspacePath);
+			}
+		}
+		throw error;
+	}
+}
+
 function isMissingTaskWorktreeError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
 		return false;
@@ -176,12 +215,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
 				let summaryCwd = workspaceScope.workspacePath;
 				if (taskScope) {
-					summaryCwd = await resolveTaskCwd({
-						cwd: workspaceScope.workspacePath,
-						taskId: taskScope.taskId,
-						baseRef: taskScope.baseRef,
-						ensure: false,
-					});
+					summaryCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
 				}
 				const summary = await getGitSyncSummary(summaryCwd);
 				return {
@@ -204,6 +238,26 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		checkoutGitBranch: async (workspaceScope, input) => {
 			try {
+				// Block branch switch when an active task is running in the shared checkout.
+				const state = await loadWorkspaceState(workspaceScope.workspacePath);
+				const activeColumnIds = new Set(["in_progress", "review"]);
+				const hasSharedCheckoutTask = state.board.columns
+					.filter((col) => activeColumnIds.has(col.id))
+					.some((col) =>
+						col.cards.some((card) => {
+							const isSharedCheckout = card.workingDirectory
+								? resolve(card.workingDirectory) === resolve(workspaceScope.workspacePath)
+								: card.useWorktree === false;
+							return isSharedCheckout;
+						}),
+					);
+				if (hasSharedCheckoutTask) {
+					return createEmptyGitCheckoutErrorResponse(
+						new Error(
+							"Cannot switch branches while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+						),
+					);
+				}
 				const body = parseGitCheckoutRequest(input);
 				const response = await runGitCheckoutAction({
 					cwd: workspaceScope.workspacePath,
@@ -225,12 +279,13 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
 				let discardCwd = workspaceScope.workspacePath;
 				if (taskScope) {
-					discardCwd = await resolveTaskCwd({
-						cwd: workspaceScope.workspacePath,
-						taskId: taskScope.taskId,
-						baseRef: taskScope.baseRef,
-						ensure: false,
-					});
+					discardCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+					// Block discard for non-worktree tasks to avoid destroying shared checkout state.
+					if (resolve(discardCwd) === resolve(workspaceScope.workspacePath)) {
+						return createEmptyGitDiscardErrorResponse(
+							new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
+						);
+					}
 				}
 				const response = await discardGitChanges({
 					cwd: discardCwd,
@@ -250,17 +305,12 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {
-				taskCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: normalizedInput.taskId,
-					baseRef: normalizedInput.baseRef,
-					ensure: false,
-				});
+				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
 			} catch (error) {
-				if (!isMissingTaskWorktreeError(error)) {
-					throw error;
+				if (isMissingTaskWorktreeError(error)) {
+					return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
 				}
-				return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+				throw error;
 			}
 			if (normalizedInput.mode === "last_turn") {
 				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
@@ -297,10 +347,24 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		deleteWorktree: async (workspaceScope, input) => {
 			const body = parseWorktreeDeleteRequest(input);
-			return await deleteTaskWorktree({
+			const result = await deleteTaskWorktree({
 				repoPath: workspaceScope.workspacePath,
 				taskId: body.taskId,
 			});
+			// Clear the persisted workingDirectory so downstream code doesn't
+			// attempt to read a deleted directory.
+			if (result.ok) {
+				await mutateWorkspaceState(workspaceScope.workspacePath, (currentState) => {
+					const board = structuredClone(currentState.board);
+					const card = findCardInBoard(board, body.taskId);
+					if (card) {
+						card.workingDirectory = null;
+					}
+					return { board, value: null };
+				});
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+			}
+			return result;
 		},
 		loadTaskContext: async (workspaceScope, input) => {
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
@@ -323,12 +387,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {
-				taskCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: normalizedInput.taskId,
-					baseRef: normalizedInput.baseRef,
-					ensure: false,
-				});
+				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
 			} catch (error) {
 				if (!isMissingTaskWorktreeError(error)) {
 					throw error;
@@ -346,12 +405,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			}
 			let taskCwd: string;
 			try {
-				taskCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: normalizedInput.taskId,
-					baseRef: normalizedInput.baseRef,
-					ensure: false,
-				});
+				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
 			} catch (error) {
 				if (!isMissingTaskWorktreeError(error)) {
 					throw error;
@@ -441,12 +495,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
 			let logCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				logCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: taskScope.taskId,
-					baseRef: taskScope.baseRef,
-					ensure: false,
-				});
+				logCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
 			}
 			return await getGitLog({
 				cwd: logCwd,
@@ -460,12 +509,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input ?? null);
 			let refsCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				refsCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: taskScope.taskId,
-					baseRef: taskScope.baseRef,
-					ensure: false,
-				});
+				refsCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
 			}
 			return await getGitRefs(refsCwd);
 		},
@@ -473,12 +517,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
 			let diffCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				diffCwd = await resolveTaskCwd({
-					cwd: workspaceScope.workspacePath,
-					taskId: taskScope.taskId,
-					baseRef: taskScope.baseRef,
-					ensure: false,
-				});
+				diffCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
 			}
 			return await getCommitDiff({
 				cwd: diffCwd,

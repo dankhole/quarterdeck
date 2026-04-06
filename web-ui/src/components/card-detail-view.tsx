@@ -209,7 +209,6 @@ function FileBrowserToolbar({
 export function CardDetailView({
 	selection,
 	currentProjectId,
-	workspacePath,
 	sessionSummary,
 	taskSessions,
 	onSessionSummary,
@@ -236,6 +235,8 @@ export function CardDetailView({
 	agentCommitTaskLoadingById,
 	agentOpenPrTaskLoadingById,
 	moveToTrashLoadingById,
+	onMigrateWorkingDirectory,
+	migratingTaskId,
 	onAddReviewComments,
 	onSendReviewComments,
 	gitHistoryPanel,
@@ -258,7 +259,6 @@ export function CardDetailView({
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
-	workspacePath?: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -285,6 +285,8 @@ export function CardDetailView({
 	agentCommitTaskLoadingById?: Record<string, boolean>;
 	agentOpenPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	migratingTaskId?: string | null;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	gitHistoryPanel?: ReactNode;
@@ -636,7 +638,6 @@ export function CardDetailView({
 						{activeDetailPanel === "kanban" ? (
 							<ColumnContextPanel
 								selection={selection}
-								workspacePath={workspacePath}
 								onCardSelect={onCardSelect}
 								taskSessions={taskSessions}
 								onTaskDragEnd={onTaskDragEnd}
@@ -656,6 +657,8 @@ export function CardDetailView({
 								commitTaskLoadingById={commitTaskLoadingById}
 								openPrTaskLoadingById={openPrTaskLoadingById}
 								moveToTrashLoadingById={moveToTrashLoadingById}
+								onMigrateWorkingDirectory={onMigrateWorkingDirectory}
+								migratingTaskId={migratingTaskId}
 								panelWidth="100%"
 							/>
 						) : activeDetailPanel === "changes" ? (

@@ -325,8 +325,8 @@ export function ProjectNavigationPanel({
 						<div className="flex flex-col gap-3">
 							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}</p>
 							<p className="text-text-primary">
-								This will delete all project tasks ({pendingProjectTaskCount}), remove task
-								workspaces/worktrees, and stop any running processes for this project.
+								This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces, and stop
+								any running processes for this project.
 							</p>
 							<p className="text-text-primary">This action cannot be undone.</p>
 						</div>

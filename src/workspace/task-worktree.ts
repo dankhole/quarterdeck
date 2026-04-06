@@ -2,10 +2,12 @@ import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/pr
 import { dirname, isAbsolute, join } from "node:path";
 
 import type {
+	RuntimeBoardData,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
+import { findCardInBoard } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
@@ -55,7 +57,7 @@ function toPlatformRelativePath(path: string): string {
 		.join("/");
 }
 
-async function pathExists(path: string): Promise<boolean> {
+export async function pathExists(path: string): Promise<boolean> {
 	try {
 		await access(path);
 		return true;
@@ -155,7 +157,7 @@ async function deleteTaskPatchFiles(taskId: string): Promise<void> {
 	await Promise.all(filenames.map((filename) => rm(join(patchesRootPath, filename), { force: true })));
 }
 
-async function findTaskPatch(taskId: string): Promise<{ path: string; commit: string } | null> {
+export async function findTaskPatch(taskId: string): Promise<{ path: string; commit: string } | null> {
 	const patchesRootPath = getTrashedTaskPatchesRootPath();
 	const filenames = await listTaskPatchFiles(taskId);
 	const filename = filenames.sort().at(-1);
@@ -187,7 +189,11 @@ async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 		.filter((path) => path.length > 0);
 }
 
-async function captureTaskPatch(options: { repoPath: string; taskId: string; worktreePath: string }): Promise<void> {
+export async function captureTaskPatch(options: {
+	repoPath: string;
+	taskId: string;
+	worktreePath: string;
+}): Promise<void> {
 	const headCommit = await getGitStdout(["rev-parse", "--verify", "HEAD"], options.worktreePath);
 
 	const trackedResult = await runGit(options.worktreePath, ["diff", "--binary", "HEAD", "--"], { trimStdout: false });
@@ -226,7 +232,7 @@ async function captureTaskPatch(options: { repoPath: string; taskId: string; wor
 	await lockedFileSystem.writeTextFileAtomic(patchPath, patchChunks.join(""));
 }
 
-async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
+export async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
 	await getGitStdout(["apply", "--binary", "--whitespace=nowarn", patchPath], worktreePath);
 }
 
@@ -629,6 +635,11 @@ export async function resolveTaskCwd(options: {
 		return worktreePath;
 	}
 	throw new Error(`Task worktree not found for task "${options.taskId}".`);
+}
+
+export function getTaskWorkingDirectory(board: RuntimeBoardData, taskId: string): string | null {
+	const card = findCardInBoard(board, taskId);
+	return card?.workingDirectory ?? null;
 }
 
 export async function getTaskWorkspacePathInfo(options: {

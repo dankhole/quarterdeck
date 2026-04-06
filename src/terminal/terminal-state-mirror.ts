@@ -20,6 +20,7 @@ export class TerminalStateMirror {
 	private readonly terminal: InstanceType<typeof Terminal>;
 	private readonly serializeAddon = new SerializeAddon();
 	private operationQueue: Promise<void> = Promise.resolve();
+	private disposed = false;
 
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
 		this.terminal = new Terminal({
@@ -35,6 +36,7 @@ export class TerminalStateMirror {
 	}
 
 	applyOutput(chunk: Buffer): void {
+		if (this.disposed) return;
 		const chunkCopy = new Uint8Array(chunk);
 		this.enqueueOperation(
 			() =>
@@ -47,6 +49,7 @@ export class TerminalStateMirror {
 	}
 
 	resize(cols: number, rows: number): void {
+		if (this.disposed) return;
 		if (cols === this.terminal.cols && rows === this.terminal.rows) {
 			return;
 		}
@@ -55,8 +58,11 @@ export class TerminalStateMirror {
 		});
 	}
 
-	async getSnapshot(): Promise<TerminalRestoreSnapshot> {
+	async getSnapshot(): Promise<TerminalRestoreSnapshot | null> {
 		await this.operationQueue;
+		if (this.disposed) {
+			return null;
+		}
 		return {
 			snapshot: this.serializeAddon.serialize(),
 			cols: this.terminal.cols,
@@ -65,6 +71,7 @@ export class TerminalStateMirror {
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		this.terminal.dispose();
 	}
 

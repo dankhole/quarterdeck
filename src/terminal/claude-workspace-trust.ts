@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { RuntimeAgentId } from "../core/api-contract";
 import { getTaskWorktreesHomePath } from "../state/workspace-state";
 
@@ -70,8 +71,23 @@ function isTaskWorktreePath(path: string): boolean {
 	return normalizedPath.startsWith(worktreesRoot);
 }
 
-export function shouldAutoConfirmClaudeWorkspaceTrust(agentId: RuntimeAgentId, cwd: string): boolean {
-	return agentId === "claude" && isTaskWorktreePath(cwd);
+export function shouldAutoConfirmClaudeWorkspaceTrust(
+	agentId: RuntimeAgentId,
+	cwd: string,
+	workspacePath?: string,
+): boolean {
+	if (agentId !== "claude") {
+		return false;
+	}
+	// Trust worktree paths under ~/.kanban/worktrees/.
+	if (isTaskWorktreePath(cwd)) {
+		return true;
+	}
+	// Trust the main checkout when the runtime explicitly assigned it as the task's CWD.
+	if (workspacePath && resolve(cwd) === resolve(workspacePath)) {
+		return true;
+	}
+	return false;
 }
 
 export function stopWorkspaceTrustTimers(state: { workspaceTrustConfirmTimer: NodeJS.Timeout | null }): void {

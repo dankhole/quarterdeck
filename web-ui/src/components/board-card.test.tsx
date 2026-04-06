@@ -29,6 +29,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 
 vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceSnapshotValue: () => mockWorkspaceSnapshot,
+	getWorkspacePath: () => "/mock/workspace",
 }));
 
 vi.mock("@/utils/task-prompt", async () => {

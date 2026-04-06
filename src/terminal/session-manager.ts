@@ -80,6 +80,7 @@ interface SessionEntry {
 	suppressAutoRestartOnExit: boolean;
 	autoRestartTimestamps: number[];
 	pendingAutoRestart: Promise<void> | null;
+	pendingExitResolvers: Array<() => void>;
 }
 
 export interface StartTaskSessionRequest {
@@ -97,6 +98,7 @@ export interface StartTaskSessionRequest {
 	rows?: number;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	workspacePath?: string;
 }
 
 export interface StartShellSessionRequest {
@@ -278,6 +280,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				suppressAutoRestartOnExit: false,
 				autoRestartTimestamps: [],
 				pendingAutoRestart: null,
+				pendingExitResolvers: [],
 			});
 		}
 	}
@@ -491,6 +494,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 						taskListener.onExit?.(event.exitCode);
 					}
 					currentEntry.active = null;
+					for (const resolve of currentEntry.pendingExitResolvers) {
+						resolve();
+					}
+					currentEntry.pendingExitResolvers = [];
 					this.emitSummary(summary);
 					if (shouldAutoRestart) {
 						this.scheduleAutoRestart(currentEntry);
@@ -533,7 +540,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const active: ActiveProcessState = {
 			session,
 			workspaceTrustBuffer:
-				shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd) ||
+				shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
 				shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
 				hasCodexLaunchSignature
 					? ""
@@ -992,6 +999,24 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(entry.summary);
 	}
 
+	/**
+	 * Stop a task session and wait for the process to fully exit before resolving.
+	 * Falls back to a timeout so callers are never blocked indefinitely.
+	 */
+	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 5_000): Promise<RuntimeTaskSessionSummary | null> {
+		const entry = this.entries.get(taskId);
+		if (!entry?.active) {
+			return entry ? cloneSummary(entry.summary) : null;
+		}
+		const exitPromise = new Promise<void>((resolve) => {
+			entry.pendingExitResolvers.push(resolve);
+		});
+		this.stopTaskSession(taskId);
+		const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+		await Promise.race([exitPromise, timeout]);
+		return entry ? cloneSummary(entry.summary) : null;
+	}
+
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
 		const activeEntries = Array.from(this.entries.values()).filter((entry) => entry.active != null);
 		for (const entry of activeEntries) {
@@ -1036,6 +1061,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			suppressAutoRestartOnExit: false,
 			autoRestartTimestamps: [],
 			pendingAutoRestart: null,
+			pendingExitResolvers: [],
 		};
 		this.entries.set(taskId, created);
 		return created;
@@ -1072,7 +1098,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		let pendingAutoRestart: Promise<void> | null = null;
 		pendingAutoRestart = (async () => {
 			try {
-				await this.startTaskSession(cloneStartTaskSessionRequest(restartRequest.request));
+				const request = cloneStartTaskSessionRequest(restartRequest.request);
+				// Don't carry resumeFromTrash into auto-restarts. If the original
+				// --continue attempt failed (e.g. "No conversation found"), retrying
+				// with --continue would just fail again. Start a fresh session instead.
+				request.resumeFromTrash = false;
+				await this.startTaskSession(request);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				const summary = updateSummary(entry, {

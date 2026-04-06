@@ -51,9 +51,10 @@ export function KanbanBoard({
 	dependencies,
 	onCreateDependency,
 	onDeleteDependency,
+	onMigrateWorkingDirectory,
+	migratingTaskId,
 	onDragEnd,
 	onRequestProgrammaticCardMoveReady,
-	workspacePath,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -78,9 +79,10 @@ export function KanbanBoard({
 	dependencies: BoardDependency[];
 	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
 	onDeleteDependency?: (dependencyId: string) => void;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	migratingTaskId?: string | null;
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
-	workspacePath?: string | null;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
 	const boardRef = useRef<HTMLElement>(null);
@@ -408,8 +410,9 @@ export function KanbanBoard({
 						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
 						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
+						onMigrateWorkingDirectory={onMigrateWorkingDirectory}
+						migratingTaskId={migratingTaskId}
 						isDependencyLinking={dependencyLinking.draft !== null}
-						workspacePath={workspacePath}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

@@ -124,6 +124,7 @@ export const runtimeBoardCardSchema = z.object({
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	useWorktree: z.boolean().optional(),
+	workingDirectory: z.string().min(1).nullable().optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
@@ -607,6 +608,21 @@ export const runtimeTaskSessionInputResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionInputResponseSchema>;
+
+export const runtimeMigrateTaskWorkingDirectoryRequestSchema = z.object({
+	taskId: z.string(),
+	direction: z.enum(["isolate", "de-isolate"]),
+});
+export type RuntimeMigrateTaskWorkingDirectoryRequest = z.infer<typeof runtimeMigrateTaskWorkingDirectoryRequestSchema>;
+
+export const runtimeMigrateTaskWorkingDirectoryResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+	newWorkingDirectory: z.string().optional(),
+});
+export type RuntimeMigrateTaskWorkingDirectoryResponse = z.infer<
+	typeof runtimeMigrateTaskWorkingDirectoryResponseSchema
+>;
 
 export const runtimeTaskChatMessageSchema = z.object({
 	id: z.string(),

@@ -9,7 +9,7 @@ import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
+import { getWorkspacePath, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
@@ -152,6 +152,8 @@ export function BoardCard({
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
+	onMigrateWorkingDirectory,
+	isMigrateLoading = false,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	isDependencySource = false,
@@ -175,12 +177,13 @@ export function BoardCard({
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
+	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
+	isMigrateLoading?: boolean;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
-	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -191,6 +194,27 @@ export function BoardCard({
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
+
+	// Derive shared-checkout state from metadata snapshot path when available,
+	// falling back to card.useWorktree for tasks that haven't started yet.
+	const isSharedCheckout = useMemo(() => {
+		const wsPath = getWorkspacePath();
+		if (reviewWorkspaceSnapshot?.path && wsPath) {
+			return reviewWorkspaceSnapshot.path === wsPath;
+		}
+		return card.useWorktree === false;
+	}, [reviewWorkspaceSnapshot?.path, card.useWorktree]);
+
+	// Warn when the agent session is running in a different directory than the
+	// card's working directory. This can happen after migration edge cases or
+	// if the persisted state drifts from reality.
+	// TODO: Add a force-restart button that calls startTaskSession to restart
+	// the agent at the correct CWD. Currently no explicit restart UI exists.
+	const isCwdDiverged = useMemo(() => {
+		if (!sessionSummary?.workspacePath || !reviewWorkspaceSnapshot?.path) return false;
+		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
+		return sessionSummary.workspacePath !== reviewWorkspaceSnapshot.path;
+	}, [sessionSummary?.workspacePath, sessionSummary?.state, reviewWorkspaceSnapshot?.path]);
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
@@ -312,11 +336,34 @@ export function BoardCard({
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
-								{card.useWorktree === false ? (
-									<Tooltip content="Running without isolated worktree">
+								{isSharedCheckout ? (
+									<Tooltip content="Running in shared checkout (not isolated)">
 										<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
-											No WT
+											Shared
 										</span>
+									</Tooltip>
+								) : null}
+								{isCwdDiverged ? (
+									<Tooltip content="Agent session is running in a different directory than expected. Restart the task to fix.">
+										<AlertCircle size={12} className="shrink-0 text-status-orange" />
+									</Tooltip>
+								) : null}
+								{onMigrateWorkingDirectory &&
+								(columnId === "in_progress" || columnId === "review") &&
+								isHovered ? (
+									<Tooltip content={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}>
+										<Button
+											icon={<GitBranch size={12} />}
+											variant="ghost"
+											size="sm"
+											disabled={isMigrateLoading}
+											aria-label={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onMigrateWorkingDirectory(card.id, isSharedCheckout ? "isolate" : "de-isolate");
+											}}
+										/>
 									</Tooltip>
 								) : null}
 								{isEditingTitle && onUpdateTitle ? (
@@ -389,7 +436,7 @@ export function BoardCard({
 											<>
 												Restore session
 												<br />
-												in new worktree
+												in new workspace
 											</>
 										}
 									>

@@ -204,7 +204,7 @@ export function TaskInlineCreateCard({
 				</label>
 
 				<div>
-					<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
+					<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 					<BranchSelectDropdown
 						id={branchSelectId}
 						options={branchOptions}
@@ -281,8 +281,8 @@ export function TaskInlineCreateCard({
 							<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
 								<AlertTriangle size={12} className="mt-0.5 shrink-0" />
 								<span>
-									Without a worktree, the task runs in your main checkout. Running multiple tasks at once may
-									cause file conflicts.
+									Without isolation, the task runs directly in your main checkout. Running multiple tasks at
+									once may cause file conflicts.
 								</span>
 							</div>
 						) : null}

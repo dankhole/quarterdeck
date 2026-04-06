@@ -108,6 +108,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		images?: unknown;
 		baseRef?: unknown;
 		useWorktree?: unknown;
+		workingDirectory?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
 	};
@@ -134,6 +135,12 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		images: normalizeTaskImages(card.images),
 		baseRef,
 		useWorktree: typeof card.useWorktree === "boolean" ? card.useWorktree : undefined,
+		workingDirectory:
+			typeof card.workingDirectory === "string"
+				? card.workingDirectory
+				: card.workingDirectory === null
+					? null
+					: undefined,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};
@@ -502,6 +509,40 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		baseRef: selection.card.baseRef,
 		useWorktree: selection.card.useWorktree,
 	});
+}
+
+export function reconcileTaskWorkingDirectory(
+	board: BoardData,
+	taskId: string,
+	metadataPath: string,
+	workspacePath: string | null,
+): { board: BoardData; updated: boolean } {
+	let updated = false;
+	const isWorktree = workspacePath ? metadataPath !== workspacePath : undefined;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== taskId) {
+				return card;
+			}
+			if (card.workingDirectory === metadataPath && (isWorktree === undefined || card.useWorktree === isWorktree)) {
+				return card;
+			}
+			columnUpdated = true;
+			updated = true;
+			return {
+				...card,
+				workingDirectory: metadataPath,
+				useWorktree: isWorktree ?? card.useWorktree,
+				updatedAt: Date.now(),
+			};
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+	if (!updated) {
+		return { board, updated: false };
+	}
+	return { board: withUpdatedColumns(board, columns), updated: true };
 }
 
 export function removeTask(board: BoardData, taskId: string): { board: BoardData; removed: boolean } {

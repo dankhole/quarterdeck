@@ -46,6 +46,7 @@ export interface BoardCard {
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
+	workingDirectory?: string | null;
 	createdAt: number;
 	updatedAt: number;
 }

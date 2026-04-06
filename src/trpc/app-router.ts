@@ -27,6 +27,8 @@ import type {
 	RuntimeHookIngestResponse,
 	RuntimeListFilesRequest,
 	RuntimeListFilesResponse,
+	RuntimeMigrateTaskWorkingDirectoryRequest,
+	RuntimeMigrateTaskWorkingDirectoryResponse,
 	RuntimeOpenFileRequest,
 	RuntimeOpenFileResponse,
 	RuntimeProjectAddRequest,
@@ -80,6 +82,8 @@ import {
 	runtimeHookIngestResponseSchema,
 	runtimeListFilesRequestSchema,
 	runtimeListFilesResponseSchema,
+	runtimeMigrateTaskWorkingDirectoryRequestSchema,
+	runtimeMigrateTaskWorkingDirectoryResponseSchema,
 	runtimeOpenFileRequestSchema,
 	runtimeOpenFileResponseSchema,
 	runtimeProjectAddRequestSchema,
@@ -150,6 +154,10 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeCommandRunResponse>;
 		resetAllState: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeDebugResetAllStateResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
+		migrateTaskWorkingDirectory: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeMigrateTaskWorkingDirectoryRequest,
+		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -333,6 +341,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeOpenFileResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.openFile(input);
+			}),
+		migrateTaskWorkingDirectory: workspaceProcedure
+			.input(runtimeMigrateTaskWorkingDirectoryRequestSchema)
+			.output(runtimeMigrateTaskWorkingDirectoryResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.migrateTaskWorkingDirectory(ctx.workspaceScope, input);
 			}),
 	}),
 	workspace: t.router({

@@ -11,6 +11,7 @@ import type {
 } from "@/runtime/types";
 import { fetchWorkspaceState } from "@/runtime/workspace-state-query";
 import { normalizeBoardData } from "@/state/board-state";
+import { setWorkspacePath as setStoreWorkspacePath } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
 
 interface UseWorkspaceSyncInput {
@@ -89,6 +90,7 @@ export function useWorkspaceSync({
 			if (!nextWorkspaceState) {
 				setCanPersistWorkspaceState(false);
 				setWorkspacePath(null);
+				setStoreWorkspacePath(null);
 				setWorkspaceGit(null);
 				setAppliedWorkspaceProjectId(null);
 				setBoard(createInitialBoardData());
@@ -107,6 +109,7 @@ export function useWorkspaceSync({
 				return;
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
+			setStoreWorkspacePath(nextWorkspaceState.repoPath);
 			setWorkspaceGit(nextWorkspaceState.git);
 			setSessions((currentSessions) => {
 				const incomingSessions = nextWorkspaceState.sessions ?? {};
