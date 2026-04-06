@@ -596,31 +596,25 @@ export default function App(): ReactElement {
 			if (!currentProjectId) {
 				return;
 			}
-			const session = sessions[taskId];
-			if (session?.state === "running") {
-				// Agent is busy — inject a title prompt into the session (like commit does)
-				const prompt =
-					"Summarize this task in 2-4 words. Reply with ONLY the title text, nothing else. No quotes, no punctuation.";
-				void (async () => {
-					const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
-					if (!typed.ok) {
-						showAppToast({ message: "Could not send title prompt to agent", intent: "danger" });
-						return;
-					}
-					await new Promise<void>((resolve) => {
-						window.setTimeout(resolve, 200);
-					});
-					await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-				})();
-			} else {
-				// Agent idle — use server-side Bedrock call
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
-					showAppToast({ message: "Could not regenerate title", intent: "danger" });
-				});
-			}
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
+				showAppToast({ message: "Could not regenerate title", intent: "danger" });
+			});
 		},
-		[currentProjectId, sessions, sendTaskSessionInput],
+		[currentProjectId],
+	);
+
+	const handleUpdateTaskTitle = useCallback(
+		(taskId: string, title: string) => {
+			if (!currentProjectId) {
+				return;
+			}
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			void trpcClient.workspace.updateTaskTitle.mutate({ taskId, title }).catch(() => {
+				showAppToast({ message: "Could not update title", intent: "danger" });
+			});
+		},
+		[currentProjectId],
 	);
 
 	useAppHotkeys({
@@ -892,6 +886,7 @@ export default function App(): ReactElement {
 												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 												onRegenerateTitleTask={handleRegenerateTitleTask}
+												onUpdateTaskTitle={handleUpdateTaskTitle}
 												commitTaskLoadingById={commitTaskLoadingById}
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												moveToTrashLoadingById={moveToTrashLoadingById}
@@ -981,6 +976,8 @@ export default function App(): ReactElement {
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+									onRegenerateTitleTask={handleRegenerateTitleTask}
+									onUpdateTaskTitle={handleUpdateTaskTitle}
 									onAddReviewComments={(taskId: string, text: string) => {
 										void handleAddReviewComments(taskId, text);
 									}}

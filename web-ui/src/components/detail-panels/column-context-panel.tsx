@@ -27,6 +27,8 @@ function ColumnSection({
 	onOpenPrTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
+	onRegenerateTitleTask,
+	onUpdateTaskTitle,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
@@ -49,6 +51,8 @@ function ColumnSection({
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
+	onRegenerateTitleTask?: (taskId: string) => void;
+	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -194,6 +198,8 @@ function ColumnSection({
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
+												onRegenerateTitle={onRegenerateTitleTask}
+												onUpdateTitle={onUpdateTaskTitle}
 												workspacePath={workspacePath}
 												onClick={() => {
 													if (column.id === "backlog") {
@@ -238,6 +244,8 @@ export function ColumnContextPanel({
 	onOpenPrTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
+	onRegenerateTitleTask,
+	onUpdateTaskTitle,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
@@ -259,6 +267,8 @@ export function ColumnContextPanel({
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
+	onRegenerateTitleTask?: (taskId: string) => void;
+	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -347,6 +357,8 @@ export function ColumnContextPanel({
 							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
+							onRegenerateTitleTask={onRegenerateTitleTask}
+							onUpdateTaskTitle={onUpdateTaskTitle}
 							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}

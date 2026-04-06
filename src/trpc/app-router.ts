@@ -450,6 +450,25 @@ export const runtimeAppRouter = t.router({
 				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
 				return { ok: true, title };
 			}),
+		updateTaskTitle: workspaceProcedure
+			.input(z.object({ taskId: z.string(), title: z.string() }))
+			.output(z.object({ ok: z.boolean() }))
+			.mutation(async ({ ctx, input }) => {
+				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
+					const board = structuredClone(currentState.board);
+					for (const col of board.columns) {
+						const target = col.cards.find((c) => c.id === input.taskId);
+						if (target) {
+							target.title = input.title;
+							target.updatedAt = Date.now();
+							break;
+						}
+					}
+					return { board, value: null };
+				});
+				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				return { ok: true };
+			}),
 	}),
 	projects: t.router({
 		list: t.procedure.output(runtimeProjectsResponseSchema).query(async ({ ctx }) => {
