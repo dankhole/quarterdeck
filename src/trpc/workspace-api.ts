@@ -340,9 +340,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 				// Fire-and-forget: generate titles for any new cards that have title === null.
 				// Cap concurrency to avoid flooding the LLM proxy when many cards are created at once.
-				const untitledCards = input.board.columns.flatMap((col) =>
-					col.cards.filter((card) => card.title === null || card.title === undefined),
-				);
+				const untitledCards = input.board.columns.flatMap((col) => col.cards.filter((card) => card.title === null));
 				const generateTitle = async (card: (typeof untitledCards)[number]) => {
 					const title = await generateTaskTitle(card.prompt);
 					if (!title) {

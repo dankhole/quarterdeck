@@ -403,12 +403,10 @@ export function BoardCard({
 														stopEvent(event);
 														// Flag so the input's onBlur skips the save — we're about to regenerate.
 														isClickingGenerateRef.current = true;
-														requestAnimationFrame(() => {
-															isClickingGenerateRef.current = false;
-														});
 													}}
 													onClick={(event) => {
 														stopEvent(event);
+														isClickingGenerateRef.current = false;
 														setIsRegeneratingTitle(true);
 														setIsEditingTitle(false);
 														onRegenerateTitle(card.id);
