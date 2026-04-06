@@ -336,32 +336,41 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
 				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
 
-				// Fire-and-forget: generate titles for any new cards that have title === null
+				// Fire-and-forget: generate titles for any new cards that have title === null.
+				// Cap concurrency to avoid flooding the LLM proxy when many cards are created at once.
 				const untitledCards = input.board.columns.flatMap((col) =>
 					col.cards.filter((card) => card.title === null || card.title === undefined),
 				);
-				for (const card of untitledCards) {
-					void generateTaskTitle(card.prompt).then(async (title) => {
-						if (!title) {
-							return;
-						}
-						await mutateWorkspaceState(workspaceScope.workspacePath, (state) => {
-							const board = structuredClone(state.board);
-							for (const col of board.columns) {
-								const target = col.cards.find((c) => c.id === card.id);
-								if (target && target.title === null) {
-									target.title = title;
-									target.updatedAt = Date.now();
-									break;
-								}
+				const MAX_CONCURRENT_TITLE_REQUESTS = 3;
+				const generateTitle = async (card: (typeof untitledCards)[number]) => {
+					const title = await generateTaskTitle(card.prompt);
+					if (!title) {
+						return;
+					}
+					await mutateWorkspaceState(workspaceScope.workspacePath, (state) => {
+						const board = structuredClone(state.board);
+						for (const col of board.columns) {
+							const target = col.cards.find((c) => c.id === card.id);
+							if (target && target.title === null) {
+								target.title = title;
+								target.updatedAt = Date.now();
+								break;
 							}
-							return { board, value: null };
-						});
-						void deps.broadcastRuntimeWorkspaceStateUpdated(
-							workspaceScope.workspaceId,
-							workspaceScope.workspacePath,
-						);
+						}
+						return { board, value: null };
 					});
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				};
+				if (untitledCards.length > 0) {
+					void (async () => {
+						for (let i = 0; i < untitledCards.length; i += MAX_CONCURRENT_TITLE_REQUESTS) {
+							const batch = untitledCards.slice(i, i + MAX_CONCURRENT_TITLE_REQUESTS);
+							await Promise.allSettled(batch.map(generateTitle));
+						}
+					})();
 				}
 
 				return response;

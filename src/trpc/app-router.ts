@@ -413,6 +413,8 @@ export const runtimeAppRouter = t.router({
 			.input(z.object({ taskId: z.string() }))
 			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
 			.mutation(async ({ ctx, input }) => {
+				// Read state to extract the prompt before the LLM call. mutateWorkspaceState
+				// below loads state again for the atomic update — the double-read is intentional.
 				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
 				let prompt: string | null = null;
 				let finalMessage: string | null = null;
@@ -451,7 +453,7 @@ export const runtimeAppRouter = t.router({
 				return { ok: true, title };
 			}),
 		updateTaskTitle: workspaceProcedure
-			.input(z.object({ taskId: z.string(), title: z.string() }))
+			.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
 			.output(z.object({ ok: z.boolean() }))
 			.mutation(async ({ ctx, input }) => {
 				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
