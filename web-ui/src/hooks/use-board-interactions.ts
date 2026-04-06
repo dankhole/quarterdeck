@@ -810,6 +810,7 @@ export function useBoardInteractions({
 					autoReviewEnabled: false,
 					autoReviewMode: resolveTaskAutoReviewMode(selection.card.autoReviewMode),
 					baseRef: selection.card.baseRef,
+					useWorktree: selection.card.useWorktree,
 				});
 				return updated.updated ? updated.board : currentBoard;
 			});

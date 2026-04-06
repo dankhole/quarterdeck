@@ -39,7 +39,7 @@ import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { createTaskBranch, resolveTaskCwd } from "../workspace/task-worktree";
+import { resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
@@ -168,17 +168,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					});
 				} else {
 					taskCwd = workspaceScope.workspacePath;
-				}
-				// Create feature branch after workspace is resolved (first start only).
-				if (body.branchName && !body.resumeFromTrash && !isHomeSession) {
-					const branchResult = await createTaskBranch({
-						cwd: taskCwd,
-						branchName: body.branchName,
-					});
-					// Branch may already exist from a previous start — not fatal.
-					if (!branchResult.ok && branchResult.error && !branchResult.error.includes("already exists")) {
-						return { ok: false, summary: null, error: `Failed to create branch: ${branchResult.error}` };
-					}
 				}
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeSession;
 

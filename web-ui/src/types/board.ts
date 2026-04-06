@@ -45,7 +45,6 @@ export interface BoardCard {
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
-	branchName?: string;
 	createdAt: number;
 	updatedAt: number;
 }

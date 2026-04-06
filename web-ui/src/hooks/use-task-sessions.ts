@@ -162,7 +162,6 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					resumeFromTrash: options?.resumeFromTrash,
 					baseRef: task.baseRef,
 					useWorktree: task.useWorktree,
-					branchName: task.branchName,
 					cols: geometry.cols,
 					rows: geometry.rows,
 				});

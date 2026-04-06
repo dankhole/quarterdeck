@@ -60,7 +60,7 @@ const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, com
 
 First, check your current git state: run \`git status\` and \`git branch --show-current\`.
 
-- If you are on a branch (not detached HEAD), stage and commit your changes directly on that branch. If the branch is not {{base_ref}}, cherry-pick or merge the commit onto {{base_ref}} using the worktree steps below.
+- If you are on a branch (not detached HEAD), stage and commit your changes directly on that branch. If the branch is not {{base_ref}}, cherry-pick the commit onto {{base_ref}} using the worktree commit flow below.
 - If you are on a detached HEAD in a worktree, follow the full worktree commit flow below.
 
 - Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.

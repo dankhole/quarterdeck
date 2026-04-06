@@ -96,7 +96,6 @@ export const runtimeBoardCardSchema = z.object({
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	useWorktree: z.boolean().optional(),
-	branchName: z.string().optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
@@ -812,7 +811,6 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	resumeFromTrash: z.boolean().optional(),
 	baseRef: z.string(),
 	useWorktree: z.boolean().optional(),
-	branchName: z.string().optional(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 });

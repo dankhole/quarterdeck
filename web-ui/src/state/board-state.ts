@@ -25,7 +25,6 @@ export interface TaskDraft {
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
-	branchName?: string;
 }
 
 export interface TaskMoveEvent {
@@ -277,7 +276,6 @@ export function addTaskToColumnWithResult(
 			images: draft.images,
 			baseRef: draft.baseRef,
 			useWorktree: draft.useWorktree,
-			branchName: draft.branchName,
 		},
 		createBrowserUuid,
 	);
@@ -472,8 +470,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 							? draft.images.map((image) => ({ ...image }))
 							: undefined,
 				baseRef,
-				useWorktree: draft.useWorktree,
-				branchName: draft.branchName,
+				useWorktree: draft.useWorktree ?? card.useWorktree,
 				updatedAt: Date.now(),
 			};
 		});
@@ -499,6 +496,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
 		images: selection.card.images,
 		baseRef: selection.card.baseRef,
+		useWorktree: selection.card.useWorktree,
 	});
 }
 

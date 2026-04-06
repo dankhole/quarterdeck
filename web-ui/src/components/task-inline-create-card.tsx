@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
+import { AlertTriangle, ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
 import { type Dispatch, type ReactElement, type SetStateAction, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
@@ -57,10 +57,6 @@ export function TaskInlineCreateCard({
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
-	createFeatureBranch,
-	onCreateFeatureBranchChange,
-	branchName,
-	onBranchNameChange,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -85,10 +81,6 @@ export function TaskInlineCreateCard({
 	startInPlanModeDisabled?: boolean;
 	useWorktree?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
-	createFeatureBranch?: boolean;
-	onCreateFeatureBranchChange?: (value: boolean) => void;
-	branchName?: string;
-	onBranchNameChange?: (value: string) => void;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
@@ -100,7 +92,6 @@ export function TaskInlineCreateCard({
 	const promptId = `${idPrefix}-prompt-input`;
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const useWorktreeId = `${idPrefix}-use-worktree-toggle`;
-	const createFeatureBranchId = `${idPrefix}-create-feature-branch-toggle`;
 	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
@@ -226,58 +217,6 @@ export function TaskInlineCreateCard({
 					/>
 				</div>
 
-				{onUseWorktreeChange !== undefined ? (
-					<label
-						htmlFor={useWorktreeId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-					>
-						<RadixCheckbox.Root
-							id={useWorktreeId}
-							checked={useWorktree ?? true}
-							onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
-							disabled={!enabled}
-							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={10} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
-						<span>Use isolated worktree</span>
-					</label>
-				) : null}
-
-				{onCreateFeatureBranchChange !== undefined ? (
-					<div className="flex items-center gap-2">
-						<label
-							htmlFor={createFeatureBranchId}
-							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none shrink-0"
-						>
-							<RadixCheckbox.Root
-								id={createFeatureBranchId}
-								checked={createFeatureBranch ?? false}
-								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
-								disabled={!enabled}
-								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-							>
-								<RadixCheckbox.Indicator>
-									<Check size={10} className="text-white" />
-								</RadixCheckbox.Indicator>
-							</RadixCheckbox.Root>
-							<span>Feature branch</span>
-						</label>
-						{createFeatureBranch && onBranchNameChange ? (
-							<input
-								type="text"
-								value={branchName ?? ""}
-								onChange={(e) => onBranchNameChange(e.target.value)}
-								placeholder="Leave blank to use task ID"
-								disabled={!enabled}
-								className="flex-1 min-w-0 h-7 rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40"
-							/>
-						) : null}
-					</div>
-				) : null}
-
 				<div className="flex items-center gap-2 flex-wrap">
 					<label
 						htmlFor={autoReviewEnabledId}
@@ -319,6 +258,36 @@ export function TaskInlineCreateCard({
 						/>
 					</div>
 				</div>
+				{onUseWorktreeChange !== undefined ? (
+					<div>
+						<label
+							htmlFor={useWorktreeId}
+							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+						>
+							<RadixCheckbox.Root
+								id={useWorktreeId}
+								checked={useWorktree ?? true}
+								onCheckedChange={(checked) => onUseWorktreeChange(checked === true)}
+								disabled={!enabled}
+								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+							>
+								<RadixCheckbox.Indicator>
+									<Check size={10} className="text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							<span>Use isolated worktree</span>
+						</label>
+						{useWorktree === false ? (
+							<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
+								<AlertTriangle size={12} className="mt-0.5 shrink-0" />
+								<span>
+									Without a worktree, the task runs in your main checkout. Running multiple tasks at once may
+									cause file conflicts.
+								</span>
+							</div>
+						) : null}
+					</div>
+				) : null}
 			</div>
 
 			<div className={`flex gap-2 mt-3 ${mode === "edit" ? "justify-end" : "justify-between"}`}>
