@@ -29,7 +29,14 @@ import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
-const DIALOG_STYLE: CSSProperties = { minWidth: 400, minHeight: "30vh", width: "30vw", height: "52vh" };
+const DIALOG_STYLE: CSSProperties = {
+	minWidth: 400,
+	minHeight: "30vh",
+	width: "30vw",
+	maxWidth: "80vw",
+	height: "52vh",
+	maxHeight: "80vh",
+};
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
