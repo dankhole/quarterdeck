@@ -246,50 +246,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
 	});
 
-	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "droid",
-			binary: "droid",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
-
-		const settingsArgIndex = launch.args.indexOf("--settings");
-		expect(settingsArgIndex).toBeGreaterThanOrEqual(0);
-		const settingsPath = launch.args[settingsArgIndex + 1];
-		expect(settingsPath).toBeDefined();
-
-		const settings = JSON.parse(readFileSync(settingsPath ?? "", "utf8")) as {
-			autonomyMode?: string;
-			hooks?: Record<string, Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>>;
-		};
-		expect(settings.autonomyMode).toBe("auto-high");
-		expect(settings.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.Notification?.[0]?.hooks?.[0]?.command).toContain("activity");
-		expect(settings.hooks?.Notification?.[1]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
-		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
-		const preToolInProgressHook = settings.hooks?.PreToolUse?.find(
-			(hook) => hook.matcher === "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create",
-		);
-		expect(preToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
-		const preToolReviewHook = settings.hooks?.PreToolUse?.find((hook) => hook.matcher === "AskUser");
-		expect(preToolReviewHook?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("*");
-		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
-		const postToolInProgressHook = settings.hooks?.PostToolUse?.find((hook) => hook.matcher === "AskUser");
-		expect(postToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
-		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
-	});
-
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -401,20 +357,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(opencodeLaunch.args).toContain("--continue");
-
-		const droidLaunch = await prepareAgentLaunch({
-			taskId: "task-droid",
-			agentId: "droid",
-			binary: "droid",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeFromTrash: true,
-		});
-		expect(droidLaunch.args).toContain("--resume");
 	});
 
-	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
+	it("applies autonomous mode flags in adapters", async () => {
 		setupTempHome();
 
 		const claudeLaunch = await prepareAgentLaunch({

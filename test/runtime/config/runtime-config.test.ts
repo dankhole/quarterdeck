@@ -68,11 +68,9 @@ function writeFakeCommand(binDir: string, command: string): void {
 describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
-		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBe("droid");
-		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini"])).toBe("droid");
+		expect(pickBestInstalledAgentIdFromDetected(["opencode", "gemini"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected(["gemini", "opencode"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex"])).toBe("claude");
-		expect(pickBestInstalledAgentIdFromDetected(["claude", "droid"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["opencode"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});

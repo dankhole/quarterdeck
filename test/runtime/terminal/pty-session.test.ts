@@ -115,7 +115,7 @@ describe("PtySession", () => {
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
 		PtySession.spawn({
-			binary: "droid",
+			binary: "claude",
 			args: [],
 			cwd: "C:/repo",
 			cols: 120,
@@ -123,7 +123,7 @@ describe("PtySession", () => {
 		});
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
-		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toBe('/d /s /c "droid"');
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toBe('/d /s /c "claude"');
 	});
 
 	it("launches bare executables directly on Windows when PATH resolves to .exe", () => {
@@ -166,7 +166,7 @@ describe("PtySession", () => {
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
 		PtySession.spawn({
-			binary: "droid",
+			binary: "claude",
 			args: ["add comment to random file\nwith more context"],
 			cwd: "C:/repo",
 			cols: 120,
@@ -175,7 +175,7 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		const cmdArgs = ptyMocks.spawn.mock.calls[0]?.[1] as string;
-		expect(cmdArgs).toContain("droid");
+		expect(cmdArgs).toContain("claude");
 		expect(cmdArgs).toContain("add^");
 		expect(cmdArgs).toContain("comment^");
 		expect(cmdArgs).toContain("random^");
