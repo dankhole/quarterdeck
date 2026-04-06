@@ -21,6 +21,7 @@ function createBoard(taskId: string): BoardData {
 				cards: [
 					{
 						id: taskId,
+						title: null,
 						prompt: `Prompt ${taskId}`,
 						startInPlanMode: false,
 						autoReviewEnabled: false,

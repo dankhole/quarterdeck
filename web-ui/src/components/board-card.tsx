@@ -3,44 +3,24 @@ import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
-import { useMeasure } from "@/utils/react-use";
-import {
-	clampTextWithInlineSuffix,
-	splitPromptToTitleDescriptionByWidth,
-	truncateTaskPromptLabel,
-} from "@/utils/task-prompt";
-import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
-
-interface CardSessionActivity {
-	dotColor: string;
-	text: string;
-}
+import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
+import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 const SESSION_ACTIVITY_COLOR = {
-	thinking: "var(--color-status-blue)",
-	success: "var(--color-status-green)",
-	waiting: "var(--color-status-gold)",
-	error: "var(--color-status-red)",
 	muted: "var(--color-text-tertiary)",
 	secondary: "var(--color-text-secondary)",
 } as const;
-
-const DESCRIPTION_COLLAPSE_LINES = 3;
-const SESSION_PREVIEW_COLLAPSE_LINES = 6;
-const DESCRIPTION_EXPAND_LABEL = "See more";
-const DESCRIPTION_COLLAPSE_LABEL = "Less";
-const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
 
 function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
 	if (!workspacePath) {
@@ -121,101 +101,30 @@ function resolveToolCallLabel(
 	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
 }
 
-function getReviewReasonDotColor(reviewReason: RuntimeTaskSessionReviewReason): string {
-	switch (reviewReason) {
-		case "exit":
-			return SESSION_ACTIVITY_COLOR.success;
-		case "hook":
-		case "attention":
-			return SESSION_ACTIVITY_COLOR.waiting;
-		case "error":
-			return SESSION_ACTIVITY_COLOR.error;
-		case "interrupted":
-			return SESSION_ACTIVITY_COLOR.muted;
-		default:
-			return SESSION_ACTIVITY_COLOR.success;
-	}
-}
-
-function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
-	if (!summary) {
+/** Short activity label for running cards (e.g. "Reading src/auth.ts"). */
+function getRunningActivityLabel(summary: RuntimeTaskSessionSummary | undefined): string | null {
+	if (!summary || summary.state !== "running") {
 		return null;
 	}
 	const hookActivity = summary.latestHookActivity;
-	const activityText = hookActivity?.activityText?.trim();
-	const toolName = hookActivity?.toolName?.trim() ?? null;
-	const toolInputSummary = hookActivity?.toolInputSummary?.trim() ?? null;
-	const finalMessage = hookActivity?.finalMessage?.trim();
-	const hookEventName = hookActivity?.hookEventName?.trim() ?? null;
-	if (summary.state === "awaiting_review" && finalMessage) {
-		return { dotColor: getReviewReasonDotColor(summary.reviewReason), text: finalMessage };
+	if (!hookActivity) {
+		return null;
 	}
-	if (
-		finalMessage &&
-		!toolName &&
-		(hookEventName === "assistant_delta" || hookEventName === "agent_end" || hookEventName === "turn_start")
-	) {
-		return {
-			dotColor: summary.state === "running" ? SESSION_ACTIVITY_COLOR.thinking : SESSION_ACTIVITY_COLOR.success,
-			text: finalMessage,
-		};
-	}
+	const activityText = hookActivity.activityText?.trim();
+	const toolName = hookActivity.toolName?.trim() ?? null;
+	const toolInputSummary = hookActivity.toolInputSummary?.trim() ?? null;
 	if (activityText) {
-		let dotColor: string =
-			summary.state === "failed"
-				? SESSION_ACTIVITY_COLOR.error
-				: summary.state === "awaiting_review"
-					? getReviewReasonDotColor(summary.reviewReason)
-					: SESSION_ACTIVITY_COLOR.thinking;
-		let text = activityText;
 		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
 		if (toolCallLabel) {
-			if (text.startsWith("Failed ")) {
-				dotColor = SESSION_ACTIVITY_COLOR.error;
-			}
-			return {
-				dotColor,
-				text: toolCallLabel,
-			};
+			return toolCallLabel;
 		}
-		if (text.startsWith("Final: ")) {
-			dotColor = SESSION_ACTIVITY_COLOR.success;
-			text = text.slice(7);
-		} else if (text.startsWith("Agent: ")) {
-			text = text.slice(7);
-		} else if (text.startsWith("Waiting for approval")) {
-			dotColor = SESSION_ACTIVITY_COLOR.waiting;
-		} else if (text.startsWith("Waiting for review")) {
-			dotColor = SESSION_ACTIVITY_COLOR.success;
-		} else if (text.startsWith("Failed ")) {
-			dotColor = SESSION_ACTIVITY_COLOR.error;
-		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
-			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
+		if (activityText === "Agent active" || activityText === "Working on task" || activityText.startsWith("Resumed")) {
+			return null;
 		}
-		return { dotColor, text };
-	}
-	if (summary.state === "failed") {
-		const failedText = finalMessage ?? activityText ?? "Task failed to start";
-		return { dotColor: SESSION_ACTIVITY_COLOR.error, text: failedText };
-	}
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "exit":
-				return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Completed — ready for review" };
-			case "hook":
-				return { dotColor: SESSION_ACTIVITY_COLOR.waiting, text: "Waiting for approval" };
-			case "attention":
-				return { dotColor: SESSION_ACTIVITY_COLOR.waiting, text: "Needs attention" };
-			case "error":
-				return { dotColor: SESSION_ACTIVITY_COLOR.error, text: "Agent error — check terminal" };
-			case "interrupted":
-				return { dotColor: SESSION_ACTIVITY_COLOR.muted, text: "Interrupted" };
-			default:
-				return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
+		if (activityText.startsWith("Agent: ")) {
+			return activityText.slice(7);
 		}
-	}
-	if (summary.state === "running") {
-		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
+		return activityText;
 	}
 	return null;
 }
@@ -266,163 +175,20 @@ export function BoardCard({
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
-	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
-	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
-	const [sessionPreviewContainerRef, sessionPreviewRect] = useMeasure<HTMLDivElement>();
-	const titleRef = useRef<HTMLParagraphElement | null>(null);
-	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
-	const sessionPreviewRef = useRef<HTMLParagraphElement | null>(null);
-	const [titleWidthFallback, setTitleWidthFallback] = useState(0);
-	const [descriptionWidthFallback, setDescriptionWidthFallback] = useState(0);
-	const [sessionPreviewWidthFallback, setSessionPreviewWidthFallback] = useState(0);
-	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
-	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
-	const [sessionPreviewFont, setSessionPreviewFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
-	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-	const [isSessionPreviewExpanded, setIsSessionPreviewExpanded] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
-	const titleWidth = titleRect.width > 0 ? titleRect.width : titleWidthFallback;
-	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
-	const sessionPreviewWidth = sessionPreviewRect.width > 0 ? sessionPreviewRect.width : sessionPreviewWidthFallback;
-	const displayPrompt = useMemo(() => {
-		return card.prompt.trim();
-	}, [card.prompt]);
-	const rawSessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
-	const lastSessionActivityRef = useRef<CardSessionActivity | null>(null);
-	const lastSessionActivityCardIdRef = useRef<string | null>(null);
-	if (lastSessionActivityCardIdRef.current !== card.id) {
-		lastSessionActivityCardIdRef.current = card.id;
-		lastSessionActivityRef.current = null;
-	}
-	if (rawSessionActivity) {
-		lastSessionActivityRef.current = rawSessionActivity;
-	}
-	const sessionActivity = rawSessionActivity ?? lastSessionActivityRef.current;
-	const displayPromptSplit = useMemo(() => {
-		const fallbackTitle = truncateTaskPromptLabel(card.prompt);
-		if (!displayPrompt) {
-			return {
-				title: fallbackTitle,
-				description: "",
-			};
-		}
-		if (titleWidth <= 0) {
-			return {
-				title: fallbackTitle,
-				description: "",
-			};
-		}
-		const split = splitPromptToTitleDescriptionByWidth(displayPrompt, {
-			maxTitleWidthPx: titleWidth,
-			measureText: (value) => measureTextWidth(value, titleFont),
-		});
-		return {
-			title: split.title || fallbackTitle,
-			description: split.description,
-		};
-	}, [card.prompt, displayPrompt, titleFont, titleWidth]);
 
-	useLayoutEffect(() => {
-		if (titleRect.width > 0) {
-			return;
-		}
-		const nextWidth = titleRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
-		if (nextWidth > 0 && nextWidth !== titleWidthFallback) {
-			setTitleWidthFallback(nextWidth);
-		}
-	}, [titleRect.width, titleWidthFallback]);
+	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
-	useLayoutEffect(() => {
-		if (descriptionRect.width > 0 || !displayPromptSplit.description) {
-			return;
-		}
-		const nextWidth = descriptionRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
-		if (nextWidth > 0 && nextWidth !== descriptionWidthFallback) {
-			setDescriptionWidthFallback(nextWidth);
-		}
-	}, [descriptionRect.width, descriptionWidthFallback, displayPromptSplit.description]);
+	const statusLabel = useMemo(() => (sessionSummary ? describeSessionState(sessionSummary) : null), [sessionSummary]);
+	const statusTagStyle = useMemo(
+		() => (sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null),
+		[sessionSummary],
+	);
+	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
 
-	useLayoutEffect(() => {
-		if (sessionPreviewRect.width > 0 || !isTrashCard || !sessionActivity?.text) {
-			return;
-		}
-		const nextWidth = sessionPreviewRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
-		if (nextWidth > 0 && nextWidth !== sessionPreviewWidthFallback) {
-			setSessionPreviewWidthFallback(nextWidth);
-		}
-	}, [isTrashCard, sessionActivity?.text, sessionPreviewRect.width, sessionPreviewWidthFallback]);
-
-	useLayoutEffect(() => {
-		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [titleWidth]);
-
-	useLayoutEffect(() => {
-		setDescriptionFont(readElementFontShorthand(descriptionRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [descriptionWidth, displayPromptSplit.description]);
-
-	useLayoutEffect(() => {
-		setSessionPreviewFont(readElementFontShorthand(sessionPreviewRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [sessionActivity?.text, sessionPreviewWidth]);
-
-	useEffect(() => {
-		setIsDescriptionExpanded(false);
-	}, [card.id, displayPromptSplit.description]);
-
-	useEffect(() => {
-		setIsSessionPreviewExpanded(false);
-	}, [card.id, sessionActivity?.text]);
-
-	const stopEvent = (event: MouseEvent<HTMLElement>) => {
-		event.preventDefault();
-		event.stopPropagation();
-	};
-
-	const isDescriptionMeasured = descriptionRect.width > 0;
-	const isSessionPreviewMeasured = sessionPreviewRect.width > 0;
-
-	const descriptionDisplay = useMemo(() => {
-		if (!displayPromptSplit.description) {
-			return {
-				text: "",
-				isTruncated: false,
-			};
-		}
-		if (descriptionWidth <= 0) {
-			return {
-				text: displayPromptSplit.description,
-				isTruncated: false,
-			};
-		}
-		return clampTextWithInlineSuffix(displayPromptSplit.description, {
-			maxWidthPx: descriptionWidth,
-			maxLines: DESCRIPTION_COLLAPSE_LINES,
-			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
-			measureText: (value) => measureTextWidth(value, descriptionFont),
-		});
-	}, [descriptionFont, descriptionWidth, displayPromptSplit.description]);
-
-	const sessionPreviewDisplay = useMemo(() => {
-		if (!sessionActivity?.text) {
-			return {
-				text: "",
-				isTruncated: false,
-			};
-		}
-		if (sessionPreviewWidth <= 0) {
-			return {
-				text: sessionActivity.text,
-				isTruncated: false,
-			};
-		}
-		return clampTextWithInlineSuffix(sessionActivity.text, {
-			maxWidthPx: sessionPreviewWidth,
-			maxLines: SESSION_PREVIEW_COLLAPSE_LINES,
-			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
-			measureText: (value) => measureTextWidth(value, sessionPreviewFont),
-		});
-	}, [sessionActivity?.text, sessionPreviewFont, sessionPreviewWidth]);
+	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
@@ -454,6 +220,11 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+
+	const stopEvent = (event: MouseEvent<HTMLElement>) => {
+		event.preventDefault();
+		event.stopPropagation();
+	};
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -533,15 +304,14 @@ export function BoardCard({
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
-								<div ref={titleContainerRef} className="flex-1 min-w-0">
+								<div className="flex-1 min-w-0">
 									<p
-										ref={titleRef}
 										className={cn(
 											"kb-line-clamp-1 m-0 font-medium text-sm",
 											isTrashCard && "line-through text-text-tertiary",
 										)}
 									>
-										{displayPromptSplit.title}
+										{displayTitle}
 									</p>
 								</div>
 								{columnId === "backlog" ? (
@@ -594,133 +364,26 @@ export function BoardCard({
 									</Tooltip>
 								) : null}
 							</div>
-							{displayPromptSplit.description ? (
-								<div ref={descriptionContainerRef}>
-									<p
-										ref={descriptionRef}
-										className={cn(
-											"text-sm leading-[1.4]",
-											isTrashCard ? "text-text-tertiary" : "text-text-secondary",
-											!isDescriptionMeasured && !isDescriptionExpanded && "line-clamp-3",
-										)}
-										style={{
-											margin: "2px 0 0",
-										}}
-									>
-										{isDescriptionExpanded || !descriptionDisplay.isTruncated
-											? displayPromptSplit.description
-											: descriptionDisplay.text}
-										{descriptionDisplay.isTruncated ? (
-											isDescriptionExpanded ? (
-												<>
-													{" "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Collapse task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(false);
-														}}
-													>
-														{DESCRIPTION_COLLAPSE_LABEL}
-													</button>
-												</>
-											) : (
-												<>
-													{"… "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Expand task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(true);
-														}}
-													>
-														{DESCRIPTION_EXPAND_LABEL}
-													</button>
-												</>
-											)
-										) : null}
-									</p>
-								</div>
-							) : null}
-							{sessionActivity ? (
-								<div
-									className="flex gap-1.5 items-start mt-[6px]"
-									style={{
-										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
-									}}
-								>
+							{showStatusBadge ? (
+								<div className="flex items-center gap-1.5 mt-1.5">
 									<span
-										className="inline-block shrink-0 rounded-full"
-										style={{
-											width: 6,
-											height: 6,
-											backgroundColor: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : sessionActivity.dotColor,
-											marginTop: 4,
-										}}
-									/>
-									<div ref={sessionPreviewContainerRef} className="min-w-0 flex-1">
-										<p
-											ref={sessionPreviewRef}
-											className={cn(
-												"m-0 font-mono",
-												!isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6",
-											)}
-											style={{
-												fontSize: 12,
-												whiteSpace: "normal",
-												overflowWrap: "anywhere",
-											}}
+										className={cn(
+											"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+											isTrashCard
+												? "bg-surface-3 text-text-tertiary"
+												: sessionStatusTagColors[statusTagStyle],
+										)}
+									>
+										{statusLabel}
+									</span>
+									{runningActivity ? (
+										<span
+											className="text-text-secondary text-xs font-mono kb-line-clamp-1 min-w-0"
+											style={{ overflowWrap: "anywhere" }}
 										>
-											{isSessionPreviewExpanded || !sessionPreviewDisplay.isTruncated
-												? sessionActivity.text
-												: sessionPreviewDisplay.text}
-											{sessionPreviewDisplay.isTruncated ? (
-												isSessionPreviewExpanded ? (
-													<>
-														{" "}
-														<button
-															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-															aria-expanded={isSessionPreviewExpanded}
-															aria-label="Collapse task agent preview"
-															onMouseDown={stopEvent}
-															onClick={(event) => {
-																stopEvent(event);
-																setIsSessionPreviewExpanded(false);
-															}}
-														>
-															{DESCRIPTION_COLLAPSE_LABEL}
-														</button>
-													</>
-												) : (
-													<>
-														{"… "}
-														<button
-															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-															aria-expanded={isSessionPreviewExpanded}
-															aria-label="Expand task agent preview"
-															onMouseDown={stopEvent}
-															onClick={(event) => {
-																stopEvent(event);
-																setIsSessionPreviewExpanded(true);
-															}}
-														>
-															{DESCRIPTION_EXPAND_LABEL}
-														</button>
-													</>
-												)
-											) : null}
-										</p>
-									</div>
+											{runningActivity}
+										</span>
+									) : null}
 								</div>
 							) : null}
 							{showWorkspaceStatus && reviewWorkspacePath ? (
