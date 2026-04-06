@@ -99,17 +99,6 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 			},
 		],
 		shortcuts: [],
-		clineProviderSettings: {
-			providerId: "anthropic",
-			modelId: "claude-sonnet-4-6",
-			baseUrl: null,
-			apiKeyConfigured: false,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
 		commitPromptTemplate: "commit",
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
@@ -119,8 +108,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 }
 
 function createLegacyRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): RuntimeConfigResponse {
-	const { clineProviderSettings: _clineProviderSettings, ...legacyConfig } = createRuntimeConfig(overrides);
-	return legacyConfig as RuntimeConfigResponse;
+	return createRuntimeConfig(overrides);
 }
 
 const DEFAULT_WORKSPACE_GIT: RuntimeGitRepositoryInfo = {
@@ -163,14 +151,12 @@ function requireTaskId(taskId: string | null): string {
 
 function HookHarness({
 	config,
-	clineSessionContextVersion = 0,
 	currentProjectId,
 	onSnapshot,
 	workspaceGit = DEFAULT_WORKSPACE_GIT,
 	seedSessionSummary = false,
 }: {
 	config: RuntimeConfigResponse | null;
-	clineSessionContextVersion?: number;
 	currentProjectId: string | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	workspaceGit?: RuntimeGitRepositoryInfo | null;
@@ -187,7 +173,6 @@ function HookHarness({
 		currentProjectId,
 		runtimeProjectConfig: config,
 		workspaceGit,
-		clineSessionContextVersion,
 		sessionSummaries,
 		setSessionSummaries,
 		upsertSessionSummary,
@@ -406,17 +391,6 @@ describe("useHomeAgentSession", () => {
 					config={createRuntimeConfig({
 						selectedAgentId: "cline",
 						effectiveCommand: "cline",
-						clineProviderSettings: {
-							providerId: "oca",
-							modelId: "gpt-5",
-							baseUrl: null,
-							apiKeyConfigured: false,
-							oauthProvider: null,
-							oauthAccessTokenConfigured: false,
-							oauthRefreshTokenConfigured: false,
-							oauthAccountId: null,
-							oauthExpiresAt: null,
-						},
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -445,7 +419,6 @@ describe("useHomeAgentSession", () => {
 						selectedAgentId: "cline",
 						effectiveCommand: "cline",
 					})}
-					clineSessionContextVersion={0}
 					currentProjectId="workspace-1"
 					seedSessionSummary
 					onSnapshot={(snapshot) => {
@@ -467,7 +440,6 @@ describe("useHomeAgentSession", () => {
 						selectedAgentId: "cline",
 						effectiveCommand: "cline",
 					})}
-					clineSessionContextVersion={1}
 					currentProjectId="workspace-1"
 					seedSessionSummary
 					onSnapshot={(snapshot) => {

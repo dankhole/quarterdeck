@@ -97,17 +97,6 @@ function createRuntimeConfig(selectedAgentId: RuntimeConfigResponse["selectedAge
 			},
 		],
 		shortcuts: [],
-		clineProviderSettings: {
-			providerId: "anthropic",
-			modelId: "claude-sonnet-4",
-			baseUrl: null,
-			apiKeyConfigured: true,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
 		commitPromptTemplate: "commit",
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
@@ -130,11 +119,9 @@ function createWorkspaceInfo(): RuntimeTaskWorkspaceInfoResponse {
 function HookHarness({
 	onSnapshot,
 	sendTaskSessionInput,
-	sendTaskChatMessage,
 }: {
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	sendTaskSessionInput: Parameters<typeof useGitActions>[0]["sendTaskSessionInput"];
-	sendTaskChatMessage: Parameters<typeof useGitActions>[0]["sendTaskChatMessage"];
 }): null {
 	const gitActions = useGitActions({
 		currentProjectId: "project-1",
@@ -142,7 +129,6 @@ function HookHarness({
 		selectedCard: null,
 		runtimeProjectConfig: createRuntimeConfig("cline"),
 		sendTaskSessionInput,
-		sendTaskChatMessage,
 		fetchTaskWorkspaceInfo: async () => createWorkspaceInfo(),
 		isGitHistoryOpen: false,
 		refreshWorkspaceState: async () => {},
@@ -191,16 +177,14 @@ describe("useGitActions", () => {
 		}
 	});
 
-	it("sends commit prompts through the native cline chat API", async () => {
+	it("sends commit prompts through the terminal session input", async () => {
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-		const sendTaskChatMessage = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					sendTaskSessionInput={sendTaskSessionInput}
-					sendTaskChatMessage={sendTaskChatMessage}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -220,8 +204,7 @@ describe("useGitActions", () => {
 			await Promise.resolve();
 		});
 
-		expect(sendTaskChatMessage).toHaveBeenCalledWith("task-1", expect.any(String), { mode: "act" });
-		expect(sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(sendTaskSessionInput).toHaveBeenCalled();
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 });

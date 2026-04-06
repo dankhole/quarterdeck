@@ -1,5 +1,5 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
+
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
@@ -106,10 +106,8 @@ function resolveToolCallLabel(
 	toolInputSummary: string | null,
 ): string | null {
 	if (toolName) {
-		return formatClineToolCallLabel(
-			toolName,
-			toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName),
-		);
+		const summary = toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName);
+		return summary ? `${toolName}(${summary})` : toolName;
 	}
 	if (!activityText) {
 		return null;
@@ -118,7 +116,7 @@ function resolveToolCallLabel(
 	if (!parsed) {
 		return null;
 	}
-	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
+	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
 }
 
 function getReviewReasonDotColor(reviewReason: RuntimeTaskSessionReviewReason): string {

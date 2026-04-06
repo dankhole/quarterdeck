@@ -23,37 +23,6 @@ vi.mock("@runtime-shortcuts", () => ({
 	areRuntimeProjectShortcutsEqual: vi.fn(() => true),
 }));
 
-vi.mock("@/components/shared/cline-setup-section", () => ({
-	ClineSetupSection: () => null,
-}));
-
-vi.mock("@/hooks/use-runtime-settings-cline-controller", () => ({
-	useRuntimeSettingsClineController: () => ({
-		currentProviderSettings: {
-			providerId: "anthropic",
-			modelId: "claude-3-7-sonnet",
-			baseUrl: null,
-			reasoningEffort: null,
-			apiKeyConfigured: true,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
-		hasUnsavedChanges: false,
-		providerId: "anthropic",
-		saveProviderSettings: vi.fn(async () => ({ ok: true })),
-	}),
-}));
-
-vi.mock("@/hooks/use-runtime-settings-cline-mcp-controller", () => ({
-	useRuntimeSettingsClineMcpController: () => ({
-		hasUnsavedChanges: false,
-		saveMcpSettings: vi.fn(async () => ({ ok: true })),
-	}),
-}));
-
 vi.mock("@/resize/layout-customizations", () => ({
 	useLayoutCustomizations: () => ({
 		layoutResetNonce: 0,
@@ -114,18 +83,6 @@ const savedClineOauthConfig = {
 			installed: true,
 		},
 	],
-	clineProviderSettings: {
-		providerId: null,
-		modelId: "cline-sonnet",
-		baseUrl: null,
-		reasoningEffort: null,
-		apiKeyConfigured: false,
-		oauthProvider: "cline",
-		oauthAccessTokenConfigured: true,
-		oauthRefreshTokenConfigured: true,
-		oauthAccountId: "acc-1",
-		oauthExpiresAt: 1_800_000_000_000,
-	},
 } as unknown as RuntimeConfigResponse;
 
 describe("RuntimeSettingsDialog", () => {

@@ -1,17 +1,11 @@
 import { useEffect, useReducer } from "react";
 
 import type {
-	RuntimeClineMcpServerAuthStatus,
 	RuntimeProjectSummary,
-	RuntimeStateStreamClineSessionContextUpdatedMessage,
-	RuntimeStateStreamMcpAuthUpdatedMessage,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
-	RuntimeStateStreamTaskChatClearedMessage,
-	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
-	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
@@ -51,11 +45,7 @@ export interface UseRuntimeStateStreamResult {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
-	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
-	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
-	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
-	clineSessionContextVersion: number;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -66,11 +56,7 @@ interface RuntimeStateStreamStore {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
-	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
-	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
-	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
-	clineSessionContextVersion: number;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -85,12 +71,8 @@ type RuntimeStateStreamAction =
 			payload: RuntimeStateStreamProjectsMessage;
 			nextProjectId: string | null;
 	  }
-	| { type: "task_chat_message"; payload: RuntimeStateStreamTaskChatMessage }
-	| { type: "task_chat_cleared"; payload: RuntimeStateStreamTaskChatClearedMessage }
 	| { type: "workspace_metadata_updated"; workspaceMetadata: RuntimeWorkspaceMetadata }
 	| { type: "task_ready_for_review"; payload: RuntimeStateStreamTaskReadyForReviewMessage }
-	| { type: "mcp_auth_updated"; payload: RuntimeStateStreamMcpAuthUpdatedMessage }
-	| { type: "cline_session_context_updated"; payload: RuntimeStateStreamClineSessionContextUpdatedMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
 	| { type: "stream_error"; message: string }
@@ -102,38 +84,11 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		projects: [],
 		workspaceState: null,
 		workspaceMetadata: null,
-		latestTaskChatMessage: null,
-		taskChatMessagesByTaskId: {},
 		latestTaskReadyForReview: null,
-		latestMcpAuthStatuses: null,
-		clineSessionContextVersion: 0,
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
 	};
-}
-
-function upsertTaskChatMessage(
-	currentMessages: RuntimeTaskChatMessage[],
-	nextMessage: RuntimeTaskChatMessage,
-): RuntimeTaskChatMessage[] {
-	const existingIndex = currentMessages.findIndex((message) => message.id === nextMessage.id);
-	if (existingIndex < 0) {
-		return [...currentMessages, nextMessage];
-	}
-	const existingMessage = currentMessages[existingIndex];
-	if (
-		existingMessage &&
-		existingMessage.content === nextMessage.content &&
-		existingMessage.role === nextMessage.role &&
-		existingMessage.createdAt === nextMessage.createdAt &&
-		JSON.stringify(existingMessage.meta ?? null) === JSON.stringify(nextMessage.meta ?? null)
-	) {
-		return currentMessages;
-	}
-	const nextMessages = [...currentMessages];
-	nextMessages[existingIndex] = nextMessage;
-	return nextMessages;
 }
 
 function resolveProjectIdAfterProjectsUpdate(
@@ -155,13 +110,9 @@ function runtimeStateStreamReducer(
 			...state,
 			workspaceState: null,
 			workspaceMetadata: null,
-			latestTaskChatMessage: null,
-			taskChatMessagesByTaskId: {},
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: false,
-			latestMcpAuthStatuses: state.latestMcpAuthStatuses,
-			clineSessionContextVersion: state.clineSessionContextVersion,
 		};
 	}
 	if (action.type === "stream_connected") {
@@ -186,11 +137,7 @@ function runtimeStateStreamReducer(
 			projects: action.payload.projects,
 			workspaceState: nextWorkspaceState,
 			workspaceMetadata: action.payload.workspaceMetadata,
-			latestTaskChatMessage: null,
-			taskChatMessagesByTaskId: {},
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
-			latestMcpAuthStatuses: state.latestMcpAuthStatuses,
-			clineSessionContextVersion: action.payload.clineSessionContextVersion,
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
@@ -204,29 +151,8 @@ function runtimeStateStreamReducer(
 			projects: action.payload.projects,
 			workspaceState: didProjectChange ? null : state.workspaceState,
 			workspaceMetadata: didProjectChange ? null : state.workspaceMetadata,
-			latestTaskChatMessage: didProjectChange ? null : state.latestTaskChatMessage,
-			taskChatMessagesByTaskId: didProjectChange ? {} : state.taskChatMessagesByTaskId,
 			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 			hasReceivedSnapshot: true,
-		};
-	}
-	if (action.type === "task_chat_message") {
-		const currentTaskMessages = state.taskChatMessagesByTaskId[action.payload.taskId] ?? [];
-		return {
-			...state,
-			latestTaskChatMessage: action.payload,
-			taskChatMessagesByTaskId: {
-				...state.taskChatMessagesByTaskId,
-				[action.payload.taskId]: upsertTaskChatMessage(currentTaskMessages, action.payload.message),
-			},
-		};
-	}
-	if (action.type === "task_chat_cleared") {
-		const { [action.payload.taskId]: _cleared, ...remainingByTaskId } = state.taskChatMessagesByTaskId;
-		return {
-			...state,
-			latestTaskChatMessage: null,
-			taskChatMessagesByTaskId: remainingByTaskId,
 		};
 	}
 	if (action.type === "workspace_metadata_updated") {
@@ -239,18 +165,6 @@ function runtimeStateStreamReducer(
 		return {
 			...state,
 			latestTaskReadyForReview: action.payload,
-		};
-	}
-	if (action.type === "mcp_auth_updated") {
-		return {
-			...state,
-			latestMcpAuthStatuses: action.payload.statuses,
-		};
-	}
-	if (action.type === "cline_session_context_updated") {
-		return {
-			...state,
-			clineSessionContextVersion: action.payload.version,
 		};
 	}
 	if (action.type === "workspace_state_updated") {
@@ -403,26 +317,6 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						return;
 					}
-					if (payload.type === "task_chat_message") {
-						if (payload.workspaceId !== activeWorkspaceId) {
-							return;
-						}
-						dispatch({
-							type: "task_chat_message",
-							payload,
-						});
-						return;
-					}
-					if (payload.type === "task_chat_cleared") {
-						if (payload.workspaceId !== activeWorkspaceId) {
-							return;
-						}
-						dispatch({
-							type: "task_chat_cleared",
-							payload,
-						});
-						return;
-					}
 					if (payload.type === "task_sessions_updated") {
 						if (payload.workspaceId !== activeWorkspaceId) {
 							return;
@@ -439,20 +333,6 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						}
 						dispatch({
 							type: "task_ready_for_review",
-							payload,
-						});
-						return;
-					}
-					if (payload.type === "mcp_auth_updated") {
-						dispatch({
-							type: "mcp_auth_updated",
-							payload,
-						});
-						return;
-					}
-					if (payload.type === "cline_session_context_updated") {
-						dispatch({
-							type: "cline_session_context_updated",
 							payload,
 						});
 						return;
@@ -504,11 +384,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		projects: state.projects,
 		workspaceState: state.workspaceState,
 		workspaceMetadata: state.workspaceMetadata,
-		latestTaskChatMessage: state.latestTaskChatMessage,
-		taskChatMessagesByTaskId: state.taskChatMessagesByTaskId,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
-		latestMcpAuthStatuses: state.latestMcpAuthStatuses,
-		clineSessionContextVersion: state.clineSessionContextVersion,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,

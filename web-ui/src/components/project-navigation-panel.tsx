@@ -4,7 +4,6 @@ import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Plus } from "luci
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
-import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
 import {
 	AlertDialog,
@@ -20,7 +19,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
-import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
@@ -49,7 +48,6 @@ export function ProjectNavigationPanel({
 	canShowAgentSection,
 	agentSectionContent,
 	selectedAgentId,
-	clineProviderSettings,
 	featurebaseFeedbackState,
 	onSelectProject,
 	onRemoveProject,
@@ -64,7 +62,6 @@ export function ProjectNavigationPanel({
 	canShowAgentSection: boolean;
 	agentSectionContent?: ReactNode;
 	selectedAgentId?: RuntimeAgentId | null;
-	clineProviderSettings?: RuntimeClineProviderSettings | null;
 	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
@@ -73,7 +70,6 @@ export function ProjectNavigationPanel({
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
 		selectedAgentId,
-		clineProviderSettings,
 		featurebaseFeedbackState,
 	});
 
@@ -227,8 +223,7 @@ export function ProjectNavigationPanel({
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
-						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
-						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
+						Kanban <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">

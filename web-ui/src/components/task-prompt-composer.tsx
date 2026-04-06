@@ -3,10 +3,10 @@ import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent, ReactElemen
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-	applyClineComposerCompletion,
+	applyComposerCompletion,
 	buildMentionInsertText,
-	detectActiveClineComposerToken,
-} from "@/components/detail-panels/cline-chat-composer-completion";
+	detectActiveComposerToken,
+} from "@/components/composer-completion";
 import { type InlineCompletionItem, InlineCompletionPicker } from "@/components/inline-completion-picker";
 import {
 	ACCEPTED_TASK_IMAGE_INPUT_ACCEPT,
@@ -83,7 +83,7 @@ export function TaskPromptComposer({
 	}, [autoResizeTextarea, value]);
 
 	const activeToken = useMemo(() => {
-		const token = detectActiveClineComposerToken(value, cursorIndex);
+		const token = detectActiveComposerToken(value, cursorIndex);
 		if (token && token.kind !== "mention") {
 			return null;
 		}
@@ -171,7 +171,7 @@ export function TaskPromptComposer({
 				return;
 			}
 			const insertText = mentionInsertTextMap.get(item.id) ?? `@${item.id}`;
-			const next = applyClineComposerCompletion(value, activeToken, insertText);
+			const next = applyComposerCompletion(value, activeToken, insertText);
 			onValueChange(next.value);
 			window.requestAnimationFrame(() => {
 				if (!textareaRef.current) {
