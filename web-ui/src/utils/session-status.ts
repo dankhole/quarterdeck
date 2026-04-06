@@ -14,9 +14,9 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 			case "exit":
 				return "Completed";
 			case "hook":
-				return "Needs input";
+				return "Ready for review";
 			case "attention":
-				return "Needs attention";
+				return "Waiting for input";
 			case "error":
 				return "Error";
 			case "interrupted":

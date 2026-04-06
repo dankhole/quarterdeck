@@ -4,7 +4,6 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-
 import type {
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
@@ -103,6 +102,9 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
+import { findCardInBoard } from "../core/task-board-mutations";
+import { mutateWorkspaceState } from "../state/workspace-state";
+import { generateTaskTitle } from "../title/title-generator";
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -406,6 +408,58 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitCommitDiffResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.loadCommitDiff(ctx.workspaceScope, input);
+			}),
+		regenerateTaskTitle: workspaceProcedure
+			.input(z.object({ taskId: z.string() }))
+			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
+			.mutation(async ({ ctx, input }) => {
+				// Prompt is needed before the LLM call; mutateWorkspaceState re-reads for atomicity.
+				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
+				const card = findCardInBoard(state.board, input.taskId);
+				if (!card) {
+					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
+				}
+				const prompt = card.prompt;
+				const rawFinalMessage = state.sessions[card.id]?.latestHookActivity?.finalMessage ?? null;
+				const finalMessage = rawFinalMessage?.slice(0, 300) ?? null;
+
+				const context = finalMessage ? `${prompt}\n\nAgent response: ${finalMessage}` : prompt;
+				const title = await generateTaskTitle(context);
+				if (!title) {
+					return { ok: false, title: null };
+				}
+
+				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
+					const board = structuredClone(currentState.board);
+					const target = findCardInBoard(board, input.taskId);
+					if (target) {
+						target.title = title;
+						target.updatedAt = Date.now();
+					}
+					return { board, value: null };
+				});
+				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				return { ok: true, title };
+			}),
+		updateTaskTitle: workspaceProcedure
+			.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
+			.output(z.object({ ok: z.boolean() }))
+			.mutation(async ({ ctx, input }) => {
+				const found = await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
+					const board = structuredClone(currentState.board);
+					const target = findCardInBoard(board, input.taskId);
+					if (target) {
+						target.title = input.title;
+						target.updatedAt = Date.now();
+						return { board, value: true };
+					}
+					return { board, value: false };
+				});
+				if (!found) {
+					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
+				}
+				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				return { ok: true };
 			}),
 	}),
 	projects: t.router({
