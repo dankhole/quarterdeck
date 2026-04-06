@@ -5,8 +5,6 @@ import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type {
-	RuntimeBoardCard,
-	RuntimeBoardData,
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
@@ -104,17 +102,9 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
+import { findCardInBoard } from "../core/task-board-mutations";
 import { mutateWorkspaceState } from "../state/workspace-state";
 import { generateTaskTitle } from "../title/title-generator";
-
-/** Find a card by ID across all board columns. */
-function findCardInBoard(board: RuntimeBoardData, taskId: string): RuntimeBoardCard | null {
-	for (const col of board.columns) {
-		const card = col.cards.find((c) => c.id === taskId);
-		if (card) return card;
-	}
-	return null;
-}
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -430,7 +420,8 @@ export const runtimeAppRouter = t.router({
 					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
 				}
 				const prompt = card.prompt;
-				const finalMessage = state.sessions[card.id]?.latestHookActivity?.finalMessage ?? null;
+				const rawFinalMessage = state.sessions[card.id]?.latestHookActivity?.finalMessage ?? null;
+				const finalMessage = rawFinalMessage?.slice(0, 300) ?? null;
 
 				const context = finalMessage ? `${prompt}\n\nAgent response: ${finalMessage}` : prompt;
 				const title = await generateTaskTitle(context);

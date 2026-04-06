@@ -1,6 +1,5 @@
 import { TRPCError } from "@trpc/server";
 import type {
-	RuntimeBoardData,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
@@ -15,6 +14,7 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
+import { findCardInBoard } from "../core/task-board-mutations";
 import { mutateWorkspaceState, saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { generateTaskTitle } from "../title/title-generator";
@@ -36,15 +36,6 @@ import {
 import type { RuntimeTrpcContext } from "./app-router";
 
 const MAX_CONCURRENT_TITLE_REQUESTS = 3;
-
-/** Find a card by ID across all board columns. */
-function findCardInBoard(board: RuntimeBoardData, taskId: string) {
-	for (const col of board.columns) {
-		const card = col.cards.find((c) => c.id === taskId);
-		if (card) return card;
-	}
-	return null;
-}
 
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
