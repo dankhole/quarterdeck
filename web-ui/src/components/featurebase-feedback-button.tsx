@@ -1,22 +1,15 @@
 import { Button } from "@/components/ui/button";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
-import { isClineOauthAuthenticated, isNativeClineAgentSelected } from "@/runtime/native-agent";
-import type { RuntimeAgentId, RuntimeClineProviderSettings } from "@/runtime/types";
+import type { RuntimeAgentId } from "@/runtime/types";
 
 interface FeaturebaseFeedbackVisibilityInput {
 	selectedAgentId?: RuntimeAgentId | null;
-	clineProviderSettings?: RuntimeClineProviderSettings | null;
 	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 }
 
-export function canShowFeaturebaseFeedbackButton({
-	selectedAgentId,
-	clineProviderSettings,
-	featurebaseFeedbackState,
-}: FeaturebaseFeedbackVisibilityInput): boolean {
-	const isClineAgent = isNativeClineAgentSelected(selectedAgentId);
-	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
-	return isClineAgent && isAuthenticated && featurebaseFeedbackState !== undefined;
+export function canShowFeaturebaseFeedbackButton(_input: FeaturebaseFeedbackVisibilityInput): boolean {
+	// Without Cline OAuth, the Featurebase JWT authentication flow is not available.
+	return false;
 }
 
 interface FeaturebaseFeedbackButtonProps extends FeaturebaseFeedbackVisibilityInput {
@@ -28,7 +21,6 @@ interface FeaturebaseFeedbackButtonProps extends FeaturebaseFeedbackVisibilityIn
 
 export function FeaturebaseFeedbackButton({
 	selectedAgentId,
-	clineProviderSettings,
 	featurebaseFeedbackState,
 	size = "sm",
 	variant = "default",
@@ -38,7 +30,6 @@ export function FeaturebaseFeedbackButton({
 	if (
 		!canShowFeaturebaseFeedbackButton({
 			selectedAgentId,
-			clineProviderSettings,
 			featurebaseFeedbackState,
 		})
 	) {

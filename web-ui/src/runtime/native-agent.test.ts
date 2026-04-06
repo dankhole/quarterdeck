@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	getTaskAgentNavbarHint,
-	isClineProviderAuthenticated,
-	isNativeClineAgentSelected,
-	isTaskAgentSetupSatisfied,
-	selectLatestTaskChatMessageForTask,
-	selectTaskChatMessagesForTask,
-} from "@/runtime/native-agent";
-import type { RuntimeConfigResponse, RuntimeStateStreamTaskChatMessage } from "@/runtime/types";
+import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
+import type { RuntimeConfigResponse } from "@/runtime/types";
 
 function createRuntimeConfigResponse(
 	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
@@ -44,17 +37,6 @@ function createRuntimeConfigResponse(
 			},
 		],
 		shortcuts: [],
-		clineProviderSettings: {
-			providerId: "cline",
-			modelId: "sonnet",
-			baseUrl: null,
-			apiKeyConfigured: false,
-			oauthProvider: "cline",
-			oauthAccessTokenConfigured: true,
-			oauthRefreshTokenConfigured: true,
-			oauthAccountId: "acct_123",
-			oauthExpiresAt: 123,
-		},
 		commitPromptTemplate: "",
 		openPrPromptTemplate: "",
 		commitPromptTemplateDefault: "",
@@ -66,95 +48,10 @@ function createRuntimeConfigResponse(
 	};
 }
 
-function createLatestTaskChatMessage(taskId: string): RuntimeStateStreamTaskChatMessage {
-	return {
-		type: "task_chat_message",
-		workspaceId: "workspace-1",
-		taskId,
-		message: {
-			id: "message-1",
-			role: "assistant",
-			content: "Hello",
-			createdAt: Date.now(),
-			meta: null,
-		},
-	};
-}
-
 describe("native-agent helpers", () => {
-	it("treats cline as the native chat agent", () => {
-		expect(isNativeClineAgentSelected("cline")).toBe(true);
-		expect(isNativeClineAgentSelected("codex")).toBe(false);
-	});
-
 	it("treats selected cline as task-ready when cline authentication is configured", () => {
 		expect(isTaskAgentSetupSatisfied(createRuntimeConfigResponse("cline"))).toBe(true);
 		expect(isTaskAgentSetupSatisfied(null)).toBeNull();
-	});
-
-	it("requires setup when cline is selected and cline authentication is missing", () => {
-		const config = createRuntimeConfigResponse("cline", {
-			agents: [
-				{
-					id: "cline",
-					label: "Cline",
-					binary: "cline",
-					command: "cline",
-					defaultArgs: [],
-					installed: true,
-					configured: true,
-				},
-			],
-			clineProviderSettings: {
-				providerId: null,
-				modelId: null,
-				baseUrl: null,
-				apiKeyConfigured: false,
-				oauthProvider: null,
-				oauthAccessTokenConfigured: false,
-				oauthRefreshTokenConfigured: false,
-				oauthAccountId: null,
-				oauthExpiresAt: null,
-			},
-		});
-		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
-	});
-
-	it("falls back to other installed launch-supported agents when cline auth is missing", () => {
-		const config = createRuntimeConfigResponse("cline", {
-			agents: [
-				{
-					id: "cline",
-					label: "Cline",
-					binary: "cline",
-					command: "cline",
-					defaultArgs: [],
-					installed: true,
-					configured: true,
-				},
-				{
-					id: "codex",
-					label: "OpenAI Codex",
-					binary: "codex",
-					command: "codex",
-					defaultArgs: [],
-					installed: true,
-					configured: false,
-				},
-			],
-			clineProviderSettings: {
-				providerId: null,
-				modelId: null,
-				baseUrl: null,
-				apiKeyConfigured: false,
-				oauthProvider: null,
-				oauthAccessTokenConfigured: false,
-				oauthRefreshTokenConfigured: false,
-				oauthAccountId: null,
-				oauthExpiresAt: null,
-			},
-		});
-		expect(isTaskAgentSetupSatisfied(config)).toBe(true);
 	});
 
 	it("does not show the navbar setup hint when cline is configured through the native SDK path", () => {
@@ -170,21 +67,10 @@ describe("native-agent helpers", () => {
 					binary: "cline",
 					command: "cline",
 					defaultArgs: [],
-					installed: true,
+					installed: false,
 					configured: true,
 				},
 			],
-			clineProviderSettings: {
-				providerId: null,
-				modelId: null,
-				baseUrl: null,
-				apiKeyConfigured: false,
-				oauthProvider: null,
-				oauthAccessTokenConfigured: false,
-				oauthRefreshTokenConfigured: false,
-				oauthAccountId: null,
-				oauthExpiresAt: null,
-			},
 		});
 		expect(getTaskAgentNavbarHint(config)).toBe("No agent configured");
 		expect(
@@ -192,35 +78,6 @@ describe("native-agent helpers", () => {
 				shouldUseNavigationPath: true,
 			}),
 		).toBeUndefined();
-	});
-
-	it("checks for a provider selection when determining cline authentication", () => {
-		expect(
-			isClineProviderAuthenticated({
-				providerId: null,
-				modelId: null,
-				baseUrl: null,
-				apiKeyConfigured: true,
-				oauthProvider: null,
-				oauthAccessTokenConfigured: false,
-				oauthRefreshTokenConfigured: false,
-				oauthAccountId: null,
-				oauthExpiresAt: null,
-			}),
-		).toBe(false);
-		expect(
-			isClineProviderAuthenticated({
-				providerId: "anthropic",
-				modelId: null,
-				baseUrl: null,
-				apiKeyConfigured: true,
-				oauthProvider: null,
-				oauthAccessTokenConfigured: false,
-				oauthRefreshTokenConfigured: false,
-				oauthAccountId: null,
-				oauthExpiresAt: null,
-			}),
-		).toBe(true);
 	});
 
 	it("ignores non-launch agents when checking native CLI availability", () => {
@@ -237,23 +94,5 @@ describe("native-agent helpers", () => {
 			},
 		];
 		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
-	});
-
-	it("selects the latest incoming chat message only for the matching task", () => {
-		const messageEvent = createLatestTaskChatMessage("task-1");
-		expect(selectLatestTaskChatMessageForTask("task-1", messageEvent)).toEqual(messageEvent.message);
-		expect(selectLatestTaskChatMessageForTask("task-2", messageEvent)).toBeNull();
-		expect(selectLatestTaskChatMessageForTask(null, messageEvent)).toBeNull();
-	});
-
-	it("selects the streamed task chat transcript for the matching task", () => {
-		const messageEvent = createLatestTaskChatMessage("task-1");
-		expect(
-			selectTaskChatMessagesForTask("task-1", {
-				"task-1": [messageEvent.message],
-			}),
-		).toEqual([messageEvent.message]);
-		expect(selectTaskChatMessagesForTask("task-2", { "task-1": [messageEvent.message] })).toEqual([]);
-		expect(selectTaskChatMessagesForTask(null, { "task-1": [messageEvent.message] })).toEqual([]);
 	});
 });

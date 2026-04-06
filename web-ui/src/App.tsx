@@ -56,12 +56,7 @@ import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
-import {
-	getTaskAgentNavbarHint,
-	isTaskAgentSetupSatisfied,
-	selectLatestTaskChatMessageForTask,
-	selectTaskChatMessagesForTask,
-} from "@/runtime/native-agent";
+import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -102,11 +97,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
-		latestMcpAuthStatuses,
-		clineSessionContextVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -144,14 +135,12 @@ export default function App(): ReactElement {
 		useRuntimeProjectConfig(settingsWorkspaceId);
 	const featurebaseFeedbackState = useFeaturebaseFeedbackWidget({
 		workspaceId: settingsWorkspaceId,
-		clineProviderSettings: settingsRuntimeProjectConfig?.clineProviderSettings ?? null,
 	});
 	const {
 		isStartupOnboardingDialogOpen,
 		handleOpenStartupOnboardingDialog,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
-		handleOnboardingClineSetupSaved,
 	} = useStartupOnboarding({
 		currentProjectId,
 		runtimeProjectConfig,
@@ -195,9 +184,6 @@ export default function App(): ReactElement {
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
-		sendTaskChatMessage,
-		cancelTaskChatTurn,
-		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 	} = useTaskSessions({
@@ -373,7 +359,6 @@ export default function App(): ReactElement {
 		selectedCard,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
-		sendTaskChatMessage,
 		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
@@ -418,11 +403,8 @@ export default function App(): ReactElement {
 		currentProjectId,
 		hasNoProjects,
 		runtimeProjectConfig,
-		clineSessionContextVersion,
 		taskSessions: sessions,
 		workspaceGit,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
 	});
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
@@ -701,11 +683,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const selectedTaskChatMessages = selectTaskChatMessagesForTask(selectedCard?.card.id, taskChatMessagesByTaskId);
-	const latestSelectedTaskChatMessage = selectLatestTaskChatMessageForTask(
-		selectedCard?.card.id,
-		latestTaskChatMessage,
-	);
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
 			if (!open) {
@@ -761,7 +738,6 @@ export default function App(): ReactElement {
 						canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
 						agentSectionContent={homeSidebarAgentPanel}
 						selectedAgentId={settingsRuntimeProjectConfig?.selectedAgentId ?? null}
-						clineProviderSettings={settingsRuntimeProjectConfig?.clineProviderSettings ?? null}
 						featurebaseFeedbackState={featurebaseFeedbackState}
 						onSelectProject={(projectId) => {
 							void handleSelectProject(projectId);
@@ -950,8 +926,6 @@ export default function App(): ReactElement {
 									selection={selectedCard}
 									currentProjectId={currentProjectId}
 									workspacePath={workspacePath}
-									selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
-									runtimeConfig={runtimeProjectConfig ?? null}
 									sessionSummary={detailSession}
 									taskSessions={sessions}
 									onSessionSummary={upsertSession}
@@ -984,11 +958,6 @@ export default function App(): ReactElement {
 									onSendReviewComments={(taskId: string, text: string) => {
 										void handleSendReviewComments(taskId, text);
 									}}
-									onSendClineChatMessage={sendTaskChatMessage}
-									onCancelClineChatTurn={cancelTaskChatTurn}
-									onLoadClineChatMessages={fetchTaskChatMessages}
-									latestClineChatMessage={latestSelectedTaskChatMessage}
-									streamedClineChatMessages={selectedTaskChatMessages}
 									onMoveToTrash={handleMoveToTrash}
 									isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 									gitHistoryPanel={
@@ -1011,7 +980,6 @@ export default function App(): ReactElement {
 									isBottomTerminalExpanded={isDetailTerminalExpanded}
 									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 									isDocumentVisible={isDocumentVisible}
-									onClineSettingsSaved={refreshRuntimeProjectConfig}
 								/>
 							</div>
 						) : null}
@@ -1021,7 +989,6 @@ export default function App(): ReactElement {
 					open={isSettingsOpen}
 					workspaceId={settingsWorkspaceId}
 					initialConfig={settingsRuntimeProjectConfig}
-					liveMcpAuthStatuses={latestMcpAuthStatuses}
 					initialSection={settingsInitialSection}
 					onOpenChange={(nextOpen) => {
 						setIsSettingsOpen(nextOpen);
@@ -1076,11 +1043,9 @@ export default function App(): ReactElement {
 					onClose={handleCloseStartupOnboardingDialog}
 					selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 					agents={runtimeProjectConfig?.agents ?? []}
-					clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
 					workspaceId={currentProjectId}
 					runtimeConfig={runtimeProjectConfig ?? null}
 					onSelectAgent={handleSelectOnboardingAgent}
-					onClineSetupSaved={handleOnboardingClineSetupSaved}
 				/>
 
 				<AlertDialog
@@ -1098,7 +1063,7 @@ export default function App(): ReactElement {
 						<AlertDialogDescription asChild>
 							<div className="flex flex-col gap-3">
 								<p>
-									Cline requires git to manage worktrees for tasks. This folder is not a git repository yet.
+									Kanban requires git to manage worktrees for tasks. This folder is not a git repository yet.
 								</p>
 								{pendingGitInitializationPath ? (
 									<p className="font-mono text-xs text-text-secondary break-all">

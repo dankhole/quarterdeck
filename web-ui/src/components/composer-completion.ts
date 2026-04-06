@@ -1,15 +1,15 @@
-export type ClineComposerCompletionKind = "mention" | "slash";
+export type ComposerCompletionKind = "mention" | "slash";
 
-export interface ActiveClineComposerToken {
-	kind: ClineComposerCompletionKind;
+export interface ActiveComposerToken {
+	kind: ComposerCompletionKind;
 	start: number;
 	end: number;
 	query: string;
 }
 
-export interface ClineComposerCompletionSuggestion {
+export interface ComposerCompletionSuggestion {
 	id: string;
-	kind: ClineComposerCompletionKind;
+	kind: ComposerCompletionKind;
 	label: string;
 	detail?: string;
 	insertText: string;
@@ -19,7 +19,7 @@ function isTokenBoundaryCharacter(value: string | undefined): boolean {
 	return !value || /\s/.test(value);
 }
 
-export function detectActiveClineComposerToken(value: string, cursorIndex: number): ActiveClineComposerToken | null {
+export function detectActiveComposerToken(value: string, cursorIndex: number): ActiveComposerToken | null {
 	if (cursorIndex < 0 || cursorIndex > value.length) {
 		return null;
 	}
@@ -78,9 +78,9 @@ export function buildSlashCommandInsertText(commandName: string): string {
 	return `/${commandName}`;
 }
 
-export function applyClineComposerCompletion(
+export function applyComposerCompletion(
 	value: string,
-	token: ActiveClineComposerToken,
+	token: ActiveComposerToken,
 	replacement: string,
 ): { value: string; cursor: number } {
 	const before = value.slice(0, token.start);

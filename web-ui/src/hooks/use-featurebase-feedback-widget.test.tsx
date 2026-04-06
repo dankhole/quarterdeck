@@ -2,45 +2,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
-import type { RuntimeClineProviderSettings } from "@/runtime/types";
-
-const defaultClineProviderSettings: RuntimeClineProviderSettings = {
-	providerId: null,
-	modelId: null,
-	baseUrl: null,
-	apiKeyConfigured: false,
-	oauthProvider: null,
-	oauthAccessTokenConfigured: false,
-	oauthRefreshTokenConfigured: false,
-	oauthAccountId: null,
-	oauthExpiresAt: null,
-};
-
-const authenticatedClineSettings: RuntimeClineProviderSettings = {
-	...defaultClineProviderSettings,
-	oauthProvider: "cline",
-	oauthAccessTokenConfigured: true,
-	oauthRefreshTokenConfigured: true,
-	oauthAccountId: "acc-1",
-};
-
-const tokensOnlySettings: RuntimeClineProviderSettings = {
-	...defaultClineProviderSettings,
-	oauthProvider: null,
-	oauthAccessTokenConfigured: true,
-	oauthRefreshTokenConfigured: true,
-};
 
 async function importFeaturebaseModule() {
 	const fetchFeaturebaseTokenMock = vi.fn();
 	vi.resetModules();
 	vi.doMock("@/runtime/runtime-config-query", () => ({
 		fetchFeaturebaseToken: fetchFeaturebaseTokenMock,
-	}));
-	const nativeAgent = await import("@/runtime/native-agent");
-	vi.doMock("@/runtime/native-agent", () => ({
-		...nativeAgent,
-		isClineOauthAuthenticated: nativeAgent.isClineOauthAuthenticated,
 	}));
 	const module = await import("@/hooks/use-featurebase-feedback-widget");
 	return {
@@ -98,7 +65,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		module: Awaited<ReturnType<typeof importFeaturebaseModule>>["module"],
 		input: {
 			workspaceId: string | null;
-			clineProviderSettings: RuntimeClineProviderSettings;
 		},
 	): Promise<{ getState: () => FeaturebaseFeedbackState }> {
 		let hookResult: FeaturebaseFeedbackState | null = null;
@@ -131,7 +97,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		expect(getState().authState).toBe("idle");
@@ -146,7 +111,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: defaultClineProviderSettings,
 		});
 
 		expect(getState().authState).toBe("idle");
@@ -161,7 +125,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: tokensOnlySettings,
 		});
 
 		await act(async () => {
@@ -182,7 +145,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		let openPromise: Promise<void> | null = null;
@@ -232,7 +194,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		let openPromise: Promise<void> | null = null;
@@ -272,7 +233,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		let openPromise: Promise<void> | null = null;
@@ -318,7 +278,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
@@ -374,7 +333,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		const openPromise = getState().openFeedbackWidget();
@@ -417,7 +375,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		const openPromise = getState().openFeedbackWidget();
@@ -448,7 +405,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		const openPromise = getState().openFeedbackWidget();
@@ -497,7 +453,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: null,
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		await act(async () => {
@@ -519,7 +474,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 		const { getState } = await renderHook(module, {
 			workspaceId: "workspace-1",
-			clineProviderSettings: authenticatedClineSettings,
 		});
 
 		await act(async () => {
