@@ -35,6 +35,9 @@ function loadActivePanel(): DetailPanelId | null {
 	if (stored === "kanban" || stored === "changes") {
 		return stored;
 	}
+	if (stored === "") {
+		return null;
+	}
 	return "kanban";
 }
 
