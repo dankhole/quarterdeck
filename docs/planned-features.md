@@ -65,3 +65,20 @@ When trashing a card, allow customizing whether the associated worktree is autom
 - Lost work is acceptable — this is a conscious choice for keeping things clean
 - **Always** show a warning/confirmation dialog before trashing, regardless of the setting
 - The warning should clearly state what will happen (e.g. "This will delete the worktree and any uncommitted changes")
+
+## 9. Interrupted agents get stuck looping in "in progress"
+
+When a user interrupts an agent (e.g. Ctrl+C on Claude), the agent doesn't always report its new state back to Kanban. The card stays stuck in "in progress" and the UI loops waiting for a transition that never comes. Need to:
+- Detect when an agent process has been interrupted but the state machine didn't receive the transition event
+- Add a timeout or heartbeat mechanism so stale "in progress" cards are recovered automatically
+- Ensure the interrupt signal propagates correctly through the PTY → state machine → UI pipeline
+
+## 10. Sub-agent permission requests not surfaced to user
+
+When an agent spawns a sub-agent that needs user permissions (e.g. tool approvals), the permission prompt may not be surfaced to the Kanban UI. The sub-agent blocks waiting for input the user never sees. Need to:
+- Ensure permission requests from sub-agents bubble up to the Kanban review flow
+- Surface a clear prompt in the UI so the user can approve/deny without switching to a raw terminal
+
+## 11. Remove all Cline references and dependencies
+
+Strip out all references to Cline from the codebase — the `@clinebot/*` SDK packages, the `src/cline-sdk/` boundary layer, Cline-specific agent adapters, and any branding or documentation references. Kanban should be agent-agnostic with no hard dependency on Cline.
