@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, FileText, FolderOpen, Search, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui/cn";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 
@@ -76,7 +76,7 @@ export function FileBrowserTreePanel({
 	const tree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
 
 	// Auto-expand all directories on first load or when searching
-	useMemo(() => {
+	useEffect(() => {
 		if (searchQuery.trim()) {
 			setExpandedDirs(new Set(collectAllDirectoryPaths(tree)));
 		} else if (!hasInitializedExpansion && tree.length > 0) {
@@ -106,9 +106,9 @@ export function FileBrowserTreePanel({
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
 			if (event.key === "Escape") {
-				event.preventDefault();
-				event.stopPropagation();
 				if (searchQuery) {
+					event.preventDefault();
+					event.stopPropagation();
 					setSearchQuery("");
 					setFocusedIndex(-1);
 				} else {

@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { normalize, resolve, sep } from "node:path";
+import { isAbsolute, normalize, relative, resolve } from "node:path";
 
 import type { RuntimeFileContentResponse } from "../core/api-contract";
 
@@ -46,6 +46,25 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
 	zsh: "bash",
 };
 
+/** Walk back from `limit` to avoid splitting a multi-byte UTF-8 character. */
+function findUtf8Boundary(buffer: Buffer, limit: number): number {
+	let i = limit;
+	// Back up at most 3 bytes (max trailing bytes in a 4-byte UTF-8 sequence)
+	while (i > limit - 4 && i > 0) {
+		const byte = buffer[i - 1] ?? 0;
+		// Single-byte ASCII or final continuation byte sequence is complete
+		if (byte < 0x80) break;
+		// Leading byte of a multi-byte sequence — check if the sequence fits
+		if ((byte & 0xc0) !== 0x80) {
+			const seqLen = byte < 0xe0 ? 2 : byte < 0xf0 ? 3 : 4;
+			if (i - 1 + seqLen <= limit) break; // sequence fits, keep it
+			return i - 1; // sequence is cut — trim before the leading byte
+		}
+		i--;
+	}
+	return limit;
+}
+
 function detectLanguage(filePath: string): string {
 	const basename = filePath.slice(filePath.lastIndexOf("/") + 1).toLowerCase();
 	if (basename === "dockerfile") {
@@ -69,16 +88,9 @@ function isBinaryBuffer(buffer: Buffer): boolean {
 }
 
 function validatePath(worktreePath: string, relativePath: string): string {
-	if (relativePath.startsWith("/")) {
-		throw new Error("Absolute paths are not allowed.");
-	}
-	const segments = relativePath.split(/[/\\]/);
-	if (segments.includes("..")) {
-		throw new Error("Path traversal is not allowed.");
-	}
 	const absolutePath = resolve(worktreePath, normalize(relativePath));
-	const normalizedRoot = worktreePath.endsWith(sep) ? worktreePath : `${worktreePath}${sep}`;
-	if (!absolutePath.startsWith(normalizedRoot) && absolutePath !== worktreePath) {
+	const rel = relative(worktreePath, absolutePath);
+	if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
 		throw new Error("Path resolves outside the worktree.");
 	}
 	return absolutePath;
@@ -111,7 +123,9 @@ export async function readWorkspaceFile(
 	}
 
 	const truncated = size > MAX_FILE_SIZE;
-	const content = truncated ? buffer.subarray(0, MAX_FILE_SIZE).toString("utf-8") : buffer.toString("utf-8");
+	const content = truncated
+		? buffer.subarray(0, findUtf8Boundary(buffer, MAX_FILE_SIZE)).toString("utf-8")
+		: buffer.toString("utf-8");
 
 	return {
 		content,
