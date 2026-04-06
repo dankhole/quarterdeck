@@ -1,4 +1,4 @@
-// Service worker for the Cline PWA.
+// Service worker for the Kanban PWA.
 // Catches navigation failures (server not running / crashed) and serves a
 // branded fallback page that auto-refreshes once the server is reachable.
 
@@ -7,7 +7,7 @@ const FALLBACK_HTML = `<!doctype html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Cline</title>
+<title>Kanban</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{
@@ -49,8 +49,8 @@ const FALLBACK_HTML = `<!doctype html>
     <line x1="12" x2="12" y1="8" y2="12"/>
     <line x1="12" x2="12.01" y1="16" y2="16"/>
   </svg>
-  <h3>Waiting for Cline</h3>
-  <p>Run <code style="background:#2D3339;padding:2px 6px;border-radius:4px;font-size:13px">cline</code> in your terminal to start the server.</p>
+  <h3>Waiting for Kanban</h3>
+  <p>Run <code style="background:#2D3339;padding:2px 6px;border-radius:4px;font-size:13px">kanban</code> in your terminal to start the server.</p>
   <div class="spinner"></div>
 </div>
 <script>

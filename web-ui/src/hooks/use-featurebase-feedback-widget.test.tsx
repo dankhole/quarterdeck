@@ -24,7 +24,7 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("returns a stable idle stub since Featurebase auth is unavailable without Cline OAuth", async () => {
+	it("returns a stable idle stub since Featurebase auth is unavailable", async () => {
 		let hookResult: FeaturebaseFeedbackState | null = null;
 
 		function HookHarness(): null {

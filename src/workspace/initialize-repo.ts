@@ -31,12 +31,7 @@ export async function ensureInitialCommit(projectPath: string): Promise<Initiali
 		};
 	}
 
-	const commitResult = await runGit(projectPath, [
-		"commit",
-		"--allow-empty",
-		"-m",
-		"Initial commit through Cline Kanban",
-	]);
+	const commitResult = await runGit(projectPath, ["commit", "--allow-empty", "-m", "Initial commit through Kanban"]);
 
 	if (!commitResult.ok) {
 		return {

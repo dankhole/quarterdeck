@@ -27,7 +27,7 @@ export interface FeaturebaseFeedbackState {
 // ---------------------------------------------------------------------------
 
 export function useFeaturebaseFeedbackWidget(_input: { workspaceId: string | null }): FeaturebaseFeedbackState {
-	// Without Cline OAuth, Featurebase JWT auth is not available.
+	// Featurebase JWT auth is not currently available.
 	// The widget cannot be opened without authentication.
 	const openFeedbackWidget = useCallback(async (): Promise<void> => {}, []);
 

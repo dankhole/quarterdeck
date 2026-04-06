@@ -64,7 +64,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 		readyForReviewNotificationsEnabled: true,
-		detectedCommands: ["codex", "claude", "cline"],
+		detectedCommands: ["codex", "claude", "droid"],
 		agents: [
 			{
 				id: "codex",
@@ -85,10 +85,10 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 				configured: false,
 			},
 			{
-				id: "cline",
-				label: "Cline",
-				binary: "cline",
-				command: "cline",
+				id: "droid",
+				label: "Factory Droid",
+				binary: "droid",
+				command: "droid",
 				defaultArgs: [],
 				installed: true,
 				configured: false,
@@ -174,7 +174,7 @@ function HookHarness({
 		if (!seedSessionSummary || !result.taskId) {
 			return;
 		}
-		upsertSessionSummary(createSummary(result.taskId, config?.selectedAgentId ?? "cline"));
+		upsertSessionSummary(createSummary(result.taskId, config?.selectedAgentId ?? "claude"));
 	}, [config?.selectedAgentId, result.taskId, seedSessionSummary, upsertSessionSummary]);
 
 	useEffect(() => {
@@ -347,15 +347,15 @@ describe("useHomeAgentSession", () => {
 		);
 	});
 
-	it("keeps the same cline home terminal session id on no-op rerender", async () => {
+	it("keeps the same home terminal session id on no-op rerender", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
+						selectedAgentId: "droid",
+						effectiveCommand: "droid",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -369,15 +369,15 @@ describe("useHomeAgentSession", () => {
 		const initialSnapshot = requireSnapshot(latestSnapshot);
 		const initialTaskId = initialSnapshot.taskId;
 		expect(initialSnapshot.panelMode).toBe("terminal");
-		expect(initialTaskId).toMatch(/^__home_agent__:workspace-1:cline$/);
+		expect(initialTaskId).toMatch(/^__home_agent__:workspace-1:droid$/);
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
+						selectedAgentId: "droid",
+						effectiveCommand: "droid",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -390,21 +390,21 @@ describe("useHomeAgentSession", () => {
 
 		const updatedSnapshot = requireSnapshot(latestSnapshot);
 		expect(updatedSnapshot.panelMode).toBe("terminal");
-		expect(updatedSnapshot.taskId).toMatch(/^__home_agent__:workspace-1:cline$/);
+		expect(updatedSnapshot.taskId).toMatch(/^__home_agent__:workspace-1:droid$/);
 		expect(updatedSnapshot.taskId).toBe(initialTaskId);
 		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 	});
 
-	it("starts a cline home terminal session like any other agent", async () => {
+	it("starts a home terminal session like any other agent", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					config={createRuntimeConfig({
-						selectedAgentId: "cline",
-						effectiveCommand: "cline",
+						selectedAgentId: "droid",
+						effectiveCommand: "droid",
 					})}
 					currentProjectId="workspace-1"
 					onSnapshot={(snapshot) => {
@@ -417,7 +417,7 @@ describe("useHomeAgentSession", () => {
 
 		const snapshot = requireSnapshot(latestSnapshot);
 		expect(snapshot.panelMode).toBe("terminal");
-		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:cline$/);
+		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:droid$/);
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
 			expect.objectContaining({

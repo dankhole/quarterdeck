@@ -1,7 +1,7 @@
 import type { RuntimeAgentId } from "@/runtime/types";
 
 export function isSelectedAgentAuthenticated(_selectedAgentId: RuntimeAgentId | null | undefined): boolean {
-	// Without Cline native agent, all agents are authenticated via their CLI.
+	// All agents are authenticated via their own CLI.
 	return true;
 }
 

@@ -7,7 +7,7 @@ There are two big ideas to hold in your head:
 1. The browser is mostly a control surface. It renders state, sends commands, and reacts to live updates.
 2. The local runtime is the source of truth for projects, worktrees, sessions, git operations, and streaming state.
 
-All agents (Claude Code, Codex, Gemini, OpenCode, Droid, Cline, etc.) run as PTY-backed CLI processes.
+All agents (Claude Code, Codex, Gemini, OpenCode, Droid, etc.) run as PTY-backed CLI processes.
 
 If you remember nothing else, remember this:
 
@@ -111,7 +111,7 @@ Kanban currently supports two runtime modes.
 
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
-| CLI-backed task terminal | Claude Code, Codex, Gemini, OpenCode, Droid, Cline, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and fit the terminal model well |
+| CLI-backed task terminal | Claude Code, Codex, Gemini, OpenCode, Droid, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and fit the terminal model well |
 | Workspace shell terminal | the bottom shell panel | workspace-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
 
 ## Core Concepts
@@ -157,7 +157,7 @@ The `src/terminal/` area owns everything process-oriented:
 - translating process lifecycle into Kanban runtime summaries
 - handling the workspace shell terminal
 
-This is the path for all agents: Claude Code, Codex, Gemini, OpenCode, Droid, Cline, and any other command-driven agent.
+This is the path for all agents: Claude Code, Codex, Gemini, OpenCode, Droid, and any other command-driven agent.
 
 ### Workspace and config
 

@@ -60,11 +60,7 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
-	const debugResetTargetPaths = [
-		join(homedir(), ".cline", "data"),
-		join(homedir(), ".cline", "kanban"),
-		join(homedir(), ".cline", "worktrees"),
-	] as const;
+	const debugResetTargetPaths = [join(homedir(), ".cline", "kanban"), join(homedir(), ".cline", "worktrees")] as const;
 
 	const buildConfigResponse = (runtimeConfig: RuntimeConfigState) => buildRuntimeConfigResponse(runtimeConfig);
 

@@ -3,8 +3,6 @@ Kanban has to shut down cleanly across several launch shapes:
 
 - `kanban`
 - `npx kanban`
-- `cline --kanban`
-- `npx cline --kanban`
 
 Those are not equivalent from a signal-delivery perspective.
 
@@ -44,8 +42,8 @@ Important design constraints:
 The small tradeoff is intentional: in wrapper launches, a human pressing Ctrl+C
 twice extremely quickly may have the second press treated as a wrapper replay if
 it lands inside the duplicate window. In practice that is much less harmful than
-the old behavior, where a single Ctrl+C under `npx` or `cline --kanban` could be
-misread as a double interrupt and force exit immediately.
+the old behavior, where a single Ctrl+C under `npx` could be misread as a double
+interrupt and force exit immediately.
 */
 const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
 const DEFAULT_DUPLICATE_SIGNAL_WINDOW_MS = 750;
