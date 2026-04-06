@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { FolderOpen, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -7,6 +7,7 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
+import { FileBrowserPanel } from "@/components/detail-panels/file-browser-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
@@ -170,6 +171,41 @@ function DiffToolbar({
 	);
 }
 
+function FileBrowserToolbar({
+	isExpanded,
+	onToggleExpand,
+}: {
+	isExpanded: boolean;
+	onToggleExpand: () => void;
+}): React.ReactElement {
+	return (
+		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
+			{isExpanded ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<X size={14} />}
+					onClick={onToggleExpand}
+					className="h-5"
+					aria-label="Collapse expanded file browser"
+				/>
+			) : null}
+			<div className="flex items-center gap-1.5 text-xs text-text-secondary">
+				<FolderOpen size={14} />
+				<span>Files</span>
+			</div>
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+				onClick={onToggleExpand}
+				className="ml-auto h-5"
+				aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
+			/>
+		</div>
+	);
+}
+
 export function CardDetailView({
 	selection,
 	currentProjectId,
@@ -268,9 +304,11 @@ export function CardDetailView({
 	isDocumentVisible?: boolean;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
+	const [fileBrowserSelectedPath, setFileBrowserSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const [isFileBrowserExpanded, setIsFileBrowserExpanded] = useState(false);
 	const {
 		activeDetailPanel,
 		setActiveDetailPanel,
@@ -278,14 +316,19 @@ export function CardDetailView({
 		setSidePanelRatio,
 		detailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
+		detailFileBrowserTreeRatio,
+		setDetailFileBrowserTreeRatio,
 	} = useCardDetailLayout({
 		isDiffExpanded,
+		isFileBrowserExpanded,
 	});
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { startDrag: startDetailDiffResize } = useResizeDrag();
+	const { startDrag: startFileBrowserTreeResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
+	const fileBrowserRowRef = useRef<HTMLDivElement | null>(null);
 	const handleSidePanelSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
 			const container = detailLayoutRef.current;
@@ -336,6 +379,31 @@ export function CardDetailView({
 		},
 		[detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
 	);
+
+	const handleFileBrowserTreeSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = fileBrowserRowRef.current;
+			if (!container) {
+				return;
+			}
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = detailFileBrowserTreeRatio;
+			startFileBrowserTreeResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setDetailFileBrowserTreeRatio(startRatio + deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setDetailFileBrowserTreeRatio(startRatio + deltaRatio);
+				},
+			});
+		},
+		[detailFileBrowserTreeRatio, setDetailFileBrowserTreeRatio, startFileBrowserTreeResize],
+	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const lastTurnViewKey =
 		diffMode === "last_turn"
@@ -364,6 +432,8 @@ export function CardDetailView({
 	const detailDiffFileTreePanelPercent = `${(detailDiffFileTreeRatio * 100).toFixed(1)}%`;
 	const detailDiffContentPanelPercent = `${((1 - detailDiffFileTreeRatio) * 100).toFixed(1)}%`;
 	const detailDiffFileTreePanelFlex = `0 0 ${detailDiffFileTreePanelPercent}`;
+	const fileBrowserTreePanelPercent = `${(detailFileBrowserTreeRatio * 100).toFixed(1)}%`;
+	const fileBrowserContentPanelPercent = `${((1 - detailFileBrowserTreeRatio) * 100).toFixed(1)}%`;
 	const isSidePanelOpen = activeDetailPanel !== null;
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const availablePaths = useMemo(() => {
@@ -416,12 +486,17 @@ export function CardDetailView({
 				if (isTypingTarget(event.target)) {
 					return;
 				}
+				if (isFileBrowserExpanded) {
+					event.preventDefault();
+					setIsFileBrowserExpanded(false);
+					return;
+				}
 				if (isDiffExpanded) {
 					event.preventDefault();
 					setIsDiffExpanded(false);
 				}
 			},
-			[gitHistoryPanel, isDiffExpanded, onCloseGitHistory],
+			[gitHistoryPanel, isDiffExpanded, isFileBrowserExpanded, onCloseGitHistory],
 		),
 	);
 
@@ -450,14 +525,26 @@ export function CardDetailView({
 
 	useEffect(() => {
 		setDiffMode("working_copy");
+		setIsDiffExpanded(false);
+		setIsFileBrowserExpanded(false);
+		setFileBrowserSelectedPath(null);
 	}, [selection.card.id]);
 
 	const handleToggleDiffExpand = useCallback(() => {
 		if (!isDiffExpanded && bottomTerminalOpen) {
 			onBottomTerminalClose();
 		}
+		setIsFileBrowserExpanded(false);
 		setIsDiffExpanded((previous) => !previous);
 	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+
+	const handleToggleFileBrowserExpand = useCallback(() => {
+		if (!isFileBrowserExpanded && bottomTerminalOpen) {
+			onBottomTerminalClose();
+		}
+		setIsDiffExpanded(false);
+		setIsFileBrowserExpanded((previous) => !previous);
+	}, [bottomTerminalOpen, isFileBrowserExpanded, onBottomTerminalClose]);
 
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
@@ -485,8 +572,8 @@ export function CardDetailView({
 				background: "var(--color-surface-0)",
 			}}
 		>
-			{/* Toolbar — always visible unless diff is expanded */}
-			{!isDiffExpanded ? (
+			{/* Toolbar — always visible unless diff or file browser is expanded */}
+			{!isDiffExpanded && !isFileBrowserExpanded ? (
 				<DetailToolbar
 					activePanel={activeDetailPanel}
 					onPanelChange={setActiveDetailPanel}
@@ -494,8 +581,8 @@ export function CardDetailView({
 				/>
 			) : null}
 
-			{/* Side panel — kanban or changes, shown when activeDetailPanel is set */}
-			{!isDiffExpanded && isSidePanelOpen ? (
+			{/* Side panel — kanban, changes, or files, shown when activeDetailPanel is set */}
+			{!isDiffExpanded && !isFileBrowserExpanded && isSidePanelOpen ? (
 				<>
 					<div
 						style={{
@@ -593,6 +680,25 @@ export function CardDetailView({
 									)}
 								</div>
 							</>
+						) : activeDetailPanel === "files" && currentProjectId ? (
+							<>
+								<FileBrowserToolbar
+									isExpanded={isFileBrowserExpanded}
+									onToggleExpand={handleToggleFileBrowserExpand}
+								/>
+								<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+									<FileBrowserPanel
+										taskId={selection.card.id}
+										baseRef={selection.card.baseRef}
+										workspaceId={currentProjectId!}
+										selectedPath={fileBrowserSelectedPath}
+										onSelectedPathChange={setFileBrowserSelectedPath}
+										treePanelFlex={fileBrowserTreePanelPercent}
+										contentPanelFlex={fileBrowserContentPanelPercent}
+										onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+									/>
+								</div>
+							</>
 						) : null}
 					</div>
 					<ResizeHandle
@@ -686,6 +792,37 @@ export function CardDetailView({
 											</div>
 										</div>
 									)}
+								</div>
+							</div>
+						</div>
+					</>
+				) : isFileBrowserExpanded ? (
+					<>
+						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+							<div
+								style={{
+									display: "flex",
+									width: "100%",
+									minWidth: 0,
+									minHeight: 0,
+									flexDirection: "column",
+								}}
+							>
+								<FileBrowserToolbar
+									isExpanded={isFileBrowserExpanded}
+									onToggleExpand={handleToggleFileBrowserExpand}
+								/>
+								<div ref={fileBrowserRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+									<FileBrowserPanel
+										taskId={selection.card.id}
+										baseRef={selection.card.baseRef}
+										workspaceId={currentProjectId!}
+										selectedPath={fileBrowserSelectedPath}
+										onSelectedPathChange={setFileBrowserSelectedPath}
+										treePanelFlex={fileBrowserTreePanelPercent}
+										contentPanelFlex={fileBrowserContentPanelPercent}
+										onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+									/>
 								</div>
 							</div>
 						</div>

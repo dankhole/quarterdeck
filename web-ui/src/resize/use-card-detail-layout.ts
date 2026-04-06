@@ -10,7 +10,7 @@ import {
 } from "@/resize/resize-preferences";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
-export type DetailPanelId = "kanban" | "changes";
+export type DetailPanelId = "kanban" | "changes" | "files";
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -30,9 +30,21 @@ const EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.12, 0.6),
 };
 
+const COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
+	key: LocalStorageKey.DetailFileBrowserTreePanelRatio,
+	defaultValue: 0.25,
+	normalize: (value) => clampBetween(value, 0.12, 0.6),
+};
+
+const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
+	key: LocalStorageKey.DetailExpandedFileBrowserTreePanelRatio,
+	defaultValue: 0.16,
+	normalize: (value) => clampBetween(value, 0.12, 0.6),
+};
+
 function loadActivePanel(): DetailPanelId | null {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
-	if (stored === "kanban" || stored === "changes") {
+	if (stored === "kanban" || stored === "changes" || stored === "files") {
 		return stored;
 	}
 	if (stored === "") {
@@ -46,13 +58,21 @@ function persistActivePanel(panel: DetailPanelId | null): DetailPanelId | null {
 	return panel;
 }
 
-export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolean }): {
+export function useCardDetailLayout({
+	isDiffExpanded,
+	isFileBrowserExpanded,
+}: {
+	isDiffExpanded: boolean;
+	isFileBrowserExpanded: boolean;
+}): {
 	activeDetailPanel: DetailPanelId | null;
 	setActiveDetailPanel: (panel: DetailPanelId | null) => void;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	detailDiffFileTreeRatio: number;
 	setDetailDiffFileTreeRatio: (ratio: number) => void;
+	detailFileBrowserTreeRatio: number;
+	setDetailFileBrowserTreeRatio: (ratio: number) => void;
 } {
 	const [activeDetailPanel, setActiveDetailPanelState] = useState<DetailPanelId | null>(loadActivePanel);
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
@@ -61,6 +81,12 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 	);
 	const [expandedDetailDiffFileTreeRatio, setExpandedDetailDiffFileTreeRatioState] = useState(() =>
 		loadResizePreference(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
+	);
+	const [collapsedFileBrowserTreeRatio, setCollapsedFileBrowserTreeRatioState] = useState(() =>
+		loadResizePreference(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
+	);
+	const [expandedFileBrowserTreeRatio, setExpandedFileBrowserTreeRatioState] = useState(() =>
+		loadResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 	);
 
 	const setActiveDetailPanel = useCallback((panel: DetailPanelId | null) => {
@@ -86,6 +112,21 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		[isDiffExpanded],
 	);
 
+	const setDetailFileBrowserTreeRatio = useCallback(
+		(ratio: number) => {
+			if (isFileBrowserExpanded) {
+				setExpandedFileBrowserTreeRatioState(
+					persistResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE, ratio),
+				);
+				return;
+			}
+			setCollapsedFileBrowserTreeRatioState(
+				persistResizePreference(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE, ratio),
+			);
+		},
+		[isFileBrowserExpanded],
+	);
+
 	useLayoutResetEffect(() => {
 		setSidePanelRatioState(getResizePreferenceDefaultValue(SIDE_PANEL_RATIO_PREFERENCE));
 		setCollapsedDetailDiffFileTreeRatioState(
@@ -93,6 +134,12 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		);
 		setExpandedDetailDiffFileTreeRatioState(
 			getResizePreferenceDefaultValue(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
+		);
+		setCollapsedFileBrowserTreeRatioState(
+			getResizePreferenceDefaultValue(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
+		);
+		setExpandedFileBrowserTreeRatioState(
+			getResizePreferenceDefaultValue(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 		);
 	});
 
@@ -103,5 +150,7 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		setSidePanelRatio,
 		detailDiffFileTreeRatio: isDiffExpanded ? expandedDetailDiffFileTreeRatio : collapsedDetailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
+		detailFileBrowserTreeRatio: isFileBrowserExpanded ? expandedFileBrowserTreeRatio : collapsedFileBrowserTreeRatio,
+		setDetailFileBrowserTreeRatio,
 	};
 }

@@ -147,6 +147,11 @@ function normalizeLimit(limit: number | undefined): number {
 	return Math.max(1, Math.min(MAX_LIMIT, rounded));
 }
 
+export async function listAllWorkspaceFiles(cwd: string): Promise<string[]> {
+	const { files } = await loadFileIndex(cwd);
+	return [...files];
+}
+
 export async function searchWorkspaceFiles(
 	cwd: string,
 	query: string,

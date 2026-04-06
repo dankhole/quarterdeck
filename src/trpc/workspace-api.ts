@@ -1,10 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import type {
+	RuntimeFileContentResponse,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
+	RuntimeListFilesResponse,
 	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
@@ -26,7 +28,8 @@ import {
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync";
-import { searchWorkspaceFiles } from "../workspace/search-workspace-files";
+import { readWorkspaceFile } from "../workspace/read-workspace-file";
+import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
@@ -315,6 +318,60 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				query,
 				files,
 			} satisfies RuntimeWorkspaceFileSearchResponse;
+		},
+		listFiles: async (workspaceScope, input) => {
+			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
+			let taskCwd: string;
+			try {
+				taskCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId: normalizedInput.taskId,
+					baseRef: normalizedInput.baseRef,
+					ensure: false,
+				});
+			} catch (error) {
+				if (!isMissingTaskWorktreeError(error)) {
+					throw error;
+				}
+				return { files: [] } satisfies RuntimeListFilesResponse;
+			}
+			const files = await listAllWorkspaceFiles(taskCwd);
+			return { files } satisfies RuntimeListFilesResponse;
+		},
+		getFileContent: async (workspaceScope, input) => {
+			const taskId = input.taskId.trim();
+			const baseRef = input.baseRef.trim();
+			const filePath = input.path.trim();
+			if (!taskId) {
+				throw new Error("Missing taskId parameter.");
+			}
+			if (!baseRef) {
+				throw new Error("Missing baseRef parameter.");
+			}
+			if (!filePath) {
+				throw new Error("Missing path parameter.");
+			}
+			let taskCwd: string;
+			try {
+				taskCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId,
+					baseRef,
+					ensure: false,
+				});
+			} catch (error) {
+				if (!isMissingTaskWorktreeError(error)) {
+					throw error;
+				}
+				return {
+					content: "",
+					language: "",
+					binary: false,
+					size: 0,
+					truncated: false,
+				} satisfies RuntimeFileContentResponse;
+			}
+			return await readWorkspaceFile(taskCwd, filePath);
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);
