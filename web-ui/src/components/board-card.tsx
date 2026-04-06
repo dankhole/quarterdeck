@@ -171,11 +171,8 @@ export function BoardCard({
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
-	const statusLabel = useMemo(() => (sessionSummary ? describeSessionState(sessionSummary) : null), [sessionSummary]);
-	const statusTagStyle = useMemo(
-		() => (sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null),
-		[sessionSummary],
-	);
+	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
+	const statusTagStyle = sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null;
 	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
