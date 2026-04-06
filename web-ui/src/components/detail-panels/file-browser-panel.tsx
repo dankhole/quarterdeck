@@ -94,6 +94,7 @@ export function FileBrowserPanel({
 					binary={fileContentQuery.data?.binary ?? false}
 					truncated={fileContentQuery.data?.truncated ?? false}
 					isLoading={fileContentQuery.isLoading}
+					isError={fileContentQuery.isError}
 					filePath={selectedPath}
 				/>
 			</div>

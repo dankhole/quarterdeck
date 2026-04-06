@@ -13,12 +13,14 @@ export function FileContentViewer({
 	binary,
 	truncated,
 	isLoading,
+	isError,
 	filePath,
 }: {
 	content: string | null;
 	binary: boolean;
 	truncated: boolean;
 	isLoading: boolean;
+	isError: boolean;
 	filePath: string | null;
 }): React.ReactElement {
 	const [wordWrap, setWordWrap] = useState(false);
@@ -79,6 +81,17 @@ export function FileContentViewer({
 		return (
 			<div className="flex flex-1 items-center justify-center bg-surface-1">
 				<Spinner size={24} />
+			</div>
+		);
+	}
+
+	if (isError) {
+		return (
+			<div className="flex flex-1 items-center justify-center text-text-tertiary bg-surface-1">
+				<div className="flex flex-col items-center gap-3">
+					<FileText size={40} />
+					<span className="text-sm">Failed to load file</span>
+				</div>
 			</div>
 		);
 	}
