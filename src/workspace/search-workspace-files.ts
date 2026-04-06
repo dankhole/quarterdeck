@@ -31,7 +31,7 @@ function normalizeLines(stdout: string): string[] {
 	return files;
 }
 
-function getCachedFileIndex(cwd: string): string[] | null {
+function getCachedFileIndex(cwd: string): readonly string[] | null {
 	const cached = fileIndexCache.get(cwd);
 	if (!cached) {
 		return null;
@@ -43,7 +43,7 @@ function getCachedFileIndex(cwd: string): string[] | null {
 	return cached.files;
 }
 
-function getCachedChangedPaths(cwd: string): Set<string> | null {
+function getCachedChangedPaths(cwd: string): ReadonlySet<string> | null {
 	const cached = fileIndexCache.get(cwd);
 	if (!cached) {
 		return null;
@@ -76,7 +76,7 @@ function parsePorcelainChangedPaths(stdout: string): Set<string> {
 	return changed;
 }
 
-async function loadFileIndex(cwd: string): Promise<{ files: string[]; changedPaths: Set<string> }> {
+async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; changedPaths: ReadonlySet<string> }> {
 	const cached = getCachedFileIndex(cwd);
 	const cachedChangedPaths = getCachedChangedPaths(cwd);
 	if (cached && cachedChangedPaths) {
