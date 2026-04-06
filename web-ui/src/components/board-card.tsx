@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Play, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -146,6 +146,7 @@ export function BoardCard({
 	onCommit,
 	onOpenPr,
 	onCancelAutomaticAction,
+	onRegenerateTitle,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
@@ -167,6 +168,7 @@ export function BoardCard({
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
+	onRegenerateTitle?: (taskId: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
@@ -178,6 +180,13 @@ export function BoardCard({
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
+
+	useEffect(() => {
+		if (isRegeneratingTitle) {
+			setIsRegeneratingTitle(false);
+		}
+	}, [card.title]); // eslint-disable-line react-hooks/exhaustive-deps
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -321,6 +330,30 @@ export function BoardCard({
 										</p>
 									</div>
 								</Tooltip>
+								{isHovered && !isTrashCard && onRegenerateTitle ? (
+									<Tooltip
+										content={
+											sessionSummary?.state === "running"
+												? "Generate title from prompt — better results after agent finishes"
+												: "Generate title from prompt and agent response"
+										}
+										side="top"
+									>
+										<Button
+											icon={isRegeneratingTitle ? <Spinner size={12} /> : <RefreshCw size={12} />}
+											variant="ghost"
+											size="sm"
+											disabled={isRegeneratingTitle}
+											aria-label="Regenerate title"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												setIsRegeneratingTitle(true);
+												onRegenerateTitle(card.id);
+											}}
+										/>
+									</Tooltip>
+								) : null}
 								{columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}

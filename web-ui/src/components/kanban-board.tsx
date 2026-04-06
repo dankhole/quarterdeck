@@ -41,6 +41,7 @@ export function KanbanBoard({
 	onCommitTask,
 	onOpenPrTask,
 	onCancelAutomaticTaskAction,
+	onRegenerateTitleTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
@@ -66,6 +67,7 @@ export function KanbanBoard({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
+	onRegenerateTitleTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
@@ -390,6 +392,7 @@ export function KanbanBoard({
 						onCommitTask={column.id === "review" ? onCommitTask : undefined}
 						onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 						onCancelAutomaticTaskAction={onCancelAutomaticTaskAction}
+						onRegenerateTitleTask={onRegenerateTitleTask}
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 						onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
