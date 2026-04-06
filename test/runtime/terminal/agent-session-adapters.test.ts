@@ -355,76 +355,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
-	it("writes Cline hook scripts and injects --hooks-dir", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const hooksDir = join(homedir(), ".cline", "kanban", "hooks", "cline");
-		const notificationHookPath =
-			process.platform === "win32" ? join(hooksDir, "Notification.ps1") : join(hooksDir, "Notification");
-		const taskCompleteHookPath =
-			process.platform === "win32" ? join(hooksDir, "TaskComplete.ps1") : join(hooksDir, "TaskComplete");
-		const userPromptSubmitHookPath =
-			process.platform === "win32" ? join(hooksDir, "UserPromptSubmit.ps1") : join(hooksDir, "UserPromptSubmit");
-		const preToolUseHookPath =
-			process.platform === "win32" ? join(hooksDir, "PreToolUse.ps1") : join(hooksDir, "PreToolUse");
-		const postToolUseHookPath =
-			process.platform === "win32" ? join(hooksDir, "PostToolUse.ps1") : join(hooksDir, "PostToolUse");
-
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
-
-		const hooksDirArgIndex = launch.args.indexOf("--hooks-dir");
-		expect(hooksDirArgIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[hooksDirArgIndex + 1]).toBe(hooksDir);
-
-		expect(existsSync(notificationHookPath)).toBe(true);
-		expect(existsSync(taskCompleteHookPath)).toBe(true);
-		expect(existsSync(userPromptSubmitHookPath)).toBe(true);
-		expect(existsSync(preToolUseHookPath)).toBe(true);
-		expect(existsSync(postToolUseHookPath)).toBe(true);
-
-		const notificationScript = readFileSync(notificationHookPath, "utf8");
-		expect(notificationScript).toContain("hooks");
-		expect(notificationScript).toContain("to_review");
-		expect(notificationScript).toContain("user_attention");
-		expect(notificationScript).toContain("completion_result");
-		expect(notificationScript).toContain('{"cancel":false}');
-
-		const taskCompleteScript = readFileSync(taskCompleteHookPath, "utf8");
-		expect(taskCompleteScript).toContain("hooks");
-		expect(taskCompleteScript).toContain("to_review");
-		expect(taskCompleteScript).toContain('{"cancel":false}');
-
-		const userPromptSubmitScript = readFileSync(userPromptSubmitHookPath, "utf8");
-		expect(userPromptSubmitScript).toContain("hooks");
-		expect(userPromptSubmitScript).toContain("to_in_progress");
-		expect(userPromptSubmitScript).toContain('{"cancel":false}');
-
-		const preToolUseScript = readFileSync(preToolUseHookPath, "utf8");
-		expect(preToolUseScript).toContain("hooks");
-		expect(preToolUseScript).toContain("activity");
-		expect(preToolUseScript).toContain("to_in_progress");
-		expect(preToolUseScript).toContain("to_review");
-		expect(preToolUseScript).toContain("ask_followup_question");
-		expect(preToolUseScript).toContain("plan_mode_respond");
-
-		const postToolUseScript = readFileSync(postToolUseHookPath, "utf8");
-		expect(postToolUseScript).toContain("hooks");
-		expect(postToolUseScript).toContain("activity");
-		expect(postToolUseScript).toContain("to_in_progress");
-		expect(postToolUseScript).toContain("ask_followup_question");
-		expect(postToolUseScript).toContain("plan_mode_respond");
-	});
-
 	it("adds resume flags for each agent", async () => {
 		setupTempHome();
 
@@ -482,17 +412,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(droidLaunch.args).toContain("--resume");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeFromTrash: true,
-		});
-		expect(clineLaunch.args).toContain("--continue");
 	});
 
 	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
@@ -530,17 +449,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(geminiLaunch.args).toContain("--yolo");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline-auto",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(clineLaunch.args).toContain("--auto-approve-all");
 	});
 
 	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
@@ -578,16 +486,5 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(geminiLaunch.args).toContain("--yolo");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline-no-auto",
-			agentId: "cline",
-			binary: "cline",
-			args: ["--auto-approve-all"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(clineLaunch.args).toContain("--auto-approve-all");
 	});
 });

@@ -488,7 +488,11 @@ export function CardDetailView({
 		>
 			{/* Toolbar — always visible unless diff is expanded */}
 			{!isDiffExpanded ? (
-				<DetailToolbar activePanel={activeDetailPanel} onPanelChange={setActiveDetailPanel} />
+				<DetailToolbar
+					activePanel={activeDetailPanel}
+					onPanelChange={setActiveDetailPanel}
+					hasUncommittedChanges={runtimeFiles !== null && runtimeFiles.length > 0}
+				/>
 			) : null}
 
 			{/* Side panel — kanban or changes, shown when activeDetailPanel is set */}
@@ -547,6 +551,27 @@ export function CardDetailView({
 											<div
 												style={{
 													display: "flex",
+													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex="1 1 0"
+												/>
+											</div>
+											<ResizeHandle
+												orientation="vertical"
+												ariaLabel="Resize detail diff panels"
+												onMouseDown={handleDetailDiffSeparatorMouseDown}
+												className="z-10"
+											/>
+											<div
+												style={{
+													display: "flex",
 													flex: `0 0 ${detailDiffContentPanelPercent}`,
 													minWidth: 0,
 													minHeight: 0,
@@ -561,27 +586,6 @@ export function CardDetailView({
 													onSendToTerminal={onSendReviewComments ? handleSendDiffComments : undefined}
 													comments={diffComments}
 													onCommentsChange={setDiffComments}
-												/>
-											</div>
-											<ResizeHandle
-												orientation="vertical"
-												ariaLabel="Resize detail diff panels"
-												onMouseDown={handleDetailDiffSeparatorMouseDown}
-												className="z-10"
-											/>
-											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
-											>
-												<FileTreePanel
-													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-													selectedPath={selectedPath}
-													onSelectPath={setSelectedPath}
-													panelFlex="1 1 0"
 												/>
 											</div>
 										</div>
@@ -642,6 +646,27 @@ export function CardDetailView({
 											<div
 												style={{
 													display: "flex",
+													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex="1 1 0"
+												/>
+											</div>
+											<ResizeHandle
+												orientation="vertical"
+												ariaLabel="Resize detail diff panels"
+												onMouseDown={handleDetailDiffSeparatorMouseDown}
+												className="z-10"
+											/>
+											<div
+												style={{
+													display: "flex",
 													flex: `0 0 ${detailDiffContentPanelPercent}`,
 													minWidth: 0,
 													minHeight: 0,
@@ -656,27 +681,6 @@ export function CardDetailView({
 													onSendToTerminal={onSendReviewComments ? handleSendDiffComments : undefined}
 													comments={diffComments}
 													onCommentsChange={setDiffComments}
-												/>
-											</div>
-											<ResizeHandle
-												orientation="vertical"
-												ariaLabel="Resize detail diff panels"
-												onMouseDown={handleDetailDiffSeparatorMouseDown}
-												className="z-10"
-											/>
-											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
-											>
-												<FileTreePanel
-													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-													selectedPath={selectedPath}
-													onSelectPath={setSelectedPath}
-													panelFlex="1 1 0"
 												/>
 											</div>
 										</div>

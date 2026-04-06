@@ -36,7 +36,7 @@ describe("FeaturebaseFeedbackButton", () => {
 		delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("renders nothing when selected agent is not Cline", () => {
+	it("renders nothing for any agent since Featurebase auth is unavailable", () => {
 		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		act(() => {
 			root.render(<FeaturebaseFeedbackButton selectedAgentId={"claude"} featurebaseFeedbackState={fbState} />);
@@ -44,17 +44,9 @@ describe("FeaturebaseFeedbackButton", () => {
 		expect(container.innerHTML).toBe("");
 	});
 
-	it("renders nothing for any agent since Featurebase auth is unavailable without Cline OAuth", () => {
-		const { state: fbState } = createFeaturebaseFeedbackState("ready");
-		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} featurebaseFeedbackState={fbState} />);
-		});
-		expect(container.innerHTML).toBe("");
-	});
-
 	it("renders nothing when featurebaseFeedbackState is undefined", () => {
 		act(() => {
-			root.render(<FeaturebaseFeedbackButton selectedAgentId={"cline"} />);
+			root.render(<FeaturebaseFeedbackButton selectedAgentId={"claude"} />);
 		});
 		expect(container.innerHTML).toBe("");
 	});
