@@ -10,6 +10,8 @@ import type {
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeFileContentRequest,
+	RuntimeFileContentResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -23,6 +25,8 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
+	RuntimeListFilesRequest,
+	RuntimeListFilesResponse,
 	RuntimeOpenFileRequest,
 	RuntimeOpenFileResponse,
 	RuntimeProjectAddRequest,
@@ -59,6 +63,8 @@ import {
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
+	runtimeFileContentRequestSchema,
+	runtimeFileContentResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -72,6 +78,8 @@ import {
 	runtimeGitSyncResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
+	runtimeListFilesRequestSchema,
+	runtimeListFilesResponseSchema,
 	runtimeOpenFileRequestSchema,
 	runtimeOpenFileResponseSchema,
 	runtimeProjectAddRequestSchema,
@@ -180,6 +188,14 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+		listFiles: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeListFilesRequest,
+		) => Promise<RuntimeListFilesResponse>;
+		getFileContent: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeFileContentRequest,
+		) => Promise<RuntimeFileContentResponse>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
 		notifyStateUpdated: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateNotifyResponse>;
 		saveState: (
@@ -373,6 +389,18 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceFileSearchResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
+			}),
+		listFiles: workspaceProcedure
+			.input(runtimeListFilesRequestSchema)
+			.output(runtimeListFilesResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.listFiles(ctx.workspaceScope, input);
+			}),
+		getFileContent: workspaceProcedure
+			.input(runtimeFileContentRequestSchema)
+			.output(runtimeFileContentResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.getFileContent(ctx.workspaceScope, input);
 			}),
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadState(ctx.workspaceScope);
