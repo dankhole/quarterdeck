@@ -314,7 +314,7 @@ export function BoardCard({
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
 								{card.useWorktree === false ? (
 									<Tooltip content="Running without isolated worktree">
-										<span className="inline-flex items-center shrink-0 rounded bg-status-orange/15 px-1 py-px text-[10px] font-medium text-status-orange leading-tight">
+										<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
 											No WT
 										</span>
 									</Tooltip>
