@@ -5,7 +5,6 @@ import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
-import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	getRuntimeShortcutIconComponent,
@@ -53,8 +52,6 @@ function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, aut
 function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
-
-const DIALOG_STYLE: CSSProperties = { minWidth: "480px", width: "34vw", maxWidth: "34vw" };
 
 const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }> = [
 	{ value: "commit", label: "Commit" },
@@ -548,7 +545,7 @@ export function RuntimeSettingsDialog({
 	);
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange} contentStyle={DIALOG_STYLE}>
+		<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "600px" }}>
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />
 			<DialogBody>
 				<h5 className="font-semibold text-text-primary m-0">Global</h5>

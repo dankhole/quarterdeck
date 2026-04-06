@@ -30,12 +30,10 @@ import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
 const DIALOG_STYLE: CSSProperties = {
+	width: "580px",
+	height: "520px",
 	minWidth: "400px",
-	minHeight: "30vh",
-	width: "30vw",
-	maxWidth: "80vw",
-	height: "52vh",
-	maxHeight: "80vh",
+	minHeight: "300px",
 };
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
