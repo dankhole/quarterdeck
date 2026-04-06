@@ -129,7 +129,7 @@ function requireDetailDiffSeparator(container: HTMLElement): HTMLElement {
 
 function requireDetailDiffFileTreePanel(container: HTMLElement): HTMLElement {
 	const separator = requireDetailDiffSeparator(container);
-	const panel = separator.nextElementSibling;
+	const panel = separator.previousElementSibling;
 	if (!(panel instanceof HTMLElement)) {
 		throw new Error("Expected a detail diff file tree panel element.");
 	}
