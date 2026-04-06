@@ -1,6 +1,19 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
-export type SessionStatusTagStyle = "neutral" | "success" | "warning" | "danger";
+export type SessionStatusTagStyle = "neutral" | "success" | "warning" | "danger" | "info";
+
+function isPermissionRequest(summary: RuntimeTaskSessionSummary): boolean {
+	const activity = summary.latestHookActivity;
+	if (!activity) return false;
+	const hook = activity.hookEventName?.toLowerCase() ?? "";
+	const notif = activity.notificationType?.toLowerCase() ?? "";
+	return (
+		hook === "permissionrequest" ||
+		notif === "permission_prompt" ||
+		notif === "permission.asked" ||
+		(activity.activityText?.toLowerCase() ?? "") === "waiting for approval"
+	);
+}
 
 export function describeSessionState(summary: RuntimeTaskSessionSummary | null): string {
 	if (!summary) {
@@ -14,7 +27,7 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 			case "exit":
 				return "Completed";
 			case "hook":
-				return "Ready for review";
+				return isPermissionRequest(summary) ? "Waiting for approval" : "Ready for review";
 			case "attention":
 				return "Waiting for input";
 			case "error":
@@ -50,7 +63,7 @@ export function getSessionStatusTagStyle(summary: RuntimeTaskSessionSummary | nu
 			case "interrupted":
 				return "neutral";
 			default:
-				return "warning";
+				return isPermissionRequest(summary) ? "warning" : "info";
 		}
 	}
 	if (summary.state === "interrupted" || summary.state === "failed") {
@@ -64,4 +77,5 @@ export const sessionStatusTagColors: Record<SessionStatusTagStyle, string> = {
 	success: "bg-status-green/15 text-status-green",
 	warning: "bg-status-orange/15 text-status-orange",
 	danger: "bg-status-red/15 text-status-red",
+	info: "bg-status-blue/15 text-status-blue",
 };
