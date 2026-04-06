@@ -326,11 +326,11 @@ export function CardDetailView({
 				cursor: "ew-resize",
 				onMove: (pointerX) => {
 					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
+					setDetailDiffFileTreeRatio(startRatio + deltaRatio);
 				},
 				onEnd: (pointerX) => {
 					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
+					setDetailDiffFileTreeRatio(startRatio + deltaRatio);
 				},
 			});
 		},

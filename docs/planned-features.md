@@ -16,25 +16,19 @@ When trashing a card, allow customizing whether the associated worktree is autom
 - **Always** show a warning/confirmation dialog before trashing, regardless of the setting
 - The warning should clearly state what will happen (e.g. "This will delete the worktree and any uncommitted changes")
 
-## 3. Sub-agent permission requests not surfaced to user
-
-When an agent spawns a sub-agent that needs user permissions (e.g. tool approvals), the permission prompt may not be surfaced to the Kanban UI. The sub-agent blocks waiting for input the user never sees. Need to:
-- Ensure permission requests from sub-agents bubble up to the Kanban review flow
-- Surface a clear prompt in the UI so the user can approve/deny without switching to a raw terminal
-
-## 4. Agent CWD mismatch detection
+## 3. Agent CWD mismatch detection
 
 Detect when a running agent's actual working directory has diverged from the card's configured worktree path. Show a warning badge on the card (like the existing "No WT" tag). See [docs/worktree-cwd-drift-detection.md](worktree-cwd-drift-detection.md) for full writeup.
 
-## 5. File browser panel
+## 4. File browser panel
 
 A read-only file browser panel in the detail toolbar for browsing the active card's worktree. See [docs/file-browser-panel.md](file-browser-panel.md) for full writeup.
 
-## 6. Branch persistence on cards
+## 5. Branch persistence on cards
 
 Persist the working branch on the card itself so it survives restarts and worktree cleanup. See [docs/worktree-cwd-drift-detection.md](worktree-cwd-drift-detection.md) for full writeup.
 
-## 7. Detail toolbar and diff viewer improvements
+## 6. Detail toolbar and diff viewer improvements
 
 Continuing work on the left toolbar and diff viewer UX:
 
