@@ -53,7 +53,7 @@ function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
 
-const DIALOG_STYLE: React.CSSProperties = { width: "34vw" };
+const DIALOG_STYLE: React.CSSProperties = { width: "34vw", maxWidth: "34vw" };
 
 const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }> = [
 	{ value: "commit", label: "Commit" },

@@ -22,6 +22,7 @@ export function Dialog({
 	children: ReactNode;
 	contentClassName?: string;
 	contentAriaDescribedBy?: string;
+	/** Dimension overrides — spreads after base sizing defaults */
 	contentStyle?: React.CSSProperties;
 }): React.ReactElement {
 	return (
