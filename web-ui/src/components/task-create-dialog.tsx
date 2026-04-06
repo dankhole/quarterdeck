@@ -15,7 +15,7 @@ import {
 	Plus,
 	X,
 } from "lucide-react";
-import type { Dispatch, ReactElement, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
@@ -28,6 +28,8 @@ import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
+
+const DIALOG_STYLE: CSSProperties = { minWidth: "20vw", minHeight: "30vh", width: "30vw", height: "52vh" };
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -395,7 +397,7 @@ export function TaskCreateDialog({
 			open={open}
 			onOpenChange={onOpenChange}
 			contentClassName="resize overflow-hidden"
-			contentStyle={{ minWidth: "20vw", minHeight: "30vh", width: "30vw", height: "52vh" }}
+			contentStyle={DIALOG_STYLE}
 		>
 			<DialogHeader title={dialogTitle} icon={<PencilLine size={16} />} />
 			<DialogBody>

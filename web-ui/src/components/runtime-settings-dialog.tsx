@@ -53,6 +53,8 @@ function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
 
+const DIALOG_STYLE: React.CSSProperties = { width: "34vw" };
+
 const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }> = [
 	{ value: "commit", label: "Commit" },
 	{ value: "pr", label: "Make PR" },
@@ -545,7 +547,7 @@ export function RuntimeSettingsDialog({
 	);
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "34vw" }}>
+		<Dialog open={open} onOpenChange={onOpenChange} contentStyle={DIALOG_STYLE}>
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />
 			<DialogBody>
 				<h5 className="font-semibold text-text-primary m-0">Global</h5>
