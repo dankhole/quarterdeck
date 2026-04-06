@@ -334,7 +334,7 @@ export function BoardCard({
 									<Tooltip
 										content={
 											sessionSummary?.state === "running"
-												? "Generate title from prompt — better results after agent finishes"
+												? "Ask agent to suggest a title"
 												: "Generate title from prompt and agent response"
 										}
 										side="top"
