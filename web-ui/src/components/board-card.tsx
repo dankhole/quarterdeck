@@ -89,6 +89,22 @@ function resolveToolCallLabel(
 	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
 }
 
+/** Tooltip content for card hover: "Thinking..." if running, finalMessage if completed. */
+function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
+	if (!summary) {
+		return null;
+	}
+	if (summary.state === "running") {
+		return "Thinking\u2026";
+	}
+	const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
+	if (finalMessage) {
+		const maxLength = 200;
+		return finalMessage.length > maxLength ? `${finalMessage.slice(0, maxLength)}\u2026` : finalMessage;
+	}
+	return null;
+}
+
 /** Short activity label for running cards (e.g. "Reading src/auth.ts"). */
 function getRunningActivityLabel(summary: RuntimeTaskSessionSummary | undefined): string | null {
 	if (!summary || summary.state !== "running") {
@@ -173,6 +189,7 @@ export function BoardCard({
 	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
+	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
@@ -292,16 +309,18 @@ export function BoardCard({
 										</span>
 									</Tooltip>
 								) : null}
-								<div className="flex-1 min-w-0">
-									<p
-										className={cn(
-											"kb-line-clamp-1 m-0 font-medium text-sm",
-											isTrashCard && "line-through text-text-tertiary",
-										)}
-									>
-										{displayTitle}
-									</p>
-								</div>
+								<Tooltip content={cardHoverTooltip} side="top">
+									<div className="flex-1 min-w-0">
+										<p
+											className={cn(
+												"kb-line-clamp-1 m-0 font-medium text-sm",
+												isTrashCard && "line-through text-text-tertiary",
+											)}
+										>
+											{displayTitle}
+										</p>
+									</div>
+								</Tooltip>
 								{columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}

@@ -14,8 +14,9 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
-import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
+import { mutateWorkspaceState, saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { generateTaskTitle } from "../title/title-generator";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,
@@ -334,6 +335,35 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const response = await saveWorkspaceState(workspaceScope.workspacePath, input);
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
 				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
+
+				// Fire-and-forget: generate titles for any new cards that have title === null
+				const untitledCards = input.board.columns.flatMap((col) =>
+					col.cards.filter((card) => card.title === null || card.title === undefined),
+				);
+				for (const card of untitledCards) {
+					void generateTaskTitle(card.prompt).then(async (title) => {
+						if (!title) {
+							return;
+						}
+						await mutateWorkspaceState(workspaceScope.workspacePath, (state) => {
+							const board = structuredClone(state.board);
+							for (const col of board.columns) {
+								const target = col.cards.find((c) => c.id === card.id);
+								if (target && target.title === null) {
+									target.title = title;
+									target.updatedAt = Date.now();
+									break;
+								}
+							}
+							return { board, value: null };
+						});
+						void deps.broadcastRuntimeWorkspaceStateUpdated(
+							workspaceScope.workspaceId,
+							workspaceScope.workspacePath,
+						);
+					});
+				}
+
 				return response;
 			} catch (error) {
 				if (error instanceof WorkspaceStateConflictError) {

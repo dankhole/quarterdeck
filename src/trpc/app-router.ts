@@ -103,6 +103,8 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
+import { mutateWorkspaceState } from "../state/workspace-state";
+import { generateTaskTitle } from "../title/title-generator";
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -406,6 +408,47 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitCommitDiffResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.loadCommitDiff(ctx.workspaceScope, input);
+			}),
+		regenerateTaskTitle: workspaceProcedure
+			.input(z.object({ taskId: z.string() }))
+			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
+			.mutation(async ({ ctx, input }) => {
+				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
+				let prompt: string | null = null;
+				let finalMessage: string | null = null;
+				for (const col of state.board.columns) {
+					const card = col.cards.find((c) => c.id === input.taskId);
+					if (card) {
+						prompt = card.prompt;
+						const session = state.sessions[card.id];
+						finalMessage = session?.latestHookActivity?.finalMessage ?? null;
+						break;
+					}
+				}
+				if (!prompt) {
+					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
+				}
+
+				const context = finalMessage ? `${prompt}\n\nAgent response: ${finalMessage}` : prompt;
+				const title = await generateTaskTitle(context);
+				if (!title) {
+					return { ok: false, title: null };
+				}
+
+				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
+					const board = structuredClone(currentState.board);
+					for (const col of board.columns) {
+						const target = col.cards.find((c) => c.id === input.taskId);
+						if (target) {
+							target.title = title;
+							target.updatedAt = Date.now();
+							break;
+						}
+					}
+					return { board, value: null };
+				});
+				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				return { ok: true, title };
 			}),
 	}),
 	projects: t.router({
