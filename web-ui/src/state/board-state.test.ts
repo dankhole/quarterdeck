@@ -520,13 +520,13 @@ describe("board dependency state", () => {
 				{
 					id: "backlog",
 					cards: [
-						{ id: "b", prompt: "Task B", startInPlanMode: false, baseRef: "main" },
-						{ id: "c", prompt: "Task C", startInPlanMode: false, baseRef: "main" },
+						{ id: "b", title: null, prompt: "Task B", startInPlanMode: false, baseRef: "main" },
+						{ id: "c", title: null, prompt: "Task C", startInPlanMode: false, baseRef: "main" },
 					],
 				},
 				{
 					id: "in_progress",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
+					cards: [{ id: "a", title: null, prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
 				},
 				{ id: "review", cards: [] },
 				{ id: "trash", cards: [] },

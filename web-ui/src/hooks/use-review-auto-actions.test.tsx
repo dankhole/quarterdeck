@@ -17,6 +17,7 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 				cards: [
 					{
 						id: "task-1",
+						title: null,
 						prompt: "Test task",
 						startInPlanMode: false,
 						autoReviewEnabled,

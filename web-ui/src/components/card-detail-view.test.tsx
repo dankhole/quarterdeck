@@ -80,6 +80,7 @@ vi.mock("@/resize/layout-customizations", () => ({
 function createCard(id: string): BoardCard {
 	return {
 		id,
+		title: null,
 		prompt: `Task ${id}`,
 		startInPlanMode: false,
 		autoReviewEnabled: false,
