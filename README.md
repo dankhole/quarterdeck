@@ -1,3 +1,5 @@
+> **Fork notice:** This project is a derivative work of [kanban-org/kanban](https://github.com/kanban-org/kanban), originally created by Cline Bot Inc. and licensed under the Apache License 2.0. Significant modifications have been made. See [LICENSE](LICENSE) for terms.
+
 ## npx kanban (Research Preview)
 
 <p align="center">

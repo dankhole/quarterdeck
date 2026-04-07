@@ -115,3 +115,70 @@ A new detail sidebar panel for managing the main repository's state — branch s
 - New tRPC query: `workspace.getBranchList`, `workspace.getCurrentBranch`, `workspace.getBranchDiff` (wraps existing `getWorkspaceChangesBetweenRefs`)
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
+
+## 11. Pulse integration for enhanced status display (Nerd Fonts)
+
+Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Kanban's terminal/status display when Nerd Fonts are detected.
+
+**Investigation needed**:
+- How Pulse works: is it a binary Kanban shells out to, a library, or something that wraps the agent process?
+- Where it would integrate: per-agent terminal status lines, a global Kanban status bar, board card indicators, or some combination
+- How to detect Nerd Fonts availability at runtime
+
+**Requirements**:
+- Auto-detect Nerd Fonts — if present, use Pulse-enhanced status display; if not, fall back to the current plain text display
+- Should be seamless — no user configuration required beyond having Nerd Fonts installed
+- Pulse is a tool made by a coworker, so coordinate with them on the integration surface
+
+## 12. Rename and rebrand as a fork
+
+This project is a fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. It currently still carries the original name, repo references, and npm package identity. Need to:
+
+- **Rename the project** — pick a new name that reflects the new direction (light AI IDE, multi-agent orchestration, terminal-centric — kanban is just one view). Available on npm:
+  - **Braid** — braiding parallel agent threads into a cohesive result. Short, memorable, `npx braid` reads well. **Frontrunner.**
+  - **Quarterdeck** — the command deck of a ship. Strong metaphor for orchestration. Longer, but distinctive and `npx quarterdeck` has presence.
+  - **Cupola** — an observation dome. Distinctive, evokes overseeing agents from above.
+  - **Tackboard** — compound, available but sounds like a physical object.
+  - **Loomboard** — compound, available but less punchy.
+- **Update package.json** — new name, author/contact info, repository URL pointing to the fork
+- **Update CLAUDE.md** — currently says "Published to npm as `npx kanban`. Repository: https://github.com/kanban-org/kanban" which is the upstream, not this fork
+- **Add attribution** — clearly state in README and package metadata that this was forked from kanban-org/kanban and that much of the foundational work is theirs
+- **Update CI/CD** — publish.yml references the upstream npm package and Slack webhook; update for the new identity
+- **Consider npm scope** — publish under a scoped package name (e.g. `@dcole/kanban` or the new project name) to avoid conflicts with the upstream package
+
+## 13. Rewrite backend in Go
+
+Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
+
+**Motivation**:
+- Go's goroutine model is a natural fit for the core workload: process orchestration, concurrent file I/O, and WebSocket streaming
+- Single static binary simplifies distribution (no Node.js runtime dependency)
+- Better resource usage under high concurrency (10+ agents)
+
+**Approach**:
+- The frontend (React/Vite) stays as-is — only the backend changes
+- Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
+- Replace node-pty with Go PTY libraries (`creack/pty`)
+- Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
+- Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
+- The research doc is organized module-by-module to support incremental porting
+
+## 14. Configurable audible notifications
+
+Play a sound when tasks need attention so you don't have to keep watching the board. Should be configurable per event type and globally toggle-able.
+
+**Events that could trigger sounds**:
+- Task waiting for permissions (highest priority — blocks progress)
+- Task moved to review / awaiting review
+- Task failed or session died
+- Task completed successfully
+
+**Configuration**:
+- Global on/off toggle in settings
+- Per-event-type enable/disable (e.g. sound on permissions but not on review)
+- Volume control or at minimum a way to pick between a few built-in sounds (subtle chime vs more urgent alert)
+
+**Implementation options**:
+- **Browser-side**: Use the Web Audio API or `<audio>` element to play sounds from the frontend. Simplest approach — no backend changes needed, works with built-in or bundled sound files. Requires the browser tab to be open.
+- **System-side**: Use the backend to trigger OS-level sounds (e.g. `afplay` on macOS, `paplay` on Linux). Works even if the browser tab is backgrounded/closed, but platform-specific.
+- Could support both — browser audio as default, with an opt-in setting for system-level notifications (pairs well with OS notification integration if added later)
