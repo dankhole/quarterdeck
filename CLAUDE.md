@@ -8,7 +8,7 @@ This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kan
 
 ```bash
 npm run install:all          # Install root + web-ui deps
-npm run dev                  # Runtime server (watch mode, port 3484)
+npm run dev                  # Runtime server (watch mode, port 3500)
 npm run web:dev              # Web UI dev server (Vite HMR, port 4173)
 npm run build                # Full production build
 npm run check                # Biome lint + typecheck + tests
@@ -30,7 +30,7 @@ npm run link                 # Global CLI symlink for local dev
 Browser (React + Vite, port 4173)
   │ tRPC + WebSocket
   ▼
-Runtime Server (Node.js, port 3484)
+Runtime Server (Node.js, port 3500)
   │ Spawns PTY processes
   ▼
 Agent Processes (Claude, Codex, Gemini, etc.)
@@ -113,7 +113,7 @@ test/                        # Runtime test suites (Vitest)
 ## Development workflow
 
 **Hot reload** requires two terminals:
-1. `npm run dev` - runtime server on `http://127.0.0.1:3484`
+1. `npm run dev` - runtime server on `http://127.0.0.1:3500`
 2. `npm run web:dev` - Vite HMR on `http://127.0.0.1:4173` (proxies `/api/*` to runtime)
 
 Use `http://127.0.0.1:4173` during development.
