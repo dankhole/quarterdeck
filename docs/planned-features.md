@@ -58,6 +58,7 @@ Audit and address performance bottlenecks that emerge when running many agents s
 - WebSocket broadcast fan-out scaling with multiple agents and browser tabs
 - Frontend memory growth (chat messages, terminal cache) over long sessions
 - PTY output fanout and shared backpressure across viewers
+- Large diffs cause noticeable UI lag — full file text (old + new) is sent inline and diff computation happens client-side, so tasks with many changed files or large files bog down the browser
 - Profile real-world usage with 5–10 concurrent agents to identify any new bottlenecks introduced since the earlier analysis
 
 ## 7. Create task dialog: shortcut remap and discoverability
