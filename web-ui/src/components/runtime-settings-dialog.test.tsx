@@ -61,10 +61,6 @@ const savedConfig = {
 	effectiveCommand: "claude",
 	detectedCommands: [],
 	shortcuts: [],
-	commitPromptTemplate: "",
-	openPrPromptTemplate: "",
-	commitPromptTemplateDefault: "",
-	openPrPromptTemplateDefault: "",
 	globalConfigPath: null,
 	projectConfigPath: null,
 	agents: [

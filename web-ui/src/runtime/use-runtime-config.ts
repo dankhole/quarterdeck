@@ -15,8 +15,6 @@ export interface UseRuntimeConfigResult {
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
-		commitPromptTemplate?: string;
-		openPrPromptTemplate?: string;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
@@ -82,8 +80,6 @@ export function useRuntimeConfig(
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
-			commitPromptTemplate?: string;
-			openPrPromptTemplate?: string;
 		}): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {

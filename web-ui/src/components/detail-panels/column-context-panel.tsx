@@ -24,15 +24,11 @@ function ColumnSection({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCommitTask,
-	onOpenPrTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
 	onTogglePinTask,
-	commitTaskLoadingById,
-	openPrTaskLoadingById,
 	moveToTrashLoadingById,
 	activeDragSourceColumnId,
 	onMigrateWorkingDirectory,
@@ -51,15 +47,11 @@ function ColumnSection({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
-	onCommitTask?: (taskId: string) => void;
-	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
-	commitTaskLoadingById?: Record<string, boolean>;
-	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	activeDragSourceColumnId?: BoardColumnId | null;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
@@ -200,10 +192,6 @@ function ColumnSection({
 												onRestartSession={onRestartSessionTask}
 												onMoveToTrash={onMoveToTrashTask}
 												onRestoreFromTrash={onRestoreFromTrashTask}
-												onCommit={onCommitTask}
-												onOpenPr={onOpenPrTask}
-												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
-												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
 												onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 												isMigrateLoading={migratingTaskId === card.id}
@@ -249,15 +237,11 @@ export function ColumnContextPanel({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCommitTask,
-	onOpenPrTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
 	onTogglePinTask,
-	commitTaskLoadingById,
-	openPrTaskLoadingById,
 	moveToTrashLoadingById,
 	onMigrateWorkingDirectory,
 	migratingTaskId,
@@ -275,15 +259,11 @@ export function ColumnContextPanel({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
-	onCommitTask?: (taskId: string) => void;
-	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
-	commitTaskLoadingById?: Record<string, boolean>;
-	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
@@ -371,15 +351,11 @@ export function ColumnContextPanel({
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}
 							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 							onEditTask={column.id === "backlog" ? onEditTask : undefined}
-							onCommitTask={column.id === "review" ? onCommitTask : undefined}
-							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 							onRegenerateTitleTask={onRegenerateTitleTask}
 							onUpdateTaskTitle={onUpdateTaskTitle}
 							onTogglePinTask={onTogglePinTask}
-							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
-							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 							activeDragSourceColumnId={activeDragSourceColumnId}
 							onMigrateWorkingDirectory={onMigrateWorkingDirectory}

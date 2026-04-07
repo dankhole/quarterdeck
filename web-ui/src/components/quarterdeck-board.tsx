@@ -39,16 +39,12 @@ export function QuarterdeckBoard({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCommitTask,
-	onOpenPrTask,
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
-	commitTaskLoadingById,
-	openPrTaskLoadingById,
 	moveToTrashLoadingById,
 	dependencies,
 	onCreateDependency,
@@ -69,16 +65,12 @@ export function QuarterdeckBoard({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
-	onCommitTask?: (taskId: string) => void;
-	onOpenPrTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
-	commitTaskLoadingById?: Record<string, boolean>;
-	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	dependencies: BoardDependency[];
 	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
@@ -400,16 +392,12 @@ export function QuarterdeckBoard({
 						editingTaskId={column.id === "backlog" ? editingTaskId : null}
 						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 						onEditTask={column.id === "backlog" ? onEditTask : undefined}
-						onCommitTask={column.id === "review" ? onCommitTask : undefined}
-						onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 						onCancelAutomaticTaskAction={onCancelAutomaticTaskAction}
 						onRegenerateTitleTask={onRegenerateTitleTask}
 						onUpdateTaskTitle={onUpdateTaskTitle}
 						onTogglePinTask={onTogglePinTask}
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 						onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
-						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
-						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 						moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}

@@ -37,10 +37,6 @@ function createRuntimeConfigResponse(
 			},
 		],
 		shortcuts: [],
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
 	};
 	return {
 		...nextConfig,

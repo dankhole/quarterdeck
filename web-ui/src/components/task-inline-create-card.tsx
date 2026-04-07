@@ -1,12 +1,12 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { AlertTriangle, ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
+import { AlertTriangle, ArrowBigUp, Check, Command, CornerDownLeft } from "lucide-react";
 import { type Dispatch, type ReactElement, type SetStateAction, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
-import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 import { useDocumentEvent, useMeasure } from "@/utils/react-use";
 
@@ -14,12 +14,6 @@ export type TaskInlineCardMode = "create" | "edit";
 
 export type TaskBranchOption = BranchSelectOption;
 
-const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
-	{ value: "commit", label: "Make commit" },
-	{ value: "pr", label: "Make PR" },
-	{ value: "move_to_trash", label: "Move to Trash" },
-];
-const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 16;
 const COMPACT_ACTIONS_WIDTH_THRESHOLD_PX = 280;
 
 function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
@@ -52,8 +46,6 @@ export function TaskInlineCreateCard({
 	onStartInPlanModeChange,
 	autoReviewEnabled,
 	onAutoReviewEnabledChange,
-	autoReviewMode,
-	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
@@ -76,8 +68,6 @@ export function TaskInlineCreateCard({
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
 	onAutoReviewEnabledChange: (value: boolean) => void;
-	autoReviewMode: TaskAutoReviewMode;
-	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
 	useWorktree?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
@@ -93,7 +83,6 @@ export function TaskInlineCreateCard({
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const useWorktreeId = `${idPrefix}-use-worktree-toggle`;
 	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
-	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const [measureRef, cardRect] = useMeasure<HTMLDivElement>();
@@ -217,7 +206,7 @@ export function TaskInlineCreateCard({
 					/>
 				</div>
 
-				<div className="flex items-center gap-2 flex-wrap">
+				<div className="flex items-center gap-2">
 					<label
 						htmlFor={autoReviewEnabledId}
 						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
@@ -233,30 +222,8 @@ export function TaskInlineCreateCard({
 								<Check size={10} className="text-white" />
 							</RadixCheckbox.Indicator>
 						</RadixCheckbox.Root>
-						<span>Automatically</span>
+						<span>Auto-trash when reviewed</span>
 					</label>
-					<div className="relative inline-flex">
-						<select
-							id={autoReviewModeId}
-							value={autoReviewMode}
-							onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
-							className="h-7 appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none"
-							style={{
-								width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
-								maxWidth: "100%",
-							}}
-						>
-							{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
-								<option key={option.value} value={option.value}>
-									{option.label}
-								</option>
-							))}
-						</select>
-						<ChevronDown
-							size={14}
-							className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary"
-						/>
-					</div>
 				</div>
 				{onUseWorktreeChange !== undefined ? (
 					<div>

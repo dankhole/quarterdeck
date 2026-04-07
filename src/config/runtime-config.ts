@@ -1,6 +1,6 @@
 // Persists Quarterdeck-owned runtime preferences on disk.
-// This module should store Quarterdeck settings such as selected agents,
-// shortcuts, and prompt templates.
+// This module should store Quarterdeck settings such as selected agents
+// and shortcuts.
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -16,8 +16,6 @@ interface RuntimeGlobalConfigFileShape {
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
-	commitPromptTemplate?: string;
-	openPrPromptTemplate?: string;
 }
 
 interface RuntimeProjectConfigFileShape {
@@ -32,10 +30,6 @@ export interface RuntimeConfigState {
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
-	commitPromptTemplate: string;
-	openPrPromptTemplate: string;
-	commitPromptTemplateDefault: string;
-	openPrPromptTemplateDefault: string;
 }
 
 export interface RuntimeConfigUpdateInput {
@@ -44,8 +38,6 @@ export interface RuntimeConfigUpdateInput {
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
-	commitPromptTemplate?: string;
-	openPrPromptTemplate?: string;
 }
 
 const CONFIG_FILENAME = "config.json";
@@ -55,38 +47,6 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
-
-First, check your current git state: run \`git status\` and \`git branch --show-current\`.
-
-- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
-- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
-
-Report:
-- Branch name
-- Final commit hash
-- Final commit message
-- Whether a new branch was created (detached HEAD case)`;
-const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `When you are finished with the task, open a pull request against {{base_ref}}.
-
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not modify the base worktree.
-- Keep all PR preparation in the current worktree.
-
-Steps:
-1. Ensure all intended changes are committed.
-2. If currently on detached HEAD, create a branch at the current commit.
-3. Push the branch to origin and set upstream.
-4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
-5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
-6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
-7. Report:
-   - PR title: PR URL
-   - Base branch
-   - Head branch
-   - Any follow-up needed`;
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
@@ -144,14 +104,6 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 		}
 	}
 	return normalized;
-}
-
-function normalizePromptTemplate(value: unknown, fallback: string): string {
-	if (typeof value !== "string") {
-		return fallback;
-	}
-	const normalized = value.trim();
-	return normalized.length > 0 ? value : fallback;
 }
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -260,13 +212,6 @@ function toRuntimeConfigState({
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
-		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
-		openPrPromptTemplate: normalizePromptTemplate(
-			globalConfig?.openPrPromptTemplate,
-			DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
-		),
-		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
-		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -286,8 +231,6 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
-		commitPromptTemplate?: string;
-		openPrPromptTemplate?: string;
 	},
 ): Promise<void> {
 	const existing = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(configPath);
@@ -308,14 +251,6 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
-	const commitPromptTemplate =
-		config.commitPromptTemplate === undefined
-			? DEFAULT_COMMIT_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE);
-	const openPrPromptTemplate =
-		config.openPrPromptTemplate === undefined
-			? DEFAULT_OPEN_PR_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE);
 
 	const payload: RuntimeGlobalConfigFileShape = {};
 	if (selectedAgentId !== undefined) {
@@ -343,12 +278,6 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
-	}
-	if (hasOwnKey(existing, "commitPromptTemplate") || commitPromptTemplate !== DEFAULT_COMMIT_PROMPT_TEMPLATE) {
-		payload.commitPromptTemplate = commitPromptTemplate;
-	}
-	if (hasOwnKey(existing, "openPrPromptTemplate") || openPrPromptTemplate !== DEFAULT_OPEN_PR_PROMPT_TEMPLATE) {
-		payload.openPrPromptTemplate = openPrPromptTemplate;
 	}
 
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
@@ -430,8 +359,6 @@ function createRuntimeConfigStateFromValues(input: {
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
-	commitPromptTemplate: string;
-	openPrPromptTemplate: string;
 }): RuntimeConfigState {
 	return {
 		globalConfigPath: input.globalConfigPath,
@@ -447,10 +374,6 @@ function createRuntimeConfigStateFromValues(input: {
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
-		commitPromptTemplate: normalizePromptTemplate(input.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
-		openPrPromptTemplate: normalizePromptTemplate(input.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE),
-		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
-		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -463,8 +386,6 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		agentAutonomousModeEnabled: current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: current.readyForReviewNotificationsEnabled,
 		shortcuts: [],
-		commitPromptTemplate: current.commitPromptTemplate,
-		openPrPromptTemplate: current.openPrPromptTemplate,
 	});
 }
 
@@ -498,8 +419,6 @@ export async function saveRuntimeConfig(
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
-		commitPromptTemplate: string;
-		openPrPromptTemplate: string;
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
@@ -509,8 +428,6 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
-			commitPromptTemplate: config.commitPromptTemplate,
-			openPrPromptTemplate: config.openPrPromptTemplate,
 		});
 		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts: config.shortcuts });
 		return createRuntimeConfigStateFromValues({
@@ -521,8 +438,6 @@ export async function saveRuntimeConfig(
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
 			shortcuts: config.shortcuts,
-			commitPromptTemplate: config.commitPromptTemplate,
-			openPrPromptTemplate: config.openPrPromptTemplate,
 		});
 	});
 }
@@ -542,8 +457,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			readyForReviewNotificationsEnabled:
 				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
 			shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
-			commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
-			openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 		};
 
 		const hasChanges =
@@ -551,8 +464,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-			nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
-			nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 			!areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
 
 		if (!hasChanges) {
@@ -564,8 +475,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-			commitPromptTemplate: nextConfig.commitPromptTemplate,
-			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 		});
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
 			shortcuts: nextConfig.shortcuts,
@@ -578,8 +487,6 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
 			shortcuts: nextConfig.shortcuts,
-			commitPromptTemplate: nextConfig.commitPromptTemplate,
-			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 		});
 	});
 }
@@ -607,17 +514,13 @@ export async function updateGlobalRuntimeConfig(
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
 				shortcuts: current.shortcuts,
-				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
-				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 			};
 
 			const hasChanges =
 				nextConfig.selectedAgentId !== current.selectedAgentId ||
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
-				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
-				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate;
+				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled;
 
 			if (!hasChanges) {
 				return current;
@@ -628,8 +531,6 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-				commitPromptTemplate: nextConfig.commitPromptTemplate,
-				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 			});
 
 			return createRuntimeConfigStateFromValues({
@@ -640,8 +541,6 @@ export async function updateGlobalRuntimeConfig(
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
 				shortcuts: nextConfig.shortcuts,
-				commitPromptTemplate: nextConfig.commitPromptTemplate,
-				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 			});
 		},
 	);

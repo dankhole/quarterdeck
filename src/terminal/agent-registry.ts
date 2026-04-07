@@ -111,9 +111,5 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,
-		commitPromptTemplate: runtimeConfig.commitPromptTemplate,
-		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
-		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
-		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
 	};
 }

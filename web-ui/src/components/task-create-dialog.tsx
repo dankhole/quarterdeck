@@ -25,7 +25,7 @@ import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import type { TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
@@ -37,12 +37,6 @@ const DIALOG_STYLE: CSSProperties = {
 	maxWidth: "90vw",
 	maxHeight: "85vh",
 };
-
-const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
-	{ value: "commit", label: "Make commit" },
-	{ value: "pr", label: "Make PR" },
-	{ value: "move_to_trash", label: "Move to Trash" },
-];
 
 type TaskCreateStartAction = "start" | "start_and_open";
 
@@ -118,8 +112,6 @@ export function TaskCreateDialog({
 	onStartInPlanModeChange,
 	autoReviewEnabled,
 	onAutoReviewEnabledChange,
-	autoReviewMode,
-	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
@@ -143,8 +135,6 @@ export function TaskCreateDialog({
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
 	onAutoReviewEnabledChange: (value: boolean) => void;
-	autoReviewMode: TaskAutoReviewMode;
-	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
 	useWorktree: boolean;
 	onUseWorktreeChange: (value: boolean) => void;
@@ -523,7 +513,7 @@ export function TaskCreateDialog({
 						/>
 					</div>
 
-					<div className="flex items-center gap-2 flex-wrap">
+					<div className="flex items-center gap-2">
 						<label
 							htmlFor={autoReviewEnabledId}
 							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
@@ -538,26 +528,8 @@ export function TaskCreateDialog({
 									<Check size={10} className="text-white" />
 								</RadixCheckbox.Indicator>
 							</RadixCheckbox.Root>
-							Automatically
+							Auto-trash when reviewed
 						</label>
-						<div className="relative inline-flex">
-							<select
-								value={autoReviewMode}
-								onChange={(e) => onAutoReviewModeChange(e.currentTarget.value as TaskAutoReviewMode)}
-								className="h-7 appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none"
-								style={{ width: "16ch", maxWidth: "100%" }}
-							>
-								{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</select>
-							<ChevronDown
-								size={14}
-								className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary"
-							/>
-						</div>
 					</div>
 				</div>
 				<div>
