@@ -8,7 +8,7 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
-import { buildKanbanCommandParts } from "../core/kanban-command";
+import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
@@ -104,7 +104,7 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
-	return buildKanbanCommandParts(["hooks", ...args]);
+	return buildQuarterdeckCommandParts(["hooks", ...args]);
 }
 
 function buildHooksCommand(args: string[]): string {
@@ -147,11 +147,11 @@ function buildOpenCodePluginContent(
 	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
 	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
 	const activityCmd = escapeForTemplateLiteral(activityCommand);
-	return `export const KanbanPlugin = async ({ $, client }) => {
-  if (globalThis.__kanbanOpencodePluginV3) return {};
-  globalThis.__kanbanOpencodePluginV3 = true;
+	return `export const QuarterdeckPlugin = async ({ $, client }) => {
+  if (globalThis.__quarterdeckOpencodePluginV3) return {};
+  globalThis.__quarterdeckOpencodePluginV3 = true;
 
-  if (!process?.env?.KANBAN_HOOK_TASK_ID) return {};
+  if (!process?.env?.QUARTERDECK_HOOK_TASK_ID) return {};
 
   let currentState = "idle";
   let rootSessionID = null;
@@ -1005,7 +1005,7 @@ const opencodeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const pluginPath = join(getHookAgentDirectory("opencode"), "kanban.js");
+			const pluginPath = join(getHookAgentDirectory("opencode"), "quarterdeck.js");
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
 			const pluginContent = buildOpenCodePluginContent(

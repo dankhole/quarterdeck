@@ -34,7 +34,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 	});
 
 	it("returns false when PATH resolves a bare binary to .exe", () => {
-		const tempDirectory = mkdtempSync(join(tmpdir(), "kanban-win-launch-"));
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
 		tempDirectories.push(tempDirectory);
 		createWindowsBinary(tempDirectory, "codex.exe");
 
@@ -48,7 +48,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 	});
 
 	it("treats Windows env keys case-insensitively when PATH resolves a bare binary to .exe", () => {
-		const tempDirectory = mkdtempSync(join(tmpdir(), "kanban-win-launch-"));
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
 		tempDirectories.push(tempDirectory);
 		createWindowsBinary(tempDirectory, "codex.exe");
 
@@ -62,7 +62,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 	});
 
 	it("uses defined case-insensitive PATH when duplicate keys include undefined", () => {
-		const tempDirectory = mkdtempSync(join(tmpdir(), "kanban-win-launch-"));
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
 		tempDirectories.push(tempDirectory);
 		createWindowsBinary(tempDirectory, "codex.exe");
 
@@ -77,7 +77,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 	});
 
 	it("returns true when PATH resolves a bare binary to .cmd", () => {
-		const tempDirectory = mkdtempSync(join(tmpdir(), "kanban-win-launch-"));
+		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));
 		tempDirectories.push(tempDirectory);
 		createWindowsBinary(tempDirectory, "codex.cmd");
 

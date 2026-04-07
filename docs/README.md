@@ -1,6 +1,6 @@
 # Engineering Docs
 
-This folder is the starting point for engineers working on Kanban itself.
+This folder is the starting point for engineers working on Quarterdeck itself.
 
 This follows the usual split a small engineering team would want:
 

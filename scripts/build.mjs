@@ -23,8 +23,8 @@ const define = {
  * ESM output needs a real require() function for those calls to work.
  */
 const cjsShimBanner = [
-	'import { createRequire as __kanban_createRequire } from "node:module";',
-	"const require = __kanban_createRequire(import.meta.url);",
+	'import { createRequire as __quarterdeck_createRequire } from "node:module";',
+	"const require = __quarterdeck_createRequire(import.meta.url);",
 ].join("\n");
 
 /** Shared esbuild options for both entry points. */

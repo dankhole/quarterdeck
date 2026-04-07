@@ -1,10 +1,10 @@
 # Performance Bottleneck Analysis: Multiple Concurrent Agents
 
-Investigation into why Kanban slows down as more agents run simultaneously.
+Investigation into why Quarterdeck slows down as more agents run simultaneously.
 
 ## Summary
 
-The slowdown is a combination of real system load from agents and architectural bottlenecks in Kanban that amplify the problem. Git operations and PTY backpressure are well-designed; the main issues are in state broadcasting, persistence locking, and frontend memory accumulation.
+The slowdown is a combination of real system load from agents and architectural bottlenecks in Quarterdeck that amplify the problem. Git operations and PTY backpressure are well-designed; the main issues are in state broadcasting, persistence locking, and frontend memory accumulation.
 
 | Area | Severity | Key Issue | Scaling Impact |
 |------|----------|-----------|----------------|
@@ -171,7 +171,7 @@ These reduce the impact of the bottlenecks without code changes:
 
 - **Fewer browser tabs** — each tab multiplies broadcast and render cost
 - **Close detail panels for idle agents** — prevents terminal write queue buildup on hidden terminals
-- **Restart Kanban periodically** during long sessions to clear accumulated chat messages and terminal cache
+- **Restart Quarterdeck periodically** during long sessions to clear accumulated chat messages and terminal cache
 
 ---
 

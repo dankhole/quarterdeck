@@ -6,7 +6,7 @@ import { WebSocketServer } from "ws";
 
 import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
 import { parseTerminalWsClientMessage } from "../core/api-validation";
-import { getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import { getQuarterdeckRuntimeOrigin } from "../core/runtime-endpoint";
 import type { TerminalSessionService } from "./terminal-session-service";
 
 interface TerminalWebSocketConnectionContext {
@@ -17,7 +17,7 @@ interface TerminalWebSocketConnectionContext {
 }
 
 interface UpgradeRequest extends IncomingMessage {
-	__kanbanUpgradeHandled?: boolean;
+	__quarterdeckUpgradeHandled?: boolean;
 }
 
 export interface CreateTerminalWebSocketBridgeRequest {
@@ -369,14 +369,14 @@ export function createTerminalWebSocketBridge({
 		try {
 			(socket as Socket).setNoDelay(true);
 			const upgradeRequest = request as UpgradeRequest;
-			const url = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
+			const url = new URL(request.url ?? "/", getQuarterdeckRuntimeOrigin());
 			const pathname = url.pathname;
 			const isIoRequest = isTerminalIoWebSocketPath(pathname);
 			const isControlRequest = isTerminalControlWebSocketPath(pathname);
 			if (!isIoRequest && !isControlRequest) {
 				return;
 			}
-			upgradeRequest.__kanbanUpgradeHandled = true;
+			upgradeRequest.__quarterdeckUpgradeHandled = true;
 
 			const taskId = url.searchParams.get("taskId")?.trim();
 			const workspaceId = url.searchParams.get("workspaceId")?.trim();

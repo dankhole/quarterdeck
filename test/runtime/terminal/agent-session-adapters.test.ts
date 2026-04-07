@@ -15,12 +15,12 @@ const originalExecArgv = [...process.execArgv];
 const originalExecPath = process.execPath;
 
 function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "kanban-agent-adapters-"));
+	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-agent-adapters-"));
 	process.env.HOME = tempHome;
 	return tempHome;
 }
 
-function setKanbanProcessContext(): void {
+function setQuarterdeckProcessContext(): void {
 	process.argv = ["node", "/Users/example/repo/dist/cli.js"];
 	process.execArgv = [];
 	Object.defineProperty(process, "execPath", {
@@ -70,8 +70,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.QUARTERDECK_HOOK_WORKSPACE_ID).toBe("workspace-1");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("hooks");
@@ -80,13 +80,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launchCommand).toContain("codex");
 		expect(launchCommand).toContain("--");
 
-		const wrapperPath = join(homedir(), ".kanban", "hooks", "codex", "codex-wrapper.mjs");
+		const wrapperPath = join(homedir(), ".quarterdeck", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
-	it("appends Kanban sidebar instructions for home Claude sessions", async () => {
+	it("appends Quarterdeck sidebar instructions for home Claude sessions", async () => {
 		setupTempHome();
-		setKanbanProcessContext();
+		setQuarterdeckProcessContext();
 		const launch = await prepareAgentLaunch({
 			taskId: "__home_agent__:workspace-1:claude",
 			agentId: "claude",
@@ -98,15 +98,15 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
 		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[appendPromptIndex + 1]).toContain("Quarterdeck sidebar agent");
 		expect(launch.args[appendPromptIndex + 1]).toContain(
 			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
 		);
 	});
 
-	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
+	it("appends Quarterdeck sidebar instructions for home Codex sessions", async () => {
 		setupTempHome();
-		setKanbanProcessContext();
+		setQuarterdeckProcessContext();
 		const launch = await prepareAgentLaunch({
 			taskId: "__home_agent__:workspace-1:codex",
 			agentId: "codex",
@@ -119,7 +119,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const configArgIndex = launch.args.indexOf("-c");
 		expect(configArgIndex).toBeGreaterThanOrEqual(0);
 		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
-		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[configArgIndex + 1]).toContain("Quarterdeck sidebar agent");
 		expect(launch.args[configArgIndex + 1]).toContain(
 			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
 		);
@@ -137,7 +137,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".kanban", "hooks", "claude", "settings.json");
+		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, unknown>;
 		};
@@ -159,14 +159,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".kanban", "hooks", "gemini", "settings.json");
+		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "gemini", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
 		};
 		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
 		expect(afterToolCommand).toContain("hooks");
 		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".kanban", "hooks", "gemini", "gemini-hook.mjs");
+		const hookScriptPath = join(homedir(), ".quarterdeck", "hooks", "gemini", "gemini-hook.mjs");
 		expect(existsSync(hookScriptPath)).toBe(false);
 	});
 
@@ -182,7 +182,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const pluginPath = join(homedir(), ".kanban", "hooks", "opencode", "kanban.js");
+		const pluginPath = join(homedir(), ".quarterdeck", "hooks", "opencode", "quarterdeck.js");
 		const plugin = readFileSync(pluginPath, "utf8");
 		expect(plugin).toContain("parentID");
 		expect(plugin).toContain('"permission.ask"');

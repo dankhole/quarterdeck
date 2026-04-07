@@ -64,14 +64,14 @@ export function useRuntimeConfig(
 		const message = configQuery.error?.message ?? "Unknown runtime config load error.";
 		const errorKey = `${scopeLabel}:${message}`;
 		if (lastLoggedErrorKeyRef.current !== errorKey) {
-			console.warn(`[kanban][settings] runtime.getConfig failed for scope ${scopeLabel}: ${message}`);
+			console.warn(`[quarterdeck][settings] runtime.getConfig failed for scope ${scopeLabel}: ${message}`);
 			lastLoggedErrorKeyRef.current = errorKey;
 		}
 		if (didRetryAfterInitialErrorRef.current) {
 			return;
 		}
 		didRetryAfterInitialErrorRef.current = true;
-		console.warn(`[kanban][settings] Retrying runtime.getConfig once for scope ${scopeLabel}.`);
+		console.warn(`[quarterdeck][settings] Retrying runtime.getConfig once for scope ${scopeLabel}.`);
 		void configQuery.refetch();
 	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, workspaceId]);
 

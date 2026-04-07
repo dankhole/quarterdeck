@@ -1,24 +1,24 @@
-.TH KANBAN 1 "March 2026" "kanban 0.1.10" "User Commands"
+.TH QUARTERDECK 1 "March 2026" "quarterdeck 0.1.10" "User Commands"
 .SH NAME
-kanban \- local orchestration board for coding agents
+quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
-.B kanban
+.B quarterdeck
 .RI [ --port " " number|auto ]
 .RI [ --no-open ]
 .RI [ command ]
 .br
-.B kanban task
+.B quarterdeck task
 .RI " " list|create|update|link|unlink|start
 .RI " " [ options ]
 .br
-.B kanban hooks
+.B quarterdeck hooks
 .RI " " ingest|notify|gemini-hook|codex-wrapper
 .RI " " [ options ]
 .br
-.B kanban mcp
+.B quarterdeck mcp
 .SH DESCRIPTION
-.B kanban
-starts the local Kanban runtime server and serves the web UI.
+.B quarterdeck
+starts the local Quarterdeck runtime server and serves the web UI.
 
 When launched inside a git repository, it opens that repository's indexed workspace.
 When launched outside git, it starts with no active workspace or falls back to the first indexed project.
@@ -38,7 +38,7 @@ Show version and exit.
 .SH COMMANDS
 .TP
 .B task|tasks
-Manage Kanban board tasks from the CLI.
+Manage Quarterdeck board tasks from the CLI.
 
 Subcommands:
 .br
@@ -122,22 +122,22 @@ Deprecated compatibility command. Prints a deprecation warning and exits.
 .SH EXAMPLES
 .TP
 Start server on the default port:
-.B kanban
+.B quarterdeck
 .TP
 Start server without auto-opening a browser:
-.B kanban --no-open
+.B quarterdeck --no-open
 .TP
 Start server on a custom port:
-.B kanban --port 9000
+.B quarterdeck --port 9000
 .TP
 List tasks for the current workspace:
-.B kanban task list
+.B quarterdeck task list
 .TP
 Create and start a task manually:
-.B kanban task create --prompt "Implement API pagination"
+.B quarterdeck task create --prompt "Implement API pagination"
 .TP
 Ingest a hook event:
-.B kanban hooks ingest --event to_review
+.B quarterdeck hooks ingest --event to_review
 .SH EXIT STATUS
 .TP
 .B 0

@@ -416,7 +416,7 @@ Render a small info box below or beside the mode toggle buttons:
       <Info size={12} />
       <span>
          Last Turn view is experimental and may be removed.{" "}
-         <a href="https://github.com/kanban-org/kanban/issues"
+         <a href="https://github.com/dankhole/quarterdeck/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="text-accent hover:underline">

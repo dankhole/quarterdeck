@@ -1,6 +1,6 @@
-# Kanban
+# Quarterdeck
 
-A CLI-based kanban board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
+A CLI-based quarterdeck board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
 
 This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. Much of the foundational work is from the upstream project. A rename/rebrand is planned (see `docs/planned-features.md` #12).
 
@@ -36,7 +36,7 @@ Runtime Server (Node.js, port 3484)
 Agent Processes (Claude, Codex, Gemini, etc.)
   │ Each in isolated git worktree
   ▼
-Hook Events (kanban hooks ingest --event <to_review|to_in_progress>)
+Hook Events (quarterdeck hooks ingest --event <to_review|to_in_progress>)
 ```
 
 ### Directory layout
@@ -53,7 +53,7 @@ src/                         # Runtime (Node.js TypeScript)
 ├── projects/                # Project detection & discovery
 ├── prompts/                 # System prompt injection for agents
 ├── server/                  # HTTP server, runtime state hub, workspace registry
-├── state/                   # Workspace state persistence (JSON in .kanban/)
+├── state/                   # Workspace state persistence (JSON in .quarterdeck/)
 ├── terminal/                # PTY sessions, agent registry, adapters, state machine
 ├── trpc/                    # tRPC API routers (runtime, workspace, projects, hooks)
 └── workspace/               # Worktree lifecycle, git sync, history, file changes
@@ -82,12 +82,12 @@ test/                        # Runtime test suites (Vitest)
 1. **Task creation**: UI hook -> tRPC `runtime.createCard` -> state persistence
 2. **Task start**: UI hook -> tRPC `runtime.startSession` -> create worktree -> spawn agent PTY
 3. **Agent activity**: Agent stdout -> PTY capture -> WebSocket stream -> xterm in browser
-4. **State transitions**: Agent emits hook (`kanban hooks ingest`) -> tRPC `hooks.ingest` -> guarded state machine transition -> WebSocket notify -> UI moves card
+4. **State transitions**: Agent emits hook (`quarterdeck hooks ingest`) -> tRPC `hooks.ingest` -> guarded state machine transition -> WebSocket notify -> UI moves card
 5. **Review**: Runtime serves git diff between base ref and worktree branch -> UI renders changes
 
 ### State management
 
-- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeWorkspaceState` (JSON persistence in `.kanban/workspaces/`)
+- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeWorkspaceState` (JSON persistence in `.quarterdeck/workspaces/`)
 - **Frontend board**: Custom Immer-based reducer (`web-ui/src/state/board-state.ts`), not Redux/Zustand
 - **Frontend workspace metadata**: `useSyncExternalStore` pattern (`web-ui/src/stores/workspace-metadata-store.ts`)
 - **Runtime-to-frontend sync**: tRPC subscriptions + WebSocket for terminal output

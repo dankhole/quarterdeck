@@ -12,7 +12,7 @@ import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
-	const { path: tempHome, cleanup } = createTempDir("kanban-home-shutdown-");
+	const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-shutdown-");
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	process.env.HOME = tempHome;
@@ -97,7 +97,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 describe.sequential("shutdown coordinator integration", () => {
 	it("moves all in-progress and review cards to trash for every indexed project on shutdown", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-shutdown-scope-");
 			try {
 				const managedProjectPath = join(sandboxRoot, "managed-project");
 				const indexedProjectPath = join(sandboxRoot, "indexed-project");

@@ -183,7 +183,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockResolvedValue({
 			turn: 1,
-			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 			commit: "1111111",
 			createdAt: Date.now(),
 		});
@@ -400,10 +400,10 @@ describe("createRuntimeApi startTaskSession", () => {
 
 	it("runs reset teardown before deleting debug state paths", async () => {
 		const originalHome = process.env.HOME;
-		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+		const tempHome = `/tmp/quarterdeck-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".kanban"), join(tempHome, ".kanban", "worktrees")];
+		const debugPaths = [join(tempHome, ".quarterdeck"), join(tempHome, ".quarterdeck", "worktrees")];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
@@ -443,10 +443,10 @@ describe("createRuntimeApi startTaskSession", () => {
 
 	it("aborts reset path deletion when teardown fails", async () => {
 		const originalHome = process.env.HOME;
-		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+		const tempHome = `/tmp/quarterdeck-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".kanban"), join(tempHome, ".kanban", "worktrees")];
+		const debugPaths = [join(tempHome, ".quarterdeck"), join(tempHome, ".quarterdeck", "worktrees")];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
@@ -497,7 +497,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		workspaceStateMocks.mutateWorkspaceState.mockResolvedValue({ value: null, state: null, saved: false });
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockResolvedValue({
 			turn: 1,
-			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 			commit: "1111111",
 			createdAt: Date.now(),
 		});

@@ -1,5 +1,5 @@
-// Persists Kanban-owned runtime preferences on disk.
-// This module should store Kanban settings such as selected agents,
+// Persists Quarterdeck-owned runtime preferences on disk.
+// This module should store Quarterdeck settings such as selected agents,
 // shortcuts, and prompt templates.
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -49,7 +49,7 @@ export interface RuntimeConfigUpdateInput {
 }
 
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_DIR = ".kanban";
+const PROJECT_CONFIG_DIR = ".quarterdeck";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];

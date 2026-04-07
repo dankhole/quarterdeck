@@ -27,7 +27,7 @@ function isRectVerticallyVisibleWithinContainer(rect: DOMRect, containerRect: DO
 	return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
 }
 
-export function KanbanBoard({
+export function QuarterdeckBoard({
 	data,
 	taskSessions,
 	onCardSelect,

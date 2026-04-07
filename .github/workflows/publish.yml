@@ -124,12 +124,12 @@ jobs:
           token: ${{ secrets.SLACK_RELEASE_BOT_TOKEN }}
           payload: |
             channel: "C0APVKGGZFC"
-            text: "Kanban ${{ steps.resolve_tag.outputs.tag }}"
+            text: "Quarterdeck ${{ steps.resolve_tag.outputs.tag }}"
             blocks:
               - type: "section"
                 text:
                   type: "mrkdwn"
-                  text: "*Kanban ${{ steps.resolve_tag.outputs.tag }}*"
+                  text: "*Quarterdeck ${{ steps.resolve_tag.outputs.tag }}*"
               - type: "section"
                 text:
                   type: "mrkdwn"

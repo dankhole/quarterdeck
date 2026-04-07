@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import {
-	buildKanbanRuntimeUrl,
-	getKanbanRuntimeHost,
-	getKanbanRuntimeOrigin,
-	getKanbanRuntimePort,
+	buildQuarterdeckRuntimeUrl,
+	getQuarterdeckRuntimeHost,
+	getQuarterdeckRuntimeOrigin,
+	getQuarterdeckRuntimePort,
 } from "../core/runtime-endpoint";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
@@ -53,7 +53,7 @@ export interface RuntimeServer {
 }
 
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
-	const headerValue = request.headers["x-kanban-workspace-id"];
+	const headerValue = request.headers["x-quarterdeck-workspace-id"];
 	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
 	if (typeof headerWorkspaceId === "string") {
 		const normalized = headerWorkspaceId.trim();
@@ -215,7 +215,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {
-			requestUrl = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
+			requestUrl = new URL(request.url ?? "/", getQuarterdeckRuntimeOrigin());
 		} catch {
 			socket.destroy();
 			return;
@@ -223,7 +223,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
 			return;
 		}
-		(request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled = true;
+		(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
 		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
 		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
 	});
@@ -234,7 +234,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
 	});
 	server.on("upgrade", (request, socket) => {
-		const handled = (request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled;
+		const handled = (request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean })
+			.__quarterdeckUpgradeHandled;
 		if (handled) {
 			return;
 		}
@@ -243,7 +244,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(getKanbanRuntimePort(), getKanbanRuntimeHost(), () => {
+		server.listen(getQuarterdeckRuntimePort(), getQuarterdeckRuntimeHost(), () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
@@ -255,8 +256,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
 	const url = activeWorkspaceId
-		? buildKanbanRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
-		: getKanbanRuntimeOrigin();
+		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
+		: getQuarterdeckRuntimeOrigin();
 
 	return {
 		url,

@@ -10,10 +10,10 @@ const originalHome = process.env.HOME;
 let tempHome: string | null = null;
 
 function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "kanban-claude-workspace-trust-"));
+	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-claude-workspace-trust-"));
 	process.env.HOME = tempHome;
 	// Create the worktrees root so isTaskWorktreePath can resolve it.
-	mkdirSync(join(tempHome, ".kanban", "worktrees"), { recursive: true });
+	mkdirSync(join(tempHome, ".quarterdeck", "worktrees"), { recursive: true });
 	return tempHome;
 }
 
@@ -30,15 +30,15 @@ afterEach(() => {
 });
 
 describe("shouldAutoConfirmClaudeWorkspaceTrust", () => {
-	it("trusts worktree paths under ~/.kanban/worktrees/", () => {
+	it("trusts worktree paths under ~/.quarterdeck/worktrees/", () => {
 		const home = setupTempHome();
-		const worktreePath = join(home, ".kanban", "worktrees", "task-abc123", "my-repo");
+		const worktreePath = join(home, ".quarterdeck", "worktrees", "task-abc123", "my-repo");
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", worktreePath)).toBe(true);
 	});
 
 	it("rejects non-claude agents even for worktree paths", () => {
 		const home = setupTempHome();
-		const worktreePath = join(home, ".kanban", "worktrees", "task-abc123", "my-repo");
+		const worktreePath = join(home, ".quarterdeck", "worktrees", "task-abc123", "my-repo");
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("codex", worktreePath)).toBe(false);
 	});
 

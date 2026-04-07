@@ -31,7 +31,12 @@ export async function ensureInitialCommit(projectPath: string): Promise<Initiali
 		};
 	}
 
-	const commitResult = await runGit(projectPath, ["commit", "--allow-empty", "-m", "Initial commit through Kanban"]);
+	const commitResult = await runGit(projectPath, [
+		"commit",
+		"--allow-empty",
+		"-m",
+		"Initial commit through Quarterdeck",
+	]);
 
 	if (!commitResult.ok) {
 		return {

@@ -1,5 +1,7 @@
 # Changelog
 
+> **Note:** This project was renamed from "kanban" to "quarterdeck" as of version 0.1.59. All entries below this note were released under the original name.
+
 ## [0.1.59]
 
 - Added a beta hint card to the project sidebar with quick access to send feedback or report issues

@@ -79,9 +79,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 		if (process.platform === "win32") {
 			return;
 		}
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-runtime-config-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
 			writeFakeCommand(tempBin, "opencode");
@@ -95,7 +95,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
 					expect(state.selectedAgentId).toBe("codex");
-					const persisted = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
+					const persisted = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
 						agentAutonomousModeEnabled?: boolean;
 						readyForReviewNotificationsEnabled?: boolean;
@@ -129,9 +129,11 @@ describe.sequential("runtime-config auto agent selection", () => {
 		if (process.platform === "win32") {
 			return;
 		}
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-default-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-default-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-default-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-default-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-runtime-config-default-",
+		);
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-default-");
 
 		try {
 			const previousShell = process.env.SHELL;
@@ -140,7 +142,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
 					expect(state.selectedAgentId).toBe("claude");
-					expect(existsSync(join(tempHome, ".kanban", "config.json"))).toBe(false);
+					expect(existsSync(join(tempHome, ".quarterdeck", "config.json"))).toBe(false);
 				});
 			} finally {
 				if (previousShell === undefined) {
@@ -157,12 +159,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("treats the home directory as global-only config scope", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-home-scope-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-home-scope-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const state = await loadRuntimeConfig(tempHome);
-				expect(state.globalConfigPath).toBe(join(tempHome, ".kanban", "config.json"));
+				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
 
@@ -172,7 +174,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(updated.selectedAgentId).toBe("codex");
 				expect(updated.projectConfigPath).toBeNull();
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					shortcuts?: unknown;
 				};
@@ -185,12 +187,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("loads global runtime config without a project scope", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-global-only-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-global-only-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const state = await loadGlobalRuntimeConfig();
-				expect(state.globalConfigPath).toBe(join(tempHome, ".kanban", "config.json"));
+				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
 			});
@@ -200,15 +202,15 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("normalizes unsupported configured agents to the default launch agent", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-set-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-set-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-set-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-set-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-runtime-config-set-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-set-");
 
 		try {
 			writeFakeCommand(tempBin, "claude");
 			writeFakeCommand(tempBin, "codex");
 
-			const runtimeConfigDir = join(tempHome, ".kanban");
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(
 				join(runtimeConfigDir, "config.json"),
@@ -234,14 +236,16 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("does not auto-select when global config file already exists without selected agent", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-existing-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-existing-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-existing-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-existing-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-runtime-config-existing-",
+		);
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-existing-");
 
 		try {
 			writeFakeCommand(tempBin, "codex");
 
-			const runtimeConfigDir = join(tempHome, ".kanban");
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(
 				join(runtimeConfigDir, "config.json"),
@@ -267,13 +271,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("save omits default keys when they were not previously set", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-omit-defaults-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-omit-defaults-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-omit-defaults-",
+			"quarterdeck-project-runtime-config-omit-defaults-",
 		);
 
 		try {
-			const runtimeConfigDir = join(tempHome, ".kanban");
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(join(runtimeConfigDir, "config.json"), "{}", "utf8");
 
@@ -289,7 +293,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
@@ -301,7 +305,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 				expect(globalPayload.commitPromptTemplate).toBeUndefined();
 				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
-				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
+				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
 			});
 		} finally {
 			cleanupProject();
@@ -310,13 +314,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("removes an existing empty project config file when no shortcuts are saved", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cleanup-empty-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-cleanup-empty-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-cleanup-empty-",
+			"quarterdeck-project-runtime-config-cleanup-empty-",
 		);
 
 		try {
-			const runtimeProjectConfigDir = join(tempProject, ".kanban");
+			const runtimeProjectConfigDir = join(tempProject, ".quarterdeck");
 			mkdirSync(runtimeProjectConfigDir, { recursive: true });
 			writeFileSync(join(runtimeProjectConfigDir, "config.json"), "{}", "utf8");
 
@@ -332,7 +336,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
 
-				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
+				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
 			});
 		} finally {
 			cleanupProject();
@@ -341,9 +345,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("removes the project config file when the last shortcut is deleted", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-remove-last-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-remove-last-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-remove-last-",
+			"quarterdeck-project-runtime-config-remove-last-",
 		);
 
 		try {
@@ -358,13 +362,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
-				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(true);
+				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(true);
 
 				await updateRuntimeConfig(tempProject, {
 					shortcuts: [],
 				});
 
-				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
+				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
 			});
 		} finally {
 			cleanupProject();
@@ -373,8 +377,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("updateRuntimeConfig supports partial updates", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-partial-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-partial-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-partial-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-runtime-config-partial-",
+		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
@@ -385,7 +391,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				});
 				expect(updated.selectedAgentId).toBe("codex");
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					selectedShortcutLabel?: string;
 					agentAutonomousModeEnabled?: boolean;
@@ -403,9 +409,11 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("persists autonomous mode when enabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-autonomous-enabled-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
+			"quarterdeck-home-runtime-config-autonomous-enabled-",
+		);
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-autonomous-enabled-",
+			"quarterdeck-project-runtime-config-autonomous-enabled-",
 		);
 
 		try {
@@ -415,7 +423,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				});
 				expect(updated.agentAutonomousModeEnabled).toBe(true);
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					agentAutonomousModeEnabled?: boolean;
 				};
 				expect(globalPayload.agentAutonomousModeEnabled).toBe(true);
@@ -430,8 +438,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("preserves concurrent config updates across processes", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-concurrent-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-concurrent-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-concurrent-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-runtime-config-concurrent-",
+		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {

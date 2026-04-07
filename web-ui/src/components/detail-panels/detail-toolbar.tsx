@@ -66,7 +66,7 @@ export function DetailToolbar({
 			}}
 		>
 			<ToolbarButton
-				panelId="kanban"
+				panelId="quarterdeck"
 				activePanel={activePanel}
 				onPanelChange={onPanelChange}
 				icon={<LayoutGrid size={18} />}

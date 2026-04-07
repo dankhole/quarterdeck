@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Kanban is a local Node runtime plus a React app for running many coding-agent tasks in parallel.
+Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks in parallel.
 
 There are two big ideas to hold in your head:
 
@@ -92,7 +92,7 @@ board, detail view, sidebar, and terminal panels
 
 ## The Mental Model
 
-Kanban is easiest to understand if you separate it into three layers of responsibility.
+Quarterdeck is easiest to understand if you separate it into three layers of responsibility.
 
 The browser layer is the presentation and orchestration layer. It renders the board, detail view, settings, and terminal surfaces. It also owns short-lived UI state such as panel visibility, form drafts, and optimistic message rendering.
 
@@ -107,7 +107,7 @@ That split explains a lot of the architecture:
 
 ## Runtime Modes
 
-Kanban currently supports two runtime modes.
+Quarterdeck currently supports two runtime modes.
 
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ These terms come up everywhere in the codebase.
 
 | Concept | Meaning | Why it matters |
 | --- | --- | --- |
-| Workspace | an indexed git repository that Kanban has opened | most browser and runtime state is scoped to a workspace |
+| Workspace | an indexed git repository that Quarterdeck has opened | most browser and runtime state is scoped to a workspace |
 | Task card | a board item with a prompt, base ref, and review settings | a task is the unit of work the board cares about |
 | Worktree | a per-task git worktree | most task agents run inside one |
 | Task session | the live runtime attached to a task card | this is a PTY process |
@@ -133,9 +133,9 @@ One of the biggest cleanup themes was making ownership clearer. The system is mu
 
 | Concern | Primary owner | Notes |
 | --- | --- | --- |
-| board state, workspace state, review state | Kanban | this is product state |
-| worktree lifecycle | Kanban | task worktrees are a Kanban concept |
-| process lifecycle | Kanban | the terminal runtime owns process start, resize, output, and stop |
+| board state, workspace state, review state | Quarterdeck | this is product state |
+| worktree lifecycle | Quarterdeck | task worktrees are a Quarterdeck concept |
+| process lifecycle | Quarterdeck | the terminal runtime owns process start, resize, output, and stop |
 
 ## Backend Architecture
 
@@ -154,7 +154,7 @@ The `src/terminal/` area owns everything process-oriented:
 - choosing what binary to run
 - launching PTY sessions
 - resizing and streaming terminal output
-- translating process lifecycle into Kanban runtime summaries
+- translating process lifecycle into Quarterdeck runtime summaries
 - handling the workspace shell terminal
 
 This is the path for all agents: Claude Code, Codex, Gemini, OpenCode, Droid, and any other command-driven agent.
@@ -163,13 +163,13 @@ This is the path for all agents: Claude Code, Codex, Gemini, OpenCode, Droid, an
 
 `src/workspace/` owns worktree creation, lookup, cleanup, and turn checkpoints.
 
-`src/config/runtime-config.ts` owns Kanban preferences such as selected agents, shortcuts, and prompt templates.
+`src/config/runtime-config.ts` owns Quarterdeck preferences such as selected agents, shortcuts, and prompt templates.
 
 ### State streaming
 
 `runtime-state-hub.ts` is the central fanout point for live updates. It listens to terminal summaries, workspace metadata, and workspace state changes, then broadcasts websocket messages that keep the browser in sync.
 
-This is important because Kanban is not designed around browser polling. The runtime is long-lived and streams state outward.
+This is important because Quarterdeck is not designed around browser polling. The runtime is long-lived and streams state outward.
 
 ## Frontend Architecture
 
@@ -212,9 +212,9 @@ Different state lives in different places on purpose.
 
 | State | Where it lives | Why |
 | --- | --- | --- |
-| selected agent, shortcuts, Kanban prompt templates | Kanban runtime config | these are Kanban preferences |
+| selected agent, shortcuts, Quarterdeck prompt templates | Quarterdeck runtime config | these are Quarterdeck preferences |
 | per-project UI or workflow state | workspace state or project config | this is workspace-scoped product state |
-| task runtime summaries | Kanban runtime memory and state stream | the board needs a lightweight product-shaped summary of current work |
+| task runtime summaries | Quarterdeck runtime memory and state stream | the board needs a lightweight product-shaped summary of current work |
 
 ## Design Rules
 

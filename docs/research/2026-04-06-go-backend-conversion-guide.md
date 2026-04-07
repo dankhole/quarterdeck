@@ -5,11 +5,11 @@
 
 ## Research Question
 
-Document everything in the Kanban Node.js/TypeScript backend needed to rewrite it in Go: all API routes, PTY/terminal management, state persistence, hook/event system, CLI commands, WebSocket protocols, git worktree management, configuration, dependencies, and agent adapters.
+Document everything in the Quarterdeck Node.js/TypeScript backend needed to rewrite it in Go: all API routes, PTY/terminal management, state persistence, hook/event system, CLI commands, WebSocket protocols, git worktree management, configuration, dependencies, and agent adapters.
 
 ## Summary
 
-The Kanban backend is a Node.js server (~15k lines of TypeScript across 50+ files in `src/`) that orchestrates AI coding agents via PTY processes in isolated git worktrees. It exposes 34 tRPC procedures over HTTP, 3 raw WebSocket endpoints for real-time state streaming and terminal I/O, and a CLI with subcommands for hooks and task management. State is persisted as JSON files under `~/.kanban/` with file-system locks for concurrency control. The system is architecturally well-suited for Go: it's primarily process orchestration, file I/O, and WebSocket streaming with a pure-function state machine at its core.
+The Quarterdeck backend is a Node.js server (~15k lines of TypeScript across 50+ files in `src/`) that orchestrates AI coding agents via PTY processes in isolated git worktrees. It exposes 34 tRPC procedures over HTTP, 3 raw WebSocket endpoints for real-time state streaming and terminal I/O, and a CLI with subcommands for hooks and task management. State is persisted as JSON files under `~/.quarterdeck/` with file-system locks for concurrency control. The system is architecturally well-suited for Go: it's primarily process orchestration, file I/O, and WebSocket streaming with a pure-function state machine at its core.
 
 This document is organized as a reference for building the Go equivalent module-by-module.
 
@@ -34,7 +34,7 @@ This document is organized as a reference for building the Go equivalent module-
 ### tRPC Context
 
 Each HTTP request carries context (`src/trpc/app-router.ts:122-231`):
-- `requestedWorkspaceId` -- from `x-kanban-workspace-id` header or `workspaceId` query param
+- `requestedWorkspaceId` -- from `x-quarterdeck-workspace-id` header or `workspaceId` query param
 - `workspaceScope` -- resolved `{ workspaceId, workspacePath }` or null
 - Four API surface objects: `runtimeApi`, `workspaceApi`, `projectsApi`, `hooksApi`
 
@@ -57,7 +57,7 @@ One middleware: `workspaceProcedure` -- enforces workspace scope is present. Ret
 | `runtime.sendTaskSessionInput` | POST | Yes | Write text to agent PTY stdin |
 | `runtime.startShellSession` | POST | Yes | Spawn interactive shell PTY |
 | `runtime.runCommand` | POST | Yes | Run command synchronously, return stdout/stderr/exitCode |
-| `runtime.resetAllState` | POST | No | Debug: delete all `~/.kanban` state |
+| `runtime.resetAllState` | POST | No | Debug: delete all `~/.quarterdeck` state |
 | `runtime.openFile` | POST | No | Open file in system editor |
 
 **Key request/response shapes:**
@@ -193,7 +193,7 @@ Input: `{ taskId, workspaceId, event: "to_review"|"to_in_progress"|"activity", m
 **File:** `src/terminal/pty-session.ts`
 
 - Uses `node-pty` with `encoding: null` (raw `Buffer` I/O)
-- Default `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=kanban`
+- Default `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=quarterdeck`
 - Default terminal size: 120x40 if not specified
 - Process group kill on terminate: `process.kill(-pid, "SIGTERM")`
 
@@ -263,13 +263,13 @@ Strategy pattern: each agent has a `prepare(input) -> PreparedAgentLaunch` funct
 - Plan mode: `--allow-dangerously-skip-permissions --permission-mode plan`
 - Resume: `--continue`
 - Writes Claude `settings.json` with hook definitions for `Stop`, `SubagentStop`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `UserPromptSubmit`
-- All hooks call `kanban hooks ingest --event <event>`
-- Sets `KANBAN_HOOK_TASK_ID`, `KANBAN_HOOK_WORKSPACE_ID` env vars
+- All hooks call `quarterdeck hooks ingest --event <event>`
+- Sets `QUARTERDECK_HOOK_TASK_ID`, `QUARTERDECK_HOOK_WORKSPACE_ID` env vars
 
 **Codex adapter:**
 - Autonomous: `--dangerously-bypass-approvals-and-sandbox`
 - Resume: `resume --last`
-- Wraps binary with `kanban hooks codex-wrapper` for hook event detection
+- Wraps binary with `quarterdeck hooks codex-wrapper` for hook event detection
 - Plan mode: deferred input via bracketed paste `/plan <prompt>`
 - Output transition detector: watches for `> ` prompt pattern
 
@@ -283,11 +283,11 @@ Strategy pattern: each agent has a `prepare(input) -> PreparedAgentLaunch` funct
 **OpenCode adapter:**
 - Resume: `--continue`
 - Plan mode: `OPENCODE_EXPERIMENTAL_PLAN_MODE=true` + `--agent plan`
-- Hooks via JavaScript plugin file (`kanban.js`)
+- Hooks via JavaScript plugin file (`quarterdeck.js`)
 - Prompt: `--prompt <prompt>`
 
 **Workspace trust auto-confirm:**
-- Claude: detects "trust this folder" prompt, auto-sends `\r` after 100ms (only within Kanban worktrees dir)
+- Claude: detects "trust this folder" prompt, auto-sends `\r` after 100ms (only within Quarterdeck worktrees dir)
 - Codex: detects "do you trust the contents" prompt, always auto-confirms
 
 ---
@@ -297,7 +297,7 @@ Strategy pattern: each agent has a `prepare(input) -> PreparedAgentLaunch` funct
 ### 4.1 Directory Layout
 
 ```
-~/.kanban/                               # KANBAN_STATE_HOME override
+~/.quarterdeck/                               # QUARTERDECK_STATE_HOME override
 +-- config.json                          # Global config
 +-- worktrees/                           # Git worktrees for agent tasks
 |   +-- <taskId>/
@@ -433,8 +433,8 @@ Three events (`src/core/api-contract.ts:851`):
 
 ### 5.2 Transport
 
-Agents call `kanban hooks ingest --event <event>` (or `kanban hooks notify` for best-effort). The CLI:
-1. Reads `KANBAN_HOOK_TASK_ID` and `KANBAN_HOOK_WORKSPACE_ID` from env
+Agents call `quarterdeck hooks ingest --event <event>` (or `quarterdeck hooks notify` for best-effort). The CLI:
+1. Reads `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_WORKSPACE_ID` from env
 2. Creates tRPC HTTP client to `http://127.0.0.1:3484/api/trpc`
 3. Calls `hooks.ingest` mutation with 3-second timeout
 
@@ -442,11 +442,11 @@ Agents call `kanban hooks ingest --event <event>` (or `kanban hooks notify` for 
 
 **Claude:** Native hook system. Writes `settings.json` with hooks for Stop, SubagentStop, PreToolUse, PostToolUse, etc. Hooks receive JSON on stdin.
 
-**Codex:** `codex-wrapper` subcommand wraps the real binary. Session log watcher polls JSONL file every 200ms, maps Codex events to Kanban events.
+**Codex:** `codex-wrapper` subcommand wraps the real binary. Session log watcher polls JSONL file every 200ms, maps Codex events to Quarterdeck events.
 
 **Gemini:** `gemini-hook` subcommand reads JSON from stdin, maps Gemini events (AfterAgent -> to_review, BeforeAgent -> to_in_progress), spawns detached notification process.
 
-**OpenCode:** JavaScript plugin file implements full OpenCode plugin contract, calls `kanban hooks ingest`.
+**OpenCode:** JavaScript plugin file implements full OpenCode plugin contract, calls `quarterdeck hooks ingest`.
 
 ### 5.4 Metadata Enrichment
 
@@ -459,14 +459,14 @@ Agents call `kanban hooks ingest --event <event>` (or `kanban hooks notify` for 
 
 ## 6. CLI Commands
 
-### 6.1 Main Command (`kanban`)
+### 6.1 Main Command (`quarterdeck`)
 
 - Starts HTTP server, opens browser
 - Options: `--host`, `--port <number|auto>`, `--no-open`, `--skip-shutdown-cleanup`
 - Auto-port retry on EADDRINUSE when `--port auto`
 - Detects existing running server and opens browser to it
 
-### 6.2 Task Command (`kanban task`)
+### 6.2 Task Command (`quarterdeck task`)
 
 | Subcommand | Description |
 |------------|-------------|
@@ -481,7 +481,7 @@ Agents call `kanban hooks ingest --event <event>` (or `kanban hooks notify` for 
 
 All commands return JSON. Some operate on state files directly, others call tRPC.
 
-### 6.3 Hooks Command (`kanban hooks`)
+### 6.3 Hooks Command (`quarterdeck hooks`)
 
 | Subcommand | Description |
 |------------|-------------|
@@ -498,12 +498,12 @@ All commands return JSON. Some operate on state files directly, others call tRPC
 
 **File:** `src/workspace/task-worktree.ts`
 
-Path: `~/.kanban/worktrees/<taskId>/<repoFolderName>/`
+Path: `~/.quarterdeck/worktrees/<taskId>/<repoFolderName>/`
 
 Flow:
 1. Resolve `baseRef` to commit SHA via `git rev-parse --verify <ref>^{commit}`
 2. Check for saved patch from prior deletion
-3. Acquire per-repo lock (`kanban-task-worktree-setup.lock` in git common dir)
+3. Acquire per-repo lock (`quarterdeck-task-worktree-setup.lock` in git common dir)
 4. `git worktree add --detach <path> <baseCommit>` (always detached HEAD, no branch)
 5. Initialize submodules if `.gitmodules` exists
 6. Symlink gitignored paths (e.g., `node_modules/`) from main repo
@@ -512,7 +512,7 @@ Flow:
 ### 7.2 Worktree Deletion
 
 1. Capture uncommitted work: `git diff --binary HEAD` + untracked file diffs
-2. Save patch to `~/.kanban/trashed-task-patches/<taskId>.<commit>.patch`
+2. Save patch to `~/.quarterdeck/trashed-task-patches/<taskId>.<commit>.patch`
 3. `git worktree remove --force <path>` (fallback: `git worktree prune` + `rm -rf`)
 4. Prune empty parent dirs
 
@@ -523,7 +523,7 @@ Flow:
 Creates git commits capturing full working tree state (including uncommitted changes) without modifying HEAD or index:
 1. Uses temporary `GIT_INDEX_FILE`
 2. `git read-tree HEAD` -> `git add -A` -> `git write-tree` -> `git commit-tree`
-3. Stored as `refs/kanban/checkpoints/<base64url(taskId)>/turn/<N>`
+3. Stored as `refs/quarterdeck/checkpoints/<base64url(taskId)>/turn/<N>`
 
 ### 7.4 Git Operations Summary
 
@@ -571,7 +571,7 @@ Only injected for the "home agent" sidebar panel (task ID pattern `__home_agent_
 Prompt content:
 - Declares the agent as a "board management helper, NOT a coding agent"
 - **CRITICAL: NEVER edit/create/delete files**
-- Full CLI reference for all `kanban task` subcommands
+- Full CLI reference for all `quarterdeck task` subcommands
 - GitHub `gh` CLI guidance
 - Agent-specific Linear MCP setup instructions
 
@@ -583,7 +583,7 @@ Prompt content:
 
 Two tiers:
 
-**Global config** (`~/.kanban/config.json`):
+**Global config** (`~/.quarterdeck/config.json`):
 ```json
 {
   "selectedAgentId": "claude",
@@ -595,7 +595,7 @@ Two tiers:
 }
 ```
 
-**Project config** (`<repo>/.kanban/config.json`):
+**Project config** (`<repo>/.quarterdeck/config.json`):
 ```json
 { "shortcuts": [{ "label": "...", "command": "...", "icon": "..." }] }
 ```
@@ -660,7 +660,7 @@ Auto-detection on first run: scans PATH for installed agents, selects best (clau
 
 **Package layout suggestion:**
 ```
-cmd/kanban/          # CLI entry point (cobra)
+cmd/quarterdeck/          # CLI entry point (cobra)
 internal/
   api/               # HTTP handlers + WebSocket endpoints
   board/             # Board data structures + mutations
@@ -713,4 +713,4 @@ pkg/
 
 4. **Agent adapter complexity** -- Claude and OpenCode adapters write config files and hook scripts. These are tightly coupled to each agent's CLI interface and change frequently. Consider keeping adapter logic in a scripting layer or generating config files from Go templates.
 
-5. **npm distribution** -- Currently distributed via `npx kanban`. A Go binary would need a different distribution mechanism (homebrew, go install, GitHub releases, or a thin npm wrapper that downloads the binary).
+5. **npm distribution** -- Currently distributed via `npx quarterdeck`. A Go binary would need a different distribution mechanism (homebrew, go install, GitHub releases, or a thin npm wrapper that downloads the binary).

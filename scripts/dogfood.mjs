@@ -11,11 +11,11 @@ const repoRoot = resolve(here, "..");
 const nodeBinary = process.execPath;
 const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 // Dogfood can run multiple wrapper processes at once. Exactly one wrapper should
-// own shutdown cleanup, while all others launch Kanban with
+// own shutdown cleanup, while all others launch Quarterdeck with
 // --skip-shutdown-cleanup. We elect that owner with an exclusive lock file in
 // the OS temp directory. If the recorded owner PID is no longer alive, the lock
 // is treated as stale and recovered so the next run can become owner.
-const cleanupOwnerLockPath = resolve(tmpdir(), "kanban-dogfood-cleanup-owner.lock");
+const cleanupOwnerLockPath = resolve(tmpdir(), "quarterdeck-dogfood-cleanup-owner.lock");
 
 function printHelp() {
 	console.log(
@@ -236,7 +236,7 @@ function runRuntimeCommand(command, args, spawnOptions = {}) {
 		// Dogfood used to rely on the shell/npm process group behavior, but under
 		// `npm run dogfood` Ctrl+C could reach the runtime twice: once directly
 		// from the terminal group and again through npm wrapper shutdown. That
-		// second SIGINT was enough to make Kanban force-exit before shutdown
+		// second SIGINT was enough to make Quarterdeck force-exit before shutdown
 		// cleanup finished, which left in_progress/review cards behind. Running
 		// the runtime in its own process group and forwarding exactly one graceful
 		// shutdown signal from this wrapper keeps shutdown deterministic while
@@ -311,7 +311,7 @@ function stripNodeModulesBinFromPath(pathValue) {
 		return pathValue;
 	}
 	// `npm run dogfood` prepends this repo's node_modules/.bin, which can shadow
-	// globally installed agent CLIs (codex/claude/etc) that Kanban should exercise.
+	// globally installed agent CLIs (codex/claude/etc) that Quarterdeck should exercise.
 	// This is mostly a dogfood/dev-launch issue; normal installed CLI usage does
 	// not inject repo-local node_modules/.bin ahead of user PATH entries.
 	return pathValue
@@ -336,10 +336,10 @@ function buildDogfoodRuntimeEnv(baseEnv) {
 		runtimeEnv[key] = stripNodeModulesBinFromPath(runtimeEnv[key]);
 		break;
 	}
-	// Isolate dogfood state from the user's real kanban session so that
+	// Isolate dogfood state from the user's real quarterdeck session so that
 	// testing feature branches doesn't clobber in-flight board state.
-	if (!runtimeEnv.KANBAN_STATE_HOME) {
-		runtimeEnv.KANBAN_STATE_HOME = resolve(homedir(), ".kanban-dogfood");
+	if (!runtimeEnv.QUARTERDECK_STATE_HOME) {
+		runtimeEnv.QUARTERDECK_STATE_HOME = resolve(homedir(), ".quarterdeck-dogfood");
 	}
 	return runtimeEnv;
 }
@@ -385,7 +385,7 @@ async function main() {
 			console.log(`[dogfood] Target project: ${args.project}`);
 		} else {
 			console.log(`[dogfood] No --project provided; launching from non-git cwd ${launchCwd}`);
-			console.log("[dogfood] Kanban will open the first indexed project if one exists.");
+			console.log("[dogfood] Quarterdeck will open the first indexed project if one exists.");
 		}
 		console.log(`[dogfood] Runtime port: ${args.port}`);
 

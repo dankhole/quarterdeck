@@ -24,7 +24,7 @@ describe("LockedFileSystem", () => {
 	});
 
 	it("omits onCompromised when no handler is provided", async () => {
-		const tempDir = createTempDir("kanban-locked-fs-");
+		const tempDir = createTempDir("quarterdeck-locked-fs-");
 		try {
 			const filePath = join(tempDir.path, "state.json");
 			const lockedFileSystem = new LockedFileSystem();
@@ -41,7 +41,7 @@ describe("LockedFileSystem", () => {
 	});
 
 	it("forwards onCompromised when a handler is provided", async () => {
-		const tempDir = createTempDir("kanban-locked-fs-");
+		const tempDir = createTempDir("quarterdeck-locked-fs-");
 		try {
 			const filePath = join(tempDir.path, "state.json");
 			const lockedFileSystem = new LockedFileSystem();

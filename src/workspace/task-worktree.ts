@@ -14,10 +14,10 @@ import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from
 import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 
-const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
-const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
-const KANBAN_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
-const KANBAN_TASK_WORKTREE_SETUP_LOCKFILE_NAME = "kanban-task-worktree-setup.lock";
+const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START = "# quarterdeck-managed-symlinked-ignored-paths:start";
+const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END = "# quarterdeck-managed-symlinked-ignored-paths:end";
+const QUARTERDECK_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
+const QUARTERDECK_TASK_WORKTREE_SETUP_LOCKFILE_NAME = "quarterdeck-task-worktree-setup.lock";
 const TASK_PATCH_FILE_SUFFIX = ".patch";
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
@@ -85,7 +85,7 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 		return errorMessage;
 	}
 
-	return `This repository does not have an initial commit yet, so Kanban cannot create a task worktree from base ref "${baseRef}". Create an initial commit, then try moving the task to in progress again.`;
+	return `This repository does not have an initial commit yet, so Quarterdeck cannot create a task worktree from base ref "${baseRef}". Create an initial commit, then try moving the task to in progress again.`;
 }
 
 async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
@@ -102,7 +102,7 @@ async function getTaskWorktreeSetupLock(repoPath: string): Promise<LockRequest> 
 	return {
 		path: await getGitCommonDir(repoPath),
 		type: "directory",
-		lockfileName: KANBAN_TASK_WORKTREE_SETUP_LOCKFILE_NAME,
+		lockfileName: QUARTERDECK_TASK_WORKTREE_SETUP_LOCKFILE_NAME,
 	};
 }
 
@@ -120,7 +120,7 @@ function getWorktreesBaseRootPath(): string {
 }
 
 function getTrashedTaskPatchesRootPath(): string {
-	return join(getRuntimeHomePath(), KANBAN_TRASHED_TASK_PATCHES_DIR_NAME);
+	return join(getRuntimeHomePath(), QUARTERDECK_TRASHED_TASK_PATCHES_DIR_NAME);
 }
 
 function getTaskWorktreePath(repoPath: string, taskId: string): string {
@@ -310,11 +310,11 @@ function stripManagedExcludeBlock(content: string): string {
 	const nextLines: string[] = [];
 	let insideManagedBlock = false;
 	for (const line of lines) {
-		if (line === KANBAN_MANAGED_EXCLUDE_BLOCK_START) {
+		if (line === QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START) {
 			insideManagedBlock = true;
 			continue;
 		}
-		if (line === KANBAN_MANAGED_EXCLUDE_BLOCK_END) {
+		if (line === QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END) {
 			insideManagedBlock = false;
 			continue;
 		}
@@ -339,10 +339,10 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 		managedPaths.length === 0
 			? ""
 			: [
-					KANBAN_MANAGED_EXCLUDE_BLOCK_START,
-					"# Keep symlinked ignored paths ignored inside Kanban task worktrees.",
+					QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START,
+					"# Keep symlinked ignored paths ignored inside Quarterdeck task worktrees.",
 					...managedPaths.map((relativePath) => `/${escapeGitIgnoreLiteral(relativePath)}`),
-					KANBAN_MANAGED_EXCLUDE_BLOCK_END,
+					QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END,
 				].join("\n");
 
 	const nextContent = [preservedContent, managedBlock].filter(Boolean).join("\n\n").replace(/\n+$/g, "");

@@ -24,7 +24,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 		return null;
 	}
 
-	const titleModel = process.env.KANBAN_TITLE_MODEL || DEFAULT_TITLE_MODEL;
+	const titleModel = process.env.QUARTERDECK_TITLE_MODEL || DEFAULT_TITLE_MODEL;
 
 	try {
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");

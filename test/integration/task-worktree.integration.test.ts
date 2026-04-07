@@ -37,7 +37,7 @@ function runGit(cwd: string, args: string[]): string {
 }
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
-	const { path: tempHome, cleanup } = createTempDir("kanban-home-");
+	const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-");
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	process.env.HOME = tempHome;
@@ -62,14 +62,14 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 describe.sequential("task-worktree integration", () => {
 	it("returns a friendly error when the repository has no initial commit", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-unborn-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-unborn-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				const currentBranch = runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]);
 				const ensured = await ensureTaskWorktreeIfDoesntExist({
@@ -89,14 +89,14 @@ describe.sequential("task-worktree integration", () => {
 
 	it("keeps symlinked ignored paths ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				mkdirSync(join(repoPath, ".husky", "_"), { recursive: true });
@@ -149,14 +149,14 @@ describe.sequential("task-worktree integration", () => {
 
 	it("keeps symlinked directory-only ignored paths ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-root-ignore-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-ignore-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(join(repoPath, ".gitignore"), "/.next/\n/node_modules/\n", "utf8");
@@ -198,14 +198,14 @@ describe.sequential("task-worktree integration", () => {
 
 	it("skips symlinking root node_modules for root Next apps without a next config file", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-root-turbopack-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-root-turbopack-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(
@@ -246,15 +246,15 @@ describe.sequential("task-worktree integration", () => {
 
 	it("skips only nested Turbopack app node_modules while keeping root node_modules symlinked", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-nested-turbopack-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-nested-turbopack-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				const appPath = join(repoPath, "apps", "web");
 				mkdirSync(appPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(join(repoPath, "package.json"), '{\n  "private": true\n}\n', "utf8");
@@ -299,14 +299,14 @@ describe.sequential("task-worktree integration", () => {
 
 	it("restores a trashed task patch onto the saved commit", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-restore-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-restore-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");
@@ -337,7 +337,7 @@ describe.sequential("task-worktree integration", () => {
 
 				const patchPath = join(
 					process.env.HOME ?? sandboxRoot,
-					".kanban",
+					".quarterdeck",
 					"trashed-task-patches",
 					`${taskId}.${createdCommit}.patch`,
 				);
@@ -374,14 +374,14 @@ describe.sequential("task-worktree integration", () => {
 
 	it("resumes a trashed task even when the saved patch is invalid", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-invalid-patch-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-invalid-patch-");
 			try {
 				const repoPath = join(sandboxRoot, "repo");
 				mkdirSync(repoPath, { recursive: true });
 
 				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+				runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+				runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
 
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				runGit(repoPath, ["add", "README.md"]);
@@ -405,7 +405,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(deleted.ok).toBe(true);
 
-				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".kanban", "trashed-task-patches");
+				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".quarterdeck", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });
 				const patchPath = join(patchesDir, `${taskId}.${createdCommit}.patch`);
 				writeFileSync(

@@ -90,13 +90,13 @@ describe("createHooksApi", () => {
 			reviewReason: "hook",
 			latestTurnCheckpoint: {
 				turn: 2,
-				ref: "refs/kanban/checkpoints/task-1/turn/2",
+				ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
 				commit: "2222222",
 				createdAt: 1,
 			},
 			previousTurnCheckpoint: {
 				turn: 1,
-				ref: "refs/kanban/checkpoints/task-1/turn/1",
+				ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 				commit: "1111111",
 				createdAt: 1,
 			},
@@ -112,7 +112,7 @@ describe("createHooksApi", () => {
 
 		const captureTaskTurnCheckpoint = vi.fn(async () => ({
 			turn: 3,
-			ref: "refs/kanban/checkpoints/task-1/turn/3",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/3",
 			commit: "3333333",
 			createdAt: Date.now(),
 		}));
@@ -142,7 +142,7 @@ describe("createHooksApi", () => {
 		expect(manager.applyTurnCheckpoint).toHaveBeenCalledTimes(1);
 		expect(deleteTaskTurnCheckpointRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
-			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 		});
 	});
 });

@@ -15,7 +15,7 @@ function selectiveBuildMinifyPlugin(): Plugin {
 	let resolvedConfig: ResolvedConfig | null = null;
 
 	return {
-		name: "kanban-selective-build-minify",
+		name: "quarterdeck-selective-build-minify",
 		apply: "build",
 		configResolved(config) {
 			resolvedConfig = config;

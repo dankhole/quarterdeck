@@ -11,9 +11,9 @@ import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
-import { KanbanBoard } from "@/components/kanban-board";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { QuarterdeckBoard } from "@/components/quarterdeck-board";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
@@ -33,7 +33,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
-import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
+import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
@@ -41,11 +41,11 @@ import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
-import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
 import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
+import { useQuarterdeckAccessGate } from "@/hooks/use-quarterdeck-access-gate";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
@@ -132,7 +132,7 @@ export default function App(): ReactElement {
 		isLoading: isRuntimeProjectConfigLoading,
 		refresh: refreshRuntimeProjectConfig,
 	} = useRuntimeProjectConfig(currentProjectId);
-	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
+	const { isBlocked: isQuarterdeckAccessBlocked } = useQuarterdeckAccessGate({
 		workspaceId: currentProjectId,
 	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
@@ -817,8 +817,8 @@ export default function App(): ReactElement {
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
 	}
-	if (isKanbanAccessBlocked) {
-		return <KanbanAccessBlockedFallback />;
+	if (isQuarterdeckAccessBlocked) {
+		return <QuarterdeckAccessBlockedFallback />;
 	}
 
 	return (
@@ -915,7 +915,7 @@ export default function App(): ReactElement {
 										<FolderOpen size={48} strokeWidth={1} />
 										<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
 										<p className="text-[13px] text-text-secondary">
-											Add a git repository to start using Kanban.
+											Add a git repository to start using Quarterdeck.
 										</p>
 										<Button
 											variant="primary"
@@ -943,7 +943,7 @@ export default function App(): ReactElement {
 												isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
 											/>
 										) : (
-											<KanbanBoard
+											<QuarterdeckBoard
 												data={board}
 												taskSessions={sessions}
 												onCardSelect={handleCardSelect}
@@ -1177,7 +1177,8 @@ export default function App(): ReactElement {
 						<AlertDialogDescription asChild>
 							<div className="flex flex-col gap-3">
 								<p>
-									Kanban requires git to manage workspaces for tasks. This folder is not a git repository yet.
+									Quarterdeck requires git to manage workspaces for tasks. This folder is not a git repository
+									yet.
 								</p>
 								{pendingGitInitializationPath ? (
 									<p className="font-mono text-xs text-text-secondary break-all">

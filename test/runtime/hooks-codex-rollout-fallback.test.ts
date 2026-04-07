@@ -7,9 +7,9 @@ import { resolveCodexRolloutFinalMessageForCwd } from "../../src/commands/hooks"
 
 describe("resolveCodexRolloutFinalMessageForCwd", () => {
 	it("returns the latest task_complete final message for the matching cwd", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-rollout-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-rollout-"));
 		const sessionsRoot = join(tempDir, "sessions");
-		const taskCwd = "/tmp/kanban/task-1";
+		const taskCwd = "/tmp/quarterdeck/task-1";
 
 		try {
 			const dateDir = join(sessionsRoot, "2026", "03", "29");
@@ -57,9 +57,9 @@ describe("resolveCodexRolloutFinalMessageForCwd", () => {
 	});
 
 	it("falls back to final assistant response text when task_complete is absent", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-rollout-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-rollout-"));
 		const sessionsRoot = join(tempDir, "sessions");
-		const taskCwd = "/tmp/kanban/task-2";
+		const taskCwd = "/tmp/quarterdeck/task-2";
 
 		try {
 			const dateDir = join(sessionsRoot, "2026", "03", "29");
@@ -92,9 +92,9 @@ describe("resolveCodexRolloutFinalMessageForCwd", () => {
 	});
 
 	it("resolves final message from large rollout files by scanning prefix and tail", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-rollout-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-rollout-"));
 		const sessionsRoot = join(tempDir, "sessions");
-		const taskCwd = "/tmp/kanban/task-large";
+		const taskCwd = "/tmp/quarterdeck/task-large";
 
 		try {
 			const dateDir = join(sessionsRoot, "2026", "03", "29");

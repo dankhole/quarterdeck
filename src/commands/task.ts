@@ -7,7 +7,7 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import { buildQuarterdeckRuntimeUrl, getQuarterdeckRuntimeOrigin } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -100,8 +100,8 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 	return createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: buildKanbanRuntimeUrl("/api/trpc"),
-				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				url: buildQuarterdeckRuntimeUrl("/api/trpc"),
+				headers: () => (workspaceId ? { "x-quarterdeck-workspace-id": workspaceId } : {}),
 			}),
 		],
 	});
@@ -134,7 +134,7 @@ async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string
 		path: workspaceRepoPath,
 	});
 	if (!added.ok || !added.project) {
-		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Kanban runtime.`);
+		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Quarterdeck runtime.`);
 	}
 	return added.project.id;
 }
@@ -902,18 +902,18 @@ async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void>
 	} catch (error) {
 		printJson({
 			ok: false,
-			error: `Task command failed at ${getKanbanRuntimeOrigin()}: ${toErrorMessage(error)}`,
+			error: `Task command failed at ${getQuarterdeckRuntimeOrigin()}: ${toErrorMessage(error)}`,
 		});
 		process.exitCode = 1;
 	}
 }
 
 export function registerTaskCommand(program: Command): void {
-	const task = program.command("task").alias("tasks").description("Manage Kanban board tasks from the CLI.");
+	const task = program.command("task").alias("tasks").description("Manage Quarterdeck board tasks from the CLI.");
 
 	task
 		.command("list")
-		.description("List Kanban tasks for a workspace.")
+		.description("List Quarterdeck tasks for a workspace.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.option("--column <column>", "Filter column: backlog | in_progress | review | trash.", parseListColumn)
 		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
@@ -1043,10 +1043,10 @@ export function registerTaskCommand(program: Command): void {
 			[
 				"",
 				"Dependency direction:",
-				"  If both linked tasks are in backlog, Kanban preserves the order you pass:",
+				"  If both linked tasks are in backlog, Quarterdeck preserves the order you pass:",
 				"  --task-id waits on --linked-task-id, and on the board the arrow points into",
 				"  --linked-task-id.",
-				"  Once only one linked task remains in backlog, Kanban reorients the saved link",
+				"  Once only one linked task remains in backlog, Quarterdeck reorients the saved link",
 				"  so the backlog task is the waiting dependent task and the other task is the",
 				"  prerequisite.",
 				"  When the prerequisite finishes review and moves to trash, the waiting backlog",

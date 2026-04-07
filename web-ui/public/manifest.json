@@ -1,6 +1,6 @@
 {
-	"name": "Kanban",
-	"short_name": "Kanban",
+	"name": "Quarterdeck",
+	"short_name": "Quarterdeck",
 	"start_url": "/",
 	"display": "standalone",
 	"display_override": ["window-controls-overlay"],

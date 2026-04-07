@@ -1,19 +1,19 @@
 /*
-Kanban has to shut down cleanly across several launch shapes:
+Quarterdeck has to shut down cleanly across several launch shapes:
 
-- `kanban`
-- `npx kanban`
+- `quarterdeck`
+- `npx quarterdeck`
 
 Those are not equivalent from a signal-delivery perspective.
 
 When the user presses Ctrl+C, the terminal sends SIGINT to the foreground process
-group, not just to "the real app". In wrapper-based launches, Kanban can receive:
+group, not just to "the real app". In wrapper-based launches, Quarterdeck can receive:
 
 1. the original SIGINT directly from the terminal process group
 2. an immediate second SIGINT replayed by a wrapper such as `npx` or `npm exec`
 
 That means one physical Ctrl+C can look like two SIGINTs by the time it reaches
-Kanban. A generic graceful-shutdown helper cannot tell whether the second signal
+Quarterdeck. A generic graceful-shutdown helper cannot tell whether the second signal
 was:
 
 - a true second Ctrl+C from the user
@@ -22,7 +22,7 @@ was:
 We used to rely on a generic helper with the common policy "first signal starts
 graceful shutdown, second signal force exits". That works for direct launches,
 but it breaks under wrapper launches because the replayed SIGINT gets mistaken
-for an intentional force-quit request. The result is that Kanban can bail out
+for an intentional force-quit request. The result is that Quarterdeck can bail out
 mid-cleanup even though the user only pressed Ctrl+C once.
 
 This module keeps the shutdown logic local so we can encode the one piece of

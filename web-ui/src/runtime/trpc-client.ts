@@ -20,7 +20,7 @@ export function getRuntimeTrpcClient(workspaceId: string | null): RuntimeTrpcCli
 		links: [
 			httpBatchLink({
 				url: "/api/trpc",
-				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				headers: () => (workspaceId ? { "x-quarterdeck-workspace-id": workspaceId } : {}),
 			}),
 		],
 	});

@@ -48,7 +48,7 @@ vi.mock("../../src/state/workspace-state.js", () => ({
 
 vi.mock("../../src/workspace/task-worktree-path.js", () => ({
 	getWorkspaceFolderLabelForWorktreePath: taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath,
-	KANBAN_TASK_WORKTREES_DIR_NAME: "worktrees",
+	QUARTERDECK_TASK_WORKTREES_DIR_NAME: "worktrees",
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
@@ -136,7 +136,7 @@ describe.sequential("task-worktree serialization", () => {
 	});
 
 	it("serializes submodule initialization across concurrent worktree creation", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-lock-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-worktree-lock-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const runtimeHomePath = join(sandboxRoot, "runtime-home");
@@ -195,7 +195,7 @@ describe.sequential("task-worktree serialization", () => {
 						mkdirSync(worktreePath, { recursive: true });
 						writeFileSync(
 							join(worktreePath, ".gitmodules"),
-							'[submodule "evals/kanban-bench"]\n\tpath = evals/kanban-bench\n\turl = ../kanban-bench\n',
+							'[submodule "evals/quarterdeck-bench"]\n\tpath = evals/quarterdeck-bench\n\turl = ../quarterdeck-bench\n',
 							"utf8",
 						);
 						worktreeHeads.set(worktreePath, commit);
@@ -207,7 +207,7 @@ describe.sequential("task-worktree serialization", () => {
 
 					if (command[0] === "config" && command[1] === "--file") {
 						return {
-							stdout: "submodule.evals/kanban-bench.path evals/kanban-bench\n",
+							stdout: "submodule.evals/quarterdeck-bench.path evals/quarterdeck-bench\n",
 							stderr: "",
 						};
 					}
@@ -218,8 +218,8 @@ describe.sequential("task-worktree serialization", () => {
 						await new Promise((resolve) => {
 							setTimeout(resolve, 25);
 						});
-						mkdirSync(join(cwd, "evals", "kanban-bench"), { recursive: true });
-						writeFileSync(join(cwd, "evals", "kanban-bench", ".git"), "gitdir: fake\n", "utf8");
+						mkdirSync(join(cwd, "evals", "quarterdeck-bench"), { recursive: true });
+						writeFileSync(join(cwd, "evals", "quarterdeck-bench", ".git"), "gitdir: fake\n", "utf8");
 						activeSubmoduleUpdates -= 1;
 						return {
 							stdout: "",
@@ -268,7 +268,7 @@ describe.sequential("task-worktree serialization", () => {
 			expect(firstLockRequest).toMatchObject({
 				path: join(repoPath, ".git"),
 				type: "directory",
-				lockfileName: "kanban-task-worktree-setup.lock",
+				lockfileName: "quarterdeck-task-worktree-setup.lock",
 			});
 			expect(maxConcurrentSubmoduleUpdates).toBe(1);
 		} finally {

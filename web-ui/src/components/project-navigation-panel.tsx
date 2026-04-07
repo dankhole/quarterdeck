@@ -211,7 +211,7 @@ export function ProjectNavigationPanel({
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
-						Kanban <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
+						Quarterdeck <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">
@@ -240,7 +240,7 @@ export function ProjectNavigationPanel({
 								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
 							)}
 						>
-							Kanban Agent
+							Quarterdeck Agent
 						</button>
 					</div>
 				</div>

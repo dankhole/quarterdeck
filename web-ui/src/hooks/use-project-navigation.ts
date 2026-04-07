@@ -14,7 +14,7 @@ const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
 	'command "osascript" is not available',
 ] as const;
 const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
-	"Kanban could not open a directory picker on this runtime. Enter a project path to add:";
+	"Quarterdeck could not open a directory picker on this runtime. Enter a project path to add:";
 
 export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
 	if (!streamError || !streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {

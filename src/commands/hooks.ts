@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
-import { buildKanbanCommandParts } from "../core/kanban-command";
-import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
+import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
+import { buildQuarterdeckRuntimeUrl } from "../core/runtime-endpoint";
 import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
 import type { RuntimeAppRouter } from "../trpc/app-router";
@@ -394,7 +394,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: buildKanbanRuntimeUrl("/api/trpc"),
+				url: buildQuarterdeckRuntimeUrl("/api/trpc"),
 				maxItems: 1,
 			}),
 		],
@@ -407,16 +407,16 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 			metadata: args.metadata,
 		}),
 		3000,
-		"kanban hooks ingest",
+		"quarterdeck hooks ingest",
 	);
 	if (ingestResponse.ok === false) {
 		throw new Error(ingestResponse.error ?? "Hook ingest failed");
 	}
 }
 
-function spawnDetachedKanban(args: string[]): void {
+function spawnDetachedQuarterdeck(args: string[]): void {
 	try {
-		const commandParts = buildKanbanCommandParts(args);
+		const commandParts = buildQuarterdeckCommandParts(args);
 		const child = spawn(commandParts[0], commandParts.slice(1), {
 			detached: true,
 			stdio: "ignore",
@@ -454,7 +454,7 @@ function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookA
 }
 
 function notifyCodexSessionWatcherEvent(mapped: CodexMappedHookEvent): void {
-	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
+	spawnDetachedQuarterdeck(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 }
 
 async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Promise<HooksIngestArgs> {
@@ -575,7 +575,7 @@ async function runGeminiHookSubcommand(): Promise<void> {
 		source: "gemini",
 		hookEventName: hookEventName || undefined,
 	});
-	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
+	spawnDetachedQuarterdeck(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
 export function buildCodexWrapperChildArgs(agentArgs: string[]): string[] {
@@ -592,7 +592,7 @@ export function buildCodexWrapperChildArgs(agentArgs: string[]): string[] {
 	}
 	// Session log formats can change across Codex versions. Always wire legacy notify
 	// so task completion still transitions to review when watcher parsing misses events.
-	const reviewNotifyCommandParts = buildKanbanCommandParts([
+	const reviewNotifyCommandParts = buildQuarterdeckCommandParts([
 		"hooks",
 		"notify",
 		"--event",
@@ -644,7 +644,7 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		if (!childEnv.CODEX_TUI_SESSION_LOG_PATH) {
 			childEnv.CODEX_TUI_SESSION_LOG_PATH = join(
 				tmpdir(),
-				`kanban-codex-session-${process.pid}_${Date.now()}.jsonl`,
+				`quarterdeck-codex-session-${process.pid}_${Date.now()}.jsonl`,
 			);
 		}
 		const sessionLogPath = childEnv.CODEX_TUI_SESSION_LOG_PATH;
@@ -733,7 +733,7 @@ async function runHooksIngest(
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 		args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 	} catch (error) {
-		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
+		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
 		return;
 	}
@@ -741,7 +741,7 @@ async function runHooksIngest(
 	try {
 		await ingestHookEvent(args);
 	} catch (error) {
-		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
+		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
 	}
 }
@@ -751,7 +751,7 @@ export function registerHooksCommand(program: Command): void {
 
 	hooks
 		.command("ingest [payload]")
-		.description("Ingest hook event into Kanban runtime.")
+		.description("Ingest hook event into Quarterdeck runtime.")
 		.requiredOption("--event <event>", "Event: to_review | to_in_progress | activity.", parseHookEvent)
 		.option("--source <source>", "Hook source.")
 		.option("--activity-text <text>", "Activity summary text.")
@@ -798,7 +798,7 @@ export function registerHooksCommand(program: Command): void {
 
 	hooks
 		.command("codex-wrapper [agentArgs...]")
-		.description("Codex wrapper that emits Kanban hook notifications.")
+		.description("Codex wrapper that emits Quarterdeck hook notifications.")
 		.requiredOption("--real-binary <path>", "Path to the actual codex binary.")
 		.allowUnknownOption(true)
 		.action(async (agentArgs: string[] | undefined, options: { realBinary: string }) => {
