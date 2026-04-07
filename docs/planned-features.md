@@ -146,22 +146,6 @@ Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that 
 - Should be seamless — no user configuration required beyond having Nerd Fonts installed
 - Pulse is a tool made by a coworker, so coordinate with them on the integration surface
 
-## 12. Rename and rebrand as a fork
-
-This project is a fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. It currently still carries the original name, repo references, and npm package identity. Need to:
-
-- **Rename the project** — pick a new name that reflects the new direction (light AI IDE, multi-agent orchestration, terminal-centric — quarterdeck is just one view). Available on npm:
-  - **Braid** — braiding parallel agent threads into a cohesive result. Short, memorable, `npx braid` reads well. **Frontrunner.**
-  - **Quarterdeck** — the command deck of a ship. Strong metaphor for orchestration. Longer, but distinctive and `npx quarterdeck` has presence.
-  - **Cupola** — an observation dome. Distinctive, evokes overseeing agents from above.
-  - **Tackboard** — compound, available but sounds like a physical object.
-  - **Loomboard** — compound, available but less punchy.
-- **Update package.json** — new name, author/contact info, repository URL pointing to the fork
-- **Update CLAUDE.md** — currently says "Published to npm as `npx quarterdeck`. Repository: https://github.com/dankhole/quarterdeck" which is the upstream, not this fork
-- **Add attribution** — clearly state in README and package metadata that this was forked from kanban-org/kanban and that much of the foundational work is theirs
-- **Update CI/CD** — publish.yml references the upstream npm package and Slack webhook; update for the new identity
-- **Consider npm scope** — publish under a scoped package name (e.g. `@dcole/quarterdeck` or the new project name) to avoid conflicts with the upstream package
-
 ## 13. Rewrite backend in Go
 
 Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
