@@ -32,7 +32,7 @@ export function useLinkedBacklogTaskActions({
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	stopTaskSession: (taskId: string) => Promise<void>;
+	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
 	maybeRequestNotificationPermissionForTaskStart: () => void;
 	kickoffTaskInProgress: (
@@ -105,7 +105,7 @@ export function useLinkedBacklogTaskActions({
 			const boardBeforeTrash = currentBoard ?? boardRef.current;
 			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
 			if (!trashed.moved) {
-				await stopTaskSession(task.id);
+				await stopTaskSession(task.id, { waitForExit: true });
 				await cleanupTaskWorkspace(task.id);
 				return;
 			}
@@ -156,7 +156,10 @@ export function useLinkedBacklogTaskActions({
 				}
 			}
 
-			await Promise.all([stopTaskSession(task.id), stopTaskSession(getDetailTerminalTaskId(task.id))]);
+			await Promise.all([
+				stopTaskSession(task.id, { waitForExit: true }),
+				stopTaskSession(getDetailTerminalTaskId(task.id)),
+			]);
 			await cleanupTaskWorkspace(task.id);
 		},
 		[
