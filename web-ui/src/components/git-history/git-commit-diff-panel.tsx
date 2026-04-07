@@ -127,6 +127,7 @@ export function GitCommitDiffPanel({
 				cursor: "ew-resize",
 				onMove: (pointerX) => {
 					const deltaRatio = (pointerX - startX) / containerWidth;
+					// Subtract: file tree is on the left, so dragging right (positive delta) should shrink it
 					setFileTreePanelRatio(startRatio - deltaRatio);
 				},
 				onEnd: (pointerX) => {
