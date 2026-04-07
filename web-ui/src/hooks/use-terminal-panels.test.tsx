@@ -239,13 +239,10 @@ describe("useTerminalPanels", () => {
 		const restoredTaskASnapshot = requireSnapshot(latestSnapshot);
 		expect(restoredTaskASnapshot.isDetailTerminalOpen).toBe(true);
 		expect(restoredTaskASnapshot.detailTerminalTaskId).toBe("__detail_terminal__:task-a");
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(2);
-		expect(startShellSessionMutateMock).toHaveBeenLastCalledWith(
-			expect.objectContaining({
-				taskId: "__detail_terminal__:task-a",
-				workspaceTaskId: "task-a",
-			}),
-		);
+		// Switching back should NOT re-call startShellSession — the selection ref
+		// is preserved across task switches so the cached terminal reconnects
+		// without a redundant server round-trip that could kill a running shell.
+		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("shares the last resized bottom terminal height across home and detail panes", async () => {
