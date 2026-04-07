@@ -20,7 +20,7 @@ import { createGitProcessEnv } from "../core/git-process-env";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 
-const RUNTIME_HOME_DIR = ".kanban";
+const RUNTIME_HOME_DIR = ".quarterdeck";
 const RUNTIME_WORKTREES_DIR = "worktrees";
 const WORKSPACES_DIR = "workspaces";
 const INDEX_FILENAME = "index.json";
@@ -158,7 +158,7 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 }
 
 export function getRuntimeHomePath(): string {
-	const override = process.env.KANBAN_STATE_HOME;
+	const override = process.env.QUARTERDECK_STATE_HOME;
 	if (override) {
 		return resolve(override);
 	}
@@ -166,7 +166,7 @@ export function getRuntimeHomePath(): string {
 }
 
 export function getTaskWorktreesHomePath(): string {
-	const override = process.env.KANBAN_STATE_HOME;
+	const override = process.env.QUARTERDECK_STATE_HOME;
 	if (override) {
 		return join(resolve(override), RUNTIME_WORKTREES_DIR);
 	}
@@ -565,7 +565,7 @@ export async function loadWorkspaceContext(
 		const index = await readWorkspaceIndex();
 		const existingEntry = findWorkspaceEntry(index, repoPath);
 		if (!existingEntry) {
-			throw new Error(`Project ${repoPath} is not added to Kanban yet.`);
+			throw new Error(`Project ${repoPath} is not added to Quarterdeck yet.`);
 		}
 		return {
 			repoPath,

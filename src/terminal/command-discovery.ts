@@ -23,9 +23,9 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 // `command -v`, or an interactive shell.
 //
 // Why this exists:
-// Kanban is launched from the user's shell and inherits that shell's environment, including
+// Quarterdeck is launched from the user's shell and inherits that shell's environment, including
 // PATH and exported variables. For agent detection and other startup-time capability checks,
-// the question we care about is "can the current Kanban process directly execute this binary
+// the question we care about is "can the current Quarterdeck process directly execute this binary
 // from its inherited environment?" A direct PATH scan answers exactly that question.
 //
 // Why we do not delegate to shell commands:
@@ -39,9 +39,9 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 //    For example, detection should not depend on `which` itself being available on PATH.
 //
 // Why this is acceptable:
-// If a binary is only available after re-running shell init files, Kanban should treat it as
+// If a binary is only available after re-running shell init files, Quarterdeck should treat it as
 // unavailable for task-agent startup. That keeps behavior predictable and aligned with the
-// environment the Kanban process already has, instead of silently relying on hidden shell
+// environment the Quarterdeck process already has, instead of silently relying on hidden shell
 // side effects.
 export function isBinaryAvailableOnPath(binary: string): boolean {
 	const trimmed = binary.trim();

@@ -6,7 +6,7 @@ import { createTempDir } from "./temp-dir";
 
 describe("createTempDir", () => {
 	it("creates and cleans up a temporary directory", () => {
-		const { path, cleanup } = createTempDir("kanban-unit-");
+		const { path, cleanup } = createTempDir("quarterdeck-unit-");
 
 		expect(existsSync(path)).toBe(true);
 		cleanup();

@@ -105,7 +105,7 @@ async function waitForServerStart(process: ChildProcess, timeoutMs = 10_000): Pr
 			} else {
 				stderr += text;
 			}
-			if (!stdout.includes("Kanban running at ") || settled) {
+			if (!stdout.includes("Quarterdeck running at ") || settled) {
 				return;
 			}
 			settled = true;
@@ -196,7 +196,7 @@ async function requestGracefulShutdown(process: ChildProcess): Promise<void> {
 	}
 
 	await new Promise<void>((resolveSend) => {
-		process.send?.({ type: "kanban.shutdown" }, () => {
+		process.send?.({ type: "quarterdeck.shutdown" }, () => {
 			resolveSend();
 		});
 	});
@@ -249,8 +249,8 @@ async function runCliCommandAndCollectOutput(options: {
 
 describe("source task commands", () => {
 	it("exits after creating a task when the runtime server is already running", { timeout: 60_000 }, async () => {
-		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-exit-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-task-exit-");
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("quarterdeck-home-task-exit-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-task-exit-");
 
 		try {
 			initGitRepository(projectPath);
@@ -261,7 +261,7 @@ describe("source task commands", () => {
 			const env = createGitTestEnv({
 				HOME: homeDir,
 				USERPROFILE: homeDir,
-				KANBAN_RUNTIME_PORT: port,
+				QUARTERDECK_RUNTIME_PORT: port,
 			});
 
 			const serverProcess = spawn(
@@ -335,8 +335,8 @@ describe("source task commands", () => {
 			return;
 		}
 
-		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-root-launch-open-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-root-launch-open-");
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("quarterdeck-home-root-launch-open-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-root-launch-open-");
 
 		try {
 			initGitRepository(projectPath);
@@ -350,7 +350,7 @@ describe("source task commands", () => {
 			const env = createGitTestEnv({
 				HOME: homeDir,
 				USERPROFILE: homeDir,
-				KANBAN_RUNTIME_PORT: port,
+				QUARTERDECK_RUNTIME_PORT: port,
 				PATH: `${browserStubBinDir}:${process.env.PATH ?? ""}`,
 			});
 
@@ -405,8 +405,8 @@ describe("source task commands", () => {
 	});
 
 	it("supports trashing and deleting tasks by column", { timeout: 60_000 }, async () => {
-		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-trash-delete-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-task-trash-delete-");
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("quarterdeck-home-task-trash-delete-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-task-trash-delete-");
 
 		try {
 			initGitRepository(projectPath);
@@ -417,7 +417,7 @@ describe("source task commands", () => {
 			const env = createGitTestEnv({
 				HOME: homeDir,
 				USERPROFILE: homeDir,
-				KANBAN_RUNTIME_PORT: port,
+				QUARTERDECK_RUNTIME_PORT: port,
 			});
 
 			const serverProcess = spawn(

@@ -30,7 +30,7 @@ function createRolloutLine(line: Record<string, unknown>, includeTrailingNewline
 
 describe("startCodexSessionWatcher", () => {
 	it("flushes completion events on stop even when the log file appears late", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-watcher-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-watcher-"));
 		const logPath = join(tempDir, "session.jsonl");
 		const events: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
 		const stopWatcher = await startCodexSessionWatcher(
@@ -73,7 +73,7 @@ describe("startCodexSessionWatcher", () => {
 	});
 
 	it("parses user_turn operations from modern codex logs", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-watcher-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-watcher-"));
 		const logPath = join(tempDir, "session.jsonl");
 		const events: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
 		const stopWatcher = await startCodexSessionWatcher(
@@ -115,10 +115,10 @@ describe("startCodexSessionWatcher", () => {
 	});
 
 	it("emits in-progress activity from rollout events when tui logs are low-signal", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-watcher-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-watcher-"));
 		const logPath = join(tempDir, "session.jsonl");
 		const sessionsRoot = join(tempDir, "sessions");
-		const taskCwd = "/tmp/kanban/task-rollout-live";
+		const taskCwd = "/tmp/quarterdeck/task-rollout-live";
 		const rolloutDir = join(sessionsRoot, "2026", "03", "29");
 		const rolloutPath = join(rolloutDir, "rollout-2026-03-29T00-00-02-live.jsonl");
 		const events: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
@@ -197,10 +197,10 @@ describe("startCodexSessionWatcher", () => {
 	});
 
 	it("emits review final metadata from rollout task_complete when available", async () => {
-		const tempDir = await mkdtemp(join(tmpdir(), "kanban-codex-watcher-"));
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-codex-watcher-"));
 		const logPath = join(tempDir, "session.jsonl");
 		const sessionsRoot = join(tempDir, "sessions");
-		const taskCwd = "/tmp/kanban/task-rollout-final";
+		const taskCwd = "/tmp/quarterdeck/task-rollout-final";
 		const rolloutDir = join(sessionsRoot, "2026", "03", "29");
 		const rolloutPath = join(rolloutDir, "rollout-2026-03-29T00-00-03-final.jsonl");
 		const events: Array<{ event: string; metadata?: Record<string, unknown> }> = [];

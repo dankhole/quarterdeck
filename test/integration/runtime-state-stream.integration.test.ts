@@ -191,7 +191,7 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 			} else {
 				stderr += text;
 			}
-			const match = stdout.match(/Kanban running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
+			const match = stdout.match(/Quarterdeck running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
 			if (!match || settled) {
 				return;
 			}
@@ -235,7 +235,7 @@ async function requestGracefulShutdown(childProcess: ChildProcess): Promise<void
 	}
 
 	await new Promise<void>((resolveSend) => {
-		childProcess.send({ type: "kanban.shutdown" }, (error) => {
+		childProcess.send({ type: "quarterdeck.shutdown" }, (error) => {
 			if (error) {
 				childProcess.kill(getShutdownSignal());
 			}
@@ -262,7 +262,12 @@ async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promi
 	});
 }
 
-async function startKanbanServer(input: { cwd: string; homeDir: string; port: number; extraArgs?: string[] }): Promise<{
+async function startQuarterdeckServer(input: {
+	cwd: string;
+	homeDir: string;
+	port: number;
+	extraArgs?: string[];
+}): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
@@ -285,7 +290,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 			env: createGitTestEnv({
 				HOME: input.homeDir,
 				USERPROFILE: input.homeDir,
-				KANBAN_RUNTIME_PORT: String(input.port),
+				QUARTERDECK_RUNTIME_PORT: String(input.port),
 			}),
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		},
@@ -306,7 +311,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 			child.kill("SIGKILL");
 			const didExitAfterForce = await waitForExit(child, 5_000);
 			if (!didExitAfterForce) {
-				throw new Error("Timed out stopping kanban test server process.");
+				throw new Error("Timed out stopping quarterdeck test server process.");
 			}
 		},
 	};
@@ -426,7 +431,7 @@ async function requestJson<T>(input: {
 	};
 	const headers = new Headers();
 	if (input.workspaceId) {
-		headers.set("x-kanban-workspace-id", input.workspaceId);
+		headers.set("x-quarterdeck-workspace-id", input.workspaceId);
 	}
 	let url = `${input.baseUrl}/api/trpc/${input.procedure}`;
 	let method: "GET" | "POST";
@@ -457,11 +462,11 @@ async function requestJson<T>(input: {
 
 describe.sequential("runtime state stream integration", () => {
 	it("starts outside a git repository with no active workspace", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-no-git-");
-		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("kanban-no-git-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-no-git-");
+		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("quarterdeck-no-git-");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: nonGitPath,
 			homeDir: tempHome,
 			port,
@@ -500,10 +505,10 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("starts from the home directory with no active workspace", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-home-dir-launch-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-home-dir-launch-");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: tempHome,
 			homeDir: tempHome,
 			port,
@@ -541,8 +546,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("launches outside git using the first indexed project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-first-project-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-first-project-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-first-project-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-first-project-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -554,7 +559,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startQuarterdeckServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -582,7 +587,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startQuarterdeckServer({
 			cwd: nonGitPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -624,8 +629,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("requires explicit confirmation before initializing git for a non-git added project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-project-add-git-confirm-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-project-add-git-confirm-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-project-add-git-confirm-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-project-add-git-confirm-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const nonGitPath = join(tempRoot, "non-git-project");
@@ -634,7 +639,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectAPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,
@@ -691,8 +696,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("streams per-project snapshots and isolates workspace updates", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stream-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-projects-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -702,7 +707,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,
@@ -812,14 +817,14 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("emits task_ready_for_review when hook review event is ingested", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-hook-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-hook-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-hook-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-hook-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -893,8 +898,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("streams centralized workspace metadata updates for task worktrees", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-metadata-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-metadata-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-metadata-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-metadata-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -904,7 +909,7 @@ describe.sequential("runtime state stream integration", () => {
 		commitAll(projectPath, "seed project");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -1017,8 +1022,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("preserves existing task worktree when base ref advances", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-preserve-worktree-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-preserve-worktree-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-preserve-worktree-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-preserve-worktree-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1029,7 +1034,7 @@ describe.sequential("runtime state stream integration", () => {
 		const baseRef = runGit(projectPath, ["symbolic-ref", "--short", "HEAD"]);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -1134,8 +1139,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("moves stale completed review cards to trash on shutdown", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-exit-review-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-exit-review-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stale-exit-review-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-stale-exit-review-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1145,7 +1150,7 @@ describe.sequential("runtime state stream integration", () => {
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -1208,7 +1213,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -1253,8 +1258,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-skip-cleanup-flag-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-skip-cleanup-flag-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-skip-cleanup-flag-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-skip-cleanup-flag-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1264,7 +1269,7 @@ describe.sequential("runtime state stream integration", () => {
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -1329,7 +1334,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -1375,8 +1380,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("falls back to remaining project when removing the active project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-remove-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-projects-remove-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-remove-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-remove-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -1386,7 +1391,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startQuarterdeckServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,

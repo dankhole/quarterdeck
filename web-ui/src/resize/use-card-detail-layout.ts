@@ -10,7 +10,7 @@ import {
 } from "@/resize/resize-preferences";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
-export type DetailPanelId = "kanban" | "changes" | "files";
+export type DetailPanelId = "quarterdeck" | "changes" | "files";
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -44,13 +44,13 @@ const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 
 function loadActivePanel(): DetailPanelId | null {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
-	if (stored === "kanban" || stored === "changes" || stored === "files") {
+	if (stored === "quarterdeck" || stored === "changes" || stored === "files") {
 		return stored;
 	}
 	if (stored === "") {
 		return null;
 	}
-	return "kanban";
+	return "quarterdeck";
 }
 
 function persistActivePanel(panel: DetailPanelId | null): DetailPanelId | null {

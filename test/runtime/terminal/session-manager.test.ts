@@ -193,13 +193,13 @@ describe("TerminalSessionManager", () => {
 
 		manager.applyTurnCheckpoint("task-1", {
 			turn: 1,
-			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 			commit: "1111111",
 			createdAt: 1,
 		});
 		manager.applyTurnCheckpoint("task-1", {
 			turn: 2,
-			ref: "refs/kanban/checkpoints/task-1/turn/2",
+			ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
 			commit: "2222222",
 			createdAt: 2,
 		});

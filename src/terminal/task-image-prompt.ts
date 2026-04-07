@@ -61,7 +61,7 @@ export async function prepareTaskPromptWithImages(input: {
 		return input.prompt;
 	}
 
-	const tempDir = await mkdtemp(join(tmpdir(), "kanban-task-images-"));
+	const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-task-images-"));
 	const imageFileEntries = await Promise.all(
 		images.map(async (image, index) => {
 			const filePath = join(tempDir, buildTaskImageFileName(image, index));

@@ -49,7 +49,10 @@ export interface CreateRuntimeApiDependencies {
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
-	const debugResetTargetPaths = [join(homedir(), ".kanban"), join(homedir(), ".kanban", "worktrees")] as const;
+	const debugResetTargetPaths = [
+		join(homedir(), ".quarterdeck"),
+		join(homedir(), ".quarterdeck", "worktrees"),
+	] as const;
 
 	const buildConfigResponse = (runtimeConfig: RuntimeConfigState) => buildRuntimeConfigResponse(runtimeConfig);
 

@@ -18,7 +18,7 @@ fi
 
 for file in $STAGED_FILES; do
 	if [ -f "$file" ]; then
-		git add "$file"
+		git add "$file" 2>/dev/null || true
 	fi
 done
 

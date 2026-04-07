@@ -91,7 +91,7 @@ export function markTabHidden(tabId: string): void {
 	writePresence(next);
 }
 
-export function hasVisibleKanbanTabForWorkspace(
+export function hasVisibleQuarterdeckTabForWorkspace(
 	workspaceId: string | null | undefined,
 	excludeTabId?: string,
 ): boolean {

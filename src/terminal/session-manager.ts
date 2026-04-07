@@ -197,7 +197,7 @@ function buildTerminalEnvironment(
 		...Object.assign({}, ...sources),
 		COLORTERM: "truecolor",
 		TERM: "xterm-256color",
-		TERM_PROGRAM: "kanban",
+		TERM_PROGRAM: "quarterdeck",
 	};
 }
 
@@ -1116,7 +1116,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				const summary = updateSummary(entry, {
 					warningMessage: message,
 				});
-				const output = Buffer.from(`\r\n[kanban] ${message}\r\n`, "utf8");
+				const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
 				for (const listener of entry.listeners.values()) {
 					listener.onOutput?.(output);
 					listener.onState?.(cloneSummary(summary));

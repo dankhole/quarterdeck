@@ -9,7 +9,7 @@
 
 ### Board path (main columns)
 ```
-App.tsx → KanbanBoard → BoardColumn → BoardCard
+App.tsx → QuarterdeckBoard → BoardColumn → BoardCard
 ```
 
 ### Sidebar path (detail panel)
@@ -71,7 +71,7 @@ type BoardCardActions = {
 const BoardCardActionsContext = createContext<BoardCardActions>(...)
 ```
 
-**Where to provide it:** In `App.tsx`, wrapping both `KanbanBoard` and `CardDetailView`.
+**Where to provide it:** In `App.tsx`, wrapping both `QuarterdeckBoard` and `CardDetailView`.
 
 **What changes in BoardCard:** Instead of receiving 10+ callback props, it calls `useBoardCardActions()` and gets them from context. The `card.id` is used to bind the task-specific callbacks internally.
 

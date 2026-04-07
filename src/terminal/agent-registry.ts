@@ -39,7 +39,7 @@ function parseBooleanEnvValue(value: string | undefined): boolean {
 }
 
 function isRuntimeDebugModeEnabled(): boolean {
-	const debugModeValue = process.env.KANBAN_DEBUG_MODE ?? process.env.DEBUG_MODE ?? process.env.debug_mode;
+	const debugModeValue = process.env.QUARTERDECK_DEBUG_MODE ?? process.env.DEBUG_MODE ?? process.env.debug_mode;
 	return parseBooleanEnvValue(debugModeValue);
 }
 

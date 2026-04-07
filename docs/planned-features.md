@@ -2,7 +2,7 @@
 
 ## 1. Resume card sessions after crash/closure
 
-When Kanban crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
+When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
 - Investigate why the agent session doesn't reconnect after restart
 - Ensure the correct worktree is switched to when resuming a card
 - Resume or re-attach to the Claude conversation so the agent can continue where it left off
@@ -133,11 +133,11 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 ## 11. Pulse integration for enhanced status display (Nerd Fonts)
 
-Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Kanban's terminal/status display when Nerd Fonts are detected.
+Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
 
 **Investigation needed**:
-- How Pulse works: is it a binary Kanban shells out to, a library, or something that wraps the agent process?
-- Where it would integrate: per-agent terminal status lines, a global Kanban status bar, board card indicators, or some combination
+- How Pulse works: is it a binary Quarterdeck shells out to, a library, or something that wraps the agent process?
+- Where it would integrate: per-agent terminal status lines, a global Quarterdeck status bar, board card indicators, or some combination
 - How to detect Nerd Fonts availability at runtime
 
 **Requirements**:
@@ -149,17 +149,17 @@ Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that 
 
 This project is a fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. It currently still carries the original name, repo references, and npm package identity. Need to:
 
-- **Rename the project** — pick a new name that reflects the new direction (light AI IDE, multi-agent orchestration, terminal-centric — kanban is just one view). Available on npm:
+- **Rename the project** — pick a new name that reflects the new direction (light AI IDE, multi-agent orchestration, terminal-centric — quarterdeck is just one view). Available on npm:
   - **Braid** — braiding parallel agent threads into a cohesive result. Short, memorable, `npx braid` reads well. **Frontrunner.**
   - **Quarterdeck** — the command deck of a ship. Strong metaphor for orchestration. Longer, but distinctive and `npx quarterdeck` has presence.
   - **Cupola** — an observation dome. Distinctive, evokes overseeing agents from above.
   - **Tackboard** — compound, available but sounds like a physical object.
   - **Loomboard** — compound, available but less punchy.
 - **Update package.json** — new name, author/contact info, repository URL pointing to the fork
-- **Update CLAUDE.md** — currently says "Published to npm as `npx kanban`. Repository: https://github.com/kanban-org/kanban" which is the upstream, not this fork
+- **Update CLAUDE.md** — currently says "Published to npm as `npx quarterdeck`. Repository: https://github.com/dankhole/quarterdeck" which is the upstream, not this fork
 - **Add attribution** — clearly state in README and package metadata that this was forked from kanban-org/kanban and that much of the foundational work is theirs
 - **Update CI/CD** — publish.yml references the upstream npm package and Slack webhook; update for the new identity
-- **Consider npm scope** — publish under a scoped package name (e.g. `@dcole/kanban` or the new project name) to avoid conflicts with the upstream package
+- **Consider npm scope** — publish under a scoped package name (e.g. `@dcole/quarterdeck` or the new project name) to avoid conflicts with the upstream package
 
 ## 13. Rewrite backend in Go
 
@@ -234,7 +234,7 @@ A research doc exists at [docs/research/2026-04-06-task-conversation-summary-app
 
 ## 18. Investigate auto-trashing of tasks on restart
 
-When Kanban is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
+When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
 
 If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #1 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
 

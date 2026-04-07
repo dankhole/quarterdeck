@@ -1,6 +1,6 @@
-# Kanban Web UI
+# Quarterdeck Web UI
 
-This package contains the Kanban frontend served by the runtime.
+This package contains the Quarterdeck frontend served by the runtime.
 
 ## Stack
 

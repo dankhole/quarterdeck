@@ -1,32 +1,32 @@
 {
-  "name": "kanban",
+  "name": "quarterdeck",
   "version": "0.1.59",
-  "description": "A kanban foundation for coding agents",
+  "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
   "keywords": [
-    "kanban",
+    "quarterdeck",
     "agents",
     "cli",
     "task-management",
     "typescript"
   ],
-  "homepage": "https://github.com/kanban-org/kanban",
+  "homepage": "https://github.com/dankhole/quarterdeck",
   "bugs": {
-    "url": "https://github.com/kanban-org/kanban/issues"
+    "url": "https://github.com/dankhole/quarterdeck/issues"
   },
-  "author": "Kanban",
+  "author": "Quarterdeck",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kanban-org/kanban"
+    "url": "https://github.com/dankhole/quarterdeck"
   },
   "type": "module",
   "bin": {
-    "kanban": "dist/cli.js"
+    "quarterdeck": "dist/cli.js"
   },
-  "man": "./man/kanban.1",
+  "man": "./man/quarterdeck.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -50,7 +50,7 @@
     "build": "npm run clean && npm run web:build && node scripts/build.mjs && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && shx chmod +x dist/cli.js",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
-    "unlink": "npm unlink -g kanban",
+    "unlink": "npm unlink -g quarterdeck",
     "dev": "tsx watch src/cli.ts",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",

@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { KanbanBoard, type RequestProgrammaticCardMove } from "@/components/kanban-board";
+import { QuarterdeckBoard, type RequestProgrammaticCardMove } from "@/components/quarterdeck-board";
 import type { BoardData } from "@/types";
 
 const dndMock = vi.hoisted(() => ({
@@ -75,7 +75,7 @@ function createRect(left: number, top: number, width: number, height: number): D
 	} as DOMRect;
 }
 
-describe("KanbanBoard", () => {
+describe("QuarterdeckBoard", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
@@ -197,7 +197,7 @@ describe("KanbanBoard", () => {
 
 		await act(async () => {
 			root.render(
-				<KanbanBoard
+				<QuarterdeckBoard
 					data={board}
 					taskSessions={{}}
 					onCardSelect={() => {}}

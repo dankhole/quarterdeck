@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
+import { createQuarterdeckTerminalOptions } from "@/terminal/terminal-options";
 
-describe("createKanbanTerminalOptions", () => {
+describe("createQuarterdeckTerminalOptions", () => {
 	it("enables richer terminal capability reporting", () => {
-		const options = createKanbanTerminalOptions({
+		const options = createQuarterdeckTerminalOptions({
 			cursorColor: "#abcdef",
 			isMacPlatform: true,
 			terminalBackgroundColor: "#101112",

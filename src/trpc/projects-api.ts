@@ -76,7 +76,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							ok: false,
 							project: null,
 							requiresGitInitialization: true,
-							error: "This folder is not a git repository. Kanban requires git to manage worktrees. Initialize git to continue.",
+							error: "This folder is not a git repository. Quarterdeck requires git to manage worktrees. Initialize git to continue.",
 						} satisfies RuntimeProjectAddResponse;
 					}
 					const initResult = await initializeGitRepository(projectPath);

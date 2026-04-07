@@ -114,7 +114,7 @@ describe("shouldSuppressImmediateDuplicateShutdownSignals", () => {
 	it("enables duplicate suppression for npm-style wrapper launches", () => {
 		expect(
 			shouldSuppressImmediateDuplicateShutdownSignals({
-				argv: ["/usr/local/bin/node", "/repo/node_modules/kanban/dist/cli.js"],
+				argv: ["/usr/local/bin/node", "/repo/node_modules/quarterdeck/dist/cli.js"],
 				env: {
 					npm_execpath: "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
 				},
@@ -125,7 +125,10 @@ describe("shouldSuppressImmediateDuplicateShutdownSignals", () => {
 	it("enables duplicate suppression for transient npx cache entrypoints", () => {
 		expect(
 			shouldSuppressImmediateDuplicateShutdownSignals({
-				argv: ["/usr/local/bin/node", "/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+				argv: [
+					"/usr/local/bin/node",
+					"/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/quarterdeck/dist/cli.js",
+				],
 				env: {},
 			}),
 		).toBe(true);

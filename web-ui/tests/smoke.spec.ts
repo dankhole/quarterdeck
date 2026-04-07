@@ -14,9 +14,9 @@ async function openTaskFromBoard(page: Page, title: string) {
 	await card.click();
 }
 
-test("renders kanban top bar and columns", async ({ page }) => {
+test("renders quarterdeck top bar and columns", async ({ page }) => {
 	await page.goto("/");
-	await expect(page).toHaveTitle(/Kanban/);
+	await expect(page).toHaveTitle(/Quarterdeck/);
 	await expect(page.getByRole("button", { name: "Projects" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Agent" })).toBeVisible();
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();

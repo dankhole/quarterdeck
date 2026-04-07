@@ -12,7 +12,7 @@ import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/uti
 import { isApprovalState } from "@/utils/session-status";
 import {
 	createTabPresenceId,
-	hasVisibleKanbanTabForWorkspace,
+	hasVisibleQuarterdeckTabForWorkspace,
 	markTabHidden,
 	markTabVisible,
 } from "@/utils/tab-visibility-presence";
@@ -168,7 +168,7 @@ export function useReviewReadyNotifications({
 		}
 		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
 		const isWindowFocusedNow = typeof document === "undefined" ? isWindowFocused : document.hasFocus();
-		const hasVisiblePeerTabForWorkspace = hasVisibleKanbanTabForWorkspace(
+		const hasVisiblePeerTabForWorkspace = hasVisibleQuarterdeckTabForWorkspace(
 			latestTaskReadyForReview.workspaceId,
 			notificationPresenceTabIdRef.current,
 		);
@@ -238,7 +238,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	const baseTitle = workspaceTitle || "kanban";
+	const baseTitle = workspaceTitle || "quarterdeck";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

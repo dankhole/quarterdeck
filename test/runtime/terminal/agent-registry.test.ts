@@ -35,7 +35,7 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
-	delete process.env.KANBAN_DEBUG_MODE;
+	delete process.env.QUARTERDECK_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
 });
@@ -90,7 +90,7 @@ describe("buildRuntimeConfigResponse", () => {
 	});
 
 	it("sets debug mode from runtime environment variables", () => {
-		process.env.KANBAN_DEBUG_MODE = "true";
+		process.env.QUARTERDECK_DEBUG_MODE = "true";
 		const response = buildRuntimeConfigResponse(createRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});

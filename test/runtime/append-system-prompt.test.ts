@@ -18,16 +18,16 @@ describe("resolveAppendSystemPromptCommandPrefix", () => {
 });
 
 describe("renderAppendSystemPrompt", () => {
-	it("renders Kanban sidebar guidance and command reference", () => {
-		const rendered = renderAppendSystemPrompt("kanban");
-		expect(rendered).toContain("Kanban sidebar agent");
-		expect(rendered).toContain("kanban task create");
-		expect(rendered).toContain("kanban task trash");
-		expect(rendered).toContain("kanban task delete");
+	it("renders Quarterdeck sidebar guidance and command reference", () => {
+		const rendered = renderAppendSystemPrompt("quarterdeck");
+		expect(rendered).toContain("Quarterdeck sidebar agent");
+		expect(rendered).toContain("quarterdeck task create");
+		expect(rendered).toContain("quarterdeck task trash");
+		expect(rendered).toContain("quarterdeck task delete");
 		expect(rendered).toContain("--column backlog|in_progress|review|trash");
 		expect(rendered).toContain("Provide exactly one of");
 		expect(rendered).toContain("task delete --column trash");
-		expect(rendered).toContain("kanban task link");
+		expect(rendered).toContain("quarterdeck task link");
 		expect(rendered).toContain("If a task command fails because the runtime is unavailable");
 		expect(rendered).toContain("If the user asks for GitHub work");
 		expect(rendered).toContain("gh issue view");
@@ -38,7 +38,7 @@ describe("renderAppendSystemPrompt", () => {
 	});
 
 	it("renders only the active-agent Linear MCP guidance when an agent is provided", () => {
-		const rendered = renderAppendSystemPrompt("kanban", {
+		const rendered = renderAppendSystemPrompt("quarterdeck", {
 			agentId: "codex",
 		});
 
@@ -60,7 +60,7 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
 		});
-		expect(prompt).toContain("Kanban sidebar agent");
+		expect(prompt).toContain("Quarterdeck sidebar agent");
 		expect(prompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task list");
 		expect(prompt).toContain("Current home agent: `codex`");
 		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");

@@ -24,7 +24,7 @@ Code quality
 - Extract shared logic into hooks and utilities. 
 - Prioritize maintainability and clean architecture over speed. 
 - Follow DRY principles and maintain clean architecture with clear separation of concerns.
-- In `web-ui`, prefer `react-use` hooks (via `@/kanban/utils/react-use`) whenever possible
+- In `web-ui`, prefer `react-use` hooks (via `@/quarterdeck/utils/react-use`) whenever possible
 - Before adding custom utility code, evaluate whether a well-maintained third-party package can reduce complexity and long-term maintenance cost.
 
 Architecture opinions
@@ -45,7 +45,7 @@ When closing issues via commit:
 - Include fixes #<number> or closes #<number> in the commit message. This automatically closes the issue when the commit is merged.
 
 web-ui Stack
-- Kanban web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
+- Quarterdeck web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
 - Custom UI primitives live in `src/components/ui/` (button, dialog, tooltip, kbd, spinner, cn utility).
 - Toast notifications use `sonner`. Import `{ toast }` from `"sonner"` or use `showAppToast` from `@/components/app-toaster`.
 
@@ -89,8 +89,8 @@ Dark theme
 Board state single-writer rule
 - When the browser UI is connected, the UI is the **single writer** of board state via `saveWorkspaceState` (optimistic concurrency with `expectedRevision`). Server code must **never** call `mutateWorkspaceState` to modify board state for operations triggered while a UI client is active — doing so bumps the server-side revision and causes the UI's next persist to hit a `WorkspaceStateConflictError`, surfacing a disruptive "Workspace changed elsewhere" toast.
 - Instead of writing board state from the server, send a lightweight WebSocket message (via `RuntimeStateHub.broadcast*`) with just the data the UI needs, and let the UI apply it to its local board + persist through its normal debounced cycle. See `task_title_updated` as the reference pattern.
-- `mutateWorkspaceState` is only safe for CLI-only code paths where no browser UI is connected (e.g. `kanban hooks ingest`, `kanban task` subcommands).
+- `mutateWorkspaceState` is only safe for CLI-only code paths where no browser UI is connected (e.g. `quarterdeck hooks ingest`, `quarterdeck task` subcommands).
 
 Misc. tribal knowledge
-- Kanban is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
-- When Kanban runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.
+- Quarterdeck is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
+- When Quarterdeck runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.

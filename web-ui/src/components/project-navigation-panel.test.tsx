@@ -17,8 +17,8 @@ const BOARD_SURFACE_HORIZONTAL_CHROME_PX = 40;
 const PROJECTS: RuntimeProjectSummary[] = [
 	{
 		id: "project-1",
-		name: "Kanban",
-		path: "/tmp/kanban",
+		name: "Quarterdeck",
+		path: "/tmp/quarterdeck",
 		taskCounts: {
 			backlog: 0,
 			in_progress: 0,

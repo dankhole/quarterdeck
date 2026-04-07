@@ -5,7 +5,7 @@
 
 ## Research Question
 
-When an agent transitions a task (e.g., `to_review`), how can kanban capture a lightweight conversation summary? Two approaches: (1) parse the Claude Code transcript JSONL file from the hook's stdin, or (2) use a Claude Code prompt-based hook to generate a summary via LLM call. What does each approach require and how does it fit into the existing hook infrastructure?
+When an agent transitions a task (e.g., `to_review`), how can quarterdeck capture a lightweight conversation summary? Two approaches: (1) parse the Claude Code transcript JSONL file from the hook's stdin, or (2) use a Claude Code prompt-based hook to generate a summary via LLM call. What does each approach require and how does it fit into the existing hook infrastructure?
 
 ## Summary
 
@@ -17,26 +17,26 @@ When an agent transitions a task (e.g., `to_review`), how can kanban capture a l
 
 ## Detailed Findings
 
-### How Claude Code Hooks Currently Work in Kanban
+### How Claude Code Hooks Currently Work in Quarterdeck
 
-The Claude adapter configures hooks via a dynamically generated `settings.json` written to `~/.kanban/agents/claude/settings.json` before each session launch:
+The Claude adapter configures hooks via a dynamically generated `settings.json` written to `~/.quarterdeck/agents/claude/settings.json` before each session launch:
 
 **`src/terminal/agent-session-adapters.ts:509-560`**
 
 ```
-Stop        -> kanban hooks ingest --event to_review --source claude
-SubagentStop -> kanban hooks ingest --event activity --source claude
-PreToolUse   -> kanban hooks ingest --event activity --source claude
-PostToolUse  -> kanban hooks ingest --event to_in_progress --source claude
-PermissionRequest -> kanban hooks ingest --event to_review --source claude
-Notification -> kanban hooks ingest --event to_review --source claude (permission_prompt)
-              -> kanban hooks ingest --event activity --source claude (other)
-UserPromptSubmit -> kanban hooks ingest --event to_in_progress --source claude
+Stop        -> quarterdeck hooks ingest --event to_review --source claude
+SubagentStop -> quarterdeck hooks ingest --event activity --source claude
+PreToolUse   -> quarterdeck hooks ingest --event activity --source claude
+PostToolUse  -> quarterdeck hooks ingest --event to_in_progress --source claude
+PermissionRequest -> quarterdeck hooks ingest --event to_review --source claude
+Notification -> quarterdeck hooks ingest --event to_review --source claude (permission_prompt)
+              -> quarterdeck hooks ingest --event activity --source claude (other)
+UserPromptSubmit -> quarterdeck hooks ingest --event to_in_progress --source claude
 ```
 
 All hooks are `type: "command"`. The hook command is built by `buildHookCommand()` (`agent-session-adapters.ts:89-104`) which constructs a shell command string with `--event` and `--source` flags.
 
-**Critical detail**: Claude Code pipes the hook event's JSON payload to the command's **stdin**. The `readStdinText()` function (`hooks.ts:519-529`) reads it, and `parseHooksIngestArgs()` (`hooks.ts:371-391`) parses it as a JSON payload. So the full hook event context is already available to the kanban hook handler.
+**Critical detail**: Claude Code pipes the hook event's JSON payload to the command's **stdin**. The `readStdinText()` function (`hooks.ts:519-529`) reads it, and `parseHooksIngestArgs()` (`hooks.ts:371-391`) parses it as a JSON payload. So the full hook event context is already available to the quarterdeck hook handler.
 
 ### What Claude Code's Stop Hook Sends via stdin
 
@@ -61,16 +61,16 @@ Based on Claude Code hook documentation, the `Stop` event provides:
 
 **What would need to change**:
 
-1. **Hook command becomes a script** instead of a direct `kanban hooks ingest` call. The script would:
+1. **Hook command becomes a script** instead of a direct `quarterdeck hooks ingest` call. The script would:
    - Read stdin JSON to get `transcript_path`
    - Parse the JSONL to extract the last assistant text message (skipping tool calls)
-   - Call `kanban hooks ingest --event to_review --source claude --final-message "extracted text"`
+   - Call `quarterdeck hooks ingest --event to_review --source claude --final-message "extracted text"`
 
 2. **Or, handle it server-side**: Pass `transcript_path` through as metadata, and have `hooks-api.ts` read the file on the runtime side. Simpler hook config, but the runtime now reads agent-owned files.
 
 3. **Or, inline it**: Replace the simple command string with a shell pipeline:
    ```sh
-   cat /dev/stdin | jq -r '.transcript_path' | xargs -I{} tail -20 {} | jq -r 'select(.role=="assistant") | .content' | tail -1 | xargs -I{} kanban hooks ingest --event to_review --source claude --final-message "{}"
+   cat /dev/stdin | jq -r '.transcript_path' | xargs -I{} tail -20 {} | jq -r 'select(.role=="assistant") | .content' | tail -1 | xargs -I{} quarterdeck hooks ingest --event to_review --source claude --final-message "{}"
    ```
    Fragile and hard to maintain.
 
@@ -99,7 +99,7 @@ Based on Claude Code hook documentation, the `Stop` event provides:
    }
    ```
 
-2. **Capture the output**: Prompt hooks return the LLM's response. This would need to be piped to a command hook that calls `kanban hooks ingest --summary "..."`. Claude Code hook chains support this — you can have multiple hooks in a single event, executed in order.
+2. **Capture the output**: Prompt hooks return the LLM's response. This would need to be piped to a command hook that calls `quarterdeck hooks ingest --summary "..."`. Claude Code hook chains support this — you can have multiple hooks in a single event, executed in order.
 
 3. **Or, combine**: Use a prompt hook that generates the summary, followed by a command hook that ingests it. The prompt hook's output is injected into Claude's context, not directly pipeable to a command. This is a limitation — prompt hooks influence the agent's behavior, they don't produce side-channel output.
 
@@ -129,7 +129,7 @@ There's actually a simpler variant of approach 1 that's nearly zero-effort:
 
 **The `SubagentStop` event already includes `last_assistant_message`**. For task agents that use subagents (which is common), this message is already extracted by `normalizeHookMetadata` (`hooks.ts:344`) and stored as `finalMessage` on `latestHookActivity`.
 
-For the top-level `Stop` event, kanban could read the transcript file server-side (the path is in the payload) and extract the last assistant message. This keeps the hook command simple and moves the parsing to Go/Node where it's more maintainable.
+For the top-level `Stop` event, quarterdeck could read the transcript file server-side (the path is in the payload) and extract the last assistant message. This keeps the hook command simple and moves the parsing to Go/Node where it's more maintainable.
 
 **What exists for reference**: The Codex adapter already does something similar — `enrichCodexReviewMetadata` (`hooks.ts:460-500`) reads Codex session logs to extract a final message when one isn't provided in the hook event. The same pattern could be applied to Claude's transcript.
 
@@ -143,7 +143,7 @@ For the top-level `Stop` event, kanban could read the transcript file server-sid
 - `src/commands/hooks.ts:519-529` — `readStdinText()` reads stdin JSON from Claude Code
 - `src/commands/hooks.ts:371-391` — `parseHooksIngestArgs()` merges stdin payload with CLI flags
 - `src/commands/hooks.ts:226-301` — `inferActivityText()` builds human-readable activity labels
-- `src/terminal/hook-runtime-context.ts:17-22` — `createHookRuntimeEnv()` sets `KANBAN_HOOK_TASK_ID` and `KANBAN_HOOK_WORKSPACE_ID`
+- `src/terminal/hook-runtime-context.ts:17-22` — `createHookRuntimeEnv()` sets `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_WORKSPACE_ID`
 - `src/trpc/hooks-api.ts:44-126` — Server-side hook ingestion handler
 
 ## Architecture & Patterns

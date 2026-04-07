@@ -1,4 +1,4 @@
-// Settings dialog composition for Kanban.
+// Settings dialog composition for Quarterdeck.
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
@@ -560,7 +560,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.kanban/config.json"}
+					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.quarterdeck/config.json"}
 					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -717,7 +717,7 @@ export function RuntimeSettingsDialog({
 				>
 					{config?.projectConfigPath
 						? formatPathForDisplay(config.projectConfigPath)
-						: "<project>/.kanban/config.json"}
+						: "<project>/.quarterdeck/config.json"}
 					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -817,7 +817,7 @@ export function RuntimeSettingsDialog({
 					variant="ghost"
 					className="mr-auto mt-[3px]"
 					icon={<ExternalLink size={14} />}
-					onClick={() => window.open("https://github.com/kanban-org/kanban", "_blank")}
+					onClick={() => window.open("https://github.com/dankhole/quarterdeck", "_blank")}
 				>
 					Read the docs
 				</Button>

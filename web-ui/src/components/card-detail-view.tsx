@@ -642,7 +642,7 @@ export function CardDetailView({
 				/>
 			) : null}
 
-			{/* Side panel — kanban, changes, or files, shown when activeDetailPanel is set */}
+			{/* Side panel — quarterdeck, changes, or files, shown when activeDetailPanel is set */}
 			{!isDiffExpanded && !isFileBrowserExpanded && isSidePanelOpen ? (
 				<>
 					<div
@@ -655,7 +655,7 @@ export function CardDetailView({
 							overflow: "hidden",
 						}}
 					>
-						{activeDetailPanel === "kanban" ? (
+						{activeDetailPanel === "quarterdeck" ? (
 							<ColumnContextPanel
 								selection={selection}
 								onCardSelect={onCardSelect}

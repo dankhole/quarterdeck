@@ -4,11 +4,15 @@ import { toFileUrl } from "@/utils/file-url";
 
 describe("toFileUrl", () => {
 	it("converts Unix absolute paths to file urls", () => {
-		expect(toFileUrl("/Users/dev/repo/.kanban/config.json")).toBe("file:///Users/dev/repo/.kanban/config.json");
+		expect(toFileUrl("/Users/dev/repo/.quarterdeck/config.json")).toBe(
+			"file:///Users/dev/repo/.quarterdeck/config.json",
+		);
 	});
 
 	it("converts Windows absolute paths to file urls", () => {
-		expect(toFileUrl("C:\\Users\\dev\\kanban config.json")).toBe("file:///C:/Users/dev/kanban%20config.json");
+		expect(toFileUrl("C:\\Users\\dev\\quarterdeck config.json")).toBe(
+			"file:///C:/Users/dev/quarterdeck%20config.json",
+		);
 	});
 
 	it("returns normalized file url input", () => {

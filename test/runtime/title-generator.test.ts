@@ -7,7 +7,7 @@ describe("generateTaskTitle", () => {
 	beforeEach(() => {
 		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
 		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
-		delete process.env.KANBAN_TITLE_MODEL;
+		delete process.env.QUARTERDECK_TITLE_MODEL;
 	});
 
 	afterEach(() => {
@@ -89,8 +89,8 @@ describe("generateTaskTitle", () => {
 		expect(body.messages[1].content).toHaveLength(500);
 	});
 
-	it("uses KANBAN_TITLE_MODEL env var when set", async () => {
-		process.env.KANBAN_TITLE_MODEL = "custom/model-id";
+	it("uses QUARTERDECK_TITLE_MODEL env var when set", async () => {
+		process.env.QUARTERDECK_TITLE_MODEL = "custom/model-id";
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(

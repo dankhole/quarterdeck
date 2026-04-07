@@ -8,7 +8,7 @@ import { createTempDir } from "../utilities/temp-dir";
 
 describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	it("skips root node_modules for root Turbopack scripts", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-root-script-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-root-script-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			mkdirSync(repoPath, { recursive: true });
@@ -25,7 +25,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("skips root node_modules for root Next apps without explicit Turbopack hints", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-root-next-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-root-next-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			mkdirSync(repoPath, { recursive: true });
@@ -42,7 +42,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("skips nested app node_modules for nested Next apps without explicit Turbopack hints", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-nested-next-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-nested-next-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const appPath = join(repoPath, "apps", "web");
@@ -61,7 +61,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("does not treat a next script alone as a Next app", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-next-script-only-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-next-script-only-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			mkdirSync(repoPath, { recursive: true });
@@ -74,7 +74,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("skips root node_modules for root Turbopack config", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-root-config-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-root-config-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			mkdirSync(repoPath, { recursive: true });
@@ -88,7 +88,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("skips only the nested app node_modules when only the nested app uses Turbopack", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-nested-app-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-nested-app-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const appPath = join(repoPath, "apps", "web");
@@ -107,7 +107,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("skips nested app node_modules for nested Turbopack config", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-nested-config-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-nested-config-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const appPath = join(repoPath, "apps", "web");
@@ -127,7 +127,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("does not scan package directories deeper than the heuristic limit", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-too-deep-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-too-deep-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const deepAppPath = join(repoPath, "packages", "clients", "web", "app");
@@ -146,7 +146,7 @@ describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	});
 
 	it("returns no skipped paths when no Turbopack hints are present", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-turbopack-detect-none-");
+		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-turbopack-detect-none-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			mkdirSync(repoPath, { recursive: true });

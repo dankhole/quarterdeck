@@ -79,7 +79,7 @@ export function shouldAutoConfirmClaudeWorkspaceTrust(
 	if (agentId !== "claude") {
 		return false;
 	}
-	// Trust worktree paths under ~/.kanban/worktrees/.
+	// Trust worktree paths under ~/.quarterdeck/worktrees/.
 	if (isTaskWorktreePath(cwd)) {
 		return true;
 	}

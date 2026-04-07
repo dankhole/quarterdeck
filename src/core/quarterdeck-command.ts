@@ -30,10 +30,10 @@ function looksLikeEntrypointPath(value: string): boolean {
 	if (/\.(?:mjs|cjs|js|ts|mts|cts)$/iu.test(value)) {
 		return true;
 	}
-	return /kanban(?:\.(?:cmd|ps1|exe))?$/iu.test(value);
+	return /quarterdeck(?:\.(?:cmd|ps1|exe))?$/iu.test(value);
 }
 
-export function resolveKanbanCommandParts(
+export function resolveQuarterdeckCommandParts(
 	context: RuntimeInvocationContext = {
 		execPath: process.execPath,
 		argv: process.argv,
@@ -54,7 +54,7 @@ export function resolveKanbanCommandParts(
 	return [...commandPrefix, entrypoint];
 }
 
-export function buildKanbanCommandParts(
+export function buildQuarterdeckCommandParts(
 	args: string[],
 	context: RuntimeInvocationContext = {
 		execPath: process.execPath,
@@ -62,5 +62,5 @@ export function buildKanbanCommandParts(
 		execArgv: process.execArgv,
 	},
 ): string[] {
-	return [...resolveKanbanCommandParts(context), ...args];
+	return [...resolveQuarterdeckCommandParts(context), ...args];
 }

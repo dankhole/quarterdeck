@@ -14,14 +14,14 @@ import {
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
 import {
-	buildKanbanRuntimeUrl,
-	DEFAULT_KANBAN_RUNTIME_PORT,
-	getKanbanRuntimeHost,
-	getKanbanRuntimeOrigin,
-	getKanbanRuntimePort,
+	buildQuarterdeckRuntimeUrl,
+	DEFAULT_QUARTERDECK_RUNTIME_PORT,
+	getQuarterdeckRuntimeHost,
+	getQuarterdeckRuntimeOrigin,
+	getQuarterdeckRuntimePort,
 	parseRuntimePort,
-	setKanbanRuntimeHost,
-	setKanbanRuntimePort,
+	setQuarterdeckRuntimeHost,
+	setQuarterdeckRuntimePort,
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
@@ -34,7 +34,7 @@ interface CliOptions {
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
-const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
+const QUARTERDECK_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } | { mode: "auto" } {
 	const normalized = rawValue.trim().toLowerCase();
@@ -68,8 +68,8 @@ interface ShutdownIndicator {
 /**
  * Decide whether this CLI invocation should auto-open a browser tab.
  *
- * This uses a positive allowlist for app-launch shapes like `kanban`,
- * `kanban --agent codex`, and `kanban --port 3484`. Any subcommand or
+ * This uses a positive allowlist for app-launch shapes like `quarterdeck`,
+ * `quarterdeck --agent codex`, and `quarterdeck --port 3484`. Any subcommand or
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
@@ -152,7 +152,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 		probe.once("error", () => {
 			resolve(false);
 		});
-		probe.listen(port, getKanbanRuntimeHost(), () => {
+		probe.listen(port, getQuarterdeckRuntimeHost(), () => {
 			probe.close(() => {
 				resolve(true);
 			});
@@ -174,11 +174,11 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 		return null;
 	}
 	if (portOption.mode === "fixed") {
-		setKanbanRuntimePort(portOption.value);
+		setQuarterdeckRuntimePort(portOption.value);
 		return portOption.value;
 	}
-	const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT);
-	setKanbanRuntimePort(autoPort);
+	const autoPort = await findAvailableRuntimePort(DEFAULT_QUARTERDECK_RUNTIME_PORT);
+	setQuarterdeckRuntimePort(autoPort);
 	return autoPort;
 }
 
@@ -217,13 +217,13 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbanServer(workspaceId: string | null): Promise<boolean> {
+async function canReachQuarterdeckServer(workspaceId: string | null): Promise<boolean> {
 	try {
 		const headers: Record<string, string> = {};
 		if (workspaceId) {
-			headers["x-kanban-workspace-id"] = workspaceId;
+			headers["x-quarterdeck-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(buildKanbanRuntimeUrl("/api/trpc/projects.list"), {
+		const response = await fetch(buildQuarterdeckRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
@@ -248,14 +248,14 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
-	const running = await canReachKanbanServer(workspaceId);
+	const running = await canReachQuarterdeckServer(workspaceId);
 	if (!running) {
 		return false;
 	}
 	const projectUrl = workspaceId
-		? buildKanbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
-		: getKanbanRuntimeOrigin();
-	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
+		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
+		: getQuarterdeckRuntimeOrigin();
+	console.log(`Quarterdeck already running at ${getQuarterdeckRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
 		try {
 			const { openInBrowser } = await import("./server/browser.js");
@@ -339,13 +339,13 @@ async function startServer(): Promise<{
 }> {
 	/*
 		Server-only modules are loaded lazily because task-oriented subcommands like
-		`kanban task create` and `kanban hooks ingest` do not need the runtime server.
+		`quarterdeck task create` and `quarterdeck hooks ingest` do not need the runtime server.
 
 		A regression in 25ba59f showed that eagerly importing the runtime stack here
 		could leave the source CLI process alive after the command had already printed
 		its JSON result. We have not yet isolated the deepest handle creator inside
 		the server import graph, so we keep command-style subcommands on the
-		lightweight path and only load the server stack when we actually start Kanban.
+		lightweight path and only load the server stack when we actually start Quarterdeck.
 	*/
 	const [
 		{ resolveProjectInputPath },
@@ -400,7 +400,7 @@ async function startServer(): Promise<{
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
 		warn: (message) => {
-			console.warn(`[kanban] ${message}`);
+			console.warn(`[quarterdeck] ${message}`);
 		},
 		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
@@ -421,7 +421,7 @@ async function startServer(): Promise<{
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
-				console.warn(`[kanban] ${message}`);
+				console.warn(`[quarterdeck] ${message}`);
 			},
 			closeRuntimeServer: close,
 			skipSessionCleanup: options?.skipSessionCleanup ?? false,
@@ -447,9 +447,9 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 			if (!isAddressInUseError(error)) {
 				throw error;
 			}
-			const currentPort = getKanbanRuntimePort();
+			const currentPort = getQuarterdeckRuntimePort();
 			const retryPort = await findAvailableRuntimePort(currentPort + 1);
-			setKanbanRuntimePort(retryPort);
+			setQuarterdeckRuntimePort(retryPort);
 			console.warn(`Runtime port ${currentPort} became busy during startup, retrying on ${retryPort}.`);
 		}
 	}
@@ -457,7 +457,7 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 
 async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
-		setKanbanRuntimeHost(options.host);
+		setQuarterdeckRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
 	}
 
@@ -481,7 +481,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		}
 		throw error;
 	}
-	console.log(`Kanban running at ${runtime.url}`);
+	console.log(`Quarterdeck running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
 		try {
 			openInBrowser(runtime.url, {
@@ -548,15 +548,15 @@ function createProgram(invocationArgs: string[]): Command {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
 	const program = new Command();
 	program
-		.name("kanban")
+		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
-		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
+		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
 		.showHelpAfterError()
-		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
+		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
 
 	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 
@@ -567,14 +567,14 @@ function createProgram(invocationArgs: string[]): Command {
 		.command("mcp")
 		.description("Deprecated compatibility command.")
 		.action(() => {
-			console.warn("Deprecated. Please uninstall Kanban MCP.");
+			console.warn("Deprecated. Please uninstall Quarterdeck MCP.");
 		});
 
 	program
 		.command("update")
 		.description("Deprecated. Auto-update has been removed.")
 		.action(() => {
-			console.warn("The update command has been removed. To update Kanban, re-run: npx kanban@latest");
+			console.warn("The update command has been removed. To update Quarterdeck, re-run: npx quarterdeck@latest");
 		});
 
 	program.action(async (options: RootCommandOptions) => {
@@ -603,6 +603,6 @@ async function run(): Promise<void> {
 
 void run().catch(async (error) => {
 	const message = error instanceof Error ? error.message : String(error);
-	console.error(`Failed to start Kanban: ${message}`);
+	console.error(`Failed to start Quarterdeck: ${message}`);
 	process.exit(1);
 });

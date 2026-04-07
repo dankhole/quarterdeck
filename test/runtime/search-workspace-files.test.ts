@@ -34,7 +34,7 @@ function commitAll(cwd: string, message: string): string {
 
 describe.sequential("search workspace files runtime", () => {
 	it("finds modified tracked files with non-ASCII paths using UTF-8 query text", async () => {
-		const { path: repoPath, cleanup } = createTempDir("kanban-search-files-nonascii-tracked-");
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-nonascii-tracked-");
 		try {
 			initRepository(repoPath);
 			const directory = "提出書類";
@@ -59,7 +59,7 @@ describe.sequential("search workspace files runtime", () => {
 	});
 
 	it("finds untracked files with non-ASCII paths using UTF-8 query text", async () => {
-		const { path: repoPath, cleanup } = createTempDir("kanban-search-files-nonascii-untracked-");
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-nonascii-untracked-");
 		try {
 			initRepository(repoPath);
 			const directory = "新規資料";

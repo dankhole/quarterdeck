@@ -1,4 +1,4 @@
-# Kanban release workflow
+# Quarterdeck release workflow
 
 ## Overview
 

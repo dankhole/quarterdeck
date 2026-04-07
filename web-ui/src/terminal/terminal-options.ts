@@ -2,7 +2,7 @@ import type { ITerminalOptions } from "@xterm/xterm";
 
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 
-interface CreateKanbanTerminalOptionsInput {
+interface CreateQuarterdeckTerminalOptionsInput {
 	cursorColor: string;
 	isMacPlatform: boolean;
 	terminalBackgroundColor: string;
@@ -13,11 +13,11 @@ export const TERMINAL_FONT_SIZE = 13;
 export const TERMINAL_PRIMARY_FONT = "JetBrainsMono Nerd Font";
 const TERMINAL_FONT_FAMILY = `'${TERMINAL_PRIMARY_FONT}', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace`;
 
-export function createKanbanTerminalOptions({
+export function createQuarterdeckTerminalOptions({
 	cursorColor,
 	isMacPlatform,
 	terminalBackgroundColor,
-}: CreateKanbanTerminalOptionsInput): ITerminalOptions {
+}: CreateQuarterdeckTerminalOptionsInput): ITerminalOptions {
 	return {
 		allowProposedApi: true,
 		allowTransparency: false,

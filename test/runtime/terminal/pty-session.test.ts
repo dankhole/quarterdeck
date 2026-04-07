@@ -130,7 +130,7 @@ describe("PtySession", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
 		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
-		const windowsBinDir = mkdtempSync(join(tmpdir(), "kanban-win-path-"));
+		const windowsBinDir = mkdtempSync(join(tmpdir(), "quarterdeck-win-path-"));
 		writeFileSync(join(windowsBinDir, "codex.exe"), "");
 		process.env.PATH = "";
 

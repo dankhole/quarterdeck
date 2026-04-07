@@ -20,8 +20,8 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
-		globalConfigPath: "/tmp/.kanban/config.json",
-		projectConfigPath: "/tmp/project/.kanban/config.json",
+		globalConfigPath: "/tmp/.quarterdeck/config.json",
+		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: ["codex"],
 		agents: [
