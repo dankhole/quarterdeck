@@ -145,14 +145,10 @@ export function BoardCard({
 	onRestartSession,
 	onMoveToTrash,
 	onRestoreFromTrash,
-	onCommit,
-	onOpenPr,
 	onCancelAutomaticAction,
 	onRegenerateTitle,
 	onUpdateTitle,
 	onTogglePin,
-	isCommitLoading = false,
-	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
 	onMigrateWorkingDirectory,
 	isMigrateLoading = false,
@@ -172,14 +168,10 @@ export function BoardCard({
 	onRestartSession?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
-	onCommit?: (taskId: string) => void;
-	onOpenPr?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
 	onUpdateTitle?: (taskId: string, title: string) => void;
 	onTogglePin?: (taskId: string) => void;
-	isCommitLoading?: boolean;
-	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	isMigrateLoading?: boolean;
@@ -253,8 +245,6 @@ export function BoardCard({
 					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
 				}
 		: null;
-	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
-	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
 
@@ -581,38 +571,6 @@ export function BoardCard({
 										</>
 									) : null}
 								</p>
-							) : null}
-							{showReviewGitActions ? (
-								<div className="flex gap-1.5 mt-1.5">
-									<Button
-										variant="primary"
-										size="sm"
-										icon={isCommitLoading ? <Spinner size={12} /> : undefined}
-										disabled={isAnyGitActionLoading}
-										style={{ flex: "1 1 0" }}
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onCommit?.(card.id);
-										}}
-									>
-										Commit
-									</Button>
-									<Button
-										variant="primary"
-										size="sm"
-										icon={isOpenPrLoading ? <Spinner size={12} /> : undefined}
-										disabled={isAnyGitActionLoading}
-										style={{ flex: "1 1 0" }}
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onOpenPr?.(card.id);
-										}}
-									>
-										Open PR
-									</Button>
-								</div>
 							) : null}
 							{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 								<Button

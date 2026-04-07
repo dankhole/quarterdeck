@@ -569,6 +569,6 @@ describe("board dependency state", () => {
 
 		const updatedTask = disabled.board.columns.find((column) => column.id === "review")?.cards[0];
 		expect(updatedTask?.autoReviewEnabled).toBe(false);
-		expect(updatedTask?.autoReviewMode).toBe("commit");
+		expect(updatedTask?.autoReviewMode).toBe("move_to_trash");
 	});
 });

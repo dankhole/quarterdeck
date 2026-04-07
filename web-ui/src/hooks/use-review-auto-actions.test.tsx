@@ -1,7 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
@@ -21,7 +20,7 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 						prompt: "Test task",
 						startInPlanMode: false,
 						autoReviewEnabled,
-						autoReviewMode: "commit",
+						autoReviewMode: "move_to_trash",
 						baseRef: "main",
 						createdAt: 1,
 						updatedAt: 1,
@@ -49,18 +48,14 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 
 function HookHarness({
 	board,
-	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
 }: {
 	board: BoardData;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
 	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
-		taskGitActionLoadingByTaskId: {},
-		runAutoReviewGitAction,
 		requestMoveTaskToTrash,
 	});
 	return null;
@@ -97,34 +92,20 @@ describe("useReviewAutoActions", () => {
 	});
 
 	it("cancels a scheduled auto review action when autoReviewEnabled is turned off", async () => {
-		const runAutoReviewGitAction = vi.fn(async () => true);
 		const requestMoveTaskToTrash = vi.fn(async () => {});
 
 		await act(async () => {
-			root.render(
-				<HookHarness
-					board={createBoard(true)}
-					runAutoReviewGitAction={runAutoReviewGitAction}
-					requestMoveTaskToTrash={requestMoveTaskToTrash}
-				/>,
-			);
+			root.render(<HookHarness board={createBoard(true)} requestMoveTaskToTrash={requestMoveTaskToTrash} />);
 		});
 
 		await act(async () => {
-			root.render(
-				<HookHarness
-					board={createBoard(false)}
-					runAutoReviewGitAction={runAutoReviewGitAction}
-					requestMoveTaskToTrash={requestMoveTaskToTrash}
-				/>,
-			);
+			root.render(<HookHarness board={createBoard(false)} requestMoveTaskToTrash={requestMoveTaskToTrash} />);
 		});
 
 		await act(async () => {
 			vi.advanceTimersByTime(1000);
 		});
 
-		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 });

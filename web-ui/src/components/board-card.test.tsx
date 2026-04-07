@@ -82,7 +82,7 @@ function Harness(): React.ReactElement {
 	const [card, setCard] = useState(
 		createCard({
 			autoReviewEnabled: true,
-			autoReviewMode: "pr",
+			autoReviewMode: "move_to_trash",
 		}),
 	);
 
@@ -156,7 +156,7 @@ describe("BoardCard", () => {
 		});
 
 		const cancelButton = Array.from(container.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Cancel Auto-PR",
+			(button) => button.textContent?.trim() === "Cancel Auto-trash",
 		);
 		expect(cancelButton).toBeDefined();
 

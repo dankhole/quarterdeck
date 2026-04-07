@@ -86,10 +86,6 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 			},
 		],
 		shortcuts: [],
-		commitPromptTemplate: "commit",
-		openPrPromptTemplate: "pr",
-		commitPromptTemplateDefault: "commit",
-		openPrPromptTemplateDefault: "pr",
 		...overrides,
 	};
 }

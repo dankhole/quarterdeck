@@ -236,10 +236,6 @@ export function CardDetailView({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCommitTask,
-	onOpenPrTask,
-	onAgentCommitTask,
-	onAgentOpenPrTask,
 	onMoveReviewCardToTrash,
 	onRestoreTaskFromTrash,
 	onRestartSessionTask,
@@ -247,10 +243,6 @@ export function CardDetailView({
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
 	onTogglePinTask,
-	commitTaskLoadingById,
-	openPrTaskLoadingById,
-	agentCommitTaskLoadingById,
-	agentOpenPrTaskLoadingById,
 	moveToTrashLoadingById,
 	onMigrateWorkingDirectory,
 	migratingTaskId,
@@ -288,10 +280,6 @@ export function CardDetailView({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
-	onCommitTask?: (taskId: string) => void;
-	onOpenPrTask?: (taskId: string) => void;
-	onAgentCommitTask?: (taskId: string) => void;
-	onAgentOpenPrTask?: (taskId: string) => void;
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	onRestoreTaskFromTrash?: (taskId: string) => void;
 	onRestartSessionTask?: (taskId: string) => void;
@@ -299,10 +287,6 @@ export function CardDetailView({
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
-	commitTaskLoadingById?: Record<string, boolean>;
-	openPrTaskLoadingById?: Record<string, boolean>;
-	agentCommitTaskLoadingById?: Record<string, boolean>;
-	agentOpenPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
@@ -669,15 +653,11 @@ export function CardDetailView({
 								editingTaskId={editingTaskId}
 								inlineTaskEditor={inlineTaskEditor}
 								onEditTask={onEditTask}
-								onCommitTask={onCommitTask}
-								onOpenPrTask={onOpenPrTask}
 								onMoveToTrashTask={onMoveReviewCardToTrash}
 								onRestoreFromTrashTask={onRestoreTaskFromTrash}
 								onRegenerateTitleTask={onRegenerateTitleTask}
 								onUpdateTaskTitle={onUpdateTaskTitle}
 								onTogglePinTask={onTogglePinTask}
-								commitTaskLoadingById={commitTaskLoadingById}
-								openPrTaskLoadingById={openPrTaskLoadingById}
 								moveToTrashLoadingById={moveToTrashLoadingById}
 								onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 								migratingTaskId={migratingTaskId}
@@ -890,10 +870,6 @@ export function CardDetailView({
 									terminalEnabled={isTaskTerminalEnabled}
 									summary={sessionSummary}
 									onSummary={onSessionSummary}
-									onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-									onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-									isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-									isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
 									showSessionToolbar={false}
 									autoFocus
 									onCancelAutomaticAction={

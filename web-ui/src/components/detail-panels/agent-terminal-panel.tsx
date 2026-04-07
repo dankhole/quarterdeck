@@ -7,7 +7,6 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
 import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
@@ -26,10 +25,6 @@ export interface AgentTerminalPanelProps {
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
-	onCommit?: () => void;
-	onOpenPr?: () => void;
-	isCommitLoading?: boolean;
-	isOpenPrLoading?: boolean;
 	taskColumnId?: string;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
@@ -50,61 +45,11 @@ export interface AgentTerminalPanelProps {
 	onRestart?: () => void;
 }
 
-function AgentTerminalReviewActions({
-	taskId,
-	taskColumnId,
-	onCommit,
-	onOpenPr,
-	isCommitLoading,
-	isOpenPrLoading,
-}: {
-	taskId: string;
-	taskColumnId: string;
-	onCommit?: () => void;
-	onOpenPr?: () => void;
-	isCommitLoading: boolean;
-	isOpenPrLoading: boolean;
-}): ReactElement | null {
-	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(taskId);
-	const showReviewGitActions = taskColumnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
-
-	if (!showReviewGitActions) {
-		return null;
-	}
-
-	return (
-		<div className="flex gap-1.5 px-3 py-2">
-			<Button
-				variant="primary"
-				size="sm"
-				style={{ flex: "1 1 0" }}
-				disabled={isCommitLoading || isOpenPrLoading}
-				onClick={onCommit}
-			>
-				{isCommitLoading ? "..." : "Commit"}
-			</Button>
-			<Button
-				variant="primary"
-				size="sm"
-				style={{ flex: "1 1 0" }}
-				disabled={isCommitLoading || isOpenPrLoading}
-				onClick={onOpenPr}
-			>
-				{isOpenPrLoading ? "..." : "Open PR"}
-			</Button>
-		</div>
-	);
-}
-
 function AgentTerminalPanelLayout({
-	taskId,
+	taskId: _taskId,
 	summary,
 	onSummary: _onSummary,
-	onCommit,
-	onOpenPr,
-	isCommitLoading = false,
-	isOpenPrLoading = false,
-	taskColumnId = "in_progress",
+	taskColumnId: _taskColumnId = "in_progress",
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
 	showSessionToolbar = true,
@@ -286,14 +231,6 @@ function AgentTerminalPanelLayout({
 					{lastError}
 				</div>
 			) : null}
-			<AgentTerminalReviewActions
-				taskId={taskId}
-				taskColumnId={taskColumnId}
-				onCommit={onCommit}
-				onOpenPr={onOpenPr}
-				isCommitLoading={isCommitLoading}
-				isOpenPrLoading={isOpenPrLoading}
-			/>
 			{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 				<div className="px-3 py-2">
 					<Button variant="default" fill onClick={onCancelAutomaticAction}>

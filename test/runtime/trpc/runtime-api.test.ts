@@ -111,10 +111,6 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		agentAutonomousModeEnabled: true,
 		readyForReviewNotificationsEnabled: true,
 		shortcuts: [],
-		commitPromptTemplate: "commit",
-		openPrPromptTemplate: "pr",
-		commitPromptTemplateDefault: "commit",
-		openPrPromptTemplateDefault: "pr",
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 	};

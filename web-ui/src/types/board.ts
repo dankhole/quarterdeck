@@ -5,35 +5,18 @@ export type BoardColumnId = RuntimeBoardColumnId;
 export type TaskAutoReviewMode = RuntimeTaskAutoReviewMode;
 export type TaskImage = RuntimeTaskImage;
 
-export const DEFAULT_TASK_AUTO_REVIEW_MODE: TaskAutoReviewMode = "commit";
+export const DEFAULT_TASK_AUTO_REVIEW_MODE: TaskAutoReviewMode = "move_to_trash";
 
-export function resolveTaskAutoReviewMode(mode: TaskAutoReviewMode | null | undefined): TaskAutoReviewMode {
-	if (mode === "pr" || mode === "move_to_trash") {
-		return mode;
-	}
-	return DEFAULT_TASK_AUTO_REVIEW_MODE;
+export function resolveTaskAutoReviewMode(_mode: TaskAutoReviewMode | null | undefined): TaskAutoReviewMode {
+	return "move_to_trash";
 }
 
-export function getTaskAutoReviewActionLabel(mode: TaskAutoReviewMode | null | undefined): string {
-	const resolvedMode = resolveTaskAutoReviewMode(mode);
-	if (resolvedMode === "pr") {
-		return "PR";
-	}
-	if (resolvedMode === "move_to_trash") {
-		return "move to trash";
-	}
-	return "commit";
+export function getTaskAutoReviewActionLabel(_mode: TaskAutoReviewMode | null | undefined): string {
+	return "trash";
 }
 
-export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | null | undefined): string {
-	const resolvedMode = resolveTaskAutoReviewMode(mode);
-	if (resolvedMode === "pr") {
-		return "Cancel Auto-PR";
-	}
-	if (resolvedMode === "move_to_trash") {
-		return "Cancel Auto-trash";
-	}
-	return "Cancel Auto-commit";
+export function getTaskAutoReviewCancelButtonLabel(_mode: TaskAutoReviewMode | null | undefined): string {
+	return "Cancel Auto-trash";
 }
 
 export interface BoardCard {

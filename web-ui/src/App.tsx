@@ -346,8 +346,6 @@ export default function App(): ReactElement {
 		setNewTaskStartInPlanMode,
 		newTaskAutoReviewEnabled,
 		setNewTaskAutoReviewEnabled,
-		newTaskAutoReviewMode,
-		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
@@ -362,8 +360,6 @@ export default function App(): ReactElement {
 		setEditTaskStartInPlanMode,
 		editTaskAutoReviewEnabled,
 		setEditTaskAutoReviewEnabled,
-		editTaskAutoReviewMode,
-		setEditTaskAutoReviewMode,
 		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
@@ -406,11 +402,6 @@ export default function App(): ReactElement {
 
 	const {
 		runningGitAction,
-		taskGitActionLoadingByTaskId,
-		commitTaskLoadingById,
-		openPrTaskLoadingById,
-		agentCommitTaskLoadingById,
-		agentOpenPrTaskLoadingById,
 		isDiscardingHomeWorkingChanges,
 		gitActionError,
 		gitActionErrorTitle,
@@ -419,19 +410,11 @@ export default function App(): ReactElement {
 		runGitAction,
 		switchHomeBranch,
 		discardHomeWorkingChanges,
-		handleCommitTask,
-		handleOpenPrTask,
-		handleAgentCommitTask,
-		handleAgentOpenPrTask,
-		runAutoReviewGitAction,
 		resetGitActionState,
 	} = useGitActions({
 		currentProjectId,
 		board,
 		selectedCard,
-		runtimeProjectConfig,
-		sendTaskSessionInput,
-		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
 	});
@@ -653,8 +636,6 @@ export default function App(): ReactElement {
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
-		taskGitActionLoadingByTaskId,
-		runAutoReviewGitAction,
 	});
 
 	const {
@@ -803,8 +784,6 @@ export default function App(): ReactElement {
 			startInPlanModeDisabled={isEditTaskStartInPlanModeDisabled}
 			autoReviewEnabled={editTaskAutoReviewEnabled}
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
-			autoReviewMode={editTaskAutoReviewMode}
-			onAutoReviewModeChange={setEditTaskAutoReviewMode}
 			workspaceId={currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -955,14 +934,10 @@ export default function App(): ReactElement {
 												editingTaskId={editingTaskId}
 												inlineTaskEditor={inlineTaskEditor}
 												onEditTask={handleOpenEditTask}
-												onCommitTask={handleCommitTask}
-												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 												onRegenerateTitleTask={handleRegenerateTitleTask}
 												onUpdateTaskTitle={handleUpdateTaskTitle}
 												onTogglePinTask={handleToggleTaskPinned}
-												commitTaskLoadingById={commitTaskLoadingById}
-												openPrTaskLoadingById={openPrTaskLoadingById}
 												moveToTrashLoadingById={moveToTrashLoadingById}
 												onMoveToTrashTask={handleMoveReviewCardToTrash}
 												onRestoreFromTrashTask={handleRestoreTaskFromTrash}
@@ -1040,14 +1015,6 @@ export default function App(): ReactElement {
 									onEditTask={(task) => {
 										handleOpenEditTask(task, { preserveDetailSelection: true });
 									}}
-									onCommitTask={handleCommitTask}
-									onOpenPrTask={handleOpenPrTask}
-									onAgentCommitTask={handleAgentCommitTask}
-									onAgentOpenPrTask={handleAgentOpenPrTask}
-									commitTaskLoadingById={commitTaskLoadingById}
-									openPrTaskLoadingById={openPrTaskLoadingById}
-									agentCommitTaskLoadingById={agentCommitTaskLoadingById}
-									agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 									moveToTrashLoadingById={moveToTrashLoadingById}
 									onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
 									migratingTaskId={migratingTaskId}
@@ -1130,8 +1097,6 @@ export default function App(): ReactElement {
 					startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
 					autoReviewEnabled={newTaskAutoReviewEnabled}
 					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
-					autoReviewMode={newTaskAutoReviewMode}
-					onAutoReviewModeChange={setNewTaskAutoReviewMode}
 					useWorktree={newTaskUseWorktree}
 					onUseWorktreeChange={setNewTaskUseWorktree}
 					workspaceId={currentProjectId}
