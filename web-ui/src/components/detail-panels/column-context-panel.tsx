@@ -18,6 +18,7 @@ function ColumnSection({
 	taskSessions,
 	onCreateTask,
 	onStartTask,
+	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
@@ -44,6 +45,7 @@ function ColumnSection({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onStartTask?: (taskId: string) => void;
+	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
@@ -195,6 +197,7 @@ function ColumnSection({
 												sessionSummary={taskSessions[card.id]}
 												selected={card.id === selectedCardId}
 												onStart={onStartTask}
+												onRestartSession={onRestartSessionTask}
 												onMoveToTrash={onMoveToTrashTask}
 												onRestoreFromTrash={onRestoreFromTrashTask}
 												onCommit={onCommitTask}
@@ -240,6 +243,7 @@ export function ColumnContextPanel({
 	onTaskDragEnd,
 	onCreateTask,
 	onStartTask,
+	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
@@ -265,6 +269,7 @@ export function ColumnContextPanel({
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
 	onStartTask?: (taskId: string) => void;
+	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
@@ -358,6 +363,9 @@ export function ColumnContextPanel({
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
 							onStartTask={column.id === "backlog" ? onStartTask : undefined}
+							onRestartSessionTask={
+								column.id === "in_progress" || column.id === "review" ? onRestartSessionTask : undefined
+							}
 							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}

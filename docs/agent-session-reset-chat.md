@@ -2,94 +2,97 @@
 
 ## Problem
 
-When a Claude agent session starts with `--continue` and fails with "No conversation found to continue," the UI can get stuck showing a dead or errored session. The user has no single-click way to recover.
+When an agent session fails — most commonly when `--continue` fails with "No conversation found" after a restore-from-trash — the UI can get stuck showing a dead or errored session. Auto-restart handles some cases but is rate-limited (3 per 5 seconds). Once exhausted, the user has no single-click way to recover.
 
-## Current Recovery Paths
+## Background: How Restart Currently Works
 
-### 1. Auto-restart (handles the loop, but rate-limited)
+### Start / restart flow
 
-`session-manager.ts` auto-restarts failed sessions. A fix on `feature/working-directory-iteration-loop` clears `resumeFromTrash` on auto-restart so it doesn't retry `--continue` forever:
+1. **CWD selection**: Uses persisted `workingDirectory` if it exists on disk, otherwise creates/resolves a worktree (isolated tasks) or uses the workspace root (shared checkout tasks).
+2. **Agent spawn**: Spawns agent PTY in the resolved CWD.
+3. **`resumeFromTrash`**: When set, the agent adapter adds `--continue` (Claude), `resume --last` (Codex), `--resume latest` (Gemini), or `--continue` (OpenCode) to resume the prior conversation.
 
-```typescript
-// src/terminal/session-manager.ts (scheduleAutoRestart)
-request.resumeFromTrash = false;
-```
+### What goes wrong
 
-Auto-restart is rate-limited to 3 attempts per 5-second window. If all 3 fail, the user is left with a dead session.
+1. User restores a task from trash → `startTaskSession({ resumeFromTrash: true })`
+2. Agent adapter adds `--continue` flag
+3. Claude exits non-zero ("No conversation found to continue")
+4. Session transitions to error state
+5. Auto-restart fires with `resumeFromTrash = false` (starts fresh, no `--continue`)
+6. If auto-restart is rate-limited or also fails, session stays dead
 
-### 2. Stop + re-start from the board (multi-step, not obvious)
+### Auto-restart limitations
 
-The user can stop the session and then start it again. This works but requires knowing that's the right thing to do — there's no prompt or button guiding them.
-
-## What Happens When `--continue` Fails
-
-1. `startTaskSession` is called with `resumeFromTrash: true`
-2. Agent adapter adds `--continue` flag (`agent-session-adapters.ts`)
-3. Claude exits non-zero ("No conversation found")
-4. Session state machine transitions to `state: "awaiting_review"`, `reviewReason: "error"`
-5. UI shows red "Error" status tag, agent output visible in terminal
-6. Auto-restart kicks in (without `--continue`), starts fresh session
-7. If auto-restart is rate-limited or also fails, session stays in error state
+- Rate-limited to 3 attempts per 5-second window (`session-manager.ts:1077-1095`)
+- Strips `resumeFromTrash` to avoid retrying `--continue` (correct behavior)
+- If all 3 fail, gives up permanently — no user-facing recovery path
 
 ## Existing UI Affordances
 
-### Restart button (shell terminals only)
+### Board card indicators (already present)
 
-`AgentTerminalPanel` accepts an `onRestart` prop (line 50) that renders a restart button (`RotateCw` icon) in the terminal header toolbar. However, this is **only wired up for shell terminals**:
+- **Failed spinner**: `in_progress` cards with `state === "failed"` show a red `AlertCircle` icon (`board-card.tsx:232-233`)
+- **CWD divergence warning**: Shows orange `AlertCircle` with tooltip "Restart the task to fix" — but no actual restart button (`board-card.tsx:355-358`)
 
-- **Home terminal** (`App.tsx:974`): `onRestart={handleRestartHomeTerminal}` — connected
-- **Detail shell terminal** (`App.tsx:1042`): `onRestart` via `onBottomTerminalRestart` — connected
-- **Task agent terminal** (`card-detail-view.tsx:861`): `onRestart` is **not passed** — no restart button
+### Terminal controls
 
-This appears intentional — the restart button was designed for shell terminals (simple stop + re-spawn). Agent session restart has different semantics: worktree state, `--continue` flags, prompt handling, turn checkpoints.
+- **Restart button (shell terminals only)**: `AgentTerminalPanel` accepts `onRestart` but it's only wired for shell terminals. The task agent terminal passes `showSessionToolbar={false}` without `onClose`, so no header renders — passing `onRestart` alone wouldn't surface the button.
+- **Stop button**: Stops the process but doesn't restart.
 
-### Other controls
+## Proposed: Restart Button on Board Card
 
-- **Stop button**: Stops the process but doesn't restart
-- **Clear button**: Clears xterm display only
-- **Start from board**: Click to start, but only works for tasks not already running
+Add a contextual restart button directly on the board card, visible when the session is in a recoverable error state. This follows the existing card pattern of column-specific action buttons (Play in backlog, Trash in review, Restore in trash).
 
-## Proposed Feature: Manual Session Reset
+### What "restart" means
 
-Add a way for users to manually reset/restart a stuck agent session. Two options:
+A fresh start in the existing workspace — **not** a `--continue` resume:
 
-### Option A: "Restart Session" button on agent terminal
+1. Stop the current session if still running
+2. Call `startTaskSession` with `resumeFromTrash: false`
+3. Use the card's existing `workingDirectory` / worktree as CWD
+4. Agent starts a new conversation from scratch in the same workspace context
 
-Add an `onRestart` handler for the task agent terminal in `card-detail-view.tsx`. The handler would:
+This is distinct from restore-from-trash (which tries `--continue`) and from auto-restart (which is rate-limited and invisible).
 
-1. Stop the current session (`stopTaskSession`)
-2. Start a fresh session (`startTaskSession` with `resumeFromTrash: false`)
-3. Use the card's existing `workingDirectory` as the CWD
+### When to show the button
 
-This reuses the existing `onRestart` prop slot on `AgentTerminalPanel`. The button already renders when the prop is provided.
+Show the restart button on `in_progress` cards when:
+- `sessionSummary.state === "idle"` (stopped or auto-restart exhausted)
+- `sessionSummary.state === "failed"` (session couldn't start)
+- `sessionSummary.state === "interrupted"` (agent was interrupted)
+- `sessionSummary.state === "awaiting_review"` with `reviewReason === "error"` (non-zero exit)
 
-Considerations:
-- Should only be visible/enabled when the session is in an error or exited state (not while running normally)
-- Needs to handle the case where `workingDirectory` is null (task never started)
-- Should capture a turn checkpoint before restarting if the session had been running
+The button replaces the spinner in the status marker area, or appears alongside the error indicator.
 
-### Option B: "Reset Chat" action on board card context menu
+### Shared checkout vs isolated tasks
 
-Add a right-click or overflow menu action on the board card. More discoverable for users who aren't in the detail view.
+No difference in restart behavior — both use whatever CWD is already associated with the task. Isolated tasks restart in their worktree, shared checkout tasks restart in the workspace root. No worktree creation or cleanup needed.
 
-Considerations:
-- Would need a new context menu system or expanding the existing card actions
-- More visible but more UI work
+### CWD divergence case
 
-### Recommendation
+The existing CWD divergence warning (`board-card.tsx:355-358`) already tells users to "restart the task to fix." The same restart button handles this — it stops the session and starts fresh in the correct directory.
 
-Start with Option A — it's lower effort (the prop slot exists), directly addresses the "stuck terminal" UX, and only shows when relevant. Option B can be added later for discoverability.
-
-## Files That Would Change
+### Files that would change
 
 | File | Change |
 |------|--------|
-| `web-ui/src/components/card-detail-view.tsx` | Pass `onRestart` to task `AgentTerminalPanel` |
-| `web-ui/src/hooks/use-task-sessions.ts` | Add `restartTaskSession` function (stop + fresh start) |
-| `web-ui/src/components/detail-panels/agent-terminal-panel.tsx` | Possibly gate restart button visibility on session state |
-| `web-ui/src/App.tsx` | Wire up the restart handler |
+| `web-ui/src/components/board-card.tsx` | Add restart button for failed/exited in_progress cards |
+| `web-ui/src/components/board-column.tsx` or `App.tsx` | Wire `onRestart` callback through to board card |
+| `src/trpc/runtime-api.ts` | Possibly add `restartTaskSession` mutation (or reuse stop + start) |
+
+### Why not the terminal panel?
+
+The `AgentTerminalPanel` restart button (Option A in the original proposal) has a rendering gap: the task agent terminal uses `showSessionToolbar={false}` without `onClose`, so neither toolbar variant renders. The button slot exists in the component props but wouldn't actually appear without restructuring the toolbar logic.
+
+The board card approach is better because:
+- **More discoverable**: Visible at the board scan level, no need to open detail view
+- **Consistent**: Follows the existing card action pattern (Play/Trash/Restore per column)
+- **Contextual**: Only appears when the session is in an error state
+- **Lower effort**: No toolbar restructuring needed
+
+A terminal-level restart button could be added later as a secondary affordance.
 
 ## Related
 
-- `docs/planned-features.md` #1 (Resume card sessions after crash) — related but different. Resume is about reconnecting after Kanban restarts; this is about recovering from a failed `--continue` during normal operation.
-- Auto-restart rate limiting: `session-manager.ts:1070-1088` — 3 restarts per 5-second window.
+- `docs/planned-features.md` #1 (Resume card sessions after crash) — related but different. Resume is about reconnecting after Kanban restarts; this is about recovering from a failed agent session during normal operation.
+- Auto-restart rate limiting: `session-manager.ts:1077-1095`

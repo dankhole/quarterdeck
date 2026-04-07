@@ -1,5 +1,5 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -142,6 +142,7 @@ export function BoardCard({
 	selected = false,
 	onClick,
 	onStart,
+	onRestartSession,
 	onMoveToTrash,
 	onRestoreFromTrash,
 	onCommit,
@@ -168,6 +169,7 @@ export function BoardCard({
 	selected?: boolean;
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
+	onRestartSession?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
 	onCommit?: (taskId: string) => void;
@@ -227,16 +229,17 @@ export function BoardCard({
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
 	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
 
-	const renderStatusMarker = () => {
-		if (columnId === "in_progress") {
-			if (sessionSummary?.state === "failed") {
-				return <AlertCircle size={12} className="text-status-red" />;
-			}
-			return <Spinner size={12} />;
-		}
-		return null;
-	};
-	const statusMarker = renderStatusMarker();
+	const isSessionDead =
+		!sessionSummary ||
+		sessionSummary.state === "idle" ||
+		sessionSummary.state === "failed" ||
+		sessionSummary.state === "interrupted" ||
+		(sessionSummary.state === "awaiting_review" && sessionSummary.reviewReason === "error");
+
+	const isSessionRestartable = (columnId === "in_progress" || columnId === "review") && isSessionDead;
+
+	const statusMarker =
+		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const reviewBranchLabel = reviewWorkspaceSnapshot?.branch
 		? shortenBranchName(reviewWorkspaceSnapshot.branch)
@@ -337,7 +340,28 @@ export function BoardCard({
 							)}
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
-								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
+								{statusMarker === "restart" ? (
+									<div className="inline-flex items-center">
+										<Tooltip content="Restart session">
+											<Button
+												icon={<RotateCw size={12} />}
+												variant="ghost"
+												size="sm"
+												className="text-status-red hover:text-text-primary"
+												aria-label="Restart agent session"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onRestartSession?.(card.id);
+												}}
+											/>
+										</Tooltip>
+									</div>
+								) : statusMarker === "spinner" ? (
+									<div className="inline-flex items-center">
+										<Spinner size={12} />
+									</div>
+								) : null}
 								{card.pinned && !isTrashCard ? (
 									<Tooltip content="Pinned to top">
 										<span className="inline-flex items-center shrink-0 text-text-secondary">
@@ -445,18 +469,35 @@ export function BoardCard({
 										}}
 									/>
 								) : columnId === "review" ? (
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
+									<>
+										{isSessionRestartable && onRestartSession ? (
+											<Tooltip content="Restart session">
+												<Button
+													icon={<RotateCw size={12} />}
+													variant="ghost"
+													size="sm"
+													aria-label="Restart agent session"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														onRestartSession(card.id);
+													}}
+												/>
+											</Tooltip>
+										) : null}
+										<Button
+											icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+											variant="ghost"
+											size="sm"
+											disabled={isMoveToTrashLoading}
+											aria-label="Move task to trash"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onMoveToTrash?.(card.id);
+											}}
+										/>
+									</>
 								) : columnId === "trash" ? (
 									<Tooltip
 										side="bottom"
