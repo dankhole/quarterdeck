@@ -29,6 +29,7 @@ function ColumnSection({
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
+	onTogglePinTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
@@ -54,6 +55,7 @@ function ColumnSection({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
+	onTogglePinTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -204,6 +206,7 @@ function ColumnSection({
 												isMigrateLoading={migratingTaskId === card.id}
 												onRegenerateTitle={onRegenerateTitleTask}
 												onUpdateTitle={onUpdateTaskTitle}
+												onTogglePin={onTogglePinTask}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -248,6 +251,7 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
+	onTogglePinTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
@@ -272,6 +276,7 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
+	onTogglePinTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -364,6 +369,7 @@ export function ColumnContextPanel({
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 							onRegenerateTitleTask={onRegenerateTitleTask}
 							onUpdateTaskTitle={onUpdateTaskTitle}
+							onTogglePinTask={onTogglePinTask}
 							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}

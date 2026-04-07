@@ -24,6 +24,7 @@ export function BoardColumn({
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
+	onTogglePinTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
@@ -55,6 +56,7 @@ export function BoardColumn({
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
+	onTogglePinTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
@@ -155,7 +157,12 @@ export function BoardColumn({
 								let draggableIndex = 0;
 								const sortByRecent = ["in_progress", "review", "trash"].includes(column.id);
 								const cards = sortByRecent
-									? [...column.cards].sort((a, b) => b.updatedAt - a.updatedAt)
+									? [...column.cards].sort((a, b) => {
+											const aPinned = a.pinned ? 1 : 0;
+											const bPinned = b.pinned ? 1 : 0;
+											if (aPinned !== bPinned) return bPinned - aPinned;
+											return b.updatedAt - a.updatedAt;
+										})
 									: column.cards;
 								for (const card of cards) {
 									if (column.id === "backlog" && editingTaskId === card.id) {
@@ -186,6 +193,7 @@ export function BoardColumn({
 											onCancelAutomaticAction={onCancelAutomaticTaskAction}
 											onRegenerateTitle={onRegenerateTitleTask}
 											onUpdateTitle={onUpdateTaskTitle}
+											onTogglePin={onTogglePinTask}
 											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 											isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}

@@ -18,6 +18,7 @@ export interface RuntimeCreateTaskInput {
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
+	pinned?: boolean;
 }
 
 export interface RuntimeUpdateTaskInput {
@@ -29,6 +30,7 @@ export interface RuntimeUpdateTaskInput {
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
+	pinned?: boolean;
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
@@ -296,6 +298,7 @@ export function addTaskToColumn(
 		images: cloneTaskImages(input.images),
 		baseRef,
 		useWorktree: input.useWorktree,
+		pinned: input.pinned || undefined,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -611,6 +614,7 @@ export function updateTask(
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				useWorktree: input.useWorktree,
+				pinned: input.pinned === undefined ? card.pinned : input.pinned || undefined,
 				updatedAt: now,
 			};
 			return updatedTask;

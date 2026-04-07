@@ -1,5 +1,5 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -149,6 +149,7 @@ export function BoardCard({
 	onCancelAutomaticAction,
 	onRegenerateTitle,
 	onUpdateTitle,
+	onTogglePin,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	isMoveToTrashLoading = false,
@@ -174,6 +175,7 @@ export function BoardCard({
 	onCancelAutomaticAction?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
 	onUpdateTitle?: (taskId: string, title: string) => void;
+	onTogglePin?: (taskId: string) => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	isMoveToTrashLoading?: boolean;
@@ -336,6 +338,13 @@ export function BoardCard({
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
+								{card.pinned && !isTrashCard ? (
+									<Tooltip content="Pinned to top">
+										<span className="inline-flex items-center shrink-0 text-text-secondary">
+											<Pin size={12} />
+										</span>
+									</Tooltip>
+								) : null}
 								{isSharedCheckout ? (
 									<Tooltip content="Running in shared checkout (not isolated)">
 										<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
@@ -388,18 +397,37 @@ export function BoardCard({
 													{displayTitle}
 												</p>
 											</div>
-											{isHovered && !isTrashCard && onUpdateTitle ? (
-												<Button
-													icon={<Pencil size={12} />}
-													variant="ghost"
-													size="sm"
-													aria-label="Edit title"
-													onMouseDown={stopEvent}
-													onClick={(event) => {
-														stopEvent(event);
-														openTitleEditor();
-													}}
-												/>
+											{isHovered && !isTrashCard ? (
+												<>
+													{onTogglePin ? (
+														<Tooltip content={card.pinned ? "Unpin" : "Pin to top"}>
+															<Button
+																icon={card.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+																variant="ghost"
+																size="sm"
+																aria-label={card.pinned ? "Unpin task" : "Pin task to top"}
+																onMouseDown={stopEvent}
+																onClick={(event) => {
+																	stopEvent(event);
+																	onTogglePin(card.id);
+																}}
+															/>
+														</Tooltip>
+													) : null}
+													{onUpdateTitle ? (
+														<Button
+															icon={<Pencil size={12} />}
+															variant="ghost"
+															size="sm"
+															aria-label="Edit title"
+															onMouseDown={stopEvent}
+															onClick={(event) => {
+																stopEvent(event);
+																openTitleEditor();
+															}}
+														/>
+													) : null}
+												</>
 											) : null}
 										</div>
 									</Tooltip>

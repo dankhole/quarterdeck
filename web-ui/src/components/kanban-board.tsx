@@ -43,6 +43,7 @@ export function KanbanBoard({
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
+	onTogglePinTask,
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
@@ -71,6 +72,7 @@ export function KanbanBoard({
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
+	onTogglePinTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
@@ -398,6 +400,7 @@ export function KanbanBoard({
 						onCancelAutomaticTaskAction={onCancelAutomaticTaskAction}
 						onRegenerateTitleTask={onRegenerateTitleTask}
 						onUpdateTaskTitle={onUpdateTaskTitle}
+						onTogglePinTask={onTogglePinTask}
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 						onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
