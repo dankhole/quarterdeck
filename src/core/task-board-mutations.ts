@@ -532,6 +532,9 @@ export function moveTaskToColumn(
 	const movedTask: RuntimeBoardCard = {
 		...task,
 		updatedAt: now,
+		// Clear workingDirectory when trashing — the worktree will be deleted
+		// and the client is the single writer for board state.
+		...(targetColumnId === "trash" ? { workingDirectory: null } : undefined),
 	};
 	const targetCards =
 		targetColumnId === "trash" ? [movedTask, ...targetColumn.cards] : [...targetColumn.cards, movedTask];

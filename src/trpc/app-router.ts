@@ -115,7 +115,6 @@ import {
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
 import { findCardInBoard } from "../core/task-board-mutations";
-import { mutateWorkspaceState } from "../state/workspace-state";
 import { generateTaskTitle } from "../title/title-generator";
 
 export interface RuntimeTrpcWorkspaceScope {
@@ -220,6 +219,7 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
+		notifyTaskTitleUpdated: (scope: RuntimeTrpcWorkspaceScope, taskId: string, title: string) => void;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -455,7 +455,6 @@ export const runtimeAppRouter = t.router({
 			.input(z.object({ taskId: z.string() }))
 			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
 			.mutation(async ({ ctx, input }) => {
-				// Prompt is needed before the LLM call; mutateWorkspaceState re-reads for atomicity.
 				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
 				const card = findCardInBoard(state.board, input.taskId);
 				if (!card) {
@@ -470,37 +469,14 @@ export const runtimeAppRouter = t.router({
 				if (!title) {
 					return { ok: false, title: null };
 				}
-
-				await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
-					const board = structuredClone(currentState.board);
-					const target = findCardInBoard(board, input.taskId);
-					if (target) {
-						target.title = title;
-						target.updatedAt = Date.now();
-					}
-					return { board, value: null };
-				});
-				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, title);
 				return { ok: true, title };
 			}),
 		updateTaskTitle: workspaceProcedure
 			.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
 			.output(z.object({ ok: z.boolean() }))
 			.mutation(async ({ ctx, input }) => {
-				const found = await mutateWorkspaceState(ctx.workspaceScope.workspacePath, (currentState) => {
-					const board = structuredClone(currentState.board);
-					const target = findCardInBoard(board, input.taskId);
-					if (target) {
-						target.title = input.title;
-						target.updatedAt = Date.now();
-						return { board, value: true };
-					}
-					return { board, value: false };
-				});
-				if (!found) {
-					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
-				}
-				void ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
+				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, input.title);
 				return { ok: true };
 			}),
 	}),

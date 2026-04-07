@@ -152,6 +152,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
 			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
 			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
 		});
 
@@ -200,6 +201,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
 			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
 			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
 		});
 
@@ -236,6 +238,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			ensureTerminalManagerForWorkspace: vi.fn(),
 			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
 			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
 		});
 
@@ -262,6 +265,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 		ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
 		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
 		broadcastRuntimeProjectsUpdated: vi.fn(),
+		broadcastTaskTitleUpdated: vi.fn(),
 		buildWorkspaceStateSnapshot: vi.fn(),
 		...overrides,
 	};
@@ -481,7 +485,7 @@ describe("createWorkspaceApi deleteWorktree", () => {
 		workspaceStateMocks.mutateWorkspaceState.mockResolvedValue({ value: null, state: null, saved: false });
 	});
 
-	it("clears workingDirectory on the card when delete succeeds", async () => {
+	it("delegates to deleteTaskWorktree without mutating board state", async () => {
 		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
 
 		const api = createWorkspaceApi(createWorkspaceDeps());
@@ -489,7 +493,13 @@ describe("createWorkspaceApi deleteWorktree", () => {
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
 		expect(result.ok).toBe(true);
-		expect(workspaceStateMocks.mutateWorkspaceState).toHaveBeenCalledWith("/tmp/repo", expect.any(Function));
+		expect(workspaceTaskWorktreeMocks.deleteTaskWorktree).toHaveBeenCalledWith({
+			repoPath: "/tmp/repo",
+			taskId: "task-1",
+		});
+		// Board state is NOT mutated server-side — the client clears workingDirectory
+		// when it moves the card to trash, avoiding a dual-writer race.
+		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
 	});
 
 	it("does not clear workingDirectory when delete fails", async () => {
