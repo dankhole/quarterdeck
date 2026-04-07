@@ -153,6 +153,7 @@ class PersistentTerminal {
 	private lastError: string | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	private webglAddon: WebglAddon | null = null;
 	private dprMediaQuery: MediaQueryList | null = null;
 	private dprChangeHandler: (() => void) | null = null;
 	private visibleContainer: HTMLDivElement | null = null;
@@ -231,15 +232,7 @@ class PersistentTerminal {
 				return;
 			}
 			this.terminal.open(this.hostElement);
-			try {
-				const webglAddon = new WebglAddon();
-				webglAddon.onContextLoss(() => {
-					webglAddon.dispose();
-				});
-				this.terminal.loadAddon(webglAddon);
-			} catch {
-				// Fall back to the default renderer when WebGL is unavailable.
-			}
+			this.attachWebglAddon();
 			if (this.visibleContainer) {
 				this.fitAddon.fit();
 			}
@@ -259,6 +252,20 @@ class PersistentTerminal {
 			const timeout = new Promise<void>((r) => setTimeout(r, FONT_READY_TIMEOUT_MS));
 			void Promise.race([document.fonts.ready, timeout]).then(openAndAttachWebgl);
 			refitAfterFontsReady();
+		}
+	}
+
+	private attachWebglAddon(): void {
+		try {
+			const webglAddon = new WebglAddon();
+			webglAddon.onContextLoss(() => {
+				webglAddon.dispose();
+				this.webglAddon = null;
+			});
+			this.terminal.loadAddon(webglAddon);
+			this.webglAddon = webglAddon;
+		} catch {
+			// Fall back to the default renderer when WebGL is unavailable.
 		}
 	}
 
@@ -670,6 +677,19 @@ class PersistentTerminal {
 			});
 	}
 
+	resetRenderer(): void {
+		const hadWebgl = this.webglAddon !== null;
+		if (this.webglAddon) {
+			this.webglAddon.dispose();
+			this.webglAddon = null;
+		}
+		this.attachWebglAddon();
+		const newRenderer = this.webglAddon ? "webgl" : "canvas-fallback";
+		console.log(
+			`[terminal:${this.taskId}] renderer reset — previous: ${hadWebgl ? "webgl" : "none"}, new: ${newRenderer}, dpr: ${window.devicePixelRatio}`,
+		);
+	}
+
 	waitForLikelyPrompt(timeoutMs: number): Promise<boolean> {
 		if (timeoutMs <= 0) {
 			return Promise.resolve(false);
@@ -786,4 +806,13 @@ export function disposeAllPersistentTerminalsForWorkspace(workspaceId: string): 
 		terminal.dispose();
 		terminals.delete(key);
 	}
+}
+
+export function resetAllTerminalRenderers(): number {
+	const count = terminals.size;
+	console.log(`[terminal] resetting renderers for ${count} terminal(s), dpr: ${window.devicePixelRatio}`);
+	for (const terminal of terminals.values()) {
+		terminal.resetRenderer();
+	}
+	return count;
 }

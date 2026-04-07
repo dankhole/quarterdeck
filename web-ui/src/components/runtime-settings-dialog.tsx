@@ -6,6 +6,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { showAppToast } from "@/components/app-toaster";
 import {
 	getRuntimeShortcutIconComponent,
 	getRuntimeShortcutPickerOption,
@@ -21,6 +22,7 @@ import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
+import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
 import {
 	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
@@ -682,6 +684,25 @@ export function RuntimeSettingsDialog({
 				</Button>
 				<p className="text-text-secondary text-[13px] mt-2 mb-0">
 					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal rendering</h6>
+				<Button
+					size="sm"
+					onClick={() => {
+						const count = resetAllTerminalRenderers();
+						showAppToast({
+							intent: "success",
+							message: `Reset rendering for ${count} terminal${count === 1 ? "" : "s"}`,
+							timeout: 3000,
+						});
+					}}
+				>
+					Reset terminal rendering
+				</Button>
+				<p className="text-text-secondary text-[13px] mt-2 mb-0">
+					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
+					distorted after moving between monitors.
 				</p>
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
