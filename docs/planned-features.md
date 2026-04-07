@@ -32,3 +32,12 @@ Continuing work on the left toolbar and diff viewer UX:
 - **Full-screen diff viewer**: Add a way to expand the diff viewer to full screen (e.g. a maximize button or double-click the resize handle) for reviewing large diffs without the terminal competing for space.
 - **Middle resize handle is inverted**: The drag direction on the center resize divider is backwards — dragging right shrinks when it should grow, and vice versa. Fix the drag polarity.
 - **Show branch comparison label**: Display which two branches are being diffed (e.g. `main..feat/my-feature`) at the top of the diff viewer so it's clear what you're looking at.
+
+## 6. Direct git commit from review (server-side)
+
+The commit button currently works by injecting a prompt into the agent's terminal, relying on the agent to execute the git commands. Replace the default behavior with a direct server-side git commit:
+
+- **Server-side commit (new default)**: Add a tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages all changes in the task worktree and commits directly using `runGit()`. No active agent session required — faster and more reliable.
+- **Commit message generation**: Auto-generate a commit message from the task title/description and diff summary (changed file names, additions/deletions). Optionally support calling an LLM endpoint for smarter messages.
+- **Agent prompt injection (alternate)**: Keep the current prompt-injection approach as a secondary option (e.g. "Ask agent to commit") for cases where the user wants the agent to craft the message with full task context.
+- **UI**: The card and agent terminal panel commit buttons should default to the direct commit. Add a dropdown or secondary action for the agent-assisted variant.
