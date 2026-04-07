@@ -50,7 +50,7 @@ export function useTaskBranchOptions({ workspaceGit }: UseTaskBranchOptionsInput
 		if (!workspaceGit) {
 			return "";
 		}
-		return workspaceGit.currentBranch ?? workspaceGit.defaultBranch ?? createTaskBranchOptions[0]?.value ?? "";
+		return workspaceGit.defaultBranch ?? workspaceGit.currentBranch ?? createTaskBranchOptions[0]?.value ?? "";
 	}, [createTaskBranchOptions, workspaceGit]);
 
 	return {
