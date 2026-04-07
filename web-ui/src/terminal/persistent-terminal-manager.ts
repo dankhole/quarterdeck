@@ -153,6 +153,8 @@ class PersistentTerminal {
 	private lastError: string | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	private dprMediaQuery: MediaQueryList | null = null;
+	private dprChangeHandler: (() => void) | null = null;
 	private visibleContainer: HTMLDivElement | null = null;
 	private ioSocket: WebSocket | null = null;
 	private controlSocket: WebSocket | null = null;
@@ -373,6 +375,28 @@ class PersistentTerminal {
 		});
 	}
 
+	private listenForDprChange(): void {
+		this.clearDprListener();
+		const dpr = window.devicePixelRatio;
+		const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+		const handler = () => {
+			this.requestResize();
+			// Re-register for the next DPR change since the query matched against the old value.
+			this.listenForDprChange();
+		};
+		mq.addEventListener("change", handler, { once: true });
+		this.dprMediaQuery = mq;
+		this.dprChangeHandler = handler;
+	}
+
+	private clearDprListener(): void {
+		if (this.dprMediaQuery && this.dprChangeHandler) {
+			this.dprMediaQuery.removeEventListener("change", this.dprChangeHandler);
+		}
+		this.dprMediaQuery = null;
+		this.dprChangeHandler = null;
+	}
+
 	private connectIo(): void {
 		if (this.ioSocket) {
 			return;
@@ -572,6 +596,7 @@ class PersistentTerminal {
 			}, RESIZE_DEBOUNCE_MS);
 		});
 		this.resizeObserver.observe(container);
+		this.listenForDprChange();
 		if (options.isVisible !== false) {
 			window.requestAnimationFrame(() => {
 				this.requestResize();
@@ -594,6 +619,7 @@ class PersistentTerminal {
 			clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
 		}
+		this.clearDprListener();
 		if (container && this.visibleContainer !== container) {
 			return;
 		}
