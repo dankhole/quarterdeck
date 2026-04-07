@@ -67,3 +67,51 @@ Add a project panel to the left detail toolbar (alongside the existing Board and
 - **Review badge (configurable per project)**: Optionally show when tasks are awaiting review. This is useful when actively working on multiple projects but noisy when a project is idle. Add a per-project toggle in the project panel to enable/disable review notifications.
 
 **Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
+
+## 9. Decouple the detail sidebar from task selection
+
+The detail sidebar (left toolbar + panel slots + resize layout) is currently only rendered when a task is selected via `CardDetailView`, which requires a `CardSelection` prop. This blocks using the sidebar for non-task views like git management, a standalone board panel, or workspace-level browsing.
+
+**What's already decoupled (no work needed)**:
+- `DetailToolbar` — purely panel switching + badge, zero task references
+- `useCardDetailLayout` hook — generic layout state (panel ratios, active panel, resize preferences)
+- `ResizeHandle` / `useResizeDrag` — completely generic
+
+**What needs decoupling**:
+- `CardDetailView` is the outer shell — it requires `CardSelection` and threads `selection.card.id` through 20+ child references. Refactor to accept an optional task selection. When no task is selected, the sidebar still renders with panels appropriate to the context.
+- `DiffViewerPanel` and `FileTreePanel` are already data-driven (they receive `workspaceFiles`, not a task ID), so they work without a task as long as the data source changes.
+- `FileBrowserPanel` explicitly takes `taskId` and `baseRef` — needs to accept a generic workspace/directory context instead.
+- `AgentTerminalPanel` requires a task ID — when no task is selected, the main content area should render an alternate view (workspace terminal, empty state, or whatever panel is active).
+- Workspace data fetching (`useRuntimeWorkspaceChanges`, `useTaskWorkspaceInfoValue`, etc.) is task-keyed — needs a parallel code path for workspace-level data (e.g. changes on the main repo's current branch).
+
+**Approach**: Rather than a full architectural rewrite, introduce a `DetailContext` concept — either "task" (existing behavior, includes card + session) or "workspace" (no task, operates on the main repo). `CardDetailView` switches its data sources and available panels based on context. The toolbar, layout, and resize system stay exactly as-is.
+
+**Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #10 (git management) and #8 (project switcher) as the first consumers of this decoupled sidebar.
+
+## 10. Git management / workspace view
+
+A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. Depends on #9 (decoupled sidebar) for rendering without a task selection.
+
+**Branch management**:
+- Show the currently checked out branch in the main repo (not a worktree)
+- Switch branches (checkout) with a branch selector dropdown
+- Pull from remote (with indicator when behind upstream)
+- Merge branches — select a source branch to merge into the current branch
+- Show recent commits on the current branch
+
+**Branch diffing**:
+- Select two branches to compare — opens the diff in the existing `DiffViewerPanel`
+- This reuses the Changes panel infrastructure but with a different data source: `git diff branchA...branchB` instead of task workspace changes
+- Requires the workspace-level data fetching path from #9 (e.g. a `getWorkspaceChangesBetweenRefs` call that isn't task-scoped)
+
+**How it fits in the sidebar**:
+- New toolbar button (e.g. `GitBranch` icon) adds a "Git" panel to `DetailPanelId`
+- When the Git panel is active and a diff is requested, it populates the Changes panel with the branch diff — the two panels work together
+- The main content area (where the terminal normally lives) could show a commit log, merge conflict resolution, or just an empty state
+
+**Backend**:
+- Most git operations already exist in `src/workspace/git-utils.ts` and `src/workspace/git-sync.ts` — branch listing, checkout, pull, diff between refs
+- New tRPC mutations needed: `workspace.checkoutBranch`, `workspace.pullBranch`, `workspace.mergeBranch`
+- New tRPC query: `workspace.getBranchList`, `workspace.getCurrentBranch`, `workspace.getBranchDiff` (wraps existing `getWorkspaceChangesBetweenRefs`)
+
+**What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
