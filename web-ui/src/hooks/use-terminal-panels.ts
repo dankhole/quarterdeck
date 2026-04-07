@@ -367,7 +367,13 @@ export function useTerminalPanels({
 
 	useEffect(() => {
 		if (!isDetailTerminalOpen || !selectedCard) {
-			detailTerminalSelectionKeyRef.current = null;
+			// Only clear the ref when no card is selected (user left detail view).
+			// When switching between tasks, preserve the ref so we don't redundantly
+			// call startShellSession when returning — that call can kill a running
+			// shell if the session state drifted from "running" while off-screen.
+			if (!selectedCard) {
+				detailTerminalSelectionKeyRef.current = null;
+			}
 			return;
 		}
 		const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
