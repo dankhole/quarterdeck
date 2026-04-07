@@ -216,6 +216,28 @@ Different state lives in different places on purpose.
 | per-project UI or workflow state | workspace state or project config | this is workspace-scoped product state |
 | task runtime summaries | Quarterdeck runtime memory and state stream | the board needs a lightweight product-shaped summary of current work |
 
+### State directory layout
+
+All persistent state lives under `~/.quarterdeck/` in the user's home directory, not inside the project repository. The in-repo `.quarterdeck/` directory only holds project-level config (shortcuts, hooks).
+
+```
+~/.quarterdeck/
+├── config.json                          # global runtime config
+├── hooks/                               # global hook scripts
+├── worktrees/                           # task worktree checkouts
+│   └── <task-id>/
+│       └── <repo-name>/                 # isolated git worktree for the task
+├── trashed-task-patches/                # saved patches from deleted tasks
+└── workspaces/                          # per-workspace persistent state
+    ├── index.json                       # maps workspace slugs to paths
+    └── <workspace-slug>/
+        ├── board.json                   # columns, cards, prompts, settings
+        ├── sessions.json                # session history (PIDs, state, timestamps)
+        └── meta.json                    # revision counter and last-updated timestamp
+```
+
+Workspace state is keyed by a slug derived from the project path. When you run Quarterdeck against `/Users/you/projects/myapp`, the state lands in `~/.quarterdeck/workspaces/myapp/`. This means state does not transfer automatically if you clone a repo to a new path or rename the project directory — you would need to copy the workspace folder manually.
+
 ## Design Rules
 
 These are the architectural rules that are most important to preserve.

@@ -21,7 +21,7 @@ Run two terminals:
 npm run dev
 ```
 
-- Runs on `http://127.0.0.1:3484`
+- Runs on `http://127.0.0.1:3500`
 
 2. Web UI (Vite HMR):
 
@@ -30,7 +30,7 @@ npm run web:dev
 ```
 
 - Runs on `http://127.0.0.1:4173`
-- `/api/*` requests from Vite are proxied to `http://127.0.0.1:3484`
+- `/api/*` requests from Vite are proxied to `http://127.0.0.1:3500`
 
 Use `http://127.0.0.1:4173` while developing UI so changes hot reload.
 
@@ -54,9 +54,9 @@ Runtime port options:
 
 ```bash
 # fixed port
-node dist/cli.js --port 3484
+node dist/cli.js --port 3500
 
-# pick the first free port starting at 3484
+# pick the first free port starting at 3500
 node dist/cli.js --port auto
 ```
 
@@ -69,7 +69,7 @@ Run your stable orchestrator first (main checkout):
 ```bash
 cd /path/to/quarterdeck-main
 npm run build
-node dist/cli.js --port 3484
+node dist/cli.js --port 3500
 ```
 
 Then run a test checkout against a target project (feature worktree):

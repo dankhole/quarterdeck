@@ -69,7 +69,7 @@ interface ShutdownIndicator {
  * Decide whether this CLI invocation should auto-open a browser tab.
  *
  * This uses a positive allowlist for app-launch shapes like `quarterdeck`,
- * `quarterdeck --agent codex`, and `quarterdeck --port 3484`. Any subcommand or
+ * `quarterdeck --agent codex`, and `quarterdeck --port 3500`. Any subcommand or
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
