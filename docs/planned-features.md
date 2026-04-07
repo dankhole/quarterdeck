@@ -22,20 +22,35 @@ Persist the working branch on the card itself so it survives restarts and worktr
 
 ## 4. Detail toolbar and diff viewer improvements
 
-Continuing work on the left toolbar and diff viewer UX:
+Continuing work on the left toolbar and diff viewer UX. See [docs/research/2026-04-06-detail-toolbar-remaining-work.md](research/2026-04-06-detail-toolbar-remaining-work.md) for technical details on the resize issues.
 
 - **Diff viewer resize past midway**: The file tree panel clamp is currently max 0.6 in `use-card-detail-layout.ts`, so the diff viewer floors at 40% width. Increase the max to allow the diff viewer to take most or all of the horizontal space.
 - **Git history resize handle is inverted**: In `git-commit-diff-panel.tsx`, the resize handler uses `startRatio - deltaRatio` (minus) instead of `startRatio + deltaRatio` (plus), inverting the drag direction. The main `card-detail-view.tsx` handle is correct.
-- **Interactive base ref switcher**: The diff toolbar now shows the branch comparison (e.g. `feat/my-feature → main`). Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
+- **Interactive base ref switcher**: The diff toolbar now shows the branch comparison (e.g. `feat/my-feature → main`). Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref. Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
 
-## 5. Direct git commit from review (server-side)
+## 5. Remove commit and PR prompt injection buttons
 
-The commit button currently works by injecting a prompt into the agent's terminal, relying on the agent to execute the git commands. Replace the default behavior with a direct server-side git commit:
+The commit and create PR buttons on board cards, sidebar cards, and the agent terminal panel are purely prompt injection — they build a template string (e.g. "Handle this commit action using the provided git context") and paste it into the agent's terminal via `sendTaskSessionInput`. No actual git commands are executed. The agent is entirely responsible for interpreting the prompt and running git operations, which makes these buttons strictly worse than skills (which do the same thing but are user-configurable and context-aware).
 
-- **Server-side commit (new default)**: Add a tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages all changes in the task worktree and commits directly using `runGit()`. No active agent session required — faster and more reliable.
-- **Commit message generation**: Auto-generate a commit message from the task title/description and diff summary (changed file names, additions/deletions). Optionally support calling an LLM endpoint for smarter messages.
-- **Agent prompt injection (alternate)**: Keep the current prompt-injection approach as a secondary option (e.g. "Ask agent to commit") for cases where the user wants the agent to craft the message with full task context.
-- **UI**: The card and agent terminal panel commit buttons should default to the direct commit. Add a dropdown or secondary action for the agent-assisted variant.
+**What to remove**:
+- Commit button from board cards (board view and sidebar/context panel), and the agent terminal panel
+- Create PR button from the same locations
+- The `commitPromptTemplate` and `openPrPromptTemplate` settings and their configuration UI
+- The `use-git-actions.ts` hook and `build-task-git-action-prompt.ts` prompt builder
+- Related loading states (`isCommitLoading`, `isOpenPrLoading`) and callbacks threaded through components
+
+**Layout change**: With the commit/PR buttons removed from the agent terminal panel, the terminal should expand to fill the full space they occupied. No dead space left behind.
+
+**Rationale**: These buttons give the impression of real git integration when they're just typing into the terminal. Real git operations belong in the diff viewer (#6) and git management view (#10). Anyone who wants prompt-injection-style commit/PR can set up a skill for it.
+
+## 6. Server-side commit in the diff viewer
+
+Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
+
+- **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
+- **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
+- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
+- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#10), which would also support committing.
 
 ## 6. Performance audit for concurrent agents
 
@@ -87,6 +102,8 @@ The detail sidebar (left toolbar + panel slots + resize layout) is currently onl
 **Approach**: Rather than a full architectural rewrite, introduce a `DetailContext` concept — either "task" (existing behavior, includes card + session) or "workspace" (no task, operates on the main repo). `CardDetailView` switches its data sources and available panels based on context. The toolbar, layout, and resize system stay exactly as-is.
 
 **Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #10 (git management) and #8 (project switcher) as the first consumers of this decoupled sidebar.
+
+**Board view as a sidebar tab**: When moving the board into the sidebar, also reconsider the column stages themselves — are backlog/in_progress/review/done/trash still the right model, or should stages be more flexible? At minimum, update the colors for in_progress and review — they're too similar and hard to distinguish at a glance in a compact sidebar layout.
 
 ## 10. Git management / workspace view
 
@@ -182,3 +199,55 @@ Play a sound when tasks need attention so you don't have to keep watching the bo
 - **Browser-side**: Use the Web Audio API or `<audio>` element to play sounds from the frontend. Simplest approach — no backend changes needed, works with built-in or bundled sound files. Requires the browser tab to be open.
 - **System-side**: Use the backend to trigger OS-level sounds (e.g. `afplay` on macOS, `paplay` on Linux). Works even if the browser tab is backgrounded/closed, but platform-specific.
 - Could support both — browser audio as default, with an opt-in setting for system-level notifications (pairs well with OS notification integration if added later)
+
+## 16. Quick actions menu for stored prompts / skill calls (low priority)
+
+A configurable dropdown or palette in the agent terminal panel for firing stored prompts or skill invocations at the active agent. This would partially replace the removed commit/PR buttons (#5) with something user-configurable rather than hardcoded.
+
+**Open question**: This might not be worth building. Typing a skill call or prompt directly into the terminal is already fast, and a dropdown adds UI complexity for marginal convenience. Worth noting as a possibility but not urgent.
+
+**If built**:
+- Dropdown or command palette accessible from the terminal panel toolbar
+- User-configurable list of entries — each is either a stored prompt template or a skill invocation
+- Entries can interpolate task context (branch name, base ref, task title) like the old commit prompt templates did
+- Per-project and global entries
+- Could also support keyboard shortcuts per entry for power users
+
+## 17. Task conversation summaries and improved title generation
+
+Capture a lightweight conversation summary when agents transition tasks (e.g. move to review), and use it to improve the auto-generated task titles which are currently pretty bad.
+
+A research doc exists at [docs/research/2026-04-06-task-conversation-summary-approaches.md](research/2026-04-06-task-conversation-summary-approaches.md) comparing transcript parsing vs prompt-based summarization. The recommendation is **server-side transcript parsing** (approach 1b): pass `transcript_path` from the hook stdin payload to the server, read the last assistant message from the JSONL, and store it on the session summary. This mirrors the existing `enrichCodexReviewMetadata` pattern and adds zero latency from model calls.
+
+**Summary capture**:
+- On `Stop` hook: read `transcript_path` from stdin payload, parse the JSONL server-side, extract the last meaningful assistant message (skip tool call acknowledgments)
+- Store as a `summary` field on the session summary (separate from `finalMessage` to preserve both)
+- Follow the existing `enrichCodexReviewMetadata` pattern — add an `enrichClaudeReviewMetadata` function in `hooks-api.ts`
+- Consider unifying all agent enrichment into a single `enrichReviewMetadata` function
+- Cap summary length (e.g. 500 chars) to prevent bloating session state
+
+**Improved title generation**:
+- Current auto-generated titles are low quality — they're derived from limited context at task creation time
+- Once conversation summaries are available, re-derive the task title from the summary after the agent's first meaningful work session
+- The summary has much richer context about what the agent actually did vs what the initial prompt said
+- Only update the title if the user hasn't manually edited it
+
+**Trash retention**: Summaries should persist on trashed cards so you can mouse over a trashed task and quickly see what it was about without restoring it. This is especially useful when the auto-generated title is vague — the summary gives the real context.
+
+## 18. Investigate auto-trashing of tasks on restart
+
+When Kanban is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
+
+If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #1 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
+
+## 19. Unify task card behavior across views
+
+The `BoardCard` component renders through two independent parent chains — the main board columns and the sidebar/context panel — and each threads props differently through intermediate components. Missing props silently disable features rather than erroring, which has already caused bugs (e.g. migrate button missing from sidebar cards). As more views are added (#8 project switcher, #9 sidebar decoupling), this divergence will get worse.
+
+See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-04-06-board-card-prop-threading-audit.md) for the full audit of current prop discrepancies between board and sidebar paths.
+
+**Goals**:
+- Audit and fix all current prop discrepancies between the board and sidebar rendering paths
+- Future-proof so new views automatically get full card behavior without manual prop threading
+- Consider a context-based approach (React context or a hook) so card callbacks don't need to be threaded through every intermediate component
+- Ensure any new planned views (project switcher, decoupled sidebar) inherit full card interaction without per-view wiring
