@@ -109,6 +109,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		useWorktree?: unknown;
 		workingDirectory?: unknown;
+		pinned?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
 	};
@@ -141,6 +142,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 				: card.workingDirectory === null
 					? null
 					: undefined,
+		pinned: typeof card.pinned === "boolean" ? card.pinned : undefined,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};
@@ -482,6 +484,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 							: undefined,
 				baseRef,
 				useWorktree: draft.useWorktree ?? card.useWorktree,
+				pinned: card.pinned,
 				updatedAt: Date.now(),
 			};
 		});
@@ -596,6 +599,30 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 		}
 	}
 	return null;
+}
+
+export function toggleTaskPinned(board: BoardData, taskId: string): { board: BoardData; toggled: boolean } {
+	let toggled = false;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== taskId) {
+				return card;
+			}
+			columnUpdated = true;
+			toggled = true;
+			return {
+				...card,
+				pinned: card.pinned ? undefined : true,
+			};
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+
+	if (!toggled) {
+		return { board, toggled: false };
+	}
+	return { board: withUpdatedColumns(board, columns), toggled: true };
 }
 
 export function getTaskColumnId(board: BoardData, taskId: string): BoardColumnId | null {

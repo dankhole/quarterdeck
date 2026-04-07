@@ -125,6 +125,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
+	pinned: z.boolean().optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });

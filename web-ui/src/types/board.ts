@@ -47,6 +47,7 @@ export interface BoardCard {
 	baseRef: string;
 	useWorktree?: boolean;
 	workingDirectory?: string | null;
+	pinned?: boolean;
 	createdAt: number;
 	updatedAt: number;
 }

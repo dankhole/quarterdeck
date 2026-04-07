@@ -64,7 +64,7 @@ import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { findCardSelection, reconcileTaskWorkingDirectory } from "@/state/board-state";
+import { findCardSelection, reconcileTaskWorkingDirectory, toggleTaskPinned } from "@/state/board-state";
 import {
 	getTaskWorkspaceSnapshot,
 	getWorkspacePath,
@@ -641,6 +641,13 @@ export default function App(): ReactElement {
 
 	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({ currentProjectId });
 
+	const handleToggleTaskPinned = useCallback(
+		(taskId: string) => {
+			setBoard((prev) => toggleTaskPinned(prev, taskId).board);
+		},
+		[setBoard],
+	);
+
 	const { migrate: migrateWorkingDirectory, migratingTaskId } = useMigrateWorkingDirectory(currentProjectId);
 	const [pendingMigrate, setPendingMigrate] = useState<{
 		taskId: string;
@@ -919,6 +926,7 @@ export default function App(): ReactElement {
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 												onRegenerateTitleTask={handleRegenerateTitleTask}
 												onUpdateTaskTitle={handleUpdateTaskTitle}
+												onTogglePinTask={handleToggleTaskPinned}
 												commitTaskLoadingById={commitTaskLoadingById}
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												moveToTrashLoadingById={moveToTrashLoadingById}
@@ -1014,6 +1022,7 @@ export default function App(): ReactElement {
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 									onRegenerateTitleTask={handleRegenerateTitleTask}
 									onUpdateTaskTitle={handleUpdateTaskTitle}
+									onTogglePinTask={handleToggleTaskPinned}
 									onAddReviewComments={(taskId: string, text: string) => {
 										void handleAddReviewComments(taskId, text);
 									}}
