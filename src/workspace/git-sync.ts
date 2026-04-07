@@ -113,8 +113,8 @@ function parseStatusPath(line: string): string | null {
 export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceProbe> {
 	const repoRoot = await resolveRepoRoot(cwd);
 	const [statusResult, headCommitResult] = await Promise.all([
-		runGit(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
-		runGit(repoRoot, ["rev-parse", "--verify", "HEAD"]),
+		runGit(repoRoot, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"]),
 	]);
 
 	if (!statusResult.ok) {
@@ -200,7 +200,7 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 }
 
 async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
 	if (!result.ok || !result.stdout) {
 		throw new Error("No git repository detected for this workspace.");
 	}
@@ -231,7 +231,7 @@ export async function getGitSyncSummary(
 	options?: { probe?: GitWorkspaceProbe },
 ): Promise<RuntimeGitSyncSummary> {
 	const probe = options?.probe ?? (await probeGitWorkspaceState(cwd));
-	const diffResult = await runGit(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
+	const diffResult = await runGit(probe.repoRoot, ["--no-optional-locks", "diff", "--numstat", "HEAD", "--"]);
 	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
 	const untrackedAdditions = await countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths);
 
