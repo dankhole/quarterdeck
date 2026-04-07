@@ -586,6 +586,7 @@ export type RuntimeTaskSessionStartResponse = z.infer<typeof runtimeTaskSessionS
 
 export const runtimeTaskSessionStopRequestSchema = z.object({
 	taskId: z.string(),
+	waitForExit: z.boolean().optional(),
 });
 export type RuntimeTaskSessionStopRequest = z.infer<typeof runtimeTaskSessionStopRequestSchema>;
 

@@ -50,7 +50,7 @@ export interface UseTaskSessionsResult {
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
 	ensureTaskWorkspace: (task: BoardCard) => Promise<EnsureTaskWorkspaceResult>;
 	startTaskSession: (task: BoardCard, options?: StartTaskSessionOptions) => Promise<StartTaskSessionResult>;
-	stopTaskSession: (taskId: string) => Promise<void>;
+	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
@@ -172,13 +172,16 @@ export function useTaskSessions({
 	);
 
 	const stopTaskSession = useCallback(
-		async (taskId: string): Promise<void> => {
+		async (taskId: string, options?: { waitForExit?: boolean }): Promise<void> => {
 			if (!currentProjectId) {
 				return;
 			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				await trpcClient.runtime.stopTaskSession.mutate({ taskId });
+				await trpcClient.runtime.stopTaskSession.mutate({
+					taskId,
+					waitForExit: options?.waitForExit,
+				});
 			} catch {
 				// Ignore stop errors during cleanup.
 			}

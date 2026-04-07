@@ -288,7 +288,7 @@ describe("useLinkedBacklogTaskActions", () => {
 		});
 
 		expect(stopTaskSession).toHaveBeenCalledTimes(2);
-		expect(stopTaskSession).toHaveBeenNthCalledWith(1, reviewTask.id);
+		expect(stopTaskSession).toHaveBeenNthCalledWith(1, reviewTask.id, { waitForExit: true });
 		expect(stopTaskSession).toHaveBeenNthCalledWith(2, getDetailTerminalTaskId(reviewTask.id));
 	});
 

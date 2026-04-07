@@ -198,7 +198,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskSessionStopRequest(input);
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const summary = terminalManager.stopTaskSession(body.taskId);
+				const summary = body.waitForExit
+					? await terminalManager.stopTaskSessionAndWaitForExit(body.taskId)
+					: terminalManager.stopTaskSession(body.taskId);
 				return {
 					ok: Boolean(summary),
 					summary,

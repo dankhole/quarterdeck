@@ -56,7 +56,7 @@ interface UseBoardInteractionsInput {
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
-	stopTaskSession: (taskId: string) => Promise<void>;
+	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
@@ -848,7 +848,7 @@ export function useBoardInteractions({
 		void (async () => {
 			await Promise.all(
 				taskIds.map(async (taskId) => {
-					await stopTaskSession(taskId);
+					await stopTaskSession(taskId, { waitForExit: true });
 					await cleanupTaskWorkspace(taskId);
 				}),
 			);
