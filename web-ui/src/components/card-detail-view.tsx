@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { FolderOpen, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -10,13 +10,14 @@ import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panel
 import { FileBrowserPanel } from "@/components/detail-panels/file-browser-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
-import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+import { useTaskWorkspaceInfoValue, useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
@@ -113,11 +114,15 @@ function DiffToolbar({
 	onModeChange,
 	isExpanded,
 	onToggleExpand,
+	baseRef,
+	branch,
 }: {
 	mode: RuntimeWorkspaceChangesMode;
 	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
+	baseRef: string | null;
+	branch: string | null;
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
@@ -159,6 +164,16 @@ function DiffToolbar({
 					Last Turn
 				</Button>
 			</div>
+			{baseRef ? (
+				<Tooltip content={`Comparing changes from ${branch ?? "working copy"} against ${baseRef}`} side="bottom">
+					<div className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-md text-xs text-text-secondary bg-surface-1">
+						<GitCompareArrows size={12} className="shrink-0 text-text-tertiary" />
+						<span className="truncate max-w-[120px]">{branch ?? "working copy"}</span>
+						<ArrowRight size={10} className="shrink-0 text-text-tertiary" />
+						<span className="truncate max-w-[120px]">{baseRef}</span>
+					</div>
+				</Tooltip>
+			) : null}
 			<Button
 				variant="ghost"
 				size="sm"
@@ -412,6 +427,7 @@ export function CardDetailView({
 		[createRatioResizeHandler, detailFileBrowserTreeRatio, setDetailFileBrowserTreeRatio, startFileBrowserTreeResize],
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
+	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selection.card.id, selection.card.baseRef);
 	const lastTurnViewKey =
 		diffMode === "last_turn"
 			? [
@@ -672,6 +688,8 @@ export function CardDetailView({
 										onModeChange={setDiffMode}
 										isExpanded={isDiffExpanded}
 										onToggleExpand={handleToggleDiffExpand}
+										baseRef={selection.card.baseRef}
+										branch={taskWorkspaceInfo?.branch ?? null}
 									/>
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
@@ -775,6 +793,8 @@ export function CardDetailView({
 										onModeChange={setDiffMode}
 										isExpanded={isDiffExpanded}
 										onToggleExpand={handleToggleDiffExpand}
+										baseRef={selection.card.baseRef}
+										branch={taskWorkspaceInfo?.branch ?? null}
 									/>
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>

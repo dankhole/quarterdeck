@@ -31,7 +31,7 @@ Continuing work on the left toolbar and diff viewer UX:
 - **Diff viewer resize past midway**: The resize handle between the terminal and diff/changes panel currently can't be dragged past the midpoint. Should allow the diff viewer to expand to take up most or all of the horizontal space.
 - **Full-screen diff viewer**: Add a way to expand the diff viewer to full screen (e.g. a maximize button or double-click the resize handle) for reviewing large diffs without the terminal competing for space.
 - **Middle resize handle is inverted**: The drag direction on the center resize divider is backwards — dragging right shrinks when it should grow, and vice versa. Fix the drag polarity.
-- **Show branch comparison label**: Display which two branches are being diffed (e.g. `main..feat/my-feature`) at the top of the diff viewer so it's clear what you're looking at.
+- **Interactive base ref switcher**: The diff toolbar now shows the branch comparison (e.g. `feat/my-feature → main`). Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
 
 ## 6. Direct git commit from review (server-side)
 
