@@ -193,7 +193,7 @@ export function FileBrowserTreePanel({
 						onChange={handleSearchChange}
 						onKeyDown={handleKeyDown}
 						placeholder="Filter files..."
-						className="flex-1 bg-transparent text-xs text-text-primary placeholder-text-tertiary outline-none border-0 p-0"
+						className="flex-1 min-w-0 bg-transparent text-xs text-text-primary placeholder-text-tertiary outline-none border-0 p-0"
 					/>
 					{searchQuery ? (
 						<button
