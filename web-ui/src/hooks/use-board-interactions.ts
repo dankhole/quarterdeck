@@ -84,6 +84,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleRestartTaskSession: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
@@ -797,6 +798,30 @@ export function useBoardInteractions({
 		[board, resumeTaskFromTrash, setBoard, tryProgrammaticCardMove],
 	);
 
+	const handleRestartTaskSession = useCallback(
+		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || (selection.column.id !== "in_progress" && selection.column.id !== "review")) {
+				return;
+			}
+			void (async () => {
+				await stopTaskSession(taskId, { waitForExit: true });
+				// Move card back to in_progress if it's in review
+				if (selection.column.id === "review") {
+					setBoard((currentBoard) => {
+						const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
+						return moved.moved ? moved.board : currentBoard;
+					});
+				}
+				const started = await startTaskSession(selection.card);
+				if (!started.ok) {
+					notifyError(started.message ?? "Could not restart task session.");
+				}
+			})();
+		},
+		[board, setBoard, startTaskSession, stopTaskSession],
+	);
+
 	const handleCancelAutomaticTaskAction = useCallback(
 		(taskId: string) => {
 			setBoard((currentBoard) => {
@@ -892,6 +917,7 @@ export function useBoardInteractions({
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleRestartTaskSession,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,

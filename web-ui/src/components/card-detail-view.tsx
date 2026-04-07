@@ -242,6 +242,7 @@ export function CardDetailView({
 	onAgentOpenPrTask,
 	onMoveReviewCardToTrash,
 	onRestoreTaskFromTrash,
+	onRestartSessionTask,
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
 	onUpdateTaskTitle,
@@ -293,6 +294,7 @@ export function CardDetailView({
 	onAgentOpenPrTask?: (taskId: string) => void;
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	onRestoreTaskFromTrash?: (taskId: string) => void;
+	onRestartSessionTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
@@ -661,6 +663,7 @@ export function CardDetailView({
 								onTaskDragEnd={onTaskDragEnd}
 								onCreateTask={onCreateTask}
 								onStartTask={onStartTask}
+								onRestartSessionTask={onRestartSessionTask}
 								onStartAllTasks={onStartAllTasks}
 								onClearTrash={onClearTrash}
 								editingTaskId={editingTaskId}

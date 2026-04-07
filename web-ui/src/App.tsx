@@ -627,6 +627,7 @@ export default function App(): ReactElement {
 		handleCardSelect,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleRestartTaskSession,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
@@ -948,6 +949,7 @@ export default function App(): ReactElement {
 												onCardSelect={handleCardSelect}
 												onCreateTask={handleOpenCreateTask}
 												onStartTask={handleStartTaskFromBoard}
+												onRestartSessionTask={handleRestartTaskSession}
 												onStartAllTasks={handleStartAllBacklogTasksFromBoard}
 												onClearTrash={handleOpenClearTrash}
 												editingTaskId={editingTaskId}
@@ -1051,6 +1053,7 @@ export default function App(): ReactElement {
 									migratingTaskId={migratingTaskId}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
+									onRestartSessionTask={handleRestartTaskSession}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 									onRegenerateTitleTask={handleRegenerateTitleTask}
 									onUpdateTaskTitle={handleUpdateTaskTitle}
