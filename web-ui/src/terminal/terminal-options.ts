@@ -10,8 +10,8 @@ interface CreateQuarterdeckTerminalOptionsInput {
 
 const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
 export const TERMINAL_FONT_SIZE = 13;
-export const TERMINAL_PRIMARY_FONT = "JetBrainsMono Nerd Font";
-const TERMINAL_FONT_FAMILY = `'${TERMINAL_PRIMARY_FONT}', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace`;
+export const TERMINAL_PRIMARY_FONT = "JetBrainsMono Nerd Font Mono";
+const TERMINAL_FONT_FAMILY = `'${TERMINAL_PRIMARY_FONT}', 'JetBrainsMono Nerd Font', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace`;
 
 export function createQuarterdeckTerminalOptions({
 	cursorColor,
