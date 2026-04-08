@@ -120,7 +120,6 @@ export async function extractLastAssistantMessage(transcriptPath: string): Promi
 			}
 
 			// Cap at 500 chars.
-			// Cap at 500 chars.
 			return text.length > 500 ? `${text.slice(0, 500)}\u2026` : text;
 		}
 

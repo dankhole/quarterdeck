@@ -13,8 +13,6 @@ import {
 	type RuntimeTaskSessionStopRequest,
 	type RuntimeTaskWorkspaceInfoRequest,
 	type RuntimeTerminalWsClientMessage,
-	type RuntimeWorkspaceChangesRequest,
-	type RuntimeWorkspaceFileSearchRequest,
 	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
@@ -30,16 +28,12 @@ import {
 	runtimeTaskSessionStopRequestSchema,
 	runtimeTaskWorkspaceInfoRequestSchema,
 	runtimeTerminalWsClientMessageSchema,
-	runtimeWorkspaceChangesRequestSchema,
-	runtimeWorkspaceFileSearchRequestSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeEnsureRequestSchema,
 } from "./api-contract";
 
 const trimmedStringSchema = z.string().transform((value) => value.trim());
-const positiveIntegerFromQuerySchema = z.coerce.number().int().positive();
-
 const requiredTrimmedStringSchema = (message: string) => trimmedStringSchema.pipe(z.string().min(1, message));
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -48,18 +42,6 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown): T {
 		throw new Error(parsed.error.issues[0]?.message ?? "Invalid request payload.");
 	}
 	return parsed.data;
-}
-
-export function parseWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspaceChangesRequest {
-	const taskId = parseWithSchema(
-		requiredTrimmedStringSchema("Missing taskId query parameter."),
-		query.get("taskId") ?? "",
-	);
-	const baseRef = parseWithSchema(
-		requiredTrimmedStringSchema("Missing baseRef query parameter."),
-		query.get("baseRef") ?? "",
-	);
-	return parseWithSchema(runtimeWorkspaceChangesRequestSchema, { taskId, baseRef });
 }
 
 export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest {
@@ -72,38 +54,6 @@ export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTa
 		query.get("baseRef") ?? "",
 	);
 	return parseWithSchema(runtimeTaskWorkspaceInfoRequestSchema, { taskId, baseRef });
-}
-
-export function parseOptionalTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest | null {
-	if (!query.has("taskId")) {
-		if (query.has("baseRef")) {
-			throw new Error("baseRef query parameter requires taskId.");
-		}
-		return null;
-	}
-	return parseTaskWorkspaceInfoRequest(query);
-}
-
-export function parseWorkspaceFileSearchRequest(query: URLSearchParams): RuntimeWorkspaceFileSearchRequest {
-	const normalizedQuery = parseWithSchema(trimmedStringSchema, query.get("q") ?? "");
-	if (!normalizedQuery) {
-		return { query: "" };
-	}
-
-	const rawLimit = query.get("limit");
-	if (rawLimit == null || rawLimit.trim() === "") {
-		return parseWithSchema(runtimeWorkspaceFileSearchRequestSchema, {
-			query: normalizedQuery,
-		});
-	}
-	const parsedLimit = positiveIntegerFromQuerySchema.safeParse(rawLimit);
-	if (!parsedLimit.success) {
-		throw new Error("Invalid file search limit parameter.");
-	}
-	return parseWithSchema(runtimeWorkspaceFileSearchRequestSchema, {
-		query: normalizedQuery,
-		limit: parsedLimit.data,
-	});
 }
 
 export function parseGitCheckoutRequest(value: unknown): RuntimeGitCheckoutRequest {
