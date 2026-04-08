@@ -898,6 +898,150 @@ describe("useLinkedBacklogTaskActions", () => {
 			expect(saveTrashWorktreeNoticeDismissed).toHaveBeenCalledTimes(1);
 		});
 
+		it("suppresses toast after showTrashWorktreeNotice prop transitions from true to false", async () => {
+			let latestSnapshot: HookSnapshot | null = null;
+			const cleanupTaskWorkspace = vi.fn(async () => null);
+
+			// Board with tasks in both in_progress and review so we can trash one, re-render, then trash the other.
+			const boardFactory = (): BoardData => ({
+				columns: [
+					{ id: "backlog", title: "Backlog", cards: [] },
+					{
+						id: "in_progress",
+						title: "In Progress",
+						cards: [createTask("task-ip", "In progress task", 1)],
+					},
+					{
+						id: "review",
+						title: "Review",
+						cards: [createTask("task-rv", "Review task", 2)],
+					},
+					{ id: "trash", title: "Trash", cards: [] },
+				],
+				dependencies: [],
+			});
+
+			// Initial render with notice enabled
+			await act(async () => {
+				root.render(
+					<HookHarness
+						boardFactory={boardFactory}
+						cleanupTaskWorkspace={cleanupTaskWorkspace}
+						showTrashWorktreeNotice={true}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+
+			let snapshot = requireSnapshot(latestSnapshot);
+
+			// Trash from review — toast should appear
+			await act(async () => {
+				await snapshot.requestMoveTaskToTrash("task-rv", "review");
+			});
+			expect(toastMock).toHaveBeenCalledTimes(1);
+			toastMock.mockClear();
+
+			// Re-render with notice disabled (simulates config refresh after "Don't show again" or settings save)
+			await act(async () => {
+				root.render(
+					<HookHarness
+						boardFactory={boardFactory}
+						cleanupTaskWorkspace={cleanupTaskWorkspace}
+						showTrashWorktreeNotice={false}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+
+			snapshot = requireSnapshot(latestSnapshot);
+
+			// Trash from in_progress — toast should NOT appear
+			await act(async () => {
+				await snapshot.requestMoveTaskToTrash("task-ip", "in_progress");
+			});
+			expect(toastMock).not.toHaveBeenCalled();
+		});
+
+		it("full dismiss lifecycle: 'Don't show again' followed by prop update suppresses future toasts", async () => {
+			let latestSnapshot: HookSnapshot | null = null;
+			const cleanupTaskWorkspace = vi.fn(async () => null);
+			const saveTrashWorktreeNoticeDismissed = vi.fn();
+
+			const boardFactory = (): BoardData => ({
+				columns: [
+					{ id: "backlog", title: "Backlog", cards: [] },
+					{
+						id: "in_progress",
+						title: "In Progress",
+						cards: [createTask("task-ip", "In progress task", 1)],
+					},
+					{
+						id: "review",
+						title: "Review",
+						cards: [createTask("task-rv", "Review task", 2)],
+					},
+					{ id: "trash", title: "Trash", cards: [] },
+				],
+				dependencies: [],
+			});
+
+			await act(async () => {
+				root.render(
+					<HookHarness
+						boardFactory={boardFactory}
+						cleanupTaskWorkspace={cleanupTaskWorkspace}
+						showTrashWorktreeNotice={true}
+						saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+
+			let snapshot = requireSnapshot(latestSnapshot);
+
+			// Trash from review — toast appears
+			await act(async () => {
+				await snapshot.requestMoveTaskToTrash("task-rv", "review");
+			});
+			expect(toastMock).toHaveBeenCalledTimes(1);
+
+			// Click "Don't show again"
+			const toastOptions = toastMock.mock.calls[0]![1];
+			toastOptions.cancel.onClick();
+			expect(saveTrashWorktreeNoticeDismissed).toHaveBeenCalledTimes(1);
+			toastMock.mockClear();
+
+			// Simulate the config refresh that saveTrashWorktreeNoticeDismissed triggers
+			await act(async () => {
+				root.render(
+					<HookHarness
+						boardFactory={boardFactory}
+						cleanupTaskWorkspace={cleanupTaskWorkspace}
+						showTrashWorktreeNotice={false}
+						saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+
+			snapshot = requireSnapshot(latestSnapshot);
+
+			// Trash from in_progress — no toast
+			await act(async () => {
+				await snapshot.requestMoveTaskToTrash("task-ip", "in_progress");
+			});
+			expect(toastMock).not.toHaveBeenCalled();
+		});
+
 		it("does not show toast when confirmation dialog was triggered", async () => {
 			let latestSnapshot: HookSnapshot | null = null;
 			const onRequestTrashConfirmation = vi.fn();

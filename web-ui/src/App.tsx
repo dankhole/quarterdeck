@@ -188,8 +188,10 @@ export default function App(): ReactElement {
 	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
-		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false });
-	}, [currentProjectId]);
+		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
+			refreshRuntimeProjectConfig();
+		});
+	}, [currentProjectId, refreshRuntimeProjectConfig]);
 	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
 	const selectedShortcutLabel = useMemo(() => {
 		if (shortcuts.length === 0) {
