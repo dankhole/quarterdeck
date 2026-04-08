@@ -3,9 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeSettingsDialog } from "@/components/runtime-settings-dialog";
-import type { RuntimeConfigResponse } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
+const saveMock = vi.hoisted(() => vi.fn(async () => true));
 
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
@@ -35,7 +36,7 @@ vi.mock("@/runtime/use-runtime-config", () => ({
 		config: initialConfig ?? null,
 		isLoading: false,
 		isSaving: false,
-		save: vi.fn(async () => true),
+		save: saveMock,
 	}),
 }));
 
@@ -48,6 +49,16 @@ vi.mock("@/utils/notification-permission", () => ({
 	requestBrowserNotificationPermission: vi.fn(async () => "unsupported"),
 }));
 
+vi.mock("@/utils/notification-audio", () => ({
+	notificationAudioPlayer: {
+		ensureContext: vi.fn(),
+		preloadSounds: vi.fn(async () => {}),
+		play: vi.fn(),
+		dispose: vi.fn(),
+		loadedBufferCount: 0,
+	},
+}));
+
 function findButtonByText(container: ParentNode, text: string): HTMLButtonElement | null {
 	return (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ??
 		null) as HTMLButtonElement | null;
@@ -58,10 +69,14 @@ const savedConfig = {
 	selectedShortcutLabel: null,
 	agentAutonomousModeEnabled: true,
 	readyForReviewNotificationsEnabled: false,
+	audibleNotificationsEnabled: true,
+	audibleNotificationVolume: 0.7,
+	audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+	audibleNotificationsOnlyWhenHidden: true,
 	effectiveCommand: "claude",
 	detectedCommands: [],
 	shortcuts: [],
-	globalConfigPath: null,
+	globalConfigPath: "/tmp/.quarterdeck/config.json",
 	projectConfigPath: null,
 	agents: [
 		{
@@ -146,5 +161,149 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(resetLayoutCustomizationsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("renders audible notification controls when dialog is open", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		// Master toggle — look for the "Sound notifications" heading and the switch.
+		expect(document.body.textContent).toContain("Sound notifications");
+		expect(document.body.textContent).toContain("Play sounds when tasks need attention");
+
+		// Volume slider.
+		const volumeSlider = document.body.querySelector('input[type="range"]');
+		expect(volumeSlider).toBeInstanceOf(HTMLInputElement);
+
+		// 4 event checkboxes.
+		for (const key of ["permission", "review", "failure", "completion"]) {
+			const checkbox = document.getElementById(`audible-notification-${key}`);
+			expect(checkbox).not.toBeNull();
+		}
+
+		// Test sound button.
+		expect(findButtonByText(document.body, "Test sound")).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("disables per-event controls when master toggle is off", async () => {
+		const configWithAudioOff = {
+			...savedConfig,
+			audibleNotificationsEnabled: false,
+		} as unknown as RuntimeConfigResponse;
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={configWithAudioOff}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		// Volume slider should be disabled.
+		const volumeSlider = document.body.querySelector('input[type="range"]') as HTMLInputElement;
+		expect(volumeSlider.disabled).toBe(true);
+
+		// Event checkboxes should be disabled.
+		for (const key of ["permission", "review", "failure", "completion"]) {
+			const checkbox = document.getElementById(`audible-notification-${key}`) as HTMLButtonElement;
+			expect(checkbox.dataset.disabled).toBeDefined();
+		}
+
+		// Test sound button should be disabled.
+		const testButton = findButtonByText(document.body, "Test sound")!;
+		expect(testButton.disabled).toBe(true);
+	});
+
+	it("includes audible settings in save payload", async () => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		// Toggle master switch off to create a change.
+		const switches = document.body.querySelectorAll<HTMLButtonElement>('button[role="switch"]');
+		const audibleSwitch = Array.from(switches).find((s) =>
+			s.nextElementSibling?.textContent?.includes("Play sounds when tasks need attention"),
+		);
+		expect(audibleSwitch).toBeDefined();
+		await act(async () => {
+			audibleSwitch!.click();
+		});
+
+		// Click save.
+		const saveButton = findButtonByText(document.body, "Save");
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			saveButton!.click();
+		});
+
+		expect(saveMock).toHaveBeenCalledTimes(1);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accessing mock call args
+		const payload = (saveMock.mock.calls as any)[0][0] as RuntimeConfigSaveRequest;
+		expect(payload.audibleNotificationsEnabled).toBe(false);
+		expect(payload.audibleNotificationVolume).toBe(0.7);
+		expect(payload.audibleNotificationEvents).toEqual({
+			permission: true,
+			review: true,
+			failure: true,
+			completion: true,
+		});
+	});
+
+	it("syncs audible settings from loaded config", async () => {
+		const customConfig = {
+			...savedConfig,
+			audibleNotificationsEnabled: false,
+			audibleNotificationVolume: 0.3,
+			audibleNotificationEvents: { permission: false, review: true, failure: false, completion: true },
+		} as unknown as RuntimeConfigResponse;
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={customConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		// Volume should show 30%.
+		const volumeSlider = document.body.querySelector('input[type="range"]') as HTMLInputElement;
+		expect(volumeSlider.value).toBe("30");
+
+		// Permission and failure checkboxes should be unchecked.
+		const permissionCheckbox = document.getElementById("audible-notification-permission") as HTMLButtonElement;
+		expect(permissionCheckbox.dataset.state).toBe("unchecked");
+
+		const reviewCheckbox = document.getElementById("audible-notification-review") as HTMLButtonElement;
+		expect(reviewCheckbox.dataset.state).toBe("checked");
+
+		const failureCheckbox = document.getElementById("audible-notification-failure") as HTMLButtonElement;
+		expect(failureCheckbox.dataset.state).toBe("unchecked");
+
+		const completionCheckbox = document.getElementById("audible-notification-completion") as HTMLButtonElement;
+		expect(completionCheckbox.dataset.state).toBe("checked");
 	});
 });

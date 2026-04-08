@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CardDetailView } from "@/components/card-detail-view";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
@@ -137,6 +138,10 @@ function requireDetailDiffFileTreePanel(container: HTMLElement): HTMLElement {
 	return panel;
 }
 
+function renderWithProviders(root: Root, ui: ReactNode): void {
+	root.render(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 describe("CardDetailView", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -190,7 +195,8 @@ describe("CardDetailView", () => {
 		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -236,7 +242,8 @@ describe("CardDetailView", () => {
 		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -275,7 +282,8 @@ describe("CardDetailView", () => {
 		const onCloseGitHistory = vi.fn();
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -307,7 +315,8 @@ describe("CardDetailView", () => {
 
 	it("uses surface-primary colors for the detail terminal panel", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -335,7 +344,8 @@ describe("CardDetailView", () => {
 		window.localStorage.setItem(LocalStorageKey.DetailSidePanelRatio, "0.30");
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -357,7 +367,8 @@ describe("CardDetailView", () => {
 
 	it("persists the resized side panel ratio globally", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"
@@ -452,7 +463,8 @@ describe("CardDetailView", () => {
 		window.localStorage.setItem(LocalStorageKey.DetailExpandedDiffFileTreePanelRatio, "0.18");
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
+				root,
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="workspace-1"

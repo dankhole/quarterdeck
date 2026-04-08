@@ -4,7 +4,7 @@ import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
+import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
@@ -22,6 +22,7 @@ import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
+import { notificationAudioPlayer } from "@/utils/notification-audio";
 import {
 	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
@@ -277,6 +278,15 @@ export function RuntimeSettingsDialog({
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
+	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
+	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
+		permission: true,
+		review: true,
+		failure: true,
+		completion: true,
+	});
+	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(true);
 	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -321,6 +331,15 @@ export function RuntimeSettingsDialog({
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
+	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
+	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
+	const initialAudibleNotificationEvents = config?.audibleNotificationEvents ?? {
+		permission: true,
+		review: true,
+		failure: true,
+		completion: true,
+	};
+	const initialAudibleNotificationsOnlyWhenHidden = config?.audibleNotificationsOnlyWhenHidden ?? true;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -335,11 +354,36 @@ export function RuntimeSettingsDialog({
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
 			return true;
 		}
+		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
+			return true;
+		}
+		if (audibleNotificationVolume !== initialAudibleNotificationVolume) {
+			return true;
+		}
+		if (
+			audibleNotificationEvents.permission !== initialAudibleNotificationEvents.permission ||
+			audibleNotificationEvents.review !== initialAudibleNotificationEvents.review ||
+			audibleNotificationEvents.failure !== initialAudibleNotificationEvents.failure ||
+			audibleNotificationEvents.completion !== initialAudibleNotificationEvents.completion
+		) {
+			return true;
+		}
+		if (audibleNotificationsOnlyWhenHidden !== initialAudibleNotificationsOnlyWhenHidden) {
+			return true;
+		}
 		return !areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts);
 	}, [
 		agentAutonomousModeEnabled,
+		audibleNotificationEvents,
+		audibleNotificationVolume,
+		audibleNotificationsEnabled,
+		audibleNotificationsOnlyWhenHidden,
 		config,
 		initialAgentAutonomousModeEnabled,
+		initialAudibleNotificationEvents,
+		initialAudibleNotificationVolume,
+		initialAudibleNotificationsEnabled,
+		initialAudibleNotificationsOnlyWhenHidden,
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
 		initialShortcuts,
@@ -355,10 +399,20 @@ export function RuntimeSettingsDialog({
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
+		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
+		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
+		setAudibleNotificationEvents(
+			config?.audibleNotificationEvents ?? { permission: true, review: true, failure: true, completion: true },
+		);
+		setAudibleNotificationsOnlyWhenHidden(config?.audibleNotificationsOnlyWhenHidden ?? true);
 		setShortcuts(config?.shortcuts ?? []);
 		setSaveError(null);
 	}, [
 		config?.agentAutonomousModeEnabled,
+		config?.audibleNotificationEvents,
+		config?.audibleNotificationVolume,
+		config?.audibleNotificationsEnabled,
+		config?.audibleNotificationsOnlyWhenHidden,
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
@@ -427,6 +481,10 @@ export function RuntimeSettingsDialog({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled,
+			audibleNotificationVolume,
+			audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden,
 			shortcuts,
 		});
 		if (!saved) {
@@ -531,6 +589,116 @@ export function RuntimeSettingsDialog({
 							disabled={controlsDisabled}
 						/>
 					) : null}
+				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={audibleNotificationsEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setAudibleNotificationsEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Play sounds when tasks need attention</span>
+				</div>
+				<div
+					className={cn(
+						"flex items-center gap-2 mt-2 text-[13px]",
+						(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+					)}
+				>
+					<RadixCheckbox.Root
+						id="audible-notification-only-when-hidden"
+						checked={audibleNotificationsOnlyWhenHidden}
+						disabled={!audibleNotificationsEnabled || controlsDisabled}
+						onCheckedChange={(checked) => setAudibleNotificationsOnlyWhenHidden(checked === true)}
+						className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={12} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
+						<span className="text-text-primary">Only when tab is hidden</span>
+						<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
+					</label>
+				</div>
+				<div className="flex items-center gap-3 mt-3">
+					<Volume2
+						size={14}
+						className={cn(
+							"text-text-secondary",
+							(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+						)}
+					/>
+					<input
+						type="range"
+						min={0}
+						max={100}
+						step={1}
+						value={Math.round(audibleNotificationVolume * 100)}
+						onChange={(e) => setAudibleNotificationVolume(Number(e.target.value) / 100)}
+						disabled={!audibleNotificationsEnabled || controlsDisabled}
+						className="flex-1 h-1.5 accent-accent disabled:opacity-40"
+					/>
+					<span
+						className={cn(
+							"text-[13px] text-text-secondary w-8 text-right tabular-nums",
+							(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+						)}
+					>
+						{Math.round(audibleNotificationVolume * 100)}%
+					</span>
+				</div>
+				<div className="flex flex-col gap-2 mt-3">
+					{(
+						[
+							["permission", "Permissions", "Task is waiting for approval"],
+							["review", "Review", "Task is ready for review"],
+							["failure", "Failure", "Agent session failed or errored"],
+							["completion", "Completion", "Task completed successfully"],
+						] as const
+					).map(([key, label, description]) => (
+						<div
+							key={key}
+							className={cn(
+								"flex items-center gap-2 text-[13px]",
+								(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+							)}
+						>
+							<RadixCheckbox.Root
+								id={`audible-notification-${key}`}
+								checked={audibleNotificationEvents[key]}
+								disabled={!audibleNotificationsEnabled || controlsDisabled}
+								onCheckedChange={(checked) =>
+									setAudibleNotificationEvents((prev) => ({ ...prev, [key]: checked === true }))
+								}
+								className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+							>
+								<RadixCheckbox.Indicator>
+									<Check size={12} className="text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							<label htmlFor={`audible-notification-${key}`} className="flex items-center gap-1 cursor-pointer">
+								<span className="text-text-primary">{label}</span>
+								<span className="text-text-tertiary">— {description}</span>
+							</label>
+						</div>
+					))}
+				</div>
+				<div className="mt-3">
+					<Button
+						size="sm"
+						disabled={!audibleNotificationsEnabled || controlsDisabled}
+						onClick={() => {
+							notificationAudioPlayer.ensureContext();
+							notificationAudioPlayer.play("permission", audibleNotificationVolume);
+						}}
+					>
+						Test sound
+					</Button>
 				</div>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout</h6>

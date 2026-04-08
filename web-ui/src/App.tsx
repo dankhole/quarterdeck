@@ -36,6 +36,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
+import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
@@ -298,6 +299,25 @@ export default function App(): ReactElement {
 		taskSessions: sessions,
 		readyForReviewNotificationsEnabled,
 		workspacePath,
+	});
+
+	const audibleNotificationsEnabled = runtimeProjectConfig?.audibleNotificationsEnabled ?? true;
+	const audibleNotificationVolume = runtimeProjectConfig?.audibleNotificationVolume ?? 0.7;
+	const audibleNotificationEvents = runtimeProjectConfig?.audibleNotificationEvents ?? {
+		permission: true,
+		review: true,
+		failure: true,
+		completion: true,
+	};
+	const audibleNotificationsOnlyWhenHidden = runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? true;
+
+	useAudibleNotifications({
+		activeWorkspaceId: activeNotificationWorkspaceId,
+		taskSessions: sessions,
+		audibleNotificationsEnabled,
+		audibleNotificationVolume,
+		audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden,
 	});
 
 	// Apply task title updates received via WebSocket. Auto-generated titles
