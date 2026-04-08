@@ -1,6 +1,6 @@
 > **Fork notice:** This project is a derivative work of [kanban-org/kanban](https://github.com/kanban-org/kanban), originally created by Cline Bot Inc. and licensed under the Apache License 2.0. Significant modifications have been made. See [LICENSE](LICENSE) for terms.
 
-## npx quarterdeck (Research Preview)
+## Quarterdeck (Research Preview)
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe" width="100%" />
@@ -15,9 +15,6 @@ A replacement for your IDE better suited for running many agents in parallel and
 <table>
 <tbody>
 <td align="center">
-<a href="https://www.npmjs.com/package/quarterdeck" target="_blank">NPM</a>
-</td>
-<td align="center">
 <a href="https://github.com/dankhole/quarterdeck" target="_blank">GitHub</a>
 </td>
 <td align="center">
@@ -30,16 +27,19 @@ A replacement for your IDE better suited for running many agents in parallel and
 </table>
 </div>
 
-### 1. Open quarterdeck
+### 1. Install quarterdeck
 ```bash
-# Run directly (no install required)
-npx quarterdeck
-
-# Or install globally
-npm i -g quarterdeck
+git clone https://github.com/dankhole/quarterdeck.git
+cd quarterdeck
+npm run install:all
+npm run link
+```
+This builds the project and creates a global `quarterdeck` CLI command. Then open any git repo and run:
+```bash
+cd /path/to/your/project
 quarterdeck
 ```
-Run this from the root of any git repo. Quarterdeck will detect your installed CLI agent and launch a local running webserver in your browser. No account or setup required, it works right out of the box.
+Quarterdeck will detect your installed CLI agent and launch a local webserver in your browser. No account or setup required.
 
 ### 2. Create tasks
 Create a task card manually, or open the sidebar chat and ask your agent to break work down into tasks for you. Quarterdeck injects board-management instructions into that session so you can simply ask it to add tasks, link tasks, or start work on your board.

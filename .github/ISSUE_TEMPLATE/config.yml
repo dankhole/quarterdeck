@@ -1,8 +1,5 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
   - name: Feature Requests
-    url: https://github.com/dankhole/quarterdeck/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop
+    url: https://github.com/dankhole/quarterdeck/discussions/categories/ideas
     about: Request and vote on new features.
-  - name: Community Discord
-    url: https://discord.gg/quarterdeck
-    about: Ask questions and chat with the community.

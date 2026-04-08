@@ -1,4 +1,4 @@
-# Planned Features
+# Dev Todo
 
 ## 1. Fix: slight lag on audible notifications
 
@@ -16,17 +16,25 @@ The browser `Notification` API integration in `use-review-ready-notifications.ts
 
 When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
 
-If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #12 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
+If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #14 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
 
-## 5. Interactive base ref switcher
+## 5. Publish to npm
+
+Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
+
+## 6. Audit CI/CD and deployment infrastructure
+
+Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
+
+## 7. Interactive base ref switcher
 
 The diff toolbar shows the branch comparison (e.g. `feat/my-feature → main`) as a static label. Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
 
 Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
 
-## 6. Unify task card behavior across views
+## 8. Unify task card behavior across views
 
-The `BoardCard` component renders through two independent parent chains — the main board columns and the sidebar/context panel — and each threads props differently through intermediate components. Missing props silently disable features rather than erroring, which has already caused bugs (e.g. migrate button missing from sidebar cards). As more views are added (#10 project switcher, #13 sidebar decoupling), this divergence will get worse.
+The `BoardCard` component renders through two independent parent chains — the main board columns and the sidebar/context panel — and each threads props differently through intermediate components. Missing props silently disable features rather than erroring, which has already caused bugs (e.g. migrate button missing from sidebar cards). As more views are added (#12 project switcher, #15 sidebar decoupling), this divergence will get worse.
 
 See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-04-06-board-card-prop-threading-audit.md) for the full audit of current prop discrepancies between board and sidebar paths.
 
@@ -36,23 +44,23 @@ See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-
 - Consider a context-based approach (React context or a hook) so card callbacks don't need to be threaded through every intermediate component
 - Ensure any new planned views (project switcher, decoupled sidebar) inherit full card interaction without per-view wiring
 
-## 7. Self-healing for stale task status indicators
+## 9. Self-healing for stale task status indicators
 
 UI status indicators like "needs perms" and "waiting for approval" can get stuck when the underlying agent state changes in ways the UI doesn't catch — e.g. hitting Escape on a permission prompt dismisses it in the agent but the card still shows "waiting for approval". Add a periodic reconciliation job that polls actual agent/session state and corrects stale UI badges. This should cover at minimum:
 - Permission/approval badges that linger after the prompt is dismissed or resolved
 - Any status badge that outlives the session state it was derived from
 - Consider a heartbeat or terminal output heuristic — if the agent is producing new output, it's clearly not blocked on permissions anymore
 
-## 8. Server-side commit in the diff viewer
+## 10. Server-side commit in the diff viewer
 
 Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
 
 - **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
 - **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
 - **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
-- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#14), which would also support committing.
+- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#16), which would also support committing.
 
-## 9. Pulse integration for enhanced status display (Nerd Fonts)
+## 11. Pulse integration for enhanced status display (Nerd Fonts)
 
 Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
 
@@ -66,7 +74,7 @@ Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that 
 - Should be seamless — no user configuration required beyond having Nerd Fonts installed
 - Pulse is a tool made by a coworker, so coordinate with them on the integration surface
 
-## 10. Project switcher in the detail toolbar
+## 12. Project switcher in the detail toolbar
 
 Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
 
@@ -76,7 +84,7 @@ Add a project panel to the left detail toolbar (alongside the existing Board and
 
 **Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
 
-## 11. Performance audit for concurrent agents
+## 13. Performance audit for concurrent agents
 
 Audit and address performance bottlenecks that emerge when running many agents simultaneously. An earlier analysis exists at [docs/performance-bottleneck-analysis.md](performance-bottleneck-analysis.md) but is likely out of date — use it as a starting point, not a source of truth. Key areas to re-evaluate:
 
@@ -87,7 +95,7 @@ Audit and address performance bottlenecks that emerge when running many agents s
 - Large diffs cause noticeable UI lag — full file text (old + new) is sent inline and diff computation happens client-side, so tasks with many changed files or large files bog down the browser
 - Profile real-world usage with 5–10 concurrent agents to identify any new bottlenecks introduced since the earlier analysis
 
-## 12. Resume card sessions after crash/closure
+## 14. Resume card sessions after crash/closure
 
 When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
 - Investigate why the agent session doesn't reconnect after restart
@@ -95,7 +103,7 @@ When Quarterdeck crashes or is closed and reopened, clicking on existing cards n
 - Resume or re-attach to the Claude conversation so the agent can continue where it left off
 - Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
 
-## 13. Decouple the detail sidebar from task selection
+## 15. Decouple the detail sidebar from task selection
 
 The detail sidebar (left toolbar + panel slots + resize layout) is currently only rendered when a task is selected via `CardDetailView`, which requires a `CardSelection` prop. This blocks using the sidebar for non-task views like git management, a standalone board panel, or workspace-level browsing.
 
@@ -113,13 +121,13 @@ The detail sidebar (left toolbar + panel slots + resize layout) is currently onl
 
 **Approach**: Rather than a full architectural rewrite, introduce a `DetailContext` concept — either "task" (existing behavior, includes card + session) or "workspace" (no task, operates on the main repo). `CardDetailView` switches its data sources and available panels based on context. The toolbar, layout, and resize system stay exactly as-is.
 
-**Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #14 (git management) and #10 (project switcher) as the first consumers of this decoupled sidebar.
+**Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #16 (git management) and #12 (project switcher) as the first consumers of this decoupled sidebar.
 
 **Board view as a sidebar tab**: When moving the board into the sidebar, also reconsider the column stages themselves — are backlog/in_progress/review/done/trash still the right model, or should stages be more flexible? At minimum, update the colors for in_progress and review — they're too similar and hard to distinguish at a glance in a compact sidebar layout.
 
-## 14. Git management / workspace view
+## 16. Git management / workspace view
 
-A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. Depends on #13 (decoupled sidebar) for rendering without a task selection.
+A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. Depends on #15 (decoupled sidebar) for rendering without a task selection.
 
 **Branch management**:
 - Show the currently checked out branch in the main repo (not a worktree)
@@ -131,7 +139,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 **Branch diffing**:
 - Select two branches to compare — opens the diff in the existing `DiffViewerPanel`
 - This reuses the Changes panel infrastructure but with a different data source: `git diff branchA...branchB` instead of task workspace changes
-- Requires the workspace-level data fetching path from #13 (e.g. a `getWorkspaceChangesBetweenRefs` call that isn't task-scoped)
+- Requires the workspace-level data fetching path from #15 (e.g. a `getWorkspaceChangesBetweenRefs` call that isn't task-scoped)
 
 **How it fits in the sidebar**:
 - New toolbar button (e.g. `GitBranch` icon) adds a "Git" panel to `DetailPanelId`
@@ -145,7 +153,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
 
-## 15. Rewrite backend in Go
+## 17. Rewrite backend in Go
 
 Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
 
