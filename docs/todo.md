@@ -145,7 +145,13 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
 
-## 15. Rewrite backend in Go
+## 15. Incremental expand in diff viewer
+
+Add "show 20 more lines" incremental expand buttons to collapsed context blocks in the diff viewer, replacing the current full-expand behavior with progressive expansion. This improves usability on large diffs where expanding all hidden lines at once is overwhelming.
+
+Upstream cline/kanban implemented this in commit `56adf45a` — see [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for details. Our `diff-renderer.tsx` has diverged so this would need to be reimplemented rather than cherry-picked, but the upstream commit is a useful reference for the approach.
+
+## 16. Rewrite backend in Go
 
 Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
 
