@@ -4,8 +4,7 @@ import { type AudibleNotificationEventType, notificationAudioPlayer } from "@/ut
 import { isApprovalState } from "@/utils/session-status";
 
 interface UseAudibleNotificationsOptions {
-	activeWorkspaceId: string | null;
-	taskSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: {
@@ -18,13 +17,24 @@ interface UseAudibleNotificationsOptions {
 }
 
 /**
- * Settle window in milliseconds. When a task stops (column changes from
- * active → stopped), we wait this long for the session data to stabilise
- * before playing a sound. This covers the gap between the initial state
- * transition (which may lack hook activity data) and the follow-up
- * activity update that arrives after the server's async checkpoint capture.
+ * Settle window for hook-based transitions. When a hook fires `to_review`,
+ * `latestHookActivity` is cleared and repopulated after the server's async
+ * checkpoint capture. This window allows the activity data to arrive so
+ * `isApprovalState` can distinguish permission sounds from review sounds.
+ *
+ * Non-hook transitions (exit, error, attention, failed) have their sound
+ * event fully determined by `state`, `reviewReason`, and `exitCode` — they
+ * fire immediately with no settle delay.
  */
-const SETTLE_WINDOW_MS = 1500;
+const SETTLE_WINDOW_HOOK_MS = 500;
+const SETTLE_WINDOW_IMMEDIATE_MS = 0;
+
+function getSettleWindowMs(summary: RuntimeTaskSessionSummary): number {
+	if (summary.state === "awaiting_review" && summary.reviewReason === "hook") {
+		return SETTLE_WINDOW_HOOK_MS;
+	}
+	return SETTLE_WINDOW_IMMEDIATE_MS;
+}
 
 /** Higher number = higher priority. Failure beats permission beats review/completion. */
 const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
@@ -48,7 +58,11 @@ function isTabVisible(): boolean {
 	if (typeof document === "undefined") {
 		return true;
 	}
-	return document.visibilityState === "visible";
+	// Both conditions must be true for the user to actually be looking at
+	// Quarterdeck. visibilityState alone reports "visible" even when the
+	// browser window is behind other apps (terminal, IDE), which is the
+	// primary use case for audible notifications.
+	return document.visibilityState === "visible" && document.hasFocus();
 }
 
 function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): AudibleNotificationEventType | null {
@@ -80,8 +94,7 @@ interface PendingSound {
 }
 
 export function useAudibleNotifications({
-	activeWorkspaceId,
-	taskSessions,
+	notificationSessions,
 	audibleNotificationsEnabled,
 	audibleNotificationVolume,
 	audibleNotificationEvents,
@@ -89,7 +102,6 @@ export function useAudibleNotifications({
 }: UseAudibleNotificationsOptions): void {
 	const previousColumnsRef = useRef<Map<string, TaskColumn>>(new Map());
 	const isInitialLoadRef = useRef(true);
-	const previousWorkspaceIdRef = useRef<string | null>(activeWorkspaceId);
 	const pendingSoundsRef = useRef<Map<string, PendingSound>>(new Map());
 	const latestVolumeRef = useRef(audibleNotificationVolume);
 	const latestEventsRef = useRef(audibleNotificationEvents);
@@ -106,31 +118,14 @@ export function useAudibleNotifications({
 		}
 	};
 
-	// Clear state tracking on workspace switch.
-	useEffect(() => {
-		if (activeWorkspaceId !== previousWorkspaceIdRef.current) {
-			previousColumnsRef.current.clear();
-			isInitialLoadRef.current = true;
-			for (const pending of pendingSoundsRef.current.values()) {
-				clearTimeout(pending.timer);
-			}
-			pendingSoundsRef.current.clear();
-			previousWorkspaceIdRef.current = activeWorkspaceId;
-		}
-	}, [activeWorkspaceId]);
-
 	// Single detection path: column-based transitions with settle window.
 	useEffect(() => {
-		if (!activeWorkspaceId) {
-			return;
-		}
-
 		const previousColumns = previousColumnsRef.current;
 
 		// On initial load, populate columns without playing sounds.
 		if (isInitialLoadRef.current) {
 			isInitialLoadRef.current = false;
-			for (const [taskId, summary] of Object.entries(taskSessions)) {
+			for (const [taskId, summary] of Object.entries(notificationSessions)) {
 				previousColumns.set(taskId, deriveColumn(summary));
 			}
 			return;
@@ -138,7 +133,7 @@ export function useAudibleNotifications({
 
 		const soundsSuppressed = !audibleNotificationsEnabled || (audibleNotificationsOnlyWhenHidden && isTabVisible());
 
-		for (const [taskId, summary] of Object.entries(taskSessions)) {
+		for (const [taskId, summary] of Object.entries(notificationSessions)) {
 			const currentColumn = deriveColumn(summary);
 			const previousColumn = previousColumns.get(taskId);
 			previousColumns.set(taskId, currentColumn);
@@ -157,7 +152,7 @@ export function useAudibleNotifications({
 				}
 				const eventType = resolveSessionSoundEvent(summary);
 				if (eventType) {
-					const timer = setTimeout(() => fireSound(taskId), SETTLE_WINDOW_MS);
+					const timer = setTimeout(() => fireSound(taskId), getSettleWindowMs(summary));
 					pendingSoundsRef.current.set(taskId, { eventType, timer });
 				}
 				continue;
@@ -185,9 +180,10 @@ export function useAudibleNotifications({
 			}
 		}
 
-		// Clean up removed tasks.
+		// Clean up removed tasks. In practice notificationSessions grows monotonically,
+		// so this loop is defensive — retained for correctness if pruning is added later.
 		for (const taskId of previousColumns.keys()) {
-			if (!(taskId in taskSessions)) {
+			if (!(taskId in notificationSessions)) {
 				previousColumns.delete(taskId);
 				const existing = pendingSoundsRef.current.get(taskId);
 				if (existing) {
@@ -196,7 +192,7 @@ export function useAudibleNotifications({
 				}
 			}
 		}
-	}, [activeWorkspaceId, audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, taskSessions]);
+	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationSessions]);
 
 	// Clean up pending timers on unmount.
 	useEffect(() => {

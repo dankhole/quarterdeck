@@ -400,6 +400,15 @@ export const runtimeStateStreamTaskTitleUpdatedMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskTitleUpdatedMessage = z.infer<typeof runtimeStateStreamTaskTitleUpdatedMessageSchema>;
 
+export const runtimeStateStreamTaskNotificationMessageSchema = z.object({
+	type: z.literal("task_notification"),
+	// Included for consistency with other message schemas and to support future
+	// per-workspace notification settings (currently out of scope).
+	workspaceId: z.string(),
+	summaries: z.array(runtimeTaskSessionSummarySchema),
+});
+export type RuntimeStateStreamTaskNotificationMessage = z.infer<typeof runtimeStateStreamTaskNotificationMessageSchema>;
+
 export const runtimeStateStreamErrorMessageSchema = z.object({
 	type: z.literal("error"),
 	message: z.string(),
@@ -414,6 +423,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamWorkspaceMetadataMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskTitleUpdatedMessageSchema,
+	runtimeStateStreamTaskNotificationMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;

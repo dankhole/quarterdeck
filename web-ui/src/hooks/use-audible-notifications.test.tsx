@@ -45,8 +45,7 @@ function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> = {}): 
 // --- Hook harness ---
 
 interface HookProps {
-	activeWorkspaceId: string | null;
-	taskSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: {
@@ -60,8 +59,7 @@ interface HookProps {
 
 function defaultProps(): HookProps {
 	return {
-		activeWorkspaceId: "ws-1",
-		taskSessions: {},
+		notificationSessions: {},
 		audibleNotificationsEnabled: true,
 		audibleNotificationVolume: 0.7,
 		audibleNotificationEvents: {
@@ -84,8 +82,8 @@ function HookHarness({ onRender, ...props }: HookProps & { onRender?: () => void
 
 // --- Test setup ---
 
-/** Settle window used by the hook (must match SETTLE_WINDOW_MS in source). */
-const SETTLE_MS = 1500;
+/** Settle window for hook events (must match SETTLE_WINDOW_HOOK_MS in source). */
+const SETTLE_HOOK_MS = 500;
 
 describe("useAudibleNotifications", () => {
 	let container: HTMLDivElement;
@@ -109,10 +107,10 @@ describe("useAudibleNotifications", () => {
 		root = createRoot(container);
 	});
 
-	/** Flush the settle window so pending sounds fire. */
+	/** Flush all pending sound timers (covers both immediate and hook settle windows). */
 	function flushSettleWindow(): void {
 		act(() => {
-			vi.advanceTimersByTime(SETTLE_MS + 50);
+			vi.advanceTimersByTime(SETTLE_HOOK_MS + 50);
 		});
 	}
 
@@ -141,7 +139,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -153,7 +151,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -186,7 +184,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -197,7 +195,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -229,7 +227,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -240,7 +238,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -262,7 +260,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -273,7 +271,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -298,7 +296,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -309,7 +307,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -336,7 +334,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -347,7 +345,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -382,7 +380,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -393,7 +391,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -428,7 +426,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -439,7 +437,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -464,7 +462,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -475,7 +473,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -493,8 +491,9 @@ describe("useAudibleNotifications", () => {
 
 	// --- Visibility gating ---
 
-	it("does not play when tab is visible and onlyWhenHidden is true", async () => {
+	it("does not play when tab is visible and focused and onlyWhenHidden is true", async () => {
 		vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+		vi.spyOn(document, "hasFocus").mockReturnValue(true);
 
 		const props = defaultProps();
 
@@ -502,7 +501,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -513,7 +512,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -528,6 +527,42 @@ describe("useAudibleNotifications", () => {
 		expect(playMock).not.toHaveBeenCalled();
 	});
 
+	it("plays when tab is visible but window is unfocused and onlyWhenHidden is true", async () => {
+		vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+		vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+		const props = defaultProps();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+	});
+
 	// --- Initial snapshot ---
 
 	it("does not play for initial snapshot load", async () => {
@@ -538,7 +573,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -562,7 +597,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -573,7 +608,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -597,7 +632,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 						"task-2": createMockSession({ taskId: "task-2", state: "running", reviewReason: null }),
 					}}
@@ -609,7 +644,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -632,41 +667,6 @@ describe("useAudibleNotifications", () => {
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
-	// --- Workspace ---
-
-	it("does not play when activeWorkspaceId is null", async () => {
-		const props = { ...defaultProps(), activeWorkspaceId: null };
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					{...props}
-					taskSessions={{
-						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
-					}}
-				/>,
-			);
-		});
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					{...props}
-					taskSessions={{
-						"task-1": createMockSession({
-							taskId: "task-1",
-							state: "awaiting_review",
-							reviewReason: "error",
-						}),
-					}}
-				/>,
-			);
-		});
-
-		flushSettleWindow();
-		expect(playMock).not.toHaveBeenCalled();
-	});
-
 	// --- Non-zero and null exit codes ---
 
 	it("plays failure sound when session exits with non-zero exit code", async () => {
@@ -676,7 +676,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -687,7 +687,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -710,7 +710,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -721,7 +721,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -746,7 +746,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -757,7 +757,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "failed",
@@ -781,7 +781,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -792,7 +792,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "interrupted",
@@ -814,7 +814,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -825,7 +825,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -849,7 +849,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -860,7 +860,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -873,46 +873,6 @@ describe("useAudibleNotifications", () => {
 
 		flushSettleWindow();
 		expect(playMock).toHaveBeenCalledWith("review", 0.7);
-	});
-
-	// --- Workspace switch ---
-
-	it("clears state on workspace switch — no stale sounds", async () => {
-		const props = defaultProps();
-
-		// Render with ws-1 and a running session.
-		await act(async () => {
-			root.render(
-				<HookHarness
-					{...props}
-					activeWorkspaceId="ws-1"
-					taskSessions={{
-						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
-					}}
-				/>,
-			);
-		});
-
-		// Switch to ws-2 with an error session already present.
-		// The ref was cleared, so this is treated as initial snapshot — no sound.
-		await act(async () => {
-			root.render(
-				<HookHarness
-					{...props}
-					activeWorkspaceId="ws-2"
-					taskSessions={{
-						"task-2": createMockSession({
-							taskId: "task-2",
-							state: "awaiting_review",
-							reviewReason: "error",
-						}),
-					}}
-				/>,
-			);
-		});
-
-		flushSettleWindow();
-		expect(playMock).not.toHaveBeenCalled();
 	});
 
 	// --- Click listener ---
@@ -945,14 +905,14 @@ describe("useAudibleNotifications", () => {
 
 	// --- Session removal ---
 
-	it("handles session removed from taskSessions", async () => {
+	it("handles session removed from notificationSessions", async () => {
 		const props = defaultProps();
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -961,7 +921,7 @@ describe("useAudibleNotifications", () => {
 
 		// Remove task-1 from sessions entirely.
 		await act(async () => {
-			root.render(<HookHarness {...props} taskSessions={{}} />);
+			root.render(<HookHarness {...props} notificationSessions={{}} />);
 		});
 
 		// No crash, no sound.
@@ -979,7 +939,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -991,7 +951,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -1017,7 +977,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -1053,23 +1013,33 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
 			);
 		});
 
-		// Task stops.
+		// Task stops with hook event (has settle window that allows cancellation).
 		await act(async () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
-							reviewReason: "error",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "SomeHook",
+								notificationType: null,
+								activityText: null,
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: null,
+								conversationSummaryText: null,
+							},
 						}),
 					}}
 				/>,
@@ -1081,7 +1051,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -1092,16 +1062,16 @@ describe("useAudibleNotifications", () => {
 		expect(playMock).not.toHaveBeenCalled();
 	});
 
-	// --- No sound before settle window expires ---
+	// --- Immediate fire for non-hook events ---
 
-	it("does not play before settle window expires", async () => {
+	it("fires non-hook events immediately without settle delay", async () => {
 		const props = defaultProps();
 
 		await act(async () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
 					}}
 				/>,
@@ -1112,7 +1082,7 @@ describe("useAudibleNotifications", () => {
 			root.render(
 				<HookHarness
 					{...props}
-					taskSessions={{
+					notificationSessions={{
 						"task-1": createMockSession({
 							taskId: "task-1",
 							state: "awaiting_review",
@@ -1123,14 +1093,108 @@ describe("useAudibleNotifications", () => {
 			);
 		});
 
-		// Advance less than settle window.
+		// Flush only the immediate (0ms) timer — no settle delay needed.
 		act(() => {
-			vi.advanceTimersByTime(500);
+			vi.advanceTimersByTime(1);
+		});
+		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+	});
+
+	// --- Hook events wait for settle window ---
+
+	it("does not play hook event before settle window expires", async () => {
+		const props = defaultProps();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "hook",
+							latestHookActivity: {
+								hookEventName: "SomeHook",
+								notificationType: null,
+								activityText: null,
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: null,
+								source: null,
+								conversationSummaryText: null,
+							},
+						}),
+					}}
+				/>,
+			);
+		});
+
+		// Advance less than hook settle window.
+		act(() => {
+			vi.advanceTimersByTime(200);
 		});
 		expect(playMock).not.toHaveBeenCalled();
 
 		// Now flush the rest.
 		flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("review", 0.7);
+	});
+
+	// --- Cross-workspace notifications ---
+
+	it("plays sound for tasks from different workspaces", async () => {
+		const props = defaultProps();
+
+		// Start with running tasks (simulating two workspaces).
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"ws1-task": createMockSession({ taskId: "ws1-task", state: "running" }),
+						"ws2-task": createMockSession({ taskId: "ws2-task", state: "running" }),
+					}}
+				/>,
+			);
+		});
+
+		// Both tasks transition — one per workspace.
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"ws1-task": createMockSession({
+							taskId: "ws1-task",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+						"ws2-task": createMockSession({
+							taskId: "ws2-task",
+							state: "awaiting_review",
+							reviewReason: "exit",
+							exitCode: 0,
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		expect(playMock).toHaveBeenCalledTimes(2);
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
 	});
 });

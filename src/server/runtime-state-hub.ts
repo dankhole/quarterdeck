@@ -8,6 +8,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskNotificationMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamTaskTitleUpdatedMessage,
@@ -110,6 +111,20 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 	};
 
+	const broadcastTaskNotification = (workspaceId: string, summaries: RuntimeTaskSessionSummary[]) => {
+		if (runtimeStateClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamTaskNotificationMessage = {
+			type: "task_notification",
+			workspaceId,
+			summaries,
+		};
+		for (const client of runtimeStateClients) {
+			sendRuntimeStateMessage(client, payload);
+		}
+	};
+
 	const flushTaskSessionSummaries = (workspaceId: string) => {
 		const pending = pendingTaskSessionSummariesByWorkspaceId.get(workspaceId);
 		if (!pending || pending.size === 0) {
@@ -128,6 +143,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				sendRuntimeStateMessage(client, payload);
 			}
 		}
+		broadcastTaskNotification(workspaceId, summaries);
 		void broadcastRuntimeProjectsUpdated(workspaceId);
 	};
 
