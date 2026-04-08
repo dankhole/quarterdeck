@@ -3,6 +3,7 @@
 // on state orchestration instead of transport plumbing.
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	PromptShortcut,
 	RuntimeAgentId,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
@@ -21,6 +22,7 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
+		promptShortcuts?: PromptShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;

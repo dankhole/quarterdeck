@@ -36,6 +36,7 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
 		shortcuts: [],
+		promptShortcuts: [],
 		...overrides,
 	};
 }

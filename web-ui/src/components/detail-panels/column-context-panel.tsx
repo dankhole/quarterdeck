@@ -33,6 +33,12 @@ function ColumnSection({
 	activeDragSourceColumnId,
 	onMigrateWorkingDirectory,
 	migratingTaskId,
+	onRunPromptShortcut,
+	onSelectPromptShortcutLabel,
+	promptShortcuts,
+	lastUsedPromptShortcutLabel,
+	isPromptShortcutRunning,
+	onManagePromptShortcuts,
 	showSummaryOnCards,
 	onRequestDisplaySummary,
 }: {
@@ -58,6 +64,12 @@ function ColumnSection({
 	activeDragSourceColumnId?: BoardColumnId | null;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
+	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
+	onSelectPromptShortcutLabel?: (label: string) => void;
+	promptShortcuts?: Array<{ label: string; prompt: string }>;
+	lastUsedPromptShortcutLabel?: string;
+	isPromptShortcutRunning?: boolean;
+	onManagePromptShortcuts?: () => void;
 	showSummaryOnCards?: boolean;
 	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
@@ -202,6 +214,12 @@ function ColumnSection({
 												onRegenerateTitle={onRegenerateTitleTask}
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
+												onRunPromptShortcut={onRunPromptShortcut}
+												onSelectPromptShortcutLabel={onSelectPromptShortcutLabel}
+												promptShortcuts={promptShortcuts}
+												lastUsedPromptShortcutLabel={lastUsedPromptShortcutLabel}
+												isPromptShortcutRunning={isPromptShortcutRunning}
+												onManagePromptShortcuts={onManagePromptShortcuts}
 												showSummaryOnCards={showSummaryOnCards}
 												onRequestDisplaySummary={onRequestDisplaySummary}
 												onClick={() => {
@@ -252,6 +270,12 @@ export function ColumnContextPanel({
 	onMigrateWorkingDirectory,
 	migratingTaskId,
 	panelWidth,
+	onRunPromptShortcut,
+	onSelectPromptShortcutLabel,
+	promptShortcuts,
+	lastUsedPromptShortcutLabel,
+	isPromptShortcutRunning,
+	onManagePromptShortcuts,
 	showSummaryOnCards,
 	onRequestDisplaySummary,
 }: {
@@ -276,6 +300,12 @@ export function ColumnContextPanel({
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
 	panelWidth?: string;
+	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
+	onSelectPromptShortcutLabel?: (label: string) => void;
+	promptShortcuts?: Array<{ label: string; prompt: string }>;
+	lastUsedPromptShortcutLabel?: string;
+	isPromptShortcutRunning?: boolean;
+	onManagePromptShortcuts?: () => void;
 	showSummaryOnCards?: boolean;
 	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
@@ -370,6 +400,12 @@ export function ColumnContextPanel({
 							activeDragSourceColumnId={activeDragSourceColumnId}
 							onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 							migratingTaskId={migratingTaskId}
+							onRunPromptShortcut={column.id === "review" ? onRunPromptShortcut : undefined}
+							onSelectPromptShortcutLabel={column.id === "review" ? onSelectPromptShortcutLabel : undefined}
+							promptShortcuts={column.id === "review" ? promptShortcuts : undefined}
+							lastUsedPromptShortcutLabel={column.id === "review" ? lastUsedPromptShortcutLabel : undefined}
+							isPromptShortcutRunning={column.id === "review" ? isPromptShortcutRunning : undefined}
+							onManagePromptShortcuts={column.id === "review" ? onManagePromptShortcuts : undefined}
 							showSummaryOnCards={showSummaryOnCards}
 							onRequestDisplaySummary={onRequestDisplaySummary}
 						/>

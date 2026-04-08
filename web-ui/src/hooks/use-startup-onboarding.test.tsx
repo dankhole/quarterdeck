@@ -29,6 +29,7 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
 		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["codex"],
+		promptShortcuts: [],
 		agents: [
 			{
 				id: "codex",

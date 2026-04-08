@@ -126,6 +126,7 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
 		shortcuts: [],
+		promptShortcuts: [],
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 	};

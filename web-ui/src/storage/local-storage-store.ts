@@ -20,6 +20,7 @@ export enum LocalStorageKey {
 	PreferredOpenTarget = "quarterdeck.preferred-open-target",
 	NotificationBadgeClearEvent = "quarterdeck.notification-badge-clear.v1",
 	TabVisibilityPresence = "quarterdeck.tab-visibility-presence.v1",
+	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

@@ -73,6 +73,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
 		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["codex", "claude"],
+		promptShortcuts: [],
 		agents: [
 			{
 				id: "codex",
