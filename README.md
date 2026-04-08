@@ -9,7 +9,7 @@
 A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
 
 > [!WARNING]
-> Quarterdeck is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback in #quarterdeck on our [discord](https://discord.gg/quarterdeck).
+> Quarterdeck is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback on [GitHub Issues](https://github.com/dankhole/quarterdeck/issues).
 
 <div align="left">
 <table>
@@ -24,13 +24,7 @@ A replacement for your IDE better suited for running many agents in parallel and
 <a href="https://github.com/dankhole/quarterdeck/issues" target="_blank">Issues</a>
 </td>
 <td align="center">
-<a href="https://github.com/dankhole/quarterdeck/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank">Feature Requests</a>
-</td>
-<td align="center">
-<a href="https://discord.gg/quarterdeck" target="_blank">Discord</a>
-</td>
-<td align="center">
-<a href="https://x.com/quarterdeck" target="_blank">@quarterdeck</a>
+<a href="https://github.com/dankhole/quarterdeck/discussions/categories/ideas" target="_blank">Feature Requests</a>
 </td>
 </tbody>
 </table>
