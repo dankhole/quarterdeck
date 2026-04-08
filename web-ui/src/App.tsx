@@ -13,6 +13,7 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { GitHistoryView } from "@/components/git-history-view";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { PromptShortcutEditorDialog } from "@/components/prompt-shortcut-editor-dialog";
 import { QuarterdeckBoard } from "@/components/quarterdeck-board";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
@@ -48,6 +49,7 @@ import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-m
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
+import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
 import { useQuarterdeckAccessGate } from "@/hooks/use-quarterdeck-access-gate";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
@@ -518,6 +520,19 @@ export default function App(): ReactElement {
 			prepareWaitForTerminalConnectionReady,
 			sendTaskSessionInput,
 		});
+	const {
+		lastUsedLabel: lastUsedPromptShortcutLabel,
+		isRunning: isPromptShortcutRunning,
+		runPromptShortcut,
+		selectShortcutLabel: selectPromptShortcutLabel,
+		savePromptShortcuts,
+	} = usePromptShortcuts({
+		currentProjectId,
+		promptShortcuts: runtimeProjectConfig?.promptShortcuts ?? [],
+		refreshRuntimeConfig: refreshRuntimeProjectConfig,
+		sendTaskSessionInput,
+	});
+	const [promptShortcutEditorOpen, setPromptShortcutEditorOpen] = useState(false);
 
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>
@@ -1108,6 +1123,12 @@ export default function App(): ReactElement {
 									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 									onBottomTerminalRestart={handleRestartDetailTerminal}
 									isDocumentVisible={isDocumentVisible}
+									onRunPromptShortcut={runPromptShortcut}
+									onSelectPromptShortcutLabel={selectPromptShortcutLabel}
+									promptShortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+									lastUsedPromptShortcutLabel={lastUsedPromptShortcutLabel}
+									isPromptShortcutRunning={isPromptShortcutRunning}
+									onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
 								/>
 							</div>
 						) : null}
@@ -1128,6 +1149,12 @@ export default function App(): ReactElement {
 						refreshRuntimeProjectConfig();
 						refreshSettingsRuntimeProjectConfig();
 					}}
+				/>
+				<PromptShortcutEditorDialog
+					open={promptShortcutEditorOpen}
+					onOpenChange={setPromptShortcutEditorOpen}
+					shortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+					onSave={savePromptShortcuts}
 				/>
 				<DebugDialog
 					open={isDebugDialogOpen}

@@ -77,6 +77,7 @@ function createSavedConfig(overrides?: Partial<RuntimeConfigResponse>): RuntimeC
 		effectiveCommand: "claude",
 		detectedCommands: [],
 		shortcuts: [],
+		promptShortcuts: [],
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
 		projectConfigPath: null,
 		showSummaryOnCards: false,

@@ -4,8 +4,10 @@ import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+	DEFAULT_PROMPT_SHORTCUTS,
 	loadGlobalRuntimeConfig,
 	loadRuntimeConfig,
+	normalizePromptShortcuts,
 	pickBestInstalledAgentIdFromDetected,
 	saveRuntimeConfig,
 	updateRuntimeConfig,
@@ -293,6 +295,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					shortcuts: [],
+					promptShortcuts: [],
 				});
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
@@ -338,6 +341,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					shortcuts: [],
+					promptShortcuts: [],
 				});
 
 				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
@@ -371,6 +375,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
+					promptShortcuts: [],
 				});
 				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(true);
 
@@ -638,5 +643,122 @@ describe.sequential("runtime-config auto agent selection", () => {
 			cleanupProject();
 			cleanupHome();
 		}
+	});
+});
+
+describe.sequential("prompt shortcuts config persistence", () => {
+	it("returns default prompt shortcuts when none configured", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-default-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-prompt-shortcuts-default-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.promptShortcuts).toHaveLength(1);
+				expect(state.promptShortcuts[0]?.label).toBe("Commit");
+				expect(state.promptShortcuts[0]?.prompt).toContain("commit your working changes");
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("persists and loads prompt shortcuts", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-persist-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-prompt-shortcuts-persist-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await loadRuntimeConfig(tempProject);
+				const customShortcuts = [
+					{ label: "Ship", prompt: "push to main" },
+					{ label: "Fix", prompt: "fix the bug" },
+				];
+				await updateRuntimeConfig(tempProject, { promptShortcuts: customShortcuts });
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.promptShortcuts).toHaveLength(2);
+				expect(reloaded.promptShortcuts[0]?.label).toBe("Ship");
+				expect(reloaded.promptShortcuts[0]?.prompt).toBe("push to main");
+				expect(reloaded.promptShortcuts[1]?.label).toBe("Fix");
+				expect(reloaded.promptShortcuts[1]?.prompt).toBe("fix the bug");
+
+				const globalConfigRaw = readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8");
+				const globalConfig = JSON.parse(globalConfigRaw) as { promptShortcuts?: unknown[] };
+				expect(globalConfig.promptShortcuts).toHaveLength(2);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("filters invalid prompt shortcuts", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-invalid-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-prompt-shortcuts-invalid-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await loadRuntimeConfig(tempProject);
+				// Manually write config with invalid entries
+				const configPath = join(tempHome, ".quarterdeck", "config.json");
+				writeFileSync(
+					configPath,
+					JSON.stringify({
+						promptShortcuts: [
+							{ label: "", prompt: "test" },
+							{ label: "Valid", prompt: "" },
+							{ label: "Good", prompt: "real prompt" },
+						],
+					}),
+				);
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.promptShortcuts).toHaveLength(1);
+				expect(reloaded.promptShortcuts[0]?.label).toBe("Good");
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("falls back to defaults when all shortcuts are invalid", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-all-invalid-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-prompt-shortcuts-all-invalid-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await loadRuntimeConfig(tempProject);
+				const configPath = join(tempHome, ".quarterdeck", "config.json");
+				writeFileSync(configPath, JSON.stringify({ promptShortcuts: [{ label: "", prompt: "" }] }));
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.promptShortcuts).toHaveLength(1);
+				expect(reloaded.promptShortcuts[0]?.label).toBe("Commit");
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("returns defaults when promptShortcuts is not an array", () => {
+		expect(normalizePromptShortcuts("not-an-array" as unknown as null)).toEqual([...DEFAULT_PROMPT_SHORTCUTS]);
+		expect(normalizePromptShortcuts(42 as unknown as null)).toEqual([...DEFAULT_PROMPT_SHORTCUTS]);
+		expect(normalizePromptShortcuts({ label: "X", prompt: "Y" } as unknown as null)).toEqual([
+			...DEFAULT_PROMPT_SHORTCUTS,
+		]);
+		expect(normalizePromptShortcuts(null)).toEqual([...DEFAULT_PROMPT_SHORTCUTS]);
+		expect(normalizePromptShortcuts(undefined)).toEqual([...DEFAULT_PROMPT_SHORTCUTS]);
 	});
 });

@@ -1,5 +1,19 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+	AlertCircle,
+	Check,
+	ChevronDown,
+	GitBranch,
+	Pencil,
+	Pin,
+	PinOff,
+	Play,
+	RotateCcw,
+	RotateCw,
+	Settings,
+	Trash2,
+} from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -169,6 +183,12 @@ export function BoardCard({
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
+	onRunPromptShortcut,
+	onSelectPromptShortcutLabel,
+	promptShortcuts,
+	lastUsedPromptShortcutLabel,
+	isPromptShortcutRunning,
+	onManagePromptShortcuts,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -194,6 +214,12 @@ export function BoardCard({
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
+	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
+	onSelectPromptShortcutLabel?: (label: string) => void;
+	promptShortcuts?: Array<{ label: string; prompt: string }>;
+	lastUsedPromptShortcutLabel?: string;
+	isPromptShortcutRunning?: boolean;
+	onManagePromptShortcuts?: () => void;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -598,6 +624,81 @@ export function BoardCard({
 										) : null}
 									</p>
 								) : null}
+								{(() => {
+									const showPromptShortcuts =
+										columnId === "review" && (promptShortcuts?.length ?? 0) > 0 && !isTrashCard;
+									const activeShortcut = showPromptShortcuts
+										? (promptShortcuts?.find((s) => s.label === lastUsedPromptShortcutLabel) ??
+											promptShortcuts?.[0] ??
+											null)
+										: null;
+									return showPromptShortcuts && activeShortcut ? (
+										<div className="flex mt-1.5" onMouseDown={stopEvent}>
+											<DropdownMenu.Root>
+												<div className="inline-flex items-center w-full">
+													<Button
+														variant="primary"
+														size="sm"
+														disabled={isPromptShortcutRunning}
+														className="flex-1 rounded-r-none"
+														onClick={(event) => {
+															stopEvent(event);
+															onRunPromptShortcut?.(card.id, activeShortcut.label);
+														}}
+													>
+														{isPromptShortcutRunning ? "..." : activeShortcut.label}
+													</Button>
+													<DropdownMenu.Trigger asChild>
+														<Button
+															variant="primary"
+															size="sm"
+															disabled={isPromptShortcutRunning}
+															className="rounded-l-none border-l border-white/20 px-1"
+															aria-label="More prompt shortcuts"
+															onMouseDown={stopEvent}
+														>
+															<ChevronDown size={12} />
+														</Button>
+													</DropdownMenu.Trigger>
+												</div>
+												<DropdownMenu.Portal>
+													<DropdownMenu.Content
+														side="bottom"
+														align="start"
+														sideOffset={4}
+														className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+														onCloseAutoFocus={(event) => event.preventDefault()}
+													>
+														{promptShortcuts?.map((shortcut, index) => (
+															<DropdownMenu.Item
+																key={index}
+																className="flex items-center gap-2 rounded-sm px-2 py-1 text-[12px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
+																onSelect={() => {
+																	onSelectPromptShortcutLabel?.(shortcut.label);
+																}}
+															>
+																{shortcut.label === lastUsedPromptShortcutLabel ? (
+																	<Check size={12} className="text-accent" />
+																) : (
+																	<span className="w-3" />
+																)}
+																{shortcut.label}
+															</DropdownMenu.Item>
+														))}
+														<DropdownMenu.Separator className="my-1 h-px bg-border" />
+														<DropdownMenu.Item
+															className="flex items-center gap-2 rounded-sm px-2 py-1 text-[12px] text-text-secondary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
+															onSelect={() => onManagePromptShortcuts?.()}
+														>
+															<Settings size={12} />
+															Manage shortcuts...
+														</DropdownMenu.Item>
+													</DropdownMenu.Content>
+												</DropdownMenu.Portal>
+											</DropdownMenu.Root>
+										</div>
+									) : null;
+								})()}
 								{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 									<Button
 										size="sm"

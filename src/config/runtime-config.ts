@@ -5,7 +5,7 @@ import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
-import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
+import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { detectInstalledCommands } from "../terminal/agent-registry";
@@ -23,6 +23,7 @@ interface RuntimeGlobalConfigFileShape {
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	promptShortcuts?: Array<{ label: string; prompt: string }>;
 	showSummaryOnCards?: boolean;
 	autoGenerateSummary?: boolean;
 	summaryStaleAfterSeconds?: number;
@@ -62,6 +63,7 @@ export interface RuntimeConfigState {
 	audibleNotificationEvents: AudibleNotificationEvents;
 	audibleNotificationsOnlyWhenHidden: boolean;
 	shortcuts: RuntimeProjectShortcut[];
+	promptShortcuts: PromptShortcut[];
 	commitPromptTemplate: string;
 	openPrPromptTemplate: string;
 	commitPromptTemplateDefault: string;
@@ -82,6 +84,7 @@ export interface RuntimeConfigUpdateInput {
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	audibleNotificationsOnlyWhenHidden?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
+	promptShortcuts?: PromptShortcut[];
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 }
@@ -138,6 +141,46 @@ const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 	failure: true,
 	completion: true,
 };
+
+export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
+	{
+		label: "Commit",
+		prompt: `When you are finished with the task, commit your working changes.
+
+First, check your current git state: run \`git status\` and \`git branch --show-current\`.
+
+- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
+- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
+- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
+- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
+
+Report:
+- Branch name
+- Final commit hash
+- Final commit message
+- Whether a new branch was created (detached HEAD case)`,
+	},
+];
+
+export function normalizePromptShortcuts(
+	shortcuts: Array<{ label: string; prompt: string }> | null | undefined,
+): PromptShortcut[] {
+	if (!Array.isArray(shortcuts)) {
+		return [...DEFAULT_PROMPT_SHORTCUTS];
+	}
+	const normalized: PromptShortcut[] = [];
+	for (const shortcut of shortcuts) {
+		if (!shortcut || typeof shortcut !== "object") {
+			continue;
+		}
+		const label = typeof shortcut.label === "string" ? shortcut.label.trim() : "";
+		const prompt = typeof shortcut.prompt === "string" ? shortcut.prompt.trim() : "";
+		if (label && prompt) {
+			normalized.push({ label, prompt });
+		}
+	}
+	return normalized.length > 0 ? normalized : [...DEFAULT_PROMPT_SHORTCUTS];
+}
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
@@ -361,6 +404,7 @@ function toRuntimeConfigState({
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
+		promptShortcuts: normalizePromptShortcuts(globalConfig?.promptShortcuts),
 		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
 		openPrPromptTemplate: normalizePromptTemplate(
 			globalConfig?.openPrPromptTemplate,
@@ -387,6 +431,7 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
+		promptShortcuts?: PromptShortcut[];
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
@@ -468,6 +513,11 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+	if (config.promptShortcuts !== undefined) {
+		payload.promptShortcuts = config.promptShortcuts;
+	} else if (hasOwnKey(existing, "promptShortcuts")) {
+		payload.promptShortcuts = existing?.promptShortcuts;
 	}
 	if (hasOwnKey(existing, "showSummaryOnCards") || showSummaryOnCards !== DEFAULT_SHOW_SUMMARY_ON_CARDS) {
 		payload.showSummaryOnCards = showSummaryOnCards;
@@ -624,6 +674,7 @@ function createRuntimeConfigStateFromValues(input: {
 	audibleNotificationEvents: AudibleNotificationEvents;
 	audibleNotificationsOnlyWhenHidden: boolean;
 	shortcuts: RuntimeProjectShortcut[];
+	promptShortcuts: PromptShortcut[];
 }): RuntimeConfigState {
 	return {
 		globalConfigPath: input.globalConfigPath,
@@ -653,6 +704,7 @@ function createRuntimeConfigStateFromValues(input: {
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
+		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -677,6 +729,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		audibleNotificationEvents: current.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: current.audibleNotificationsOnlyWhenHidden,
 		shortcuts: [],
+		promptShortcuts: current.promptShortcuts,
 	});
 }
 
@@ -718,6 +771,7 @@ export async function saveRuntimeConfig(
 		audibleNotificationEvents: AudibleNotificationEvents;
 		audibleNotificationsOnlyWhenHidden: boolean;
 		shortcuts: RuntimeProjectShortcut[];
+		promptShortcuts: PromptShortcut[];
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
@@ -727,6 +781,7 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			promptShortcuts: config.promptShortcuts,
 			showSummaryOnCards: config.showSummaryOnCards,
 			autoGenerateSummary: config.autoGenerateSummary,
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
@@ -753,6 +808,7 @@ export async function saveRuntimeConfig(
 			audibleNotificationEvents: config.audibleNotificationEvents,
 			audibleNotificationsOnlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
 			shortcuts: config.shortcuts,
+			promptShortcuts: config.promptShortcuts,
 		});
 	});
 }
@@ -764,6 +820,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
+		const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
 		const nextAudibleEvents = updates.audibleNotificationEvents
 			? normalizeAudibleNotificationEvents({
 					...current.audibleNotificationEvents,
@@ -789,6 +846,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			audibleNotificationsOnlyWhenHidden:
 				updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
 			shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
+			promptShortcuts: nextPromptShortcuts,
 		};
 
 		const hasChanges =
@@ -796,6 +854,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+			JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 			nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
 			nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
 			nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
@@ -820,6 +879,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			promptShortcuts: nextConfig.promptShortcuts,
 			showSummaryOnCards: nextConfig.showSummaryOnCards,
 			autoGenerateSummary: nextConfig.autoGenerateSummary,
 			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
@@ -850,6 +910,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
 			audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 			shortcuts: nextConfig.shortcuts,
+			promptShortcuts: nextConfig.promptShortcuts,
 		});
 	});
 }
@@ -867,6 +928,7 @@ export async function updateGlobalRuntimeConfig(
 			},
 		],
 		async () => {
+			const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
 			const nextConfig = {
 				selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
 				selectedShortcutLabel:
@@ -893,6 +955,7 @@ export async function updateGlobalRuntimeConfig(
 				audibleNotificationsOnlyWhenHidden:
 					updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
 				shortcuts: current.shortcuts,
+				promptShortcuts: nextPromptShortcuts,
 			};
 
 			const hasChanges =
@@ -900,6 +963,7 @@ export async function updateGlobalRuntimeConfig(
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+				JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 				nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
 				nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
 				nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
@@ -923,6 +987,7 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				promptShortcuts: nextConfig.promptShortcuts,
 				showSummaryOnCards: nextConfig.showSummaryOnCards,
 				autoGenerateSummary: nextConfig.autoGenerateSummary,
 				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
@@ -951,6 +1016,7 @@ export async function updateGlobalRuntimeConfig(
 				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
 				audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 				shortcuts: nextConfig.shortcuts,
+				promptShortcuts: nextConfig.promptShortcuts,
 			});
 		},
 	);

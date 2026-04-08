@@ -512,12 +512,20 @@ export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 });
 export type RuntimeTaskWorkspaceInfoResponse = z.infer<typeof runtimeTaskWorkspaceInfoResponseSchema>;
 
+/** Project-level terminal command shortcuts (top bar). For agent prompt shortcuts, see promptShortcutSchema. */
 export const runtimeProjectShortcutSchema = z.object({
 	label: z.string(),
 	command: z.string(),
 	icon: z.string().optional(),
 });
 export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema>;
+
+/** Global agent prompt injection shortcuts (sidebar review cards). For project terminal commands, see runtimeProjectShortcutSchema. */
+export const promptShortcutSchema = z.object({
+	label: z.string().min(1).max(30),
+	prompt: z.string().min(1),
+});
+export type PromptShortcut = z.infer<typeof promptShortcutSchema>;
 
 export const runtimeCommandRunRequestSchema = z.object({
 	command: z.string(),
@@ -586,6 +594,7 @@ export const runtimeConfigResponseSchema = z.object({
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
+	promptShortcuts: z.array(promptShortcutSchema),
 	showSummaryOnCards: z.boolean(),
 	autoGenerateSummary: z.boolean(),
 	summaryStaleAfterSeconds: z.number(),
@@ -598,6 +607,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	selectedShortcutLabel: z.string().nullable().optional(),
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
+	promptShortcuts: z.array(promptShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	showSummaryOnCards: z.boolean().optional(),
 	autoGenerateSummary: z.boolean().optional(),
