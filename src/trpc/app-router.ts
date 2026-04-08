@@ -519,15 +519,22 @@ export const runtimeAppRouter = t.router({
 					return { ok: false, summary: null };
 				}
 
-				// Server-side staleness check — skip if recently generated.
+				const summaries = session.conversationSummaries ?? [];
+
+				// Server-side staleness check — skip if recently generated AND no newer
+				// conversation data has arrived since. appendConversationSummary preserves
+				// displaySummaryGeneratedAt as a sentinel, so we detect staleness by
+				// comparing the generation timestamp against conversationSummaries capturedAt.
 				if (session.displaySummaryGeneratedAt) {
-					const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
-					if (ageSeconds < input.staleAfterSeconds) {
-						return { ok: true, summary: session.displaySummary };
+					const latestCapturedAt = summaries.length > 0 ? Math.max(...summaries.map((s) => s.capturedAt)) : 0;
+					const hasNewerData = latestCapturedAt > session.displaySummaryGeneratedAt;
+					if (!hasNewerData) {
+						const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
+						if (ageSeconds < input.staleAfterSeconds) {
+							return { ok: true, summary: session.displaySummary };
+						}
 					}
 				}
-
-				const summaries = session.conversationSummaries ?? [];
 				const conversationText = summaries.length > 0 ? summaries.map((s) => s.text).join("\n") : null;
 				// Fall back to finalMessage if no conversation summaries.
 				const sourceText = conversationText ?? session.latestHookActivity?.finalMessage ?? null;

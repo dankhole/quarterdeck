@@ -1001,15 +1001,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		// Only overwrite displaySummary with raw text if there's no existing LLM-generated
 		// summary. When the user has autoGenerateSummary enabled, we don't want a raw last
-		// message to clobber a nicely condensed LLM summary. We still clear
-		// displaySummaryGeneratedAt so the staleness check triggers regeneration on next hover.
+		// message to clobber a nicely condensed LLM summary. We preserve
+		// displaySummaryGeneratedAt so it continues to act as a sentinel — staleness is
+		// detected by comparing the generation timestamp against conversationSummaries
+		// capturedAt in the generateDisplaySummary endpoint.
 		const hasLlmSummary = sessionEntry.summary.displaySummaryGeneratedAt !== null;
 		const rawDisplay =
 			text.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${text.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : text;
 
 		const summaryUpdate: Record<string, unknown> = {
 			conversationSummaries: entries,
-			displaySummaryGeneratedAt: null,
 		};
 		if (!hasLlmSummary) {
 			summaryUpdate.displaySummary = rawDisplay;
