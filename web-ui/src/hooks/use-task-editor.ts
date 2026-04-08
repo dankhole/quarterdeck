@@ -238,6 +238,8 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
+		setCreateFeatureBranch(false);
+		setBranchName("");
 		setIsInlineTaskCreateOpen(true);
 	}, []);
 
