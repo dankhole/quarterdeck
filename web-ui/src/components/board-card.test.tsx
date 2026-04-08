@@ -441,6 +441,91 @@ describe("BoardCard", () => {
 		});
 	});
 
+	describe("branch display precedence", () => {
+		function createSnapshot(overrides?: Partial<ReviewTaskWorkspaceSnapshot>): ReviewTaskWorkspaceSnapshot {
+			return {
+				taskId: "task-1",
+				path: "/tmp/worktree",
+				branch: null,
+				isDetached: false,
+				headCommit: "abc1234",
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				...overrides,
+			};
+		}
+
+		it("prefers live metadata branch over stale card.branch", async () => {
+			mockWorkspaceSnapshot = createSnapshot({ branch: "live-branch" });
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({ branch: "stale-branch" })}
+							index={0}
+							columnId="in_progress"
+							sessionSummary={createSummary("running")}
+						/>
+					</Providers>,
+				);
+			});
+			expect(container.textContent).toContain("live-branch");
+			expect(container.textContent).not.toContain("stale-branch");
+		});
+
+		it("falls back to card.branch when metadata branch is null (detached HEAD)", async () => {
+			mockWorkspaceSnapshot = createSnapshot({ branch: null });
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({ branch: "persisted-branch" })}
+							index={0}
+							columnId="review"
+							sessionSummary={createSummary("awaiting_review")}
+						/>
+					</Providers>,
+				);
+			});
+			expect(container.textContent).toContain("persisted-branch");
+		});
+
+		it("falls back to card.branch when no metadata is available", async () => {
+			mockWorkspaceSnapshot = undefined;
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({ branch: "saved-branch" })}
+							index={0}
+							columnId="review"
+							sessionSummary={createSummary("awaiting_review")}
+						/>
+					</Providers>,
+				);
+			});
+			expect(container.textContent).toContain("saved-branch");
+		});
+
+		it("shows headCommit fallback when neither source has a branch", async () => {
+			mockWorkspaceSnapshot = createSnapshot({ branch: null, headCommit: "deadbeef12345678" });
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard()}
+							index={0}
+							columnId="in_progress"
+							sessionSummary={createSummary("running")}
+						/>
+					</Providers>,
+				);
+			});
+			expect(container.textContent).toContain("deadbeef");
+		});
+	});
+
 	it("shows normal agent messages without the agent prefix", async () => {
 		await act(async () => {
 			root.render(

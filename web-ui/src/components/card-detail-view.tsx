@@ -683,7 +683,7 @@ export function CardDetailView({
 										isExpanded={isDiffExpanded}
 										onToggleExpand={handleToggleDiffExpand}
 										baseRef={selection.card.baseRef}
-										branch={selection.card.branch ?? taskWorkspaceInfo?.branch ?? null}
+										branch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
 									/>
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
@@ -788,7 +788,7 @@ export function CardDetailView({
 										isExpanded={isDiffExpanded}
 										onToggleExpand={handleToggleDiffExpand}
 										baseRef={selection.card.baseRef}
-										branch={selection.card.branch ?? taskWorkspaceInfo?.branch ?? null}
+										branch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
 									/>
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
