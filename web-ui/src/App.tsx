@@ -18,6 +18,7 @@ import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
+import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +61,7 @@ import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
+import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -176,6 +178,10 @@ export default function App(): ReactElement {
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
 	} = useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
+	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
+	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
+		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false });
+	}, [currentProjectId]);
 	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
 	const selectedShortcutLabel = useMemo(() => {
 		if (shortcuts.length === 0) {
@@ -439,10 +445,15 @@ export default function App(): ReactElement {
 		switchHomeBranch,
 		discardHomeWorkingChanges,
 		resetGitActionState,
+		taskGitActionLoadingByTaskId,
+		runAutoReviewGitAction,
 	} = useGitActions({
 		currentProjectId,
 		board,
 		selectedCard,
+		runtimeProjectConfig,
+		sendTaskSessionInput,
+		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
 	});
@@ -646,6 +657,9 @@ export default function App(): ReactElement {
 		handleSendReviewComments,
 		moveToTrashLoadingById,
 		trashTaskCount,
+		trashWarningState,
+		handleCancelTrashWarning,
+		handleConfirmTrashWarning,
 	} = useBoardInteractions({
 		board,
 		setBoard,
@@ -664,6 +678,10 @@ export default function App(): ReactElement {
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
+		showTrashWorktreeNotice,
+		saveTrashWorktreeNoticeDismissed,
+		taskGitActionLoadingByTaskId,
+		runAutoReviewGitAction,
 	});
 
 	const {
@@ -1143,6 +1161,12 @@ export default function App(): ReactElement {
 					taskCount={trashTaskCount}
 					onCancel={() => setIsClearTrashDialogOpen(false)}
 					onConfirm={handleConfirmClearTrash}
+				/>
+				<TaskTrashWarningDialog
+					open={trashWarningState.open}
+					warning={trashWarningState.warning}
+					onCancel={handleCancelTrashWarning}
+					onConfirm={handleConfirmTrashWarning}
 				/>
 				<MigrateWorkingDirectoryDialog
 					open={pendingMigrate !== null}

@@ -17,7 +17,6 @@ export function showAppToast(props: AppToastProps, key?: string): void {
 		id: key,
 		duration: props.timeout ?? 5000,
 	};
-
 	if (props.intent === "danger") {
 		toast.error(props.message, options);
 	} else if (props.intent === "warning") {

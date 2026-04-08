@@ -15,6 +15,9 @@ export interface UseRuntimeConfigResult {
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		showTrashWorktreeNotice?: boolean;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
 		audibleNotificationVolume?: number;
 		audibleNotificationEvents?: {
@@ -89,6 +92,9 @@ export function useRuntimeConfig(
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
+			showTrashWorktreeNotice?: boolean;
+			commitPromptTemplate?: string;
+			openPrPromptTemplate?: string;
 			audibleNotificationsEnabled?: boolean;
 			audibleNotificationVolume?: number;
 			audibleNotificationEvents?: {

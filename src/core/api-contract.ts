@@ -555,6 +555,7 @@ export const runtimeConfigResponseSchema = z.object({
 	globalConfigPath: z.string(),
 	projectConfigPath: z.string().nullable(),
 	readyForReviewNotificationsEnabled: z.boolean(),
+	showTrashWorktreeNotice: z.boolean(),
 	audibleNotificationsEnabled: z.boolean(),
 	audibleNotificationVolume: z.number().min(0).max(1),
 	audibleNotificationEvents: z.object({
@@ -564,6 +565,10 @@ export const runtimeConfigResponseSchema = z.object({
 		completion: z.boolean(),
 	}),
 	audibleNotificationsOnlyWhenHidden: z.boolean(),
+	commitPromptTemplate: z.string(),
+	openPrPromptTemplate: z.string(),
+	commitPromptTemplateDefault: z.string(),
+	openPrPromptTemplateDefault: z.string(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
@@ -576,6 +581,9 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
+	showTrashWorktreeNotice: z.boolean().optional(),
+	commitPromptTemplate: z.string().optional(),
+	openPrPromptTemplate: z.string().optional(),
 	audibleNotificationsEnabled: z.boolean().optional(),
 	audibleNotificationVolume: z.number().min(0).max(1).optional(),
 	audibleNotificationEvents: z

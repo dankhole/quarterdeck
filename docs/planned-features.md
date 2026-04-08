@@ -8,13 +8,14 @@ When Quarterdeck crashes or is closed and reopened, clicking on existing cards n
 - Resume or re-attach to the Claude conversation so the agent can continue where it left off
 - Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
 
-## 2. Configurable "move to trash" behavior
+## 2. Trash confirmation and worktree notice
 
-When trashing a card, allow customizing whether the associated worktree is automatically deleted:
-- Add a setting (per-project or global) to auto-delete the worktree when trashing a card
-- Lost work is acceptable — this is a conscious choice for keeping things clean
-- **Always** show a warning/confirmation dialog before trashing, regardless of the setting
-- The warning should clearly state what will happen (e.g. "This will delete the worktree and any uncommitted changes")
+**Status**: Implemented.
+
+When a card with uncommitted changes is trashed manually, a confirmation dialog shows the file count and explains that the worktree will be deleted and uncommitted work captured in a patch. For cards without uncommitted changes, a dismissible informational toast explains the same — controlled by the `showTrashWorktreeNotice` global setting (Settings > Trash). Auto-trash scenarios (shutdown, auto-review) skip both.
+
+- Spec: [docs/specs/2026-04-07-trash-confirmation-and-notice.md](specs/2026-04-07-trash-confirmation-and-notice.md)
+- Lifecycle reference: [docs/trash-lifecycle.md](trash-lifecycle.md)
 
 ## 3. Branch persistence on cards
 

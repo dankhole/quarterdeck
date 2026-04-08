@@ -1,6 +1,6 @@
 // Persists Quarterdeck-owned runtime preferences on disk.
-// This module should store Quarterdeck settings such as selected agents
-// and shortcuts.
+// This module should store Quarterdeck settings such as selected agents,
+// shortcuts, and prompt templates.
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -23,6 +23,9 @@ interface RuntimeGlobalConfigFileShape {
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	showTrashWorktreeNotice?: boolean;
+	commitPromptTemplate?: string;
+	openPrPromptTemplate?: string;
 	audibleNotificationsEnabled?: boolean;
 	audibleNotificationVolume?: number;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
@@ -47,11 +50,16 @@ export interface RuntimeConfigState {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	showTrashWorktreeNotice: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
 	audibleNotificationsOnlyWhenHidden: boolean;
 	shortcuts: RuntimeProjectShortcut[];
+	commitPromptTemplate: string;
+	openPrPromptTemplate: string;
+	commitPromptTemplateDefault: string;
+	openPrPromptTemplateDefault: string;
 }
 
 export interface RuntimeConfigUpdateInput {
@@ -59,11 +67,14 @@ export interface RuntimeConfigUpdateInput {
 	selectedShortcutLabel?: string | null;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	showTrashWorktreeNotice?: boolean;
 	audibleNotificationsEnabled?: boolean;
 	audibleNotificationVolume?: number;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	audibleNotificationsOnlyWhenHidden?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
+	commitPromptTemplate?: string;
+	openPrPromptTemplate?: string;
 }
 
 const CONFIG_FILENAME = "config.json";
@@ -73,6 +84,39 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
+const DEFAULT_SHOW_TRASH_WORKTREE_NOTICE = true;
+const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
+
+First, check your current git state: run \`git status\` and \`git branch --show-current\`.
+
+- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
+- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
+- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
+- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
+
+Report:
+- Branch name
+- Final commit hash
+- Final commit message
+- Whether a new branch was created (detached HEAD case)`;
+const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `When you are finished with the task, open a pull request against {{base_ref}}.
+
+- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
+- Do not modify the base worktree.
+- Keep all PR preparation in the current worktree.
+
+Steps:
+1. Ensure all intended changes are committed.
+2. If currently on detached HEAD, create a branch at the current commit.
+3. Push the branch to origin and set upstream.
+4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
+5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
+6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
+7. Report:
+   - PR title: PR URL
+   - Base branch
+   - Head branch
+   - Any follow-up needed`;
 const DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_AUDIBLE_NOTIFICATION_VOLUME = 0.7;
 const DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN = true;
@@ -139,6 +183,14 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 		}
 	}
 	return normalized;
+}
+
+function normalizePromptTemplate(value: unknown, fallback: string): string {
+	if (typeof value !== "string") {
+		return fallback;
+	}
+	const normalized = value.trim();
+	return normalized.length > 0 ? value : fallback;
 }
 
 function normalizeAudibleNotificationEvents(
@@ -266,6 +318,10 @@ function toRuntimeConfigState({
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		showTrashWorktreeNotice: normalizeBoolean(
+			globalConfig?.showTrashWorktreeNotice,
+			DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
+		),
 		audibleNotificationsEnabled: normalizeBoolean(
 			globalConfig?.audibleNotificationsEnabled,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
@@ -280,6 +336,13 @@ function toRuntimeConfigState({
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
+		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
+		openPrPromptTemplate: normalizePromptTemplate(
+			globalConfig?.openPrPromptTemplate,
+			DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+		),
+		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -299,6 +362,9 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
+		showTrashWorktreeNotice?: boolean;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
 		audibleNotificationVolume?: number;
 		audibleNotificationEvents?: AudibleNotificationEventsShape;
@@ -323,6 +389,18 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
+	const showTrashWorktreeNotice =
+		config.showTrashWorktreeNotice === undefined
+			? DEFAULT_SHOW_TRASH_WORKTREE_NOTICE
+			: normalizeBoolean(config.showTrashWorktreeNotice, DEFAULT_SHOW_TRASH_WORKTREE_NOTICE);
+	const commitPromptTemplate =
+		config.commitPromptTemplate === undefined
+			? DEFAULT_COMMIT_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE);
+	const openPrPromptTemplate =
+		config.openPrPromptTemplate === undefined
+			? DEFAULT_OPEN_PR_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE);
 
 	const payload: RuntimeGlobalConfigFileShape = {};
 	if (selectedAgentId !== undefined) {
@@ -350,6 +428,18 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+	if (
+		hasOwnKey(existing, "showTrashWorktreeNotice") ||
+		showTrashWorktreeNotice !== DEFAULT_SHOW_TRASH_WORKTREE_NOTICE
+	) {
+		payload.showTrashWorktreeNotice = showTrashWorktreeNotice;
+	}
+	if (hasOwnKey(existing, "commitPromptTemplate") || commitPromptTemplate !== DEFAULT_COMMIT_PROMPT_TEMPLATE) {
+		payload.commitPromptTemplate = commitPromptTemplate;
+	}
+	if (hasOwnKey(existing, "openPrPromptTemplate") || openPrPromptTemplate !== DEFAULT_OPEN_PR_PROMPT_TEMPLATE) {
+		payload.openPrPromptTemplate = openPrPromptTemplate;
 	}
 
 	const audibleNotificationsEnabled =
@@ -473,6 +563,7 @@ function createRuntimeConfigStateFromValues(input: {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	showTrashWorktreeNotice: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
@@ -492,6 +583,7 @@ function createRuntimeConfigStateFromValues(input: {
 			input.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		showTrashWorktreeNotice: normalizeBoolean(input.showTrashWorktreeNotice, DEFAULT_SHOW_TRASH_WORKTREE_NOTICE),
 		audibleNotificationsEnabled: normalizeBoolean(
 			input.audibleNotificationsEnabled,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
@@ -503,6 +595,10 @@ function createRuntimeConfigStateFromValues(input: {
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
+		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+		openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -514,6 +610,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		agentAutonomousModeEnabled: current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: current.readyForReviewNotificationsEnabled,
+		showTrashWorktreeNotice: current.showTrashWorktreeNotice,
 		audibleNotificationsEnabled: current.audibleNotificationsEnabled,
 		audibleNotificationVolume: current.audibleNotificationVolume,
 		audibleNotificationEvents: current.audibleNotificationEvents,
@@ -551,6 +648,7 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: string | null;
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
+		showTrashWorktreeNotice: boolean;
 		audibleNotificationsEnabled: boolean;
 		audibleNotificationVolume: number;
 		audibleNotificationEvents: AudibleNotificationEvents;
@@ -565,6 +663,7 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
@@ -578,6 +677,7 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
@@ -607,6 +707,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled:
 				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
+			commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
+			openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 			audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
 			audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
 			audibleNotificationEvents: nextAudibleEvents,
@@ -620,6 +723,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+			nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
+			nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
+			nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 			nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
 			nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
 			nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
@@ -638,6 +744,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+			commitPromptTemplate: nextConfig.commitPromptTemplate,
+			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
@@ -653,6 +762,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
@@ -684,6 +794,9 @@ export async function updateGlobalRuntimeConfig(
 				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+				showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
+				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
+				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 				audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
 				audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
 				audibleNotificationEvents: updates.audibleNotificationEvents
@@ -702,6 +815,9 @@ export async function updateGlobalRuntimeConfig(
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+				nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
+				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
+				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 				nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
 				nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
 				nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
@@ -719,6 +835,9 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+				commitPromptTemplate: nextConfig.commitPromptTemplate,
+				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
@@ -732,6 +851,7 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 				audibleNotificationEvents: nextConfig.audibleNotificationEvents,

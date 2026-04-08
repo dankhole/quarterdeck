@@ -1,7 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
+import { toast } from "sonner";
 import { showAppToast } from "@/components/app-toaster";
+import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
 import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import {
 	addTaskDependency,
@@ -10,6 +12,7 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
+import { getTaskWorkspaceInfo, getTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 
@@ -28,6 +31,9 @@ export function useLinkedBacklogTaskActions({
 	kickoffTaskInProgress,
 	startBacklogTaskWithAnimation,
 	waitForBacklogStartAnimationAvailability,
+	onRequestTrashConfirmation,
+	showTrashWorktreeNotice,
+	saveTrashWorktreeNoticeDismissed,
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -43,6 +49,14 @@ export function useLinkedBacklogTaskActions({
 	) => Promise<boolean>;
 	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
 	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
+	onRequestTrashConfirmation?: (
+		viewModel: TaskTrashWarningViewModel,
+		card: BoardCard,
+		fromColumnId: BoardColumnId,
+		optimisticMoveApplied: boolean,
+	) => void;
+	showTrashWorktreeNotice?: boolean;
+	saveTrashWorktreeNoticeDismissed?: () => void;
 }): {
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	handleDeleteDependency: (dependencyId: string) => void;
@@ -104,9 +118,26 @@ export function useLinkedBacklogTaskActions({
 		async (task: BoardCard, currentBoard?: BoardData): Promise<void> => {
 			const boardBeforeTrash = currentBoard ?? boardRef.current;
 			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
+			console.debug("[trash] performMoveTaskToTrash", {
+				taskId: task.id,
+				moved: trashed.moved,
+				hadCurrentBoard: !!currentBoard,
+			});
 			if (!trashed.moved) {
-				await stopTaskSession(task.id, { waitForExit: true });
+				// Card is already in trash (e.g. optimistic drag move applied before confirmation dialog).
+				// Still need to update selection and stop sessions and cleanup the workspace.
+				console.debug("[trash] card already in trash, cleaning up", { taskId: task.id });
+				setSelectedTaskId((currentSelectedTaskId) =>
+					currentSelectedTaskId === task.id
+						? getNextDetailTaskIdAfterTrashMove(boardBeforeTrash, task.id)
+						: currentSelectedTaskId,
+				);
+				await Promise.all([
+					stopTaskSession(task.id, { waitForExit: true }),
+					stopTaskSession(getDetailTerminalTaskId(task.id)),
+				]);
 				await cleanupTaskWorkspace(task.id);
+				console.debug("[trash] cleanup complete (already-in-trash path)", { taskId: task.id });
 				return;
 			}
 
@@ -175,10 +206,17 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (taskId: string, _fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
+		async (taskId: string, fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
+			console.debug("[trash] requestMoveTaskToTrash", {
+				taskId,
+				fromColumnId,
+				optimisticMoveApplied: !!options?.optimisticMoveApplied,
+				skipWorkingChangeWarning: !!options?.skipWorkingChangeWarning,
+			});
 			const boardSnapshot = boardRef.current;
 			const selection = findCardSelection(boardSnapshot, taskId);
 			if (!selection) {
+				console.debug("[trash] task not found in board, bailing", { taskId });
 				return;
 			}
 
@@ -199,10 +237,49 @@ export function useLinkedBacklogTaskActions({
 				return;
 			}
 
+			// Check for uncommitted changes and show confirmation dialog if needed
+			const snapshot = getTaskWorkspaceSnapshot(taskId);
+			if (
+				snapshot != null &&
+				snapshot.changedFiles != null &&
+				snapshot.changedFiles > 0 &&
+				onRequestTrashConfirmation
+			) {
+				const workspaceInfo = getTaskWorkspaceInfo(taskId);
+				const viewModel: TaskTrashWarningViewModel = {
+					taskTitle: selection.card.title ?? "Untitled task",
+					fileCount: snapshot.changedFiles,
+					workspaceInfo,
+				};
+				onRequestTrashConfirmation(viewModel, selection.card, fromColumnId, !!options?.optimisticMoveApplied);
+				return;
+			}
+
 			moveSelectionIfOptimisticMoveIsConfirmed();
 			await performMoveTaskToTrash(selection.card, boardSnapshot);
+
+			// Show informational notice toast for manual trash from in_progress or review columns
+			if (showTrashWorktreeNotice && (fromColumnId === "in_progress" || fromColumnId === "review")) {
+				toast("Task workspace removed", {
+					description: "The worktree was deleted. Uncommitted work was captured in a patch file.",
+					duration: 7000,
+					className: "toast-with-dismiss-link",
+					cancel: {
+						label: "Don't show again",
+						onClick: () => {
+							saveTrashWorktreeNoticeDismissed?.();
+						},
+					},
+				});
+			}
 		},
-		[performMoveTaskToTrash, setSelectedTaskId],
+		[
+			onRequestTrashConfirmation,
+			performMoveTaskToTrash,
+			saveTrashWorktreeNoticeDismissed,
+			setSelectedTaskId,
+			showTrashWorktreeNotice,
+		],
 	);
 
 	return {

@@ -791,3 +791,21 @@ body.kb-dependency-link-mode {
 	}
 }
 
+/* Sonner toast with a small dismiss link instead of a full-sized button */
+[data-sonner-toast].toast-with-dismiss-link {
+	flex-wrap: wrap;
+}
+
+[data-sonner-toast].toast-with-dismiss-link [data-cancel] {
+	font-size: 11px;
+	font-weight: normal;
+	padding: 0;
+	margin-left: 0;
+	margin-top: 2px;
+	width: 100%;
+	justify-content: flex-start;
+	color: var(--color-text-tertiary);
+	background: transparent;
+	border: none;
+}
+

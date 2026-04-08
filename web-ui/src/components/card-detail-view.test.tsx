@@ -410,7 +410,8 @@ describe("CardDetailView", () => {
 	it("keeps the saved side panel position after leaving and reopening task detail", async () => {
 		const renderDetail = async (): Promise<void> => {
 			await act(async () => {
-				root.render(
+				renderWithProviders(
+					root,
 					<CardDetailView
 						selection={createSelection()}
 						currentProjectId="workspace-1"

@@ -22,6 +22,9 @@ export async function saveRuntimeConfig(
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		showTrashWorktreeNotice?: boolean;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
 		audibleNotificationVolume?: number;
 		audibleNotificationEvents?: {
