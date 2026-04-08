@@ -1,3 +1,7 @@
+// LLM generation for titles and branch names. Currently requires a
+// setup-specific Bedrock proxy — see llm-client.ts for portability notes.
+// When LLM is not configured, these return null and callers fall back
+// gracefully (cards show truncated prompt text, branch name field stays empty).
 import { callLlm } from "./llm-client";
 
 const TITLE_SYSTEM_PROMPT = `Generate a concise 2-4 word title for this coding task.

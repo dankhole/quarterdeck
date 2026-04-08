@@ -186,7 +186,7 @@ describe("createHooksApi", () => {
 
 		expect(setDisplaySummary).toHaveBeenCalledTimes(1);
 		const displayArg = setDisplaySummary.mock.calls[0][1] as string;
-		expect(displayArg.length).toBe(81); // 80 + ellipsis
+		expect(displayArg.length).toBe(91); // 90 + ellipsis
 		expect(displayArg.endsWith("\u2026")).toBe(true);
 	});
 

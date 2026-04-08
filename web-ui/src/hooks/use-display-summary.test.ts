@@ -20,14 +20,16 @@ function HookHarness({
 	currentProjectId,
 	autoGenerateSummary,
 	staleAfterSeconds,
+	llmConfigured = true,
 	onCallback,
 }: {
 	currentProjectId: string | null;
 	autoGenerateSummary: boolean;
 	staleAfterSeconds: number;
+	llmConfigured?: boolean;
 	onCallback: (cb: (taskId: string) => void) => void;
 }): null {
-	const callback = useDisplaySummaryOnHover(currentProjectId, autoGenerateSummary, staleAfterSeconds);
+	const callback = useDisplaySummaryOnHover(currentProjectId, autoGenerateSummary, staleAfterSeconds, llmConfigured);
 	useEffect(() => {
 		onCallback(callback);
 	}, [callback, onCallback]);
@@ -70,6 +72,7 @@ describe("useDisplaySummaryOnHover", () => {
 		currentProjectId: string | null;
 		autoGenerateSummary: boolean;
 		staleAfterSeconds: number;
+		llmConfigured?: boolean;
 	}): void {
 		act(() => {
 			root.render(
@@ -160,5 +163,35 @@ describe("useDisplaySummaryOnHover", () => {
 		act(() => latestCallback("task-1"));
 		act(() => vi.advanceTimersByTime(800));
 		expect(mutateMock).toHaveBeenCalledWith({ taskId: "task-1", staleAfterSeconds: 60 });
+	});
+
+	it("does nothing when llmConfigured is false", () => {
+		renderHook({
+			currentProjectId: "project-1",
+			autoGenerateSummary: true,
+			staleAfterSeconds: 300,
+			llmConfigured: false,
+		});
+		act(() => latestCallback("task-1"));
+		act(() => vi.advanceTimersByTime(1000));
+		expect(mutateMock).not.toHaveBeenCalled();
+	});
+
+	it("clears pending timer when llmConfigured toggles to false", () => {
+		renderHook({
+			currentProjectId: "project-1",
+			autoGenerateSummary: true,
+			staleAfterSeconds: 300,
+			llmConfigured: true,
+		});
+		act(() => latestCallback("task-1"));
+		renderHook({
+			currentProjectId: "project-1",
+			autoGenerateSummary: true,
+			staleAfterSeconds: 300,
+			llmConfigured: false,
+		});
+		act(() => vi.advanceTimersByTime(1000));
+		expect(mutateMock).not.toHaveBeenCalled();
 	});
 });

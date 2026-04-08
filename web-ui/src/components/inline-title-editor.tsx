@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ interface InlineTitleEditorProps {
 	onSave: (taskId: string, title: string) => void;
 	onClose: () => void;
 	onRegenerate?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	/** Stop mouse/click events from bubbling to the card's click handler. */
 	stopEvent: (event: React.MouseEvent<HTMLElement>) => void;
 }
@@ -20,6 +21,7 @@ export function InlineTitleEditor({
 	onSave,
 	onClose,
 	onRegenerate,
+	isLlmGenerationDisabled = false,
 	stopEvent,
 }: InlineTitleEditorProps): React.ReactElement {
 	const [value, setValue] = useState(currentTitle || "");
@@ -85,11 +87,12 @@ export function InlineTitleEditor({
 				placeholder="Task title…"
 			/>
 			{onRegenerate ? (
-				<Tooltip content="Auto-generate title" side="top">
+				<Tooltip content={isLlmGenerationDisabled ? "LLM not configured" : "Auto-generate title"} side="top">
 					<Button
-						icon={<RefreshCw size={12} />}
+						icon={<Sparkles size={12} />}
 						variant="ghost"
 						size="sm"
+						disabled={isLlmGenerationDisabled}
 						aria-label="Auto-generate title"
 						onMouseDown={(event) => {
 							stopEvent(event);

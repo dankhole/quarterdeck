@@ -1,6 +1,13 @@
 /**
- * Shared LLM client for lightweight, single-turn completions via a
- * Bedrock/LiteLLM-compatible proxy.
+ * Shared LLM client for lightweight, single-turn completions (titles, branch
+ * names, display summaries).
+ *
+ * SETUP-SPECIFIC: This currently assumes a Bedrock/LiteLLM-compatible proxy
+ * with Anthropic-specific env vars and a Haiku default model. It should be
+ * made portable — support arbitrary OpenAI-compatible endpoints, direct API
+ * keys for multiple providers, or a config-driven model selection — so that
+ * LLM generation features work regardless of which agent provider a user has
+ * configured. See planned-features.md for context.
  *
  * Requires environment variables:
  *   ANTHROPIC_BEDROCK_BASE_URL — proxy URL (e.g. "https://proxy.example.com/bedrock")
@@ -13,8 +20,15 @@
 
 const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
-/** Maximum length for the display summary field (shared between LLM prompt and UI truncation). */
-export const DISPLAY_SUMMARY_MAX_LENGTH = 80;
+/** Hard display limit — summaries longer than this are truncated with an ellipsis. */
+export const DISPLAY_SUMMARY_MAX_LENGTH = 90;
+
+/**
+ * Character budget given to the LLM in the system prompt. Set lower than
+ * DISPLAY_SUMMARY_MAX_LENGTH so the model's natural overshoot still lands
+ * within the display limit without needing a hard truncation.
+ */
+export const DISPLAY_SUMMARY_LLM_BUDGET = 75;
 
 interface LlmCallOptions {
 	systemPrompt: string;

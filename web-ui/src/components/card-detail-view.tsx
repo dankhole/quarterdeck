@@ -241,6 +241,7 @@ export function CardDetailView({
 	onRestartSessionTask,
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
+	isLlmGenerationDisabled,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	moveToTrashLoadingById,
@@ -293,6 +294,7 @@ export function CardDetailView({
 	onRestartSessionTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -672,6 +674,7 @@ export function CardDetailView({
 								onMoveToTrashTask={onMoveReviewCardToTrash}
 								onRestoreFromTrashTask={onRestoreTaskFromTrash}
 								onRegenerateTitleTask={onRegenerateTitleTask}
+								isLlmGenerationDisabled={isLlmGenerationDisabled}
 								onUpdateTaskTitle={onUpdateTaskTitle}
 								onTogglePinTask={onTogglePinTask}
 								moveToTrashLoadingById={moveToTrashLoadingById}

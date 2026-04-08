@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/title/llm-client", () => ({
-	DISPLAY_SUMMARY_MAX_LENGTH: 80,
+	DISPLAY_SUMMARY_MAX_LENGTH: 90,
+	DISPLAY_SUMMARY_LLM_BUDGET: 75,
 	callLlm: vi.fn(),
 }));
 
@@ -19,18 +20,18 @@ describe("generateDisplaySummary", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("returns the LLM response when within 80 chars", async () => {
+	it("returns the LLM response when within the display limit", async () => {
 		callLlmMock.mockResolvedValue("Added auth middleware and session validation");
 		const result = await generateDisplaySummary("Long conversation about auth...");
 		expect(result).toBe("Added auth middleware and session validation");
 	});
 
-	it("truncates LLM response exceeding 80 chars with ellipsis", async () => {
+	it("truncates LLM response exceeding the display limit with ellipsis", async () => {
 		const longResponse = "A".repeat(100);
 		callLlmMock.mockResolvedValue(longResponse);
 		const result = await generateDisplaySummary("Some text");
 		expect(result).not.toBeNull();
-		expect(result?.length).toBe(81); // 80 chars + ellipsis
+		expect(result?.length).toBe(91); // 90 chars + ellipsis
 		expect(result?.endsWith("\u2026")).toBe(true);
 	});
 
@@ -46,13 +47,13 @@ describe("generateDisplaySummary", () => {
 		expect(callLlmMock).not.toHaveBeenCalled();
 	});
 
-	it("truncates input to 2000 chars before sending to LLM", async () => {
+	it("truncates input to 1800 chars before sending to LLM", async () => {
 		callLlmMock.mockResolvedValue("Summary");
 		const longInput = "X".repeat(3000);
 		await generateDisplaySummary(longInput);
 		expect(callLlmMock).toHaveBeenCalledTimes(1);
 		const call = callLlmMock.mock.calls[0][0];
-		expect(call.userPrompt.length).toBe(2000);
+		expect(call.userPrompt.length).toBe(1800);
 	});
 
 	it("sends the correct system prompt and options", async () => {
@@ -65,7 +66,7 @@ describe("generateDisplaySummary", () => {
 			}),
 		);
 		const call = callLlmMock.mock.calls[0][0];
-		expect(call.systemPrompt).toContain("80 characters");
+		expect(call.systemPrompt).toContain("75 characters");
 		expect(call.systemPrompt).toContain("telegram-style");
 	});
 });

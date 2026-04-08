@@ -27,6 +27,7 @@ function ColumnSection({
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
+	isLlmGenerationDisabled,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	moveToTrashLoadingById,
@@ -58,6 +59,7 @@ function ColumnSection({
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -212,6 +214,7 @@ function ColumnSection({
 												onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 												isMigrateLoading={migratingTaskId === card.id}
 												onRegenerateTitle={onRegenerateTitleTask}
+												isLlmGenerationDisabled={isLlmGenerationDisabled}
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
 												onRunPromptShortcut={onRunPromptShortcut}
@@ -264,6 +267,7 @@ export function ColumnContextPanel({
 	onMoveToTrashTask,
 	onRestoreFromTrashTask,
 	onRegenerateTitleTask,
+	isLlmGenerationDisabled,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	moveToTrashLoadingById,
@@ -294,6 +298,7 @@ export function ColumnContextPanel({
 	onMoveToTrashTask?: (taskId: string) => void;
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	moveToTrashLoadingById?: Record<string, boolean>;
@@ -394,6 +399,7 @@ export function ColumnContextPanel({
 							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 							onRegenerateTitleTask={onRegenerateTitleTask}
+							isLlmGenerationDisabled={isLlmGenerationDisabled}
 							onUpdateTaskTitle={onUpdateTaskTitle}
 							onTogglePinTask={onTogglePinTask}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}

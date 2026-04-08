@@ -122,6 +122,7 @@ export function TaskCreateDialog({
 	onBranchNameEdit,
 	onGenerateBranchName,
 	isGeneratingBranchName,
+	isLlmGenerationDisabled = false,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -151,6 +152,7 @@ export function TaskCreateDialog({
 	onBranchNameEdit: (value: string) => void;
 	onGenerateBranchName: () => void;
 	isGeneratingBranchName: boolean;
+	isLlmGenerationDisabled?: boolean;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -593,8 +595,8 @@ export function TaskCreateDialog({
 								<button
 									type="button"
 									onClick={onGenerateBranchName}
-									disabled={!prompt.trim() || isGeneratingBranchName}
-									title="Generate branch name from prompt"
+									disabled={!prompt.trim() || isGeneratingBranchName || isLlmGenerationDisabled}
+									title={isLlmGenerationDisabled ? "LLM not configured" : "Generate branch name from prompt"}
 									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-bright bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-40 disabled:cursor-default cursor-pointer"
 								>
 									{isGeneratingBranchName ? <Spinner size={12} /> : <Sparkles size={12} />}

@@ -263,7 +263,7 @@ describe("TerminalSessionManager", () => {
 			expect(result?.displaySummary).toBe("Completed the auth refactor");
 		});
 
-		it("truncates displaySummary to 80 chars with ellipsis", () => {
+		it("truncates displaySummary to 90 chars with ellipsis", () => {
 			const manager = new TerminalSessionManager();
 			manager.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
@@ -275,7 +275,7 @@ describe("TerminalSessionManager", () => {
 				capturedAt: 1000,
 			});
 
-			expect(result?.displaySummary?.length).toBe(81); // 80 + ellipsis
+			expect(result?.displaySummary?.length).toBe(91); // 90 + ellipsis
 			expect(result?.displaySummary?.endsWith("\u2026")).toBe(true);
 		});
 
