@@ -11,15 +11,33 @@ import { getRuntimeHomePath } from "../state/workspace-state";
 import { detectInstalledCommands } from "../terminal/agent-registry";
 import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils";
 
+interface AudibleNotificationEventsShape {
+	permission?: boolean;
+	review?: boolean;
+	failure?: boolean;
+	completion?: boolean;
+}
+
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	audibleNotificationsEnabled?: boolean;
+	audibleNotificationVolume?: number;
+	audibleNotificationEvents?: AudibleNotificationEventsShape;
+	audibleNotificationsOnlyWhenHidden?: boolean;
 }
 
 interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
+}
+
+export interface AudibleNotificationEvents {
+	permission: boolean;
+	review: boolean;
+	failure: boolean;
+	completion: boolean;
 }
 
 export interface RuntimeConfigState {
@@ -29,6 +47,10 @@ export interface RuntimeConfigState {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	audibleNotificationsEnabled: boolean;
+	audibleNotificationVolume: number;
+	audibleNotificationEvents: AudibleNotificationEvents;
+	audibleNotificationsOnlyWhenHidden: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
@@ -37,6 +59,10 @@ export interface RuntimeConfigUpdateInput {
 	selectedShortcutLabel?: string | null;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	audibleNotificationsEnabled?: boolean;
+	audibleNotificationVolume?: number;
+	audibleNotificationEvents?: AudibleNotificationEventsShape;
+	audibleNotificationsOnlyWhenHidden?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
 }
 
@@ -47,6 +73,15 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
+const DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED = true;
+const DEFAULT_AUDIBLE_NOTIFICATION_VOLUME = 0.7;
+const DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN = true;
+const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
+	permission: true,
+	review: true,
+	failure: true,
+	completion: true,
+};
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
@@ -104,6 +139,26 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 		}
 	}
 	return normalized;
+}
+
+function normalizeAudibleNotificationEvents(
+	value: AudibleNotificationEventsShape | null | undefined,
+): AudibleNotificationEvents {
+	return {
+		permission:
+			typeof value?.permission === "boolean" ? value.permission : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.permission,
+		review: typeof value?.review === "boolean" ? value.review : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.review,
+		failure: typeof value?.failure === "boolean" ? value.failure : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.failure,
+		completion:
+			typeof value?.completion === "boolean" ? value.completion : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.completion,
+	};
+}
+
+function normalizeVolume(value: unknown, fallback: number): number {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return Math.max(0, Math.min(1, value));
+	}
+	return fallback;
 }
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -211,6 +266,19 @@ function toRuntimeConfigState({
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		audibleNotificationsEnabled: normalizeBoolean(
+			globalConfig?.audibleNotificationsEnabled,
+			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
+		),
+		audibleNotificationVolume: normalizeVolume(
+			globalConfig?.audibleNotificationVolume,
+			DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
+		),
+		audibleNotificationEvents: normalizeAudibleNotificationEvents(globalConfig?.audibleNotificationEvents),
+		audibleNotificationsOnlyWhenHidden: normalizeBoolean(
+			globalConfig?.audibleNotificationsOnlyWhenHidden,
+			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 	};
 }
@@ -231,6 +299,10 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
+		audibleNotificationsEnabled?: boolean;
+		audibleNotificationVolume?: number;
+		audibleNotificationEvents?: AudibleNotificationEventsShape;
+		audibleNotificationsOnlyWhenHidden?: boolean;
 	},
 ): Promise<void> {
 	const existing = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(configPath);
@@ -278,6 +350,49 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+
+	const audibleNotificationsEnabled =
+		config.audibleNotificationsEnabled === undefined
+			? DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED
+			: normalizeBoolean(config.audibleNotificationsEnabled, DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED);
+	const audibleNotificationVolume =
+		config.audibleNotificationVolume === undefined
+			? DEFAULT_AUDIBLE_NOTIFICATION_VOLUME
+			: normalizeVolume(config.audibleNotificationVolume, DEFAULT_AUDIBLE_NOTIFICATION_VOLUME);
+	const audibleNotificationEvents = normalizeAudibleNotificationEvents(
+		config.audibleNotificationEvents ?? existing?.audibleNotificationEvents,
+	);
+	if (
+		hasOwnKey(existing, "audibleNotificationsEnabled") ||
+		audibleNotificationsEnabled !== DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED
+	) {
+		payload.audibleNotificationsEnabled = audibleNotificationsEnabled;
+	}
+	if (
+		hasOwnKey(existing, "audibleNotificationVolume") ||
+		audibleNotificationVolume !== DEFAULT_AUDIBLE_NOTIFICATION_VOLUME
+	) {
+		payload.audibleNotificationVolume = audibleNotificationVolume;
+	}
+	if (
+		hasOwnKey(existing, "audibleNotificationEvents") ||
+		audibleNotificationEvents.permission !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.permission ||
+		audibleNotificationEvents.review !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.review ||
+		audibleNotificationEvents.failure !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.failure ||
+		audibleNotificationEvents.completion !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.completion
+	) {
+		payload.audibleNotificationEvents = audibleNotificationEvents;
+	}
+	const audibleNotificationsOnlyWhenHidden =
+		config.audibleNotificationsOnlyWhenHidden === undefined
+			? DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN
+			: normalizeBoolean(config.audibleNotificationsOnlyWhenHidden, DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN);
+	if (
+		hasOwnKey(existing, "audibleNotificationsOnlyWhenHidden") ||
+		audibleNotificationsOnlyWhenHidden !== DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN
+	) {
+		payload.audibleNotificationsOnlyWhenHidden = audibleNotificationsOnlyWhenHidden;
 	}
 
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
@@ -358,6 +473,10 @@ function createRuntimeConfigStateFromValues(input: {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	audibleNotificationsEnabled: boolean;
+	audibleNotificationVolume: number;
+	audibleNotificationEvents: AudibleNotificationEvents;
+	audibleNotificationsOnlyWhenHidden: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 }): RuntimeConfigState {
 	return {
@@ -373,6 +492,16 @@ function createRuntimeConfigStateFromValues(input: {
 			input.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		audibleNotificationsEnabled: normalizeBoolean(
+			input.audibleNotificationsEnabled,
+			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
+		),
+		audibleNotificationVolume: normalizeVolume(input.audibleNotificationVolume, DEFAULT_AUDIBLE_NOTIFICATION_VOLUME),
+		audibleNotificationEvents: normalizeAudibleNotificationEvents(input.audibleNotificationEvents),
+		audibleNotificationsOnlyWhenHidden: normalizeBoolean(
+			input.audibleNotificationsOnlyWhenHidden,
+			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
 	};
 }
@@ -385,6 +514,10 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		agentAutonomousModeEnabled: current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: current.readyForReviewNotificationsEnabled,
+		audibleNotificationsEnabled: current.audibleNotificationsEnabled,
+		audibleNotificationVolume: current.audibleNotificationVolume,
+		audibleNotificationEvents: current.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: current.audibleNotificationsOnlyWhenHidden,
 		shortcuts: [],
 	});
 }
@@ -418,6 +551,10 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: string | null;
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
+		audibleNotificationsEnabled: boolean;
+		audibleNotificationVolume: number;
+		audibleNotificationEvents: AudibleNotificationEvents;
+		audibleNotificationsOnlyWhenHidden: boolean;
 		shortcuts: RuntimeProjectShortcut[];
 	},
 ): Promise<RuntimeConfigState> {
@@ -428,6 +565,10 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
+			audibleNotificationVolume: config.audibleNotificationVolume,
+			audibleNotificationEvents: config.audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
 		});
 		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts: config.shortcuts });
 		return createRuntimeConfigStateFromValues({
@@ -437,6 +578,10 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
+			audibleNotificationVolume: config.audibleNotificationVolume,
+			audibleNotificationEvents: config.audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
 			shortcuts: config.shortcuts,
 		});
 	});
@@ -449,6 +594,12 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
+		const nextAudibleEvents = updates.audibleNotificationEvents
+			? normalizeAudibleNotificationEvents({
+					...current.audibleNotificationEvents,
+					...updates.audibleNotificationEvents,
+				})
+			: current.audibleNotificationEvents;
 		const nextConfig = {
 			selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
 			selectedShortcutLabel:
@@ -456,6 +607,11 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled:
 				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
+			audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
+			audibleNotificationEvents: nextAudibleEvents,
+			audibleNotificationsOnlyWhenHidden:
+				updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
 			shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
 		};
 
@@ -464,6 +620,13 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+			nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
+			nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
+			nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
+			nextConfig.audibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
+			nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
+			nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
+			nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden ||
 			!areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
 
 		if (!hasChanges) {
@@ -475,6 +638,10 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 		});
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
 			shortcuts: nextConfig.shortcuts,
@@ -486,6 +653,10 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 			shortcuts: nextConfig.shortcuts,
 		});
 	});
@@ -513,6 +684,16 @@ export async function updateGlobalRuntimeConfig(
 				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+				audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
+				audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
+				audibleNotificationEvents: updates.audibleNotificationEvents
+					? normalizeAudibleNotificationEvents({
+							...current.audibleNotificationEvents,
+							...updates.audibleNotificationEvents,
+						})
+					: current.audibleNotificationEvents,
+				audibleNotificationsOnlyWhenHidden:
+					updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
 				shortcuts: current.shortcuts,
 			};
 
@@ -520,7 +701,14 @@ export async function updateGlobalRuntimeConfig(
 				nextConfig.selectedAgentId !== current.selectedAgentId ||
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
-				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled;
+				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+				nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
+				nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
+				nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
+				nextConfig.audibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
+				nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
+				nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
+				nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden;
 
 			if (!hasChanges) {
 				return current;
@@ -531,6 +719,10 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+				audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 			});
 
 			return createRuntimeConfigStateFromValues({
@@ -540,6 +732,10 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+				audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
 				shortcuts: nextConfig.shortcuts,
 			});
 		},

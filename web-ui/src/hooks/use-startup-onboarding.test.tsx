@@ -23,6 +23,10 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
 		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
 		readyForReviewNotificationsEnabled: true,
+		audibleNotificationsEnabled: true,
+		audibleNotificationVolume: 0.7,
+		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["codex"],
 		agents: [
 			{

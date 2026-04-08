@@ -552,6 +552,15 @@ export const runtimeConfigResponseSchema = z.object({
 	globalConfigPath: z.string(),
 	projectConfigPath: z.string().nullable(),
 	readyForReviewNotificationsEnabled: z.boolean(),
+	audibleNotificationsEnabled: z.boolean(),
+	audibleNotificationVolume: z.number().min(0).max(1),
+	audibleNotificationEvents: z.object({
+		permission: z.boolean(),
+		review: z.boolean(),
+		failure: z.boolean(),
+		completion: z.boolean(),
+	}),
+	audibleNotificationsOnlyWhenHidden: z.boolean(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
@@ -564,6 +573,17 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
+	audibleNotificationsEnabled: z.boolean().optional(),
+	audibleNotificationVolume: z.number().min(0).max(1).optional(),
+	audibleNotificationEvents: z
+		.object({
+			permission: z.boolean(),
+			review: z.boolean(),
+			failure: z.boolean(),
+			completion: z.boolean(),
+		})
+		.optional(),
+	audibleNotificationsOnlyWhenHidden: z.boolean().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

@@ -23,6 +23,10 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
 		readyForReviewNotificationsEnabled: true,
+		audibleNotificationsEnabled: true,
+		audibleNotificationVolume: 0.7,
+		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+		audibleNotificationsOnlyWhenHidden: true,
 		shortcuts: [],
 		...overrides,
 	};

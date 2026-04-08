@@ -15,6 +15,15 @@ export interface UseRuntimeConfigResult {
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		audibleNotificationsEnabled?: boolean;
+		audibleNotificationVolume?: number;
+		audibleNotificationEvents?: {
+			permission: boolean;
+			review: boolean;
+			failure: boolean;
+			completion: boolean;
+		};
+		audibleNotificationsOnlyWhenHidden?: boolean;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
@@ -80,6 +89,15 @@ export function useRuntimeConfig(
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
+			audibleNotificationsEnabled?: boolean;
+			audibleNotificationVolume?: number;
+			audibleNotificationEvents?: {
+				permission: boolean;
+				review: boolean;
+				failure: boolean;
+				completion: boolean;
+			};
+			audibleNotificationsOnlyWhenHidden?: boolean;
 		}): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {
