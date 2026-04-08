@@ -43,6 +43,7 @@ export function QuarterdeckBoard({
 	onEditTask,
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
+	isLlmGenerationDisabled,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	onMoveToTrashTask,
@@ -71,6 +72,7 @@ export function QuarterdeckBoard({
 	onEditTask?: (card: BoardCard) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
@@ -398,6 +400,7 @@ export function QuarterdeckBoard({
 						onEditTask={column.id === "backlog" ? onEditTask : undefined}
 						onCancelAutomaticTaskAction={onCancelAutomaticTaskAction}
 						onRegenerateTitleTask={onRegenerateTitleTask}
+						isLlmGenerationDisabled={isLlmGenerationDisabled}
 						onUpdateTaskTitle={onUpdateTaskTitle}
 						onTogglePinTask={onTogglePinTask}
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}

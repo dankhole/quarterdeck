@@ -4,7 +4,18 @@ import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, Volume2, X } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Circle,
+	CircleDot,
+	ExternalLink,
+	Plus,
+	Settings,
+	Sparkles,
+	Volume2,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
@@ -605,9 +616,25 @@ export function RuntimeSettingsDialog({
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
 
+				<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
+					<Sparkles size={14} />
+					LLM Generation
+				</h6>
+				{!llmConfigured ? (
+					<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
+						LLM features are unavailable. Set <code className="text-[12px]">ANTHROPIC_BEDROCK_BASE_URL</code> and{" "}
+						<code className="text-[12px]">ANTHROPIC_AUTH_TOKEN</code> in the shell that launches Quarterdeck to
+						enable auto-generated titles, branch names, and summaries.
+					</div>
+				) : (
+					<p className="text-text-secondary text-[13px] mt-0 mb-2">
+						Titles, branch names, and summaries are generated via a lightweight LLM call.
+					</p>
+				)}
+
 				<label
 					htmlFor="runtime-settings-show-summary-on-cards"
-					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+					className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
 				>
 					<RadixCheckbox.Root
 						id="runtime-settings-show-summary-on-cards"
@@ -647,13 +674,6 @@ export function RuntimeSettingsDialog({
 				</label>
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
-					{!llmConfigured ? (
-						<span className="text-status-orange">
-							{" "}
-							Requires ANTHROPIC_BEDROCK_BASE_URL and ANTHROPIC_AUTH_TOKEN environment variables to be set in the
-							shell that launches Quarterdeck.
-						</span>
-					) : null}
 				</p>
 				{autoGenerateSummary ? (
 					<div className="flex items-center gap-2 ml-6 mt-1.5">

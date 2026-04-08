@@ -12,6 +12,7 @@ export function useDisplaySummaryOnHover(
 	currentProjectId: string | null,
 	autoGenerateSummary: boolean,
 	staleAfterSeconds: number,
+	llmConfigured: boolean,
 ): (taskId: string) => void {
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastRequestedRef = useRef<string | null>(null);
@@ -25,15 +26,15 @@ export function useDisplaySummaryOnHover(
 	}, []);
 
 	useEffect(() => {
-		if (!autoGenerateSummary && timerRef.current !== null) {
+		if ((!autoGenerateSummary || !llmConfigured) && timerRef.current !== null) {
 			clearTimeout(timerRef.current);
 			timerRef.current = null;
 		}
-	}, [autoGenerateSummary]);
+	}, [autoGenerateSummary, llmConfigured]);
 
 	return useCallback(
 		(taskId: string) => {
-			if (!autoGenerateSummary || !currentProjectId) {
+			if (!autoGenerateSummary || !llmConfigured || !currentProjectId) {
 				return;
 			}
 
@@ -55,6 +56,6 @@ export function useDisplaySummaryOnHover(
 				});
 			}, HOVER_DEBOUNCE_MS);
 		},
-		[autoGenerateSummary, currentProjectId, staleAfterSeconds],
+		[autoGenerateSummary, llmConfigured, currentProjectId, staleAfterSeconds],
 	);
 }

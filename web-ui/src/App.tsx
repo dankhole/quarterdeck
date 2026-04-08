@@ -180,10 +180,13 @@ export default function App(): ReactElement {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
 	} = useTerminalConnectionReady();
+	const llmConfigured = runtimeProjectConfig?.llmConfigured ?? false;
+	const isLlmGenerationDisabled = !llmConfigured;
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
 		currentProjectId,
 		runtimeProjectConfig?.autoGenerateSummary ?? false,
 		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
+		llmConfigured,
 	);
 	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
@@ -1007,6 +1010,7 @@ export default function App(): ReactElement {
 												onEditTask={handleOpenEditTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 												onRegenerateTitleTask={handleRegenerateTitleTask}
+												isLlmGenerationDisabled={isLlmGenerationDisabled}
 												onUpdateTaskTitle={handleUpdateTaskTitle}
 												onTogglePinTask={handleToggleTaskPinned}
 												moveToTrashLoadingById={moveToTrashLoadingById}
@@ -1096,6 +1100,7 @@ export default function App(): ReactElement {
 									onRestartSessionTask={handleRestartTaskSession}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 									onRegenerateTitleTask={handleRegenerateTitleTask}
+									isLlmGenerationDisabled={isLlmGenerationDisabled}
 									onUpdateTaskTitle={handleUpdateTaskTitle}
 									onTogglePinTask={handleToggleTaskPinned}
 									onAddReviewComments={(taskId: string, text: string) => {
@@ -1190,6 +1195,7 @@ export default function App(): ReactElement {
 					onBranchNameEdit={handleBranchNameEdit}
 					onGenerateBranchName={generateBranchNameFromPrompt}
 					isGeneratingBranchName={isGeneratingBranchName}
+					isLlmGenerationDisabled={isLlmGenerationDisabled}
 					workspaceId={currentProjectId}
 					branchRef={newTaskBranchRef}
 					branchOptions={createTaskBranchOptions}

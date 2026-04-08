@@ -22,6 +22,7 @@ export function BoardColumn({
 	onEditTask,
 	onCancelAutomaticTaskAction,
 	onRegenerateTitleTask,
+	isLlmGenerationDisabled,
 	onUpdateTaskTitle,
 	onTogglePinTask,
 	onMoveToTrashTask,
@@ -53,6 +54,7 @@ export function BoardColumn({
 	onEditTask?: (card: BoardCardModel) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	onRegenerateTitleTask?: (taskId: string) => void;
+	isLlmGenerationDisabled?: boolean;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
@@ -189,6 +191,7 @@ export function BoardColumn({
 											onRestoreFromTrash={onRestoreFromTrashTask}
 											onCancelAutomaticAction={onCancelAutomaticTaskAction}
 											onRegenerateTitle={onRegenerateTitleTask}
+											isLlmGenerationDisabled={isLlmGenerationDisabled}
 											onUpdateTitle={onUpdateTaskTitle}
 											onTogglePin={onTogglePinTask}
 											isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
