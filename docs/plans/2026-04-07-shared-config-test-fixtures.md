@@ -146,14 +146,15 @@ Replace each inline factory with an import from the shared factory. Tests that n
 
 Note: `test/runtime/config/runtime-config.test.ts` has 3 inline config objects in snapshot assertions but tests real filesystem load/save — leave these as-is since they validate the actual serialization shape.
 
-**Web-UI tests (7 files):**
-- `web-ui/src/runtime/use-runtime-config.test.tsx` — replace factory, use overrides for `selectedAgentId`
-- `web-ui/src/runtime/use-runtime-project-config.test.tsx` — replace factory, pass `shortcuts` via overrides
-- `web-ui/src/runtime/native-agent.test.ts` — replace factory, pass `agents` via overrides where needed
-- `web-ui/src/hooks/use-startup-onboarding.test.tsx` — replace factory, override `agents` for single-agent scenario
-- `web-ui/src/hooks/use-audible-notifications.test.tsx` — replace inline config factory
-- `web-ui/src/hooks/use-home-agent-session.test.tsx` — replace inline config factory
-- `web-ui/src/components/runtime-settings-dialog.test.tsx` — replace inline config factory
+**Web-UI tests (6 files with full RuntimeConfigResponse factories):**
+- `web-ui/src/runtime/use-runtime-config.test.tsx` — `createRuntimeConfigResponse(selectedAgentId)` → import, override `selectedAgentId`
+- `web-ui/src/runtime/use-runtime-project-config.test.tsx` — `createRuntimeConfigResponse(selectedAgentId, shortcuts)` → import, override both
+- `web-ui/src/runtime/native-agent.test.ts` — `createRuntimeConfigResponse(selectedAgentId, overrides?)` → import, pass `agents` via overrides where needed
+- `web-ui/src/hooks/use-startup-onboarding.test.tsx` — `createRuntimeConfigResponse(selectedAgentId)` → import, override `agents` for single-agent scenario
+- `web-ui/src/hooks/use-home-agent-session.test.tsx` — `createRuntimeConfig(overrides?)` → import
+- `web-ui/src/components/runtime-settings-dialog.test.tsx` — `createSavedConfig(overrides?)` (uses `as unknown as RuntimeConfigResponse` cast) → import, eliminates unsafe cast
+
+Note: `web-ui/src/hooks/use-audible-notifications.test.tsx` does NOT have a config factory — its `defaultProps()` takes individual audio fields as hook props, not a RuntimeConfigResponse. Leave as-is.
 
 For tests that build dynamic agent arrays (e.g. `installed` varies by `selectedAgentId`), use `createTestAgentDef()`:
 ```ts
@@ -183,9 +184,8 @@ Add a note about using the shared factories when writing new tests that need con
 | `web-ui/src/runtime/use-runtime-project-config.test.tsx` | Replace inline factory with import |
 | `web-ui/src/runtime/native-agent.test.ts` | Replace inline factory with import |
 | `web-ui/src/hooks/use-startup-onboarding.test.tsx` | Replace inline factory with import |
-| `web-ui/src/hooks/use-audible-notifications.test.tsx` | Replace inline config factory |
-| `web-ui/src/hooks/use-home-agent-session.test.tsx` | Replace inline config factory |
-| `web-ui/src/components/runtime-settings-dialog.test.tsx` | Replace inline config factory |
+| `web-ui/src/hooks/use-home-agent-session.test.tsx` | Replace `createRuntimeConfig()` with import |
+| `web-ui/src/components/runtime-settings-dialog.test.tsx` | Replace `createSavedConfig()` with import, remove unsafe cast |
 | `AGENTS.md` | Add note about shared config test factories |
 
 ## What This Fixes
