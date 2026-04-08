@@ -1,6 +1,6 @@
 > **Fork notice:** This project is a derivative work of [kanban-org/kanban](https://github.com/kanban-org/kanban), originally created by Cline Bot Inc. and licensed under the Apache License 2.0. Significant modifications have been made. See [LICENSE](LICENSE) for terms.
 
-## Quarterdeck (Research Preview)
+## Quarterdeck
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe" width="100%" />
@@ -8,8 +8,8 @@
 
 A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
 
-> [!WARNING]
-> Quarterdeck is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback on [GitHub Issues](https://github.com/dankhole/quarterdeck/issues).
+> [!NOTE]
+> Quarterdeck is under active development. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
 
 <div align="left">
 <table>
