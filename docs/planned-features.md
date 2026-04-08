@@ -225,6 +225,10 @@ UI status indicators like "needs perms" and "waiting for approval" can get stuck
 
 The shortcut/skill button is currently rendered on every task card, which is redundant and clutters the card UI. Move it to a shared location — the top navbar, the detail sidebar toolbar, or the agent terminal panel. It only needs to target the currently selected/active task, so one instance is enough.
 
-## 28. Fix: "Use feature branch" in create task dialog should default to off
+## 28. Shared config test fixtures to eliminate merge conflicts
+
+Consolidate the ~10 copy-pasted config mock factories across test files into 2 shared factory files (one backend, one web-ui). Currently adding a single config field forces changes to ~12 test files with hardcoded mock objects, making parallel feature branches a merge conflict magnet. Plan at [docs/plans/2026-04-07-shared-config-test-fixtures.md](plans/2026-04-07-shared-config-test-fixtures.md).
+
+## 29. Fix: "Use feature branch" in create task dialog should default to off
 
 The "Use feature branch" toggle in the create task dialog remembers its last value. It should always reset to unchecked when the dialog opens — opting into a feature branch should be a deliberate per-task choice, not sticky state.
