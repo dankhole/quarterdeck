@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
@@ -107,31 +107,6 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 	};
 }
 
-function createRuntimeConfigState(): RuntimeConfigState {
-	return {
-		selectedAgentId: "claude",
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
-		readyForReviewNotificationsEnabled: true,
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts: [],
-		promptShortcuts: [],
-		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project-config.json",
-	};
-}
-
 function createCard(overrides: Partial<RuntimeBoardCard> = {}): RuntimeBoardCard {
 	return {
 		id: "task-1",
@@ -162,7 +137,7 @@ function emptyBoard() {
 function createDeps(terminalManager: Record<string, unknown> = {}) {
 	return {
 		getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-		loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+		loadScopedRuntimeConfig: vi.fn(async () => createTestRuntimeConfigState()),
 		setActiveRuntimeConfig: vi.fn(),
 		getScopedTerminalManager: vi.fn(async () => terminalManager as never),
 		resolveInteractiveShellCommand: vi.fn(),
@@ -413,7 +388,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const api = createRuntimeApi({
 			...createDeps(terminalManager),
 			loadScopedRuntimeConfig: vi.fn(async () => {
-				const runtimeConfigState = createRuntimeConfigState();
+				const runtimeConfigState = createTestRuntimeConfigState();
 				runtimeConfigState.selectedAgentId = "codex";
 				return runtimeConfigState;
 			}),

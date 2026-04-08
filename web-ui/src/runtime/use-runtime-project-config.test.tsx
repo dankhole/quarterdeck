@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { type UseRuntimeProjectConfigResult, useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
+import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
@@ -25,51 +26,23 @@ function createRuntimeConfigResponse(
 	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
 	shortcuts: RuntimeConfigResponse["shortcuts"],
 ): RuntimeConfigResponse {
-	return {
+	return createTestRuntimeConfigResponse({
 		selectedAgentId,
 		selectedShortcutLabel: shortcuts[0]?.label ?? null,
-		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
-		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
-		readyForReviewNotificationsEnabled: true,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: [selectedAgentId],
-		promptShortcuts: [],
+		shortcuts,
 		agents: [
-			{
-				id: "claude",
-				label: "Claude Code",
-				binary: "claude",
-				command: "claude",
-				defaultArgs: [],
+			createTestAgentDef("claude", {
 				installed: selectedAgentId === "claude",
 				configured: selectedAgentId === "claude",
-			},
-			{
-				id: "codex",
-				label: "OpenAI Codex",
-				binary: "codex",
-				command: "codex",
-				defaultArgs: [],
+			}),
+			createTestAgentDef("codex", {
 				installed: selectedAgentId === "codex",
 				configured: selectedAgentId === "codex",
-			},
+			}),
 		],
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts,
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		llmConfigured: false,
-	};
+	});
 }
 
 type HookSnapshot = UseRuntimeProjectConfigResult;

@@ -142,6 +142,30 @@ const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 	completion: true,
 };
 
+/** Assembled defaults for test fixtures — not used in production paths. */
+export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
+	globalConfigPath: "",
+	projectConfigPath: null,
+	selectedAgentId: DEFAULT_AGENT_ID,
+	selectedShortcutLabel: null,
+	agentAutonomousModeEnabled: DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
+	readyForReviewNotificationsEnabled: DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+	showSummaryOnCards: DEFAULT_SHOW_SUMMARY_ON_CARDS,
+	autoGenerateSummary: DEFAULT_AUTO_GENERATE_SUMMARY,
+	summaryStaleAfterSeconds: DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
+	showTrashWorktreeNotice: DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
+	audibleNotificationsEnabled: DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
+	audibleNotificationVolume: DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
+	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
+	audibleNotificationsOnlyWhenHidden: DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+	shortcuts: [],
+	promptShortcuts: [],
+	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+	commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+};
+
 export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
 	{
 		label: "Commit",

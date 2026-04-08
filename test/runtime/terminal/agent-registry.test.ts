@@ -8,38 +8,12 @@ vi.mock("../../../src/terminal/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
 }));
 
-import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
 } from "../../../src/terminal/agent-registry";
-
-function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): RuntimeConfigState {
-	return {
-		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project-config.json",
-		selectedAgentId: "claude",
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
-		readyForReviewNotificationsEnabled: true,
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts: [],
-		promptShortcuts: [],
-		...overrides,
-	};
-}
+import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
@@ -62,7 +36,7 @@ describe("agent-registry", () => {
 	it("treats shell-only agents as unavailable", () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "npx");
 
-		const resolved = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "claude" }));
+		const resolved = resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "claude" }));
 
 		expect(resolved).toBeNull();
 	});
@@ -70,7 +44,7 @@ describe("agent-registry", () => {
 
 describe("buildRuntimeConfigResponse", () => {
 	it("keeps curated agent default args independent of autonomous mode", () => {
-		const config = createRuntimeConfigState({
+		const config = createTestRuntimeConfigState({
 			agentAutonomousModeEnabled: true,
 		});
 
@@ -83,7 +57,7 @@ describe("buildRuntimeConfigResponse", () => {
 	});
 
 	it("omits autonomous flags from curated agent commands when disabled", () => {
-		const config = createRuntimeConfigState({
+		const config = createTestRuntimeConfigState({
 			agentAutonomousModeEnabled: false,
 		});
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
@@ -100,13 +74,13 @@ describe("buildRuntimeConfigResponse", () => {
 
 	it("sets debug mode from runtime environment variables", () => {
 		process.env.QUARTERDECK_DEBUG_MODE = "true";
-		const response = buildRuntimeConfigResponse(createRuntimeConfigState());
+		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});
 
 	it("supports debug_mode fallback env name", () => {
 		process.env.debug_mode = "1";
-		const response = buildRuntimeConfigResponse(createRuntimeConfigState());
+		const response = buildRuntimeConfigResponse(createTestRuntimeConfigState());
 		expect(response.debugModeEnabled).toBe(true);
 	});
 });

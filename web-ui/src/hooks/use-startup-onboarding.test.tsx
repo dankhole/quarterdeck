@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type UseStartupOnboardingResult, useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
@@ -15,42 +16,17 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 type HookSnapshot = UseStartupOnboardingResult;
 
 function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
-	return {
+	return createTestRuntimeConfigResponse({
 		selectedAgentId,
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
-		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
-		readyForReviewNotificationsEnabled: true,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["codex"],
-		promptShortcuts: [],
 		agents: [
-			{
-				id: "codex",
-				label: "OpenAI Codex",
-				binary: "codex",
-				command: "codex",
-				defaultArgs: [],
-				installed: true,
+			createTestAgentDef("codex", {
 				configured: selectedAgentId === "codex",
-			},
+			}),
 		],
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts: [],
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		llmConfigured: false,
-	};
+	});
 }
 
 function HookHarness({

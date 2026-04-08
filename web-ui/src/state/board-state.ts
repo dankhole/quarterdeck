@@ -383,7 +383,10 @@ export function applyDragResult(
 	if (cardIndex === -1) {
 		return { board };
 	}
-	const [movedCard] = sourceCards.splice(cardIndex, 1);
+	const movedCard = sourceCards.splice(cardIndex, 1)[0];
+	if (!movedCard) {
+		return { board };
+	}
 
 	const destinationCards = Array.from(destinationColumn.cards);
 	const destinationInsertIndex = options?.programmaticCardMoveInFlight?.insertAtTop ? 0 : destination.index;
