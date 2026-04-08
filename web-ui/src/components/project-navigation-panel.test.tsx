@@ -4,15 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import type { RuntimeProjectSummary } from "@/runtime/types";
-import { LocalStorageKey } from "@/storage/local-storage-store";
 
 vi.mock("@/resize/layout-customizations", () => ({
 	useLayoutResetEffect: () => {},
 }));
-
-const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
-const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
-const BOARD_SURFACE_HORIZONTAL_CHROME_PX = 40;
 
 const PROJECTS: RuntimeProjectSummary[] = [
 	{
@@ -28,28 +23,11 @@ const PROJECTS: RuntimeProjectSummary[] = [
 	},
 ];
 
-function getSidebar(container: HTMLElement): HTMLElement {
-	const sidebar = container.querySelector("aside");
-	if (!sidebar) {
-		throw new Error("Sidebar was not rendered");
-	}
-	return sidebar;
-}
-
-function getResizeHandle(container: HTMLElement): HTMLElement {
-	const handle = container.querySelector('[aria-label="Resize sidebar"]');
-	if (!handle) {
-		throw new Error("Resize handle was not rendered");
-	}
-	return handle as HTMLElement;
-}
-
-describe("ProjectNavigationPanel width persistence", () => {
+describe("ProjectNavigationPanel", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
 	let previousAppVersion: unknown;
-	let previousInnerWidth: number;
 
 	beforeEach(() => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -57,12 +35,6 @@ describe("ProjectNavigationPanel width persistence", () => {
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		previousAppVersion = (globalThis as typeof globalThis & { __APP_VERSION__?: unknown }).__APP_VERSION__;
 		(globalThis as typeof globalThis & { __APP_VERSION__?: string }).__APP_VERSION__ = "test";
-		previousInnerWidth = window.innerWidth;
-		Object.defineProperty(window, "innerWidth", {
-			value: 1600,
-			configurable: true,
-			writable: true,
-		});
 		localStorage.clear();
 		container = document.createElement("div");
 		document.body.appendChild(container);
@@ -86,11 +58,6 @@ describe("ProjectNavigationPanel width persistence", () => {
 		} else {
 			(globalThis as typeof globalThis & { __APP_VERSION__?: unknown }).__APP_VERSION__ = previousAppVersion;
 		}
-		Object.defineProperty(window, "innerWidth", {
-			value: previousInnerWidth,
-			configurable: true,
-			writable: true,
-		});
 	});
 
 	function renderPanel(overrides: Partial<ComponentProps<typeof ProjectNavigationPanel>> = {}): void {
@@ -112,45 +79,28 @@ describe("ProjectNavigationPanel width persistence", () => {
 		});
 	}
 
-	function getExpectedDefaultWidthPx(viewportWidth: number): number {
-		const proportionalWidth = Math.round((viewportWidth - BOARD_SURFACE_HORIZONTAL_CHROME_PX) / 5);
-		return Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, proportionalWidth));
-	}
-
-	function clampExpandedWidth(width: number): number {
-		return Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, width));
-	}
-
-	it("uses a proportional one-fifth default width when no value is persisted", () => {
+	it("renders the project list", () => {
 		renderPanel();
-		const sidebar = getSidebar(container);
-		expect(sidebar.style.width).toBe(`${getExpectedDefaultWidthPx(window.innerWidth)}px`);
+		const projectRow = container.querySelector(".kb-project-row");
+		expect(projectRow).toBeInstanceOf(HTMLElement);
+		expect(projectRow?.textContent).toContain("Quarterdeck");
 	});
 
-	it("persists resized width and restores it on remount", () => {
+	it("fills its parent container without fixed width", () => {
 		renderPanel();
-		const initialWidth = getExpectedDefaultWidthPx(window.innerWidth);
-		const expectedResizedWidth = clampExpandedWidth(initialWidth + 160);
-		const resizeHandle = getResizeHandle(container);
-		act(() => {
-			resizeHandle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 300 }));
-		});
-		act(() => {
-			window.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 460 }));
-		});
-		act(() => {
-			window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-		});
+		// The root element should be a flex column div, not a fixed-width aside
+		const rootEl = container.firstElementChild;
+		expect(rootEl).toBeInstanceOf(HTMLElement);
+		expect(rootEl?.tagName).toBe("DIV");
+		// No inline width style — fills parent via flex-1
+		expect((rootEl as HTMLElement).style.width).toBe("");
+	});
 
-		expect(localStorage.getItem(LocalStorageKey.ProjectNavigationPanelWidth)).toBe(String(expectedResizedWidth));
-
-		act(() => {
-			root.unmount();
-		});
-		root = createRoot(container);
-
+	it("renders the add project button", () => {
 		renderPanel();
-		const sidebar = getSidebar(container);
-		expect(sidebar.style.width).toBe(`${expectedResizedWidth}px`);
+		const addButton = Array.from(container.querySelectorAll("button")).find(
+			(btn) => btn.textContent?.trim() === "Add Project",
+		);
+		expect(addButton).toBeInstanceOf(HTMLButtonElement);
 	});
 });

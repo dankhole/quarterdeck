@@ -54,7 +54,6 @@ describe("useAppHotkeys", () => {
 					selectedCard={null}
 					isDetailTerminalOpen={false}
 					isHomeTerminalOpen={false}
-					isHomeGitHistoryOpen={false}
 					canUseCreateTaskShortcut
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
@@ -63,7 +62,6 @@ describe("useAppHotkeys", () => {
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={handleOpenSettings}
 					handleToggleGitHistory={handleToggleGitHistory}
-					handleCloseGitHistory={() => {}}
 					onStartAllTasks={() => {}}
 				/>,
 			);
@@ -89,43 +87,6 @@ describe("useAppHotkeys", () => {
 		expect(handleOpenSettings).toHaveBeenCalledTimes(1);
 	});
 
-	it("closes home git history on Escape", async () => {
-		const handleCloseGitHistory = vi.fn();
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={null}
-					isDetailTerminalOpen={false}
-					isHomeTerminalOpen={false}
-					isHomeGitHistoryOpen
-					canUseCreateTaskShortcut
-					handleToggleDetailTerminal={() => {}}
-					handleToggleHomeTerminal={() => {}}
-					handleToggleExpandDetailTerminal={() => {}}
-					handleToggleExpandHomeTerminal={() => {}}
-					handleOpenCreateTask={() => {}}
-					handleOpenSettings={() => {}}
-					handleToggleGitHistory={() => {}}
-					handleCloseGitHistory={handleCloseGitHistory}
-					onStartAllTasks={() => {}}
-				/>,
-			);
-		});
-
-		const escapeCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "escape");
-		if (!escapeCall || typeof escapeCall[1] !== "function") {
-			throw new Error("Expected Escape shortcut to be registered.");
-		}
-
-		act(() => {
-			const escapeHandler = escapeCall[1] as (event: KeyboardEvent) => void;
-			escapeHandler(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
-		});
-
-		expect(handleCloseGitHistory).toHaveBeenCalledTimes(1);
-	});
-
 	it("starts all tasks on Mod+B", async () => {
 		const onStartAllTasks = vi.fn();
 
@@ -135,7 +96,6 @@ describe("useAppHotkeys", () => {
 					selectedCard={null}
 					isDetailTerminalOpen={false}
 					isHomeTerminalOpen={false}
-					isHomeGitHistoryOpen={false}
 					canUseCreateTaskShortcut
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
@@ -144,7 +104,6 @@ describe("useAppHotkeys", () => {
 					handleOpenCreateTask={() => {}}
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
-					handleCloseGitHistory={() => {}}
 					onStartAllTasks={onStartAllTasks}
 				/>,
 			);
@@ -172,7 +131,6 @@ describe("useAppHotkeys", () => {
 					selectedCard={null}
 					isDetailTerminalOpen={false}
 					isHomeTerminalOpen={false}
-					isHomeGitHistoryOpen={false}
 					canUseCreateTaskShortcut={false}
 					handleToggleDetailTerminal={() => {}}
 					handleToggleHomeTerminal={() => {}}
@@ -181,7 +139,6 @@ describe("useAppHotkeys", () => {
 					handleOpenCreateTask={handleOpenCreateTask}
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
-					handleCloseGitHistory={() => {}}
 					onStartAllTasks={() => {}}
 				/>,
 			);

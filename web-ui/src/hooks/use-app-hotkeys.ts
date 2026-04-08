@@ -2,15 +2,10 @@ import { useHotkeys } from "react-hotkeys-hook";
 
 import type { CardSelection } from "@/types";
 
-function isEventInsideDialog(target: EventTarget | null): boolean {
-	return target instanceof Element && target.closest("[role='dialog']") !== null;
-}
-
 interface UseAppHotkeysInput {
 	selectedCard: CardSelection | null;
 	isDetailTerminalOpen: boolean;
 	isHomeTerminalOpen: boolean;
-	isHomeGitHistoryOpen: boolean;
 	canUseCreateTaskShortcut: boolean;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
@@ -19,7 +14,6 @@ interface UseAppHotkeysInput {
 	handleOpenCreateTask: () => void;
 	handleOpenSettings: () => void;
 	handleToggleGitHistory: () => void;
-	handleCloseGitHistory: () => void;
 	onStartAllTasks: () => void;
 }
 
@@ -27,7 +21,6 @@ export function useAppHotkeys({
 	selectedCard,
 	isDetailTerminalOpen,
 	isHomeTerminalOpen,
-	isHomeGitHistoryOpen,
 	canUseCreateTaskShortcut,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
@@ -36,7 +29,6 @@ export function useAppHotkeys({
 	handleOpenCreateTask,
 	handleOpenSettings,
 	handleToggleGitHistory,
-	handleCloseGitHistory,
 	onStartAllTasks,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
@@ -130,22 +122,5 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleOpenSettings],
-	);
-
-	useHotkeys(
-		"escape",
-		(event) => {
-			if (selectedCard || !isHomeGitHistoryOpen || isEventInsideDialog(event.target)) {
-				return;
-			}
-			event.preventDefault();
-			handleCloseGitHistory();
-		},
-		{
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			preventDefault: true,
-		},
-		[handleCloseGitHistory, isHomeGitHistoryOpen, selectedCard],
 	);
 }

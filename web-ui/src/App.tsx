@@ -2,7 +2,7 @@
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
 import { FolderOpen } from "lucide-react";
-import type { ReactElement } from "react";
+import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
@@ -10,6 +10,7 @@ import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { GitHistoryView } from "@/components/git-history-view";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
@@ -61,8 +62,11 @@ import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { getDetailTerminalTaskId, useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useTitleActions } from "@/hooks/use-title-actions";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
+import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
+import { ResizeHandle } from "@/resize/resize-handle";
+import { type SidebarTabId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
+import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -87,6 +91,17 @@ import {
 } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
+import { useWindowEvent } from "@/utils/react-use";
+
+/**
+ * Bridge component that connects `useCardDetailLayout`'s reset callback to the
+ * `LayoutCustomizationsProvider`. Must be rendered *inside* the provider tree so
+ * `useLayoutResetEffect` can observe the `layoutResetNonce`.
+ */
+function LayoutResetBridge({ resetToDefaults }: { resetToDefaults: () => void }): null {
+	useLayoutResetEffect(resetToDefaults);
+	return null;
+}
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
@@ -671,9 +686,6 @@ export default function App(): ReactElement {
 		}
 		setIsGitHistoryOpen((current) => !current);
 	}, [hasNoProjects]);
-	const handleCloseGitHistory = useCallback(() => {
-		setIsGitHistoryOpen(false);
-	}, []);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -771,16 +783,14 @@ export default function App(): ReactElement {
 		selectedCard,
 		isDetailTerminalOpen,
 		isHomeTerminalOpen: showHomeBottomTerminal,
-		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
 		canUseCreateTaskShortcut: !hasNoProjects && currentProjectId !== null,
 		handleToggleDetailTerminal,
 		handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
+		handleToggleExpandHomeTerminal,
 		handleOpenCreateTask,
 		handleOpenSettings,
 		handleToggleGitHistory,
-		handleCloseGitHistory,
 		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
 	});
 
@@ -801,6 +811,111 @@ export default function App(): ReactElement {
 		: null;
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
 	const detailTerminalSubtitle = selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? null;
+
+	// --- Sidebar layout ---
+	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const [isFileBrowserExpanded, setIsFileBrowserExpanded] = useState(false);
+
+	// Reset expanded state when task changes
+	useEffect(() => {
+		setIsDiffExpanded(false);
+		setIsFileBrowserExpanded(false);
+	}, [selectedTaskId]);
+
+	const {
+		activeTab,
+		handleTabChange,
+		visualActiveTab,
+		sidePanelRatio,
+		setSidePanelRatio,
+		detailDiffFileTreeRatio,
+		setDetailDiffFileTreeRatio,
+		detailFileBrowserTreeRatio,
+		setDetailFileBrowserTreeRatio,
+		resetToDefaults: resetCardDetailLayoutToDefaults,
+	} = useCardDetailLayout({
+		isDiffExpanded,
+		isFileBrowserExpanded,
+		selectedTaskId,
+	});
+
+	const handleToolbarTabChange = useCallback(
+		(tab: SidebarTabId) => {
+			handleTabChange(tab, { setSelectedTaskId });
+		},
+		[handleTabChange, setSelectedTaskId],
+	);
+
+	// --- Home side panel resize ---
+	const { startDrag: startHomeSidePanelResize } = useResizeDrag();
+	const sidebarAreaRef = useRef<HTMLDivElement | null>(null);
+
+	const handleHomeSidePanelSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = sidebarAreaRef.current;
+			if (!container) return;
+			const containerWidth = Math.max(container.offsetWidth - TOOLBAR_WIDTH, 1);
+			const startX = event.clientX;
+			const startRatio = sidePanelRatio;
+			startHomeSidePanelResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setSidePanelRatio(startRatio + deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setSidePanelRatio(startRatio + deltaRatio);
+				},
+			});
+		},
+		[setSidePanelRatio, startHomeSidePanelResize, sidePanelRatio],
+	);
+
+	// --- Unified Escape handler ---
+	const handleEscapeKeydown = useCallback(
+		(event: KeyboardEvent) => {
+			if (event.key !== "Escape" || event.defaultPrevented) return;
+			// Skip if inside a dialog
+			if (event.target instanceof Element && event.target.closest("[role='dialog']")) return;
+
+			// 1. Git history open → close it (home or task context)
+			if (isGitHistoryOpen) {
+				event.preventDefault();
+				setIsGitHistoryOpen(false);
+				return;
+			}
+
+			const isTyping =
+				event.target instanceof HTMLElement &&
+				(event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable);
+			if (isTyping) return;
+
+			// 2. File browser expanded → collapse
+			if (isFileBrowserExpanded) {
+				event.preventDefault();
+				setIsFileBrowserExpanded(false);
+				return;
+			}
+
+			// 3. Diff expanded → collapse
+			if (isDiffExpanded) {
+				event.preventDefault();
+				setIsDiffExpanded(false);
+				return;
+			}
+
+			// 4. Task selected → deselect
+			if (selectedCard) {
+				event.preventDefault();
+				setSelectedTaskId(null);
+				return;
+			}
+		},
+		[isGitHistoryOpen, isFileBrowserExpanded, isDiffExpanded, selectedCard],
+	);
+	useWindowEvent("keydown", handleEscapeKeydown);
 
 	const runtimeHint = useMemo(() => {
 		return getTaskAgentNavbarHint(runtimeProjectConfig, {
@@ -883,96 +998,206 @@ export default function App(): ReactElement {
 		return <QuarterdeckAccessBlockedFallback />;
 	}
 
+	const homeSidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
+
+	const topBar = (
+		<TopBar
+			onBack={selectedCard ? handleBack : undefined}
+			workspacePath={navbarWorkspacePath}
+			isWorkspacePathLoading={shouldShowProjectLoadingState}
+			workspaceHint={navbarWorkspaceHint}
+			runtimeHint={navbarRuntimeHint}
+			selectedTaskId={selectedCard?.card.id ?? null}
+			selectedTaskBaseRef={selectedCard?.card.baseRef ?? null}
+			showHomeGitSummary={!hasNoProjects && !selectedCard}
+			runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
+			onGitFetch={
+				selectedCard
+					? undefined
+					: () => {
+							void runGitAction("fetch");
+						}
+			}
+			onGitPull={
+				selectedCard
+					? undefined
+					: () => {
+							void runGitAction("pull");
+						}
+			}
+			onGitPush={
+				selectedCard
+					? undefined
+					: () => {
+							void runGitAction("push");
+						}
+			}
+			onToggleTerminal={
+				hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
+			}
+			isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
+			isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
+			onOpenSettings={handleOpenSettings}
+			showDebugButton={debugModeEnabled}
+			onOpenDebugDialog={debugModeEnabled ? handleOpenDebugDialog : undefined}
+			shortcuts={shortcuts}
+			selectedShortcutLabel={selectedShortcutLabel}
+			onSelectShortcutLabel={handleSelectShortcutLabel}
+			runningShortcutLabel={runningShortcutLabel}
+			onRunShortcut={handleRunShortcut}
+			onCreateFirstShortcut={currentProjectId ? handleCreateShortcut : undefined}
+			promptShortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+			activePromptShortcut={activePromptShortcut}
+			onSelectPromptShortcutLabel={selectPromptShortcutLabel}
+			isPromptShortcutRunning={isPromptShortcutRunning}
+			onRunPromptShortcut={runPromptShortcut}
+			onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
+			openTargetOptions={openTargetOptions}
+			selectedOpenTargetId={selectedOpenTargetId}
+			onSelectOpenTarget={onSelectOpenTarget}
+			onOpenWorkspace={onOpenWorkspace}
+			canOpenWorkspace={canOpenWorkspace}
+			isOpeningWorkspace={isOpeningWorkspace}
+			onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
+			isGitHistoryOpen={isGitHistoryOpen}
+			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
+		/>
+	);
+
 	return (
 		<LayoutCustomizationsProvider onResetBottomTerminalLayoutCustomizations={resetBottomTerminalLayoutCustomizations}>
-			<div className="flex h-[100svh] min-w-0 overflow-hidden">
-				{!selectedCard ? (
-					<ProjectNavigationPanel
-						projects={displayedProjects}
-						isLoadingProjects={isProjectListLoading}
-						currentProjectId={navigationCurrentProjectId}
-						removingProjectId={removingProjectId}
-						activeSection={homeSidebarSection}
-						onActiveSectionChange={setHomeSidebarSection}
-						canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-						agentSectionContent={homeSidebarAgentPanel}
-						onSelectProject={(projectId) => {
-							void handleSelectProject(projectId);
-						}}
-						onRemoveProject={handleRemoveProject}
-						onAddProject={() => {
-							void handleAddProject();
-						}}
-					/>
+			<LayoutResetBridge resetToDefaults={resetCardDetailLayoutToDefaults} />
+			<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
+				{/* Sidebar toolbar + side panel — hidden when diff or file browser is expanded */}
+				{!isDiffExpanded && !isFileBrowserExpanded ? (
+					<>
+						<DetailToolbar
+							visualActiveTab={visualActiveTab}
+							onTabChange={handleToolbarTabChange}
+							hasSelectedTask={selectedCard !== null}
+							hasUncommittedChanges={
+								selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
+							}
+						/>
+
+						{/* Home side panel — project nav */}
+						{activeTab === "home" ? (
+							<>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										flex: `0 0 ${homeSidePanelPercent}`,
+										minWidth: 0,
+										minHeight: 0,
+										overflow: "hidden",
+									}}
+								>
+									<ProjectNavigationPanel
+										projects={displayedProjects}
+										isLoadingProjects={isProjectListLoading}
+										currentProjectId={navigationCurrentProjectId}
+										removingProjectId={removingProjectId}
+										activeSection={homeSidebarSection}
+										onActiveSectionChange={setHomeSidebarSection}
+										canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+										agentSectionContent={homeSidebarAgentPanel}
+										onSelectProject={(projectId) => {
+											void handleSelectProject(projectId);
+										}}
+										onRemoveProject={handleRemoveProject}
+										onAddProject={() => {
+											void handleAddProject();
+										}}
+									/>
+								</div>
+								<ResizeHandle
+									orientation="vertical"
+									ariaLabel="Resize home side panel"
+									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+									className="z-10"
+								/>
+							</>
+						) : null}
+					</>
 				) : null}
-				<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-					<TopBar
-						onBack={selectedCard ? handleBack : undefined}
-						workspacePath={navbarWorkspacePath}
-						isWorkspacePathLoading={shouldShowProjectLoadingState}
-						workspaceHint={navbarWorkspaceHint}
-						runtimeHint={navbarRuntimeHint}
-						selectedTaskId={selectedCard?.card.id ?? null}
-						selectedTaskBaseRef={selectedCard?.card.baseRef ?? null}
-						showHomeGitSummary={!hasNoProjects && !selectedCard}
-						runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
-						onGitFetch={
-							selectedCard
-								? undefined
-								: () => {
-										void runGitAction("fetch");
-									}
+
+				{/* Main area — varies by selection state */}
+				{selectedCard && detailSession ? (
+					<CardDetailView
+						selection={selectedCard}
+						currentProjectId={currentProjectId}
+						sessionSummary={detailSession}
+						taskSessions={sessions}
+						onSessionSummary={upsertSession}
+						onCardSelect={handleCardSelect}
+						onTaskDragEnd={handleDetailTaskDragEnd}
+						onCreateTask={handleOpenCreateTask}
+						onStartTask={handleStartTaskFromBoard}
+						onStartAllTasks={handleStartAllBacklogTasksFromBoard}
+						onClearTrash={handleOpenClearTrash}
+						editingTaskId={editingTaskId}
+						inlineTaskEditor={inlineTaskEditor}
+						onEditTask={(task) => {
+							handleOpenEditTask(task, { preserveDetailSelection: true });
+						}}
+						moveToTrashLoadingById={moveToTrashLoadingById}
+						onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
+						migratingTaskId={migratingTaskId}
+						showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
+						onRequestDisplaySummary={handleRequestDisplaySummary}
+						onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+						onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
+						onRestartSessionTask={handleRestartTaskSession}
+						onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+						onRegenerateTitleTask={handleRegenerateTitleTask}
+						isLlmGenerationDisabled={isLlmGenerationDisabled}
+						onUpdateTaskTitle={handleUpdateTaskTitle}
+						onTogglePinTask={handleToggleTaskPinned}
+						onAddReviewComments={(taskId: string, text: string) => {
+							void handleAddReviewComments(taskId, text);
+						}}
+						onSendReviewComments={(taskId: string, text: string) => {
+							void handleSendReviewComments(taskId, text);
+						}}
+						gitHistoryPanel={
+							isGitHistoryOpen ? (
+								<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
+							) : undefined
 						}
-						onGitPull={
-							selectedCard
-								? undefined
-								: () => {
-										void runGitAction("pull");
-									}
-						}
-						onGitPush={
-							selectedCard
-								? undefined
-								: () => {
-										void runGitAction("push");
-									}
-						}
-						onToggleTerminal={
-							hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
-						}
-						isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
-						isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
-						onOpenSettings={handleOpenSettings}
-						showDebugButton={debugModeEnabled}
-						onOpenDebugDialog={debugModeEnabled ? handleOpenDebugDialog : undefined}
-						shortcuts={shortcuts}
-						selectedShortcutLabel={selectedShortcutLabel}
-						onSelectShortcutLabel={handleSelectShortcutLabel}
-						runningShortcutLabel={runningShortcutLabel}
-						onRunShortcut={handleRunShortcut}
-						onCreateFirstShortcut={currentProjectId ? handleCreateShortcut : undefined}
-						promptShortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
-						activePromptShortcut={activePromptShortcut}
-						onSelectPromptShortcutLabel={selectPromptShortcutLabel}
-						isPromptShortcutRunning={isPromptShortcutRunning}
-						onRunPromptShortcut={runPromptShortcut}
-						onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
-						openTargetOptions={openTargetOptions}
-						selectedOpenTargetId={selectedOpenTargetId}
-						onSelectOpenTarget={onSelectOpenTarget}
-						onOpenWorkspace={onOpenWorkspace}
-						canOpenWorkspace={canOpenWorkspace}
-						isOpeningWorkspace={isOpeningWorkspace}
-						onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
-						isGitHistoryOpen={isGitHistoryOpen}
-						hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
+						bottomTerminalOpen={isDetailTerminalOpen}
+						bottomTerminalTaskId={detailTerminalTaskId}
+						bottomTerminalSummary={detailTerminalSummary}
+						bottomTerminalSubtitle={detailTerminalSubtitle}
+						onBottomTerminalClose={closeDetailTerminal}
+						onBottomTerminalCollapse={collapseDetailTerminal}
+						bottomTerminalPaneHeight={detailTerminalPaneHeight}
+						onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
+						onBottomTerminalConnectionReady={markTerminalConnectionReady}
+						bottomTerminalAgentCommand={agentCommand}
+						onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
+						isBottomTerminalExpanded={isDetailTerminalExpanded}
+						onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
+						onBottomTerminalRestart={handleRestartDetailTerminal}
+						onBottomTerminalExit={handleShellExit}
+						isDocumentVisible={isDocumentVisible}
+						activeTab={activeTab}
+						topBar={topBar}
+						sidePanelRatio={sidePanelRatio}
+						setSidePanelRatio={setSidePanelRatio}
+						isDiffExpanded={isDiffExpanded}
+						isFileBrowserExpanded={isFileBrowserExpanded}
+						onDiffExpandedChange={setIsDiffExpanded}
+						onFileBrowserExpandedChange={setIsFileBrowserExpanded}
+						detailDiffFileTreeRatio={detailDiffFileTreeRatio}
+						setDetailDiffFileTreeRatio={setDetailDiffFileTreeRatio}
+						detailFileBrowserTreeRatio={detailFileBrowserTreeRatio}
+						setDetailFileBrowserTreeRatio={setDetailFileBrowserTreeRatio}
 					/>
-					<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
-						<div
-							className="kb-home-layout"
-							aria-hidden={selectedCard ? true : undefined}
-							style={selectedCard ? { visibility: "hidden" } : undefined}
-						>
+				) : (
+					<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+						{topBar}
+						<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
 							{shouldShowProjectLoadingState ? (
 								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
 									<Spinner size={30} />
@@ -1038,9 +1263,7 @@ export default function App(): ReactElement {
 												dependencies={board.dependencies}
 												onCreateDependency={handleCreateDependency}
 												onDeleteDependency={handleDeleteDependency}
-												onRequestProgrammaticCardMoveReady={
-													selectedCard ? undefined : handleProgrammaticCardMoveReady
-												}
+												onRequestProgrammaticCardMoveReady={handleProgrammaticCardMoveReady}
 												onDragEnd={handleDragEnd}
 											/>
 										)}
@@ -1089,71 +1312,8 @@ export default function App(): ReactElement {
 								</div>
 							)}
 						</div>
-						{selectedCard && detailSession ? (
-							<div className="absolute inset-0 flex min-h-0 min-w-0">
-								<CardDetailView
-									selection={selectedCard}
-									currentProjectId={currentProjectId}
-									sessionSummary={detailSession}
-									taskSessions={sessions}
-									onSessionSummary={upsertSession}
-									onCardSelect={handleCardSelect}
-									onTaskDragEnd={handleDetailTaskDragEnd}
-									onCreateTask={handleOpenCreateTask}
-									onStartTask={handleStartTaskFromBoard}
-									onStartAllTasks={handleStartAllBacklogTasksFromBoard}
-									onClearTrash={handleOpenClearTrash}
-									editingTaskId={editingTaskId}
-									inlineTaskEditor={inlineTaskEditor}
-									onEditTask={(task) => {
-										handleOpenEditTask(task, { preserveDetailSelection: true });
-									}}
-									moveToTrashLoadingById={moveToTrashLoadingById}
-									onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
-									migratingTaskId={migratingTaskId}
-									showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
-									onRequestDisplaySummary={handleRequestDisplaySummary}
-									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
-									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
-									onRestartSessionTask={handleRestartTaskSession}
-									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
-									onRegenerateTitleTask={handleRegenerateTitleTask}
-									isLlmGenerationDisabled={isLlmGenerationDisabled}
-									onUpdateTaskTitle={handleUpdateTaskTitle}
-									onTogglePinTask={handleToggleTaskPinned}
-									onAddReviewComments={(taskId: string, text: string) => {
-										void handleAddReviewComments(taskId, text);
-									}}
-									onSendReviewComments={(taskId: string, text: string) => {
-										void handleSendReviewComments(taskId, text);
-									}}
-									gitHistoryPanel={
-										isGitHistoryOpen ? (
-											<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
-										) : undefined
-									}
-									onCloseGitHistory={handleCloseGitHistory}
-									bottomTerminalOpen={isDetailTerminalOpen}
-									bottomTerminalTaskId={detailTerminalTaskId}
-									bottomTerminalSummary={detailTerminalSummary}
-									bottomTerminalSubtitle={detailTerminalSubtitle}
-									onBottomTerminalClose={closeDetailTerminal}
-									onBottomTerminalCollapse={collapseDetailTerminal}
-									bottomTerminalPaneHeight={detailTerminalPaneHeight}
-									onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
-									onBottomTerminalConnectionReady={markTerminalConnectionReady}
-									bottomTerminalAgentCommand={agentCommand}
-									onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
-									isBottomTerminalExpanded={isDetailTerminalExpanded}
-									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
-									onBottomTerminalRestart={handleRestartDetailTerminal}
-									onBottomTerminalExit={handleShellExit}
-									isDocumentVisible={isDocumentVisible}
-								/>
-							</div>
-						) : null}
 					</div>
-				</div>
+				)}
 				<RuntimeSettingsDialog
 					open={isSettingsOpen}
 					workspaceId={settingsWorkspaceId}

@@ -1,7 +1,7 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import {
@@ -16,16 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
-import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
-const COLLAPSED_WIDTH = 48;
-const SIDEBAR_COLLAPSE_THRESHOLD = 120;
-const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
-const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
 interface TaskCountBadge {
 	id: string;
 	title: string;
@@ -70,144 +64,8 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
-	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
-	const [isDragging, setIsDragging] = useState(false);
-	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
-
-	const stopDrag = useCallback(() => {
-		setIsDragging(false);
-		const previousStyle = previousBodyStyleRef.current;
-		if (previousStyle) {
-			document.body.style.userSelect = previousStyle.userSelect;
-			document.body.style.cursor = previousStyle.cursor;
-			previousBodyStyleRef.current = null;
-		}
-		dragRef.current = null;
-	}, []);
-
-	useUnmount(stopDrag);
-
-	const handleMouseMove = useCallback(
-		(event: MouseEvent) => {
-			if (!isDragging) {
-				return;
-			}
-			const dragState = dragRef.current;
-			if (!dragState) {
-				return;
-			}
-			const delta = event.clientX - dragState.startX;
-			const newWidth = dragState.startWidth + delta;
-			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
-				if (!isCollapsed) {
-					setSidebarCollapsed(true);
-				}
-				return;
-			}
-			if (isCollapsed) {
-				setSidebarCollapsed(false);
-			}
-			setExpandedSidebarWidth(newWidth);
-		},
-		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
-	);
-
-	const handleMouseUp = useCallback(() => {
-		if (!isDragging) {
-			return;
-		}
-		stopDrag();
-	}, [isDragging, stopDrag]);
-
-	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
-	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
-
-	const startDrag = useCallback(
-		(e: ReactMouseEvent) => {
-			e.preventDefault();
-			if (isDragging) {
-				stopDrag();
-			}
-			dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
-			setIsDragging(true);
-			previousBodyStyleRef.current = {
-				userSelect: document.body.style.userSelect,
-				cursor: document.body.style.cursor,
-			};
-			document.body.style.userSelect = "none";
-			document.body.style.cursor = "ew-resize";
-		},
-		[isCollapsed, isDragging, sidebarWidth, stopDrag],
-	);
-
-	if (isCollapsed) {
-		return (
-			<aside
-				className="flex flex-col items-center min-h-0 overflow-hidden bg-surface-1 relative shrink-0 py-2 gap-1.5"
-				style={{
-					width: COLLAPSED_WIDTH,
-					minWidth: COLLAPSED_WIDTH,
-					borderRight: "1px solid var(--color-divider)",
-				}}
-			>
-				<div
-					role="separator"
-					aria-orientation="vertical"
-					aria-label="Resize sidebar"
-					onMouseDown={startDrag}
-					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-				/>
-				{sortedProjects.map((project) => {
-					const isCurrent = currentProjectId === project.id;
-					const letter = project.name.charAt(0).toUpperCase();
-					return (
-						<button
-							key={project.id}
-							type="button"
-							title={project.name}
-							onClick={() => onSelectProject(project.id)}
-							className={cn(
-								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
-								isCurrent
-									? "bg-accent text-white"
-									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
-							)}
-						>
-							{letter}
-						</button>
-					);
-				})}
-				<button
-					type="button"
-					title="Add project"
-					onClick={onAddProject}
-					disabled={removingProjectId !== null}
-					className="w-8 h-8 rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto"
-				>
-					<Plus size={16} />
-				</button>
-			</aside>
-		);
-	}
-
 	return (
-		<aside
-			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
-			style={{
-				width: sidebarWidth,
-				minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
-				maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
-				borderRight: "1px solid var(--color-divider)",
-			}}
-		>
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="Resize sidebar"
-				onMouseDown={startDrag}
-				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-			/>
+		<div className="flex flex-col min-h-0 overflow-hidden bg-surface-1 flex-1">
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
@@ -372,7 +230,7 @@ export function ProjectNavigationPanel({
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialog>
-		</aside>
+		</div>
 	);
 }
 

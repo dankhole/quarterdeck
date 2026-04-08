@@ -1,42 +1,47 @@
-import { FolderOpen, GitCompareArrows, LayoutGrid } from "lucide-react";
+import { FolderOpen, GitCompareArrows, House, LayoutGrid } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { DetailPanelId } from "@/resize/use-card-detail-layout";
+import type { SidebarTabId } from "@/resize/use-card-detail-layout";
 
 const TOOLBAR_WIDTH = 40;
 
 interface DetailToolbarProps {
-	activePanel: DetailPanelId | null;
-	onPanelChange: (panel: DetailPanelId | null) => void;
+	visualActiveTab: SidebarTabId;
+	onTabChange: (tab: SidebarTabId) => void;
+	hasSelectedTask: boolean;
 	hasUncommittedChanges?: boolean;
 }
 
 function ToolbarButton({
-	panelId,
-	activePanel,
-	onPanelChange,
+	tabId,
+	visualActiveTab,
+	onTabChange,
 	icon,
 	label,
 	showBadge,
+	disabled,
 }: {
-	panelId: DetailPanelId;
-	activePanel: DetailPanelId | null;
-	onPanelChange: (panel: DetailPanelId | null) => void;
+	tabId: SidebarTabId;
+	visualActiveTab: SidebarTabId;
+	onTabChange: (tab: SidebarTabId) => void;
 	icon: React.ReactElement;
 	label: string;
 	showBadge?: boolean;
+	disabled?: boolean;
 }): React.ReactElement {
-	const isActive = activePanel === panelId;
+	const isActive = visualActiveTab === tabId;
 	return (
 		<Tooltip content={label} side="right">
 			<button
 				type="button"
-				onClick={() => onPanelChange(isActive ? null : panelId)}
+				onClick={() => onTabChange(tabId)}
+				disabled={disabled}
 				className={cn(
 					"relative flex items-center justify-center w-8 h-8 rounded-md cursor-pointer border-0",
 					isActive
 						? "bg-surface-3 text-text-primary"
 						: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
+					disabled && "opacity-35 pointer-events-none cursor-default",
 				)}
 				aria-label={label}
 				aria-pressed={isActive}
@@ -51,8 +56,9 @@ function ToolbarButton({
 export { TOOLBAR_WIDTH };
 
 export function DetailToolbar({
-	activePanel,
-	onPanelChange,
+	visualActiveTab,
+	onTabChange,
+	hasSelectedTask,
 	hasUncommittedChanges,
 }: DetailToolbarProps): React.ReactElement {
 	return (
@@ -65,27 +71,43 @@ export function DetailToolbar({
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
+			{/* Home — always enabled */}
 			<ToolbarButton
-				panelId="quarterdeck"
-				activePanel={activePanel}
-				onPanelChange={onPanelChange}
+				tabId="home"
+				visualActiveTab={visualActiveTab}
+				onTabChange={onTabChange}
+				icon={<House size={18} />}
+				label="Home"
+			/>
+
+			{/* Divider between Home and task-tied tabs */}
+			<div className="w-5 my-1" style={{ height: 1, background: "var(--color-divider)" }} />
+
+			{/* Task-tied tabs — greyed out when no task selected */}
+			<ToolbarButton
+				tabId="task_column"
+				visualActiveTab={visualActiveTab}
+				onTabChange={onTabChange}
 				icon={<LayoutGrid size={18} />}
 				label="Board"
+				disabled={!hasSelectedTask}
 			/>
 			<ToolbarButton
-				panelId="changes"
-				activePanel={activePanel}
-				onPanelChange={onPanelChange}
+				tabId="changes"
+				visualActiveTab={visualActiveTab}
+				onTabChange={onTabChange}
 				icon={<GitCompareArrows size={18} />}
 				label="Changes"
-				showBadge={hasUncommittedChanges}
+				showBadge={hasSelectedTask && hasUncommittedChanges}
+				disabled={!hasSelectedTask}
 			/>
 			<ToolbarButton
-				panelId="files"
-				activePanel={activePanel}
-				onPanelChange={onPanelChange}
+				tabId="files"
+				visualActiveTab={visualActiveTab}
+				onTabChange={onTabChange}
 				icon={<FolderOpen size={18} />}
 				label="Files"
+				disabled={!hasSelectedTask}
 			/>
 		</aside>
 	);
