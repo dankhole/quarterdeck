@@ -159,7 +159,7 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	const managedWorkspacePaths = new Set<string>();
 
 	for (const { workspacePath, terminalManager } of deps.workspaceRegistry.listManagedWorkspaces()) {
-		terminalManager.stopStaleProcessWatchdog();
+		terminalManager.stopReconciliation();
 		const interrupted = terminalManager.markInterruptedAndStopAll();
 		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
 		if (!workspacePath) {

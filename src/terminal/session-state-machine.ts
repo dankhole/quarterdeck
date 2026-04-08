@@ -13,7 +13,7 @@ export interface SessionTransitionResult {
 	clearAttentionBuffer: boolean;
 }
 
-function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): boolean {
+export function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): boolean {
 	return reason === "attention" || reason === "hook" || reason === "error";
 }
 

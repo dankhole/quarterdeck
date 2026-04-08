@@ -242,7 +242,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			} catch {
 				// Workspace state will be created on demand.
 			}
-			manager.startStaleProcessWatchdog();
+			manager.startReconciliation();
 			terminalManagersByWorkspaceId.set(workspaceId, manager);
 			return manager;
 		})().finally(() => {
