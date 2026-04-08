@@ -90,18 +90,28 @@ function resolveToolCallLabel(
 	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
 }
 
-/** Tooltip content for card hover: "Thinking..." if running, finalMessage if completed. */
-function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
+const TOOLTIP_MAX_LENGTH = 80;
+
+/** Tooltip content for card hover: displaySummary if available, fallback text otherwise. */
+export function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
 	if (!summary) {
 		return null;
 	}
-	if (summary.state === "running") {
-		return "Thinking\u2026";
+
+	// displaySummary is the single canonical text — already truncated to 80 chars.
+	// Show it regardless of state (running, review, etc.).
+	if (summary.displaySummary) {
+		return summary.displaySummary;
 	}
-	const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
-	if (finalMessage) {
-		const maxLength = 200;
-		return finalMessage.length > maxLength ? `${finalMessage.slice(0, maxLength)}\u2026` : finalMessage;
+
+	// Fallback for sessions that predate the displaySummary field: use the last
+	// conversation summary entry, truncated.
+	if (summary.conversationSummaries.length > 0) {
+		const last = summary.conversationSummaries[summary.conversationSummaries.length - 1];
+		const text = last?.text?.trim();
+		if (text) {
+			return text.length > TOOLTIP_MAX_LENGTH ? `${text.slice(0, TOOLTIP_MAX_LENGTH)}\u2026` : text;
+		}
 	}
 	return null;
 }
@@ -140,6 +150,7 @@ export function BoardCard({
 	columnId,
 	sessionSummary,
 	selected = false,
+	showSummaryOnCards = false,
 	onClick,
 	onStart,
 	onRestartSession,
@@ -154,6 +165,7 @@ export function BoardCard({
 	isMigrateLoading = false,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
+	onRequestDisplaySummary,
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
@@ -163,6 +175,7 @@ export function BoardCard({
 	columnId: BoardColumnId;
 	sessionSummary?: RuntimeTaskSessionSummary;
 	selected?: boolean;
+	showSummaryOnCards?: boolean;
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
@@ -175,6 +188,7 @@ export function BoardCard({
 	isMoveToTrashLoading?: boolean;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	isMigrateLoading?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	isDependencySource?: boolean;
@@ -220,6 +234,12 @@ export function BoardCard({
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
 	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
+
+	const latestSummaryText = sessionSummary?.displaySummary ?? null;
+
+	// Don't show the tooltip if the summary is already visible on the card face.
+	const isSummaryVisibleOnCard = showSummaryOnCards && !!latestSummaryText;
+	const effectiveTooltip = isSummaryVisibleOnCard ? null : cardHoverTooltip;
 
 	const isSessionDead =
 		!sessionSummary ||
@@ -311,6 +331,7 @@ export function BoardCard({
 						onMouseEnter={() => {
 							setIsHovered(true);
 							onDependencyPointerEnter?.(card.id);
+							onRequestDisplaySummary?.(card.id);
 						}}
 						onMouseMove={() => {
 							if (!isDependencyLinking) {
@@ -320,87 +341,87 @@ export function BoardCard({
 						}}
 						onMouseLeave={() => setIsHovered(false)}
 					>
-						<div
-							className={cn(
-								"rounded-md border border-border-bright bg-surface-2 p-2.5",
-								isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
-								isDragging && "shadow-lg",
-								isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
-								isDependencySource && "kb-board-card-dependency-source",
-								isDependencyTarget && "kb-board-card-dependency-target",
-							)}
-						>
-							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
-								{statusMarker === "restart" ? (
-									<div className="inline-flex items-center">
-										<Tooltip content="Restart session">
+						<Tooltip content={effectiveTooltip ?? undefined} side="top">
+							<div
+								className={cn(
+									"rounded-md border border-border-bright bg-surface-2 p-2.5",
+									isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
+									isDragging && "shadow-lg",
+									isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
+									isDependencySource && "kb-board-card-dependency-source",
+									isDependencyTarget && "kb-board-card-dependency-target",
+								)}
+							>
+								<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
+									{statusMarker === "restart" ? (
+										<div className="inline-flex items-center">
+											<Tooltip content="Restart session">
+												<Button
+													icon={<RotateCw size={12} />}
+													variant="ghost"
+													size="sm"
+													className="text-status-red hover:text-text-primary"
+													aria-label="Restart agent session"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														onRestartSession?.(card.id);
+													}}
+												/>
+											</Tooltip>
+										</div>
+									) : statusMarker === "spinner" ? (
+										<div className="inline-flex items-center">
+											<Spinner size={12} />
+										</div>
+									) : null}
+									{card.pinned && !isTrashCard ? (
+										<Tooltip content="Pinned to top">
+											<span className="inline-flex items-center shrink-0 text-text-secondary">
+												<Pin size={12} />
+											</span>
+										</Tooltip>
+									) : null}
+									{isSharedCheckout ? (
+										<Tooltip content="Running in shared checkout (not isolated)">
+											<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
+												Shared
+											</span>
+										</Tooltip>
+									) : null}
+									{isCwdDiverged ? (
+										<Tooltip content="Agent session is running in a different directory than expected. Restart the task to fix.">
+											<AlertCircle size={12} className="shrink-0 text-status-orange" />
+										</Tooltip>
+									) : null}
+									{onMigrateWorkingDirectory &&
+									(columnId === "in_progress" || columnId === "review") &&
+									isHovered ? (
+										<Tooltip content={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}>
 											<Button
-												icon={<RotateCw size={12} />}
+												icon={<GitBranch size={12} />}
 												variant="ghost"
 												size="sm"
-												className="text-status-red hover:text-text-primary"
-												aria-label="Restart agent session"
+												disabled={isMigrateLoading}
+												aria-label={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}
 												onMouseDown={stopEvent}
 												onClick={(event) => {
 													stopEvent(event);
-													onRestartSession?.(card.id);
+													onMigrateWorkingDirectory(card.id, isSharedCheckout ? "isolate" : "de-isolate");
 												}}
 											/>
 										</Tooltip>
-									</div>
-								) : statusMarker === "spinner" ? (
-									<div className="inline-flex items-center">
-										<Spinner size={12} />
-									</div>
-								) : null}
-								{card.pinned && !isTrashCard ? (
-									<Tooltip content="Pinned to top">
-										<span className="inline-flex items-center shrink-0 text-text-secondary">
-											<Pin size={12} />
-										</span>
-									</Tooltip>
-								) : null}
-								{isSharedCheckout ? (
-									<Tooltip content="Running in shared checkout (not isolated)">
-										<span className="inline-flex items-center shrink-0 rounded bg-status-red/15 px-1 py-px text-[10px] font-medium text-status-red leading-tight">
-											Shared
-										</span>
-									</Tooltip>
-								) : null}
-								{isCwdDiverged ? (
-									<Tooltip content="Agent session is running in a different directory than expected. Restart the task to fix.">
-										<AlertCircle size={12} className="shrink-0 text-status-orange" />
-									</Tooltip>
-								) : null}
-								{onMigrateWorkingDirectory &&
-								(columnId === "in_progress" || columnId === "review") &&
-								isHovered ? (
-									<Tooltip content={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}>
-										<Button
-											icon={<GitBranch size={12} />}
-											variant="ghost"
-											size="sm"
-											disabled={isMigrateLoading}
-											aria-label={isSharedCheckout ? "Isolate to worktree" : "Move to main checkout"}
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onMigrateWorkingDirectory(card.id, isSharedCheckout ? "isolate" : "de-isolate");
-											}}
+									) : null}
+									{isEditingTitle && onUpdateTitle ? (
+										<InlineTitleEditor
+											cardId={card.id}
+											currentTitle={card.title}
+											onSave={onUpdateTitle}
+											onClose={closeTitleEditor}
+											onRegenerate={onRegenerateTitle}
+											stopEvent={stopEvent}
 										/>
-									</Tooltip>
-								) : null}
-								{isEditingTitle && onUpdateTitle ? (
-									<InlineTitleEditor
-										cardId={card.id}
-										currentTitle={card.title}
-										onSave={onUpdateTitle}
-										onClose={closeTitleEditor}
-										onRegenerate={onRegenerateTitle}
-										stopEvent={stopEvent}
-									/>
-								) : (
-									<Tooltip content={cardHoverTooltip ?? undefined} side="top">
+									) : (
 										<div className="flex flex-1 items-center gap-1 min-w-0">
 											<div className="flex-1 min-w-0">
 												<p
@@ -445,149 +466,154 @@ export function BoardCard({
 												</>
 											) : null}
 										</div>
-									</Tooltip>
-								)}
-								{columnId === "backlog" ? (
+									)}
+									{columnId === "backlog" ? (
+										<Button
+											icon={<Play size={14} />}
+											variant="ghost"
+											size="sm"
+											aria-label="Start task"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onStart?.(card.id);
+											}}
+										/>
+									) : columnId === "review" ? (
+										<>
+											{isSessionRestartable && onRestartSession ? (
+												<Tooltip content="Restart session">
+													<Button
+														icon={<RotateCw size={12} />}
+														variant="ghost"
+														size="sm"
+														aria-label="Restart agent session"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															onRestartSession(card.id);
+														}}
+													/>
+												</Tooltip>
+											) : null}
+											<Button
+												icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+												variant="ghost"
+												size="sm"
+												disabled={isMoveToTrashLoading}
+												aria-label="Move task to trash"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onMoveToTrash?.(card.id);
+												}}
+											/>
+										</>
+									) : columnId === "trash" ? (
+										<Tooltip
+											side="bottom"
+											content={
+												<>
+													Restore session
+													<br />
+													in new workspace
+												</>
+											}
+										>
+											<Button
+												icon={<RotateCcw size={12} />}
+												variant="ghost"
+												size="sm"
+												aria-label="Restore task from trash"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onRestoreFromTrash?.(card.id);
+												}}
+											/>
+										</Tooltip>
+									) : null}
+								</div>
+								{showSummaryOnCards && latestSummaryText ? (
+									<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>
+								) : null}
+								{showStatusBadge ? (
+									<div className="flex items-center gap-1.5 mt-1.5">
+										<span
+											className={cn(
+												"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+												isTrashCard
+													? "bg-surface-3 text-text-tertiary"
+													: sessionStatusTagColors[statusTagStyle],
+											)}
+										>
+											{statusLabel}
+										</span>
+										{runningActivity ? (
+											<span
+												className="text-text-secondary text-xs font-mono kb-line-clamp-1 min-w-0"
+												style={{ overflowWrap: "anywhere" }}
+											>
+												{runningActivity}
+											</span>
+										) : null}
+									</div>
+								) : null}
+								{showWorkspaceStatus && reviewBranchLabel ? (
+									<p
+										className="font-mono kb-line-clamp-1"
+										style={{
+											margin: "4px 0 0",
+											fontSize: 12,
+											lineHeight: 1.4,
+											color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
+										}}
+									>
+										<GitBranch
+											size={10}
+											style={{
+												display: "inline",
+												color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+												margin: "0px 4px 2px 0",
+												verticalAlign: "middle",
+											}}
+										/>
+										<span
+											style={{
+												color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+												textDecoration: isTrashCard ? "line-through" : undefined,
+											}}
+										>
+											{reviewBranchLabel}
+										</span>
+										{reviewChangeSummary && !isTrashCard ? (
+											<>
+												<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+												<span style={{ color: CARD_TEXT_COLOR.muted }}>
+													{reviewChangeSummary.filesLabel}
+												</span>
+												<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+												<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+											</>
+										) : null}
+									</p>
+								) : null}
+								{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 									<Button
-										icon={<Play size={14} />}
-										variant="ghost"
 										size="sm"
-										aria-label="Start task"
+										fill
+										style={{ marginTop: 12 }}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
-											onStart?.(card.id);
+											onCancelAutomaticAction(card.id);
 										}}
-									/>
-								) : columnId === "review" ? (
-									<>
-										{isSessionRestartable && onRestartSession ? (
-											<Tooltip content="Restart session">
-												<Button
-													icon={<RotateCw size={12} />}
-													variant="ghost"
-													size="sm"
-													aria-label="Restart agent session"
-													onMouseDown={stopEvent}
-													onClick={(event) => {
-														stopEvent(event);
-														onRestartSession(card.id);
-													}}
-												/>
-											</Tooltip>
-										) : null}
-										<Button
-											icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-											variant="ghost"
-											size="sm"
-											disabled={isMoveToTrashLoading}
-											aria-label="Move task to trash"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onMoveToTrash?.(card.id);
-											}}
-										/>
-									</>
-								) : columnId === "trash" ? (
-									<Tooltip
-										side="bottom"
-										content={
-											<>
-												Restore session
-												<br />
-												in new workspace
-											</>
-										}
 									>
-										<Button
-											icon={<RotateCcw size={12} />}
-											variant="ghost"
-											size="sm"
-											aria-label="Restore task from trash"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onRestoreFromTrash?.(card.id);
-											}}
-										/>
-									</Tooltip>
+										{cancelAutomaticActionLabel}
+									</Button>
 								) : null}
 							</div>
-							{showStatusBadge ? (
-								<div className="flex items-center gap-1.5 mt-1.5">
-									<span
-										className={cn(
-											"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
-											isTrashCard
-												? "bg-surface-3 text-text-tertiary"
-												: sessionStatusTagColors[statusTagStyle],
-										)}
-									>
-										{statusLabel}
-									</span>
-									{runningActivity ? (
-										<span
-											className="text-text-secondary text-xs font-mono kb-line-clamp-1 min-w-0"
-											style={{ overflowWrap: "anywhere" }}
-										>
-											{runningActivity}
-										</span>
-									) : null}
-								</div>
-							) : null}
-							{showWorkspaceStatus && reviewBranchLabel ? (
-								<p
-									className="font-mono kb-line-clamp-1"
-									style={{
-										margin: "4px 0 0",
-										fontSize: 12,
-										lineHeight: 1.4,
-										color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
-									}}
-								>
-									<GitBranch
-										size={10}
-										style={{
-											display: "inline",
-											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-											margin: "0px 4px 2px 0",
-											verticalAlign: "middle",
-										}}
-									/>
-									<span
-										style={{
-											color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-											textDecoration: isTrashCard ? "line-through" : undefined,
-										}}
-									>
-										{reviewBranchLabel}
-									</span>
-									{reviewChangeSummary && !isTrashCard ? (
-										<>
-											<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
-											<span style={{ color: CARD_TEXT_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
-											<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-											<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-										</>
-									) : null}
-								</p>
-							) : null}
-							{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-								<Button
-									size="sm"
-									fill
-									style={{ marginTop: 12 }}
-									onMouseDown={stopEvent}
-									onClick={(event) => {
-										stopEvent(event);
-										onCancelAutomaticAction(card.id);
-									}}
-								>
-									{cancelAutomaticActionLabel}
-								</Button>
-							) : null}
-						</div>
+						</Tooltip>
 					</div>
 				);
 

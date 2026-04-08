@@ -9,6 +9,7 @@ import { buildQuarterdeckRuntimeUrl } from "../core/runtime-endpoint";
 import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
 import type { RuntimeAppRouter } from "../trpc/app-router";
+import { extractLastAssistantMessage } from "./claude-transcript-parser";
 import {
 	type CodexMappedHookEvent,
 	resolveCodexRolloutFinalMessageForCwd,
@@ -501,6 +502,50 @@ async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Pr
 	};
 }
 
+/**
+ * Enrich Claude Stop hook metadata with a conversation summary extracted from
+ * the transcript JSONL file.
+ *
+ * Follows the same pattern as enrichCodexReviewMetadata - reads agent-specific
+ * files on the CLI side before the tRPC call to the server.
+ */
+async function enrichClaudeStopMetadata(args: HooksIngestArgs): Promise<HooksIngestArgs> {
+	if (args.event !== "to_review") {
+		return args;
+	}
+	const metadata = args.metadata ?? {};
+	const source = metadata.source?.toLowerCase();
+	if (source !== "claude") {
+		return args;
+	}
+
+	// Extract transcript_path from payload (check both key variants).
+	const transcriptPath = args.payload
+		? (readStringField(args.payload, "transcript_path") ?? readStringField(args.payload, "transcriptPath"))
+		: null;
+	if (!transcriptPath) {
+		return args;
+	}
+
+	const extractedText = await extractLastAssistantMessage(transcriptPath);
+	if (!extractedText) {
+		return args;
+	}
+
+	// finalMessage and activityText are set alongside conversationSummaryText for backward
+	// compatibility — legacy consumers and the activity feed read these fields rather than
+	// conversationSummaryText, so the redundancy is deliberate.
+	return {
+		...args,
+		metadata: {
+			...metadata,
+			conversationSummaryText: extractedText,
+			finalMessage: metadata.finalMessage ?? extractedText,
+			activityText: metadata.activityText ?? `Final: ${extractedText}`,
+		},
+	};
+}
+
 async function runHooksNotify(
 	event: RuntimeHookEvent,
 	options: HookCommandMetadataOptionValues,
@@ -731,7 +776,13 @@ async function runHooksIngest(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		const codexEnriched = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		try {
+			args = await enrichClaudeStopMetadata(codexEnriched);
+		} catch {
+			// If enrichment crashes, fall back to unenriched args so the hook is still ingested.
+			args = codexEnriched;
+		}
 	} catch (error) {
 		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;

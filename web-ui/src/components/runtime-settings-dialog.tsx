@@ -277,6 +277,9 @@ export function RuntimeSettingsDialog({
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
+	const [showSummaryOnCards, setShowSummaryOnCards] = useState(false);
+	const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
+	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(300);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
@@ -325,12 +328,14 @@ export function RuntimeSettingsDialog({
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
 	}, [agentAutonomousModeEnabled, config?.agents]);
-	const displayedAgents = useMemo(() => supportedAgents, [supportedAgents]);
-	const configuredAgentId = config?.selectedAgentId ?? null;
-	const firstInstalledAgentId = displayedAgents.find((agent) => agent.installed)?.id;
-	const fallbackAgentId = firstInstalledAgentId ?? displayedAgents[0]?.id ?? "claude";
-	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
+	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
+	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
+	const initialSelectedAgentId = config?.selectedAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
+	const initialShowSummaryOnCards = config?.showSummaryOnCards ?? false;
+	const initialAutoGenerateSummary = config?.autoGenerateSummary ?? false;
+	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? 300;
+	const llmConfigured = config?.llmConfigured ?? false;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
 	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
@@ -351,6 +356,15 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (agentAutonomousModeEnabled !== initialAgentAutonomousModeEnabled) {
+			return true;
+		}
+		if (showSummaryOnCards !== initialShowSummaryOnCards) {
+			return true;
+		}
+		if (autoGenerateSummary !== initialAutoGenerateSummary) {
+			return true;
+		}
+		if (summaryStaleAfterSeconds !== initialSummaryStaleAfterSeconds) {
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
@@ -379,32 +393,41 @@ export function RuntimeSettingsDialog({
 		return !areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts);
 	}, [
 		agentAutonomousModeEnabled,
+		autoGenerateSummary,
 		audibleNotificationEvents,
 		audibleNotificationVolume,
 		audibleNotificationsEnabled,
 		audibleNotificationsOnlyWhenHidden,
 		config,
 		initialAgentAutonomousModeEnabled,
+		initialAutoGenerateSummary,
 		initialAudibleNotificationEvents,
 		initialAudibleNotificationVolume,
 		initialAudibleNotificationsEnabled,
 		initialAudibleNotificationsOnlyWhenHidden,
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
+		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
 		initialShortcuts,
+		initialSummaryStaleAfterSeconds,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
+		showSummaryOnCards,
 		showTrashWorktreeNotice,
+		summaryStaleAfterSeconds,
 	]);
 
 	useEffect(() => {
 		if (!open) {
 			return;
 		}
-		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
+		setSelectedAgentId(config?.selectedAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
+		setShowSummaryOnCards(config?.showSummaryOnCards ?? false);
+		setAutoGenerateSummary(config?.autoGenerateSummary ?? false);
+		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? 300);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
 		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
@@ -417,6 +440,7 @@ export function RuntimeSettingsDialog({
 		setSaveError(null);
 	}, [
 		config?.agentAutonomousModeEnabled,
+		config?.autoGenerateSummary,
 		config?.audibleNotificationEvents,
 		config?.audibleNotificationVolume,
 		config?.audibleNotificationsEnabled,
@@ -425,6 +449,8 @@ export function RuntimeSettingsDialog({
 		config?.showTrashWorktreeNotice,
 		config?.selectedAgentId,
 		config?.shortcuts,
+		config?.showSummaryOnCards,
+		config?.summaryStaleAfterSeconds,
 		fallbackAgentId,
 		open,
 	]);
@@ -473,7 +499,7 @@ export function RuntimeSettingsDialog({
 			setSaveError("Runtime settings are still loading. Try again in a moment.");
 			return;
 		}
-		const selectedAgent = displayedAgents.find((agent) => agent.id === selectedAgentId);
+		const selectedAgent = supportedAgents.find((agent) => agent.id === selectedAgentId);
 		if (!selectedAgent || selectedAgent.installed !== true) {
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
@@ -489,6 +515,9 @@ export function RuntimeSettingsDialog({
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
+			showSummaryOnCards,
+			autoGenerateSummary,
+			summaryStaleAfterSeconds,
 			readyForReviewNotificationsEnabled,
 			showTrashWorktreeNotice,
 			audibleNotificationsEnabled,
@@ -542,7 +571,7 @@ export function RuntimeSettingsDialog({
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent</h6>
-				{displayedAgents.map((agent) => (
+				{supportedAgents.map((agent) => (
 					<AgentRow
 						key={agent.id}
 						agent={agent}
@@ -575,6 +604,84 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
+
+				<label
+					htmlFor="runtime-settings-show-summary-on-cards"
+					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+				>
+					<RadixCheckbox.Root
+						id="runtime-settings-show-summary-on-cards"
+						aria-label="Show conversation summary on cards"
+						checked={showSummaryOnCards}
+						disabled={controlsDisabled}
+						onCheckedChange={(checked) => setShowSummaryOnCards(checked === true)}
+						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={12} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<span>Show conversation summary on cards</span>
+				</label>
+				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+					Display a truncated preview of the agent's latest summary below the title.
+				</p>
+
+				<label
+					htmlFor="runtime-settings-auto-generate-summary"
+					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+				>
+					<RadixCheckbox.Root
+						id="runtime-settings-auto-generate-summary"
+						aria-label="Auto-generate summary with LLM"
+						checked={autoGenerateSummary}
+						disabled={controlsDisabled}
+						onCheckedChange={(checked) => setAutoGenerateSummary(checked === true)}
+						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={12} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<span>Auto-generate summary with LLM</span>
+				</label>
+				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+					Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
+					{!llmConfigured ? (
+						<span className="text-status-orange">
+							{" "}
+							Requires ANTHROPIC_BEDROCK_BASE_URL and ANTHROPIC_AUTH_TOKEN environment variables to be set in the
+							shell that launches Quarterdeck.
+						</span>
+					) : null}
+				</p>
+				{autoGenerateSummary ? (
+					<div className="flex items-center gap-2 ml-6 mt-1.5">
+						<label htmlFor="runtime-settings-summary-stale-seconds" className="text-[13px] text-text-secondary">
+							Regenerate after
+						</label>
+						<input
+							id="runtime-settings-summary-stale-seconds"
+							type="text"
+							inputMode="numeric"
+							pattern="[0-9]*"
+							value={summaryStaleAfterSeconds}
+							disabled={controlsDisabled}
+							onChange={(event) => {
+								const raw = event.target.value.replace(/\D/g, "");
+								if (raw === "") {
+									return;
+								}
+								const value = Number.parseInt(raw, 10);
+								if (Number.isFinite(value)) {
+									setSummaryStaleAfterSeconds(Math.max(5, Math.min(3600, value)));
+								}
+							}}
+							className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
+						/>
+						<span className="text-[13px] text-text-secondary">seconds</span>
+					</div>
+				) : null}
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
 				<div className="flex items-center gap-2">

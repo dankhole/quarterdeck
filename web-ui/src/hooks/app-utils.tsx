@@ -86,6 +86,9 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 	};
 }
 

@@ -516,5 +516,13 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		notifyTaskTitleUpdated: (workspaceScope, taskId, title) => {
 			deps.broadcastTaskTitleUpdated(workspaceScope.workspaceId, taskId, title);
 		},
+		setTaskDisplaySummary: async (workspaceScope, taskId, text, generatedAt) => {
+			const manager = await deps.ensureTerminalManagerForWorkspace(
+				workspaceScope.workspaceId,
+				workspaceScope.workspacePath,
+			);
+			manager.setDisplaySummary(taskId, text, generatedAt);
+			void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+		},
 	};
 }

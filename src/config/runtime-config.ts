@@ -23,6 +23,9 @@ interface RuntimeGlobalConfigFileShape {
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	showSummaryOnCards?: boolean;
+	autoGenerateSummary?: boolean;
+	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
@@ -50,6 +53,9 @@ export interface RuntimeConfigState {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	showSummaryOnCards: boolean;
+	autoGenerateSummary: boolean;
+	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
@@ -67,6 +73,9 @@ export interface RuntimeConfigUpdateInput {
 	selectedShortcutLabel?: string | null;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	showSummaryOnCards?: boolean;
+	autoGenerateSummary?: boolean;
+	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
 	audibleNotificationsEnabled?: boolean;
 	audibleNotificationVolume?: number;
@@ -84,6 +93,9 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
+const DEFAULT_SHOW_SUMMARY_ON_CARDS = false;
+const DEFAULT_AUTO_GENERATE_SUMMARY = false;
+const DEFAULT_SUMMARY_STALE_AFTER_SECONDS = 300;
 const DEFAULT_SHOW_TRASH_WORKTREE_NOTICE = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
 
@@ -220,6 +232,13 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 	return fallback;
 }
 
+function normalizeNumber(value: unknown, fallback: number): number {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	return fallback;
+}
+
 function normalizeShortcutLabel(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
@@ -318,6 +337,12 @@ function toRuntimeConfigState({
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		showSummaryOnCards: normalizeBoolean(globalConfig?.showSummaryOnCards, DEFAULT_SHOW_SUMMARY_ON_CARDS),
+		autoGenerateSummary: normalizeBoolean(globalConfig?.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY),
+		summaryStaleAfterSeconds: normalizeNumber(
+			globalConfig?.summaryStaleAfterSeconds,
+			DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
+		),
 		showTrashWorktreeNotice: normalizeBoolean(
 			globalConfig?.showTrashWorktreeNotice,
 			DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
@@ -362,6 +387,9 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
+		showSummaryOnCards?: boolean;
+		autoGenerateSummary?: boolean;
+		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
@@ -389,6 +417,18 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
+	const showSummaryOnCards =
+		config.showSummaryOnCards === undefined
+			? DEFAULT_SHOW_SUMMARY_ON_CARDS
+			: normalizeBoolean(config.showSummaryOnCards, DEFAULT_SHOW_SUMMARY_ON_CARDS);
+	const autoGenerateSummary =
+		config.autoGenerateSummary === undefined
+			? DEFAULT_AUTO_GENERATE_SUMMARY
+			: normalizeBoolean(config.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY);
+	const summaryStaleAfterSeconds =
+		config.summaryStaleAfterSeconds === undefined
+			? DEFAULT_SUMMARY_STALE_AFTER_SECONDS
+			: normalizeNumber(config.summaryStaleAfterSeconds, DEFAULT_SUMMARY_STALE_AFTER_SECONDS);
 	const showTrashWorktreeNotice =
 		config.showTrashWorktreeNotice === undefined
 			? DEFAULT_SHOW_TRASH_WORKTREE_NOTICE
@@ -428,6 +468,18 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+	if (hasOwnKey(existing, "showSummaryOnCards") || showSummaryOnCards !== DEFAULT_SHOW_SUMMARY_ON_CARDS) {
+		payload.showSummaryOnCards = showSummaryOnCards;
+	}
+	if (hasOwnKey(existing, "autoGenerateSummary") || autoGenerateSummary !== DEFAULT_AUTO_GENERATE_SUMMARY) {
+		payload.autoGenerateSummary = autoGenerateSummary;
+	}
+	if (
+		hasOwnKey(existing, "summaryStaleAfterSeconds") ||
+		summaryStaleAfterSeconds !== DEFAULT_SUMMARY_STALE_AFTER_SECONDS
+	) {
+		payload.summaryStaleAfterSeconds = summaryStaleAfterSeconds;
 	}
 	if (
 		hasOwnKey(existing, "showTrashWorktreeNotice") ||
@@ -563,6 +615,9 @@ function createRuntimeConfigStateFromValues(input: {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	showSummaryOnCards: boolean;
+	autoGenerateSummary: boolean;
+	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
@@ -583,6 +638,9 @@ function createRuntimeConfigStateFromValues(input: {
 			input.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		showSummaryOnCards: normalizeBoolean(input.showSummaryOnCards, DEFAULT_SHOW_SUMMARY_ON_CARDS),
+		autoGenerateSummary: normalizeBoolean(input.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY),
+		summaryStaleAfterSeconds: normalizeNumber(input.summaryStaleAfterSeconds, DEFAULT_SUMMARY_STALE_AFTER_SECONDS),
 		showTrashWorktreeNotice: normalizeBoolean(input.showTrashWorktreeNotice, DEFAULT_SHOW_TRASH_WORKTREE_NOTICE),
 		audibleNotificationsEnabled: normalizeBoolean(
 			input.audibleNotificationsEnabled,
@@ -610,6 +668,9 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		agentAutonomousModeEnabled: current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: current.readyForReviewNotificationsEnabled,
+		showSummaryOnCards: current.showSummaryOnCards,
+		autoGenerateSummary: current.autoGenerateSummary,
+		summaryStaleAfterSeconds: current.summaryStaleAfterSeconds,
 		showTrashWorktreeNotice: current.showTrashWorktreeNotice,
 		audibleNotificationsEnabled: current.audibleNotificationsEnabled,
 		audibleNotificationVolume: current.audibleNotificationVolume,
@@ -648,6 +709,9 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: string | null;
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
+		showSummaryOnCards: boolean;
+		autoGenerateSummary: boolean;
+		summaryStaleAfterSeconds: number;
 		showTrashWorktreeNotice: boolean;
 		audibleNotificationsEnabled: boolean;
 		audibleNotificationVolume: number;
@@ -663,6 +727,9 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			showSummaryOnCards: config.showSummaryOnCards,
+			autoGenerateSummary: config.autoGenerateSummary,
+			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
@@ -677,6 +744,9 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			showSummaryOnCards: config.showSummaryOnCards,
+			autoGenerateSummary: config.autoGenerateSummary,
+			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
@@ -707,6 +777,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled:
 				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+			showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
+			autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
+			summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
 			commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
 			openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
@@ -723,6 +796,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+			nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
+			nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
+			nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
 			nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
 			nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 			nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
@@ -744,6 +820,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			showSummaryOnCards: nextConfig.showSummaryOnCards,
+			autoGenerateSummary: nextConfig.autoGenerateSummary,
+			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 			commitPromptTemplate: nextConfig.commitPromptTemplate,
 			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
@@ -762,6 +841,9 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			showSummaryOnCards: nextConfig.showSummaryOnCards,
+			autoGenerateSummary: nextConfig.autoGenerateSummary,
+			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
@@ -794,6 +876,9 @@ export async function updateGlobalRuntimeConfig(
 				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+				showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
+				autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
+				summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
 				showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
 				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
 				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
@@ -815,6 +900,9 @@ export async function updateGlobalRuntimeConfig(
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+				nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
+				nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
+				nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
 				nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
 				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
@@ -835,6 +923,9 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				showSummaryOnCards: nextConfig.showSummaryOnCards,
+				autoGenerateSummary: nextConfig.autoGenerateSummary,
+				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 				commitPromptTemplate: nextConfig.commitPromptTemplate,
 				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
@@ -851,6 +942,9 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				showSummaryOnCards: nextConfig.showSummaryOnCards,
+				autoGenerateSummary: nextConfig.autoGenerateSummary,
+				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 				audibleNotificationVolume: nextConfig.audibleNotificationVolume,

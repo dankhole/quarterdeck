@@ -30,6 +30,8 @@ function isRectVerticallyVisibleWithinContainer(rect: DOMRect, containerRect: DO
 export function QuarterdeckBoard({
 	data,
 	taskSessions,
+	showSummaryOnCards = false,
+	onRequestDisplaySummary,
 	onCardSelect,
 	onCreateTask,
 	onStartTask,
@@ -56,6 +58,8 @@ export function QuarterdeckBoard({
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
+	showSummaryOnCards?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
 	onStartTask?: (taskId: string) => void;
@@ -409,6 +413,8 @@ export function QuarterdeckBoard({
 						onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 						migratingTaskId={migratingTaskId}
 						isDependencyLinking={dependencyLinking.draft !== null}
+						showSummaryOnCards={showSummaryOnCards}
+						onRequestDisplaySummary={onRequestDisplaySummary}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

@@ -1,6 +1,7 @@
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract";
+import { isLlmConfigured } from "../title/llm-client";
 import { isBinaryAvailableOnPath } from "./command-discovery";
 
 export interface ResolvedAgentCommand {
@@ -108,6 +109,10 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,
 		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
+		showSummaryOnCards: runtimeConfig.showSummaryOnCards,
+		autoGenerateSummary: runtimeConfig.autoGenerateSummary,
+		summaryStaleAfterSeconds: runtimeConfig.summaryStaleAfterSeconds,
+		llmConfigured: isLlmConfigured(),
 		showTrashWorktreeNotice: runtimeConfig.showTrashWorktreeNotice,
 		audibleNotificationsEnabled: runtimeConfig.audibleNotificationsEnabled,
 		audibleNotificationVolume: runtimeConfig.audibleNotificationVolume,

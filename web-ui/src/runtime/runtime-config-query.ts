@@ -22,6 +22,9 @@ export async function saveRuntimeConfig(
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		showSummaryOnCards?: boolean;
+		autoGenerateSummary?: boolean;
+		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;

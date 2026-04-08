@@ -100,6 +100,9 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		latestHookActivity: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 		...overrides,
 	};
 }
@@ -110,6 +113,9 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
 		readyForReviewNotificationsEnabled: true,
+		showSummaryOnCards: false,
+		autoGenerateSummary: false,
+		summaryStaleAfterSeconds: 300,
 		showTrashWorktreeNotice: true,
 		audibleNotificationsEnabled: true,
 		audibleNotificationVolume: 0.7,

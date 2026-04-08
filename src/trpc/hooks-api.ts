@@ -7,8 +7,33 @@ import type {
 import { parseHookIngestRequest } from "../core/api-validation";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext } from "./app-router";
+
+/**
+ * Apply conversation summary or finalMessage from hook metadata to the session.
+ * Shared between the early-return (can't transition) and normal transition paths.
+ */
+function applyConversationSummaryFromMetadata(
+	manager: TerminalSessionManager,
+	taskId: string,
+	metadata: { conversationSummaryText?: string | null; finalMessage?: string | null } | undefined,
+): void {
+	if (metadata?.conversationSummaryText) {
+		manager.appendConversationSummary(taskId, {
+			text: metadata.conversationSummaryText,
+			capturedAt: Date.now(),
+		});
+	} else if (metadata?.finalMessage) {
+		const fm = metadata.finalMessage.trim();
+		if (fm) {
+			const display =
+				fm.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${fm.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : fm;
+			manager.setDisplaySummary(taskId, display, null);
+		}
+	}
+}
 
 export interface CreateHooksApiDependencies {
 	getWorkspacePathById: (workspaceId: string) => string | null;
@@ -70,6 +95,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					if (body.metadata) {
 						manager.applyHookActivity(taskId, body.metadata);
 					}
+					applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
 					return {
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
@@ -111,6 +137,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				if (body.metadata) {
 					manager.applyHookActivity(taskId, body.metadata);
 				}
+
+				applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				if (event === "to_review") {

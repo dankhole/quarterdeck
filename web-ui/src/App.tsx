@@ -40,6 +40,7 @@ import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
+import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
@@ -177,6 +178,11 @@ export default function App(): ReactElement {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
 	} = useTerminalConnectionReady();
+	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
+		currentProjectId,
+		runtimeProjectConfig?.autoGenerateSummary ?? false,
+		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
+	);
 	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
@@ -971,6 +977,8 @@ export default function App(): ReactElement {
 											<QuarterdeckBoard
 												data={board}
 												taskSessions={sessions}
+												showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
+												onRequestDisplaySummary={handleRequestDisplaySummary}
 												onCardSelect={handleCardSelect}
 												onCreateTask={handleOpenCreateTask}
 												onStartTask={handleStartTaskFromBoard}
@@ -1064,6 +1072,8 @@ export default function App(): ReactElement {
 									moveToTrashLoadingById={moveToTrashLoadingById}
 									onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
 									migratingTaskId={migratingTaskId}
+									showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
+									onRequestDisplaySummary={handleRequestDisplaySummary}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 									onRestartSessionTask={handleRestartTaskSession}
