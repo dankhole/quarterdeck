@@ -9,7 +9,6 @@ const external = [
 	"open",
 	"@trpc/client",
 	"@trpc/server",
-	"@modelcontextprotocol/sdk",
 	"commander",
 	"zod",
 ];

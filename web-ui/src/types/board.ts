@@ -11,10 +11,6 @@ export function resolveTaskAutoReviewMode(_mode: TaskAutoReviewMode | null | und
 	return "move_to_trash";
 }
 
-export function getTaskAutoReviewActionLabel(_mode: TaskAutoReviewMode | null | undefined): string {
-	return "trash";
-}
-
 export function getTaskAutoReviewCancelButtonLabel(_mode: TaskAutoReviewMode | null | undefined): string {
 	return "Cancel Auto-trash";
 }

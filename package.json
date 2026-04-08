@@ -89,7 +89,6 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "@xterm/addon-serialize": "^0.14.0",
