@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import {
 	checkDeadProcess,
-	checkOutputAfterReview,
 	checkStaleHookActivity,
 	isPermissionActivity,
 	type ReconciliationEntry,
@@ -163,130 +162,6 @@ describe("checkDeadProcess", () => {
 	});
 });
 
-// ── checkOutputAfterReview ────────────────────────────────────────────────
-
-describe("checkOutputAfterReview", () => {
-	it("returns resume_from_review when output is after hook (7)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toEqual({ type: "resume_from_review" });
-	});
-
-	it("returns null when lastOutputAt is before lastHookAt (8)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 5000,
-			lastOutputAt: 3000,
-		});
-		expect(checkOutputAfterReview(entry, 6000)).toBeNull();
-	});
-
-	it("returns null when state is not awaiting_review (9)", () => {
-		const entry = createEntry({
-			state: "running",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toBeNull();
-	});
-
-	it("returns null when reviewReason is exit (10)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "exit",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toBeNull();
-	});
-
-	it("returns null when reviewReason is interrupted (11)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "interrupted",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toBeNull();
-	});
-
-	it("returns null when lastOutputAt is null (12)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 1000,
-			lastOutputAt: null,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toBeNull();
-	});
-
-	it("returns null when lastHookAt is null (13)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: null,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 2500)).toBeNull();
-	});
-
-	it("returns null when output is older than 30s (14)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 35_000)).toBeNull();
-	});
-
-	it("returns null when output is exactly 30s old (14a)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		// nowMs - lastOutputAt = 32_000 - 2000 = 30_000, exactly at boundary
-		expect(checkOutputAfterReview(entry, 32_000)).toBeNull();
-	});
-
-	it("returns resume_from_review for reviewReason hook (15)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 3000)).toEqual({ type: "resume_from_review" });
-	});
-
-	it("returns resume_from_review for reviewReason attention (16)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "attention",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 3000)).toEqual({ type: "resume_from_review" });
-	});
-
-	it("returns resume_from_review for reviewReason error (17)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "error",
-			lastHookAt: 1000,
-			lastOutputAt: 2000,
-		});
-		expect(checkOutputAfterReview(entry, 3000)).toEqual({ type: "resume_from_review" });
-	});
-});
-
 // ── checkStaleHookActivity ────────────────────────────────────────────────
 
 describe("checkStaleHookActivity", () => {
@@ -327,7 +202,7 @@ describe("checkStaleHookActivity", () => {
 		expect(checkStaleHookActivity(entry, 6000)).toBeNull();
 	});
 
-	it("returns clear_hook_activity for hook review with recent output (22)", () => {
+	it("returns null for hook review with permission fields even with recent output (22)", () => {
 		const entry = createEntry({
 			state: "awaiting_review",
 			reviewReason: "hook",
@@ -335,7 +210,8 @@ describe("checkStaleHookActivity", () => {
 			lastHookAt: 1000,
 			lastOutputAt: 5000,
 		});
-		expect(checkStaleHookActivity(entry, 6000)).toEqual({ type: "clear_hook_activity" });
+		// Terminal output (spinners, status bars) should not clear a legitimate permission badge
+		expect(checkStaleHookActivity(entry, 6000)).toBeNull();
 	});
 
 	it("returns null for non-permission hook activity on running state (23)", () => {
@@ -368,11 +244,10 @@ describe("checkStaleHookActivity", () => {
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > resume > clear activity (24)", () => {
+	it("are ordered by priority: dead process > clear activity (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
-		expect(reconciliationChecks[1]).toBe(checkOutputAfterReview);
-		expect(reconciliationChecks[2]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks).toHaveLength(3);
+		expect(reconciliationChecks[1]).toBe(checkStaleHookActivity);
+		expect(reconciliationChecks).toHaveLength(2);
 	});
 });
 
@@ -410,15 +285,5 @@ describe("reconciliation edge cases", () => {
 	it("skips sessions with no active handle and no pid (41)", () => {
 		const entry = createEntry({ state: "running", pid: null }, null);
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
-	});
-
-	it("output timestamp equal to hook timestamp does not trigger resume (42)", () => {
-		const entry = createEntry({
-			state: "awaiting_review",
-			reviewReason: "hook",
-			lastHookAt: 5000,
-			lastOutputAt: 5000,
-		});
-		expect(checkOutputAfterReview(entry, 6000)).toBeNull();
 	});
 });

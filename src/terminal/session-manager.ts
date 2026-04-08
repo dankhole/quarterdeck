@@ -1298,10 +1298,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				}
 				break;
 			}
-			case "resume_from_review": {
-				this.applyTransitionToRunning(entry);
-				break;
-			}
 			case "clear_hook_activity": {
 				const summary = updateSummary(entry, { latestHookActivity: null });
 				if (entry.active) {

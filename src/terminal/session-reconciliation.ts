@@ -2,14 +2,8 @@
 // Each check takes a session entry + timestamp and returns an action or null.
 // The sweep in TerminalSessionManager applies the first non-null action per entry.
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
-import { canReturnToRunning } from "./session-state-machine";
 
-const RECENT_OUTPUT_THRESHOLD_MS = 30_000;
-
-export type ReconciliationAction =
-	| { type: "clear_hook_activity" }
-	| { type: "resume_from_review" }
-	| { type: "recover_dead_process" };
+export type ReconciliationAction = { type: "clear_hook_activity" } | { type: "recover_dead_process" };
 
 /** Minimal shape of a session entry needed by the check functions. */
 export interface ReconciliationEntry {
@@ -67,37 +61,10 @@ export function checkDeadProcess(entry: ReconciliationEntry, _nowMs: number): Re
 }
 
 /**
- * Detects sessions in awaiting_review where the agent is producing terminal output,
- * indicating it has resumed working. Uses timestamp comparison as an agent-agnostic heuristic.
- */
-export function checkOutputAfterReview(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
-	const { summary } = entry;
-	if (summary.state !== "awaiting_review") {
-		return null;
-	}
-	if (!entry.active) {
-		return null;
-	}
-	if (!canReturnToRunning(summary.reviewReason)) {
-		return null;
-	}
-	if (summary.lastOutputAt == null || summary.lastHookAt == null) {
-		return null;
-	}
-	if (summary.lastOutputAt <= summary.lastHookAt) {
-		return null;
-	}
-	if (nowMs - summary.lastOutputAt >= RECENT_OUTPUT_THRESHOLD_MS) {
-		return null;
-	}
-	return { type: "resume_from_review" };
-}
-
-/**
  * Detects stale `latestHookActivity` on sessions that have transitioned away
  * from the state that set it.
  */
-export function checkStaleHookActivity(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
+export function checkStaleHookActivity(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
 	const { summary } = entry;
 	if (!summary.latestHookActivity) {
 		return null;
@@ -114,25 +81,10 @@ export function checkStaleHookActivity(entry: ReconciliationEntry, nowMs: number
 		if (summary.reviewReason !== "hook" && hasPermission) {
 			return { type: "clear_hook_activity" };
 		}
-		// Reachable for hydrated sessions where entry.active is null (checkOutputAfterReview
-		// skips these via its active guard). Also serves as defense-in-depth if check ordering changes.
-		if (
-			summary.reviewReason === "hook" &&
-			summary.lastOutputAt != null &&
-			summary.lastHookAt != null &&
-			summary.lastOutputAt > summary.lastHookAt &&
-			nowMs - summary.lastOutputAt < RECENT_OUTPUT_THRESHOLD_MS
-		) {
-			return { type: "clear_hook_activity" };
-		}
 	}
 
 	return null;
 }
 
-/** Ordered by priority: dead process > resume > clear activity. */
-export const reconciliationChecks: ReconciliationCheck[] = [
-	checkDeadProcess,
-	checkOutputAfterReview,
-	checkStaleHookActivity,
-];
+/** Ordered by priority: dead process > clear activity. */
+export const reconciliationChecks: ReconciliationCheck[] = [checkDeadProcess, checkStaleHookActivity];
