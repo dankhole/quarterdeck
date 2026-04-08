@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeSettingsDialog } from "@/components/runtime-settings-dialog";
 import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
+import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
 const saveMock = vi.hoisted(() => vi.fn(async () => true));
@@ -65,43 +66,14 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 }
 
 function createSavedConfig(overrides?: Partial<RuntimeConfigResponse>): RuntimeConfigResponse {
-	return {
-		selectedAgentId: "claude",
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
+	return createTestRuntimeConfigResponse({
 		readyForReviewNotificationsEnabled: false,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
-		effectiveCommand: "claude",
 		detectedCommands: [],
-		shortcuts: [],
-		promptShortcuts: [],
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
 		projectConfigPath: null,
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
 		llmConfigured: true,
-		agents: [
-			{
-				id: "claude",
-				label: "Claude Code",
-				binary: "claude",
-				command: "claude",
-				installed: true,
-			},
-			{
-				id: "codex",
-				label: "OpenAI Codex",
-				binary: "codex",
-				command: "codex",
-				installed: true,
-			},
-		],
 		...overrides,
-	} as unknown as RuntimeConfigResponse;
+	});
 }
 
 const savedConfig = createSavedConfig();
@@ -304,10 +276,10 @@ describe("RuntimeSettingsDialog", () => {
 	});
 
 	it("disables per-event controls when master toggle is off", async () => {
-		const configWithAudioOff = {
+		const configWithAudioOff: RuntimeConfigResponse = {
 			...savedConfig,
 			audibleNotificationsEnabled: false,
-		} as unknown as RuntimeConfigResponse;
+		};
 
 		await act(async () => {
 			root.render(
@@ -381,12 +353,12 @@ describe("RuntimeSettingsDialog", () => {
 	});
 
 	it("syncs audible settings from loaded config", async () => {
-		const customConfig = {
+		const customConfig: RuntimeConfigResponse = {
 			...savedConfig,
 			audibleNotificationsEnabled: false,
 			audibleNotificationVolume: 0.3,
 			audibleNotificationEvents: { permission: false, review: true, failure: false, completion: true },
-		} as unknown as RuntimeConfigResponse;
+		};
 
 		await act(async () => {
 			root.render(

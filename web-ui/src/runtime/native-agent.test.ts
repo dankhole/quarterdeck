@@ -2,60 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import type { RuntimeConfigResponse } from "@/runtime/types";
+import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 function createRuntimeConfigResponse(
 	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
 	overrides?: Partial<RuntimeConfigResponse>,
 ): RuntimeConfigResponse {
-	const nextConfig: RuntimeConfigResponse = {
+	return createTestRuntimeConfigResponse({
 		selectedAgentId,
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
-		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
-		readyForReviewNotificationsEnabled: true,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["claude", "codex"],
-		promptShortcuts: [],
-		agents: [
-			{
-				id: "claude",
-				label: "Claude Code",
-				binary: "claude",
-				command: "claude",
-				defaultArgs: [],
-				installed: true,
-				configured: true,
-			},
-			{
-				id: "codex",
-				label: "OpenAI Codex",
-				binary: "codex",
-				command: "codex",
-				defaultArgs: [],
-				installed: true,
-				configured: true,
-			},
-		],
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts: [],
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		llmConfigured: false,
-	};
-	return {
-		...nextConfig,
 		...overrides,
-	};
+	});
 }
 
 describe("native-agent helpers", () => {

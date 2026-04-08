@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const startTaskSessionMutateMock = vi.hoisted(() => vi.fn());
 const stopTaskSessionMutateMock = vi.hoisted(() => vi.fn());
@@ -59,52 +60,22 @@ function createSummary(taskId: string, agentId: RuntimeTaskSessionSummary["agent
 }
 
 function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): RuntimeConfigResponse {
-	return {
+	return createTestRuntimeConfigResponse({
 		selectedAgentId: "codex",
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
 		effectiveCommand: "codex --dangerously-bypass-approvals-and-sandbox",
-		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
-		readyForReviewNotificationsEnabled: true,
-		showTrashWorktreeNotice: true,
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-		audibleNotificationsOnlyWhenHidden: true,
 		detectedCommands: ["codex", "claude"],
-		promptShortcuts: [],
 		agents: [
-			{
-				id: "codex",
-				label: "OpenAI Codex",
-				binary: "codex",
+			createTestAgentDef("codex", {
 				command: "codex --dangerously-bypass-approvals-and-sandbox",
-				defaultArgs: [],
-				installed: true,
-				configured: true,
-			},
-			{
-				id: "claude",
-				label: "Claude Code",
-				binary: "claude",
+			}),
+			createTestAgentDef("claude", {
 				command: "claude --dangerously-skip-permissions",
-				defaultArgs: [],
-				installed: true,
 				configured: false,
-			},
+			}),
 		],
-		commitPromptTemplate: "",
-		openPrPromptTemplate: "",
-		commitPromptTemplateDefault: "",
-		openPrPromptTemplateDefault: "",
-		shortcuts: [],
-		showSummaryOnCards: false,
-		autoGenerateSummary: false,
-		summaryStaleAfterSeconds: 300,
-		llmConfigured: false,
 		...overrides,
-	};
+	});
 }
 
 const DEFAULT_WORKSPACE_GIT: RuntimeGitRepositoryInfo = {
