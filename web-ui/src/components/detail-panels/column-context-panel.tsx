@@ -33,6 +33,8 @@ function ColumnSection({
 	activeDragSourceColumnId,
 	onMigrateWorkingDirectory,
 	migratingTaskId,
+	showSummaryOnCards,
+	onRequestDisplaySummary,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -56,6 +58,8 @@ function ColumnSection({
 	activeDragSourceColumnId?: BoardColumnId | null;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
+	showSummaryOnCards?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
@@ -198,6 +202,8 @@ function ColumnSection({
 												onRegenerateTitle={onRegenerateTitleTask}
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
+												showSummaryOnCards={showSummaryOnCards}
+												onRequestDisplaySummary={onRequestDisplaySummary}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -246,6 +252,8 @@ export function ColumnContextPanel({
 	onMigrateWorkingDirectory,
 	migratingTaskId,
 	panelWidth,
+	showSummaryOnCards,
+	onRequestDisplaySummary,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
@@ -268,6 +276,8 @@ export function ColumnContextPanel({
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
 	panelWidth?: string;
+	showSummaryOnCards?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -360,6 +370,8 @@ export function ColumnContextPanel({
 							activeDragSourceColumnId={activeDragSourceColumnId}
 							onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 							migratingTaskId={migratingTaskId}
+							showSummaryOnCards={showSummaryOnCards}
+							onRequestDisplaySummary={onRequestDisplaySummary}
 						/>
 					))}
 				</div>

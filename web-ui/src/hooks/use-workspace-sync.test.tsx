@@ -80,11 +80,15 @@ function createSessionSummary(
 					finalMessage,
 					hookEventName: "agent_end",
 					notificationType: null,
+					conversationSummaryText: null,
 					source: "hook",
 				}
 			: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 	};
 }
 

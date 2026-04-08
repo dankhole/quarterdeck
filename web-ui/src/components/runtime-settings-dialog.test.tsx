@@ -64,37 +64,46 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 		null) as HTMLButtonElement | null;
 }
 
-const savedConfig = {
-	selectedAgentId: "claude",
-	selectedShortcutLabel: null,
-	agentAutonomousModeEnabled: true,
-	readyForReviewNotificationsEnabled: false,
-	audibleNotificationsEnabled: true,
-	audibleNotificationVolume: 0.7,
-	audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-	audibleNotificationsOnlyWhenHidden: true,
-	effectiveCommand: "claude",
-	detectedCommands: [],
-	shortcuts: [],
-	globalConfigPath: "/tmp/.quarterdeck/config.json",
-	projectConfigPath: null,
-	agents: [
-		{
-			id: "claude",
-			label: "Claude Code",
-			binary: "claude",
-			command: "claude",
-			installed: true,
-		},
-		{
-			id: "codex",
-			label: "OpenAI Codex",
-			binary: "codex",
-			command: "codex",
-			installed: true,
-		},
-	],
-} as unknown as RuntimeConfigResponse;
+function createSavedConfig(overrides?: Partial<RuntimeConfigResponse>): RuntimeConfigResponse {
+	return {
+		selectedAgentId: "claude",
+		selectedShortcutLabel: null,
+		agentAutonomousModeEnabled: true,
+		readyForReviewNotificationsEnabled: false,
+		audibleNotificationsEnabled: true,
+		audibleNotificationVolume: 0.7,
+		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+		audibleNotificationsOnlyWhenHidden: true,
+		effectiveCommand: "claude",
+		detectedCommands: [],
+		shortcuts: [],
+		globalConfigPath: "/tmp/.quarterdeck/config.json",
+		projectConfigPath: null,
+		showSummaryOnCards: false,
+		autoGenerateSummary: false,
+		summaryStaleAfterSeconds: 300,
+		llmConfigured: true,
+		agents: [
+			{
+				id: "claude",
+				label: "Claude Code",
+				binary: "claude",
+				command: "claude",
+				installed: true,
+			},
+			{
+				id: "codex",
+				label: "OpenAI Codex",
+				binary: "codex",
+				command: "codex",
+				installed: true,
+			},
+		],
+		...overrides,
+	} as unknown as RuntimeConfigResponse;
+}
+
+const savedConfig = createSavedConfig();
 
 describe("RuntimeSettingsDialog", () => {
 	let container: HTMLDivElement;
@@ -139,6 +148,106 @@ describe("RuntimeSettingsDialog", () => {
 
 		expect(findButtonByText(document.body, "Send feedback")).toBeNull();
 		expect(findButtonByText(document.body, "Report issue")).toBeNull();
+	});
+
+	it("renders the show summary on cards checkbox", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const checkbox = document.body.querySelector("#runtime-settings-show-summary-on-cards");
+		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
+		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+	});
+
+	it("renders the auto-generate summary checkbox", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const checkbox = document.body.querySelector("#runtime-settings-auto-generate-summary");
+		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
+		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+	});
+
+	it("hides staleness input when auto-generate is unchecked", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={createSavedConfig({ autoGenerateSummary: false })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const input = document.body.querySelector("#runtime-settings-summary-stale-seconds");
+		expect(input).toBeNull();
+	});
+
+	it("shows staleness input when auto-generate is checked", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={createSavedConfig({ autoGenerateSummary: true })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const input = document.body.querySelector("#runtime-settings-summary-stale-seconds") as HTMLInputElement | null;
+		expect(input).toBeInstanceOf(HTMLInputElement);
+		expect(input?.value).toBe("300");
+	});
+
+	it("shows orange warning when LLM is not configured", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={createSavedConfig({ llmConfigured: false })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const warningText = document.body.textContent;
+		expect(warningText).toContain("ANTHROPIC_BEDROCK_BASE_URL");
+		expect(warningText).toContain("ANTHROPIC_AUTH_TOKEN");
+	});
+
+	it("does not show LLM warning when configured", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={createSavedConfig({ llmConfigured: true })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const warningText = document.body.textContent;
+		expect(warningText).not.toContain("ANTHROPIC_BEDROCK_BASE_URL");
 	});
 
 	it("calls the layout reset callback when reset layout is clicked", async () => {

@@ -91,6 +91,9 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 	};
 }
 

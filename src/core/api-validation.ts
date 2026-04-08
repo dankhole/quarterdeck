@@ -263,10 +263,12 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 		? {
 				activityText: parsed.metadata.activityText?.trim(),
 				toolName: parsed.metadata.toolName?.trim(),
+				toolInputSummary: parsed.metadata.toolInputSummary?.trim() ?? null,
 				finalMessage: parsed.metadata.finalMessage?.trim(),
 				hookEventName: parsed.metadata.hookEventName?.trim(),
 				notificationType: parsed.metadata.notificationType?.trim(),
 				source: parsed.metadata.source?.trim(),
+				conversationSummaryText: parsed.metadata.conversationSummaryText?.trim() || null,
 			}
 		: undefined;
 	return {

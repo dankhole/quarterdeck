@@ -115,7 +115,11 @@ import {
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
 import { findCardInBoard } from "../core/task-board-mutations";
+import { generateDisplaySummary } from "../title/summary-generator";
 import { generateBranchName, generateTaskTitle } from "../title/title-generator";
+
+/** Tracks taskIds with in-flight LLM summary generation to prevent duplicate concurrent calls. */
+const summaryGenerationInFlight = new Set<string>();
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -220,6 +224,12 @@ export interface RuntimeTrpcContext {
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
 		notifyTaskTitleUpdated: (scope: RuntimeTrpcWorkspaceScope, taskId: string, title: string) => void;
+		setTaskDisplaySummary: (
+			scope: RuntimeTrpcWorkspaceScope,
+			taskId: string,
+			text: string,
+			generatedAt: number | null,
+		) => Promise<void>;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -461,10 +471,25 @@ export const runtimeAppRouter = t.router({
 					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
 				}
 				const prompt = card.prompt;
-				const rawFinalMessage = state.sessions[card.id]?.latestHookActivity?.finalMessage ?? null;
-				const finalMessage = rawFinalMessage?.slice(0, 300) ?? null;
+				const session = state.sessions[card.id];
+				const summaries = session?.conversationSummaries ?? [];
 
-				const context = finalMessage ? `${prompt}\n\nAgent response: ${finalMessage}` : prompt;
+				// Build context with summaries labeled so the LLM can prioritize the latest.
+				let agentContext: string | null = null;
+				if (summaries.length > 0) {
+					const earlier = summaries.slice(0, -1).map((s) => s.text);
+					const latest = summaries[summaries.length - 1]?.text ?? "";
+					const parts =
+						earlier.length > 0
+							? [`Earlier activity:\n${earlier.join("\n")}`, `Latest activity:\n${latest}`]
+							: [`Latest activity:\n${latest}`];
+					agentContext = parts.join("\n\n");
+				}
+
+				// Fall back to finalMessage if no conversation summaries.
+				agentContext ??= session?.latestHookActivity?.finalMessage?.slice(0, 500) ?? null;
+
+				const context = agentContext ? `${prompt}\n\nAgent summary:\n${agentContext}` : prompt;
 				const title = await generateTaskTitle(context);
 				if (!title) {
 					return { ok: false, title: null };
@@ -478,6 +503,54 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, input.title);
 				return { ok: true };
+			}),
+		generateDisplaySummary: workspaceProcedure
+			.input(
+				z.object({
+					taskId: z.string(),
+					staleAfterSeconds: z.number().min(5).default(300),
+				}),
+			)
+			.output(z.object({ ok: z.boolean(), summary: z.string().nullable() }))
+			.mutation(async ({ ctx, input }) => {
+				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
+				const session = state.sessions[input.taskId];
+				if (!session) {
+					return { ok: false, summary: null };
+				}
+
+				// Server-side staleness check — skip if recently generated.
+				if (session.displaySummaryGeneratedAt) {
+					const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
+					if (ageSeconds < input.staleAfterSeconds) {
+						return { ok: true, summary: session.displaySummary };
+					}
+				}
+
+				const summaries = session.conversationSummaries ?? [];
+				const conversationText = summaries.length > 0 ? summaries.map((s) => s.text).join("\n") : null;
+				// Fall back to finalMessage if no conversation summaries.
+				const sourceText = conversationText ?? session.latestHookActivity?.finalMessage ?? null;
+				if (!sourceText?.trim()) {
+					return { ok: false, summary: null };
+				}
+
+				// Prevent duplicate concurrent LLM calls for the same task.
+				if (summaryGenerationInFlight.has(input.taskId)) {
+					return { ok: true, summary: session.displaySummary };
+				}
+				summaryGenerationInFlight.add(input.taskId);
+				try {
+					const generated = await generateDisplaySummary(sourceText);
+					if (!generated) {
+						return { ok: false, summary: null };
+					}
+
+					await ctx.workspaceApi.setTaskDisplaySummary(ctx.workspaceScope, input.taskId, generated, Date.now());
+					return { ok: true, summary: generated };
+				} finally {
+					summaryGenerationInFlight.delete(input.taskId);
+				}
 			}),
 		// No server-side rate limiting: this is user-triggered (not batch) and the client
 		// guards against duplicate in-flight calls via isGeneratingBranchName state.

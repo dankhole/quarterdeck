@@ -246,6 +246,8 @@ export function CardDetailView({
 	moveToTrashLoadingById,
 	onMigrateWorkingDirectory,
 	migratingTaskId,
+	showSummaryOnCards,
+	onRequestDisplaySummary,
 	onAddReviewComments,
 	onSendReviewComments,
 	gitHistoryPanel,
@@ -290,6 +292,8 @@ export function CardDetailView({
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
+	showSummaryOnCards?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	gitHistoryPanel?: ReactNode;
@@ -661,6 +665,8 @@ export function CardDetailView({
 								moveToTrashLoadingById={moveToTrashLoadingById}
 								onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 								migratingTaskId={migratingTaskId}
+								showSummaryOnCards={showSummaryOnCards}
+								onRequestDisplaySummary={onRequestDisplaySummary}
 								panelWidth="100%"
 							/>
 						) : activeDetailPanel === "changes" ? (

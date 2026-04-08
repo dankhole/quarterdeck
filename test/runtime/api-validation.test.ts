@@ -57,8 +57,10 @@ describe("parseHookIngestRequest", () => {
 				activityText: "Using Read",
 				hookEventName: undefined,
 				toolName: undefined,
+				toolInputSummary: null,
 				finalMessage: undefined,
 				notificationType: undefined,
+				conversationSummaryText: null,
 			},
 		});
 	});

@@ -46,6 +46,10 @@ function createRuntimeConfigResponse(
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
 		shortcuts: [],
+		showSummaryOnCards: false,
+		autoGenerateSummary: false,
+		summaryStaleAfterSeconds: 300,
+		llmConfigured: false,
 	};
 	return {
 		...nextConfig,

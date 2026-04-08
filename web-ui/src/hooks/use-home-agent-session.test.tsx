@@ -52,6 +52,9 @@ function createSummary(taskId: string, agentId: RuntimeTaskSessionSummary["agent
 		latestHookActivity: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 	};
 }
 
@@ -95,6 +98,10 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
 		shortcuts: [],
+		showSummaryOnCards: false,
+		autoGenerateSummary: false,
+		summaryStaleAfterSeconds: 300,
+		llmConfigured: false,
 		...overrides,
 	};
 }

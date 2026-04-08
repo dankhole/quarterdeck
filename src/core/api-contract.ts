@@ -231,8 +231,19 @@ export const runtimeTaskHookActivitySchema = z.object({
 	hookEventName: z.string().nullable().default(null),
 	notificationType: z.string().nullable().default(null),
 	source: z.string().nullable().default(null),
+	conversationSummaryText: z.string().nullable().default(null),
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
+
+export const conversationSummaryEntrySchema = z.object({
+	/** The extracted assistant message text, capped at 500 chars. */
+	text: z.string(),
+	/** Timestamp when this summary was captured. */
+	capturedAt: z.number(),
+	/** Which session stop event produced this (first, latest, etc.). */
+	sessionIndex: z.number().int().nonnegative(),
+});
+export type ConversationSummaryEntry = z.infer<typeof conversationSummaryEntrySchema>;
 
 export const runtimeTaskTurnCheckpointSchema = z.object({
 	turn: z.number().int().positive(),
@@ -259,6 +270,9 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	warningMessage: z.string().nullable().optional(),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
+	conversationSummaries: z.array(conversationSummaryEntrySchema).default([]),
+	displaySummary: z.string().nullable().default(null),
+	displaySummaryGeneratedAt: z.number().nullable().default(null),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
@@ -572,6 +586,10 @@ export const runtimeConfigResponseSchema = z.object({
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
+	showSummaryOnCards: z.boolean(),
+	autoGenerateSummary: z.boolean(),
+	summaryStaleAfterSeconds: z.number(),
+	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
@@ -581,6 +599,9 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
+	showSummaryOnCards: z.boolean().optional(),
+	autoGenerateSummary: z.boolean().optional(),
+	summaryStaleAfterSeconds: z.number().min(5).optional(),
 	showTrashWorktreeNotice: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),

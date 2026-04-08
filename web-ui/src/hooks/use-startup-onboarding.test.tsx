@@ -45,6 +45,10 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
 		shortcuts: [],
+		showSummaryOnCards: false,
+		autoGenerateSummary: false,
+		summaryStaleAfterSeconds: 300,
+		llmConfigured: false,
 	};
 }
 

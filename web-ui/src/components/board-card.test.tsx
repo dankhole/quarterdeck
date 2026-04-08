@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BoardCard } from "@/components/board-card";
+import { BoardCard, getCardHoverTooltip } from "@/components/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
@@ -74,6 +74,9 @@ function createSummary(
 		latestHookActivity: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 		...overrides,
 	};
 }
@@ -213,10 +216,14 @@ describe("BoardCard", () => {
 								finalMessage: null,
 								hookEventName: "tool_call",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "hook",
 							},
 							latestTurnCheckpoint: null,
 							previousTurnCheckpoint: null,
+							conversationSummaries: [],
+							displaySummary: null,
+							displaySummaryGeneratedAt: null,
 						}}
 					/>
 				</Providers>,
@@ -244,6 +251,7 @@ describe("BoardCard", () => {
 								finalMessage: null,
 								hookEventName: "PostToolUse",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "claude",
 							},
 						})}
@@ -273,6 +281,7 @@ describe("BoardCard", () => {
 								finalMessage: null,
 								hookEventName: "raw_response_item",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "codex",
 							},
 						})}
@@ -312,10 +321,14 @@ describe("BoardCard", () => {
 								finalMessage: "Looking at the file now",
 								hookEventName: "assistant_delta",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "hook",
 							},
 							latestTurnCheckpoint: null,
 							previousTurnCheckpoint: null,
+							conversationSummaries: [],
+							displaySummary: null,
+							displaySummaryGeneratedAt: null,
 						}}
 					/>
 				</Providers>,
@@ -342,6 +355,7 @@ describe("BoardCard", () => {
 								finalMessage: "Reviewing the final diff",
 								hookEventName: "assistant_delta",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "hook",
 							},
 						})}
@@ -352,6 +366,79 @@ describe("BoardCard", () => {
 
 		expect(container.textContent).toContain("Reviewing the final diff");
 		expect(container.textContent).not.toContain("Thinking...");
+	});
+
+	describe("getCardHoverTooltip", () => {
+		it("returns null when no summary is provided", () => {
+			expect(getCardHoverTooltip(undefined)).toBeNull();
+		});
+
+		it("returns null when session is running with no summary data", () => {
+			const summary = createSummary("running");
+			expect(getCardHoverTooltip(summary)).toBeNull();
+		});
+
+		it("returns displaySummary when session is running and has summary", () => {
+			const summary = createSummary("running", {
+				displaySummary: "Refactored auth flow",
+			});
+			expect(getCardHoverTooltip(summary)).toBe("Refactored auth flow");
+		});
+
+		it("returns displaySummary when available", () => {
+			const summary = createSummary("awaiting_review", {
+				displaySummary: "Added auth middleware and validation",
+			});
+			expect(getCardHoverTooltip(summary)).toBe("Added auth middleware and validation");
+		});
+
+		it("falls back to last conversationSummaries entry when displaySummary is null", () => {
+			const summary = createSummary("awaiting_review", {
+				displaySummary: null,
+				conversationSummaries: [
+					{ text: "First entry", capturedAt: 1, sessionIndex: 0 },
+					{ text: "Latest conversation text", capturedAt: 2, sessionIndex: 1 },
+				],
+			});
+			expect(getCardHoverTooltip(summary)).toBe("Latest conversation text");
+		});
+
+		it("truncates fallback text to 80 chars with ellipsis", () => {
+			const longText = "A".repeat(100);
+			const summary = createSummary("awaiting_review", {
+				displaySummary: null,
+				conversationSummaries: [{ text: longText, capturedAt: 1, sessionIndex: 0 }],
+			});
+			const result = getCardHoverTooltip(summary);
+			expect(result).not.toBeNull();
+			expect(result!.length).toBe(81); // 80 + ellipsis
+			expect(result!.endsWith("\u2026")).toBe(true);
+		});
+
+		it("does not truncate fallback text at exactly 80 chars", () => {
+			const exactText = "B".repeat(80);
+			const summary = createSummary("awaiting_review", {
+				displaySummary: null,
+				conversationSummaries: [{ text: exactText, capturedAt: 1, sessionIndex: 0 }],
+			});
+			expect(getCardHoverTooltip(summary)).toBe(exactText);
+		});
+
+		it("returns null when conversationSummaries is empty and displaySummary is null", () => {
+			const summary = createSummary("awaiting_review", {
+				displaySummary: null,
+				conversationSummaries: [],
+			});
+			expect(getCardHoverTooltip(summary)).toBeNull();
+		});
+
+		it("prefers displaySummary over conversationSummaries fallback", () => {
+			const summary = createSummary("awaiting_review", {
+				displaySummary: "LLM-generated summary",
+				conversationSummaries: [{ text: "Raw conversation text", capturedAt: 1, sessionIndex: 0 }],
+			});
+			expect(getCardHoverTooltip(summary)).toBe("LLM-generated summary");
+		});
 	});
 
 	it("shows normal agent messages without the agent prefix", async () => {
@@ -371,6 +458,7 @@ describe("BoardCard", () => {
 								finalMessage: null,
 								hookEventName: "agent_message",
 								notificationType: null,
+								conversationSummaryText: null,
 								source: "codex",
 							},
 						})}

@@ -38,6 +38,8 @@ export function BoardColumn({
 	onMigrateWorkingDirectory,
 	migratingTaskId,
 	isDependencyLinking,
+	showSummaryOnCards = false,
+	onRequestDisplaySummary,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -67,6 +69,8 @@ export function BoardColumn({
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	migratingTaskId?: string | null;
 	isDependencyLinking?: boolean;
+	showSummaryOnCards?: boolean;
+	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -195,6 +199,8 @@ export function BoardColumn({
 											onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 											isMigrateLoading={migratingTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
+											showSummaryOnCards={showSummaryOnCards}
+											onRequestDisplaySummary={onRequestDisplaySummary}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

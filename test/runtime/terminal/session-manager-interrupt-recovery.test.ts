@@ -67,6 +67,9 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 		...overrides,
 	};
 }

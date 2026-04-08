@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
+	ConversationSummaryEntry,
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
@@ -9,6 +10,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -132,6 +134,9 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
 	};
 }
 
@@ -920,6 +925,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 						? null
 						: (previous?.notificationType ?? null),
 			source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
+			conversationSummaryText:
+				typeof activity.conversationSummaryText === "string"
+					? activity.conversationSummaryText
+					: (previous?.conversationSummaryText ?? null),
 		};
 
 		const didChange =
@@ -929,7 +938,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			next.finalMessage !== (previous?.finalMessage ?? null) ||
 			next.hookEventName !== (previous?.hookEventName ?? null) ||
 			next.notificationType !== (previous?.notificationType ?? null) ||
-			next.source !== (previous?.source ?? null);
+			next.source !== (previous?.source ?? null) ||
+			next.conversationSummaryText !== (previous?.conversationSummaryText ?? null);
 		if (!didChange) {
 			return cloneSummary(entry.summary);
 		}
@@ -940,6 +950,96 @@ export class TerminalSessionManager implements TerminalSessionService {
 		});
 		if (entry.active) {
 			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
+	appendConversationSummary(
+		taskId: string,
+		entry: { text: string; capturedAt: number },
+	): RuntimeTaskSessionSummary | null {
+		const sessionEntry = this.entries.get(taskId);
+		if (!sessionEntry) {
+			return null;
+		}
+
+		// Truncate text to 500 chars as a safety net (parser already caps at 500).
+		const text = entry.text.length > 500 ? `${entry.text.slice(0, 500)}\u2026` : entry.text;
+
+		// Auto-assign sessionIndex from the highest existing index.
+		const existing = sessionEntry.summary.conversationSummaries ?? [];
+		const maxIndex = existing.reduce((max, e) => Math.max(max, e.sessionIndex), -1);
+		const newEntry: ConversationSummaryEntry = {
+			text,
+			capturedAt: entry.capturedAt,
+			sessionIndex: maxIndex + 1,
+		};
+
+		let entries = [...existing, newEntry];
+
+		// Retention: count limit first (max 5), then character cap (max 2000).
+		// Always retain the first entry (index 0 in array) and the latest (just appended).
+		if (entries.length > 5) {
+			const first = entries[0];
+			const latest = entries[entries.length - 1];
+			// Drop oldest non-first entries until count <= 5.
+			const middle = entries.slice(1, -1);
+			const keep = 5 - 2; // slots for first + latest
+			entries = [first, ...middle.slice(middle.length - keep), latest];
+		}
+
+		// Character cap: sum all text lengths, drop oldest non-first (excluding latest) until <= 2000.
+		while (entries.length > 2) {
+			const totalChars = entries.reduce((sum, e) => sum + e.text.length, 0);
+			if (totalChars <= 2000) break;
+			// Drop the second entry (oldest non-first, excluding latest which is last).
+			entries.splice(1, 1);
+		}
+
+		// Only overwrite displaySummary with raw text if there's no existing LLM-generated
+		// summary. When the user has autoGenerateSummary enabled, we don't want a raw last
+		// message to clobber a nicely condensed LLM summary. We still clear
+		// displaySummaryGeneratedAt so the staleness check triggers regeneration on next hover.
+		const hasLlmSummary = sessionEntry.summary.displaySummaryGeneratedAt !== null;
+		const rawDisplay =
+			text.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${text.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : text;
+
+		const summaryUpdate: Record<string, unknown> = {
+			conversationSummaries: entries,
+			displaySummaryGeneratedAt: null,
+		};
+		if (!hasLlmSummary) {
+			summaryUpdate.displaySummary = rawDisplay;
+		}
+
+		const summary = updateSummary(sessionEntry, summaryUpdate);
+		if (sessionEntry.active) {
+			for (const listener of sessionEntry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
+	/**
+	 * Set the display summary for a task. Used both by the raw fallback (on hook
+	 * ingest when LLM generation is off) and by the LLM-generated path.
+	 */
+	setDisplaySummary(taskId: string, text: string, generatedAt: number | null): RuntimeTaskSessionSummary | null {
+		const sessionEntry = this.entries.get(taskId);
+		if (!sessionEntry) {
+			return null;
+		}
+		const summary = updateSummary(sessionEntry, {
+			displaySummary: text,
+			displaySummaryGeneratedAt: generatedAt,
+		});
+		if (sessionEntry.active) {
+			for (const listener of sessionEntry.listeners.values()) {
 				listener.onState?.(cloneSummary(summary));
 			}
 		}
