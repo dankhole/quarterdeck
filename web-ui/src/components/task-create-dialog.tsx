@@ -51,22 +51,21 @@ function normalizeStoredTaskCreateStartAction(value: string): TaskCreateStartAct
 
 function ButtonShortcut({
 	includeShift = false,
-	modifier = "mod",
+	includeAlt = false,
 }: {
 	includeShift?: boolean;
-	modifier?: "mod" | "alt";
+	includeAlt?: boolean;
 }): ReactElement {
 	return (
 		<span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden>
-			{modifier === "alt" ? (
+			<Command size={12} />
+			{includeAlt ? (
 				isMacPlatform ? (
 					<Option size={12} />
 				) : (
 					<span className="text-[10px] font-medium leading-none">Alt</span>
 				)
-			) : (
-				<Command size={12} />
-			)}
+			) : null}
 			{includeShift ? <ArrowBigUp size={12} /> : null}
 			<CornerDownLeft size={12} />
 		</span>
@@ -305,11 +304,11 @@ export function TaskCreateDialog({
 		(index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 				event.preventDefault();
-				if (event.shiftKey) {
-					handleCreateAndStartAll();
+				if (event.altKey) {
+					handleCreateAll();
 					return;
 				}
-				handleCreateAll();
+				handleCreateAndStartAll();
 				return;
 			}
 			if (event.key === "Enter" && !event.shiftKey) {
@@ -329,23 +328,27 @@ export function TaskCreateDialog({
 		inputRefs.current[index] = el;
 	}, []);
 
-	// Cmd/Ctrl+Enter (and Cmd/Ctrl+Shift+Enter) from anywhere in the dialog.
+	// Cmd/Ctrl+Enter → Start task, Cmd/Ctrl+Shift+Enter → Start & Open, Cmd/Ctrl+Alt+Enter → Create only
 	useHotkeys(
-		"mod+enter, mod+shift+enter",
+		"mod+enter, mod+shift+enter, mod+alt+enter",
 		(event) => {
 			if (mode === "multi") {
-				if (event.shiftKey) {
-					handleCreateAndStartAll();
+				if (event.altKey) {
+					handleCreateAll();
 					return;
 				}
-				handleCreateAll();
+				handleCreateAndStartAll();
+				return;
+			}
+			if (event.altKey) {
+				handleCreateSingle();
 				return;
 			}
 			if (event.shiftKey) {
-				handleRunSingleStartAction("start");
+				handleRunSingleStartAction("start_and_open");
 				return;
 			}
-			handleCreateSingle();
+			handleRunSingleStartAction("start");
 		},
 		{
 			enabled: open,
@@ -364,30 +367,13 @@ export function TaskCreateDialog({
 		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateSingle, handleRunSingleStartAction],
 	);
 
-	// Alt/Opt+Shift+Enter → Start & Open (single mode only)
-	useHotkeys(
-		"alt+shift+enter",
-		() => {
-			if (mode === "single") {
-				handleRunSingleStartAction("start_and_open");
-			}
-		},
-		{
-			enabled: open && Boolean(onCreateStartAndOpen),
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			preventDefault: true,
-		},
-		[open, mode, handleRunSingleStartAction, onCreateStartAndOpen],
-	);
-
 	const dialogTitle = mode === "multi" ? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}` : "New task";
 
 	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
 	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
-	const primaryStartShortcutModifier = effectivePrimaryStartAction === "start" ? "mod" : "alt";
+	const primaryStartIncludesShift = effectivePrimaryStartAction === "start_and_open";
 	const secondaryStartLabel = secondaryStartAction === "start" ? "Start task" : "Start and open";
-	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
+	const secondaryStartIncludesShift = secondaryStartAction === "start_and_open";
 
 	return (
 		<Dialog
@@ -414,14 +400,17 @@ export function TaskCreateDialog({
 							showAttachImageButton={false}
 						/>
 						<div className="flex items-center justify-between mt-1.5">
-							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
-								reference files. Drag and drop or{" "}
-								<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
-									{pasteShortcutLabel}
-								</code>{" "}
-								to add images.
-							</p>
+							<div className="text-[11px] text-text-tertiary space-y-0.5">
+								<p>
+									Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
+									reference files. Drag and drop or{" "}
+									<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
+										{pasteShortcutLabel}
+									</code>{" "}
+									to add images.
+								</p>
+								<p>Paste a numbered or bulleted list to create multiple tasks at once.</p>
+							</div>
 							{detectedItems.length >= 2 ? (
 								<button
 									type="button"
@@ -580,7 +569,7 @@ export function TaskCreateDialog({
 						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef}>
 							<span className="inline-flex items-center">
 								Create
-								<ButtonShortcut />
+								<ButtonShortcut includeAlt />
 							</span>
 						</Button>
 						{onCreateAndStart ? (
@@ -595,7 +584,7 @@ export function TaskCreateDialog({
 									>
 										<span className="inline-flex items-center">
 											{primaryStartLabel}
-											<ButtonShortcut includeShift modifier={primaryStartShortcutModifier} />
+											<ButtonShortcut includeShift={primaryStartIncludesShift} />
 										</span>
 									</Button>
 									{onCreateStartAndOpen ? (
@@ -626,16 +615,8 @@ export function TaskCreateDialog({
 										>
 											{secondaryStartLabel}
 											<span className="inline-flex items-center gap-0.5 text-text-tertiary" aria-hidden>
-												{secondaryStartShortcutModifier === "alt" ? (
-													isMacPlatform ? (
-														<Option size={10} />
-													) : (
-														<span className="text-[10px] font-medium leading-none">Alt</span>
-													)
-												) : (
-													<Command size={10} />
-												)}
-												<ArrowBigUp size={10} />
+												<Command size={10} />
+												{secondaryStartIncludesShift ? <ArrowBigUp size={10} /> : null}
 												<CornerDownLeft size={10} />
 											</span>
 										</DropdownMenu.Item>
@@ -649,7 +630,7 @@ export function TaskCreateDialog({
 						<Button size="sm" onClick={handleCreateAll} disabled={validTaskCount === 0 || !branchRef}>
 							<span className="inline-flex items-center">
 								Create {validTaskCount} {taskCountLabel}
-								<ButtonShortcut />
+								<ButtonShortcut includeAlt />
 							</span>
 						</Button>
 						{onCreateAndStartMultiple ? (
@@ -661,7 +642,7 @@ export function TaskCreateDialog({
 							>
 								<span className="inline-flex items-center">
 									Start {validTaskCount} {taskCountLabel}
-									<ButtonShortcut includeShift />
+									<ButtonShortcut />
 								</span>
 							</Button>
 						) : null}
