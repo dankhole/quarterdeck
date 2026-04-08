@@ -26,6 +26,7 @@ import {
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
+import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
 import {
 	createTerminalProtocolFilterState,
@@ -40,7 +41,7 @@ const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 const INTERRUPT_RECOVERY_DELAY_MS = 5_000;
-const STALE_PROCESS_CHECK_INTERVAL_MS = 30_000;
+const SESSION_RECONCILIATION_INTERVAL_MS = 10_000;
 const SIGINT_BYTE = 0x03;
 const ESC_BYTE = 0x1b;
 // Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
@@ -216,15 +217,6 @@ function hasCodexStartupUiRendered(text: string): boolean {
 	return stripped.includes("openai codex (v");
 }
 
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 	if (active.interruptRecoveryTimer) {
 		clearTimeout(active.interruptRecoveryTimer);
@@ -235,7 +227,7 @@ function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
-	private staleProcessCheckTimer: NodeJS.Timeout | null = null;
+	private reconciliationTimer: NodeJS.Timeout | null = null;
 
 	private trySendDeferredCodexStartupInput(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
@@ -1053,15 +1045,24 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry) {
 			return null;
 		}
+		this.applyTransitionToRunning(entry);
+		return cloneSummary(entry.summary);
+	}
+
+	private applyTransitionToRunning(entry: SessionEntry): void {
 		const before = entry.summary;
 		const summary = this.applySessionEvent(entry, { type: "hook.to_in_progress" });
-		if (summary !== before && entry.active) {
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
+		if (summary !== before) {
+			if (summary.latestHookActivity) {
+				updateSummary(entry, { latestHookActivity: null });
 			}
-			this.emitSummary(summary);
+			if (entry.active) {
+				for (const listener of entry.listeners.values()) {
+					listener.onState?.(cloneSummary(entry.summary));
+				}
+			}
+			this.emitSummary(entry.summary);
 		}
-		return cloneSummary(summary);
 	}
 
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
@@ -1232,54 +1233,84 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.pendingAutoRestart = pendingAutoRestart;
 	}
 
-	startStaleProcessWatchdog(): void {
-		if (this.staleProcessCheckTimer) {
+	startReconciliation(): void {
+		if (this.reconciliationTimer) {
 			return;
 		}
-		this.staleProcessCheckTimer = setInterval(() => {
-			this.recoverStaleProcesses();
-		}, STALE_PROCESS_CHECK_INTERVAL_MS);
-		this.staleProcessCheckTimer.unref();
+		this.reconciliationTimer = setInterval(() => {
+			this.reconcileSessionStates();
+		}, SESSION_RECONCILIATION_INTERVAL_MS);
+		this.reconciliationTimer.unref();
 	}
 
-	stopStaleProcessWatchdog(): void {
-		if (this.staleProcessCheckTimer) {
-			clearInterval(this.staleProcessCheckTimer);
-			this.staleProcessCheckTimer = null;
+	stopReconciliation(): void {
+		if (this.reconciliationTimer) {
+			clearInterval(this.reconciliationTimer);
+			this.reconciliationTimer = null;
 		}
 	}
 
-	private recoverStaleProcesses(): void {
+	private reconcileSessionStates(): void {
+		const nowMs = Date.now();
 		for (const entry of this.entries.values()) {
-			if (entry.summary.state !== "running" || !entry.active) {
-				continue;
+			try {
+				if (!isActiveState(entry.summary.state)) {
+					continue;
+				}
+				for (const check of reconciliationChecks) {
+					const action = check(entry, nowMs);
+					if (action) {
+						this.applyReconciliationAction(entry, action);
+						break;
+					}
+				}
+			} catch (err) {
+				console.error(`[reconciliation] Error processing ${entry.summary.taskId}:`, err);
 			}
-			const pid = entry.summary.pid;
-			if (pid == null || isProcessAlive(pid)) {
-				continue;
-			}
-			// Process is dead but we never received an exit event — recover the card.
-			// exitCode: null signals "unknown" and maps to reviewReason "error" in the
-			// state machine (any non-zero-equivalent exit is treated as an error).
-			stopWorkspaceTrustTimers(entry.active);
-			clearInterruptRecoveryTimer(entry.active);
-			const cleanupFn = entry.active.onSessionCleanup;
-			entry.active.onSessionCleanup = null;
-			const summary = this.applySessionEvent(entry, {
-				type: "process.exit",
-				exitCode: null,
-				interrupted: false,
-			});
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-				listener.onExit?.(null);
-			}
-			entry.active = null;
-			this.emitSummary(summary);
-			if (cleanupFn) {
-				cleanupFn().catch(() => {
-					// Best effort: cleanup failure is non-critical.
+		}
+	}
+
+	private applyReconciliationAction(entry: SessionEntry, action: ReconciliationAction): void {
+		switch (action.type) {
+			case "recover_dead_process": {
+				if (!entry.active) break;
+				stopWorkspaceTrustTimers(entry.active);
+				clearInterruptRecoveryTimer(entry.active);
+				const cleanupFn = entry.active.onSessionCleanup;
+				entry.active.onSessionCleanup = null;
+				const summary = this.applySessionEvent(entry, {
+					type: "process.exit",
+					exitCode: null,
+					interrupted: false,
 				});
+				for (const listener of entry.listeners.values()) {
+					listener.onState?.(cloneSummary(summary));
+					listener.onExit?.(null);
+				}
+				entry.active = null;
+				for (const resolve of entry.pendingExitResolvers) {
+					resolve();
+				}
+				entry.pendingExitResolvers = [];
+				this.emitSummary(summary);
+				if (cleanupFn) {
+					cleanupFn().catch(() => {});
+				}
+				break;
+			}
+			case "resume_from_review": {
+				this.applyTransitionToRunning(entry);
+				break;
+			}
+			case "clear_hook_activity": {
+				const summary = updateSummary(entry, { latestHookActivity: null });
+				if (entry.active) {
+					for (const listener of entry.listeners.values()) {
+						listener.onState?.(cloneSummary(summary));
+					}
+				}
+				this.emitSummary(summary);
+				break;
 			}
 		}
 	}

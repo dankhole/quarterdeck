@@ -302,17 +302,17 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		expect(manager.getSummary("task-1")?.state).toBe("running");
 		expect(manager.getSummary("task-1")?.pid).toBe(DEAD_PID);
 
-		// Start the watchdog and advance past one check interval (30s)
-		manager.startStaleProcessWatchdog();
-		await vi.advanceTimersByTimeAsync(30_000);
+		// Start reconciliation and advance past one check interval (10s)
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
 
-		// The watchdog should have recovered the card
+		// The reconciliation sweep should have recovered the card
 		const recovered = manager.getSummary("task-1");
 		expect(recovered?.state).toBe("awaiting_review");
 		expect(recovered?.reviewReason).toBe("error");
 		expect(onExit).toHaveBeenCalledWith(null);
 
-		manager.stopStaleProcessWatchdog();
+		manager.stopReconciliation();
 	});
 });
 

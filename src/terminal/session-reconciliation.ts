@@ -1,0 +1,138 @@
+// Pure reconciliation check functions for detecting and correcting session state drift.
+// Each check takes a session entry + timestamp and returns an action or null.
+// The sweep in TerminalSessionManager applies the first non-null action per entry.
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
+import { canReturnToRunning } from "./session-state-machine";
+
+const RECENT_OUTPUT_THRESHOLD_MS = 30_000;
+
+export type ReconciliationAction =
+	| { type: "clear_hook_activity" }
+	| { type: "resume_from_review" }
+	| { type: "recover_dead_process" };
+
+/** Minimal shape of a session entry needed by the check functions. */
+export interface ReconciliationEntry {
+	summary: RuntimeTaskSessionSummary;
+	active: unknown;
+}
+
+export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
+
+export function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Returns true when the hook activity contains permission-related fields.
+ * Mirrors the UI's `isPermissionRequest()` in `web-ui/src/utils/session-status.ts`.
+ * Both functions must stay in sync — a future refactor should extract a shared utility.
+ */
+export function isPermissionActivity(activity: RuntimeTaskHookActivity): boolean {
+	const hook = activity.hookEventName?.toLowerCase() ?? "";
+	const notif = activity.notificationType?.toLowerCase() ?? "";
+	const text = activity.activityText?.toLowerCase() ?? "";
+	return (
+		hook === "permissionrequest" ||
+		notif === "permission_prompt" ||
+		notif === "permission.asked" ||
+		text === "waiting for approval"
+	);
+}
+
+/**
+ * Detects dead processes in any active state (running or awaiting_review).
+ * Extends the former stale process watchdog to also cover awaiting_review.
+ */
+export function checkDeadProcess(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "running" && summary.state !== "awaiting_review") {
+		return null;
+	}
+	if (!entry.active) {
+		return null;
+	}
+	if (summary.pid == null) {
+		return null;
+	}
+	if (isProcessAlive(summary.pid)) {
+		return null;
+	}
+	return { type: "recover_dead_process" };
+}
+
+/**
+ * Detects sessions in awaiting_review where the agent is producing terminal output,
+ * indicating it has resumed working. Uses timestamp comparison as an agent-agnostic heuristic.
+ */
+export function checkOutputAfterReview(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "awaiting_review") {
+		return null;
+	}
+	if (!entry.active) {
+		return null;
+	}
+	if (!canReturnToRunning(summary.reviewReason)) {
+		return null;
+	}
+	if (summary.lastOutputAt == null || summary.lastHookAt == null) {
+		return null;
+	}
+	if (summary.lastOutputAt <= summary.lastHookAt) {
+		return null;
+	}
+	if (nowMs - summary.lastOutputAt >= RECENT_OUTPUT_THRESHOLD_MS) {
+		return null;
+	}
+	return { type: "resume_from_review" };
+}
+
+/**
+ * Detects stale `latestHookActivity` on sessions that have transitioned away
+ * from the state that set it.
+ */
+export function checkStaleHookActivity(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (!summary.latestHookActivity) {
+		return null;
+	}
+	const hasPermission = isPermissionActivity(summary.latestHookActivity);
+
+	// Stale permission context on a running card
+	if (summary.state === "running" && hasPermission) {
+		return { type: "clear_hook_activity" };
+	}
+
+	if (summary.state === "awaiting_review") {
+		// Permission badge on a non-hook review (e.g., attention after Escape, exit, error)
+		if (summary.reviewReason !== "hook" && hasPermission) {
+			return { type: "clear_hook_activity" };
+		}
+		// Reachable for hydrated sessions where entry.active is null (checkOutputAfterReview
+		// skips these via its active guard). Also serves as defense-in-depth if check ordering changes.
+		if (
+			summary.reviewReason === "hook" &&
+			summary.lastOutputAt != null &&
+			summary.lastHookAt != null &&
+			summary.lastOutputAt > summary.lastHookAt &&
+			nowMs - summary.lastOutputAt < RECENT_OUTPUT_THRESHOLD_MS
+		) {
+			return { type: "clear_hook_activity" };
+		}
+	}
+
+	return null;
+}
+
+/** Ordered by priority: dead process > resume > clear activity. */
+export const reconciliationChecks: ReconciliationCheck[] = [
+	checkDeadProcess,
+	checkOutputAfterReview,
+	checkStaleHookActivity,
+];
