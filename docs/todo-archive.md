@@ -2,6 +2,34 @@
 
 Features shipped since the initial planning doc. Listed in reverse chronological order.
 
+## Decouple detail sidebar from task selection (2026-04-08, prev #13)
+
+The detail sidebar (toolbar, panels, resize layout) no longer requires a task selection to render. Refactored into an always-visible 4-tab sidebar with Board, Terminal, Changes, and Files panels. The sidebar renders independently of card selection — when no task is selected, panels show workspace-level content or empty states. This is the enabling work for the git management view and project switcher.
+
+## Session state reconciliation for stale UI badges (2026-04-08, prev #7)
+
+Added periodic reconciliation that polls actual agent/session state and corrects stale UI badges (permission prompts, approval indicators). A 10-second interval job compares displayed status against live session data and auto-corrects mismatches. Also removed a flawed output-after-review reconciliation that was incorrectly bouncing tasks back to running state.
+
+## Fix: branch display desync on task cards (2026-04-08)
+
+Fixed branch name shown on task cards getting out of sync with the actual branch. Root cause was a different precedence for the branch field vs other live metadata — prioritized live metadata from the runtime over stale persisted state.
+
+## Fix: chunky terminal rendering on low-DPR monitors (2026-04-08)
+
+Switched to light font weight for terminal rendering to reduce overly bold/chunky text on low-DPI displays.
+
+## Fix: LLM display summary lost across consecutive hook events (2026-04-08)
+
+Fixed `displaySummary` being wiped when consecutive hook events (e.g. to_review followed by stop) overwrote the task card state. The summary is now preserved across hook event processing.
+
+## Fix: output-after-review reconciliation bouncing tasks (2026-04-08)
+
+Removed reconciliation logic that detected terminal output after a task entered review and incorrectly moved it back to running. Terminal output (spinners, ANSI redraws) doesn't indicate the agent resumed work — the hook system is the authoritative source for state transitions.
+
+## Chore: dead code and unused dependency cleanup (2026-04-08)
+
+Removed dead code, unused exports, and unused dependencies across the codebase.
+
 ## Fix: slight lag on audible notifications (2026-04-08)
 
 Settle window reduced from 1500ms to 500ms for hook-based transitions, and non-hook transitions (exit, error, attention, failed) fire immediately at 0ms. Priority-based event upgrading ensures high-priority sounds aren't delayed by lower-priority pending events.

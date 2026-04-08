@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.3.0]
+
+### Always-visible sidebar
+
+- Decoupled the detail sidebar from task selection — the sidebar now renders as a persistent 4-tab layout (Board, Terminal, Changes, Files) regardless of whether a task is selected. When no task is active, panels show workspace-level content or empty states. This is the foundation for the planned git management view and project switcher.
+
+### Session state reconciliation
+
+- Added periodic reconciliation (10-second interval) that polls actual agent/session state and corrects stale UI badges — permission prompts, approval indicators, and other status badges that outlive the session state they were derived from are now auto-corrected.
+- Removed a flawed output-after-review heuristic that incorrectly bounced tasks back to running when agents produced incidental terminal output (spinners, ANSI redraws) after entering review.
+
+### LLM generation improvements
+
+- Unified all LLM-powered generation features (titles, branch names, summaries) with a consistent Sparkles icon, proper disabled states when no LLM is configured, and a dedicated settings section explaining env var requirements.
+- Split summary character limits (LLM prompt budget vs display limit) to reduce mid-word truncation.
+- Fixed `displaySummary` being wiped when consecutive hook events overwrote task card state.
+
+### Other features
+
+- Cross-workspace audible notifications — notifications now fire for tasks in all projects, not just the currently viewed one. Switching projects no longer silences notifications from other projects.
+- Auto-restart shell terminals on unexpected exit — non-agent shell terminals automatically restart with crash-loop rate limiting (max 3 per 30s), a 1-second delay, and a settings toggle.
+- Moved the prompt shortcut split button from per-card rendering to a single TopBar instance, eliminating a 6-prop threading chain.
+
+### Bug fixes
+
+- Fixed branch name on task cards getting out of sync — prioritized live metadata from the runtime over stale persisted state.
+- Fixed chunky terminal rendering on low-DPR monitors by switching to light font weight.
+
+### Maintenance
+
+- Consolidated ~10 duplicated config mock factories into 2 shared files — adding a config field now touches 1-2 files instead of 12.
+- Removed dead code, unused exports, and unused dependencies across the codebase.
+- Recommended Nerd Font installation in README setup instructions.
+
 ## [0.2.0]
 
 **Quarterdeck.** The project formerly known as Kanban has been renamed, rebranded, and substantially reworked. This release includes 194 commits spanning new features, architectural changes, and a full identity overhaul.
