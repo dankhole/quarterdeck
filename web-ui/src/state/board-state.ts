@@ -379,10 +379,11 @@ export function applyDragResult(
 	}
 
 	const sourceCards = Array.from(sourceColumn.cards);
-	const [movedCard] = sourceCards.splice(source.index, 1);
-	if (!movedCard) {
+	const cardIndex = sourceCards.findIndex((card) => card.id === result.draggableId);
+	if (cardIndex === -1) {
 		return { board };
 	}
+	const [movedCard] = sourceCards.splice(cardIndex, 1);
 
 	const destinationCards = Array.from(destinationColumn.cards);
 	const destinationInsertIndex = options?.programmaticCardMoveInFlight?.insertAtTop ? 0 : destination.index;
