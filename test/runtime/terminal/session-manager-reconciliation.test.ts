@@ -242,8 +242,9 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
-	it("session resumes to running when output detected after review (33)", async () => {
-		// Use process.pid (alive) so dead process check doesn't interfere
+	it("awaiting_review with terminal output is not falsely resumed (33)", async () => {
+		// Agents produce incidental terminal output (spinners, status bars, prompt redraws)
+		// while genuinely awaiting review. Reconciliation must not interpret this as "resumed."
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
 		const manager = new TerminalSessionManager();
@@ -257,18 +258,14 @@ describe("reconciliation sweep lifecycle", () => {
 		});
 		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
 
-		// Advance time so output timestamp is strictly after hook timestamp
 		await vi.advanceTimersByTimeAsync(1);
-
-		// Agent produces output (updates lastOutputAt after lastHookAt)
-		spawnedSessions[0]?.triggerData("agent resumed working\n");
+		spawnedSessions[0]?.triggerData("status bar update\n");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.reviewReason).toBeNull();
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
 
 		manager.stopReconciliation();
 	});
@@ -415,6 +412,141 @@ describe("reconciliation sweep lifecycle", () => {
 	});
 });
 
+// ── Incidental Terminal Output (Regression Guards) ───────────────────────
+// Agents produce continuous terminal output (spinners, status bars, ANSI redraws)
+// while genuinely idle or awaiting user input. These tests model realistic agent
+// behavior to ensure reconciliation never misinterprets incidental output as
+// evidence that the agent resumed working.
+
+describe("incidental terminal output does not affect review state", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		setupDefaultMocks();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("continuous status bar updates over 60s do not resume from review (60)", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		manager.transitionToReview("task-1", "hook");
+		manager.applyHookActivity("task-1", {
+			hookEventName: "PermissionRequest",
+			activityText: "Waiting for approval",
+			source: "claude",
+		});
+
+		manager.startReconciliation();
+
+		// Simulate Claude Code status bar updating every 2s for 60 seconds
+		for (let elapsed = 0; elapsed < 60_000; elapsed += 2_000) {
+			spawnedSessions[0]?.triggerData("\x1b[1;1H\x1b[K⏳ Waiting for permission...\x1b[0m");
+			await vi.advanceTimersByTimeAsync(2_000);
+
+			expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
+		}
+
+		manager.stopReconciliation();
+	});
+
+	it("spinner output across multiple reconciliation sweeps stays in review (61)", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		manager.transitionToReview("task-1", "hook");
+		manager.applyHookActivity("task-1", {
+			hookEventName: "PermissionRequest",
+			source: "claude",
+		});
+
+		manager.startReconciliation();
+
+		// Each iteration: output right before sweep, then sweep fires
+		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+		for (let sweep = 0; sweep < 5; sweep++) {
+			// Output arrives mid-interval
+			await vi.advanceTimersByTimeAsync(5_000);
+			spawnedSessions[0]?.triggerData(`\r${spinnerFrames[sweep % spinnerFrames.length]} Processing...`);
+
+			// Reconciliation sweep fires
+			await vi.advanceTimersByTimeAsync(5_000);
+
+			expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		}
+
+		manager.stopReconciliation();
+	});
+
+	it("permission badge preserved despite terminal output (62)", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		manager.transitionToReview("task-1", "hook");
+		manager.applyHookActivity("task-1", {
+			hookEventName: "PermissionRequest",
+			activityText: "Waiting for approval",
+			source: "claude",
+		});
+
+		manager.startReconciliation();
+
+		// Terminal output well after hook
+		await vi.advanceTimersByTimeAsync(15_000);
+		spawnedSessions[0]?.triggerData("prompt redraw after 15s");
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		// Both state and activity badge must survive
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
+		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
+
+		manager.stopReconciliation();
+	});
+
+	it("only a proper to_in_progress hook transitions out of review (63)", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession(defaultTaskRequest);
+
+		manager.transitionToReview("task-1", "hook");
+		manager.applyHookActivity("task-1", {
+			hookEventName: "PermissionRequest",
+			source: "claude",
+		});
+
+		manager.startReconciliation();
+
+		// Lots of output — should not matter
+		for (let i = 0; i < 10; i++) {
+			await vi.advanceTimersByTimeAsync(3_000);
+			spawnedSessions[0]?.triggerData(`output burst ${i}\n`);
+		}
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+
+		// Only an explicit hook transition should move it to running
+		manager.transitionToRunning("task-1");
+		expect(manager.getSummary("task-1")?.state).toBe("running");
+
+		manager.stopReconciliation();
+	});
+});
+
 // ── Edge Cases (Integration) ──────────────────────────────────────────────
 
 describe("reconciliation integration edge cases", () => {
@@ -540,34 +672,5 @@ describe("Phase 3: proactive latestHookActivity clearing", () => {
 
 		expect(manager.getSummary("task-1")?.state).toBe("running");
 		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
-	});
-
-	it("resume_from_review action clears latestHookActivity before transition (52)", async () => {
-		const spawnedSessions = setupMockPtySpawn(process.pid);
-
-		const manager = new TerminalSessionManager();
-		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
-		await manager.startTaskSession(defaultTaskRequest);
-
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
-			hookEventName: "PermissionRequest",
-			activityText: "Waiting for approval",
-			source: "claude",
-		});
-
-		// Advance time so output timestamp is strictly after hook timestamp
-		await vi.advanceTimersByTimeAsync(1);
-
-		// Trigger terminal output (updates lastOutputAt after lastHookAt)
-		spawnedSessions[0]?.triggerData("agent resumed working\n");
-
-		manager.startReconciliation();
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
-
-		manager.stopReconciliation();
 	});
 });
