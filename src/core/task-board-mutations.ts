@@ -18,6 +18,7 @@ export interface RuntimeCreateTaskInput {
 	images?: RuntimeTaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
+	branch?: string;
 	pinned?: boolean;
 }
 
@@ -298,6 +299,7 @@ export function addTaskToColumn(
 		images: cloneTaskImages(input.images),
 		baseRef,
 		useWorktree: input.useWorktree,
+		branch: input.branch?.trim() || undefined,
 		pinned: input.pinned || undefined,
 		createdAt: now,
 		updatedAt: now,

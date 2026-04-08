@@ -290,11 +290,44 @@ describe("createRuntimeApi startTaskSession", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			ensure: true,
+			branch: null,
 		});
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({
 				cwd: "/tmp/existing-worktree",
 			}),
+		);
+	});
+
+	it("passes saved branch from card to resolveTaskCwd for branch-aware worktree creation", async () => {
+		const card = createCard({ branch: "feat/foo" });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(false);
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/branch-worktree");
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Implement feature",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(taskWorktreeMocks.resolveTaskCwd).toHaveBeenCalledTimes(1);
+		expect(taskWorktreeMocks.resolveTaskCwd).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			taskId: "task-1",
+			baseRef: "main",
+			ensure: true,
+			branch: "feat/foo",
+		});
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({ cwd: "/tmp/branch-worktree" }),
 		);
 	});
 
@@ -321,6 +354,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			ensure: true,
+			branch: null,
 		});
 	});
 

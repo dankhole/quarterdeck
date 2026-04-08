@@ -233,8 +233,9 @@ export function BoardCard({
 	const statusMarker =
 		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const reviewBranchLabel = reviewWorkspaceSnapshot?.branch
-		? shortenBranchName(reviewWorkspaceSnapshot.branch)
+	const effectiveBranch = card.branch ?? reviewWorkspaceSnapshot?.branch ?? null;
+	const reviewBranchLabel = effectiveBranch
+		? shortenBranchName(effectiveBranch)
 		: (reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? null);
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null

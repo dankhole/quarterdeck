@@ -125,6 +125,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
+	branch: z.string().min(1).nullable().optional(),
 	pinned: z.boolean().optional(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
@@ -444,6 +445,7 @@ export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveRe
 export const runtimeWorktreeEnsureRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),
+	branch: z.string().min(1).nullable().optional(),
 });
 export type RuntimeWorktreeEnsureRequest = z.infer<typeof runtimeWorktreeEnsureRequestSchema>;
 
@@ -453,6 +455,7 @@ export const runtimeWorktreeEnsureResponseSchema = z.union([
 		path: z.string(),
 		baseRef: z.string(),
 		baseCommit: z.string(),
+		branch: z.string().nullable().optional(),
 		warning: z.string().optional(),
 		error: z.string().optional(),
 	}),

@@ -10,7 +10,9 @@ import {
 	getTaskColumnId,
 	moveTaskToColumn,
 	normalizeBoardData,
+	reconcileTaskBranch,
 	trashTaskAndGetReadyLinkedTaskIds,
+	updateTask,
 } from "@/state/board-state";
 import type { ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 
@@ -570,5 +572,291 @@ describe("board dependency state", () => {
 		const updatedTask = disabled.board.columns.find((column) => column.id === "review")?.cards[0];
 		expect(updatedTask?.autoReviewEnabled).toBe(false);
 		expect(updatedTask?.autoReviewMode).toBe("move_to_trash");
+	});
+});
+
+describe("branch persistence", () => {
+	// --- normalizeCard (tested via normalizeBoardData) ---
+
+	it("normalizeCard preserves string branch", () => {
+		const rawBoard = {
+			columns: [
+				{
+					id: "backlog",
+					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: "feat/foo" }],
+				},
+				{ id: "in_progress", cards: [] },
+				{ id: "review", cards: [] },
+				{ id: "trash", cards: [] },
+			],
+		};
+		const board = normalizeBoardData(rawBoard);
+		expect(board).not.toBeNull();
+		const card = board!.columns[0]?.cards[0];
+		expect(card?.branch).toBe("feat/foo");
+	});
+
+	it("normalizeCard preserves null branch", () => {
+		const rawBoard = {
+			columns: [
+				{
+					id: "backlog",
+					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: null }],
+				},
+				{ id: "in_progress", cards: [] },
+				{ id: "review", cards: [] },
+				{ id: "trash", cards: [] },
+			],
+		};
+		const board = normalizeBoardData(rawBoard);
+		expect(board).not.toBeNull();
+		const card = board!.columns[0]?.cards[0];
+		expect(card?.branch).toBeNull();
+	});
+
+	it("normalizeCard defaults undefined for missing branch", () => {
+		const rawBoard = {
+			columns: [
+				{
+					id: "backlog",
+					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
+				},
+				{ id: "in_progress", cards: [] },
+				{ id: "review", cards: [] },
+				{ id: "trash", cards: [] },
+			],
+		};
+		const board = normalizeBoardData(rawBoard);
+		expect(board).not.toBeNull();
+		const card = board!.columns[0]?.cards[0];
+		expect(card?.branch).toBeUndefined();
+	});
+
+	it("normalizeCard rejects non-string branch", () => {
+		const rawBoard = {
+			columns: [
+				{
+					id: "backlog",
+					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main", branch: 123 }],
+				},
+				{ id: "in_progress", cards: [] },
+				{ id: "review", cards: [] },
+				{ id: "trash", cards: [] },
+			],
+		};
+		const board = normalizeBoardData(rawBoard);
+		expect(board).not.toBeNull();
+		const card = board!.columns[0]?.cards[0];
+		expect(card?.branch).toBeUndefined();
+	});
+
+	it("normalizeCard handles cards without branch field (regression test 30)", () => {
+		const rawBoard = {
+			columns: [
+				{
+					id: "backlog",
+					cards: [
+						{ id: "a", prompt: "Old Card", startInPlanMode: false, baseRef: "main" },
+						{ id: "b", prompt: "Card With Branch", startInPlanMode: false, baseRef: "main", branch: "feat/x" },
+					],
+				},
+				{ id: "in_progress", cards: [] },
+				{ id: "review", cards: [] },
+				{ id: "trash", cards: [] },
+			],
+		};
+		const board = normalizeBoardData(rawBoard);
+		expect(board).not.toBeNull();
+		const cards = board!.columns[0]?.cards ?? [];
+		expect(cards).toHaveLength(2);
+		expect(cards[0]?.branch).toBeUndefined();
+		expect(cards[1]?.branch).toBe("feat/x");
+	});
+
+	// --- reconcileTaskBranch ---
+
+	it("reconcileTaskBranch updates card when branch differs", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		// Manually set branch to null to simulate initial state
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: null } : card)) }
+					: c,
+			),
+		};
+
+		const result = reconcileTaskBranch(board, taskId, "feat/foo");
+		expect(result.updated).toBe(true);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/foo");
+	});
+
+	it("reconcileTaskBranch no-ops when branch matches", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
+					: c,
+			),
+		};
+
+		const result = reconcileTaskBranch(board, taskId, "feat/foo");
+		expect(result.updated).toBe(false);
+	});
+
+	it("reconcileTaskBranch does NOT overwrite non-null with null (agent may be temporarily detached)", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
+					: c,
+			),
+		};
+
+		const result = reconcileTaskBranch(board, taskId, null);
+		expect(result.updated).toBe(false);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/foo");
+	});
+
+	it("reconcileTaskBranch updates card when branch changes", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/old" } : card)) }
+					: c,
+			),
+		};
+
+		const result = reconcileTaskBranch(board, taskId, "feat/new");
+		expect(result.updated).toBe(true);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/new");
+	});
+
+	it("reconcileTaskBranch updates card from undefined to string", () => {
+		const board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		// branch is undefined by default (no branchName in draft)
+
+		const result = reconcileTaskBranch(board, taskId, "feat/foo");
+		expect(result.updated).toBe(true);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/foo");
+	});
+
+	it("reconcileTaskBranch no-ops when card has no existing branch and incoming is null (semantically equivalent)", () => {
+		const board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		// branch is undefined by default (no branchName in draft)
+
+		const result = reconcileTaskBranch(board, taskId, null);
+		// undefined and null are semantically equivalent (no branch) — no update needed
+		expect(result.updated).toBe(false);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBeUndefined();
+	});
+
+	it("reconcileTaskBranch no-ops when incoming is undefined", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
+					: c,
+			),
+		};
+
+		const result = reconcileTaskBranch(board, taskId, undefined);
+		expect(result.updated).toBe(false);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/foo");
+	});
+
+	// --- updateTask preserves branch ---
+
+	it("updateTask preserves branch field", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "backlog", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "backlog")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "backlog"
+					? { ...c, cards: c.cards.map((card) => (card.id === taskId ? { ...card, branch: "feat/foo" } : card)) }
+					: c,
+			),
+		};
+
+		const result = updateTask(board, taskId, { prompt: "Updated prompt", baseRef: "develop" });
+		expect(result.updated).toBe(true);
+		const card = result.board.columns.find((c) => c.id === "backlog")!.cards.find((c) => c.id === taskId);
+		expect(card?.branch).toBe("feat/foo");
+		expect(card?.prompt).toBe("Updated prompt");
+		expect(card?.baseRef).toBe("develop");
+	});
+
+	// --- trashTaskAndGetReadyLinkedTaskIds branch + workingDirectory ---
+
+	it("trashTaskAndGetReadyLinkedTaskIds preserves branch on trashed card", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "in_progress", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "in_progress")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "in_progress"
+					? {
+							...c,
+							cards: c.cards.map((card) =>
+								card.id === taskId
+									? { ...card, branch: "feat/my-work", workingDirectory: "/tmp/worktree" }
+									: card,
+							),
+						}
+					: c,
+			),
+		};
+
+		const result = trashTaskAndGetReadyLinkedTaskIds(board, taskId);
+		expect(result.moved).toBe(true);
+		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
+		expect(trashedCard?.branch).toBe("feat/my-work");
+		expect(trashedCard?.workingDirectory).toBeNull();
+	});
+
+	it("workingDirectory still cleared on trash (regression test 31)", () => {
+		let board = addTaskToColumn(createInitialBoardData(), "in_progress", { prompt: "Task A", baseRef: "main" });
+		const taskId = board.columns.find((c) => c.id === "in_progress")!.cards[0]!.id;
+		board = {
+			...board,
+			columns: board.columns.map((c) =>
+				c.id === "in_progress"
+					? {
+							...c,
+							cards: c.cards.map((card) =>
+								card.id === taskId ? { ...card, workingDirectory: "/tmp/worktree" } : card,
+							),
+						}
+					: c,
+			),
+		};
+
+		const result = trashTaskAndGetReadyLinkedTaskIds(board, taskId);
+		expect(result.moved).toBe(true);
+		const trashedCard = result.board.columns.find((c) => c.id === "trash")!.cards.find((c) => c.id === taskId);
+		expect(trashedCard?.workingDirectory).toBeNull();
 	});
 });

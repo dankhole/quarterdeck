@@ -130,6 +130,7 @@ export function parseWorktreeEnsureRequest(value: unknown): RuntimeWorktreeEnsur
 	return {
 		taskId,
 		baseRef,
+		branch: parsed.branch,
 	};
 }
 

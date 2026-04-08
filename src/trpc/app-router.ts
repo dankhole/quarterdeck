@@ -115,7 +115,7 @@ import {
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
 import { findCardInBoard } from "../core/task-board-mutations";
-import { generateTaskTitle } from "../title/title-generator";
+import { generateBranchName, generateTaskTitle } from "../title/title-generator";
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;
@@ -478,6 +478,15 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, input.title);
 				return { ok: true };
+			}),
+		// No server-side rate limiting: this is user-triggered (not batch) and the client
+		// guards against duplicate in-flight calls via isGeneratingBranchName state.
+		generateBranchName: workspaceProcedure
+			.input(z.object({ prompt: z.string().min(1) }))
+			.output(z.object({ ok: z.boolean(), branchName: z.string().nullable() }))
+			.mutation(async ({ input }) => {
+				const branchName = await generateBranchName(input.prompt);
+				return { ok: branchName !== null, branchName };
 			}),
 	}),
 	projects: t.router({

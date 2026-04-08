@@ -4,6 +4,7 @@ import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
 	parseWorkspaceFileSearchRequest,
+	parseWorktreeEnsureRequest,
 } from "../../src/core/api-validation";
 
 describe("parseWorkspaceFileSearchRequest", () => {
@@ -70,6 +71,46 @@ describe("parseHookIngestRequest", () => {
 				event: "to_review",
 			});
 		}).toThrow("Missing workspaceId");
+	});
+});
+
+describe("parseWorktreeEnsureRequest", () => {
+	it("includes branch when present", () => {
+		const parsed = parseWorktreeEnsureRequest({
+			taskId: "task-1",
+			baseRef: "main",
+			branch: "feat/foo",
+		});
+		expect(parsed).toEqual({
+			taskId: "task-1",
+			baseRef: "main",
+			branch: "feat/foo",
+		});
+	});
+
+	it("includes branch as null when explicitly null", () => {
+		const parsed = parseWorktreeEnsureRequest({
+			taskId: "task-1",
+			baseRef: "main",
+			branch: null,
+		});
+		expect(parsed).toEqual({
+			taskId: "task-1",
+			baseRef: "main",
+			branch: null,
+		});
+	});
+
+	it("includes branch as undefined when omitted", () => {
+		const parsed = parseWorktreeEnsureRequest({
+			taskId: "task-1",
+			baseRef: "main",
+		});
+		expect(parsed).toEqual({
+			taskId: "task-1",
+			baseRef: "main",
+			branch: undefined,
+		});
 	});
 });
 

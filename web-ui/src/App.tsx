@@ -65,7 +65,12 @@ import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { findCardSelection, reconcileTaskWorkingDirectory, toggleTaskPinned } from "@/state/board-state";
+import {
+	findCardSelection,
+	reconcileTaskBranch,
+	reconcileTaskWorkingDirectory,
+	toggleTaskPinned,
+} from "@/state/board-state";
 import {
 	getTaskWorkspaceSnapshot,
 	getWorkspacePath,
@@ -241,10 +246,10 @@ export default function App(): ReactElement {
 		replaceWorkspaceMetadata(workspaceMetadata);
 	}, [workspaceMetadata]);
 
-	// Self-heal card.workingDirectory when metadata monitor reports a different
-	// path than what the card has persisted. This catches drift after migration,
-	// manual worktree changes, or any server-side CWD resolution that the UI
-	// missed.
+	// Self-heal card.workingDirectory and card.branch when the metadata monitor
+	// reports values different from what the card has persisted. This catches
+	// drift after migration, manual worktree changes, or any server-side CWD
+	// resolution that the UI missed.
 	useEffect(() => {
 		return subscribeToAnyTaskMetadata((taskId) => {
 			const snapshot = getTaskWorkspaceSnapshot(taskId);
@@ -252,13 +257,10 @@ export default function App(): ReactElement {
 				return;
 			}
 			setBoard((currentBoard) => {
-				const { board: updatedBoard, updated } = reconcileTaskWorkingDirectory(
-					currentBoard,
-					taskId,
-					snapshot.path,
-					getWorkspacePath(),
-				);
-				return updated ? updatedBoard : currentBoard;
+				const wdResult = reconcileTaskWorkingDirectory(currentBoard, taskId, snapshot.path, getWorkspacePath());
+				const branchResult = reconcileTaskBranch(wdResult.board, taskId, snapshot.branch);
+				const updated = wdResult.updated || branchResult.updated;
+				return updated ? branchResult.board : currentBoard;
 			});
 		});
 	}, [setBoard]);
@@ -369,6 +371,12 @@ export default function App(): ReactElement {
 		isNewTaskStartInPlanModeDisabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
+		createFeatureBranch,
+		setCreateFeatureBranch,
+		branchName,
+		handleBranchNameEdit,
+		generateBranchNameFromPrompt,
+		isGeneratingBranchName,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -1119,6 +1127,12 @@ export default function App(): ReactElement {
 					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 					useWorktree={newTaskUseWorktree}
 					onUseWorktreeChange={setNewTaskUseWorktree}
+					createFeatureBranch={createFeatureBranch}
+					onCreateFeatureBranchChange={setCreateFeatureBranch}
+					branchName={branchName}
+					onBranchNameEdit={handleBranchNameEdit}
+					onGenerateBranchName={generateBranchNameFromPrompt}
+					isGeneratingBranchName={isGeneratingBranchName}
 					workspaceId={currentProjectId}
 					branchRef={newTaskBranchRef}
 					branchOptions={createTaskBranchOptions}

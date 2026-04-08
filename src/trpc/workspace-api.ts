@@ -338,12 +338,16 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			}
 			return await getWorkspaceChanges(taskCwd);
 		},
+		// Called by the UI's ensureTaskWorkspace (use-task-sessions.ts) for restore-from-trash.
+		// The other path to ensureTaskWorktreeIfDoesntExist is startTaskSession in runtime-api.ts,
+		// which reads branch from persisted board state server-side instead.
 		ensureWorktree: async (workspaceScope, input) => {
 			const body = parseWorktreeEnsureRequest(input);
 			return await ensureTaskWorktreeIfDoesntExist({
 				cwd: workspaceScope.workspacePath,
 				taskId: body.taskId,
 				baseRef: body.baseRef,
+				branch: body.branch ?? undefined,
 			});
 		},
 		deleteWorktree: async (workspaceScope, input) => {

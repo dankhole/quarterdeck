@@ -1,15 +1,18 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { showAppToast } from "@/components/app-toaster";
 import {
 	normalizeStoredTaskAutoReviewMode,
 	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/hooks/app-utils";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
+import { slugifyBranchName } from "@/utils/branch-utils";
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 
 interface UseTaskEditorInput {
@@ -45,6 +48,12 @@ export interface UseTaskEditorResult {
 	isNewTaskStartInPlanModeDisabled: boolean;
 	newTaskUseWorktree: boolean;
 	setNewTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
+	createFeatureBranch: boolean;
+	setCreateFeatureBranch: Dispatch<SetStateAction<boolean>>;
+	branchName: string;
+	handleBranchNameEdit: (value: string) => void;
+	generateBranchNameFromPrompt: () => Promise<void>;
+	isGeneratingBranchName: boolean;
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
@@ -98,6 +107,8 @@ export function useTaskEditor({
 		normalizeStoredTaskAutoReviewMode,
 	);
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
+	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
+	const [branchName, setBranchName] = useState("");
 	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
@@ -144,6 +155,17 @@ export function useTaskEditor({
 		}
 	}, [isInlineTaskCreateOpen, newTaskBranchRef, resolvedDefaultTaskBranchRef]);
 
+	const [isGeneratingBranchName, setIsGeneratingBranchName] = useState(false);
+	const isGeneratingBranchNameRef = useRef(false);
+
+	// Clear feature branch state when worktree is disabled
+	useEffect(() => {
+		if (!newTaskUseWorktree && createFeatureBranch) {
+			setCreateFeatureBranch(false);
+			setBranchName("");
+		}
+	}, [newTaskUseWorktree, createFeatureBranch]);
+
 	useEffect(() => {
 		if (!isNewTaskStartInPlanModeDisabled || !newTaskStartInPlanMode) {
 			return;
@@ -185,6 +207,33 @@ export function useTaskEditor({
 		}
 	}, [board, editingTaskId]);
 
+	const handleBranchNameEdit = useCallback((value: string) => {
+		setBranchName(value);
+	}, []);
+
+	const generateBranchNameFromPrompt = useCallback(async () => {
+		const prompt = newTaskPrompt.trim();
+		if (!prompt || !currentProjectId || isGeneratingBranchNameRef.current) {
+			return;
+		}
+		isGeneratingBranchNameRef.current = true;
+		setIsGeneratingBranchName(true);
+		try {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const result = await trpcClient.workspace.generateBranchName.mutate({ prompt });
+			if (result.ok && result.branchName) {
+				setBranchName(slugifyBranchName(result.branchName));
+			} else {
+				showAppToast({ message: "Could not generate branch name", intent: "danger" });
+			}
+		} catch {
+			showAppToast({ message: "Could not generate branch name", intent: "danger" });
+		} finally {
+			isGeneratingBranchNameRef.current = false;
+			setIsGeneratingBranchName(false);
+		}
+	}, [currentProjectId, newTaskPrompt]);
+
 	const handleOpenCreateTask = useCallback(() => {
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
@@ -197,6 +246,9 @@ export function useTaskEditor({
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
 		setNewTaskUseWorktree(true);
+		setCreateFeatureBranch(false);
+		setBranchName("");
+
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
 
@@ -301,6 +353,7 @@ export function useTaskEditor({
 				images: newTaskImages,
 				baseRef,
 				useWorktree: newTaskUseWorktree,
+				branchName: createFeatureBranch && branchName ? branchName : undefined,
 			});
 			setBoard(created.board);
 			if (currentProjectId) {
@@ -312,6 +365,8 @@ export function useTaskEditor({
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
 			setNewTaskUseWorktree(true);
+			setBranchName("");
+
 			setNewTaskBranchRef(baseRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
@@ -320,6 +375,8 @@ export function useTaskEditor({
 		},
 		[
 			board,
+			branchName,
+			createFeatureBranch,
 			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
@@ -398,6 +455,8 @@ export function useTaskEditor({
 		setEditTaskImages([]);
 		setEditTaskBranchRef("");
 		setNewTaskImages([]);
+		setCreateFeatureBranch(false);
+		setBranchName("");
 	}, []);
 
 	return {
@@ -415,6 +474,12 @@ export function useTaskEditor({
 		isNewTaskStartInPlanModeDisabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
+		createFeatureBranch,
+		setCreateFeatureBranch,
+		branchName,
+		handleBranchNameEdit,
+		generateBranchNameFromPrompt,
+		isGeneratingBranchName,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
