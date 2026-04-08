@@ -1,41 +1,104 @@
 # Planned Features
 
-## 1. Resume card sessions after crash/closure
+## 1. Fix: slight lag on audible notifications
 
-When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
-- Investigate why the agent session doesn't reconnect after restart
-- Ensure the correct worktree is switched to when resuming a card
-- Resume or re-attach to the Claude conversation so the agent can continue where it left off
-- Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
+The sound notifications have a noticeable delay before playing. Likely caused by the 1500ms settle window in `use-audible-notifications.ts` that waits for session data to stabilize. May need to reduce or eliminate the delay for high-priority events like permission requests.
 
-## 2. Trash confirmation and worktree notice
+## 2. Unify LLM generation UI and disabled states
 
-**Status**: Implemented (commit `aee9eef`).
+The LLM-powered generation features (branch name, title, display summary) use inconsistent icons and don't grey out when LLM generation is disabled or unconfigured.
 
-## 3. Branch persistence on cards
+**Current inconsistencies**:
+- Branch name generation uses `Sparkles` icon (`task-create-dialog.tsx`)
+- Title generation uses `RefreshCw` icon (`inline-title-editor.tsx`)
+- Display summary generation is triggered on hover with no direct button
 
-**Status**: Implemented (commit `2d0674d`).
+**Changes**:
+- Pick a single icon for all LLM generation actions and use it consistently
+- Grey out / disable all LLM generation buttons when generation is disabled in settings or no API key / model is configured
+- Audit the code paths to ensure they share a clean pattern (e.g. a shared hook or config check for "is LLM generation available")
 
-## 4. Interactive base ref switcher
+## 3. Move shortcut button out of task cards
+
+The shortcut/skill button is currently rendered on every task card, which is redundant and clutters the card UI. Move it to a shared location — the top navbar, the detail sidebar toolbar, or the agent terminal panel. It only needs to target the currently selected/active task, so one instance is enough.
+
+## 4. Fix: branch name cleared on trashed task cards
+
+The persisted `branch` field on cards is sometimes getting cleared when the card is in the trash column. `reconcileTaskBranch` guards against overwriting a non-null branch with null, and `moveTaskToColumn` doesn't touch the branch field, so the clearing is happening through some other path. Needs investigation.
+
+## 5. Audit OS notification feature
+
+The browser `Notification` API integration in `use-review-ready-notifications.ts` fires OS-level notifications when tasks move to review while the tab is hidden. Investigate whether this actually works reliably — test the permission flow, verify notifications appear on macOS, and decide whether to keep, improve, or remove it. The feature has a settings toggle (`readyForReviewNotificationsEnabled`) and permission request UI in the settings dialog.
+
+## 6. Investigate auto-trashing of tasks on restart
+
+When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
+
+If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #15 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
+
+## 7. Shared config test fixtures to eliminate merge conflicts
+
+Consolidate the ~10 copy-pasted config mock factories across test files into 2 shared factory files (one backend, one web-ui). Currently adding a single config field forces changes to ~12 test files with hardcoded mock objects, making parallel feature branches a merge conflict magnet. Plan at [docs/plans/2026-04-07-shared-config-test-fixtures.md](plans/2026-04-07-shared-config-test-fixtures.md).
+
+## 8. Interactive base ref switcher
 
 The diff toolbar shows the branch comparison (e.g. `feat/my-feature → main`) as a static label. Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
 
 Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
 
-## 5. Remove commit and PR prompt injection buttons
+## 9. Unify task card behavior across views
 
-**Status**: Implemented (commit `31a1635`). Buttons removed from all UI surfaces, prompt templates removed from config. `use-git-actions.ts` and `build-task-git-action-prompt.ts` retained for auto-review path only.
+The `BoardCard` component renders through two independent parent chains — the main board columns and the sidebar/context panel — and each threads props differently through intermediate components. Missing props silently disable features rather than erroring, which has already caused bugs (e.g. migrate button missing from sidebar cards). As more views are added (#13 project switcher, #16 sidebar decoupling), this divergence will get worse.
 
-## 6. Server-side commit in the diff viewer
+See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-04-06-board-card-prop-threading-audit.md) for the full audit of current prop discrepancies between board and sidebar paths.
+
+**Goals**:
+- Audit and fix all current prop discrepancies between the board and sidebar rendering paths
+- Future-proof so new views automatically get full card behavior without manual prop threading
+- Consider a context-based approach (React context or a hook) so card callbacks don't need to be threaded through every intermediate component
+- Ensure any new planned views (project switcher, decoupled sidebar) inherit full card interaction without per-view wiring
+
+## 10. Self-healing for stale task status indicators
+
+UI status indicators like "needs perms" and "waiting for approval" can get stuck when the underlying agent state changes in ways the UI doesn't catch — e.g. hitting Escape on a permission prompt dismisses it in the agent but the card still shows "waiting for approval". Add a periodic reconciliation job that polls actual agent/session state and corrects stale UI badges. This should cover at minimum:
+- Permission/approval badges that linger after the prompt is dismissed or resolved
+- Any status badge that outlives the session state it was derived from
+- Consider a heartbeat or terminal output heuristic — if the agent is producing new output, it's clearly not blocked on permissions anymore
+
+## 11. Server-side commit in the diff viewer
 
 Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
 
 - **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
 - **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
 - **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
-- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#10), which would also support committing.
+- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#17), which would also support committing.
 
-## 6. Performance audit for concurrent agents
+## 12. Pulse integration for enhanced status display (Nerd Fonts)
+
+Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
+
+**Investigation needed**:
+- How Pulse works: is it a binary Quarterdeck shells out to, a library, or something that wraps the agent process?
+- Where it would integrate: per-agent terminal status lines, a global Quarterdeck status bar, board card indicators, or some combination
+- How to detect Nerd Fonts availability at runtime
+
+**Requirements**:
+- Auto-detect Nerd Fonts — if present, use Pulse-enhanced status display; if not, fall back to the current plain text display
+- Should be seamless — no user configuration required beyond having Nerd Fonts installed
+- Pulse is a tool made by a coworker, so coordinate with them on the integration surface
+
+## 13. Project switcher in the detail toolbar
+
+Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
+
+**Notification badges on projects**:
+- **Orange badge (always on)**: Show when any task in that project is waiting for permissions — this is always important to surface.
+- **Review badge (configurable per project)**: Optionally show when tasks are awaiting review. This is useful when actively working on multiple projects but noisy when a project is idle. Add a per-project toggle in the project panel to enable/disable review notifications.
+
+**Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
+
+## 14. Performance audit for concurrent agents
 
 Audit and address performance bottlenecks that emerge when running many agents simultaneously. An earlier analysis exists at [docs/performance-bottleneck-analysis.md](performance-bottleneck-analysis.md) but is likely out of date — use it as a starting point, not a source of truth. Key areas to re-evaluate:
 
@@ -46,21 +109,15 @@ Audit and address performance bottlenecks that emerge when running many agents s
 - Large diffs cause noticeable UI lag — full file text (old + new) is sent inline and diff computation happens client-side, so tasks with many changed files or large files bog down the browser
 - Profile real-world usage with 5–10 concurrent agents to identify any new bottlenecks introduced since the earlier analysis
 
-## 7. Create task dialog: shortcut remap and discoverability
+## 15. Resume card sessions after crash/closure
 
-**Status**: Implemented (commits `ee07d65`, `6c4a902`). Shortcuts remapped: Cmd+Enter → Start task, Cmd+Shift+Enter → Start and open, Cmd+Alt+Enter → Create only.
+When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
+- Investigate why the agent session doesn't reconnect after restart
+- Ensure the correct worktree is switched to when resuming a card
+- Resume or re-attach to the Claude conversation so the agent can continue where it left off
+- Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
 
-## 8. Project switcher in the detail toolbar
-
-Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
-
-**Notification badges on projects**:
-- **Orange badge (always on)**: Show when any task in that project is waiting for permissions — this is always important to surface.
-- **Review badge (configurable per project)**: Optionally show when tasks are awaiting review. This is useful when actively working on multiple projects but noisy when a project is idle. Add a per-project toggle in the project panel to enable/disable review notifications.
-
-**Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
-
-## 9. Decouple the detail sidebar from task selection
+## 16. Decouple the detail sidebar from task selection
 
 The detail sidebar (left toolbar + panel slots + resize layout) is currently only rendered when a task is selected via `CardDetailView`, which requires a `CardSelection` prop. This blocks using the sidebar for non-task views like git management, a standalone board panel, or workspace-level browsing.
 
@@ -78,13 +135,13 @@ The detail sidebar (left toolbar + panel slots + resize layout) is currently onl
 
 **Approach**: Rather than a full architectural rewrite, introduce a `DetailContext` concept — either "task" (existing behavior, includes card + session) or "workspace" (no task, operates on the main repo). `CardDetailView` switches its data sources and available panels based on context. The toolbar, layout, and resize system stay exactly as-is.
 
-**Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #10 (git management) and #8 (project switcher) as the first consumers of this decoupled sidebar.
+**Long-term direction**: This is the enabling work for making the sidebar the primary navigation surface. The board view, git management, project switcher, and task detail would all be views composed within the same sidebar shell. See #17 (git management) and #13 (project switcher) as the first consumers of this decoupled sidebar.
 
 **Board view as a sidebar tab**: When moving the board into the sidebar, also reconsider the column stages themselves — are backlog/in_progress/review/done/trash still the right model, or should stages be more flexible? At minimum, update the colors for in_progress and review — they're too similar and hard to distinguish at a glance in a compact sidebar layout.
 
-## 10. Git management / workspace view
+## 17. Git management / workspace view
 
-A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. Depends on #9 (decoupled sidebar) for rendering without a task selection.
+A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. Depends on #16 (decoupled sidebar) for rendering without a task selection.
 
 **Branch management**:
 - Show the currently checked out branch in the main repo (not a worktree)
@@ -96,7 +153,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 **Branch diffing**:
 - Select two branches to compare — opens the diff in the existing `DiffViewerPanel`
 - This reuses the Changes panel infrastructure but with a different data source: `git diff branchA...branchB` instead of task workspace changes
-- Requires the workspace-level data fetching path from #9 (e.g. a `getWorkspaceChangesBetweenRefs` call that isn't task-scoped)
+- Requires the workspace-level data fetching path from #16 (e.g. a `getWorkspaceChangesBetweenRefs` call that isn't task-scoped)
 
 **How it fits in the sidebar**:
 - New toolbar button (e.g. `GitBranch` icon) adds a "Git" panel to `DetailPanelId`
@@ -110,21 +167,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
 
-## 11. Pulse integration for enhanced status display (Nerd Fonts)
-
-Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
-
-**Investigation needed**:
-- How Pulse works: is it a binary Quarterdeck shells out to, a library, or something that wraps the agent process?
-- Where it would integrate: per-agent terminal status lines, a global Quarterdeck status bar, board card indicators, or some combination
-- How to detect Nerd Fonts availability at runtime
-
-**Requirements**:
-- Auto-detect Nerd Fonts — if present, use Pulse-enhanced status display; if not, fall back to the current plain text display
-- Should be seamless — no user configuration required beyond having Nerd Fonts installed
-- Pulse is a tool made by a coworker, so coordinate with them on the integration surface
-
-## 13. Rewrite backend in Go
+## 18. Rewrite backend in Go
 
 Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
 
@@ -140,95 +183,3 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 - Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
 - Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
 - The research doc is organized module-by-module to support incremental porting
-
-## 14. Configurable audible notifications
-
-**Status**: Implemented (commit `53cf9d8`). Web Audio API with per-event toggles (permission, review, failure, completion), volume control, and "only when tab hidden" option in settings.
-
-## 16. Quick actions menu for stored prompts / skill calls (low priority)
-
-A configurable dropdown or palette in the agent terminal panel for firing stored prompts or skill invocations at the active agent. This would partially replace the removed commit/PR buttons (#5) with something user-configurable rather than hardcoded.
-
-**Open question**: This might not be worth building. Typing a skill call or prompt directly into the terminal is already fast, and a dropdown adds UI complexity for marginal convenience. Worth noting as a possibility but not urgent.
-
-**If built**:
-- Dropdown or command palette accessible from the terminal panel toolbar
-- User-configurable list of entries — each is either a stored prompt template or a skill invocation
-- Entries can interpolate task context (branch name, base ref, task title) like the old commit prompt templates did
-- Per-project and global entries
-- Could also support keyboard shortcuts per entry for power users
-
-## 17. Task conversation summaries and improved title generation
-
-**Status**: Implemented (commit `c39a300`). Transcript parsing on Stop hook, LLM-powered display summaries (<80 chars), hover tooltips on cards, staleness-checked regeneration.
-
-## 18. Investigate auto-trashing of tasks on restart
-
-When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
-
-If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #1 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
-
-## 19. Unify task card behavior across views
-
-The `BoardCard` component renders through two independent parent chains — the main board columns and the sidebar/context panel — and each threads props differently through intermediate components. Missing props silently disable features rather than erroring, which has already caused bugs (e.g. migrate button missing from sidebar cards). As more views are added (#8 project switcher, #9 sidebar decoupling), this divergence will get worse.
-
-See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-04-06-board-card-prop-threading-audit.md) for the full audit of current prop discrepancies between board and sidebar paths.
-
-**Goals**:
-- Audit and fix all current prop discrepancies between the board and sidebar rendering paths
-- Future-proof so new views automatically get full card behavior without manual prop threading
-- Consider a context-based approach (React context or a hook) so card callbacks don't need to be threaded through every intermediate component
-- Ensure any new planned views (project switcher, decoupled sidebar) inherit full card interaction without per-view wiring
-
-## 20. Unify LLM generation UI and disabled states
-
-The LLM-powered generation features (branch name, title, display summary) use inconsistent icons and don't grey out when LLM generation is disabled or unconfigured.
-
-**Current inconsistencies**:
-- Branch name generation uses `Sparkles` icon (`task-create-dialog.tsx`)
-- Title generation uses `RefreshCw` icon (`inline-title-editor.tsx`)
-- Display summary generation is triggered on hover with no direct button
-
-**Changes**:
-- Pick a single icon for all LLM generation actions and use it consistently
-- Grey out / disable all LLM generation buttons when generation is disabled in settings or no API key / model is configured
-- Audit the code paths to ensure they share a clean pattern (e.g. a shared hook or config check for "is LLM generation available")
-
-## 21. Fix: dragging tasks out of trash restores the wrong task
-
-Dragging a card out of the trash column to restore it sometimes restores a different task than the one that was dragged. Likely a stale index or card ID mismatch in the drag-and-drop handler.
-
-## 22. Fix: branch name cleared on trashed task cards
-
-The persisted `branch` field on cards is sometimes getting cleared when the card is in the trash column. `reconcileTaskBranch` guards against overwriting a non-null branch with null, and `moveTaskToColumn` doesn't touch the branch field, so the clearing is happening through some other path. Needs investigation.
-
-## 23. Fix: slight lag on audible notifications
-
-The sound notifications from #14 have a noticeable delay before playing. Likely caused by the 1500ms settle window in `use-audible-notifications.ts` that waits for session data to stabilize. May need to reduce or eliminate the delay for high-priority events like permission requests.
-
-## 24. Audit OS notification feature
-
-The browser `Notification` API integration in `use-review-ready-notifications.ts` fires OS-level notifications when tasks move to review while the tab is hidden. Investigate whether this actually works reliably — test the permission flow, verify notifications appear on macOS, and decide whether to keep, improve, or remove it. The feature has a settings toggle (`readyForReviewNotificationsEnabled`) and permission request UI in the settings dialog.
-
-## 25. Fix: trash worktree notice setting not respected
-
-The `showTrashWorktreeNotice` toggle in Settings > Trash doesn't work — the informational toast always shows when manually trashing a task, even after disabling the setting. The setting is wired through `use-linked-backlog-task-actions.ts` (line 262) and reads from `runtimeProjectConfig`. Likely a stale closure or the config value not propagating correctly after save.
-
-## 26. Self-healing for stale task status indicators
-
-UI status indicators like "needs perms" and "waiting for approval" can get stuck when the underlying agent state changes in ways the UI doesn't catch — e.g. hitting Escape on a permission prompt dismisses it in the agent but the card still shows "waiting for approval". Add a periodic reconciliation job that polls actual agent/session state and corrects stale UI badges. This should cover at minimum:
-- Permission/approval badges that linger after the prompt is dismissed or resolved
-- Any status badge that outlives the session state it was derived from
-- Consider a heartbeat or terminal output heuristic — if the agent is producing new output, it's clearly not blocked on permissions anymore
-
-## 27. Move shortcut button out of task cards
-
-The shortcut/skill button is currently rendered on every task card, which is redundant and clutters the card UI. Move it to a shared location — the top navbar, the detail sidebar toolbar, or the agent terminal panel. It only needs to target the currently selected/active task, so one instance is enough.
-
-## 28. Shared config test fixtures to eliminate merge conflicts
-
-Consolidate the ~10 copy-pasted config mock factories across test files into 2 shared factory files (one backend, one web-ui). Currently adding a single config field forces changes to ~12 test files with hardcoded mock objects, making parallel feature branches a merge conflict magnet. Plan at [docs/plans/2026-04-07-shared-config-test-fixtures.md](plans/2026-04-07-shared-config-test-fixtures.md).
-
-## 29. Fix: "Use feature branch" in create task dialog should default to off
-
-The "Use feature branch" toggle in the create task dialog remembers its last value. It should always reset to unchecked when the dialog opens — opting into a feature branch should be a deliberate per-task choice, not sticky state.
