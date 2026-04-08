@@ -438,6 +438,43 @@ describe("board dependency state", () => {
 		expect(reviewColumn?.cards.map((card) => card.id)).toEqual([taskB, taskA]);
 	});
 
+	it("restores the correct card when source index diverges from state order", () => {
+		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
+		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
+		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
+		const taskC = requireTaskId(fixture.taskIdByPrompt["Task C"], "Task C");
+
+		const movedAToTrash = moveTaskToColumn(fixture.board, taskA, "trash");
+		expect(movedAToTrash.moved).toBe(true);
+		const movedBToTrash = moveTaskToColumn(movedAToTrash.board, taskB, "trash");
+		expect(movedBToTrash.moved).toBe(true);
+		const movedCToTrash = moveTaskToColumn(movedBToTrash.board, taskC, "trash");
+		expect(movedCToTrash.moved).toBe(true);
+
+		// State order is [A, B, C]. The UI sorts trash by recency (newest first),
+		// so the rendered order is [C, B, A]. Dragging the visually-first card (C)
+		// gives source.index=0, but C is at state index 2. The draggableId must be
+		// used to find the correct card — not the source index.
+		const restored = applyDragResult(movedCToTrash.board, {
+			draggableId: taskC,
+			type: "CARD",
+			source: { droppableId: "trash", index: 0 },
+			destination: { droppableId: "review", index: 0 },
+			mode: "SNAP",
+			reason: "DROP",
+			combine: null,
+		});
+		expect(restored.moveEvent).toMatchObject({
+			taskId: taskC,
+			fromColumnId: "trash",
+			toColumnId: "review",
+		});
+		expect(getTaskColumnId(restored.board, taskC)).toBe("review");
+		// A and B remain in trash
+		expect(getTaskColumnId(restored.board, taskA)).toBe("trash");
+		expect(getTaskColumnId(restored.board, taskB)).toBe("trash");
+	});
+
 	it("inserts programmatic trash drags at the top of trash", () => {
 		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
