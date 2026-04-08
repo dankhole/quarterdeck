@@ -537,7 +537,7 @@ export default function App(): ReactElement {
 			sendTaskSessionInput,
 		});
 	const {
-		lastUsedLabel: lastUsedPromptShortcutLabel,
+		activeShortcut: activePromptShortcut,
 		isRunning: isPromptShortcutRunning,
 		runPromptShortcut,
 		selectShortcutLabel: selectPromptShortcutLabel,
@@ -951,6 +951,12 @@ export default function App(): ReactElement {
 						runningShortcutLabel={runningShortcutLabel}
 						onRunShortcut={handleRunShortcut}
 						onCreateFirstShortcut={currentProjectId ? handleCreateShortcut : undefined}
+						promptShortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+						activePromptShortcut={activePromptShortcut}
+						onSelectPromptShortcutLabel={selectPromptShortcutLabel}
+						isPromptShortcutRunning={isPromptShortcutRunning}
+						onRunPromptShortcut={runPromptShortcut}
+						onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
 						openTargetOptions={openTargetOptions}
 						selectedOpenTargetId={selectedOpenTargetId}
 						onSelectOpenTarget={onSelectOpenTarget}
@@ -1143,12 +1149,6 @@ export default function App(): ReactElement {
 									onBottomTerminalRestart={handleRestartDetailTerminal}
 									onBottomTerminalExit={handleShellExit}
 									isDocumentVisible={isDocumentVisible}
-									onRunPromptShortcut={runPromptShortcut}
-									onSelectPromptShortcutLabel={selectPromptShortcutLabel}
-									promptShortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
-									lastUsedPromptShortcutLabel={lastUsedPromptShortcutLabel}
-									isPromptShortcutRunning={isPromptShortcutRunning}
-									onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
 								/>
 							</div>
 						) : null}

@@ -368,28 +368,6 @@ describe("BoardCard", () => {
 		expect(container.textContent).not.toContain("Thinking...");
 	});
 
-	it("hides prompt shortcut dropdown when no shortcuts configured", async () => {
-		// Case A: empty array
-		await act(async () => {
-			root.render(
-				<Providers>
-					<BoardCard card={createCard()} index={0} columnId="review" promptShortcuts={[]} />
-				</Providers>,
-			);
-		});
-		expect(document.querySelector('[aria-label="More prompt shortcuts"]')).toBeNull();
-
-		// Case B: undefined
-		await act(async () => {
-			root.render(
-				<Providers>
-					<BoardCard card={createCard()} index={0} columnId="review" />
-				</Providers>,
-			);
-		});
-		expect(document.querySelector('[aria-label="More prompt shortcuts"]')).toBeNull();
-	});
-
 	describe("getCardHoverTooltip", () => {
 		it("returns null when no summary is provided", () => {
 			expect(getCardHoverTooltip(undefined)).toBeNull();
