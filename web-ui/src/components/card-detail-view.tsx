@@ -267,6 +267,7 @@ export function CardDetailView({
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
 	onBottomTerminalRestart,
+	onBottomTerminalExit,
 	isDocumentVisible = true,
 	onRunPromptShortcut,
 	onSelectPromptShortcutLabel,
@@ -320,6 +321,7 @@ export function CardDetailView({
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
 	onBottomTerminalRestart?: () => void;
+	onBottomTerminalExit?: (taskId: string, exitCode: number | null) => void;
 	isDocumentVisible?: boolean;
 	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
 	onSelectPromptShortcutLabel?: (label: string) => void;
@@ -951,6 +953,7 @@ export function CardDetailView({
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
 										onRestart={onBottomTerminalRestart}
+										onExit={onBottomTerminalExit}
 									/>
 								</div>
 							</ResizableBottomPane>

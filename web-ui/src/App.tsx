@@ -100,6 +100,12 @@ export default function App(): ReactElement {
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
+	const boardRef = useRef(board);
+	boardRef.current = board;
+	const findCardStable = useCallback(
+		(cardId: string) => findCardSelection(boardRef.current, cardId)?.card ?? null,
+		[],
+	);
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
@@ -499,11 +505,14 @@ export default function App(): ReactElement {
 		closeHomeTerminal,
 		closeDetailTerminal,
 		resetTerminalPanelsState,
+		handleShellExit,
 	} = useTerminalPanels({
 		currentProjectId,
 		selectedCard,
 		workspaceGit,
 		agentCommand,
+		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? true,
+		findCard: findCardStable,
 		upsertSession,
 		sendTaskSessionInput,
 	});
@@ -1064,6 +1073,7 @@ export default function App(): ReactElement {
 													isExpanded={isHomeTerminalExpanded}
 													onToggleExpand={handleToggleExpandHomeTerminal}
 													onRestart={handleRestartHomeTerminal}
+													onExit={handleShellExit}
 												/>
 											</div>
 										</ResizableBottomPane>
@@ -1129,6 +1139,7 @@ export default function App(): ReactElement {
 									isBottomTerminalExpanded={isDetailTerminalExpanded}
 									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 									onBottomTerminalRestart={handleRestartDetailTerminal}
+									onBottomTerminalExit={handleShellExit}
 									isDocumentVisible={isDocumentVisible}
 									onRunPromptShortcut={runPromptShortcut}
 									onSelectPromptShortcutLabel={selectPromptShortcutLabel}

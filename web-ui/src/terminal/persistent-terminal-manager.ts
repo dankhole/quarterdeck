@@ -40,6 +40,7 @@ interface PersistentTerminalSubscriber {
 	onLastError?: (message: string | null) => void;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onOutputText?: (text: string) => void;
+	onExit?: (taskId: string, exitCode: number | null) => void;
 }
 
 interface MountPersistentTerminalOptions {
@@ -270,6 +271,15 @@ class PersistentTerminal {
 			this.webglAddon = webglAddon;
 		} catch {
 			// Fall back to the default renderer when WebGL is unavailable.
+		}
+	}
+
+	private notifyExit(code: number | null): void {
+		if (this.latestSummary?.agentId != null) {
+			return;
+		}
+		for (const subscriber of this.subscribers) {
+			subscriber.onExit?.(this.taskId, code);
 		}
 	}
 
@@ -513,6 +523,7 @@ class PersistentTerminal {
 			if (payload.type === "exit") {
 				const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
 				void this.enqueueTerminalWrite(`\r\n[quarterdeck] ${label}\r\n`);
+				this.notifyExit(payload.code);
 				return;
 			}
 			if (payload.type === "error") {
@@ -637,6 +648,17 @@ class PersistentTerminal {
 		this.visibleContainer = null;
 		clearTerminalGeometry(this.taskId);
 		this.parkingRoot.appendChild(this.hostElement);
+	}
+
+	get sessionState(): string | null {
+		return this.latestSummary?.state ?? null;
+	}
+
+	writeText(text: string): void {
+		if (this.disposed) {
+			return;
+		}
+		void this.enqueueTerminalWrite(text);
 	}
 
 	focus(): void {
@@ -810,6 +832,24 @@ export function disposeAllPersistentTerminalsForWorkspace(workspaceId: string): 
 		terminal.dispose();
 		terminals.delete(key);
 	}
+}
+
+export function writeToTerminalBuffer(workspaceId: string, taskId: string, text: string): void {
+	const key = buildKey(workspaceId, taskId);
+	const terminal = terminals.get(key);
+	if (!terminal) {
+		return;
+	}
+	terminal.writeText(text);
+}
+
+export function isTerminalSessionRunning(workspaceId: string, taskId: string): boolean {
+	const key = buildKey(workspaceId, taskId);
+	const terminal = terminals.get(key);
+	if (!terminal) {
+		return false;
+	}
+	return terminal.sessionState === "running";
 }
 
 export function resetAllTerminalRenderers(): number {

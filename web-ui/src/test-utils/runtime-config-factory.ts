@@ -33,6 +33,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	globalConfigPath: "/tmp/global-config.json",
 	projectConfigPath: "/tmp/project/.quarterdeck/config.json",
 	readyForReviewNotificationsEnabled: true,
+	shellAutoRestartEnabled: true,
 	showTrashWorktreeNotice: true,
 	audibleNotificationsEnabled: true,
 	audibleNotificationVolume: 0.7,

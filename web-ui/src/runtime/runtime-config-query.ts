@@ -24,6 +24,7 @@ export async function saveRuntimeConfig(
 		shortcuts?: RuntimeProjectShortcut[];
 		promptShortcuts?: PromptShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		shellAutoRestartEnabled?: boolean;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;

@@ -109,6 +109,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,
 		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
+		shellAutoRestartEnabled: runtimeConfig.shellAutoRestartEnabled,
 		showSummaryOnCards: runtimeConfig.showSummaryOnCards,
 		autoGenerateSummary: runtimeConfig.autoGenerateSummary,
 		summaryStaleAfterSeconds: runtimeConfig.summaryStaleAfterSeconds,

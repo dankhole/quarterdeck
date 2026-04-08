@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
+import { getDetailTerminalTaskId, HOME_TERMINAL_TASK_ID } from "@/hooks/terminal-constants";
+import { useShellAutoRestart } from "@/hooks/use-shell-auto-restart";
+
+export {
+	DETAIL_TERMINAL_TASK_PREFIX,
+	getDetailTerminalTaskId,
+	HOME_TERMINAL_TASK_ID,
+} from "@/hooks/terminal-constants";
+
 import {
 	clampAtLeast,
 	readOptionalPersistedResizeNumber,
@@ -9,13 +18,12 @@ import {
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
+import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/persistent-terminal-manager";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, CardSelection } from "@/types";
 
-const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
-const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
 const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
 const MIN_TERMINAL_COLS = 40;
 const MIN_BOTTOM_TERMINAL_PANE_HEIGHT = 200;
@@ -33,10 +41,6 @@ function loadBottomTerminalPaneHeight(): number | undefined {
 		key: LocalStorageKey.BottomTerminalPaneHeight,
 		normalize: (value) => clampAtLeast(value, MIN_BOTTOM_TERMINAL_PANE_HEIGHT),
 	});
-}
-
-export function getDetailTerminalTaskId(taskId: string): string {
-	return `${DETAIL_TERMINAL_TASK_PREFIX}${taskId}`;
 }
 
 async function resolveShellTerminalGeometry(taskId: string): Promise<{ cols: number; rows: number }> {
@@ -62,6 +66,8 @@ interface UseTerminalPanelsInput {
 	selectedCard: CardSelection | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	agentCommand: string | null;
+	shellAutoRestartEnabled: boolean;
+	findCard: (cardId: string) => BoardCard | null;
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
 	sendTaskSessionInput: (
 		taskId: string,
@@ -120,6 +126,8 @@ export interface UseTerminalPanelsResult {
 	closeHomeTerminal: () => void;
 	closeDetailTerminal: () => void;
 	resetTerminalPanelsState: () => void;
+	handleShellExit: (taskId: string, exitCode: number | null) => void;
+	cancelPendingRestart: (taskId: string) => void;
 }
 
 export function useTerminalPanels({
@@ -127,6 +135,8 @@ export function useTerminalPanels({
 	selectedCard,
 	workspaceGit,
 	agentCommand,
+	shellAutoRestartEnabled,
+	findCard,
 	upsertSession,
 	sendTaskSessionInput,
 }: UseTerminalPanelsInput): UseTerminalPanelsResult {
@@ -401,29 +411,61 @@ export function useTerminalPanels({
 		})();
 	}, [closeHomeTerminal, currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
-	const handleRestartHomeTerminal = useCallback(() => {
-		if (!currentProjectId) {
-			return;
-		}
-		void (async () => {
+	const cancelPendingRestartRef = useRef<((taskId: string) => void) | null>(null);
+
+	const restartTerminal = useCallback(
+		(taskId: string, startFn: () => Promise<boolean>) => {
+			if (!currentProjectId) {
+				return;
+			}
+			cancelPendingRestartRef.current?.(taskId);
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			await trpcClient.runtime.stopTaskSession.mutate({ taskId: HOME_TERMINAL_TASK_ID });
-			await startHomeTerminalSession();
-		})();
-	}, [currentProjectId, startHomeTerminalSession]);
+			void (async () => {
+				await trpcClient.runtime.stopTaskSession.mutate({ taskId });
+				await startFn();
+			})().catch(notifyError);
+		},
+		[currentProjectId],
+	);
+
+	const handleRestartHomeTerminal = useCallback(() => {
+		restartTerminal(HOME_TERMINAL_TASK_ID, startHomeTerminalSession);
+	}, [restartTerminal, startHomeTerminalSession]);
 
 	const handleRestartDetailTerminal = useCallback(() => {
-		if (!currentProjectId || !selectedCard) {
+		if (!selectedCard) {
 			return;
 		}
 		const card = selectedCard.card;
 		const targetTaskId = getDetailTerminalTaskId(card.id);
-		void (async () => {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			await trpcClient.runtime.stopTaskSession.mutate({ taskId: targetTaskId });
-			await startDetailTerminalForCard(card);
-		})();
-	}, [currentProjectId, selectedCard, startDetailTerminalForCard]);
+		restartTerminal(targetTaskId, () => startDetailTerminalForCard(card));
+	}, [restartTerminal, selectedCard, startDetailTerminalForCard]);
+
+	const handleRestartDetailTerminalById = useCallback(
+		(cardId: string) => {
+			const card = findCard(cardId);
+			if (!card) {
+				console.warn(`[shell-auto-restart] Could not find card for id: ${cardId}`);
+				return;
+			}
+			const targetTaskId = getDetailTerminalTaskId(cardId);
+			restartTerminal(targetTaskId, () => startDetailTerminalForCard(card));
+		},
+		[findCard, restartTerminal, startDetailTerminalForCard],
+	);
+
+	const { handleShellExit, cancelPendingRestart } = useShellAutoRestart({
+		shellAutoRestartEnabled,
+		restartHomeTerminal: handleRestartHomeTerminal,
+		restartDetailTerminal: handleRestartDetailTerminalById,
+		writeToTerminal: (taskId, msg) => {
+			if (currentProjectId) {
+				writeToTerminalBuffer(currentProjectId, taskId, msg);
+			}
+		},
+		isSessionRunning: (taskId) => (currentProjectId ? isTerminalSessionRunning(currentProjectId, taskId) : false),
+	});
+	cancelPendingRestartRef.current = cancelPendingRestart;
 
 	const handleSendAgentCommandToHomeTerminal = useCallback(() => {
 		if (!agentCommand) {
@@ -552,5 +594,7 @@ export function useTerminalPanels({
 		closeHomeTerminal,
 		closeDetailTerminal,
 		resetTerminalPanelsState,
+		handleShellExit,
+		cancelPendingRestart,
 	};
 }

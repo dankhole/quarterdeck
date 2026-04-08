@@ -16,6 +16,7 @@ export interface UseRuntimeConfigResult {
 		shortcuts?: RuntimeProjectShortcut[];
 		promptShortcuts?: PromptShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
+		shellAutoRestartEnabled?: boolean;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
@@ -97,6 +98,7 @@ export function useRuntimeConfig(
 			shortcuts?: RuntimeProjectShortcut[];
 			promptShortcuts?: PromptShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
+			shellAutoRestartEnabled?: boolean;
 			showSummaryOnCards?: boolean;
 			autoGenerateSummary?: boolean;
 			summaryStaleAfterSeconds?: number;
