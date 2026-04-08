@@ -119,6 +119,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
+		notificationSessions,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		streamError,
@@ -139,7 +140,6 @@ export default function App(): ReactElement {
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
 	});
-	const activeNotificationWorkspaceId = navigationCurrentProjectId;
 	const isDocumentVisible = useDocumentVisibility();
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
@@ -319,7 +319,7 @@ export default function App(): ReactElement {
 	});
 
 	useReviewReadyNotifications({
-		activeWorkspaceId: activeNotificationWorkspaceId,
+		activeWorkspaceId: navigationCurrentProjectId,
 		board,
 		isDocumentVisible,
 		latestTaskReadyForReview,
@@ -328,6 +328,9 @@ export default function App(): ReactElement {
 		workspacePath,
 	});
 
+	// Known limitation: notification settings are read from the currently viewed project's config,
+	// so toggling notifications off in one project silences all cross-workspace notifications.
+	// Per-workspace notification settings are out of scope for now.
 	const audibleNotificationsEnabled = runtimeProjectConfig?.audibleNotificationsEnabled ?? true;
 	const audibleNotificationVolume = runtimeProjectConfig?.audibleNotificationVolume ?? 0.7;
 	const audibleNotificationEvents = runtimeProjectConfig?.audibleNotificationEvents ?? {
@@ -339,8 +342,7 @@ export default function App(): ReactElement {
 	const audibleNotificationsOnlyWhenHidden = runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? true;
 
 	useAudibleNotifications({
-		activeWorkspaceId: activeNotificationWorkspaceId,
-		taskSessions: sessions,
+		notificationSessions,
 		audibleNotificationsEnabled,
 		audibleNotificationVolume,
 		audibleNotificationEvents,

@@ -62,6 +62,7 @@ export interface UseProjectNavigationResult {
 	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: ReturnType<typeof useRuntimeStateStream>["latestTaskTitleUpdate"];
+	notificationSessions: ReturnType<typeof useRuntimeStateStream>["notificationSessions"];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -92,6 +93,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projects,
 		workspaceState,
 		workspaceMetadata,
+		notificationSessions,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		streamError,
@@ -310,6 +312,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		workspaceMetadata,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		notificationSessions,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
