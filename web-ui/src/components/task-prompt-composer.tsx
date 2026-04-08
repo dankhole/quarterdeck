@@ -188,12 +188,19 @@ export function TaskPromptComposer({
 	const handleTextareaKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-				event.preventDefault();
+				// Cmd+Shift+Enter → let bubble to parent (dialog handles "start and open")
 				if (event.shiftKey) {
-					if (onSubmitAndStart) {
-						onSubmitAndStart();
-						return;
-					}
+					return;
+				}
+				event.preventDefault();
+				// Cmd+Alt+Enter → create only, Cmd+Enter → start task
+				if (event.altKey) {
+					onSubmit?.();
+					return;
+				}
+				if (onSubmitAndStart) {
+					onSubmitAndStart();
+					return;
 				}
 				onSubmit?.();
 				return;
