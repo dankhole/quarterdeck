@@ -216,7 +216,7 @@ export function BoardCard({
 
 	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
 	const statusTagStyle = sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null;
-	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog";
+	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog" && !isTrashCard;
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
 	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
