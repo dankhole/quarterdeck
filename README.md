@@ -28,6 +28,9 @@ A replacement for your IDE better suited for running many agents in parallel and
 </div>
 
 ### 1. Install quarterdeck
+
+For the best terminal experience, install a [Nerd Font](https://www.nerdfonts.com/) (we recommend **JetBrainsMono Nerd Font**). Nerd Fonts include the glyphs that CLI agents use for status icons and UI elements. Without one installed, the terminal falls back to SF Mono / Menlo.
+
 ```bash
 git clone https://github.com/dankhole/quarterdeck.git
 cd quarterdeck
