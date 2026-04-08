@@ -64,6 +64,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 		readyForReviewNotificationsEnabled: true,
+		showTrashWorktreeNotice: true,
 		audibleNotificationsEnabled: true,
 		audibleNotificationVolume: 0.7,
 		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
@@ -89,6 +90,10 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 				configured: false,
 			},
 		],
+		commitPromptTemplate: "",
+		openPrPromptTemplate: "",
+		commitPromptTemplateDefault: "",
+		openPrPromptTemplateDefault: "",
 		shortcuts: [],
 		...overrides,
 	};

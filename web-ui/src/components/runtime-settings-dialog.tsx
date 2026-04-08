@@ -278,6 +278,7 @@ export function RuntimeSettingsDialog({
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
 	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
 	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
@@ -331,6 +332,7 @@ export function RuntimeSettingsDialog({
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
+	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
 	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
 	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
 	const initialAudibleNotificationEvents = config?.audibleNotificationEvents ?? {
@@ -352,6 +354,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
 			return true;
 		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
@@ -386,10 +391,12 @@ export function RuntimeSettingsDialog({
 		initialAudibleNotificationsOnlyWhenHidden,
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
+		initialShowTrashWorktreeNotice,
 		initialShortcuts,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
+		showTrashWorktreeNotice,
 	]);
 
 	useEffect(() => {
@@ -399,6 +406,7 @@ export function RuntimeSettingsDialog({
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
+		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
 		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
 		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
 		setAudibleNotificationEvents(
@@ -414,6 +422,7 @@ export function RuntimeSettingsDialog({
 		config?.audibleNotificationsEnabled,
 		config?.audibleNotificationsOnlyWhenHidden,
 		config?.readyForReviewNotificationsEnabled,
+		config?.showTrashWorktreeNotice,
 		config?.selectedAgentId,
 		config?.shortcuts,
 		fallbackAgentId,
@@ -481,6 +490,7 @@ export function RuntimeSettingsDialog({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled,
+			showTrashWorktreeNotice,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -589,6 +599,19 @@ export function RuntimeSettingsDialog({
 							disabled={controlsDisabled}
 						/>
 					) : null}
+				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={showTrashWorktreeNotice}
+						disabled={controlsDisabled}
+						onCheckedChange={setShowTrashWorktreeNotice}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
 				</div>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>

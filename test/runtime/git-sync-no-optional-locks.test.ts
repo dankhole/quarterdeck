@@ -33,8 +33,12 @@ function capturedCalls(): ExecCall[] {
 	}));
 }
 
-function findCallContaining(...keywords: string[]): ExecCall | undefined {
-	return capturedCalls().find((call) => keywords.every((kw) => call.args.includes(kw)));
+function findCallContaining(...keywords: string[]): ExecCall {
+	const match = capturedCalls().find((call) => keywords.every((kw) => call.args.includes(kw)));
+	if (!match) {
+		throw new Error(`No exec call found containing: ${keywords.join(", ")}`);
+	}
+	return match;
 }
 
 function assertFlagBeforeSubcommand(call: ExecCall, subcommand: string): void {
@@ -83,8 +87,7 @@ describe("git-sync --no-optional-locks", () => {
 		await probeGitWorkspaceState(FAKE_REPO);
 
 		const statusCall = findCallContaining("status");
-		expect(statusCall).toBeDefined();
-		assertFlagBeforeSubcommand(statusCall!, "status");
+		assertFlagBeforeSubcommand(statusCall, "status");
 	});
 
 	it("probeGitWorkspaceState passes --no-optional-locks to git rev-parse HEAD", async () => {
@@ -92,8 +95,7 @@ describe("git-sync --no-optional-locks", () => {
 		await probeGitWorkspaceState(FAKE_REPO);
 
 		const revParseCall = findCallContaining("rev-parse", "HEAD");
-		expect(revParseCall).toBeDefined();
-		assertFlagBeforeSubcommand(revParseCall!, "rev-parse");
+		assertFlagBeforeSubcommand(revParseCall, "rev-parse");
 	});
 
 	it("getGitSyncSummary passes --no-optional-locks to git diff", async () => {
@@ -114,8 +116,7 @@ describe("git-sync --no-optional-locks", () => {
 		await getGitSyncSummary(FAKE_REPO, { probe: fakeProbe });
 
 		const diffCall = findCallContaining("diff");
-		expect(diffCall).toBeDefined();
-		assertFlagBeforeSubcommand(diffCall!, "diff");
+		assertFlagBeforeSubcommand(diffCall, "diff");
 	});
 
 	it("resolveRepoRoot passes --no-optional-locks to git rev-parse --show-toplevel", async () => {
@@ -123,8 +124,7 @@ describe("git-sync --no-optional-locks", () => {
 		await probeGitWorkspaceState(FAKE_REPO);
 
 		const repoRootCall = findCallContaining("rev-parse", "--show-toplevel");
-		expect(repoRootCall).toBeDefined();
-		assertFlagBeforeSubcommand(repoRootCall!, "rev-parse");
+		assertFlagBeforeSubcommand(repoRootCall, "rev-parse");
 	});
 
 	it("probeGitWorkspaceState output is unchanged with --no-optional-locks", async () => {

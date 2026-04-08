@@ -2,6 +2,14 @@ import type { DropResult } from "@hello-pangea/dnd";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
+import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+
+interface TaskGitActionLoadingStateLike {
+	commitSource: "card" | "agent" | null;
+	prSource: "card" | "agent" | null;
+}
+
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
@@ -34,6 +42,22 @@ interface SelectedBoardCard {
 	};
 }
 
+interface TrashWarningState {
+	open: boolean;
+	warning: TaskTrashWarningViewModel | null;
+	card: BoardCard | null;
+	fromColumnId: BoardColumnId | null;
+	optimisticMoveApplied: boolean;
+}
+
+const INITIAL_TRASH_WARNING_STATE: TrashWarningState = {
+	open: false,
+	warning: null,
+	card: null,
+	fromColumnId: null,
+	optimisticMoveApplied: false,
+};
+
 interface PendingProgrammaticStartMoveCompletion {
 	resolve: (started: boolean) => void;
 	timeoutId: number;
@@ -61,6 +85,10 @@ interface UseBoardInteractionsInput {
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	readyForReviewNotificationsEnabled: boolean;
+	showTrashWorktreeNotice: boolean;
+	saveTrashWorktreeNoticeDismissed: () => void;
+	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
+	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
 
 export interface UseBoardInteractionsResult {
@@ -84,6 +112,9 @@ export interface UseBoardInteractionsResult {
 	handleSendReviewComments: (taskId: string, text: string) => Promise<void>;
 	moveToTrashLoadingById: Record<string, boolean>;
 	trashTaskCount: number;
+	trashWarningState: TrashWarningState;
+	handleCancelTrashWarning: () => void;
+	handleConfirmTrashWarning: () => void;
 }
 
 export function useBoardInteractions({
@@ -104,6 +135,10 @@ export function useBoardInteractions({
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
 	readyForReviewNotificationsEnabled,
+	showTrashWorktreeNotice,
+	saveTrashWorktreeNoticeDismissed,
+	taskGitActionLoadingByTaskId: _taskGitActionLoadingByTaskId,
+	runAutoReviewGitAction: _runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
@@ -112,6 +147,8 @@ export function useBoardInteractions({
 		Record<string, PendingProgrammaticStartMoveCompletion>
 	>({});
 	const [moveToTrashLoadingById, setMoveToTrashLoadingById] = useState<Record<string, boolean>>({});
+	const [trashWarningState, setTrashWarningState] = useState<TrashWarningState>(INITIAL_TRASH_WARNING_STATE);
+	const trashWarningConfirmedRef = useRef(false);
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -508,6 +545,17 @@ export function useBoardInteractions({
 			kickoffTaskInProgress,
 			startBacklogTaskWithAnimation,
 			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
+			onRequestTrashConfirmation: (viewModel, card, fromColumnId, optimisticMoveApplied) => {
+				console.debug("[trash-warning] showing dialog", {
+					cardId: card.id,
+					fileCount: viewModel.fileCount,
+					fromColumnId,
+					optimisticMoveApplied,
+				});
+				setTrashWarningState({ open: true, warning: viewModel, card, fromColumnId, optimisticMoveApplied });
+			},
+			showTrashWorktreeNotice,
+			saveTrashWorktreeNoticeDismissed,
 		});
 
 	useEffect(() => {
@@ -738,18 +786,18 @@ export function useBoardInteractions({
 		if (!selectedCard) {
 			return;
 		}
-		if (moveToTrashLoadingByIdRef.current[selectedCard.card.id]) {
+		if (moveToTrashLoadingByIdRef.current[selectedCard.card.id] || trashWarningState.open) {
 			return;
 		}
 		setTaskMoveToTrashLoading(selectedCard.card.id, true);
 		void requestMoveTaskToTrashWithAnimation(selectedCard.card.id, selectedCard.column.id).finally(() => {
 			setTaskMoveToTrashLoading(selectedCard.card.id, false);
 		});
-	}, [requestMoveTaskToTrashWithAnimation, selectedCard, setTaskMoveToTrashLoading]);
+	}, [requestMoveTaskToTrashWithAnimation, selectedCard, setTaskMoveToTrashLoading, trashWarningState.open]);
 
 	const handleMoveReviewCardToTrash = useCallback(
 		(taskId: string) => {
-			if (moveToTrashLoadingByIdRef.current[taskId]) {
+			if (moveToTrashLoadingByIdRef.current[taskId] || trashWarningState.open) {
 				return;
 			}
 			setTaskMoveToTrashLoading(taskId, true);
@@ -757,7 +805,7 @@ export function useBoardInteractions({
 				setTaskMoveToTrashLoading(taskId, false);
 			});
 		},
-		[requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading],
+		[requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading, trashWarningState.open],
 	);
 
 	const handleRestoreTaskFromTrash = useCallback(
@@ -877,6 +925,47 @@ export function useBoardInteractions({
 		trashTaskIds,
 	]);
 
+	const handleCancelTrashWarning = useCallback(() => {
+		// When the user clicks confirm, Radix AlertDialog fires onOpenChange(false) which triggers
+		// this cancel handler with a stale closure (React state hasn't re-rendered yet). The ref
+		// lets us detect that confirm already ran and skip the revert.
+		if (trashWarningConfirmedRef.current) {
+			console.debug("[trash-warning] cancel skipped — confirm already in progress (ref guard)");
+			trashWarningConfirmedRef.current = false;
+			return;
+		}
+		const { card, fromColumnId, optimisticMoveApplied } = trashWarningState;
+		console.debug("[trash-warning] cancel handler fired", {
+			open: trashWarningState.open,
+			cardId: card?.id ?? null,
+			fromColumnId,
+			optimisticMoveApplied,
+		});
+		if (trashWarningState.open && card && fromColumnId && optimisticMoveApplied) {
+			console.debug("[trash-warning] reverting optimistic move", { cardId: card.id, fromColumnId });
+			setBoard((currentBoard) => {
+				const reverted = moveTaskToColumn(currentBoard, card.id, fromColumnId);
+				return reverted.moved ? reverted.board : currentBoard;
+			});
+		}
+		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
+	}, [setBoard, trashWarningState]);
+
+	const handleConfirmTrashWarning = useCallback(() => {
+		if (!trashWarningState.open || !trashWarningState.card) {
+			console.debug("[trash-warning] confirm handler bailed — no open state or card");
+			return;
+		}
+		const { card } = trashWarningState;
+		console.debug("[trash-warning] confirm handler — trashing card", { cardId: card.id });
+		trashWarningConfirmedRef.current = true;
+		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
+		void confirmMoveTaskToTrash(card).then(
+			() => console.debug("[trash-warning] confirmMoveTaskToTrash resolved", { cardId: card.id }),
+			(err) => console.error("[trash-warning] confirmMoveTaskToTrash failed", { cardId: card.id, err }),
+		);
+	}, [confirmMoveTaskToTrash, trashWarningState]);
+
 	const resetBoardInteractionsState = useCallback(() => {
 		previousSessionsRef.current = {};
 		moveToTrashLoadingByIdRef.current = {};
@@ -886,6 +975,7 @@ export function useBoardInteractions({
 		}
 		resetProgrammaticCardMoves();
 		setIsClearTrashDialogOpen(false);
+		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
 	}, [resetProgrammaticCardMoves, resolvePendingProgrammaticStartMove, setIsClearTrashDialogOpen]);
 
 	useEffect(() => {
@@ -913,5 +1003,8 @@ export function useBoardInteractions({
 		handleSendReviewComments,
 		moveToTrashLoadingById,
 		trashTaskCount,
+		trashWarningState,
+		handleCancelTrashWarning,
+		handleConfirmTrashWarning,
 	};
 }

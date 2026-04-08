@@ -401,18 +401,25 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					}
 				}
 
-				const buildRestartRequest = (cwd: string, resumeFromTrash: boolean) => ({
-					taskId: input.taskId,
-					agentId: summary?.agentId ?? resolved!.agentId,
-					binary: resolved!.binary,
-					args: resolved!.args,
-					autonomousModeEnabled: scopedRuntimeConfig!.agentAutonomousModeEnabled,
-					cwd,
-					prompt: "",
-					resumeFromTrash,
-					workspaceId: workspaceScope.workspaceId,
-					workspacePath: workspaceScope.workspacePath,
-				});
+				// Only called when wasRunning is true, so resolved and scopedRuntimeConfig
+				// are guaranteed to be set (guarded above with an early return).
+				const buildRestartRequest = (cwd: string, resumeFromTrash: boolean) => {
+					if (!resolved || !scopedRuntimeConfig) {
+						throw new Error("buildRestartRequest called without resolved agent command");
+					}
+					return {
+						taskId: input.taskId,
+						agentId: summary?.agentId ?? resolved.agentId,
+						binary: resolved.binary,
+						args: resolved.args,
+						autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
+						cwd,
+						prompt: "",
+						resumeFromTrash,
+						workspaceId: workspaceScope.workspaceId,
+						workspacePath: workspaceScope.workspacePath,
+					};
+				};
 
 				// Stop the running session and wait for the process to fully exit
 				// before proceeding. Without this, the old PTY may still be alive

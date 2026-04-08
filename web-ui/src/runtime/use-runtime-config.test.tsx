@@ -23,6 +23,7 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project/.quarterdeck/config.json",
 		readyForReviewNotificationsEnabled: true,
+		showTrashWorktreeNotice: true,
 		audibleNotificationsEnabled: true,
 		audibleNotificationVolume: 0.7,
 		audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
@@ -48,6 +49,10 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				configured: selectedAgentId === "codex",
 			},
 		],
+		commitPromptTemplate: "",
+		openPrPromptTemplate: "",
+		commitPromptTemplateDefault: "",
+		openPrPromptTemplateDefault: "",
 		shortcuts: [],
 	};
 }

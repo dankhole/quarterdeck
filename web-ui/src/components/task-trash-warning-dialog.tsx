@@ -20,25 +20,6 @@ export interface TaskTrashWarningViewModel {
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 }
 
-function getTrashWarningGuidance(workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null): string[] {
-	if (!workspaceInfo) {
-		return ["Save your changes before trashing this task."];
-	}
-
-	if (workspaceInfo.isDetached) {
-		return [
-			"Create a branch inside this workspace, commit, then open a PR from that branch.",
-			"Or commit and cherry-pick the commit onto your target branch (for example main).",
-		];
-	}
-
-	const branch = workspaceInfo.branch ?? workspaceInfo.baseRef;
-	return [
-		`Commit your changes on branch ${branch}, then open a PR or cherry-pick as needed.`,
-		"After preserving the work, you can safely move this task to Trash.",
-	];
-}
-
 export function TaskTrashWarningDialog({
 	open,
 	warning,
@@ -50,8 +31,6 @@ export function TaskTrashWarningDialog({
 	onCancel: () => void;
 	onConfirm: () => void;
 }): ReactElement {
-	const guidance = getTrashWarningGuidance(warning?.workspaceInfo ?? null);
-
 	return (
 		<AlertDialog
 			open={open}
@@ -60,7 +39,7 @@ export function TaskTrashWarningDialog({
 			}}
 		>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Unsaved task changes detected</AlertDialogTitle>
+				<AlertDialogTitle>Trash task with uncommitted changes?</AlertDialogTitle>
 			</AlertDialogHeader>
 			<AlertDialogBody>
 				<AlertDialogDescription>
@@ -68,17 +47,16 @@ export function TaskTrashWarningDialog({
 						? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
 						: "This task has uncommitted changes."}
 				</AlertDialogDescription>
-				<p>Moving to Trash will delete this task workspace. Preserve your work first, then trash the task.</p>
+				<p>
+					Moving to Trash will delete this task's worktree. Uncommitted work will be captured in a patch file and
+					can be recovered if you restore the task.
+				</p>
 				{warning?.workspaceInfo?.path ? (
 					<pre className="overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
 						{formatPathForDisplay(warning.workspaceInfo.path)}
 					</pre>
 				) : null}
-				<div className="flex flex-col gap-1">
-					{guidance.map((line) => (
-						<p key={line}>{line}</p>
-					))}
-				</div>
+				<p>The patch file is saved automatically — no action needed to preserve your work.</p>
 			</AlertDialogBody>
 			<AlertDialogFooter>
 				<AlertDialogCancel asChild>

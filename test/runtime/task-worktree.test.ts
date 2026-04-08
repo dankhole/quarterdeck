@@ -676,7 +676,7 @@ describe.sequential("branch-aware worktree creation", () => {
 
 			childProcessMocks.execFilePromise.mockImplementation(
 				async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
-					const { cwd, command } = getCommandArgs(args, execOptions);
+					const { command } = getCommandArgs(args, execOptions);
 
 					// Handle git apply — simulate failure
 					if (command[0] === "apply") {
@@ -715,7 +715,7 @@ describe.sequential("branch-aware worktree creation", () => {
 
 			childProcessMocks.execFilePromise.mockImplementation(
 				async (_file: string, args: readonly string[], execOptions?: ExecFileOptions) => {
-					const { cwd, command } = getCommandArgs(args, execOptions);
+					const { command } = getCommandArgs(args, execOptions);
 
 					// Handle git apply — simulate failure
 					if (command[0] === "apply") {
