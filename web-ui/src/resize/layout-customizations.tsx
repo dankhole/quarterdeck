@@ -52,8 +52,19 @@ export function useLayoutCustomizations(): LayoutCustomizationsContextValue {
 	return value;
 }
 
+/**
+ * Like `useLayoutCustomizations`, but returns `null` when called outside a
+ * `LayoutCustomizationsProvider` instead of throwing. Useful for hooks that
+ * may run before the provider is mounted (e.g. hooks called in `App()`'s body
+ * while the provider is rendered in App's JSX return).
+ */
+function useLayoutCustomizationsOptional(): LayoutCustomizationsContextValue | null {
+	return useContext(LayoutCustomizationsContext);
+}
+
 export function useLayoutResetEffect(onReset: () => void): void {
-	const { layoutResetNonce } = useLayoutCustomizations();
+	const ctx = useLayoutCustomizationsOptional();
+	const layoutResetNonce = ctx?.layoutResetNonce ?? 0;
 	const onResetRef = useRef(onReset);
 	const hasMountedRef = useRef(false);
 

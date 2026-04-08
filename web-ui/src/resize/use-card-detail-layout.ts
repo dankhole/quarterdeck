@@ -1,6 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useLayoutResetEffect } from "@/resize/layout-customizations";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
 	getResizePreferenceDefaultValue,
@@ -10,7 +9,8 @@ import {
 } from "@/resize/resize-preferences";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
-export type DetailPanelId = "quarterdeck" | "changes" | "files";
+export type TaskTabId = "task_column" | "changes" | "files";
+export type SidebarTabId = "home" | TaskTabId;
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -42,39 +42,58 @@ const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.12, 0.6),
 };
 
-function loadActivePanel(): DetailPanelId | null {
+// --- localStorage loaders / persisters ---
+
+export function loadActiveTab(): SidebarTabId | null {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
-	if (stored === "quarterdeck" || stored === "changes" || stored === "files") {
-		return stored;
-	}
-	if (stored === "") {
-		return null;
-	}
-	return "quarterdeck";
+	// Migration: "quarterdeck" was the old Task Column panel ID — map to "home"
+	// so existing users land on the Home tab after upgrade.
+	if (stored === "quarterdeck" || stored === "home") return "home";
+	if (stored === "task_column" || stored === "changes" || stored === "files") return stored;
+	if (stored === "") return null; // panel was collapsed
+	return "home"; // default for new installs
 }
 
-function persistActivePanel(panel: DetailPanelId | null): DetailPanelId | null {
-	writeLocalStorageItem(LocalStorageKey.DetailActivePanel, panel ?? "");
-	return panel;
+function persistActiveTab(tab: SidebarTabId | null): SidebarTabId | null {
+	writeLocalStorageItem(LocalStorageKey.DetailActivePanel, tab ?? "");
+	return tab;
+}
+
+export function loadLastTaskTab(): TaskTabId {
+	const stored = readLocalStorageItem(LocalStorageKey.DetailLastTaskTab);
+	if (stored === "task_column" || stored === "changes" || stored === "files") return stored;
+	return "task_column"; // default
+}
+
+function persistLastTaskTab(tab: TaskTabId): TaskTabId {
+	writeLocalStorageItem(LocalStorageKey.DetailLastTaskTab, tab);
+	return tab;
 }
 
 export function useCardDetailLayout({
 	isDiffExpanded,
 	isFileBrowserExpanded,
+	selectedTaskId,
 }: {
 	isDiffExpanded: boolean;
 	isFileBrowserExpanded: boolean;
+	selectedTaskId: string | null;
 }): {
-	activeDetailPanel: DetailPanelId | null;
-	setActiveDetailPanel: (panel: DetailPanelId | null) => void;
+	activeTab: SidebarTabId | null;
+	setActiveTab: (tab: SidebarTabId | null) => void;
+	lastTaskTab: TaskTabId;
+	handleTabChange: (tab: SidebarTabId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
+	visualActiveTab: SidebarTabId;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	detailDiffFileTreeRatio: number;
 	setDetailDiffFileTreeRatio: (ratio: number) => void;
 	detailFileBrowserTreeRatio: number;
 	setDetailFileBrowserTreeRatio: (ratio: number) => void;
+	resetToDefaults: () => void;
 } {
-	const [activeDetailPanel, setActiveDetailPanelState] = useState<DetailPanelId | null>(loadActivePanel);
+	const [activeTab, setActiveTabState] = useState<SidebarTabId | null>(loadActiveTab);
+	const [lastTaskTab, setLastTaskTabState] = useState<TaskTabId>(loadLastTaskTab);
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
 	const [collapsedDetailDiffFileTreeRatio, setCollapsedDetailDiffFileTreeRatioState] = useState(() =>
 		loadResizePreference(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE),
@@ -89,9 +108,64 @@ export function useCardDetailLayout({
 		loadResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 	);
 
-	const setActiveDetailPanel = useCallback((panel: DetailPanelId | null) => {
-		setActiveDetailPanelState(persistActivePanel(panel));
+	const setActiveTab = useCallback((tab: SidebarTabId | null) => {
+		setActiveTabState(persistActiveTab(tab));
 	}, []);
+
+	const setLastTaskTab = useCallback((tab: TaskTabId) => {
+		setLastTaskTabState(persistLastTaskTab(tab));
+	}, []);
+
+	const handleTabChange = useCallback(
+		(tab: SidebarTabId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => {
+			if (tab === activeTab) {
+				// Toggle side panel closed
+				setActiveTab(null);
+				return;
+			}
+			if (tab === "home") {
+				setActiveTab("home");
+				// Deselect task if one is selected
+				callbacks?.setSelectedTaskId?.(null);
+				return;
+			}
+			// Task-tied tab
+			setActiveTab(tab);
+			setLastTaskTab(tab);
+		},
+		[activeTab, setActiveTab, setLastTaskTab],
+	);
+
+	// Derive the visual highlight indicator for the sidebar toolbar.
+	// When activeTab is null (panel collapsed), show which tab *would* be active.
+	const selectedCard = selectedTaskId !== null;
+	const visualActiveTab: SidebarTabId = activeTab ?? (selectedCard ? lastTaskTab : "home");
+
+	// --- Auto-switch tabs when selectedTaskId changes ---
+	const activeTabRef = useRef(activeTab);
+	activeTabRef.current = activeTab;
+
+	const lastTaskTabRef = useRef(lastTaskTab);
+	lastTaskTabRef.current = lastTaskTab;
+
+	useEffect(() => {
+		const currentTab = activeTabRef.current;
+		const currentLastTaskTab = lastTaskTabRef.current;
+
+		if (selectedTaskId) {
+			// Task selected: switch to last task tab (opens panel if collapsed or on home)
+			if (currentTab === "home" || currentTab === null) {
+				setActiveTab(currentLastTaskTab);
+			}
+			// If already on a task-tied tab, stay there (task-to-task switch)
+		} else {
+			// Task deselected: switch to home, but only if currently on a task-tied tab.
+			// If activeTab is null (panel collapsed), stay collapsed.
+			if (currentTab !== null && currentTab !== "home") {
+				setActiveTab("home");
+			}
+		}
+	}, [selectedTaskId, setActiveTab]);
 
 	const setSidePanelRatio = useCallback((ratio: number) => {
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));
@@ -127,7 +201,7 @@ export function useCardDetailLayout({
 		[isFileBrowserExpanded],
 	);
 
-	useLayoutResetEffect(() => {
+	const resetToDefaults = useCallback(() => {
 		setSidePanelRatioState(getResizePreferenceDefaultValue(SIDE_PANEL_RATIO_PREFERENCE));
 		setCollapsedDetailDiffFileTreeRatioState(
 			getResizePreferenceDefaultValue(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE),
@@ -141,16 +215,20 @@ export function useCardDetailLayout({
 		setExpandedFileBrowserTreeRatioState(
 			getResizePreferenceDefaultValue(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 		);
-	});
+	}, []);
 
 	return {
-		activeDetailPanel,
-		setActiveDetailPanel,
+		activeTab,
+		setActiveTab,
+		lastTaskTab,
+		handleTabChange,
+		visualActiveTab,
 		sidePanelRatio,
 		setSidePanelRatio,
 		detailDiffFileTreeRatio: isDiffExpanded ? expandedDetailDiffFileTreeRatio : collapsedDetailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
 		detailFileBrowserTreeRatio: isFileBrowserExpanded ? expandedFileBrowserTreeRatio : collapsedFileBrowserTreeRatio,
 		setDetailFileBrowserTreeRatio,
+		resetToDefaults,
 	};
 }
