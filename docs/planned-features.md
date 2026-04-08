@@ -10,16 +10,11 @@ When Quarterdeck crashes or is closed and reopened, clicking on existing cards n
 
 ## 2. Trash confirmation and worktree notice
 
-**Status**: Implemented.
-
-When a card with uncommitted changes is trashed manually, a confirmation dialog shows the file count and explains that the worktree will be deleted and uncommitted work captured in a patch. For cards without uncommitted changes, a dismissible informational toast explains the same — controlled by the `showTrashWorktreeNotice` global setting (Settings > Trash). Auto-trash scenarios (shutdown, auto-review) skip both.
-
-- Spec: [docs/specs/2026-04-07-trash-confirmation-and-notice.md](specs/2026-04-07-trash-confirmation-and-notice.md)
-- Lifecycle reference: [docs/trash-lifecycle.md](trash-lifecycle.md)
+**Status**: Implemented (commit `aee9eef`).
 
 ## 3. Branch persistence on cards
 
-Persist the working branch on the card itself so it survives restarts and worktree cleanup. Currently the branch is only stored in transient workspace metadata (`RuntimeTaskWorkspaceMetadata`) which is session-only — it does not survive restarts or worktree cleanup. The `BoardCard` / `runtimeBoardCardSchema` types need a `branch` field added and persisted to workspace state. See [docs/worktree-cwd-drift-detection.md](worktree-cwd-drift-detection.md) for full writeup.
+**Status**: Implemented (commit `2d0674d`).
 
 ## 4. Interactive base ref switcher
 
@@ -29,18 +24,7 @@ Research and implementation plan at [docs/research/2026-04-07-interactive-diff-b
 
 ## 5. Remove commit and PR prompt injection buttons
 
-The commit and create PR buttons on board cards, sidebar cards, and the agent terminal panel are purely prompt injection — they build a template string (e.g. "Handle this commit action using the provided git context") and paste it into the agent's terminal via `sendTaskSessionInput`. No actual git commands are executed. The agent is entirely responsible for interpreting the prompt and running git operations, which makes these buttons strictly worse than skills (which do the same thing but are user-configurable and context-aware).
-
-**What to remove**:
-- Commit button from board cards (board view and sidebar/context panel), and the agent terminal panel
-- Create PR button from the same locations
-- The `commitPromptTemplate` and `openPrPromptTemplate` settings and their configuration UI
-- The `use-git-actions.ts` hook and `build-task-git-action-prompt.ts` prompt builder
-- Related loading states (`isCommitLoading`, `isOpenPrLoading`) and callbacks threaded through components
-
-**Layout change**: With the commit/PR buttons removed from the agent terminal panel, the terminal should expand to fill the full space they occupied. No dead space left behind.
-
-**Rationale**: These buttons give the impression of real git integration when they're just typing into the terminal. Real git operations belong in the diff viewer (#6) and git management view (#10). Anyone who wants prompt-injection-style commit/PR can set up a skill for it.
+**Status**: Implemented (commit `31a1635`). Buttons removed from all UI surfaces, prompt templates removed from config. `use-git-actions.ts` and `build-task-git-action-prompt.ts` retained for auto-review path only.
 
 ## 6. Server-side commit in the diff viewer
 
@@ -64,14 +48,7 @@ Audit and address performance bottlenecks that emerge when running many agents s
 
 ## 7. Create task dialog: shortcut remap and discoverability
 
-The create task dialog currently has "Start task" and "Start and open" as a toggling dropdown, but the dropdown is easy to miss — it's not obvious that "Start and open" exists as an option.
-
-**Remap keyboard shortcuts** to better reflect usage priority:
-- `Cmd+Enter` → **Start task** (was "Create")
-- `Cmd+Shift+Enter` → **Start and open** (was "Start task")
-- `Cmd+Alt+Enter` → **Create only** (demoted, least common action)
-
-**Improve discoverability of "Start and open"**: Make it more visually obvious that the start button has multiple actions — the current dropdown affordance is too subtle. Consider a more visible split-button design or always showing both options.
+**Status**: Implemented (commits `ee07d65`, `6c4a902`). Shortcuts remapped: Cmd+Enter → Start task, Cmd+Shift+Enter → Start and open, Cmd+Alt+Enter → Create only.
 
 ## 8. Project switcher in the detail toolbar
 
@@ -166,23 +143,7 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 
 ## 14. Configurable audible notifications
 
-Play a sound when tasks need attention so you don't have to keep watching the board. Should be configurable per event type and globally toggle-able.
-
-**Events that could trigger sounds**:
-- Task waiting for permissions (highest priority — blocks progress)
-- Task moved to review / awaiting review
-- Task failed or session died
-- Task completed successfully
-
-**Configuration**:
-- Global on/off toggle in settings
-- Per-event-type enable/disable (e.g. sound on permissions but not on review)
-- Volume control or at minimum a way to pick between a few built-in sounds (subtle chime vs more urgent alert)
-
-**Implementation options**:
-- **Browser-side**: Use the Web Audio API or `<audio>` element to play sounds from the frontend. Simplest approach — no backend changes needed, works with built-in or bundled sound files. Requires the browser tab to be open.
-- **System-side**: Use the backend to trigger OS-level sounds (e.g. `afplay` on macOS, `paplay` on Linux). Works even if the browser tab is backgrounded/closed, but platform-specific.
-- Could support both — browser audio as default, with an opt-in setting for system-level notifications (pairs well with OS notification integration if added later)
+**Status**: Implemented (commit `53cf9d8`). Web Audio API with per-event toggles (permission, review, failure, completion), volume control, and "only when tab hidden" option in settings.
 
 ## 16. Quick actions menu for stored prompts / skill calls (low priority)
 
@@ -199,24 +160,7 @@ A configurable dropdown or palette in the agent terminal panel for firing stored
 
 ## 17. Task conversation summaries and improved title generation
 
-Capture a lightweight conversation summary when agents transition tasks (e.g. move to review), and use it to improve the auto-generated task titles which are currently pretty bad.
-
-A research doc exists at [docs/research/2026-04-06-task-conversation-summary-approaches.md](research/2026-04-06-task-conversation-summary-approaches.md) comparing transcript parsing vs prompt-based summarization. The recommendation is **server-side transcript parsing** (approach 1b): pass `transcript_path` from the hook stdin payload to the server, read the last assistant message from the JSONL, and store it on the session summary. This mirrors the existing `enrichCodexReviewMetadata` pattern and adds zero latency from model calls.
-
-**Summary capture**:
-- On `Stop` hook: read `transcript_path` from stdin payload, parse the JSONL server-side, extract the last meaningful assistant message (skip tool call acknowledgments)
-- Store as a `summary` field on the session summary (separate from `finalMessage` to preserve both)
-- Follow the existing `enrichCodexReviewMetadata` pattern — add an `enrichClaudeReviewMetadata` function in `hooks-api.ts`
-- Consider unifying all agent enrichment into a single `enrichReviewMetadata` function
-- Cap summary length (e.g. 500 chars) to prevent bloating session state
-
-**Improved title generation**:
-- Current auto-generated titles are low quality — they're derived from limited context at task creation time
-- Once conversation summaries are available, re-derive the task title from the summary after the agent's first meaningful work session
-- The summary has much richer context about what the agent actually did vs what the initial prompt said
-- Only update the title if the user hasn't manually edited it
-
-**Trash retention**: Summaries should persist on trashed cards so you can mouse over a trashed task and quickly see what it was about without restoring it. This is especially useful when the auto-generated title is vague — the summary gives the real context.
+**Status**: Implemented (commit `c39a300`). Transcript parsing on Stop hook, LLM-powered display summaries (<80 chars), hover tooltips on cards, staleness-checked regeneration.
 
 ## 18. Investigate auto-trashing of tasks on restart
 
@@ -235,3 +179,52 @@ See [docs/research/2026-04-06-board-card-prop-threading-audit.md](research/2026-
 - Future-proof so new views automatically get full card behavior without manual prop threading
 - Consider a context-based approach (React context or a hook) so card callbacks don't need to be threaded through every intermediate component
 - Ensure any new planned views (project switcher, decoupled sidebar) inherit full card interaction without per-view wiring
+
+## 20. Unify LLM generation UI and disabled states
+
+The LLM-powered generation features (branch name, title, display summary) use inconsistent icons and don't grey out when LLM generation is disabled or unconfigured.
+
+**Current inconsistencies**:
+- Branch name generation uses `Sparkles` icon (`task-create-dialog.tsx`)
+- Title generation uses `RefreshCw` icon (`inline-title-editor.tsx`)
+- Display summary generation is triggered on hover with no direct button
+
+**Changes**:
+- Pick a single icon for all LLM generation actions and use it consistently
+- Grey out / disable all LLM generation buttons when generation is disabled in settings or no API key / model is configured
+- Audit the code paths to ensure they share a clean pattern (e.g. a shared hook or config check for "is LLM generation available")
+
+## 21. Fix: dragging tasks out of trash restores the wrong task
+
+Dragging a card out of the trash column to restore it sometimes restores a different task than the one that was dragged. Likely a stale index or card ID mismatch in the drag-and-drop handler.
+
+## 22. Fix: branch name cleared on trashed task cards
+
+The persisted `branch` field on cards is sometimes getting cleared when the card is in the trash column. `reconcileTaskBranch` guards against overwriting a non-null branch with null, and `moveTaskToColumn` doesn't touch the branch field, so the clearing is happening through some other path. Needs investigation.
+
+## 23. Fix: slight lag on audible notifications
+
+The sound notifications from #14 have a noticeable delay before playing. Likely caused by the 1500ms settle window in `use-audible-notifications.ts` that waits for session data to stabilize. May need to reduce or eliminate the delay for high-priority events like permission requests.
+
+## 24. Audit OS notification feature
+
+The browser `Notification` API integration in `use-review-ready-notifications.ts` fires OS-level notifications when tasks move to review while the tab is hidden. Investigate whether this actually works reliably — test the permission flow, verify notifications appear on macOS, and decide whether to keep, improve, or remove it. The feature has a settings toggle (`readyForReviewNotificationsEnabled`) and permission request UI in the settings dialog.
+
+## 25. Fix: trash worktree notice setting not respected
+
+The `showTrashWorktreeNotice` toggle in Settings > Trash doesn't work — the informational toast always shows when manually trashing a task, even after disabling the setting. The setting is wired through `use-linked-backlog-task-actions.ts` (line 262) and reads from `runtimeProjectConfig`. Likely a stale closure or the config value not propagating correctly after save.
+
+## 26. Self-healing for stale task status indicators
+
+UI status indicators like "needs perms" and "waiting for approval" can get stuck when the underlying agent state changes in ways the UI doesn't catch — e.g. hitting Escape on a permission prompt dismisses it in the agent but the card still shows "waiting for approval". Add a periodic reconciliation job that polls actual agent/session state and corrects stale UI badges. This should cover at minimum:
+- Permission/approval badges that linger after the prompt is dismissed or resolved
+- Any status badge that outlives the session state it was derived from
+- Consider a heartbeat or terminal output heuristic — if the agent is producing new output, it's clearly not blocked on permissions anymore
+
+## 27. Move shortcut button out of task cards
+
+The shortcut/skill button is currently rendered on every task card, which is redundant and clutters the card UI. Move it to a shared location — the top navbar, the detail sidebar toolbar, or the agent terminal panel. It only needs to target the currently selected/active task, so one instance is enough.
+
+## 28. Fix: "Use feature branch" in create task dialog should default to off
+
+The "Use feature branch" toggle in the create task dialog remembers its last value. It should always reset to unchecked when the dialog opens — opting into a feature branch should be a deliberate per-task choice, not sticky state.
