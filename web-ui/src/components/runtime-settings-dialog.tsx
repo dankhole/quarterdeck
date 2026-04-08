@@ -292,6 +292,7 @@ export function RuntimeSettingsDialog({
 	const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
 	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(300);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(true);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
 	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
@@ -348,6 +349,7 @@ export function RuntimeSettingsDialog({
 	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? 300;
 	const llmConfigured = config?.llmConfigured ?? false;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
+	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? true;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
 	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
 	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
@@ -379,6 +381,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (shellAutoRestartEnabled !== initialShellAutoRestartEnabled) {
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
@@ -418,12 +423,14 @@ export function RuntimeSettingsDialog({
 		initialAudibleNotificationsOnlyWhenHidden,
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
+		initialShellAutoRestartEnabled,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
+		shellAutoRestartEnabled,
 		shortcuts,
 		showSummaryOnCards,
 		showTrashWorktreeNotice,
@@ -440,6 +447,7 @@ export function RuntimeSettingsDialog({
 		setAutoGenerateSummary(config?.autoGenerateSummary ?? false);
 		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? 300);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
+		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? true);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
 		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
 		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
@@ -459,6 +467,7 @@ export function RuntimeSettingsDialog({
 		config?.readyForReviewNotificationsEnabled,
 		config?.showTrashWorktreeNotice,
 		config?.selectedAgentId,
+		config?.shellAutoRestartEnabled,
 		config?.shortcuts,
 		config?.showSummaryOnCards,
 		config?.summaryStaleAfterSeconds,
@@ -530,6 +539,7 @@ export function RuntimeSettingsDialog({
 			autoGenerateSummary,
 			summaryStaleAfterSeconds,
 			readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled,
 			showTrashWorktreeNotice,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
@@ -727,6 +737,22 @@ export function RuntimeSettingsDialog({
 						/>
 					) : null}
 				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={shellAutoRestartEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setShellAutoRestartEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
+				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>
 				<div className="flex items-center gap-2">

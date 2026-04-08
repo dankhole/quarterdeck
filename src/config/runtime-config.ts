@@ -23,6 +23,7 @@ interface RuntimeGlobalConfigFileShape {
 	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	shellAutoRestartEnabled?: boolean;
 	promptShortcuts?: Array<{ label: string; prompt: string }>;
 	showSummaryOnCards?: boolean;
 	autoGenerateSummary?: boolean;
@@ -54,6 +55,7 @@ export interface RuntimeConfigState {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	shellAutoRestartEnabled: boolean;
 	showSummaryOnCards: boolean;
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
@@ -75,6 +77,7 @@ export interface RuntimeConfigUpdateInput {
 	selectedShortcutLabel?: string | null;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
+	shellAutoRestartEnabled?: boolean;
 	showSummaryOnCards?: boolean;
 	autoGenerateSummary?: boolean;
 	summaryStaleAfterSeconds?: number;
@@ -96,6 +99,7 @@ const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
+const DEFAULT_SHELL_AUTO_RESTART_ENABLED = true;
 const DEFAULT_SHOW_SUMMARY_ON_CARDS = false;
 const DEFAULT_AUTO_GENERATE_SUMMARY = false;
 const DEFAULT_SUMMARY_STALE_AFTER_SECONDS = 300;
@@ -150,6 +154,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	selectedShortcutLabel: null,
 	agentAutonomousModeEnabled: DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
 	readyForReviewNotificationsEnabled: DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+	shellAutoRestartEnabled: DEFAULT_SHELL_AUTO_RESTART_ENABLED,
 	showSummaryOnCards: DEFAULT_SHOW_SUMMARY_ON_CARDS,
 	autoGenerateSummary: DEFAULT_AUTO_GENERATE_SUMMARY,
 	summaryStaleAfterSeconds: DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
@@ -404,6 +409,10 @@ function toRuntimeConfigState({
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		shellAutoRestartEnabled: normalizeBoolean(
+			globalConfig?.shellAutoRestartEnabled,
+			DEFAULT_SHELL_AUTO_RESTART_ENABLED,
+		),
 		showSummaryOnCards: normalizeBoolean(globalConfig?.showSummaryOnCards, DEFAULT_SHOW_SUMMARY_ON_CARDS),
 		autoGenerateSummary: normalizeBoolean(globalConfig?.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY),
 		summaryStaleAfterSeconds: normalizeNumber(
@@ -455,6 +464,7 @@ async function writeRuntimeGlobalConfigFile(
 		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
+		shellAutoRestartEnabled?: boolean;
 		promptShortcuts?: PromptShortcut[];
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
@@ -486,6 +496,10 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
+	const shellAutoRestartEnabled =
+		config.shellAutoRestartEnabled === undefined
+			? DEFAULT_SHELL_AUTO_RESTART_ENABLED
+			: normalizeBoolean(config.shellAutoRestartEnabled, DEFAULT_SHELL_AUTO_RESTART_ENABLED);
 	const showSummaryOnCards =
 		config.showSummaryOnCards === undefined
 			? DEFAULT_SHOW_SUMMARY_ON_CARDS
@@ -537,6 +551,12 @@ async function writeRuntimeGlobalConfigFile(
 		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+	if (
+		hasOwnKey(existing, "shellAutoRestartEnabled") ||
+		shellAutoRestartEnabled !== DEFAULT_SHELL_AUTO_RESTART_ENABLED
+	) {
+		payload.shellAutoRestartEnabled = shellAutoRestartEnabled;
 	}
 	if (config.promptShortcuts !== undefined) {
 		payload.promptShortcuts = config.promptShortcuts;
@@ -689,6 +709,7 @@ function createRuntimeConfigStateFromValues(input: {
 	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
+	shellAutoRestartEnabled: boolean;
 	showSummaryOnCards: boolean;
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
@@ -713,6 +734,7 @@ function createRuntimeConfigStateFromValues(input: {
 			input.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
+		shellAutoRestartEnabled: normalizeBoolean(input.shellAutoRestartEnabled, DEFAULT_SHELL_AUTO_RESTART_ENABLED),
 		showSummaryOnCards: normalizeBoolean(input.showSummaryOnCards, DEFAULT_SHOW_SUMMARY_ON_CARDS),
 		autoGenerateSummary: normalizeBoolean(input.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY),
 		summaryStaleAfterSeconds: normalizeNumber(input.summaryStaleAfterSeconds, DEFAULT_SUMMARY_STALE_AFTER_SECONDS),
@@ -744,6 +766,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		agentAutonomousModeEnabled: current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: current.readyForReviewNotificationsEnabled,
+		shellAutoRestartEnabled: current.shellAutoRestartEnabled,
 		showSummaryOnCards: current.showSummaryOnCards,
 		autoGenerateSummary: current.autoGenerateSummary,
 		summaryStaleAfterSeconds: current.summaryStaleAfterSeconds,
@@ -786,6 +809,7 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: string | null;
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
+		shellAutoRestartEnabled: boolean;
 		showSummaryOnCards: boolean;
 		autoGenerateSummary: boolean;
 		summaryStaleAfterSeconds: number;
@@ -805,6 +829,7 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled: config.shellAutoRestartEnabled,
 			promptShortcuts: config.promptShortcuts,
 			showSummaryOnCards: config.showSummaryOnCards,
 			autoGenerateSummary: config.autoGenerateSummary,
@@ -823,6 +848,7 @@ export async function saveRuntimeConfig(
 			selectedShortcutLabel: config.selectedShortcutLabel,
 			agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled: config.shellAutoRestartEnabled,
 			showSummaryOnCards: config.showSummaryOnCards,
 			autoGenerateSummary: config.autoGenerateSummary,
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
@@ -858,6 +884,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled:
 				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled: updates.shellAutoRestartEnabled ?? current.shellAutoRestartEnabled,
 			showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
 			autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
 			summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
@@ -878,6 +905,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+			nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled ||
 			JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 			nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
 			nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
@@ -903,6 +931,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
 			promptShortcuts: nextConfig.promptShortcuts,
 			showSummaryOnCards: nextConfig.showSummaryOnCards,
 			autoGenerateSummary: nextConfig.autoGenerateSummary,
@@ -925,6 +954,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+			shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
 			showSummaryOnCards: nextConfig.showSummaryOnCards,
 			autoGenerateSummary: nextConfig.autoGenerateSummary,
 			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
@@ -962,6 +992,7 @@ export async function updateGlobalRuntimeConfig(
 				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+				shellAutoRestartEnabled: updates.shellAutoRestartEnabled ?? current.shellAutoRestartEnabled,
 				showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
 				autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
 				summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
@@ -987,7 +1018,8 @@ export async function updateGlobalRuntimeConfig(
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-				JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
+				nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled;
+			JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 				nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
 				nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
 				nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
@@ -1011,6 +1043,7 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
 				promptShortcuts: nextConfig.promptShortcuts,
 				showSummaryOnCards: nextConfig.showSummaryOnCards,
 				autoGenerateSummary: nextConfig.autoGenerateSummary,
@@ -1031,6 +1064,7 @@ export async function updateGlobalRuntimeConfig(
 				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
 				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+				shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
 				showSummaryOnCards: nextConfig.showSummaryOnCards,
 				autoGenerateSummary: nextConfig.autoGenerateSummary,
 				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,

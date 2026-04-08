@@ -107,6 +107,8 @@ function HookHarness({
 		selectedCard,
 		workspaceGit: null,
 		agentCommand: null,
+		shellAutoRestartEnabled: true,
+		findCard: () => null,
 		upsertSession: () => {},
 		sendTaskSessionInput: async () => ({ ok: true }),
 	});

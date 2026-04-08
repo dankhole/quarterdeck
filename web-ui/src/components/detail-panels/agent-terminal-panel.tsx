@@ -43,6 +43,7 @@ export interface AgentTerminalPanelProps {
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 	onRestart?: () => void;
+	onExit?: (taskId: string, exitCode: number | null) => void;
 }
 
 function AgentTerminalPanelLayout({
@@ -251,6 +252,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		enabled: props.terminalEnabled ?? true,
 		onSummary: props.onSummary,
 		onConnectionReady: props.onConnectionReady,
+		onExit: props.onExit,
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
