@@ -103,6 +103,10 @@ export function useTaskSessions({
 		[setSessions],
 	);
 
+	// Ensures a worktree exists for a task (used by restore-from-trash).
+	// Must pass task.branch so ensureTaskWorktreeIfDoesntExist can do branch-aware checkout.
+	// The other path to that function is startTaskSession (runtime-api.ts), which reads
+	// branch from persisted board state server-side instead.
 	const ensureTaskWorkspace = useCallback(
 		async (task: BoardCard): Promise<EnsureTaskWorkspaceResult> => {
 			if (!currentProjectId) {
@@ -113,6 +117,7 @@ export function useTaskSessions({
 				const payload = await trpcClient.workspace.ensureWorktree.mutate({
 					taskId: task.id,
 					baseRef: task.baseRef,
+					branch: task.branch ?? null,
 				});
 				if (!payload.ok) {
 					return {

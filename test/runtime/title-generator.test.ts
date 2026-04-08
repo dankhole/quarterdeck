@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateTaskTitle } from "../../src/title/title-generator";
+import { generateBranchName, generateTaskTitle } from "../../src/title/title-generator";
 
 describe("generateTaskTitle", () => {
 	const originalEnv = { ...process.env };
@@ -100,5 +100,63 @@ describe("generateTaskTitle", () => {
 		await generateTaskTitle("some prompt");
 		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
 		expect(body.model).toBe("custom/model-id");
+	});
+});
+
+describe("generateBranchName", () => {
+	const originalEnv = { ...process.env };
+
+	beforeEach(() => {
+		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
+		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+		delete process.env.QUARTERDECK_TITLE_MODEL;
+	});
+
+	afterEach(() => {
+		process.env = { ...originalEnv };
+		vi.restoreAllMocks();
+	});
+
+	it("returns a branch name from a successful LLM response", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "fix-auth-bug" } }],
+				}),
+				{ status: 200 },
+			),
+		);
+
+		const name = await generateBranchName("fix the authentication bug in login.ts");
+		expect(name).toBe("fix-auth-bug");
+	});
+
+	it("uses the branch name system prompt, not the title prompt", async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				new Response(JSON.stringify({ choices: [{ message: { content: "fix-bug" } }] }), { status: 200 }),
+			);
+
+		await generateBranchName("some prompt");
+		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+		const systemMessage = body.messages[0].content as string;
+		expect(systemMessage).toContain("git branch name");
+		expect(systemMessage).not.toContain("title");
+	});
+
+	it("returns null when env vars are missing", async () => {
+		delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
+		expect(await generateBranchName("some prompt")).toBeNull();
+	});
+
+	it("returns null on non-ok response", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("error", { status: 500 }));
+		expect(await generateBranchName("some prompt")).toBeNull();
+	});
+
+	it("returns null on network error", async () => {
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network failure"));
+		expect(await generateBranchName("some prompt")).toBeNull();
 	});
 });

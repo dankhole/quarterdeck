@@ -109,6 +109,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					const state = await loadWorkspaceState(workspaceScope.workspacePath);
 					const existingCard = findCardInBoard(state.board, body.taskId);
 					const persisted = existingCard?.workingDirectory ?? null;
+					// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
+					// The other path to ensureTaskWorktreeIfDoesntExist is workspace-api.ts:ensureWorktree,
+					// which receives branch from the client request instead.
+					const savedBranch = existingCard?.branch ?? null;
 					const persistedExists = persisted !== null && (await pathExists(persisted));
 
 					// The persisted workingDirectory is the source of truth. It's kept
@@ -122,6 +126,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							taskId: body.taskId,
 							baseRef: body.baseRef,
 							ensure: true,
+							branch: savedBranch,
 						});
 					} else {
 						taskCwd = workspaceScope.workspacePath;

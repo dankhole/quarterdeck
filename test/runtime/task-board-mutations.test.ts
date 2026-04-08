@@ -5,6 +5,7 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	deleteTasksFromBoard,
+	moveTaskToColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../../src/core/task-board-mutations";
@@ -101,5 +102,163 @@ describe("task images", () => {
 				mimeType: "image/jpeg",
 			},
 		]);
+	});
+});
+
+describe("branch persistence on cards", () => {
+	it("trashTaskAndGetReadyLinkedTaskIds preserves branch on trashed card", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		// Set branch directly on the card in board state
+		const board: RuntimeBoardData = {
+			...created.board,
+			columns: created.board.columns.map((col) =>
+				col.id === "in_progress"
+					? {
+							...col,
+							cards: col.cards.map((card) =>
+								card.id === created.task.id
+									? { ...card, branch: "feat/my-work", workingDirectory: "/tmp/wt" }
+									: card,
+							),
+						}
+					: col,
+			),
+		};
+
+		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashedCard = trashed.board.columns
+			.find((c) => c.id === "trash")
+			?.cards.find((c) => c.id === created.task.id);
+		expect(trashedCard?.branch).toBe("feat/my-work");
+		expect(trashedCard?.workingDirectory).toBeNull();
+	});
+
+	it("trashTaskAndGetReadyLinkedTaskIds clears workingDirectory but not branch", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		const board: RuntimeBoardData = {
+			...created.board,
+			columns: created.board.columns.map((col) =>
+				col.id === "in_progress"
+					? {
+							...col,
+							cards: col.cards.map((card) =>
+								card.id === created.task.id
+									? { ...card, branch: "feat/my-work", workingDirectory: "/tmp/wt" }
+									: card,
+							),
+						}
+					: col,
+			),
+		};
+
+		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashedCard = trashed.board.columns
+			.find((c) => c.id === "trash")
+			?.cards.find((c) => c.id === created.task.id);
+		expect(trashedCard?.workingDirectory).toBeNull();
+		expect(trashedCard?.branch).toBe("feat/my-work");
+	});
+
+	it("addTaskToColumn sets branch from input", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{ prompt: "Task A", baseRef: "main", branch: "feat/new" },
+			() => "aaaaa111",
+		);
+		expect(created.task.branch).toBe("feat/new");
+	});
+
+	it("addTaskToColumn omits branch when not provided", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		expect(created.task.branch).toBeUndefined();
+	});
+
+	it("existing worktree creation without branch works unchanged (regression test 29)", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		// When no branch is provided, the task should have no branch field
+		expect(created.task.branch).toBeUndefined();
+		expect(created.task.prompt).toBe("Task A");
+		expect(created.task.baseRef).toBe("main");
+	});
+
+	it("workingDirectory still cleared on trash (regression test 31)", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		const board: RuntimeBoardData = {
+			...created.board,
+			columns: created.board.columns.map((col) =>
+				col.id === "in_progress"
+					? {
+							...col,
+							cards: col.cards.map((card) =>
+								card.id === created.task.id ? { ...card, workingDirectory: "/tmp/wt" } : card,
+							),
+						}
+					: col,
+			),
+		};
+
+		const trashed = trashTaskAndGetReadyLinkedTaskIds(board, created.task.id);
+		const trashedCard = trashed.board.columns
+			.find((c) => c.id === "trash")
+			?.cards.find((c) => c.id === created.task.id);
+		expect(trashedCard?.workingDirectory).toBeNull();
+	});
+});
+
+describe("shutdown-coordinator moveTaskToTrash preserves branch", () => {
+	it("preserves branch on trashed card via moveTaskToColumn spread", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Task A", baseRef: "main" },
+			() => "aaaaa111",
+		);
+		const board: RuntimeBoardData = {
+			...created.board,
+			columns: created.board.columns.map((col) =>
+				col.id === "in_progress"
+					? {
+							...col,
+							cards: col.cards.map((card) =>
+								card.id === created.task.id ? { ...card, branch: "feat/shutdown-work" } : card,
+							),
+						}
+					: col,
+			),
+		};
+
+		// moveTaskToColumn uses the same ...task spread pattern as shutdown-coordinator
+		const moved = moveTaskToColumn(board, created.task.id, "trash");
+		expect(moved.moved).toBe(true);
+		const trashedCard = moved.board.columns
+			.find((c) => c.id === "trash")
+			?.cards.find((c) => c.id === created.task.id);
+		expect(trashedCard?.branch).toBe("feat/shutdown-work");
 	});
 });

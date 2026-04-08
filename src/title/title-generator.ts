@@ -1,6 +1,9 @@
 const TITLE_SYSTEM_PROMPT =
 	"Generate a concise 2-4 word title for this coding task. Return only the title text, nothing else. No quotes, no punctuation at the end.";
 
+const BRANCH_NAME_SYSTEM_PROMPT =
+	"Generate a concise 2-4 word git branch name for this coding task. Use lowercase words separated by hyphens. Return only the branch name, nothing else. No quotes, no slashes, no prefixes. Examples: fix-auth-bug, add-search-filter, refactor-api-client.";
+
 const DEFAULT_TITLE_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
 /**
@@ -16,8 +19,8 @@ const DEFAULT_TITLE_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0
  */
 const MAX_PROMPT_LENGTH = 500;
 
-export async function generateTaskTitle(prompt: string): Promise<string | null> {
-	prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
+async function callLlm(systemPrompt: string, userPrompt: string): Promise<string | null> {
+	const truncatedPrompt = userPrompt.slice(0, MAX_PROMPT_LENGTH);
 	const baseUrl = process.env.ANTHROPIC_BEDROCK_BASE_URL;
 	const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
 	if (!baseUrl || !authToken) {
@@ -39,8 +42,8 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 				model: titleModel,
 				max_tokens: 20,
 				messages: [
-					{ role: "system", content: TITLE_SYSTEM_PROMPT },
-					{ role: "user", content: prompt },
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: truncatedPrompt },
 				],
 			}),
 		});
@@ -56,4 +59,12 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 	} catch {
 		return null;
 	}
+}
+
+export async function generateTaskTitle(prompt: string): Promise<string | null> {
+	return await callLlm(TITLE_SYSTEM_PROMPT, prompt);
+}
+
+export async function generateBranchName(prompt: string): Promise<string | null> {
+	return await callLlm(BRANCH_NAME_SYSTEM_PROMPT, prompt);
 }

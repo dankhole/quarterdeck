@@ -433,10 +433,14 @@ async function pruneEmptyParents(rootPath: string, fromPath: string): Promise<vo
 	}
 }
 
+// Two call sites reach this function — both must pass `branch` for branch-aware checkout:
+//   1. startTaskSession (runtime-api.ts) — reads branch from persisted board state server-side
+//   2. ensureWorktree tRPC endpoint (workspace-api.ts) — receives branch from the client request
 export async function ensureTaskWorktreeIfDoesntExist(options: {
 	cwd: string;
 	taskId: string;
 	baseRef: string;
+	branch?: string | null;
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
@@ -449,11 +453,13 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		const existingResult = await runGit(worktreePath, ["rev-parse", "HEAD"]);
 		if (existingResult.ok && existingResult.stdout) {
 			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
+			const headInfo = await readGitHeadInfo(worktreePath);
 			return {
 				ok: true,
 				path: worktreePath,
 				baseRef: options.baseRef.trim(),
 				baseCommit: existingResult.stdout,
+				branch: headInfo.branch,
 			};
 		}
 
@@ -461,11 +467,13 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
 			if (lockedExistingCommit) {
 				await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
+				const headInfo = await readGitHeadInfo(worktreePath);
 				return {
 					ok: true,
 					path: worktreePath,
 					baseRef: options.baseRef.trim(),
 					baseCommit: lockedExistingCommit,
+					branch: headInfo.branch,
 				};
 			}
 
@@ -513,6 +521,75 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			await runGit(context.repoPath, ["worktree", "prune"]);
 
 			await mkdir(dirname(worktreePath), { recursive: true });
+
+			// Branch-aware worktree creation: try named branch before falling back to detached HEAD.
+			if (options.branch) {
+				const branchCheck = await runGit(context.repoPath, [
+					"rev-parse",
+					"--verify",
+					`refs/heads/${options.branch}`,
+				]);
+
+				const finalizeBranchWorktree = async (
+					resolvedBaseCommit: string,
+					patchWarning: string,
+				): Promise<RuntimeWorktreeEnsureResponse> => {
+					let localWarning: string | undefined;
+					await prepareNewTaskWorktree(context.repoPath, worktreePath);
+					if (storedPatch) {
+						try {
+							await applyTaskPatch(storedPatch.path, worktreePath);
+							await rm(storedPatch.path, { force: true });
+						} catch {
+							localWarning = patchWarning;
+						}
+					}
+					return {
+						ok: true,
+						path: worktreePath,
+						baseRef: requestedBaseRef,
+						baseCommit: resolvedBaseCommit,
+						branch: options.branch,
+						warning: localWarning,
+					};
+				};
+
+				if (branchCheck.ok) {
+					// Branch EXISTS — checkout existing branch (resume path)
+					const checkoutResult = await runGit(context.repoPath, ["worktree", "add", worktreePath, options.branch]);
+					if (checkoutResult.ok) {
+						return await finalizeBranchWorktree(
+							branchCheck.stdout.trim(),
+							"Saved task changes could not be reapplied onto the branch.",
+						);
+					}
+					// Checkout failed (e.g., locked by another worktree) — clean up before fallback
+					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
+					await runGit(context.repoPath, ["worktree", "prune"]);
+					// fall through to detached
+				} else {
+					// Branch NOT exists — create new branch (creation path)
+					const createResult = await runGit(context.repoPath, [
+						"worktree",
+						"add",
+						"-b",
+						options.branch,
+						worktreePath,
+						baseCommit,
+					]);
+					if (createResult.ok) {
+						return await finalizeBranchWorktree(
+							baseCommit,
+							"Saved task changes could not be reapplied onto the recreated branch.",
+						);
+					}
+					// -b failed — clean up before fallback
+					await removeTaskWorktreeInternal(context.repoPath, worktreePath);
+					await runGit(context.repoPath, ["worktree", "prune"]);
+					// fall through to detached
+				}
+			}
+
 			const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
 			if (!addResult.ok) {
 				if (!storedPatch) {
@@ -546,6 +623,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				path: worktreePath,
 				baseRef: requestedBaseRef,
 				baseCommit,
+				branch: null,
 				warning,
 			};
 		});
@@ -610,6 +688,7 @@ export async function resolveTaskCwd(options: {
 	taskId: string;
 	baseRef: string;
 	ensure?: boolean;
+	branch?: string | null;
 }): Promise<string> {
 	const context = await loadWorkspaceContext(options.cwd);
 
@@ -623,6 +702,7 @@ export async function resolveTaskCwd(options: {
 			cwd: options.cwd,
 			taskId: options.taskId,
 			baseRef: normalizedBaseRef,
+			branch: options.branch,
 		});
 		if (!ensured.ok) {
 			throw new Error(ensured.error ?? "Worktree setup failed.");

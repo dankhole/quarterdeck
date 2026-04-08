@@ -13,6 +13,7 @@ import {
 	Option,
 	PencilLine,
 	Plus,
+	Sparkles,
 	X,
 } from "lucide-react";
 import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from "react";
@@ -24,6 +25,7 @@ import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
@@ -114,6 +116,12 @@ export function TaskCreateDialog({
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
+	createFeatureBranch,
+	onCreateFeatureBranchChange,
+	branchName,
+	onBranchNameEdit,
+	onGenerateBranchName,
+	isGeneratingBranchName,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -137,6 +145,12 @@ export function TaskCreateDialog({
 	startInPlanModeDisabled?: boolean;
 	useWorktree: boolean;
 	onUseWorktreeChange: (value: boolean) => void;
+	createFeatureBranch: boolean;
+	onCreateFeatureBranchChange: (value: boolean) => void;
+	branchName: string;
+	onBranchNameEdit: (value: string) => void;
+	onGenerateBranchName: () => void;
+	isGeneratingBranchName: boolean;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -150,6 +164,7 @@ export function TaskCreateDialog({
 	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
 	const useWorktreeId = useId();
+	const createFeatureBranchId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
 	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
@@ -548,6 +563,46 @@ export function TaskCreateDialog({
 						</div>
 					) : null}
 				</div>
+				{useWorktree ? (
+					<div>
+						<label
+							htmlFor={createFeatureBranchId}
+							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+						>
+							<RadixCheckbox.Root
+								id={createFeatureBranchId}
+								checked={createFeatureBranch}
+								onCheckedChange={(checked) => onCreateFeatureBranchChange(checked === true)}
+								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+							>
+								<RadixCheckbox.Indicator>
+									<Check size={10} className="text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							Create feature branch
+						</label>
+						{createFeatureBranch ? (
+							<div className="mt-1.5 flex items-center gap-1.5">
+								<input
+									type="text"
+									value={branchName}
+									onChange={(e) => onBranchNameEdit(e.currentTarget.value)}
+									placeholder="quarterdeck/branch-name"
+									className="h-7 flex-1 min-w-0 rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+								<button
+									type="button"
+									onClick={onGenerateBranchName}
+									disabled={!prompt.trim() || isGeneratingBranchName}
+									title="Generate branch name from prompt"
+									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-bright bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-40 disabled:cursor-default cursor-pointer"
+								>
+									{isGeneratingBranchName ? <Spinner size={12} /> : <Sparkles size={12} />}
+								</button>
+							</div>
+						) : null}
+					</div>
+				) : null}
 			</DialogBody>
 			<DialogFooter>
 				<label

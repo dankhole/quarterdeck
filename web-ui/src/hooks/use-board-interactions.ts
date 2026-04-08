@@ -311,8 +311,8 @@ export function useBoardInteractions({
 						path: ensured.response.path,
 						exists: true,
 						baseRef: ensured.response.baseRef,
-						branch: null,
-						isDetached: true,
+						branch: ensured.response.branch ?? null,
+						isDetached: !ensured.response.branch,
 						headCommit: ensured.response.baseCommit,
 					});
 				}

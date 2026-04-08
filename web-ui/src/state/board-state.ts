@@ -25,6 +25,7 @@ export interface TaskDraft {
 	images?: TaskImage[];
 	baseRef: string;
 	useWorktree?: boolean;
+	branchName?: string;
 }
 
 export interface TaskMoveEvent {
@@ -109,6 +110,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		useWorktree?: unknown;
 		workingDirectory?: unknown;
+		branch?: unknown;
 		pinned?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -142,6 +144,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 				: card.workingDirectory === null
 					? null
 					: undefined,
+		branch: typeof card.branch === "string" ? card.branch : card.branch === null ? null : undefined,
 		pinned: typeof card.pinned === "boolean" ? card.pinned : undefined,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -289,6 +292,7 @@ export function addTaskToColumnWithResult(
 			images: draft.images,
 			baseRef: draft.baseRef,
 			useWorktree: draft.useWorktree,
+			branch: draft.branchName,
 		},
 		createBrowserUuid,
 	);
@@ -537,6 +541,54 @@ export function reconcileTaskWorkingDirectory(
 				...card,
 				workingDirectory: metadataPath,
 				useWorktree: isWorktree ?? card.useWorktree,
+				updatedAt: Date.now(),
+			};
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+	if (!updated) {
+		return { board, updated: false };
+	}
+	return { board: withUpdatedColumns(board, columns), updated: true };
+}
+
+export function reconcileTaskBranch(
+	board: BoardData,
+	taskId: string,
+	branch: string | null | undefined,
+): { board: BoardData; updated: boolean } {
+	// Skip when no metadata is available (undefined). Also skip when incoming
+	// branch is null/falsy but the card already has a persisted branch — the
+	// agent may be temporarily detached and we don't want to erase the branch.
+	if (branch === undefined) {
+		return { board, updated: false };
+	}
+	const normalizedBranch = branch || null;
+	// Don't erase a persisted branch when the incoming value is null — the
+	// agent may be temporarily detached.
+	if (normalizedBranch === null) {
+		const hasExistingBranch = board.columns.some((col) =>
+			col.cards.some((card) => card.id === taskId && typeof card.branch === "string"),
+		);
+		if (hasExistingBranch) {
+			return { board, updated: false };
+		}
+	}
+	let updated = false;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== taskId) {
+				return card;
+			}
+			if ((card.branch ?? null) === normalizedBranch) {
+				return card;
+			}
+			columnUpdated = true;
+			updated = true;
+			return {
+				...card,
+				branch: normalizedBranch,
 				updatedAt: Date.now(),
 			};
 		});
