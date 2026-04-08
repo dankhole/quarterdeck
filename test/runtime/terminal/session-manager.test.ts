@@ -279,12 +279,13 @@ describe("TerminalSessionManager", () => {
 			expect(result?.displaySummary?.endsWith("\u2026")).toBe(true);
 		});
 
-		it("clears displaySummaryGeneratedAt to null", () => {
+		it("preserves displaySummaryGeneratedAt when LLM summary exists", () => {
+			const generatedAt = Date.now();
 			const manager = new TerminalSessionManager();
 			manager.hydrateFromRecord({
 				"task-1": createSummary({
 					state: "running",
-					displaySummaryGeneratedAt: Date.now(),
+					displaySummaryGeneratedAt: generatedAt,
 				}),
 			});
 
@@ -293,7 +294,7 @@ describe("TerminalSessionManager", () => {
 				capturedAt: 1000,
 			});
 
-			expect(result?.displaySummaryGeneratedAt).toBeNull();
+			expect(result?.displaySummaryGeneratedAt).toBe(generatedAt);
 		});
 
 		it("retains at most 5 entries", () => {
