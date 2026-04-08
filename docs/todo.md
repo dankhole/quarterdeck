@@ -151,7 +151,18 @@ Add "show 20 more lines" incremental expand buttons to collapsed context blocks 
 
 Upstream cline/kanban implemented this in commit `56adf45a` — see [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for details. Our `diff-renderer.tsx` has diverged so this would need to be reimplemented rather than cherry-picked, but the upstream commit is a useful reference for the approach.
 
-## 16. Rewrite backend in Go
+## 16. Investigate and fix orphaned processes
+
+Runtime servers and hook ingest processes can get orphaned when their parent process (Cline, a terminal, etc.) exits without signaling shutdown. Observed in the wild: 4 zombie processes running for days, consuming CPU, and resisting SIGTERM (required SIGKILL).
+
+Three issues to address:
+- **No parent liveness detection**: The runtime has no way to know its parent died (no stdin EOF watch, no heartbeat). Investigate the existing IPC shutdown hook (`shutdown-ipc-hook.cjs`) — it didn't fire in the observed case.
+- **Shutdown handler hangs on SIGTERM**: Both runtime servers spiked to high CPU on SIGTERM instead of exiting cleanly. The shutdown coordinator may block on stale filesystem state. Add timeouts and a hard exit deadline.
+- **Hook ingest processes don't exit**: `hooks ingest` processes survived SIGTERM. They likely need their own timeout on the HTTP request to the runtime and proper signal handling.
+
+Investigation doc at [docs/research/2026-04-08-orphaned-process-investigation.md](research/2026-04-08-orphaned-process-investigation.md).
+
+## 17. Rewrite backend in Go
 
 Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
 
