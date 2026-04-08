@@ -27,5 +27,12 @@ export default defineConfig({
 		include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
 		passWithNoTests: true,
 		setupFiles: ["./vitest.setup.ts"],
+		coverage: {
+			provider: "v8",
+			include: ["src/**/*.{ts,tsx}"],
+			exclude: ["src/**/*.test.{ts,tsx}", "src/test-utils/**", "src/main.tsx", "src/vite-env.d.ts"],
+			reporter: ["text", "html", "json-summary"],
+			reportsDirectory: "coverage",
+		},
 	},
 });
