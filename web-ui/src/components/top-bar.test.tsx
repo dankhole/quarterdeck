@@ -103,6 +103,76 @@ describe("TopBar script shortcut onboarding", () => {
 		expect(onRunShortcut).not.toHaveBeenCalled();
 	});
 
+	it("shows prompt shortcut button when a task is selected and shortcuts are configured", async () => {
+		const onRunPromptShortcut = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<TopBar
+					openTargetOptions={[]}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenWorkspace={() => {}}
+					canOpenWorkspace={false}
+					isOpeningWorkspace={false}
+					selectedTaskId="task-1"
+					promptShortcuts={[{ label: "Approve", prompt: "LGTM" }]}
+					activePromptShortcut={{ label: "Approve", prompt: "LGTM" }}
+					onRunPromptShortcut={onRunPromptShortcut}
+				/>,
+			);
+		});
+
+		const approveButton = findButtonByText(container, "Approve");
+		expect(approveButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			approveButton?.click();
+		});
+
+		expect(onRunPromptShortcut).toHaveBeenCalledWith("task-1", "Approve");
+	});
+
+	it("hides prompt shortcut button when no task is selected", async () => {
+		await act(async () => {
+			root.render(
+				<TopBar
+					openTargetOptions={[]}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenWorkspace={() => {}}
+					canOpenWorkspace={false}
+					isOpeningWorkspace={false}
+					promptShortcuts={[{ label: "Approve", prompt: "LGTM" }]}
+					onRunPromptShortcut={() => {}}
+				/>,
+			);
+		});
+
+		const approveButton = findButtonByText(container, "Approve");
+		expect(approveButton).toBeNull();
+	});
+
+	it("hides prompt shortcut button when shortcuts array is empty", async () => {
+		await act(async () => {
+			root.render(
+				<TopBar
+					openTargetOptions={[]}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenWorkspace={() => {}}
+					canOpenWorkspace={false}
+					isOpeningWorkspace={false}
+					selectedTaskId="task-1"
+					promptShortcuts={[]}
+					onRunPromptShortcut={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[aria-label="Select prompt shortcut"]')).toBeNull();
+	});
+
 	it("opens settings when the runtime hint is clicked", async () => {
 		const onOpenSettings = vi.fn();
 

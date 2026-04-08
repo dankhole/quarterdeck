@@ -20,7 +20,7 @@ The LLM-powered generation features (branch name, title, display summary) use in
 
 ## 3. Move shortcut button out of task cards
 
-The shortcut/skill button is currently rendered on every task card, which is redundant and clutters the card UI. Move it to a shared location — the top navbar, the detail sidebar toolbar, or the agent terminal panel. It only needs to target the currently selected/active task, so one instance is enough.
+**Status**: Implemented. Prompt shortcut split button moved from per-card rendering to a single TopBar instance, gated on task selection. Removed 6-prop threading chain through CardDetailView → ColumnContextPanel → ColumnSection → BoardCard.
 
 ## 4. Fix: branch name cleared on trashed task cards
 

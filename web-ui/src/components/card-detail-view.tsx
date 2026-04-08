@@ -269,12 +269,6 @@ export function CardDetailView({
 	onBottomTerminalRestart,
 	onBottomTerminalExit,
 	isDocumentVisible = true,
-	onRunPromptShortcut,
-	onSelectPromptShortcutLabel,
-	promptShortcuts,
-	lastUsedPromptShortcutLabel,
-	isPromptShortcutRunning,
-	onManagePromptShortcuts,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -323,12 +317,6 @@ export function CardDetailView({
 	onBottomTerminalRestart?: () => void;
 	onBottomTerminalExit?: (taskId: string, exitCode: number | null) => void;
 	isDocumentVisible?: boolean;
-	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
-	onSelectPromptShortcutLabel?: (label: string) => void;
-	promptShortcuts?: Array<{ label: string; prompt: string }>;
-	lastUsedPromptShortcutLabel?: string;
-	isPromptShortcutRunning?: boolean;
-	onManagePromptShortcuts?: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [fileBrowserSelectedPath, setFileBrowserSelectedPath] = useState<string | null>(null);
@@ -685,12 +673,6 @@ export function CardDetailView({
 								showSummaryOnCards={showSummaryOnCards}
 								onRequestDisplaySummary={onRequestDisplaySummary}
 								panelWidth="100%"
-								onRunPromptShortcut={onRunPromptShortcut}
-								onSelectPromptShortcutLabel={onSelectPromptShortcutLabel}
-								promptShortcuts={promptShortcuts}
-								lastUsedPromptShortcutLabel={lastUsedPromptShortcutLabel}
-								isPromptShortcutRunning={isPromptShortcutRunning}
-								onManagePromptShortcuts={onManagePromptShortcuts}
 							/>
 						) : activeDetailPanel === "changes" ? (
 							<>
