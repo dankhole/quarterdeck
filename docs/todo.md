@@ -197,9 +197,9 @@ The UI element in the project view that shows task state counts (how many tasks 
 
 In the file viewer panel, the file pop-out / open-externally button is visible even when no file is selected. Hide it when there's no active file selection.
 
-## 26. Rate limiting and guardrails for automatic LLM calls
+## ~~26. Rate limiting and guardrails for automatic LLM calls~~ ✅
 
-Add careful rate limiting as a guardrail for LLM calls that the user doesn't explicitly trigger — auto-generated titles, branch names, summaries, and other background LLM invocations. These should have sensible per-session and per-minute caps to prevent runaway API costs from bugs or rapid state transitions.
+Done — rolling-window rate limiter in `src/title/llm-client.ts` (5 concurrent, 20/min). All `callLlm()` callers degrade gracefully when limits are hit.
 
 ## 27. Bring back beta feedback popup
 
