@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Add close button to file content viewer (2026-04-09)
+
+**Problem**: The file browser's content viewer panel had no way to close/deselect the currently open file. Users had to select a different file or collapse the entire file browser to dismiss the preview.
+
+**Implementation**: Added an optional `onClose` callback prop to `FileContentViewer`. When provided, renders an X button (lucide `X` icon, 13px) in the breadcrumb header bar, alongside the existing copy-path and word-wrap toggle buttons. `FileBrowserPanel` passes `onClose={() => onSelectPath(null)}`, which clears the selection — the content panel hides and the tree expands to fill the space via the existing conditional flex layout.
+
+**Files**: `web-ui/src/components/detail-panels/file-content-viewer.tsx` (new `onClose` prop + X button), `web-ui/src/components/detail-panels/file-browser-panel.tsx` (wire `onClose`)
+
+**Commit**: `36dbd99a`
+
 ## Remove debug logging toggle from settings, fix log panel word wrap (2026-04-09)
 
 **Problem**: The debug logging toggle in the Settings dialog fired immediately via a dedicated tRPC call (`setDebugLogging`) without going through the save flow. This meant toggling it didn't enable the Save button, which was confusing since every other setting in the dialog requires Save. Separately, the debug log panel's flex layout with `shrink-0` on metadata columns and `truncate` on the data span caused long log entries to overflow horizontally instead of wrapping.

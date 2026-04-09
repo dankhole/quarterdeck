@@ -47,6 +47,7 @@
 - File browser expand/collapse state and file selection now persist when toggling between the sidebar panel and the full-size view.
 - The expand button is hidden when no file is selected.
 - Removed redundant X buttons from the expanded diff and file browser toolbars — they duplicated the collapse button with a misleading icon.
+- Added close button (X) to the file content viewer header — deselects the current file and returns to the full tree view.
 
 ### Incremental expand in diff viewer
 

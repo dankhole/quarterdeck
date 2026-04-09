@@ -107,6 +107,7 @@ export function FileBrowserPanel({
 							isLoading={fileContentQuery.isLoading}
 							isError={fileContentQuery.isError}
 							filePath={selectedPath}
+							onClose={() => onSelectPath(null)}
 						/>
 					</div>
 				</>
