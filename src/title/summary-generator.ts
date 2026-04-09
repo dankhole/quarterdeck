@@ -2,7 +2,10 @@
 // proxy — see llm-client.ts for portability notes. When LLM is not configured,
 // returns null and cards show no summary (hover tooltip falls back to raw
 // conversation summary text if available).
+import { createTaggedLogger } from "../core/debug-logger";
 import { callLlm, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./llm-client";
+
+const log = createTaggedLogger("summary-gen");
 
 const SUMMARY_SYSTEM_PROMPT = `You MUST output at most ${DISPLAY_SUMMARY_LLM_BUDGET} characters. This is a HARD LIMIT — never exceed it.
 Write an extremely brief, telegram-style summary of what the agent did. Drop articles, filler words, and unnecessary detail. Use bare verbs. Examples of good output:
@@ -21,6 +24,10 @@ export async function generateDisplaySummary(conversationText: string): Promise<
 	if (!conversationText.trim()) {
 		return null;
 	}
+	log.debug("Generating display summary", {
+		textLength: conversationText.length,
+		textSnippet: conversationText.slice(0, 120),
+	});
 	const result = await callLlm({
 		systemPrompt: SUMMARY_SYSTEM_PROMPT,
 		userPrompt: conversationText.slice(0, MAX_CONTEXT_LENGTH),
@@ -28,8 +35,11 @@ export async function generateDisplaySummary(conversationText: string): Promise<
 		timeoutMs: 5_000,
 	});
 	if (!result) {
+		log.warn("Summary generation returned null");
 		return null;
 	}
-	// Enforce the max length as a safety net in case the model overshoots.
-	return result.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${result.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : result;
+	const summary =
+		result.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${result.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : result;
+	log.info("Summary generated", { summary });
+	return summary;
 }

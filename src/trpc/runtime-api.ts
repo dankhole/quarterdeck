@@ -18,6 +18,7 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
+import { isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
@@ -46,6 +47,7 @@ export interface CreateRuntimeApiDependencies {
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	prepareForStateReset?: () => Promise<void>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
+	broadcastDebugLoggingState?: (enabled: boolean) => void;
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
@@ -305,6 +307,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					message,
 				});
 			}
+		},
+		setDebugLogging: (enabled) => {
+			setDebugLoggingEnabled(enabled);
+			deps.broadcastDebugLoggingState?.(enabled);
+			return { ok: true, enabled: isDebugLoggingEnabled() };
 		},
 		resetAllState: async (_workspaceScope) => {
 			await deps.prepareForStateReset?.();

@@ -15,6 +15,7 @@ interface UseAppHotkeysInput {
 	handleOpenSettings: () => void;
 	handleToggleGitHistory: () => void;
 	onStartAllTasks: () => void;
+	handleToggleDebugLogPanel?: () => void;
 }
 
 export function useAppHotkeys({
@@ -30,6 +31,7 @@ export function useAppHotkeys({
 	handleOpenSettings,
 	handleToggleGitHistory,
 	onStartAllTasks,
+	handleToggleDebugLogPanel,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
 		"mod+j",
@@ -122,5 +124,18 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleOpenSettings],
+	);
+
+	useHotkeys(
+		"mod+shift+d",
+		() => {
+			handleToggleDebugLogPanel?.();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[handleToggleDebugLogPanel],
 	);
 }

@@ -4,6 +4,43 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Runtime debug logging system (2026-04-09)
+
+**Problem**: Quarterdeck had no structured logging — just ad-hoc `console.*` calls with manual `[tag]` prefixes. No way to toggle debug output at runtime or see server-side logs from the browser. A transient bug where task display summaries appeared to describe a different task was nearly impossible to diagnose because the title/summary generation pipeline had no observability.
+
+**Solution**: Built a runtime-togglable debug logging system with three layers:
+
+1. **Server logger** (`src/core/debug-logger.ts`): `createTaggedLogger(tag)` factory returning `{ debug, info, warn, error }` methods. Module-level state tracks enabled/disabled, a 200-entry ring buffer for recent history, and a listener set for WebSocket broadcast. Zero overhead when disabled (early return before any work).
+
+2. **WebSocket integration** (`src/server/runtime-state-hub.ts`): Subscribes to logger entries, batches them (150ms matching existing `TASK_SESSION_STREAM_BATCH_MS`), broadcasts `debug_log_batch` messages to ALL connected clients. Sends `debug_logging_state` on new connection (with recent entries from ring buffer if enabled). New `broadcastDebugLoggingState` method on `RuntimeStateHub` interface.
+
+3. **Browser UI**: Bottom panel (`web-ui/src/components/debug-log-panel.tsx`) with level/source filters, search, auto-scroll. Toggle via Settings dialog (new Debug section) or `Cmd+Shift+D` hotkey. Hook (`web-ui/src/hooks/use-debug-logging.ts`) manages panel state, filters, and client-side entries. Client logger (`web-ui/src/utils/client-logger.ts`) mirrors server API.
+
+**Toggle flow**: UI calls `runtime.setDebugLogging` tRPC mutation → server sets module-level boolean → broadcasts state to all clients → UI updates panel visibility. Ephemeral (in-memory only, not persisted to config).
+
+**Instrumentation added**: `llm-client` (call start/complete/fail/rate-limit), `title-generator` (prompt snippet + result), `summary-generator` (text snippet + result), `hooks-api` (taskId + event + conversationSummaryText snippet), `app-router` `regenerateTaskTitle` and `generateDisplaySummary` mutations (taskId + source text snippet + summary count). This is the minimum needed to trace the summary-unlinking bug if it recurs.
+
+**Files touched**:
+- `src/core/debug-logger.ts` (new) — server logger module
+- `src/core/api-contract.ts` — `debug_log_batch` and `debug_logging_state` message schemas added to discriminated union
+- `src/server/runtime-state-hub.ts` — subscribe to logger, batch+broadcast, send state on connect, cleanup in close()
+- `src/trpc/app-router.ts` — `runtime.setDebugLogging` mutation + debug instrumentation on `regenerateTaskTitle` / `generateDisplaySummary`
+- `src/trpc/runtime-api.ts` — `setDebugLogging` implementation + `broadcastDebugLoggingState` dependency
+- `src/server/runtime-server.ts` — wire `broadcastDebugLoggingState` into tRPC context
+- `src/title/llm-client.ts` — debug logging for LLM calls
+- `src/title/title-generator.ts` — debug logging for title generation
+- `src/title/summary-generator.ts` — debug logging for summary generation
+- `src/trpc/hooks-api.ts` — debug logging for hook ingest
+- `web-ui/src/components/debug-log-panel.tsx` (new) — bottom panel component
+- `web-ui/src/hooks/use-debug-logging.ts` (new) — debug logging hook
+- `web-ui/src/utils/client-logger.ts` (new) — client-side logger
+- `web-ui/src/runtime/use-runtime-state-stream.ts` — handle new message types, store entries (500 max)
+- `web-ui/src/runtime/runtime-config-query.ts` — `setDebugLogging` tRPC client helper
+- `web-ui/src/components/runtime-settings-dialog.tsx` — Debug section with toggle
+- `web-ui/src/hooks/use-app-hotkeys.ts` — `Cmd+Shift+D` hotkey
+- `web-ui/src/hooks/use-project-navigation.ts` — pass through debug state
+- `web-ui/src/App.tsx` — wire hook, render panel, pass props to settings dialog
+
 ## Unify config save dual path and config defaults single source of truth (2026-04-09, prev todo #25 + #26)
 
 **Problem**: Two near-identical ~100-line functions (`updateRuntimeConfig` and `updateGlobalRuntimeConfig`) in `src/config/runtime-config.ts` required 8 parallel edits per new setting (4 sites x 2 functions: nextConfig build, hasChanges check, writeRuntimeGlobalConfigFile call, createRuntimeConfigStateFromValues call). This had already caused a bug where a semicolon replaced `||` in the global path's hasChanges check, silently breaking persistence for 12 settings. Additionally, config default values were duplicated across server constants, frontend `useState()` initial values, `??` fallback coalescing in App.tsx and the settings dialog, and test fixture factories.

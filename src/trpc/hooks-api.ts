@@ -5,11 +5,14 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { parseHookIngestRequest } from "../core/api-validation";
+import { createTaggedLogger } from "../core/debug-logger";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext } from "./app-router";
+
+const log = createTaggedLogger("hooks");
 
 /**
  * Apply conversation summary or finalMessage from hook metadata to the session.
@@ -72,6 +75,12 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
 				const event = body.event;
+				log.debug("Hook ingest", {
+					taskId,
+					event,
+					hasSummaryText: !!body.metadata?.conversationSummaryText,
+					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
+				});
 				const knownWorkspacePath = deps.getWorkspacePathById(workspaceId);
 				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
 				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;

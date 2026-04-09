@@ -416,6 +416,35 @@ export const runtimeStateStreamErrorMessageSchema = z.object({
 });
 export type RuntimeStateStreamErrorMessage = z.infer<typeof runtimeStateStreamErrorMessageSchema>;
 
+export const runtimeDebugLogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+export type RuntimeDebugLogLevel = z.infer<typeof runtimeDebugLogLevelSchema>;
+
+export const runtimeDebugLogEntrySchema = z.object({
+	id: z.string(),
+	timestamp: z.number(),
+	level: runtimeDebugLogLevelSchema,
+	tag: z.string(),
+	message: z.string(),
+	data: z.unknown().optional(),
+	source: z.enum(["server", "client"]),
+});
+export type RuntimeDebugLogEntry = z.infer<typeof runtimeDebugLogEntrySchema>;
+
+export const runtimeStateStreamDebugLogBatchMessageSchema = z.object({
+	type: z.literal("debug_log_batch"),
+	entries: z.array(runtimeDebugLogEntrySchema),
+});
+export type RuntimeStateStreamDebugLogBatchMessage = z.infer<typeof runtimeStateStreamDebugLogBatchMessageSchema>;
+
+export const runtimeStateStreamDebugLoggingStateMessageSchema = z.object({
+	type: z.literal("debug_logging_state"),
+	enabled: z.boolean(),
+	recentEntries: z.array(runtimeDebugLogEntrySchema).optional(),
+});
+export type RuntimeStateStreamDebugLoggingStateMessage = z.infer<
+	typeof runtimeStateStreamDebugLoggingStateMessageSchema
+>;
+
 export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamSnapshotMessageSchema,
 	runtimeStateStreamWorkspaceStateMessageSchema,
@@ -426,6 +455,8 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamTaskTitleUpdatedMessageSchema,
 	runtimeStateStreamTaskNotificationMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
+	runtimeStateStreamDebugLogBatchMessageSchema,
+	runtimeStateStreamDebugLoggingStateMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
 
