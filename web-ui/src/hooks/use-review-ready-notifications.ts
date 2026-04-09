@@ -1,88 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RuntimeStateStreamTaskReadyForReviewMessage, RuntimeTaskSessionSummary } from "@/runtime/types";
-import { findCardSelection } from "@/state/board-state";
-import type { BoardData } from "@/types";
-import {
-	broadcastNotificationBadgeClear,
-	createNotificationBadgeSyncSourceId,
-	subscribeToNotificationBadgeClear,
-} from "@/utils/notification-badge-sync";
-import { getBrowserNotificationPermission } from "@/utils/notification-permission";
-import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/utils/react-use";
-import { isApprovalState } from "@/utils/session-status";
-import {
-	createTabPresenceId,
-	hasVisibleQuarterdeckTabForWorkspace,
-	markTabHidden,
-	markTabVisible,
-} from "@/utils/tab-visibility-presence";
-import { truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/runtime/types";
+import { useDocumentTitle, useWindowEvent } from "@/utils/react-use";
 
 interface UseReviewReadyNotificationsOptions {
 	activeWorkspaceId: string | null;
-	board: BoardData;
-	isDocumentVisible: boolean;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
-	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	readyForReviewNotificationsEnabled: boolean;
 	workspacePath: string | null;
 }
 
 const MAX_HANDLED_READY_EVENT_KEYS = 200;
-const TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS = 5000;
-
-function canShowBrowserNotifications(): boolean {
-	return getBrowserNotificationPermission() === "granted";
-}
-
-function isDocumentCurrentlyVisible(fallbackValue: boolean): boolean {
-	if (typeof document === "undefined") {
-		return fallbackValue;
-	}
-	return document.visibilityState === "visible";
-}
-
-function resolveReviewReadyNotificationBody(
-	taskId: string,
-	taskTitle: string,
-	taskSessions: Record<string, RuntimeTaskSessionSummary>,
-): string {
-	const finalMessage = taskSessions[taskId]?.latestHookActivity?.finalMessage?.trim();
-	return finalMessage || taskTitle;
-}
-
-function showReadyForReviewNotification(taskId: string, notificationTitle: string, notificationBody: string): void {
-	if (!canShowBrowserNotifications()) {
-		return;
-	}
-	try {
-		const notification = new Notification(notificationTitle, {
-			body: notificationBody,
-			tag: `task-ready-for-review-${taskId}`,
-			icon: "/assets/icon-notification.png",
-		});
-		notification.onclick = () => {
-			if (typeof window !== "undefined") {
-				window.focus();
-			}
-			notification.close();
-		};
-	} catch {
-		// Ignore browser notification failures.
-	}
-}
 
 export function useReviewReadyNotifications({
 	activeWorkspaceId,
-	board,
-	isDocumentVisible,
 	latestTaskReadyForReview,
-	taskSessions,
-	readyForReviewNotificationsEnabled,
 	workspacePath,
 }: UseReviewReadyNotificationsOptions): void {
-	const notificationPresenceTabIdRef = useRef<string>(createTabPresenceId());
-	const notificationBadgeSyncSourceIdRef = useRef<string>(createNotificationBadgeSyncSourceId());
 	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const handledReadyForReviewEventKeyQueueRef = useRef<string[]>([]);
 	const [pendingReviewReadyNotificationCount, setPendingReviewReadyNotificationCount] = useState(0);
@@ -92,6 +25,7 @@ export function useReviewReadyNotifications({
 		}
 		return document.hasFocus();
 	});
+	const isDocumentVisible = useDocumentVisibility();
 	const workspaceTitle = useMemo(() => {
 		if (!workspacePath) {
 			return null;
@@ -114,39 +48,14 @@ export function useReviewReadyNotifications({
 		setIsWindowFocused(false);
 	});
 
+	// Clear badge count when the app becomes active (user is looking at it).
 	useEffect(() => {
-		const tabId = notificationPresenceTabIdRef.current;
-		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
-		const presenceWorkspaceId = activeWorkspaceId;
 		if (isAppActive) {
-			if (presenceWorkspaceId) {
-				markTabVisible(tabId, presenceWorkspaceId);
-			} else {
-				markTabHidden(tabId);
-			}
 			setPendingReviewReadyNotificationCount(0);
-			broadcastNotificationBadgeClear(syncSourceId, presenceWorkspaceId);
-		} else {
-			markTabHidden(tabId);
 		}
-	}, [activeWorkspaceId, isAppActive]);
+	}, [isAppActive]);
 
-	useEffect(() => {
-		if (activeWorkspaceId && isAppActive) {
-			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
-		}
-	}, [activeWorkspaceId, isAppActive]);
-
-	useInterval(
-		() => {
-			if (!activeWorkspaceId || !isAppActive) {
-				return;
-			}
-			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
-		},
-		activeWorkspaceId && isAppActive ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
-	);
-
+	// Track review-ready events and increment badge count when backgrounded.
 	useEffect(() => {
 		if (!latestTaskReadyForReview) {
 			return;
@@ -166,72 +75,16 @@ export function useReviewReadyNotifications({
 				handledReadyForReviewEventKeysRef.current.delete(oldestKey);
 			}
 		}
-		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
-		const isWindowFocusedNow = typeof document === "undefined" ? isWindowFocused : document.hasFocus();
-		const hasVisiblePeerTabForWorkspace = hasVisibleQuarterdeckTabForWorkspace(
-			latestTaskReadyForReview.workspaceId,
-			notificationPresenceTabIdRef.current,
-		);
-		if (
-			!readyForReviewNotificationsEnabled ||
-			(isVisibleNow && isWindowFocusedNow) ||
-			hasVisiblePeerTabForWorkspace
-		) {
+
+		const isVisibleNow = typeof document !== "undefined" ? document.visibilityState === "visible" : true;
+		const isWindowFocusedNow = typeof document !== "undefined" ? document.hasFocus() : true;
+		if (isVisibleNow && isWindowFocusedNow) {
 			return;
 		}
-		const selection = findCardSelection(board, latestTaskReadyForReview.taskId);
-		const taskTitle = selection
-			? truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`
-			: `Task ${latestTaskReadyForReview.taskId}`;
-		const notificationBody = resolveReviewReadyNotificationBody(
-			latestTaskReadyForReview.taskId,
-			taskTitle,
-			taskSessions,
-		);
 		setPendingReviewReadyNotificationCount((current) => current + 1);
-		const session = taskSessions[latestTaskReadyForReview.taskId] ?? null;
-		const isApproval = isApprovalState(session);
-		const notificationTitle = workspaceTitle
-			? `${workspaceTitle} ${isApproval ? "waiting for approval" : "ready for review"}`
-			: isApproval
-				? "Waiting for approval"
-				: "Ready for review";
-		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, notificationBody);
-	}, [
-		activeWorkspaceId,
-		board,
-		isDocumentVisible,
-		isWindowFocused,
-		latestTaskReadyForReview,
-		readyForReviewNotificationsEnabled,
-		taskSessions,
-		workspaceTitle,
-	]);
+	}, [activeWorkspaceId, latestTaskReadyForReview]);
 
-	const handlePageHide = useCallback(() => {
-		markTabHidden(notificationPresenceTabIdRef.current);
-	}, []);
-	useWindowEvent("pagehide", handlePageHide);
-	useUnmount(() => {
-		markTabHidden(notificationPresenceTabIdRef.current);
-	});
-
-	useEffect(() => {
-		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
-		return subscribeToNotificationBadgeClear(syncSourceId, (workspaceId) => {
-			if (workspaceId === activeWorkspaceId) {
-				setPendingReviewReadyNotificationCount(0);
-			}
-		});
-	}, [activeWorkspaceId]);
-
-	useEffect(() => {
-		if (!readyForReviewNotificationsEnabled) {
-			setPendingReviewReadyNotificationCount(0);
-			broadcastNotificationBadgeClear(notificationBadgeSyncSourceIdRef.current, activeWorkspaceId);
-		}
-	}, [activeWorkspaceId, readyForReviewNotificationsEnabled]);
-
+	// Reset dedup state on workspace switch.
 	useEffect(() => {
 		handledReadyForReviewEventKeysRef.current.clear();
 		handledReadyForReviewEventKeyQueueRef.current = [];

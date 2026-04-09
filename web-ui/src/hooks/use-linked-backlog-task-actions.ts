@@ -27,7 +27,6 @@ export function useLinkedBacklogTaskActions({
 	setSelectedTaskId,
 	stopTaskSession,
 	cleanupTaskWorkspace,
-	maybeRequestNotificationPermissionForTaskStart,
 	kickoffTaskInProgress,
 	startBacklogTaskWithAnimation,
 	waitForBacklogStartAnimationAvailability,
@@ -40,7 +39,6 @@ export function useLinkedBacklogTaskActions({
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
-	maybeRequestNotificationPermissionForTaskStart: () => void;
 	kickoffTaskInProgress: (
 		task: BoardCard,
 		taskId: string,
@@ -156,7 +154,6 @@ export function useLinkedBacklogTaskActions({
 				.filter((readyTask): readyTask is BoardCard => readyTask !== null);
 
 			if (readyTasks.length > 0) {
-				maybeRequestNotificationPermissionForTaskStart();
 				if (startBacklogTaskWithAnimation) {
 					const startedTaskPromises: Promise<boolean>[] = [];
 					for (const [index, readyTask] of readyTasks.entries()) {
@@ -196,7 +193,6 @@ export function useLinkedBacklogTaskActions({
 		[
 			cleanupTaskWorkspace,
 			kickoffTaskInProgress,
-			maybeRequestNotificationPermissionForTaskStart,
 			setBoard,
 			setSelectedTaskId,
 			startBacklogTaskWithAnimation,

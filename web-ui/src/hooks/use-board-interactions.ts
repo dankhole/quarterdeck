@@ -29,11 +29,6 @@ import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
-import {
-	getBrowserNotificationPermission,
-	hasPromptedForBrowserNotificationPermission,
-	requestBrowserNotificationPermission,
-} from "@/utils/notification-permission";
 
 interface SelectedBoardCard {
 	card: BoardCard;
@@ -84,7 +79,6 @@ interface UseBoardInteractionsInput {
 		input: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	readyForReviewNotificationsEnabled: boolean;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
@@ -134,14 +128,12 @@ export function useBoardInteractions({
 	startTaskSession,
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
-	readyForReviewNotificationsEnabled,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
 	taskGitActionLoadingByTaskId: _taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction: _runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
-	const notificationPermissionPromptInFlightRef = useRef(false);
 	const moveToTrashLoadingByIdRef = useRef<Record<string, true>>({});
 	const pendingProgrammaticStartMoveCompletionByTaskIdRef = useRef<
 		Record<string, PendingProgrammaticStartMoveCompletion>
@@ -294,21 +286,6 @@ export function useBoardInteractions({
 		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
 	}, [board.columns]);
 	const trashTaskCount = trashTaskIds.length;
-
-	const maybeRequestNotificationPermissionForTaskStart = useCallback(() => {
-		const shouldPromptForNotificationPermission =
-			readyForReviewNotificationsEnabled &&
-			getBrowserNotificationPermission() === "default" &&
-			!hasPromptedForBrowserNotificationPermission() &&
-			!notificationPermissionPromptInFlightRef.current;
-		if (!shouldPromptForNotificationPermission) {
-			return;
-		}
-		notificationPermissionPromptInFlightRef.current = true;
-		void requestBrowserNotificationPermission().finally(() => {
-			notificationPermissionPromptInFlightRef.current = false;
-		});
-	}, [readyForReviewNotificationsEnabled]);
 
 	const kickoffTaskInProgress = useCallback(
 		async (
@@ -541,7 +518,6 @@ export function useBoardInteractions({
 			setSelectedTaskId,
 			stopTaskSession,
 			cleanupTaskWorkspace,
-			maybeRequestNotificationPermissionForTaskStart,
 			kickoffTaskInProgress,
 			startBacklogTaskWithAnimation,
 			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
@@ -674,7 +650,6 @@ export function useBoardInteractions({
 				moveEvent.fromColumnId === "backlog" &&
 				!programmaticMoveBehavior?.skipKickoff
 			) {
-				maybeRequestNotificationPermissionForTaskStart();
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
 					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId)
@@ -695,7 +670,6 @@ export function useBoardInteractions({
 			board,
 			consumeProgrammaticCardMove,
 			kickoffTaskInProgress,
-			maybeRequestNotificationPermissionForTaskStart,
 			requestMoveTaskToTrash,
 			resumeTaskFromTrash,
 			resolvePendingProgrammaticStartMove,
@@ -711,10 +685,9 @@ export function useBoardInteractions({
 			if (!selection || selection.column.id !== "backlog") {
 				return;
 			}
-			maybeRequestNotificationPermissionForTaskStart();
 			void startBacklogTaskWithAnimation(selection.card);
 		},
-		[board, maybeRequestNotificationPermissionForTaskStart, startBacklogTaskWithAnimation],
+		[board, startBacklogTaskWithAnimation],
 	);
 
 	const handleStartAllBacklogTasks = useCallback(
@@ -755,12 +728,11 @@ export function useBoardInteractions({
 			}
 
 			setBoard(nextBoard);
-			maybeRequestNotificationPermissionForTaskStart();
 			for (const task of pendingStarts) {
 				void kickoffTaskInProgress(task, task.id, "backlog");
 			}
 		},
-		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, setBoard],
+		[board, kickoffTaskInProgress, setBoard],
 	);
 
 	const handleDetailTaskDragEnd = useCallback(
