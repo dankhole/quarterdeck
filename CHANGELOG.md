@@ -2,6 +2,10 @@
 
 ## [0.3.1]
 
+### Windows runtime compatibility
+
+- Fixed 7 runtime code paths that would crash or silently fail on Windows — `/dev/null` in git diff, `isProcessAlive` liveness check, unsupported signal registration (SIGHUP/SIGQUIT), symlinks requiring admin privileges (now uses junctions for directories), chmod no-op, case-sensitive lock ordering on case-insensitive filesystem, and Unix tilde in display paths.
+
 ### Diff sidebar indicator
 
 - Blue dot on the Changes sidebar icon when a task's branch has unmerged changes relative to its base ref — content-based comparison resilient to squash merges. Red dot (uncommitted changes) takes priority. Configurable via a new setting toggle.

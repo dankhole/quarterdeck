@@ -30,7 +30,7 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Trashes",
 ]);
 
-type CreateSymlink = (target: string, path: string, type: "dir" | "file") => Promise<void>;
+type CreateSymlink = (target: string, path: string, type: "dir" | "file" | "junction") => Promise<void>;
 
 export async function mirrorIgnoredPath(options: {
 	sourcePath: string;
@@ -40,7 +40,9 @@ export async function mirrorIgnoredPath(options: {
 }): Promise<"mirrored" | "skipped"> {
 	const createSymlink = options.createSymlink ?? symlink;
 	try {
-		await createSymlink(options.sourcePath, options.targetPath, options.isDirectory ? "dir" : "file");
+		// On Windows, use junctions for directories — they don't require admin/Developer Mode.
+		const symlinkType = options.isDirectory ? (process.platform === "win32" ? "junction" : "dir") : "file";
+		await createSymlink(options.sourcePath, options.targetPath, symlinkType);
 		return "mirrored";
 	} catch {
 		return "skipped";
@@ -206,7 +208,7 @@ export async function captureTaskPatch(options: {
 	for (const relativePath of await listUntrackedPaths(options.worktreePath)) {
 		const untrackedResult = await runGit(
 			options.worktreePath,
-			["diff", "--binary", "--no-index", "--", "/dev/null", relativePath],
+			["diff", "--binary", "--no-index", "--", process.platform === "win32" ? "NUL" : "/dev/null", relativePath],
 			{ trimStdout: false },
 		);
 		if (!untrackedResult.ok && untrackedResult.exitCode !== 1) {

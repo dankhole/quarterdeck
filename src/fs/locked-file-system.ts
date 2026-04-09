@@ -97,9 +97,12 @@ export class LockedFileSystem {
 		const normalizedRequests = await Promise.all(
 			requests.map(async (request) => await this.normalizeLockRequest(request)),
 		);
-		const orderedRequests = normalizedRequests
-			.slice()
-			.sort((left, right) => left.sortKey.localeCompare(right.sortKey));
+		const caseInsensitive = process.platform === "win32";
+		const orderedRequests = normalizedRequests.slice().sort((left, right) => {
+			const l = caseInsensitive ? left.sortKey.toLowerCase() : left.sortKey;
+			const r = caseInsensitive ? right.sortKey.toLowerCase() : right.sortKey;
+			return l.localeCompare(r);
+		});
 		const releases: Array<() => Promise<void>> = [];
 		try {
 			for (const request of orderedRequests) {
@@ -124,7 +127,7 @@ export class LockedFileSystem {
 		const writeOperation = async () => {
 			const existingContent = await readFileIfExists(path);
 			if (existingContent === content) {
-				if (options.executable) {
+				if (options.executable && process.platform !== "win32") {
 					await chmod(path, 0o755);
 				}
 				return;
@@ -133,7 +136,7 @@ export class LockedFileSystem {
 			const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
 			await writeFile(tempPath, content, "utf8");
 			await rename(tempPath, path);
-			if (options.executable) {
+			if (options.executable && process.platform !== "win32") {
 				await chmod(path, 0o755);
 			}
 		};
