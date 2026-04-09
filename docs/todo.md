@@ -150,50 +150,46 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 
 The reset session button on task cards doesn't work correctly when clicked. The ~1s appearance delay was already fixed (`BoardCard` gates `isSessionRestartable` behind a timer), but the actual restart action still needs investigation — clicking it doesn't successfully restart the agent session.
 
-## 16. ~~Diff sidebar notification for unmerged branch changes~~ (Done)
-
-Implemented as a blue dot on the Changes sidebar icon. Uses `git diff --quiet baseRef HEAD` (content-based comparison, resilient to squash merges) polled via the existing workspace metadata monitor. Red dot (uncommitted changes) takes priority over blue dot (unmerged branch changes).
-
-## 17. Archive remaining docs
+## 16. Archive remaining docs
 
 Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
 
-## 18. Fix: audible notification double-beep and missed cues
+## 17. Fix: audible notification double-beep and missed cues
 
 Two related bugs with the notification audio system:
 - Sometimes getting a double beep when only one should fire
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 19. Add markdown renderer
+## 18. Add markdown renderer
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 20. Fix: project view task state indicators not staying up to date
+## 19. Fix: project view task state indicators not staying up to date
 
 The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
 
-## 21. Cherry-pick / land individual commits onto main from the UI
+## 20. Cherry-pick / land individual commits onto main from the UI
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
 This is distinct from #6 (committing *within* the task worktree) and #11 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 22. Notification badges on project sidebar for cross-project alerts
+## 21. Notification badges on project sidebar for cross-project alerts
 
 Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #8 (project switcher) and should ship independently without requiring the full project panel redesign.
 
-## 23. Upstream sync: check kanban project for cherry-pickable fixes
+## 22. Upstream sync: check kanban project for cherry-pickable fixes
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
 
-## 24. Investigate git polling efficiency
+## 23. Investigate git polling efficiency
 
 The `WorkspaceMetadataMonitor` polls git state every 1 second for the home repo and every active task worktree with no concurrency limiting. At 10 concurrent tasks this means 20-34 git child processes spawned per tick, all hitting the shared `.git` object store via unbounded `Promise.all`. Investigate and implement efficiency improvements — concurrency limiting, adaptive intervals, slower polling for non-visible tasks, etc.
 
-Research and analysis at [docs/research/2026-04-08-git-polling-architecture.md](research/2026-04-08-git-polling-architecture.md). Related to #10 (performance audit for concurrent agents).
+Research and analysis at [docs/research/2026-04-08-git-polling-architecture.md](research/2026-04-08-git-polling-architecture.md). Related to #9 (performance audit for concurrent agents).
 
-## 25. Unify config save dual path (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`)
+## 24. Unify config save dual path (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`)
 
 `src/config/runtime-config.ts` has two near-identical ~80-line functions for saving settings — one for the workspace-scoped path and one for the global/onboarding path. Every new setting must be added to four parallel sites in each function (eight total), which has already caused a bug where a semicolon replaced `||` and silently broke persistence for most settings on the global path.
 
@@ -201,8 +197,8 @@ Extract shared logic into a single internal `applyConfigUpdates` function that b
 
 Research and analysis at [docs/research/2026-04-09-config-save-dual-path.md](research/2026-04-09-config-save-dual-path.md).
 
-## 26. Single source of truth for config defaults
+## 25. Single source of truth for config defaults
 
 Setting defaults are duplicated across the server (`DEFAULT_*` constants in `runtime-config.ts`), frontend `useState()` initial values, `?? fallback` coalescing in App.tsx and the settings dialog, and test fixture factories. Every new setting requires copying the default to 4-5 locations, and a mismatch means the UI shows one value before the server config loads then snaps to another.
 
-Add a shared `config-defaults.ts` in `src/core/` (already shared between server and frontend via the API contract) that exports a single defaults object. All `useState()` calls, `??` fallbacks, and test factories import from it. Related to #25 (config save dual path).
+Add a shared `config-defaults.ts` in `src/core/` (already shared between server and frontend via the API contract) that exports a single defaults object. All `useState()` calls, `??` fallbacks, and test factories import from it. Related to #24 (config save dual path).
