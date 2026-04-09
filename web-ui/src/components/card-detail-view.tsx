@@ -162,9 +162,11 @@ function DiffToolbar({
 function FileBrowserToolbar({
 	isExpanded,
 	onToggleExpand,
+	showExpandButton = true,
 }: {
 	isExpanded: boolean;
 	onToggleExpand: () => void;
+	showExpandButton?: boolean;
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1 border-b border-border">
@@ -172,14 +174,16 @@ function FileBrowserToolbar({
 				<FolderOpen size={14} />
 				<span>Files</span>
 			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-				onClick={onToggleExpand}
-				className="ml-auto h-5"
-				aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
-			/>
+			{showExpandButton ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+					onClick={onToggleExpand}
+					className="ml-auto h-5"
+					aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -665,6 +669,7 @@ export function CardDetailView({
 								<FileBrowserToolbar
 									isExpanded={isFileBrowserExpanded}
 									onToggleExpand={handleToggleFileBrowserExpand}
+									showExpandButton={fileBrowserSelectedPath !== null}
 								/>
 								{fileBrowserContent}
 							</>
