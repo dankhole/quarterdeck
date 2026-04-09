@@ -2,6 +2,10 @@
 
 ## [0.3.1]
 
+### Diff sidebar indicator
+
+- Blue dot on the Changes sidebar icon when a task's branch has unmerged changes relative to its base ref — content-based comparison resilient to squash merges. Red dot (uncommitted changes) takes priority. Configurable via a new setting toggle.
+
 ### Notification simplification
 
 - Removed OS browser notifications — the audible cue system and tab title badge `(N)` are sufficient. The "Notifications" settings section is gone.
