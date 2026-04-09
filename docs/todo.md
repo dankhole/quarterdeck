@@ -1,59 +1,33 @@
 # Dev Todo
 
-## 1. Investigate auto-trashing of tasks on restart
+Ordered hardest-first so easy items at the bottom are less likely to cause merge conflicts.
 
-When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
+## 1. Rewrite backend in Go
 
-If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #9 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
+Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
 
-## 2. Publish to npm
+**Motivation**:
+- Go's goroutine model is a natural fit for the core workload: process orchestration, concurrent file I/O, and WebSocket streaming
+- Single static binary simplifies distribution (no Node.js runtime dependency)
+- Better resource usage under high concurrency (10+ agents)
 
-Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
+**Approach**:
+- The frontend (React/Vite) stays as-is — only the backend changes
+- Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
+- Replace node-pty with Go PTY libraries (`creack/pty`)
+- Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
+- Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
+- The research doc is organized module-by-module to support incremental porting
 
-## 3. Audit CI/CD and deployment infrastructure
+## 2. Resume card sessions after crash/closure
 
-Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
+When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
+- Investigate why the agent session doesn't reconnect after restart
+- Ensure the correct worktree is switched to when resuming a card
+- Resume or re-attach to the Claude conversation so the agent can continue where it left off
+- Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
 
-## 4. Interactive base ref switcher
-
-The diff toolbar shows the branch comparison (e.g. `feat/my-feature → main`) as a static label. Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
-
-Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
-
-## 5. Server-side commit in the diff viewer
-
-Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
-
-- **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
-- **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
-- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
-- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#10), which would also support committing.
-
-## 7. Pulse integration for enhanced status display (Nerd Fonts)
-
-Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
-
-**Investigation needed**:
-- How Pulse works: is it a binary Quarterdeck shells out to, a library, or something that wraps the agent process?
-- Where it would integrate: per-agent terminal status lines, a global Quarterdeck status bar, board card indicators, or some combination
-- How to detect Nerd Fonts availability at runtime
-
-**Requirements**:
-- Auto-detect Nerd Fonts — if present, use Pulse-enhanced status display; if not, fall back to the current plain text display
-- Should be seamless — no user configuration required beyond having Nerd Fonts installed
-- Pulse is a tool made by a coworker, so coordinate with them on the integration surface
-
-## 8. Project switcher in the detail toolbar
-
-Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
-
-**Notification badges on projects**:
-- **Orange badge (always on)**: Show when any task in that project is waiting for permissions — this is always important to surface.
-- **Review badge (configurable per project)**: Optionally show when tasks are awaiting review. This is useful when actively working on multiple projects but noisy when a project is idle. Add a per-project toggle in the project panel to enable/disable review notifications.
-
-**Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
-
-## 9. Performance audit for concurrent agents
+## 3. Performance audit for concurrent agents
 
 Audit and address performance bottlenecks that emerge when running many agents simultaneously. An earlier analysis exists at [docs/performance-bottleneck-analysis.md](performance-bottleneck-analysis.md) but is likely out of date — use it as a starting point, not a source of truth. Key areas to re-evaluate:
 
@@ -64,15 +38,7 @@ Audit and address performance bottlenecks that emerge when running many agents s
 - Large diffs cause noticeable UI lag — full file text (old + new) is sent inline and diff computation happens client-side, so tasks with many changed files or large files bog down the browser
 - Profile real-world usage with 5–10 concurrent agents to identify any new bottlenecks introduced since the earlier analysis
 
-## 10. Resume card sessions after crash/closure
-
-When Quarterdeck crashes or is closed and reopened, clicking on existing cards no longer works — the Claude Code chat is unresponsive/broken. Need to:
-- Investigate why the agent session doesn't reconnect after restart
-- Ensure the correct worktree is switched to when resuming a card
-- Resume or re-attach to the Claude conversation so the agent can continue where it left off
-- Handle gracefully: if the old session can't be resumed, offer to start a fresh session in the same worktree/branch context
-
-## 11. Git management / workspace view
+## 4. Git management / workspace view
 
 A new detail sidebar panel for managing the main repository's state — branch switching, pulling, merging, and diffing branches. This view is not tied to any task; it operates on whatever is checked out in the main repo. The sidebar decoupling is now complete, enabling this work.
 
@@ -100,7 +66,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
 
-## 12. Investigate and fix orphaned processes
+## 5. Investigate and fix orphaned processes
 
 Runtime servers and hook ingest processes can get orphaned when their parent process (Cline, a terminal, etc.) exits without signaling shutdown. Observed in the wild: 4 zombie processes running for days, consuming CPU, and resisting SIGTERM (required SIGKILL).
 
@@ -111,69 +77,62 @@ Three issues to address:
 
 Investigation doc at [docs/research/2026-04-08-orphaned-process-investigation.md](research/2026-04-08-orphaned-process-investigation.md).
 
-## 13. Rewrite backend in Go
+## 6. Project switcher in the detail toolbar
 
-Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
+Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
 
-**Motivation**:
-- Go's goroutine model is a natural fit for the core workload: process orchestration, concurrent file I/O, and WebSocket streaming
-- Single static binary simplifies distribution (no Node.js runtime dependency)
-- Better resource usage under high concurrency (10+ agents)
+**Notification badges on projects**:
+- **Orange badge (always on)**: Show when any task in that project is waiting for permissions — this is always important to surface.
+- **Review badge (configurable per project)**: Optionally show when tasks are awaiting review. This is useful when actively working on multiple projects but noisy when a project is idle. Add a per-project toggle in the project panel to enable/disable review notifications.
 
-**Approach**:
-- The frontend (React/Vite) stays as-is — only the backend changes
-- Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
-- Replace node-pty with Go PTY libraries (`creack/pty`)
-- Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
-- Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
-- The research doc is organized module-by-module to support incremental porting
+**Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
 
-## 14. Archive remaining docs
+## 7. Pulse integration for enhanced status display (Nerd Fonts)
 
-Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
+Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
 
-## 15. Fix: audible notification double-beep and missed cues
+**Investigation needed**:
+- How Pulse works: is it a binary Quarterdeck shells out to, a library, or something that wraps the agent process?
+- Where it would integrate: per-agent terminal status lines, a global Quarterdeck status bar, board card indicators, or some combination
+- How to detect Nerd Fonts availability at runtime
 
-Two related bugs with the notification audio system:
-- Sometimes getting a double beep when only one should fire
-- Sometimes getting 1 beep when 2 separate events should produce 2 beeps
-- The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
+**Requirements**:
+- Auto-detect Nerd Fonts — if present, use Pulse-enhanced status display; if not, fall back to the current plain text display
+- Should be seamless — no user configuration required beyond having Nerd Fonts installed
+- Pulse is a tool made by a coworker, so coordinate with them on the integration surface
 
-## 16. Add markdown renderer
-
-Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
-
-## 17. Fix: project view task state indicators not staying up to date
-
-The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
-
-## 18. Cherry-pick / land individual commits onto main from the UI
+## 8. Cherry-pick / land individual commits onto main from the UI
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
-This is distinct from #5 (committing *within* the task worktree) and #10 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
+This is distinct from #15 (committing *within* the task worktree) and #4 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 19. Notification badges on project sidebar for cross-project alerts
-
-Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #7 (project switcher) and should ship independently without requiring the full project panel redesign.
-
-## 20. Upstream sync: check kanban project for cherry-pickable fixes
+## 9. Upstream sync: check kanban project for cherry-pickable fixes
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
 
-## 21. ~~Investigate git polling efficiency~~ (Done)
+## 10. Audit CI/CD and deployment infrastructure
 
-Split into three independent timers (focused task 2s, background tasks 5s, home repo 10s) with `p-limit(3)` concurrency cap, mtime-based caching for untracked file line counts, and backpressure guards. All intervals configurable in Settings.
+Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
-## 22. ~~Unify config save dual path~~ (Done)
+## 11. Investigate auto-trashing of tasks on restart
 
-Extracted shared `applyConfigUpdates` function in `src/config/runtime-config.ts`. Both `updateRuntimeConfig` and `updateGlobalRuntimeConfig` are now thin wrappers. New settings require edits in one place instead of eight.
+When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
 
-## 23. ~~Single source of truth for config defaults~~ (Done)
+If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #2 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
 
-Created `src/config/config-defaults.ts` with all `DEFAULT_*` constants and a `CONFIG_DEFAULTS` convenience object. Frontend imports via `@runtime-config-defaults` path alias. All `useState()` calls, `??` fallbacks, and test factories use the shared source. Also fixed the duplicated commit prompt template in `DEFAULT_PROMPT_SHORTCUTS`.
+## 12. Investigate un-trash / restart paths for non-isolated worktrees
 
-## 24. Deep dead code audit and cleanup
+Investigate what happens on the un-trash and session restart code paths for tasks that are **not** using isolated git worktrees. Specifically:
+
+- How does branch resume work when there's no dedicated worktree to switch back to?
+- Does un-trashing a non-worktree task correctly restore the branch context, or does it leave the task in a broken state?
+- Does the restart/reset session button handle non-worktree tasks, or does it assume a worktree exists?
+- What git state is cleaned up on trash for non-worktree tasks vs worktree tasks, and can that be reversed on un-trash?
+
+This is about ensuring the full trash → un-trash → resume cycle works for both execution modes, not just isolated worktrees.
+
+## 13. Deep dead code audit and cleanup
 
 Audit the entire codebase (both `src/` runtime and `web-ui/src/` frontend) for dead code and remove it. Areas to check:
 
@@ -185,37 +144,69 @@ Audit the entire codebase (both `src/` runtime and `web-ui/src/` frontend) for d
 - **Dead CLI paths**: Commands or subcommands registered in Commander that are unreachable
 - **Leftover upstream code**: Code inherited from the kanban fork that was superseded but never removed
 
-## 25. Investigate exactly what trashing and hard deleting a task does
+## 14. Publish to npm
 
-Document the full code path for both trash and hard delete. What board state changes? What git operations happen (worktree removal, branch deletion, patch capture)? What about sessions — are they killed, and is any state preserved? Does auto-trash on restart (#1) follow the same path as manual trash? Build a clear picture of the current behavior before deciding what should change.
+Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 26. Investigate un-trash / restart paths for non-isolated worktrees
+## 15. Server-side commit in the diff viewer
 
-Investigate what happens on the un-trash and session restart code paths for tasks that are **not** using isolated git worktrees. Specifically:
+Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
 
-- How does branch resume work when there's no dedicated worktree to switch back to?
-- Does un-trashing a non-worktree task correctly restore the branch context, or does it leave the task in a broken state?
-- Does the restart/reset session button handle non-worktree tasks, or does it assume a worktree exists?
-- What git state is cleaned up on trash for non-worktree tasks vs worktree tasks, and can that be reversed on un-trash?
+- **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
+- **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
+- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
+- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#4), which would also support committing.
 
-This is about ensuring the full trash → un-trash → resume cycle works for both execution modes, not just isolated worktrees.
+## 16. Interactive base ref switcher
 
-## 27. Fix: task card stuck in "waiting for approval" UI state
+The diff toolbar shows the branch comparison (e.g. `feat/my-feature → main`) as a static label. Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
 
-Task cards sometimes get stuck showing the "waiting for approval" state even after the approval prompt has been dismissed or the agent has resumed working. The UI doesn't clear the permission-waiting indicator reliably. Investigate whether the issue is a missed WebSocket event, a stale frontend state, or the hook/agent not emitting the expected state transition back to `in_progress`.
+Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
 
-## 28. Individual un-trash and hard delete buttons per card
+## 17. Notification badges on project sidebar for cross-project alerts
+
+Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #6 (project switcher) and should ship independently without requiring the full project panel redesign.
+
+## 18. Individual un-trash and hard delete buttons per card
 
 Currently trash operations are bulk (clear all trash). Add per-card actions for trashed tasks: an un-trash button to restore a card back to its previous column, and a hard delete button to permanently remove a single card. These should be accessible from the card's context menu or as inline buttons when viewing the trash column.
 
-## 29. Reorder settings menu
+## 19. Investigate exactly what trashing and hard deleting a task does
+
+Document the full code path for both trash and hard delete. What board state changes? What git operations happen (worktree removal, branch deletion, patch capture)? What about sessions — are they killed, and is any state preserved? Does auto-trash on restart (#11) follow the same path as manual trash? Build a clear picture of the current behavior before deciding what should change.
+
+## 20. Fix: task card stuck in "waiting for approval" UI state
+
+Task cards sometimes get stuck showing the "waiting for approval" state even after the approval prompt has been dismissed or the agent has resumed working. The UI doesn't clear the permission-waiting indicator reliably. Investigate whether the issue is a missed WebSocket event, a stale frontend state, or the hook/agent not emitting the expected state transition back to `in_progress`.
+
+## 21. Fix: notification beep count wrong for rapid state transitions
+
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #22 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+
+## 22. Fix: audible notification double-beep and missed cues
+
+Two related bugs with the notification audio system:
+- Sometimes getting a double beep when only one should fire
+- Sometimes getting 1 beep when 2 separate events should produce 2 beeps
+- The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
+
+## 23. Fix: project view task state indicators not staying up to date
+
+The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
+
+## 24. Add markdown renderer
+
+Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
+
+## 25. Add close button to file viewer
+
+The file browser content panel has no way to close/deselect the currently open file. Add a close button (X) to the file viewer header so users can dismiss the file preview and return to the file tree without a selected file.
+
+## 26. Reorder settings menu
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 30. Fix: notification beep count wrong for rapid state transitions
+## 27. Archive remaining docs
 
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #15 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
 
-## 31. Add close button to file viewer
-
-The file browser content panel has no way to close/deselect the currently open file. Add a close button (X) to the file viewer header so users can dismiss the file preview and return to the file tree without a selected file.
