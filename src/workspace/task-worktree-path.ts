@@ -39,5 +39,5 @@ export function getWorkspaceFolderLabelForWorktreePath(repoPath: string): string
 export function buildTaskWorktreeDisplayPath(taskId: string, repoPath: string): string {
 	const normalizedTaskId = normalizeTaskIdForWorktreePath(taskId);
 	const workspaceLabel = getWorkspaceFolderLabelForWorktreePath(repoPath);
-	return `${QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT}/${normalizedTaskId}/${workspaceLabel}`;
+	return join(QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT, normalizedTaskId, workspaceLabel);
 }
