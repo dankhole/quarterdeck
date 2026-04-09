@@ -507,12 +507,13 @@ export function TaskCreateDialog({
 						Start in plan mode
 					</label>
 
-					<div>
+					<div className={!useWorktree ? "opacity-40" : undefined}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 						<BranchSelectDropdown
 							options={branchOptions}
 							selectedValue={branchRef}
 							onSelect={onBranchRefChange}
+							disabled={!useWorktree}
 							fill
 							size="sm"
 							emptyText="No branches detected"
