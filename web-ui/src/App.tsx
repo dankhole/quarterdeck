@@ -1,10 +1,11 @@
 // Main React composition root for the browser app.
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
+
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
@@ -206,12 +207,14 @@ export default function App(): ReactElement {
 	const isLlmGenerationDisabled = !llmConfigured;
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
 		currentProjectId,
-		runtimeProjectConfig?.autoGenerateSummary ?? false,
-		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
+		runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
+		runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 		llmConfigured,
 	);
-	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
-	const unmergedChangesIndicatorEnabled = runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? false;
+	const showTrashWorktreeNotice =
+		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
+	const unmergedChangesIndicatorEnabled =
+		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
 			refreshRuntimeProjectConfig();
@@ -343,15 +346,14 @@ export default function App(): ReactElement {
 	// Known limitation: notification settings are read from the currently viewed project's config,
 	// so toggling notifications off in one project silences all cross-workspace notifications.
 	// Per-workspace notification settings are out of scope for now.
-	const audibleNotificationsEnabled = runtimeProjectConfig?.audibleNotificationsEnabled ?? true;
-	const audibleNotificationVolume = runtimeProjectConfig?.audibleNotificationVolume ?? 0.7;
-	const audibleNotificationEvents = runtimeProjectConfig?.audibleNotificationEvents ?? {
-		permission: true,
-		review: true,
-		failure: true,
-		completion: true,
-	};
-	const audibleNotificationsOnlyWhenHidden = runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? true;
+	const audibleNotificationsEnabled =
+		runtimeProjectConfig?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
+	const audibleNotificationVolume =
+		runtimeProjectConfig?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
+	const audibleNotificationEvents =
+		runtimeProjectConfig?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
+	const audibleNotificationsOnlyWhenHidden =
+		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
 
 	useAudibleNotifications({
 		notificationSessions,
@@ -525,7 +527,7 @@ export default function App(): ReactElement {
 		selectedCard,
 		workspaceGit,
 		agentCommand,
-		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? true,
+		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		findCard: findCardStable,
 		upsertSession,
 		sendTaskSessionInput,
@@ -1019,7 +1021,7 @@ export default function App(): ReactElement {
 			moveToTrashLoadingById: moveToTrashLoadingById ?? {},
 			migratingTaskId: migratingTaskId ?? null,
 			isLlmGenerationDisabled,
-			showSummaryOnCards: runtimeProjectConfig?.showSummaryOnCards ?? false,
+			showSummaryOnCards: runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 		}),
 		[moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, runtimeProjectConfig?.showSummaryOnCards],
 	);

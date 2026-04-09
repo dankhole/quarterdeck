@@ -189,16 +189,10 @@ The `WorkspaceMetadataMonitor` polls git state every 1 second for the home repo 
 
 Research and analysis at [docs/research/2026-04-08-git-polling-architecture.md](research/2026-04-08-git-polling-architecture.md). Related to #9 (performance audit for concurrent agents).
 
-## 24. Unify config save dual path (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`)
+## 24. ~~Unify config save dual path~~ (Done)
 
-`src/config/runtime-config.ts` has two near-identical ~80-line functions for saving settings — one for the workspace-scoped path and one for the global/onboarding path. Every new setting must be added to four parallel sites in each function (eight total), which has already caused a bug where a semicolon replaced `||` and silently broke persistence for most settings on the global path.
+Extracted shared `applyConfigUpdates` function in `src/config/runtime-config.ts`. Both `updateRuntimeConfig` and `updateGlobalRuntimeConfig` are now thin wrappers. New settings require edits in one place instead of eight.
 
-Extract shared logic into a single internal `applyConfigUpdates` function that both paths call. The only real differences are how `current` config is obtained, whether project config is written, and lock scope.
+## 25. ~~Single source of truth for config defaults~~ (Done)
 
-Research and analysis at [docs/research/2026-04-09-config-save-dual-path.md](research/2026-04-09-config-save-dual-path.md).
-
-## 25. Single source of truth for config defaults
-
-Setting defaults are duplicated across the server (`DEFAULT_*` constants in `runtime-config.ts`), frontend `useState()` initial values, `?? fallback` coalescing in App.tsx and the settings dialog, and test fixture factories. Every new setting requires copying the default to 4-5 locations, and a mismatch means the UI shows one value before the server config loads then snaps to another.
-
-Add a shared `config-defaults.ts` in `src/core/` (already shared between server and frontend via the API contract) that exports a single defaults object. All `useState()` calls, `??` fallbacks, and test factories import from it. Related to #24 (config save dual path).
+Created `src/config/config-defaults.ts` with all `DEFAULT_*` constants and a `CONFIG_DEFAULTS` convenience object. Frontend imports via `@runtime-config-defaults` path alias. All `useState()` calls, `??` fallbacks, and test factories use the shared source. Also fixed the duplicated commit prompt template in `DEFAULT_PROMPT_SHORTCUTS`.

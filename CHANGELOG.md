@@ -2,6 +2,13 @@
 
 ## [0.3.1]
 
+### Config defaults and save path unification
+
+- Extracted all runtime config defaults into a shared `config-defaults.ts` — server, frontend, and test factories now import from one source. Adding a new setting no longer requires copying the default value to 4-5 locations.
+- Unified the two near-identical config save functions (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`) into a single `applyConfigUpdates` internal function, eliminating the 8-edit-per-setting maintenance burden that had already caused a silent persistence bug.
+- Fixed duplicated commit prompt template string in `DEFAULT_PROMPT_SHORTCUTS`.
+- Fixed: autonomous mode initial state in settings dialog now matches server default (disabled by default).
+
 ### Windows runtime compatibility
 
 - Fixed 7 runtime code paths that would crash or silently fail on Windows — `/dev/null` in git diff, `isProcessAlive` liveness check, unsupported signal registration (SIGHUP/SIGQUIT), symlinks requiring admin privileges (now uses junctions for directories), chmod no-op, case-sensitive lock ordering on case-insensitive filesystem, and Unix tilde in display paths.

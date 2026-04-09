@@ -1,3 +1,4 @@
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { RuntimeAgentDefinition, RuntimeConfigResponse } from "@/runtime/types";
 
 // Hardcoded test labels/binaries so the factory doesn't import @runtime-agent-catalog,
@@ -25,21 +26,21 @@ export function createTestAgentDef(
 }
 
 const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
-	selectedAgentId: "claude",
+	selectedAgentId: CONFIG_DEFAULTS.selectedAgentId,
 	selectedShortcutLabel: null,
-	agentAutonomousModeEnabled: true,
+	agentAutonomousModeEnabled: CONFIG_DEFAULTS.agentAutonomousModeEnabled,
 	debugModeEnabled: false,
 	effectiveCommand: "claude",
 	globalConfigPath: "/tmp/global-config.json",
 	projectConfigPath: "/tmp/project/.quarterdeck/config.json",
-	readyForReviewNotificationsEnabled: true,
-	shellAutoRestartEnabled: true,
-	showTrashWorktreeNotice: true,
-	unmergedChangesIndicatorEnabled: false,
-	audibleNotificationsEnabled: true,
-	audibleNotificationVolume: 0.7,
-	audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
-	audibleNotificationsOnlyWhenHidden: true,
+	readyForReviewNotificationsEnabled: CONFIG_DEFAULTS.readyForReviewNotificationsEnabled,
+	shellAutoRestartEnabled: CONFIG_DEFAULTS.shellAutoRestartEnabled,
+	showTrashWorktreeNotice: CONFIG_DEFAULTS.showTrashWorktreeNotice,
+	unmergedChangesIndicatorEnabled: CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
+	audibleNotificationsEnabled: CONFIG_DEFAULTS.audibleNotificationsEnabled,
+	audibleNotificationVolume: CONFIG_DEFAULTS.audibleNotificationVolume,
+	audibleNotificationEvents: { ...CONFIG_DEFAULTS.audibleNotificationEvents },
+	audibleNotificationsOnlyWhenHidden: CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
 	commitPromptTemplate: "",
 	openPrPromptTemplate: "",
 	commitPromptTemplateDefault: "",
@@ -48,9 +49,9 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	detectedCommands: ["claude"],
 	agents: [createTestAgentDef("claude"), createTestAgentDef("codex")],
 	shortcuts: [],
-	showSummaryOnCards: false,
-	autoGenerateSummary: false,
-	summaryStaleAfterSeconds: 300,
+	showSummaryOnCards: CONFIG_DEFAULTS.showSummaryOnCards,
+	autoGenerateSummary: CONFIG_DEFAULTS.autoGenerateSummary,
+	summaryStaleAfterSeconds: CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 	llmConfigured: false,
 };
 
