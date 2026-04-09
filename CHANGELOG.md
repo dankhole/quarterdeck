@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.1]
+
+### Notification simplification
+
+- Removed OS browser notifications — the audible cue system and tab title badge `(N)` are sufficient. The "Notifications" settings section is gone.
+
+### LLM rate limiting
+
+- Background LLM calls (auto-generated titles, branch names, summaries) are now rate-limited at 5 concurrent / 20 per minute to prevent runaway API costs from bugs or rapid state transitions.
+
+### File browser improvements
+
+- File browser expand/collapse state and file selection now persist when toggling between the sidebar panel and the full-size view.
+- The expand button is hidden when no file is selected.
+- Removed redundant X buttons from the expanded diff and file browser toolbars — they duplicated the collapse button with a misleading icon.
+
+### Other changes
+
+- Added a beta notice card at the bottom of the project sidebar with a "Report issue" link. Removed the dead Featurebase feedback widget.
+- The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
+- The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
+
 ## [0.3.0]
 
 ### Always-visible sidebar
