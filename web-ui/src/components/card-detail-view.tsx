@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -109,6 +109,16 @@ function DiffToolbar({
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
+			{isExpanded ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<X size={14} />}
+					onClick={onToggleExpand}
+					className="h-5"
+					aria-label="Collapse expanded diff view"
+				/>
+			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<Button
 					variant="ghost"
@@ -162,28 +172,34 @@ function DiffToolbar({
 function FileBrowserToolbar({
 	isExpanded,
 	onToggleExpand,
-	showExpandButton = true,
 }: {
 	isExpanded: boolean;
 	onToggleExpand: () => void;
-	showExpandButton?: boolean;
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1 border-b border-border">
+			{isExpanded ? (
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<X size={14} />}
+					onClick={onToggleExpand}
+					className="h-5"
+					aria-label="Collapse expanded file browser"
+				/>
+			) : null}
 			<div className="flex items-center gap-1.5 text-xs text-text-secondary">
 				<FolderOpen size={14} />
 				<span>Files</span>
 			</div>
-			{showExpandButton ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-					onClick={onToggleExpand}
-					className="ml-auto h-5"
-					aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
-				/>
-			) : null}
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+				onClick={onToggleExpand}
+				className="ml-auto h-5"
+				aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
+			/>
 		</div>
 	);
 }
@@ -669,7 +685,6 @@ export function CardDetailView({
 								<FileBrowserToolbar
 									isExpanded={isFileBrowserExpanded}
 									onToggleExpand={handleToggleFileBrowserExpand}
-									showExpandButton={fileBrowserSelectedPath !== null}
 								/>
 								{fileBrowserContent}
 							</>

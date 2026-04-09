@@ -150,11 +150,11 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 - Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
 - The research doc is organized module-by-module to support incremental porting
 
-## 16. Fix: reset session button restart action
+## 16. Fix: reset session button delay and functionality
 
-The reset session button's restart action re-sends the original task prompt instead of resuming the existing conversation. The handler in `use-board-interactions.ts` calls `startTaskSession(selection.card)` which uses `card.prompt` as the kickoff — but for a restart it should pass `{ resumeFromTrash: true }` to send an empty prompt and let the agent resume (or start fresh with `--continue`-style semantics).
-
-The ~1s appearance delay was fixed — `BoardCard` now gates `isSessionRestartable` behind a 1-second timer so the button doesn't flash during transient dead states or hydration.
+The reset session button on task cards pops up too quickly and doesn't actually work when clicked. Two issues:
+- Add a ~1 second delay before the button appears to avoid accidental clicks
+- Investigate and fix whatever is broken in the reset session action itself
 
 ## 17. Diff sidebar notification for unmerged branch changes
 
@@ -185,28 +185,32 @@ When switching from the sidebar file browser to the full-size view (or vice vers
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 23. Fix: project view task state indicators not staying up to date
+## 23. Investigate X button in file browser
+
+The X button in the top-left of the file browser panel — what does it do? If it's unclear or non-functional, either fix it or remove it. If it's a close/dismiss action, make its purpose obvious.
+
+## 24. Fix: project view task state indicators not staying up to date
 
 The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
 
-## 24. Rate limiting and guardrails for automatic LLM calls
+## 25. File viewer: hide pop-out button when no file selected
+
+In the file viewer panel, the file pop-out / open-externally button is visible even when no file is selected. Hide it when there's no active file selection.
+
+## 26. Rate limiting and guardrails for automatic LLM calls
 
 Add careful rate limiting as a guardrail for LLM calls that the user doesn't explicitly trigger — auto-generated titles, branch names, summaries, and other background LLM invocations. These should have sensible per-session and per-minute caps to prevent runaway API costs from bugs or rapid state transitions.
 
-## 25. Bring back beta feedback popup
-
-Re-add the floating feedback widget (previously removed during the rename/rebrand) as a small corner popup. This gives users a low-friction way to report issues or share feedback without navigating to GitHub.
-
-## 26. Cherry-pick / land individual commits onto main from the UI
+## 27. Cherry-pick / land individual commits onto main from the UI
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
 This is distinct from #7 (committing *within* the task worktree) and #12 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 27. Notification badges on project sidebar for cross-project alerts
+## 28. Notification badges on project sidebar for cross-project alerts
 
 Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #9 (project switcher) and should ship independently without requiring the full project panel redesign.
 
-## 28. Upstream sync: check kanban project for cherry-pickable fixes
+## 29. Upstream sync: check kanban project for cherry-pickable fixes
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
