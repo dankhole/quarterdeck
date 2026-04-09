@@ -210,6 +210,7 @@ export default function App(): ReactElement {
 		llmConfigured,
 	);
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
+	const unmergedChangesIndicatorEnabled = runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? false;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
 			refreshRuntimeProjectConfig();
@@ -1071,6 +1072,11 @@ export default function App(): ReactElement {
 							hasSelectedTask={selectedCard !== null}
 							hasUncommittedChanges={
 								selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
+							}
+							hasUnmergedChanges={
+								unmergedChangesIndicatorEnabled && selectedCard
+									? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
+									: false
 							}
 						/>
 

@@ -29,6 +29,7 @@ export async function saveRuntimeConfig(
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
+		unmergedChangesIndicatorEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;

@@ -59,6 +59,7 @@ export interface ReviewTaskWorkspaceSnapshot {
 	changedFiles: number | null;
 	additions: number | null;
 	deletions: number | null;
+	hasUnmergedChanges: boolean | null;
 }
 
 export interface CardSelection {

@@ -29,6 +29,7 @@ interface RuntimeGlobalConfigFileShape {
 	autoGenerateSummary?: boolean;
 	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
+	unmergedChangesIndicatorEnabled?: boolean;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 	audibleNotificationsEnabled?: boolean;
@@ -60,6 +61,7 @@ export interface RuntimeConfigState {
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
+	unmergedChangesIndicatorEnabled: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
@@ -82,6 +84,7 @@ export interface RuntimeConfigUpdateInput {
 	autoGenerateSummary?: boolean;
 	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
+	unmergedChangesIndicatorEnabled?: boolean;
 	audibleNotificationsEnabled?: boolean;
 	audibleNotificationVolume?: number;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
@@ -104,6 +107,7 @@ const DEFAULT_SHOW_SUMMARY_ON_CARDS = false;
 const DEFAULT_AUTO_GENERATE_SUMMARY = false;
 const DEFAULT_SUMMARY_STALE_AFTER_SECONDS = 300;
 const DEFAULT_SHOW_TRASH_WORKTREE_NOTICE = true;
+const DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED = false;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
 
 First, check your current git state: run \`git status\` and \`git branch --show-current\`.
@@ -159,6 +163,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	autoGenerateSummary: DEFAULT_AUTO_GENERATE_SUMMARY,
 	summaryStaleAfterSeconds: DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
 	showTrashWorktreeNotice: DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
+	unmergedChangesIndicatorEnabled: DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
 	audibleNotificationsEnabled: DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
 	audibleNotificationVolume: DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
@@ -423,6 +428,10 @@ function toRuntimeConfigState({
 			globalConfig?.showTrashWorktreeNotice,
 			DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
 		),
+		unmergedChangesIndicatorEnabled: normalizeBoolean(
+			globalConfig?.unmergedChangesIndicatorEnabled,
+			DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+		),
 		audibleNotificationsEnabled: normalizeBoolean(
 			globalConfig?.audibleNotificationsEnabled,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
@@ -470,6 +479,7 @@ async function writeRuntimeGlobalConfigFile(
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
+		unmergedChangesIndicatorEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
@@ -516,6 +526,10 @@ async function writeRuntimeGlobalConfigFile(
 		config.showTrashWorktreeNotice === undefined
 			? DEFAULT_SHOW_TRASH_WORKTREE_NOTICE
 			: normalizeBoolean(config.showTrashWorktreeNotice, DEFAULT_SHOW_TRASH_WORKTREE_NOTICE);
+	const unmergedChangesIndicatorEnabled =
+		config.unmergedChangesIndicatorEnabled === undefined
+			? DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED
+			: normalizeBoolean(config.unmergedChangesIndicatorEnabled, DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED);
 	const commitPromptTemplate =
 		config.commitPromptTemplate === undefined
 			? DEFAULT_COMMIT_PROMPT_TEMPLATE
@@ -580,6 +594,12 @@ async function writeRuntimeGlobalConfigFile(
 		showTrashWorktreeNotice !== DEFAULT_SHOW_TRASH_WORKTREE_NOTICE
 	) {
 		payload.showTrashWorktreeNotice = showTrashWorktreeNotice;
+	}
+	if (
+		hasOwnKey(existing, "unmergedChangesIndicatorEnabled") ||
+		unmergedChangesIndicatorEnabled !== DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED
+	) {
+		payload.unmergedChangesIndicatorEnabled = unmergedChangesIndicatorEnabled;
 	}
 	if (hasOwnKey(existing, "commitPromptTemplate") || commitPromptTemplate !== DEFAULT_COMMIT_PROMPT_TEMPLATE) {
 		payload.commitPromptTemplate = commitPromptTemplate;
@@ -714,6 +734,7 @@ function createRuntimeConfigStateFromValues(input: {
 	autoGenerateSummary: boolean;
 	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
+	unmergedChangesIndicatorEnabled: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
@@ -739,6 +760,10 @@ function createRuntimeConfigStateFromValues(input: {
 		autoGenerateSummary: normalizeBoolean(input.autoGenerateSummary, DEFAULT_AUTO_GENERATE_SUMMARY),
 		summaryStaleAfterSeconds: normalizeNumber(input.summaryStaleAfterSeconds, DEFAULT_SUMMARY_STALE_AFTER_SECONDS),
 		showTrashWorktreeNotice: normalizeBoolean(input.showTrashWorktreeNotice, DEFAULT_SHOW_TRASH_WORKTREE_NOTICE),
+		unmergedChangesIndicatorEnabled: normalizeBoolean(
+			input.unmergedChangesIndicatorEnabled,
+			DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+		),
 		audibleNotificationsEnabled: normalizeBoolean(
 			input.audibleNotificationsEnabled,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
@@ -771,6 +796,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		autoGenerateSummary: current.autoGenerateSummary,
 		summaryStaleAfterSeconds: current.summaryStaleAfterSeconds,
 		showTrashWorktreeNotice: current.showTrashWorktreeNotice,
+		unmergedChangesIndicatorEnabled: current.unmergedChangesIndicatorEnabled,
 		audibleNotificationsEnabled: current.audibleNotificationsEnabled,
 		audibleNotificationVolume: current.audibleNotificationVolume,
 		audibleNotificationEvents: current.audibleNotificationEvents,
@@ -814,6 +840,7 @@ export async function saveRuntimeConfig(
 		autoGenerateSummary: boolean;
 		summaryStaleAfterSeconds: number;
 		showTrashWorktreeNotice: boolean;
+		unmergedChangesIndicatorEnabled: boolean;
 		audibleNotificationsEnabled: boolean;
 		audibleNotificationVolume: number;
 		audibleNotificationEvents: AudibleNotificationEvents;
@@ -835,6 +862,7 @@ export async function saveRuntimeConfig(
 			autoGenerateSummary: config.autoGenerateSummary,
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled: config.unmergedChangesIndicatorEnabled,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
@@ -853,6 +881,7 @@ export async function saveRuntimeConfig(
 			autoGenerateSummary: config.autoGenerateSummary,
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled: config.unmergedChangesIndicatorEnabled,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
@@ -889,6 +918,8 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
 			summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled:
+				updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
 			commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
 			openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 			audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
@@ -900,6 +931,8 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			promptShortcuts: nextPromptShortcuts,
 		};
 
+		// Keep in sync with updateGlobalRuntimeConfig's hasChanges check.
+		// See docs/research/2026-04-09-config-save-dual-path.md for why two paths exist.
 		const hasChanges =
 			nextConfig.selectedAgentId !== current.selectedAgentId ||
 			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
@@ -911,6 +944,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
 			nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
 			nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
+			nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
 			nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 			nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 			nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
@@ -937,6 +971,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			autoGenerateSummary: nextConfig.autoGenerateSummary,
 			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
 			commitPromptTemplate: nextConfig.commitPromptTemplate,
 			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
 			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
@@ -959,6 +994,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 			autoGenerateSummary: nextConfig.autoGenerateSummary,
 			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
 			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
@@ -997,6 +1033,8 @@ export async function updateGlobalRuntimeConfig(
 				autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
 				summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
 				showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
+				unmergedChangesIndicatorEnabled:
+					updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
 				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
 				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 				audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
@@ -1013,17 +1051,20 @@ export async function updateGlobalRuntimeConfig(
 				promptShortcuts: nextPromptShortcuts,
 			};
 
+			// Keep in sync with updateRuntimeConfig's hasChanges check.
+			// See docs/research/2026-04-09-config-save-dual-path.md for why two paths exist.
 			const hasChanges =
 				nextConfig.selectedAgentId !== current.selectedAgentId ||
 				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-				nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled;
-			JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
+				nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled ||
+				JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 				nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
 				nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
 				nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
 				nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
+				nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
 				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 				nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
@@ -1069,6 +1110,7 @@ export async function updateGlobalRuntimeConfig(
 				autoGenerateSummary: nextConfig.autoGenerateSummary,
 				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+				unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
 				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
 				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 				audibleNotificationEvents: nextConfig.audibleNotificationEvents,

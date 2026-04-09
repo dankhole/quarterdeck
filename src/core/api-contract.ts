@@ -331,6 +331,7 @@ export const runtimeTaskWorkspaceMetadataSchema = z.object({
 	changedFiles: z.number().nullable(),
 	additions: z.number().nullable(),
 	deletions: z.number().nullable(),
+	hasUnmergedChanges: z.boolean().nullable(),
 	stateVersion: z.number().int().nonnegative(),
 });
 export type RuntimeTaskWorkspaceMetadata = z.infer<typeof runtimeTaskWorkspaceMetadataSchema>;
@@ -589,6 +590,7 @@ export const runtimeConfigResponseSchema = z.object({
 	readyForReviewNotificationsEnabled: z.boolean(),
 	shellAutoRestartEnabled: z.boolean(),
 	showTrashWorktreeNotice: z.boolean(),
+	unmergedChangesIndicatorEnabled: z.boolean(),
 	audibleNotificationsEnabled: z.boolean(),
 	audibleNotificationVolume: z.number().min(0).max(1),
 	audibleNotificationEvents: z.object({
@@ -625,6 +627,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	autoGenerateSummary: z.boolean().optional(),
 	summaryStaleAfterSeconds: z.number().min(5).optional(),
 	showTrashWorktreeNotice: z.boolean().optional(),
+	unmergedChangesIndicatorEnabled: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
 	audibleNotificationsEnabled: z.boolean().optional(),

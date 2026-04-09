@@ -73,6 +73,7 @@ function toTaskWorkspaceSnapshot(metadata: RuntimeTaskWorkspaceMetadata): Review
 		changedFiles: metadata.changedFiles,
 		additions: metadata.additions,
 		deletions: metadata.deletions,
+		hasUnmergedChanges: metadata.hasUnmergedChanges,
 	};
 }
 
@@ -149,7 +150,8 @@ function areTaskWorkspaceSnapshotsEqual(
 		a.headCommit === b.headCommit &&
 		a.changedFiles === b.changedFiles &&
 		a.additions === b.additions &&
-		a.deletions === b.deletions
+		a.deletions === b.deletions &&
+		a.hasUnmergedChanges === b.hasUnmergedChanges
 	);
 }
 
