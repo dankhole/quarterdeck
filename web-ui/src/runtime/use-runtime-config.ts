@@ -33,6 +33,9 @@ export interface UseRuntimeConfigResult {
 			completion: boolean;
 		};
 		audibleNotificationsOnlyWhenHidden?: boolean;
+		focusedTaskPollMs?: number;
+		backgroundTaskPollMs?: number;
+		homeRepoPollMs?: number;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 

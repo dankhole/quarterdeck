@@ -642,6 +642,9 @@ export const runtimeConfigResponseSchema = z.object({
 	showSummaryOnCards: z.boolean(),
 	autoGenerateSummary: z.boolean(),
 	summaryStaleAfterSeconds: z.number(),
+	focusedTaskPollMs: z.number(),
+	backgroundTaskPollMs: z.number(),
+	homeRepoPollMs: z.number(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -672,6 +675,9 @@ export const runtimeConfigSaveRequestSchema = z.object({
 		})
 		.optional(),
 	audibleNotificationsOnlyWhenHidden: z.boolean().optional(),
+	focusedTaskPollMs: z.number().min(500).max(60000).optional(),
+	backgroundTaskPollMs: z.number().min(500).max(60000).optional(),
+	homeRepoPollMs: z.number().min(500).max(60000).optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

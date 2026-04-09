@@ -234,6 +234,7 @@ export interface RuntimeTrpcContext {
 			text: string,
 			generatedAt: number | null,
 		) => Promise<void>;
+		setFocusedTask: (scope: RuntimeTrpcWorkspaceScope, taskId: string | null) => void;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -449,6 +450,11 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceStateResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.saveState(ctx.workspaceScope, input);
+			}),
+		setFocusedTask: workspaceProcedure
+			.input(z.object({ taskId: z.string().nullable() }))
+			.mutation(({ ctx, input }) => {
+				ctx.workspaceApi.setFocusedTask(ctx.workspaceScope, input.taskId);
 			}),
 		getWorkspaceChanges: workspaceProcedure.output(runtimeWorkspaceChangesResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadWorkspaceChanges(ctx.workspaceScope);

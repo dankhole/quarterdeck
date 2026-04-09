@@ -377,6 +377,14 @@ async function startServer(): Promise<{
 	});
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
+		getActivePollIntervals: () => {
+			const config = workspaceRegistry.getActiveRuntimeConfig();
+			return {
+				focusedTaskPollMs: config.focusedTaskPollMs,
+				backgroundTaskPollMs: config.backgroundTaskPollMs,
+				homeRepoPollMs: config.homeRepoPollMs,
+			};
+		},
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {

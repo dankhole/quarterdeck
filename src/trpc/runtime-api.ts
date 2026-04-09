@@ -47,6 +47,10 @@ export interface CreateRuntimeApiDependencies {
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	prepareForStateReset?: () => Promise<void>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
+	setPollIntervals?: (
+		workspaceId: string,
+		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
+	) => void;
 	broadcastDebugLoggingState?: (enabled: boolean) => void;
 }
 
@@ -94,6 +98,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 			if (!workspaceScope) {
 				deps.setActiveRuntimeConfig(nextRuntimeConfig);
+			}
+			if (deps.setPollIntervals && workspaceScope) {
+				deps.setPollIntervals(workspaceScope.workspaceId, {
+					focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
+					backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
+					homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
+				});
 			}
 			return buildConfigResponse(nextRuntimeConfig);
 		},

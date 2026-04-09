@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+
 import type {
 	RuntimeBoardData,
 	RuntimeGitSyncSummary,
@@ -8,7 +10,13 @@ import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync
 import { runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
-const WORKSPACE_METADATA_POLL_INTERVAL_MS = 1_000;
+const GIT_PROBE_CONCURRENCY_LIMIT = 3;
+
+export interface WorkspaceMetadataPollIntervals {
+	focusedTaskPollMs: number;
+	backgroundTaskPollMs: number;
+	homeRepoPollMs: number;
+}
 
 interface TrackedTaskWorkspace {
 	taskId: string;
@@ -31,10 +39,14 @@ interface WorkspaceMetadataEntry {
 	workspacePath: string;
 	trackedTasks: TrackedTaskWorkspace[];
 	subscriberCount: number;
-	pollTimer: NodeJS.Timeout | null;
+	focusedTaskId: string | null;
+	homeTimer: NodeJS.Timeout | null;
+	focusedTaskTimer: NodeJS.Timeout | null;
+	backgroundTaskTimer: NodeJS.Timeout | null;
 	refreshPromise: Promise<RuntimeWorkspaceMetadata> | null;
 	homeGit: CachedHomeGitMetadata;
 	taskMetadataByTaskId: Map<string, CachedTaskWorkspaceMetadata>;
+	pollIntervals: WorkspaceMetadataPollIntervals;
 }
 
 export interface CreateWorkspaceMetadataMonitorDependencies {
@@ -46,12 +58,15 @@ export interface WorkspaceMetadataMonitor {
 		workspaceId: string;
 		workspacePath: string;
 		board: RuntimeBoardData;
+		pollIntervals: WorkspaceMetadataPollIntervals;
 	}) => Promise<RuntimeWorkspaceMetadata>;
 	updateWorkspaceState: (input: {
 		workspaceId: string;
 		workspacePath: string;
 		board: RuntimeBoardData;
 	}) => Promise<RuntimeWorkspaceMetadata>;
+	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
+	setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => void;
 	disconnectWorkspace: (workspaceId: string) => void;
 	disposeWorkspace: (workspaceId: string) => void;
 	close: () => void;
@@ -145,7 +160,10 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 		workspacePath,
 		trackedTasks: [],
 		subscriberCount: 0,
-		pollTimer: null,
+		focusedTaskId: null,
+		homeTimer: null,
+		focusedTaskTimer: null,
+		backgroundTaskTimer: null,
 		refreshPromise: null,
 		homeGit: {
 			summary: null,
@@ -153,6 +171,7 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 			stateVersion: 0,
 		},
 		taskMetadataByTaskId: new Map<string, CachedTaskWorkspaceMetadata>(),
+		pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 	};
 }
 
@@ -294,15 +313,93 @@ export function createWorkspaceMetadataMonitor(
 	deps: CreateWorkspaceMetadataMonitorDependencies,
 ): WorkspaceMetadataMonitor {
 	const workspaces = new Map<string, WorkspaceMetadataEntry>();
+	const taskProbeLimit = pLimit(GIT_PROBE_CONCURRENCY_LIMIT);
+	let homeRefreshInFlight = false;
+	let taskRefreshInFlight = false;
 
-	const stopWorkspaceTimer = (entry: WorkspaceMetadataEntry) => {
-		if (!entry.pollTimer) {
-			return;
+	const stopAllTimers = (entry: WorkspaceMetadataEntry) => {
+		if (entry.homeTimer) {
+			clearInterval(entry.homeTimer);
+			entry.homeTimer = null;
 		}
-		clearInterval(entry.pollTimer);
-		entry.pollTimer = null;
+		if (entry.focusedTaskTimer) {
+			clearInterval(entry.focusedTaskTimer);
+			entry.focusedTaskTimer = null;
+		}
+		if (entry.backgroundTaskTimer) {
+			clearInterval(entry.backgroundTaskTimer);
+			entry.backgroundTaskTimer = null;
+		}
 	};
 
+	/** Notify subscribers if the snapshot changed after a partial or full refresh. */
+	const broadcastIfChanged = (
+		workspaceId: string,
+		entry: WorkspaceMetadataEntry,
+		previous: RuntimeWorkspaceMetadata,
+	) => {
+		const next = buildWorkspaceMetadataSnapshot(entry);
+		if (!areWorkspaceMetadataEqual(previous, next)) {
+			deps.onMetadataUpdated(workspaceId, next);
+		}
+	};
+
+	/** Refresh only the home repo metadata. Skips if a previous home refresh is still in flight. */
+	const refreshHome = async (workspaceId: string) => {
+		if (homeRefreshInFlight) {
+			return;
+		}
+		const entry = workspaces.get(workspaceId);
+		if (!entry) {
+			return;
+		}
+		homeRefreshInFlight = true;
+		try {
+			const previous = buildWorkspaceMetadataSnapshot(entry);
+			entry.homeGit = await loadHomeGitMetadata(entry);
+			broadcastIfChanged(workspaceId, entry, previous);
+		} finally {
+			homeRefreshInFlight = false;
+		}
+	};
+
+	/** Refresh a specific set of tasks (by task ID). Skips if a previous task refresh is still in flight. */
+	const refreshTasks = async (workspaceId: string, taskIds: Set<string>) => {
+		if (taskRefreshInFlight) {
+			return;
+		}
+		const entry = workspaces.get(workspaceId);
+		if (!entry) {
+			return;
+		}
+		const tasksToRefresh = entry.trackedTasks.filter((task) => taskIds.has(task.taskId));
+		if (tasksToRefresh.length === 0) {
+			return;
+		}
+		taskRefreshInFlight = true;
+		try {
+			const previous = buildWorkspaceMetadataSnapshot(entry);
+			const results = await Promise.all(
+				tasksToRefresh.map((task) =>
+					taskProbeLimit(async () => {
+						const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
+						const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
+						return next ? ([task.taskId, next] as const) : null;
+					}),
+				),
+			);
+			for (const result of results) {
+				if (result) {
+					entry.taskMetadataByTaskId.set(result[0], result[1]);
+				}
+			}
+			broadcastIfChanged(workspaceId, entry, previous);
+		} finally {
+			taskRefreshInFlight = false;
+		}
+	};
+
+	/** Full refresh — home + all tasks. Used on initial connect and state updates. */
 	const refreshWorkspace = async (workspaceId: string): Promise<RuntimeWorkspaceMetadata> => {
 		const entry = workspaces.get(workspaceId);
 		if (!entry) {
@@ -317,11 +414,13 @@ export function createWorkspaceMetadataMonitor(
 			entry.homeGit = await loadHomeGitMetadata(entry);
 
 			const nextTaskEntries = await Promise.all(
-				entry.trackedTasks.map(async (task) => {
-					const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
-					const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
-					return next ? [task.taskId, next] : null;
-				}),
+				entry.trackedTasks.map((task) =>
+					taskProbeLimit(async () => {
+						const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
+						const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
+						return next ? [task.taskId, next] : null;
+					}),
+				),
 			);
 
 			entry.taskMetadataByTaskId = new Map(
@@ -357,22 +456,41 @@ export function createWorkspaceMetadataMonitor(
 		return existing;
 	};
 
-	const ensureWorkspaceTimer = (workspaceId: string, entry: WorkspaceMetadataEntry) => {
-		if (entry.pollTimer) {
-			return;
-		}
-		const timer = setInterval(() => {
-			void refreshWorkspace(workspaceId);
-		}, WORKSPACE_METADATA_POLL_INTERVAL_MS);
-		timer.unref();
-		entry.pollTimer = timer;
+	const startTimers = (workspaceId: string, entry: WorkspaceMetadataEntry) => {
+		stopAllTimers(entry);
+
+		const homeTimer = setInterval(() => {
+			void refreshHome(workspaceId);
+		}, entry.pollIntervals.homeRepoPollMs);
+		homeTimer.unref();
+		entry.homeTimer = homeTimer;
+
+		const focusedTimer = setInterval(() => {
+			if (entry.focusedTaskId) {
+				void refreshTasks(workspaceId, new Set([entry.focusedTaskId]));
+			}
+		}, entry.pollIntervals.focusedTaskPollMs);
+		focusedTimer.unref();
+		entry.focusedTaskTimer = focusedTimer;
+
+		const backgroundTimer = setInterval(() => {
+			const backgroundTaskIds = new Set(
+				entry.trackedTasks.map((task) => task.taskId).filter((taskId) => taskId !== entry.focusedTaskId),
+			);
+			if (backgroundTaskIds.size > 0) {
+				void refreshTasks(workspaceId, backgroundTaskIds);
+			}
+		}, entry.pollIntervals.backgroundTaskPollMs);
+		backgroundTimer.unref();
+		entry.backgroundTaskTimer = backgroundTimer;
 	};
 
 	return {
-		connectWorkspace: async ({ workspaceId, workspacePath, board }) => {
+		connectWorkspace: async ({ workspaceId, workspacePath, board, pollIntervals }) => {
 			const entry = updateWorkspaceEntry({ workspaceId, workspacePath, board });
 			entry.subscriberCount += 1;
-			ensureWorkspaceTimer(workspaceId, entry);
+			entry.pollIntervals = pollIntervals;
+			startTimers(workspaceId, entry);
 			return await refreshWorkspace(workspaceId);
 		},
 		updateWorkspaceState: async ({ workspaceId, workspacePath, board }) => {
@@ -381,6 +499,37 @@ export function createWorkspaceMetadataMonitor(
 				return buildWorkspaceMetadataSnapshot(entry);
 			}
 			return await refreshWorkspace(workspaceId);
+		},
+		setFocusedTask: (workspaceId, taskId) => {
+			const entry = workspaces.get(workspaceId);
+			if (!entry) {
+				return;
+			}
+			if (entry.focusedTaskId === taskId) {
+				return;
+			}
+			entry.focusedTaskId = taskId;
+			// Immediate probe so the UI shows fresh data when the user selects a task.
+			if (taskId) {
+				void refreshTasks(workspaceId, new Set([taskId]));
+			}
+		},
+		setPollIntervals: (workspaceId, intervals) => {
+			const entry = workspaces.get(workspaceId);
+			if (!entry) {
+				return;
+			}
+			const changed =
+				entry.pollIntervals.focusedTaskPollMs !== intervals.focusedTaskPollMs ||
+				entry.pollIntervals.backgroundTaskPollMs !== intervals.backgroundTaskPollMs ||
+				entry.pollIntervals.homeRepoPollMs !== intervals.homeRepoPollMs;
+			if (!changed) {
+				return;
+			}
+			entry.pollIntervals = intervals;
+			if (entry.subscriberCount > 0) {
+				startTimers(workspaceId, entry);
+			}
 		},
 		disconnectWorkspace: (workspaceId) => {
 			const entry = workspaces.get(workspaceId);
@@ -391,7 +540,7 @@ export function createWorkspaceMetadataMonitor(
 			if (entry.subscriberCount > 0) {
 				return;
 			}
-			stopWorkspaceTimer(entry);
+			stopAllTimers(entry);
 			workspaces.delete(workspaceId);
 		},
 		disposeWorkspace: (workspaceId) => {
@@ -399,12 +548,12 @@ export function createWorkspaceMetadataMonitor(
 			if (!entry) {
 				return;
 			}
-			stopWorkspaceTimer(entry);
+			stopAllTimers(entry);
 			workspaces.delete(workspaceId);
 		},
 		close: () => {
 			for (const entry of workspaces.values()) {
-				stopWorkspaceTimer(entry);
+				stopAllTimers(entry);
 			}
 			workspaces.clear();
 		},

@@ -17,7 +17,10 @@ import {
 	DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
 	DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 	DEFAULT_AUTO_GENERATE_SUMMARY,
+	DEFAULT_BACKGROUND_TASK_POLL_MS,
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	DEFAULT_FOCUSED_TASK_POLL_MS,
+	DEFAULT_HOME_REPO_POLL_MS,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	DEFAULT_PROMPT_SHORTCUTS,
 	DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
@@ -54,6 +57,9 @@ interface RuntimeGlobalConfigFileShape {
 	audibleNotificationVolume?: number;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	audibleNotificationsOnlyWhenHidden?: boolean;
+	focusedTaskPollMs?: number;
+	backgroundTaskPollMs?: number;
+	homeRepoPollMs?: number;
 }
 
 interface RuntimeProjectConfigFileShape {
@@ -84,6 +90,9 @@ export interface RuntimeConfigState {
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
 	audibleNotificationsOnlyWhenHidden: boolean;
+	focusedTaskPollMs: number;
+	backgroundTaskPollMs: number;
+	homeRepoPollMs: number;
 	shortcuts: RuntimeProjectShortcut[];
 	promptShortcuts: PromptShortcut[];
 	commitPromptTemplate: string;
@@ -107,6 +116,9 @@ export interface RuntimeConfigUpdateInput {
 	audibleNotificationVolume?: number;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	audibleNotificationsOnlyWhenHidden?: boolean;
+	focusedTaskPollMs?: number;
+	backgroundTaskPollMs?: number;
+	homeRepoPollMs?: number;
 	shortcuts?: RuntimeProjectShortcut[];
 	promptShortcuts?: PromptShortcut[];
 	commitPromptTemplate?: string;
@@ -117,6 +129,8 @@ const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".quarterdeck";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
+const MIN_POLL_INTERVAL_MS = 500;
+const MAX_POLL_INTERVAL_MS = 60_000;
 
 /** Assembled defaults for test fixtures — not used in production paths. */
 export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
@@ -136,6 +150,9 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	audibleNotificationVolume: DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
 	audibleNotificationsOnlyWhenHidden: DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+	focusedTaskPollMs: DEFAULT_FOCUSED_TASK_POLL_MS,
+	backgroundTaskPollMs: DEFAULT_BACKGROUND_TASK_POLL_MS,
+	homeRepoPollMs: DEFAULT_HOME_REPO_POLL_MS,
 	shortcuts: [],
 	promptShortcuts: [],
 	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -264,6 +281,11 @@ function normalizeNumber(value: unknown, fallback: number): number {
 		return value;
 	}
 	return fallback;
+}
+
+function normalizePollInterval(value: unknown, fallback: number): number {
+	const normalized = normalizeNumber(value, fallback);
+	return Math.max(MIN_POLL_INTERVAL_MS, Math.min(MAX_POLL_INTERVAL_MS, Math.round(normalized)));
 }
 
 function normalizeShortcutLabel(value: unknown): string | null {
@@ -395,6 +417,9 @@ function toRuntimeConfigState({
 			globalConfig?.audibleNotificationsOnlyWhenHidden,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
+		focusedTaskPollMs: normalizePollInterval(globalConfig?.focusedTaskPollMs, DEFAULT_FOCUSED_TASK_POLL_MS),
+		backgroundTaskPollMs: normalizePollInterval(globalConfig?.backgroundTaskPollMs, DEFAULT_BACKGROUND_TASK_POLL_MS),
+		homeRepoPollMs: normalizePollInterval(globalConfig?.homeRepoPollMs, DEFAULT_HOME_REPO_POLL_MS),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 		promptShortcuts: normalizePromptShortcuts(globalConfig?.promptShortcuts),
 		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
@@ -436,6 +461,9 @@ async function writeRuntimeGlobalConfigFile(
 		audibleNotificationVolume?: number;
 		audibleNotificationEvents?: AudibleNotificationEventsShape;
 		audibleNotificationsOnlyWhenHidden?: boolean;
+		focusedTaskPollMs?: number;
+		backgroundTaskPollMs?: number;
+		homeRepoPollMs?: number;
 	},
 ): Promise<void> {
 	const existing = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(configPath);
@@ -601,6 +629,28 @@ async function writeRuntimeGlobalConfigFile(
 		payload.audibleNotificationsOnlyWhenHidden = audibleNotificationsOnlyWhenHidden;
 	}
 
+	const focusedTaskPollMs =
+		config.focusedTaskPollMs === undefined
+			? DEFAULT_FOCUSED_TASK_POLL_MS
+			: normalizePollInterval(config.focusedTaskPollMs, DEFAULT_FOCUSED_TASK_POLL_MS);
+	const backgroundTaskPollMs =
+		config.backgroundTaskPollMs === undefined
+			? DEFAULT_BACKGROUND_TASK_POLL_MS
+			: normalizePollInterval(config.backgroundTaskPollMs, DEFAULT_BACKGROUND_TASK_POLL_MS);
+	const homeRepoPollMs =
+		config.homeRepoPollMs === undefined
+			? DEFAULT_HOME_REPO_POLL_MS
+			: normalizePollInterval(config.homeRepoPollMs, DEFAULT_HOME_REPO_POLL_MS);
+	if (hasOwnKey(existing, "focusedTaskPollMs") || focusedTaskPollMs !== DEFAULT_FOCUSED_TASK_POLL_MS) {
+		payload.focusedTaskPollMs = focusedTaskPollMs;
+	}
+	if (hasOwnKey(existing, "backgroundTaskPollMs") || backgroundTaskPollMs !== DEFAULT_BACKGROUND_TASK_POLL_MS) {
+		payload.backgroundTaskPollMs = backgroundTaskPollMs;
+	}
+	if (hasOwnKey(existing, "homeRepoPollMs") || homeRepoPollMs !== DEFAULT_HOME_REPO_POLL_MS) {
+		payload.homeRepoPollMs = homeRepoPollMs;
+	}
+
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
 		lock: null,
 	});
@@ -689,6 +739,9 @@ function createRuntimeConfigStateFromValues(input: {
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: AudibleNotificationEvents;
 	audibleNotificationsOnlyWhenHidden: boolean;
+	focusedTaskPollMs: number;
+	backgroundTaskPollMs: number;
+	homeRepoPollMs: number;
 	shortcuts: RuntimeProjectShortcut[];
 	promptShortcuts: PromptShortcut[];
 }): RuntimeConfigState {
@@ -724,6 +777,9 @@ function createRuntimeConfigStateFromValues(input: {
 			input.audibleNotificationsOnlyWhenHidden,
 			DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 		),
+		focusedTaskPollMs: normalizePollInterval(input.focusedTaskPollMs, DEFAULT_FOCUSED_TASK_POLL_MS),
+		backgroundTaskPollMs: normalizePollInterval(input.backgroundTaskPollMs, DEFAULT_BACKGROUND_TASK_POLL_MS),
+		homeRepoPollMs: normalizePollInterval(input.homeRepoPollMs, DEFAULT_HOME_REPO_POLL_MS),
 		shortcuts: normalizeShortcuts(input.shortcuts),
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -751,6 +807,9 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		audibleNotificationVolume: current.audibleNotificationVolume,
 		audibleNotificationEvents: current.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: current.audibleNotificationsOnlyWhenHidden,
+		focusedTaskPollMs: current.focusedTaskPollMs,
+		backgroundTaskPollMs: current.backgroundTaskPollMs,
+		homeRepoPollMs: current.homeRepoPollMs,
 		shortcuts: [],
 		promptShortcuts: current.promptShortcuts,
 	});
@@ -795,6 +854,9 @@ export async function saveRuntimeConfig(
 		audibleNotificationVolume: number;
 		audibleNotificationEvents: AudibleNotificationEvents;
 		audibleNotificationsOnlyWhenHidden: boolean;
+		focusedTaskPollMs: number;
+		backgroundTaskPollMs: number;
+		homeRepoPollMs: number;
 		shortcuts: RuntimeProjectShortcut[];
 		promptShortcuts: PromptShortcut[];
 	},
@@ -817,6 +879,9 @@ export async function saveRuntimeConfig(
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
 			audibleNotificationsOnlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
+			focusedTaskPollMs: config.focusedTaskPollMs,
+			backgroundTaskPollMs: config.backgroundTaskPollMs,
+			homeRepoPollMs: config.homeRepoPollMs,
 		});
 		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts: config.shortcuts });
 		return createRuntimeConfigStateFromValues({
@@ -836,6 +901,9 @@ export async function saveRuntimeConfig(
 			audibleNotificationVolume: config.audibleNotificationVolume,
 			audibleNotificationEvents: config.audibleNotificationEvents,
 			audibleNotificationsOnlyWhenHidden: config.audibleNotificationsOnlyWhenHidden,
+			focusedTaskPollMs: config.focusedTaskPollMs,
+			backgroundTaskPollMs: config.backgroundTaskPollMs,
+			homeRepoPollMs: config.homeRepoPollMs,
 			shortcuts: config.shortcuts,
 			promptShortcuts: config.promptShortcuts,
 		});
@@ -879,6 +947,9 @@ async function applyConfigUpdates({
 			: current.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden:
 			updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
+		focusedTaskPollMs: updates.focusedTaskPollMs ?? current.focusedTaskPollMs,
+		backgroundTaskPollMs: updates.backgroundTaskPollMs ?? current.backgroundTaskPollMs,
+		homeRepoPollMs: updates.homeRepoPollMs ?? current.homeRepoPollMs,
 		shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
 		promptShortcuts: updates.promptShortcuts ?? current.promptShortcuts,
 	};
@@ -904,6 +975,9 @@ async function applyConfigUpdates({
 		nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
 		nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
 		nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden ||
+		nextConfig.focusedTaskPollMs !== current.focusedTaskPollMs ||
+		nextConfig.backgroundTaskPollMs !== current.backgroundTaskPollMs ||
+		nextConfig.homeRepoPollMs !== current.homeRepoPollMs ||
 		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts));
 
 	if (!hasChanges) {
@@ -928,6 +1002,9 @@ async function applyConfigUpdates({
 		audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 		audibleNotificationEvents: nextConfig.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
+		focusedTaskPollMs: nextConfig.focusedTaskPollMs,
+		backgroundTaskPollMs: nextConfig.backgroundTaskPollMs,
+		homeRepoPollMs: nextConfig.homeRepoPollMs,
 	});
 	if (projectConfigPath !== null) {
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
@@ -951,6 +1028,9 @@ async function applyConfigUpdates({
 		audibleNotificationVolume: nextConfig.audibleNotificationVolume,
 		audibleNotificationEvents: nextConfig.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
+		focusedTaskPollMs: nextConfig.focusedTaskPollMs,
+		backgroundTaskPollMs: nextConfig.backgroundTaskPollMs,
+		homeRepoPollMs: nextConfig.homeRepoPollMs,
 		shortcuts: nextConfig.shortcuts,
 		promptShortcuts: nextConfig.promptShortcuts,
 	});

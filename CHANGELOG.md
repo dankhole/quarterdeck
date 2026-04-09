@@ -2,6 +2,14 @@
 
 ## [0.3.1]
 
+### Git polling efficiency
+
+- Replaced the fixed 1-second poll-everything-equally approach with three independent timers — focused task (2s default), background tasks (5s), home repo (10s). The selected task gets priority polling with an immediate probe on selection change.
+- Added `p-limit(3)` concurrency cap on git child processes to prevent 20+ simultaneous spawns at scale.
+- Added mtime-based cache for untracked file line counting — skips `readFile` when file hasn't changed since last poll. Bounded at 2000 entries.
+- Backpressure guards on partial refresh functions prevent overlapping calls from piling up.
+- All three poll intervals are configurable in Settings under "Git Polling."
+
 ### Runtime debug logging
 
 - New runtime-togglable debug logging system — toggle from Settings (Debug section) or `Cmd+Shift+D` to stream server-side logs to a browser panel in real-time. Ephemeral (resets on server restart), zero overhead when disabled.
