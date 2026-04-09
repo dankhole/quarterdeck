@@ -60,6 +60,7 @@
 
 ### Other changes
 
+- Fixed trash column sorting — was showing newest-trashed at top (same as active columns), now shows oldest-first so newly trashed items appear at the bottom in chronological order.
 - Added a beta notice card at the bottom of the project sidebar with a "Report issue" link. Removed the dead Featurebase feedback widget.
 - The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
 - The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
