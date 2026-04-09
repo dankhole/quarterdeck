@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { InlineTitleEditor } from "@/components/inline-title-editor";
 import { Button } from "@/components/ui/button";
@@ -250,20 +250,7 @@ export function BoardCard({
 		sessionSummary.state === "interrupted" ||
 		(sessionSummary.state === "awaiting_review" && sessionSummary.reviewReason === "error");
 
-	// Delay showing the restart button by ~1s so it doesn't flash during
-	// transient dead states (hydration, brief exits before auto-restart).
-	const [isRestartDelayElapsed, setIsRestartDelayElapsed] = useState(false);
-	useEffect(() => {
-		if (!isSessionDead) {
-			setIsRestartDelayElapsed(false);
-			return;
-		}
-		const timer = setTimeout(() => setIsRestartDelayElapsed(true), 1_000);
-		return () => clearTimeout(timer);
-	}, [isSessionDead]);
-
-	const isSessionRestartable =
-		(columnId === "in_progress" || columnId === "review") && isSessionDead && isRestartDelayElapsed;
+	const isSessionRestartable = (columnId === "in_progress" || columnId === "review") && isSessionDead;
 
 	const statusMarker =
 		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;

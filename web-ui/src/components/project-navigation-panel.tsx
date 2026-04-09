@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -155,6 +155,7 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
+					<BetaNotice />
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -295,6 +296,30 @@ function ShortcutsCard(): React.ReactElement {
 						</button>
 					</Collapsible.Trigger>
 				</Collapsible.Root>
+			</div>
+		</div>
+	);
+}
+
+const GITHUB_ISSUES_URL = "https://github.com/dankhole/quarterdeck/issues";
+
+function BetaNotice(): React.ReactElement {
+	return (
+		<div style={{ padding: "4px 12px 12px" }}>
+			<div className="flex items-start gap-2 rounded-md border border-status-orange/25 bg-status-orange/5 px-3 py-2.5">
+				<div className="flex flex-col gap-1.5">
+					<p className="m-0 text-xs text-status-orange/80">
+						Quarterdeck is in beta. Help us improve by sharing your experience.
+					</p>
+					<a
+						href={GITHUB_ISSUES_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="flex items-center gap-1 self-start text-xs font-semibold text-status-orange hover:text-status-orange/80 active:text-status-orange/60 no-underline"
+					>
+						Report issue <ExternalLink size={11} />
+					</a>
+				</div>
 			</div>
 		</div>
 	);
