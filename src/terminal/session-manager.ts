@@ -96,7 +96,8 @@ export interface StartTaskSessionRequest {
 	prompt: string;
 	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
-	resumeFromTrash?: boolean;
+	resumeConversation?: boolean;
+	awaitReview?: boolean;
 	cols?: number;
 	rows?: number;
 	env?: Record<string, string | undefined>;
@@ -356,7 +357,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			prompt: request.prompt,
 			images: request.images,
 			startInPlanMode: request.startInPlanMode,
-			resumeFromTrash: request.resumeFromTrash,
+			resumeConversation: request.resumeConversation,
 			env: request.env,
 			workspaceId: request.workspaceId,
 		});
@@ -562,13 +563,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		const startedAt = now();
 		updateSummary(entry, {
-			state: request.resumeFromTrash ? "awaiting_review" : "running",
+			state: request.awaitReview ? "awaiting_review" : "running",
 			agentId: request.agentId,
 			workspacePath: request.cwd,
 			pid: session.pid,
 			startedAt,
 			lastOutputAt: null,
-			reviewReason: request.resumeFromTrash ? "attention" : null,
+			reviewReason: request.awaitReview ? "attention" : null,
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
@@ -1208,10 +1209,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		pendingAutoRestart = (async () => {
 			try {
 				const request = cloneStartTaskSessionRequest(restartRequest.request);
-				// Don't carry resumeFromTrash into auto-restarts. If the original
+				// Don't carry resumeConversation into auto-restarts. If the original
 				// --continue attempt failed (e.g. "No conversation found"), retrying
 				// with --continue would just fail again. Start a fresh session instead.
-				request.resumeFromTrash = false;
+				request.resumeConversation = false;
+				request.awaitReview = false;
 				await this.startTaskSession(request);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

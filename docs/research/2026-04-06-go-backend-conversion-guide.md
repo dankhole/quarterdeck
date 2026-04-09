@@ -65,7 +65,7 @@ One middleware: `workspaceProcedure` -- enforces workspace scope is present. Ret
 `startTaskSession` input:
 ```
 { taskId, prompt, images?: [{id, data, mimeType, name?}], startInPlanMode?, mode?: "act"|"plan",
-  resumeFromTrash?, baseRef, useWorktree?, cols?, rows? }
+  resumeConversation?, awaitReview?, baseRef, useWorktree?, cols?, rows? }
 ```
 
 `startTaskSession` output:

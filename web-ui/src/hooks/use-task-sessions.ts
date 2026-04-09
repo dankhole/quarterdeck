@@ -43,7 +43,8 @@ interface StartTaskSessionResult {
 }
 
 interface StartTaskSessionOptions {
-	resumeFromTrash?: boolean;
+	resumeConversation?: boolean;
+	awaitReview?: boolean;
 }
 
 export interface UseTaskSessionsResult {
@@ -140,16 +141,17 @@ export function useTaskSessions({
 				return { ok: false, message: "No project selected." };
 			}
 			try {
-				const kickoffPrompt = options?.resumeFromTrash ? "" : task.prompt.trim();
+				const kickoffPrompt = options?.resumeConversation ? "" : task.prompt.trim();
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const geometry =
 					getTerminalGeometry(task.id) ?? estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 				const payload = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: task.id,
 					prompt: kickoffPrompt,
-					images: options?.resumeFromTrash ? undefined : task.images,
-					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
-					resumeFromTrash: options?.resumeFromTrash,
+					images: options?.resumeConversation ? undefined : task.images,
+					startInPlanMode: options?.resumeConversation ? undefined : task.startInPlanMode,
+					resumeConversation: options?.resumeConversation,
+					awaitReview: options?.awaitReview,
 					baseRef: task.baseRef,
 					useWorktree: task.useWorktree,
 					cols: geometry.cols,

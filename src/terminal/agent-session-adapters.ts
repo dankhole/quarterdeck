@@ -33,7 +33,7 @@ export interface AgentAdapterLaunchInput {
 	prompt: string;
 	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
-	resumeFromTrash?: boolean;
+	resumeConversation?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
 }
@@ -493,7 +493,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		) {
 			args.push("--dangerously-skip-permissions");
 		}
-		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
 		}
 		if (input.startInPlanMode) {
@@ -619,7 +619,7 @@ const codexAdapter: AgentSessionAdapter = {
 			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
 		}
 
-		if (input.resumeFromTrash) {
+		if (input.resumeConversation) {
 			if (!codexArgs.includes("resume")) {
 				codexArgs.push("resume");
 			}
@@ -691,7 +691,7 @@ const geminiAdapter: AgentSessionAdapter = {
 			args.push("--yolo");
 		}
 
-		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
+		if (input.resumeConversation && !hasCliOption(args, "--resume")) {
 			args.push("--resume", "latest");
 		}
 
@@ -992,7 +992,7 @@ const opencodeAdapter: AgentSessionAdapter = {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		const baseConfigPath = await resolveOpenCodeBaseConfigPath(input.env?.OPENCODE_CONFIG);
-		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+		if (input.resumeConversation && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
 		}
 

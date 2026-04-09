@@ -572,7 +572,7 @@ export function useBoardInteractions({
 					timeout: 7000,
 				});
 			}
-			const resumed = await startTaskSession(task, { resumeFromTrash: true });
+			const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
 			if (resumed.ok) {
 				setBoard((currentBoard) => {
 					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
@@ -812,22 +812,16 @@ export function useBoardInteractions({
 			if (!selection || (selection.column.id !== "in_progress" && selection.column.id !== "review")) {
 				return;
 			}
+			const awaitReview = selection.column.id === "review";
 			void (async () => {
 				await stopTaskSession(taskId, { waitForExit: true });
-				// Move card back to in_progress if it's in review
-				if (selection.column.id === "review") {
-					setBoard((currentBoard) => {
-						const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
-						return moved.moved ? moved.board : currentBoard;
-					});
-				}
-				const started = await startTaskSession(selection.card);
+				const started = await startTaskSession(selection.card, { resumeConversation: true, awaitReview });
 				if (!started.ok) {
 					notifyError(started.message ?? "Could not restart task session.");
 				}
 			})();
 		},
-		[board, setBoard, startTaskSession, stopTaskSession],
+		[board, startTaskSession, stopTaskSession],
 	);
 
 	const handleCancelAutomaticTaskAction = useCallback(

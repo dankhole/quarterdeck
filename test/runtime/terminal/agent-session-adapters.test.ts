@@ -321,7 +321,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "--last"]));
 
@@ -332,7 +332,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 		expect(claudeLaunch.args).toContain("--continue");
 
@@ -343,7 +343,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 		expect(geminiLaunch.args).toEqual(expect.arrayContaining(["--resume", "latest"]));
 
@@ -354,7 +354,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 		expect(opencodeLaunch.args).toContain("--continue");
 	});
