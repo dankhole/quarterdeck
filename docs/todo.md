@@ -201,20 +201,16 @@ In the file viewer panel, the file pop-out / open-externally button is visible e
 
 Done — rolling-window rate limiter in `src/title/llm-client.ts` (5 concurrent, 20/min). All `callLlm()` callers degrade gracefully when limits are hit.
 
-## 27. Bring back beta feedback popup
-
-Re-add the floating feedback widget (previously removed during the rename/rebrand) as a small corner popup. This gives users a low-friction way to report issues or share feedback without navigating to GitHub.
-
-## 28. Cherry-pick / land individual commits onto main from the UI
+## 27. Cherry-pick / land individual commits onto main from the UI
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
 This is distinct from #7 (committing *within* the task worktree) and #12 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 29. Notification badges on project sidebar for cross-project alerts
+## 28. Notification badges on project sidebar for cross-project alerts
 
 Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #9 (project switcher) and should ship independently without requiring the full project panel redesign.
 
-## 30. Upstream sync: check kanban project for cherry-pickable fixes
+## 29. Upstream sync: check kanban project for cherry-pickable fixes
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
