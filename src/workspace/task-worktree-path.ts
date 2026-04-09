@@ -1,9 +1,15 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 const WORKTREE_TASK_ID_INVALID_MESSAGE = "Invalid task id for worktree path.";
 
 export const QUARTERDECK_RUNTIME_HOME_DIR_NAME = ".quarterdeck";
 export const QUARTERDECK_TASK_WORKTREES_HOME_DIR_NAME = ".quarterdeck/worktrees";
 export const QUARTERDECK_TASK_WORKTREES_DIR_NAME = "worktrees";
-export const QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT = `~/${QUARTERDECK_TASK_WORKTREES_HOME_DIR_NAME}`;
+export const QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT =
+	process.platform === "win32"
+		? join(homedir(), QUARTERDECK_TASK_WORKTREES_HOME_DIR_NAME)
+		: `~/${QUARTERDECK_TASK_WORKTREES_HOME_DIR_NAME}`;
 
 export function normalizeTaskIdForWorktreePath(taskId: string): string {
 	const normalized = taskId.trim();
@@ -33,5 +39,5 @@ export function getWorkspaceFolderLabelForWorktreePath(repoPath: string): string
 export function buildTaskWorktreeDisplayPath(taskId: string, repoPath: string): string {
 	const normalizedTaskId = normalizeTaskIdForWorktreePath(taskId);
 	const workspaceLabel = getWorkspaceFolderLabelForWorktreePath(repoPath);
-	return `${QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT}/${normalizedTaskId}/${workspaceLabel}`;
+	return join(QUARTERDECK_TASK_WORKTREES_DISPLAY_ROOT, normalizedTaskId, workspaceLabel);
 }
