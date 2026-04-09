@@ -68,6 +68,7 @@
 - The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
 - The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
 - Default side panel ratio reduced from 25% to 15%.
+- Prompt shortcuts can now be reordered via drag-and-drop in the editor dialog.
 - Default prompt shortcut textarea height increased from 3 to 5 rows.
 - Base ref dropdown in the create task dialog is now greyed out when isolated worktree is unchecked.
 - Fixed permission notification sound playing wrong beep count — hook activity data was arriving after the 500ms settle window expired due to slow checkpoint capture.

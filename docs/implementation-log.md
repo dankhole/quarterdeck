@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Drag-and-drop reordering for prompt shortcuts (2026-04-09)
+
+**Problem**: Prompt shortcuts in the editor dialog could only be added or removed — there was no way to reorder them. The order matters because the first shortcut is the default active one in the sidebar.
+
+**Implementation**: Wrapped the shortcut list in `DragDropContext` > `Droppable` > `Draggable` from `@hello-pangea/dnd` (already used for board cards). Added a `GripVertical` drag handle to each row. The `handleDragEnd` callback splices the moved item into its new position; the reordered array is persisted on save through the existing config flow — no backend changes needed.
+
+**Dialog centering fix**: Dragged items were offset to the right because the dialog used `transform: translate(-50%, -50%)` for centering, which creates a new CSS containing block that shifts `@hello-pangea/dnd`'s viewport-relative position calculations. Switched all dialogs (`Dialog` and `AlertDialog`) to `fixed inset-0` + `m-auto` + `height: fit-content` centering, which avoids the containing block issue. Updated the `kb-dialog-show` animation keyframes to remove the now-unnecessary `translate(-50%, -50%)`.
+
+**Files**: `web-ui/src/components/prompt-shortcut-editor-dialog.tsx` (drag-and-drop wrapping, handle, reorder logic), `web-ui/src/components/ui/dialog.tsx` (centering fix for Dialog + AlertDialog), `web-ui/src/styles/globals.css` (animation keyframes)
+
+**Commit**: `9b0e54b7`
+
 ## Add close button to file content viewer (2026-04-09)
 
 **Problem**: The file browser's content viewer panel had no way to close/deselect the currently open file. Users had to select a different file or collapse the entire file browser to dismiss the preview.

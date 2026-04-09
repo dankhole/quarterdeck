@@ -11,10 +11,10 @@ import { cn } from "@/components/ui/cn";
 
 const BASE_DIALOG_STYLE: CSSProperties = {
 	animation: "kb-dialog-show 150ms ease",
-	transform: "translate(-50%, -50%)",
 	width: "90vw",
 	maxWidth: "32rem",
 	maxHeight: "85vh",
+	height: "fit-content",
 };
 
 export function Dialog({
@@ -42,7 +42,7 @@ export function Dialog({
 				<RadixDialog.Content
 					aria-describedby={contentAriaDescribedBy}
 					className={cn(
-						"fixed left-1/2 top-1/2 z-50 flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none",
+						"fixed inset-0 z-50 m-auto flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,
 					)}
 					style={contentStyle ? { ...BASE_DIALOG_STYLE, ...contentStyle } : BASE_DIALOG_STYLE}
@@ -110,7 +110,7 @@ export function AlertDialog({
 					style={{ animation: "kb-overlay-show 150ms ease" }}
 				/>
 				<RadixAlertDialog.Content
-					className="fixed left-1/2 top-1/2 z-50 flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none"
+					className="fixed inset-0 z-50 m-auto flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none"
 					style={{ ...BASE_DIALOG_STYLE, maxWidth: "28rem" }}
 				>
 					{children}
