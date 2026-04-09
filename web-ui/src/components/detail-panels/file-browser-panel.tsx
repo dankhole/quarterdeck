@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
 import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
@@ -18,6 +18,10 @@ export function FileBrowserPanel({
 	treePanelFlex,
 	contentPanelFlex,
 	onTreeResizeStart,
+	expandedDirs,
+	onExpandedDirsChange,
+	hasInitializedExpansion,
+	onInitializedExpansion,
 }: {
 	taskId: string;
 	baseRef: string;
@@ -27,6 +31,10 @@ export function FileBrowserPanel({
 	treePanelFlex: string;
 	contentPanelFlex: string;
 	onTreeResizeStart: (e: ReactMouseEvent<HTMLDivElement>) => void;
+	expandedDirs: Set<string>;
+	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
+	hasInitializedExpansion: boolean;
+	onInitializedExpansion: () => void;
 }): React.ReactElement {
 	const listFilesQueryFn = useCallback(async () => {
 		const trpcClient = getRuntimeTrpcClient(workspaceId);
@@ -77,6 +85,10 @@ export function FileBrowserPanel({
 					selectedPath={selectedPath}
 					onSelectPath={onSelectPath}
 					panelFlex="1 1 0"
+					expandedDirs={expandedDirs}
+					onExpandedDirsChange={onExpandedDirsChange}
+					hasInitializedExpansion={hasInitializedExpansion}
+					onInitializedExpansion={onInitializedExpansion}
 				/>
 			</div>
 			<ResizeHandle
