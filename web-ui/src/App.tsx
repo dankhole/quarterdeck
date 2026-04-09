@@ -1371,8 +1371,6 @@ export default function App(): ReactElement {
 						workspaceId={settingsWorkspaceId}
 						initialConfig={settingsRuntimeProjectConfig}
 						initialSection={settingsInitialSection}
-						debugLoggingEnabled={debugLogging.debugLoggingEnabled}
-						onToggleDebugLogging={debugLogging.toggleDebugLogging}
 						onOpenChange={(nextOpen) => {
 							setIsSettingsOpen(nextOpen);
 							if (!nextOpen) {

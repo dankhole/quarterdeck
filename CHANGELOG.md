@@ -12,10 +12,12 @@
 
 ### Runtime debug logging
 
-- New runtime-togglable debug logging system — toggle from Settings (Debug section) or `Cmd+Shift+D` to stream server-side logs to a browser panel in real-time. Ephemeral (resets on server restart), zero overhead when disabled.
+- New runtime-togglable debug logging system — press `Cmd+Shift+D` to toggle the debug log panel and stream server-side logs to the browser in real-time. Ephemeral (resets on server restart), zero overhead when disabled.
 - Bottom panel with level/source filters, search, auto-scroll. Batched WebSocket delivery (150ms) to avoid flooding.
 - Targeted instrumentation on LLM client, title/summary generation, hook ingest, and the `generateDisplaySummary` / `regenerateTaskTitle` mutations to aid diagnosis of transient summary-unlinking issues.
 - Client-side logger with same API for UI-side debug logging.
+- Removed the debug logging toggle from Settings — the shortcut-only approach avoids a confusing UX where the toggle took effect immediately without enabling the Save button. Settings now shows a keyboard shortcut hint instead.
+- Fixed debug log panel width overflow — long messages and data now word-wrap instead of overflowing horizontally.
 
 ### Config defaults and save path unification
 
