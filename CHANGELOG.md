@@ -2,6 +2,11 @@
 
 ## [0.3.1]
 
+### Dead code cleanup
+
+- Removed orphan `text-shimmer.tsx` component (never imported) and its sole dependency `motion` (Framer Motion).
+- Removed 6 stale CSS classes from `globals.css` — leftover upstream kanban styles (`kb-home-layout`, `kb-status-banner`, `kb-project-count-tag`, `kb-task-preview-pane`, `kb-task-preview-text`, `kb-markdown`).
+
 ### Git polling efficiency
 
 - Replaced the fixed 1-second poll-everything-equally approach with three independent timers — focused task (2s default), background tasks (5s), home repo (10s). The selected task gets priority polling with an immediate probe on selection change.
