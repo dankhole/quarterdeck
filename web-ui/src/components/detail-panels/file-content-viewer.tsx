@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Clipboard, FileText, WrapText } from "lucide-react";
+import { Clipboard, FileText, WrapText, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/components/ui/cn";
@@ -15,6 +15,7 @@ export function FileContentViewer({
 	isLoading,
 	isError,
 	filePath,
+	onClose,
 }: {
 	content: string | null;
 	binary: boolean;
@@ -22,6 +23,7 @@ export function FileContentViewer({
 	isLoading: boolean;
 	isError: boolean;
 	filePath: string | null;
+	onClose?: () => void;
 }): React.ReactElement {
 	const [wordWrap, setWordWrap] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -136,6 +138,17 @@ export function FileContentViewer({
 						<WrapText size={13} />
 					</button>
 				</Tooltip>
+				{onClose ? (
+					<Tooltip content="Close file">
+						<button
+							type="button"
+							onClick={onClose}
+							className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
+						>
+							<X size={13} />
+						</button>
+					</Tooltip>
+				) : null}
 			</div>
 			{truncated ? (
 				<div className="flex items-center gap-2 px-3 py-1 text-xs bg-status-orange text-surface-0">

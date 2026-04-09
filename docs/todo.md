@@ -198,15 +198,11 @@ The UI element in the project view that shows task state counts (how many tasks 
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 25. Add close button to file viewer
-
-The file browser content panel has no way to close/deselect the currently open file. Add a close button (X) to the file viewer header so users can dismiss the file preview and return to the file tree without a selected file.
-
-## 26. Reorder settings menu
+## 25. Reorder settings menu
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 27. Archive remaining docs
+## 26. Archive remaining docs
 
 Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
 
