@@ -115,6 +115,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		summaryStaleAfterSeconds: runtimeConfig.summaryStaleAfterSeconds,
 		llmConfigured: isLlmConfigured(),
 		showTrashWorktreeNotice: runtimeConfig.showTrashWorktreeNotice,
+		unmergedChangesIndicatorEnabled: runtimeConfig.unmergedChangesIndicatorEnabled,
 		audibleNotificationsEnabled: runtimeConfig.audibleNotificationsEnabled,
 		audibleNotificationVolume: runtimeConfig.audibleNotificationVolume,
 		audibleNotificationEvents: runtimeConfig.audibleNotificationEvents,

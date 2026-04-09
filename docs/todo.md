@@ -150,11 +150,9 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 
 The reset session button on task cards doesn't work correctly when clicked. The ~1s appearance delay was already fixed (`BoardCard` gates `isSessionRestartable` behind a timer), but the actual restart action still needs investigation — clicking it doesn't successfully restart the agent session.
 
-## 16. Diff sidebar notification for unmerged branch changes
+## 16. ~~Diff sidebar notification for unmerged branch changes~~ (Done)
 
-The Changes icon in the sidebar currently only lights up for uncommitted changes. It should also indicate when the task branch has diverged from the base branch (i.e. unmerged changes exist). This surfaces "your branch has work that hasn't been merged back" without needing to open the diff viewer.
-
-Consider making this a separate, non-red notification indicator on the sidebar icon, and optionally gating it behind a setting since it could be noisy for long-lived branches.
+Implemented as a blue dot on the Changes sidebar icon. Uses `git diff --quiet baseRef HEAD` (content-based comparison, resilient to squash merges) polled via the existing workspace metadata monitor. Red dot (uncommitted changes) takes priority over blue dot (unmerged branch changes).
 
 ## 17. Archive remaining docs
 
@@ -188,3 +186,23 @@ Add notification badges to the existing project sidebar icons to surface when ta
 ## 23. Upstream sync: check kanban project for cherry-pickable fixes
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
+
+## 24. Investigate git polling efficiency
+
+The `WorkspaceMetadataMonitor` polls git state every 1 second for the home repo and every active task worktree with no concurrency limiting. At 10 concurrent tasks this means 20-34 git child processes spawned per tick, all hitting the shared `.git` object store via unbounded `Promise.all`. Investigate and implement efficiency improvements — concurrency limiting, adaptive intervals, slower polling for non-visible tasks, etc.
+
+Research and analysis at [docs/research/2026-04-08-git-polling-architecture.md](research/2026-04-08-git-polling-architecture.md). Related to #10 (performance audit for concurrent agents).
+
+## 25. Unify config save dual path (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`)
+
+`src/config/runtime-config.ts` has two near-identical ~80-line functions for saving settings — one for the workspace-scoped path and one for the global/onboarding path. Every new setting must be added to four parallel sites in each function (eight total), which has already caused a bug where a semicolon replaced `||` and silently broke persistence for most settings on the global path.
+
+Extract shared logic into a single internal `applyConfigUpdates` function that both paths call. The only real differences are how `current` config is obtained, whether project config is written, and lock scope.
+
+Research and analysis at [docs/research/2026-04-09-config-save-dual-path.md](research/2026-04-09-config-save-dual-path.md).
+
+## 26. Single source of truth for config defaults
+
+Setting defaults are duplicated across the server (`DEFAULT_*` constants in `runtime-config.ts`), frontend `useState()` initial values, `?? fallback` coalescing in App.tsx and the settings dialog, and test fixture factories. Every new setting requires copying the default to 4-5 locations, and a mismatch means the UI shows one value before the server config loads then snaps to another.
+
+Add a shared `config-defaults.ts` in `src/core/` (already shared between server and frontend via the API contract) that exports a single defaults object. All `useState()` calls, `??` fallbacks, and test factories import from it. Related to #25 (config save dual path).

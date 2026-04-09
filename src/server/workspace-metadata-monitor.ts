@@ -5,6 +5,7 @@ import type {
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
 import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
+import { runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
 const WORKSPACE_METADATA_POLL_INTERVAL_MS = 1_000;
@@ -106,6 +107,7 @@ function areTaskMetadataEqual(a: RuntimeTaskWorkspaceMetadata, b: RuntimeTaskWor
 		a.changedFiles === b.changedFiles &&
 		a.additions === b.additions &&
 		a.deletions === b.deletions &&
+		a.hasUnmergedChanges === b.hasUnmergedChanges &&
 		a.stateVersion === b.stateVersion
 	);
 }
@@ -226,6 +228,7 @@ async function loadTaskWorkspaceMetadata(
 				changedFiles: null,
 				additions: null,
 				deletions: null,
+				hasUnmergedChanges: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
@@ -242,7 +245,10 @@ async function loadTaskWorkspaceMetadata(
 		) {
 			return current;
 		}
-		const summary = await getGitSyncSummary(pathInfo.path, { probe });
+		const [summary, unmergedResult] = await Promise.all([
+			getGitSyncSummary(pathInfo.path, { probe }),
+			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
+		]);
 		return {
 			data: {
 				taskId: task.taskId,
@@ -255,6 +261,7 @@ async function loadTaskWorkspaceMetadata(
 				changedFiles: summary.changedFiles,
 				additions: summary.additions,
 				deletions: summary.deletions,
+				hasUnmergedChanges: unmergedResult.exitCode === 0 ? false : unmergedResult.exitCode === 1 ? true : null,
 				stateVersion: Date.now(),
 			},
 			stateToken: probe.stateToken,
@@ -275,6 +282,7 @@ async function loadTaskWorkspaceMetadata(
 				changedFiles: null,
 				additions: null,
 				deletions: null,
+				hasUnmergedChanges: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,

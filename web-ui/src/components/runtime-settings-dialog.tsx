@@ -245,6 +245,7 @@ export function RuntimeSettingsDialog({
 	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(300);
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(true);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
+	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(false);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
 	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
 	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
@@ -296,6 +297,7 @@ export function RuntimeSettingsDialog({
 	const llmConfigured = config?.llmConfigured ?? false;
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? true;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
+	const initialUnmergedChangesIndicatorEnabled = config?.unmergedChangesIndicatorEnabled ?? false;
 	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
 	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
 	const initialAudibleNotificationEvents = config?.audibleNotificationEvents ?? {
@@ -329,6 +331,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
+			return true;
+		}
+		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
 			return true;
 		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
@@ -367,6 +372,7 @@ export function RuntimeSettingsDialog({
 		initialShellAutoRestartEnabled,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
+		initialUnmergedChangesIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
 		selectedAgentId,
@@ -375,6 +381,7 @@ export function RuntimeSettingsDialog({
 		showSummaryOnCards,
 		showTrashWorktreeNotice,
 		summaryStaleAfterSeconds,
+		unmergedChangesIndicatorEnabled,
 	]);
 
 	useEffect(() => {
@@ -388,6 +395,7 @@ export function RuntimeSettingsDialog({
 		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? 300);
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? true);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
+		setUnmergedChangesIndicatorEnabled(config?.unmergedChangesIndicatorEnabled ?? false);
 		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
 		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
 		setAudibleNotificationEvents(
@@ -404,6 +412,7 @@ export function RuntimeSettingsDialog({
 		config?.audibleNotificationsEnabled,
 		config?.audibleNotificationsOnlyWhenHidden,
 		config?.showTrashWorktreeNotice,
+		config?.unmergedChangesIndicatorEnabled,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.shortcuts,
@@ -462,6 +471,7 @@ export function RuntimeSettingsDialog({
 			summaryStaleAfterSeconds,
 			shellAutoRestartEnabled,
 			showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -641,6 +651,23 @@ export function RuntimeSettingsDialog({
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
+				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Changes</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={unmergedChangesIndicatorEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setUnmergedChangesIndicatorEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
+					branch.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>
