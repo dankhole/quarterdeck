@@ -25,17 +25,19 @@ function LogEntry({ entry }: { entry: RuntimeDebugLogEntry }): ReactElement {
 	const levelColor = LEVEL_COLORS[entry.level] ?? "text-text-primary";
 	const sourceLabel = entry.source === "client" ? "ui" : "";
 	return (
-		<div className="flex gap-2 px-2 py-0.5 text-xs font-mono leading-relaxed hover:bg-surface-2/50">
+		<div className="flex gap-2 px-2 py-0.5 text-xs font-mono leading-relaxed hover:bg-surface-2/50 min-w-0">
 			<span className="text-text-tertiary shrink-0">{formatTimestamp(entry.timestamp)}</span>
 			<span className={`shrink-0 uppercase w-[3ch] ${levelColor}`}>{entry.level.slice(0, 3)}</span>
 			<span className="text-accent shrink-0">[{entry.tag}]</span>
 			{sourceLabel ? <span className="text-status-purple shrink-0">{sourceLabel}</span> : null}
-			<span className="text-text-primary break-all">{entry.message}</span>
-			{entry.data !== undefined && entry.data !== null ? (
-				<span className="text-text-tertiary break-all truncate">
-					{typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data)}
-				</span>
-			) : null}
+			<span className="text-text-primary min-w-0 break-words">
+				{entry.message}
+				{entry.data !== undefined && entry.data !== null ? (
+					<span className="text-text-tertiary ml-1">
+						{typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data)}
+					</span>
+				) : null}
+			</span>
 		</div>
 	);
 }
@@ -83,7 +85,10 @@ export function DebugLogPanel({
 	}, [entries]);
 
 	return (
-		<div className="flex flex-col border-t border-border bg-surface-0" style={{ height: 220 }}>
+		<div
+			className="flex flex-col border-t border-border bg-surface-0 min-w-0 overflow-hidden"
+			style={{ height: 220 }}
+		>
 			{/* Header */}
 			<div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-surface-1 shrink-0">
 				<Bug size={14} className="text-text-secondary" />
