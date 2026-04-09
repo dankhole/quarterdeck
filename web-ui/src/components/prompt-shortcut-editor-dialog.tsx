@@ -103,7 +103,7 @@ export function PromptShortcutEditorDialog({
 									value={shortcut.prompt}
 									onChange={(e) => updateShortcut(index, "prompt", e.target.value)}
 									placeholder="Prompt text..."
-									rows={3}
+									rows={5}
 									className="flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y focus:border-border-focus focus:outline-none"
 								/>
 								<Button
