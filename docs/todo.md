@@ -161,11 +161,9 @@ Add notification badges to the existing project sidebar icons to surface when ta
 
 Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
 
-## 21. Investigate git polling efficiency
+## 21. ~~Investigate git polling efficiency~~ (Done)
 
-The `WorkspaceMetadataMonitor` polls git state every 1 second for the home repo and every active task worktree with no concurrency limiting. At 10 concurrent tasks this means 20-34 git child processes spawned per tick, all hitting the shared `.git` object store via unbounded `Promise.all`. Investigate and implement efficiency improvements — concurrency limiting, adaptive intervals, slower polling for non-visible tasks, etc.
-
-Research and analysis at [docs/research/2026-04-08-git-polling-architecture.md](research/2026-04-08-git-polling-architecture.md). Related to #8 (performance audit for concurrent agents).
+Split into three independent timers (focused task 2s, background tasks 5s, home repo 10s) with `p-limit(3)` concurrency cap, mtime-based caching for untracked file line counts, and backpressure guards. All intervals configurable in Settings.
 
 ## 22. ~~Unify config save dual path~~ (Done)
 
