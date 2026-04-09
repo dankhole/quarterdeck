@@ -12,7 +12,7 @@ For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHAN
 
 **Files**: `web-ui/src/state/sort-column-cards.ts`
 
-**Commit**: `ee10569a`
+**Commit**: `44d40281`
 
 ## Configurable git polling with focused-task priority (2026-04-09)
 
@@ -22,7 +22,7 @@ For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHAN
 
 **Files**: `src/server/workspace-metadata-monitor.ts` (rewritten — three timers, pLimit, backpressure), `src/workspace/git-sync.ts` (mtime cache, pathFingerprints on probe), `src/config/config-defaults.ts` (poll interval defaults), `src/config/runtime-config.ts` (new fields threaded through), `src/core/api-contract.ts` (schema), `src/server/runtime-state-hub.ts` (setFocusedTask/setPollIntervals), `src/trpc/app-router.ts` (setFocusedTask mutation), `src/trpc/workspace-api.ts`, `src/trpc/runtime-api.ts` (setPollIntervals on config save), `src/server/runtime-server.ts`, `src/cli.ts` (getActivePollIntervals), `src/terminal/agent-registry.ts` (config response), `web-ui/src/App.tsx` (setFocusedTask effect), `web-ui/src/components/runtime-settings-dialog.tsx` (poll interval UI), `web-ui/src/runtime/use-runtime-config.ts`, `docs/research/fs-watch-platform-quirks.md` (new)
 
-**Commit**: `8b8ea81f`
+**Commit**: `e3b7b73f`
 
 ## Unify card action prop threading via React context (2026-04-09)
 
@@ -161,7 +161,7 @@ For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHAN
 
 **Files**: `src/workspace/task-worktree.ts`, `src/terminal/session-reconciliation.ts`, `src/core/graceful-shutdown.ts`, `src/fs/locked-file-system.ts`, `src/workspace/task-worktree-path.ts`, `docs/windows-compatibility.md` (updated), `docs/specs/2026-04-09-windows-runtime-compat.md` (new)
 
-**Commit**: `c9519083`
+**Commit**: `f7161b04`
 
 ## Diff sidebar notification for unmerged branch changes (2026-04-09, prev todo #16)
 
