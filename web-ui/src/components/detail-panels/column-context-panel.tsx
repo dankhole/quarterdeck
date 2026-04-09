@@ -7,7 +7,9 @@ import { BoardCard } from "@/components/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useReactiveCardState, useStableCardActions } from "@/state/card-actions-context";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
+import { sortColumnCards } from "@/state/sort-column-cards";
 import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
 
 function ColumnSection({
@@ -17,25 +19,12 @@ function ColumnSection({
 	onCardClick,
 	taskSessions,
 	onCreateTask,
-	onStartTask,
-	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onMoveToTrashTask,
-	onRestoreFromTrashTask,
-	onRegenerateTitleTask,
-	isLlmGenerationDisabled,
-	onUpdateTaskTitle,
-	onTogglePinTask,
-	moveToTrashLoadingById,
 	activeDragSourceColumnId,
-	onMigrateWorkingDirectory,
-	migratingTaskId,
-	showSummaryOnCards,
-	onRequestDisplaySummary,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -43,26 +32,27 @@ function ColumnSection({
 	onCardClick: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
-	onStartTask?: (taskId: string) => void;
-	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
-	onMoveToTrashTask?: (taskId: string) => void;
-	onRestoreFromTrashTask?: (taskId: string) => void;
-	onRegenerateTitleTask?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
-	onUpdateTaskTitle?: (taskId: string, title: string) => void;
-	onTogglePinTask?: (taskId: string) => void;
-	moveToTrashLoadingById?: Record<string, boolean>;
 	activeDragSourceColumnId?: BoardColumnId | null;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	migratingTaskId?: string | null;
-	showSummaryOnCards?: boolean;
-	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
+	const {
+		onStartTask,
+		onRestartSessionTask,
+		onMoveToTrashTask,
+		onRestoreFromTrashTask,
+		onCancelAutomaticTaskAction,
+		onRegenerateTitleTask,
+		onUpdateTaskTitle,
+		onTogglePinTask,
+		onMigrateWorkingDirectory,
+		onRequestDisplaySummary,
+	} = useStableCardActions();
+	const { moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, showSummaryOnCards } =
+		useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -177,7 +167,8 @@ function ColumnSection({
 								{(() => {
 									const items: ReactNode[] = [];
 									let draggableIndex = 0;
-									for (const card of column.cards) {
+									const cards = sortColumnCards(column.cards, column.id);
+									for (const card of cards) {
 										if (column.id === "backlog" && editingTaskId === card.id) {
 											items.push(
 												<div key={card.id} style={{ marginBottom: 8 }}>
@@ -198,7 +189,8 @@ function ColumnSection({
 												onRestartSession={onRestartSessionTask}
 												onMoveToTrash={onMoveToTrashTask}
 												onRestoreFromTrash={onRestoreFromTrashTask}
-												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
+												onCancelAutomaticAction={onCancelAutomaticTaskAction}
+												isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
 												onMigrateWorkingDirectory={onMigrateWorkingDirectory}
 												isMigrateLoading={migratingTaskId === card.id}
 												onRegenerateTitle={onRegenerateTitleTask}
@@ -239,50 +231,24 @@ export function ColumnContextPanel({
 	taskSessions,
 	onTaskDragEnd,
 	onCreateTask,
-	onStartTask,
-	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onMoveToTrashTask,
-	onRestoreFromTrashTask,
-	onRegenerateTitleTask,
-	isLlmGenerationDisabled,
-	onUpdateTaskTitle,
-	onTogglePinTask,
-	moveToTrashLoadingById,
-	onMigrateWorkingDirectory,
-	migratingTaskId,
 	panelWidth,
-	showSummaryOnCards,
-	onRequestDisplaySummary,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
-	onStartTask?: (taskId: string) => void;
-	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
-	onMoveToTrashTask?: (taskId: string) => void;
-	onRestoreFromTrashTask?: (taskId: string) => void;
-	onRegenerateTitleTask?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
-	onUpdateTaskTitle?: (taskId: string, title: string) => void;
-	onTogglePinTask?: (taskId: string) => void;
-	moveToTrashLoadingById?: Record<string, boolean>;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	migratingTaskId?: string | null;
 	panelWidth?: string;
-	showSummaryOnCards?: boolean;
-	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -357,27 +323,12 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-							onStartTask={column.id === "backlog" ? onStartTask : undefined}
-							onRestartSessionTask={
-								column.id === "in_progress" || column.id === "review" ? onRestartSessionTask : undefined
-							}
 							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}
 							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 							onEditTask={column.id === "backlog" ? onEditTask : undefined}
-							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
-							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
-							onRegenerateTitleTask={onRegenerateTitleTask}
-							isLlmGenerationDisabled={isLlmGenerationDisabled}
-							onUpdateTaskTitle={onUpdateTaskTitle}
-							onTogglePinTask={onTogglePinTask}
-							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 							activeDragSourceColumnId={activeDragSourceColumnId}
-							onMigrateWorkingDirectory={onMigrateWorkingDirectory}
-							migratingTaskId={migratingTaskId}
-							showSummaryOnCards={showSummaryOnCards}
-							onRequestDisplaySummary={onRequestDisplaySummary}
 						/>
 					))}
 				</div>

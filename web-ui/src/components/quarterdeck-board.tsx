@@ -30,59 +30,31 @@ function isRectVerticallyVisibleWithinContainer(rect: DOMRect, containerRect: DO
 export function QuarterdeckBoard({
 	data,
 	taskSessions,
-	showSummaryOnCards = false,
-	onRequestDisplaySummary,
 	onCardSelect,
 	onCreateTask,
-	onStartTask,
-	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCancelAutomaticTaskAction,
-	onRegenerateTitleTask,
-	isLlmGenerationDisabled,
-	onUpdateTaskTitle,
-	onTogglePinTask,
-	onMoveToTrashTask,
-	onRestoreFromTrashTask,
-	moveToTrashLoadingById,
 	dependencies,
 	onCreateDependency,
 	onDeleteDependency,
-	onMigrateWorkingDirectory,
-	migratingTaskId,
 	onDragEnd,
 	onRequestProgrammaticCardMoveReady,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	showSummaryOnCards?: boolean;
-	onRequestDisplaySummary?: (taskId: string) => void;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
-	onStartTask?: (taskId: string) => void;
-	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
-	onCancelAutomaticTaskAction?: (taskId: string) => void;
-	onRegenerateTitleTask?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
-	onUpdateTaskTitle?: (taskId: string, title: string) => void;
-	onTogglePinTask?: (taskId: string) => void;
-	onMoveToTrashTask?: (taskId: string) => void;
-	onRestoreFromTrashTask?: (taskId: string) => void;
-	moveToTrashLoadingById?: Record<string, boolean>;
 	dependencies: BoardDependency[];
 	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
 	onDeleteDependency?: (dependencyId: string) => void;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	migratingTaskId?: string | null;
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
 }): React.ReactElement {
@@ -389,23 +361,11 @@ export function QuarterdeckBoard({
 						column={column}
 						taskSessions={taskSessions}
 						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-						onStartTask={column.id === "backlog" ? onStartTask : undefined}
-						onRestartSessionTask={
-							column.id === "in_progress" || column.id === "review" ? onRestartSessionTask : undefined
-						}
 						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 						editingTaskId={column.id === "backlog" ? editingTaskId : null}
 						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 						onEditTask={column.id === "backlog" ? onEditTask : undefined}
-						onCancelAutomaticTaskAction={onCancelAutomaticTaskAction}
-						onRegenerateTitleTask={onRegenerateTitleTask}
-						isLlmGenerationDisabled={isLlmGenerationDisabled}
-						onUpdateTaskTitle={onUpdateTaskTitle}
-						onTogglePinTask={onTogglePinTask}
-						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
-						onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
-						moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
 						programmaticCardMoveInFlight={programmaticCardMoveInFlight}
@@ -413,11 +373,7 @@ export function QuarterdeckBoard({
 						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
 						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
-						onMigrateWorkingDirectory={onMigrateWorkingDirectory}
-						migratingTaskId={migratingTaskId}
 						isDependencyLinking={dependencyLinking.draft !== null}
-						showSummaryOnCards={showSummaryOnCards}
-						onRequestDisplaySummary={onRequestDisplaySummary}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

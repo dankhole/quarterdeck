@@ -16,6 +16,7 @@ import type { SidebarTabId } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
+import { useStableCardActions } from "@/state/card-actions-context";
 import { useTaskWorkspaceInfoValue, useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
@@ -202,25 +203,11 @@ export function CardDetailView({
 	onCardSelect,
 	onTaskDragEnd,
 	onCreateTask,
-	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onMoveReviewCardToTrash,
-	onRestoreTaskFromTrash,
-	onRestartSessionTask,
-	onCancelAutomaticTaskAction,
-	onRegenerateTitleTask,
-	isLlmGenerationDisabled,
-	onUpdateTaskTitle,
-	onTogglePinTask,
-	moveToTrashLoadingById,
-	onMigrateWorkingDirectory,
-	migratingTaskId,
-	showSummaryOnCards,
-	onRequestDisplaySummary,
 	onAddReviewComments,
 	onSendReviewComments,
 	gitHistoryPanel,
@@ -262,25 +249,11 @@ export function CardDetailView({
 	onCardSelect: (taskId: string) => void;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
-	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
-	onMoveReviewCardToTrash?: (taskId: string) => void;
-	onRestoreTaskFromTrash?: (taskId: string) => void;
-	onRestartSessionTask?: (taskId: string) => void;
-	onCancelAutomaticTaskAction?: (taskId: string) => void;
-	onRegenerateTitleTask?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
-	onUpdateTaskTitle?: (taskId: string, title: string) => void;
-	onTogglePinTask?: (taskId: string) => void;
-	moveToTrashLoadingById?: Record<string, boolean>;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	migratingTaskId?: string | null;
-	showSummaryOnCards?: boolean;
-	onRequestDisplaySummary?: (taskId: string) => void;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	gitHistoryPanel?: ReactNode;
@@ -323,6 +296,7 @@ export function CardDetailView({
 
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { startDrag: startDetailDiffResize } = useResizeDrag();
+	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const { startDrag: startFileBrowserTreeResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
@@ -596,24 +570,11 @@ export function CardDetailView({
 								taskSessions={taskSessions}
 								onTaskDragEnd={onTaskDragEnd}
 								onCreateTask={onCreateTask}
-								onStartTask={onStartTask}
-								onRestartSessionTask={onRestartSessionTask}
 								onStartAllTasks={onStartAllTasks}
 								onClearTrash={onClearTrash}
 								editingTaskId={editingTaskId}
 								inlineTaskEditor={inlineTaskEditor}
 								onEditTask={onEditTask}
-								onMoveToTrashTask={onMoveReviewCardToTrash}
-								onRestoreFromTrashTask={onRestoreTaskFromTrash}
-								onRegenerateTitleTask={onRegenerateTitleTask}
-								isLlmGenerationDisabled={isLlmGenerationDisabled}
-								onUpdateTaskTitle={onUpdateTaskTitle}
-								onTogglePinTask={onTogglePinTask}
-								moveToTrashLoadingById={moveToTrashLoadingById}
-								onMigrateWorkingDirectory={onMigrateWorkingDirectory}
-								migratingTaskId={migratingTaskId}
-								showSummaryOnCards={showSummaryOnCards}
-								onRequestDisplaySummary={onRequestDisplaySummary}
 								panelWidth="100%"
 							/>
 						) : activeTab === "changes" ? (

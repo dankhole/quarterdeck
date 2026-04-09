@@ -114,9 +114,12 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
+import { createTaggedLogger } from "../core/debug-logger";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { generateDisplaySummary } from "../title/summary-generator";
 import { generateBranchName, generateTaskTitle } from "../title/title-generator";
+
+const log = createTaggedLogger("task-gen");
 
 /** Tracks taskIds with in-flight LLM summary generation to prevent duplicate concurrent calls. */
 const summaryGenerationInFlight = new Set<string>();
@@ -161,6 +164,7 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeMigrateTaskWorkingDirectoryRequest,
 		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
+		setDebugLogging: (enabled: boolean) => { ok: boolean; enabled: boolean };
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -230,6 +234,7 @@ export interface RuntimeTrpcContext {
 			text: string,
 			generatedAt: number | null,
 		) => Promise<void>;
+		setFocusedTask: (scope: RuntimeTrpcWorkspaceScope, taskId: string | null) => void;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -346,6 +351,12 @@ export const runtimeAppRouter = t.router({
 		resetAllState: t.procedure.output(runtimeDebugResetAllStateResponseSchema).mutation(async ({ ctx }) => {
 			return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
 		}),
+		setDebugLogging: t.procedure
+			.input(z.object({ enabled: z.boolean() }))
+			.output(z.object({ ok: z.boolean(), enabled: z.boolean() }))
+			.mutation(({ ctx, input }) => {
+				return ctx.runtimeApi.setDebugLogging(input.enabled);
+			}),
 		openFile: t.procedure
 			.input(runtimeOpenFileRequestSchema)
 			.output(runtimeOpenFileResponseSchema)
@@ -440,6 +451,11 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.saveState(ctx.workspaceScope, input);
 			}),
+		setFocusedTask: workspaceProcedure
+			.input(z.object({ taskId: z.string().nullable() }))
+			.mutation(({ ctx, input }) => {
+				ctx.workspaceApi.setFocusedTask(ctx.workspaceScope, input.taskId);
+			}),
 		getWorkspaceChanges: workspaceProcedure.output(runtimeWorkspaceChangesResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadWorkspaceChanges(ctx.workspaceScope);
 		}),
@@ -473,6 +489,12 @@ export const runtimeAppRouter = t.router({
 				const prompt = card.prompt;
 				const session = state.sessions[card.id];
 				const summaries = session?.conversationSummaries ?? [];
+				log.debug("regenerateTaskTitle", {
+					taskId: input.taskId,
+					promptSnippet: prompt.slice(0, 80),
+					summaryCount: summaries.length,
+					latestSummary: summaries.at(-1)?.text?.slice(0, 100),
+				});
 
 				// Build context with summaries labeled so the LLM can prioritize the latest.
 				let agentContext: string | null = null;
@@ -541,6 +563,12 @@ export const runtimeAppRouter = t.router({
 				if (!sourceText?.trim()) {
 					return { ok: false, summary: null };
 				}
+				log.debug("generateDisplaySummary", {
+					taskId: input.taskId,
+					summaryCount: summaries.length,
+					sourceTextSnippet: sourceText.slice(0, 120),
+					usedFinalMessage: conversationText === null,
+				});
 
 				// Prevent duplicate concurrent LLM calls for the same task.
 				if (summaryGenerationInFlight.has(input.taskId)) {

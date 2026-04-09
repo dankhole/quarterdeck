@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react";
 
 import type {
+	RuntimeDebugLogEntry,
 	RuntimeProjectSummary,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
@@ -13,6 +14,7 @@ import type {
 
 const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
+const DEBUG_LOG_ENTRIES_MAX = 500;
 
 function mergeTaskSessionSummaries(
 	currentSessions: Record<string, RuntimeTaskSessionSummary>,
@@ -54,6 +56,8 @@ export interface UseRuntimeStateStreamResult {
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
+	debugLoggingEnabled: boolean;
+	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -67,6 +71,8 @@ interface RuntimeStateStreamStore {
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
+	debugLoggingEnabled: boolean;
+	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -87,6 +93,9 @@ type RuntimeStateStreamAction =
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
 	| { type: "task_notification"; summaries: RuntimeTaskSessionSummary[] }
+	| { type: "debug_logging_state"; enabled: boolean; recentEntries?: RuntimeDebugLogEntry[] }
+	| { type: "debug_log_batch"; entries: RuntimeDebugLogEntry[] }
+	| { type: "debug_log_clear" }
 	| { type: "stream_error"; message: string }
 	| { type: "stream_disconnected"; message: string };
 
@@ -99,6 +108,8 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		notificationSessions: {},
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
+		debugLoggingEnabled: false,
+		debugLogEntries: [],
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
@@ -157,6 +168,8 @@ function runtimeStateStreamReducer(
 			notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, Object.values(snapshotSessions)),
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			latestTaskTitleUpdate: state.latestTaskTitleUpdate,
+			debugLoggingEnabled: state.debugLoggingEnabled,
+			debugLogEntries: state.debugLogEntries,
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
@@ -225,6 +238,31 @@ function runtimeStateStreamReducer(
 		return {
 			...state,
 			notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, action.summaries),
+		};
+	}
+	if (action.type === "debug_logging_state") {
+		const incoming = action.recentEntries ?? [];
+		// Merge recent entries from server, deduplicating by id.
+		const existingIds = new Set(state.debugLogEntries.map((e) => e.id));
+		const newEntries = incoming.filter((e) => !existingIds.has(e.id));
+		const merged = [...state.debugLogEntries, ...newEntries].slice(-DEBUG_LOG_ENTRIES_MAX);
+		return {
+			...state,
+			debugLoggingEnabled: action.enabled,
+			debugLogEntries: action.enabled ? merged : state.debugLogEntries,
+		};
+	}
+	if (action.type === "debug_log_batch") {
+		const merged = [...state.debugLogEntries, ...action.entries].slice(-DEBUG_LOG_ENTRIES_MAX);
+		return {
+			...state,
+			debugLogEntries: merged,
+		};
+	}
+	if (action.type === "debug_log_clear") {
+		return {
+			...state,
+			debugLogEntries: [],
 		};
 	}
 	if (action.type === "stream_error") {
@@ -391,6 +429,21 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						return;
 					}
+					if (payload.type === "debug_logging_state") {
+						dispatch({
+							type: "debug_logging_state",
+							enabled: payload.enabled,
+							recentEntries: payload.recentEntries,
+						});
+						return;
+					}
+					if (payload.type === "debug_log_batch") {
+						dispatch({
+							type: "debug_log_batch",
+							entries: payload.entries,
+						});
+						return;
+					}
 					if (payload.type === "error") {
 						dispatch({
 							type: "stream_error",
@@ -441,6 +494,8 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		notificationSessions: state.notificationSessions,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
+		debugLoggingEnabled: state.debugLoggingEnabled,
+		debugLogEntries: state.debugLogEntries,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,

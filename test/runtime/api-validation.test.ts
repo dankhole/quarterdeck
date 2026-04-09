@@ -86,18 +86,18 @@ describe("parseWorktreeEnsureRequest", () => {
 });
 
 describe("parseTaskSessionStartRequest", () => {
-	it("parses resumeFromTrash and trims task identifiers", () => {
+	it("parses resumeConversation and trims task identifiers", () => {
 		const parsed = parseTaskSessionStartRequest({
 			taskId: "  task-1  ",
 			prompt: "",
 			baseRef: "  main  ",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 		expect(parsed).toEqual({
 			taskId: "task-1",
 			prompt: "",
 			baseRef: "main",
-			resumeFromTrash: true,
+			resumeConversation: true,
 		});
 	});
 });

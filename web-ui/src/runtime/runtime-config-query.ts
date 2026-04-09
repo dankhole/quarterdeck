@@ -52,6 +52,14 @@ export async function resetRuntimeDebugState(workspaceId: string | null): Promis
 	return await trpcClient.runtime.resetAllState.mutate();
 }
 
+export async function setDebugLogging(
+	workspaceId: string | null,
+	enabled: boolean,
+): Promise<{ ok: boolean; enabled: boolean }> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.setDebugLogging.mutate({ enabled });
+}
+
 export async function openFileOnHost(workspaceId: string | null, filePath: string): Promise<void> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	await trpcClient.runtime.openFile.mutate({ filePath });

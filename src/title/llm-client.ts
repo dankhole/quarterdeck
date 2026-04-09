@@ -18,6 +18,9 @@
  *   QUARTERDECK_TITLE_MODEL — legacy alias for QUARTERDECK_LLM_MODEL
  */
 
+import { createTaggedLogger } from "../core/debug-logger";
+
+const log = createTaggedLogger("llm-client");
 const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
 // ── Rate limiter ────────────────────────────────────────────────────────
@@ -33,7 +36,7 @@ const callTimestamps: number[] = [];
 function acquireSlot(): boolean {
 	const now = Date.now();
 	// Prune timestamps outside the rolling window.
-	while (callTimestamps.length > 0 && callTimestamps[0]! < now - WINDOW_MS) {
+	while (callTimestamps.length > 0 && (callTimestamps[0] ?? 0) < now - WINDOW_MS) {
 		callTimestamps.shift();
 	}
 	if (inFlight >= MAX_CONCURRENT || callTimestamps.length >= MAX_PER_MINUTE) {
@@ -77,12 +80,14 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 	}
 
 	if (!acquireSlot()) {
-		console.warn("[llm-client] Rate limit hit — dropping call");
+		log.warn("Rate limit hit — dropping call");
 		return null;
 	}
 
 	try {
 		const model = process.env.QUARTERDECK_LLM_MODEL || process.env.QUARTERDECK_TITLE_MODEL || DEFAULT_LLM_MODEL;
+		const startTime = Date.now();
+		log.debug("LLM call starting", { model, maxTokens: options.maxTokens, promptLength: options.userPrompt.length });
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
 		const response = await fetch(`${origin}/v1/chat/completions`, {
 			method: "POST",
@@ -102,14 +107,18 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		});
 
 		if (!response.ok) {
+			log.warn("LLM call failed", { status: response.status, durationMs: Date.now() - startTime });
 			return null;
 		}
 
 		const data = (await response.json()) as {
 			choices?: Array<{ message?: { content?: string } }>;
 		};
-		return data.choices?.[0]?.message?.content?.trim() || null;
-	} catch {
+		const result = data.choices?.[0]?.message?.content?.trim() || null;
+		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result?.length ?? 0 });
+		return result;
+	} catch (error) {
+		log.warn("LLM call error", { error: error instanceof Error ? error.message : String(error) });
 		return null;
 	} finally {
 		releaseSlot();

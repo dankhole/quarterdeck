@@ -145,6 +145,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				runCommand: deps.runCommand,
 				prepareForStateReset,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
+				setPollIntervals: deps.runtimeStateHub.setPollIntervals,
+				broadcastDebugLoggingState: deps.runtimeStateHub.broadcastDebugLoggingState,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
@@ -152,6 +154,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
 				broadcastTaskTitleUpdated: deps.runtimeStateHub.broadcastTaskTitleUpdated,
 				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
+				setFocusedTask: deps.runtimeStateHub.setFocusedTask,
 			}),
 			projectsApi: createProjectsApi({
 				getActiveWorkspacePath: deps.workspaceRegistry.getActiveWorkspacePath,

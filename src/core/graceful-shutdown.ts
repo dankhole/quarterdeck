@@ -194,7 +194,13 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 		finalizeExit(getExitCodeForSignal(signal));
 	};
 
-	for (const signal of DEFAULT_HANDLED_SIGNALS) {
+	// SIGHUP and SIGQUIT are not supported on Windows — skip them to avoid errors.
+	const signals =
+		process.platform === "win32"
+			? DEFAULT_HANDLED_SIGNALS.filter((s) => s !== "SIGHUP" && s !== "SIGQUIT")
+			: DEFAULT_HANDLED_SIGNALS;
+
+	for (const signal of signals) {
 		const listener = () => {
 			handleSignal(signal);
 		};

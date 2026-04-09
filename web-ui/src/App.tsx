@@ -1,14 +1,16 @@
 // Main React composition root for the browser app.
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
+
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
+import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { GitHistoryView } from "@/components/git-history-view";
@@ -41,6 +43,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useDebugLogging } from "@/hooks/use-debug-logging";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
@@ -69,6 +72,7 @@ import { type SidebarTabId, useCardDetailLayout } from "@/resize/use-card-detail
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -80,6 +84,7 @@ import {
 	reconcileTaskWorkingDirectory,
 	toggleTaskPinned,
 } from "@/state/board-state";
+import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import {
 	getTaskWorkspaceSnapshot,
 	getWorkspacePath,
@@ -137,6 +142,8 @@ export default function App(): ReactElement {
 		notificationSessions,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		debugLoggingEnabled,
+		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -197,6 +204,11 @@ export default function App(): ReactElement {
 		settingsRuntimeProjectConfig,
 		onOpenStartupOnboardingDialog: handleOpenStartupOnboardingDialog,
 	});
+	const debugLogging = useDebugLogging({
+		currentProjectId,
+		debugLoggingEnabled,
+		debugLogEntries,
+	});
 	const {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
@@ -205,12 +217,14 @@ export default function App(): ReactElement {
 	const isLlmGenerationDisabled = !llmConfigured;
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
 		currentProjectId,
-		runtimeProjectConfig?.autoGenerateSummary ?? false,
-		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
+		runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
+		runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 		llmConfigured,
 	);
-	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
-	const unmergedChangesIndicatorEnabled = runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? false;
+	const showTrashWorktreeNotice =
+		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
+	const unmergedChangesIndicatorEnabled =
+		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
 			refreshRuntimeProjectConfig();
@@ -252,6 +266,18 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+
+	// Notify the runtime which task is focused so it can prioritize git polling.
+	useEffect(() => {
+		if (!currentProjectId || selectedTaskId === null) {
+			return;
+		}
+		getRuntimeTrpcClient(currentProjectId)
+			.workspace.setFocusedTask.mutate({ taskId: selectedTaskId })
+			.catch(() => {
+				// Fire-and-forget — polling priority is non-critical.
+			});
+	}, [currentProjectId, selectedTaskId]);
 
 	// Reactive subscriptions — re-render when the metadata store updates for the selected task.
 	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
@@ -342,15 +368,14 @@ export default function App(): ReactElement {
 	// Known limitation: notification settings are read from the currently viewed project's config,
 	// so toggling notifications off in one project silences all cross-workspace notifications.
 	// Per-workspace notification settings are out of scope for now.
-	const audibleNotificationsEnabled = runtimeProjectConfig?.audibleNotificationsEnabled ?? true;
-	const audibleNotificationVolume = runtimeProjectConfig?.audibleNotificationVolume ?? 0.7;
-	const audibleNotificationEvents = runtimeProjectConfig?.audibleNotificationEvents ?? {
-		permission: true,
-		review: true,
-		failure: true,
-		completion: true,
-	};
-	const audibleNotificationsOnlyWhenHidden = runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? true;
+	const audibleNotificationsEnabled =
+		runtimeProjectConfig?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
+	const audibleNotificationVolume =
+		runtimeProjectConfig?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
+	const audibleNotificationEvents =
+		runtimeProjectConfig?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
+	const audibleNotificationsOnlyWhenHidden =
+		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
 
 	useAudibleNotifications({
 		notificationSessions,
@@ -524,7 +549,7 @@ export default function App(): ReactElement {
 		selectedCard,
 		workspaceGit,
 		agentCommand,
-		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? true,
+		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		findCard: findCardStable,
 		upsertSession,
 		sendTaskSessionInput,
@@ -787,6 +812,7 @@ export default function App(): ReactElement {
 		handleOpenSettings,
 		handleToggleGitHistory,
 		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
+		handleToggleDebugLogPanel: debugLogging.toggleDebugLogPanel,
 	});
 
 	useEffect(() => {
@@ -986,6 +1012,43 @@ export default function App(): ReactElement {
 		/>
 	) : undefined;
 
+	const stableCardActions = useMemo<StableCardActions>(
+		() => ({
+			onStartTask: handleStartTaskFromBoard,
+			onRestartSessionTask: handleRestartTaskSession,
+			onMoveToTrashTask: handleMoveReviewCardToTrash,
+			onRestoreFromTrashTask: handleRestoreTaskFromTrash,
+			onCancelAutomaticTaskAction: handleCancelAutomaticTaskAction,
+			onRegenerateTitleTask: handleRegenerateTitleTask,
+			onUpdateTaskTitle: handleUpdateTaskTitle,
+			onTogglePinTask: handleToggleTaskPinned,
+			onMigrateWorkingDirectory: handleMigrateWorkingDirectory,
+			onRequestDisplaySummary: handleRequestDisplaySummary,
+		}),
+		[
+			handleStartTaskFromBoard,
+			handleRestartTaskSession,
+			handleMoveReviewCardToTrash,
+			handleRestoreTaskFromTrash,
+			handleCancelAutomaticTaskAction,
+			handleRegenerateTitleTask,
+			handleUpdateTaskTitle,
+			handleToggleTaskPinned,
+			handleMigrateWorkingDirectory,
+			handleRequestDisplaySummary,
+		],
+	);
+
+	const reactiveCardState = useMemo<ReactiveCardState>(
+		() => ({
+			moveToTrashLoadingById: moveToTrashLoadingById ?? {},
+			migratingTaskId: migratingTaskId ?? null,
+			isLlmGenerationDisabled,
+			showSummaryOnCards: runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
+		}),
+		[moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, runtimeProjectConfig?.showSummaryOnCards],
+	);
+
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
 	}
@@ -1060,435 +1123,425 @@ export default function App(): ReactElement {
 	);
 
 	return (
-		<LayoutCustomizationsProvider onResetBottomTerminalLayoutCustomizations={resetBottomTerminalLayoutCustomizations}>
-			<LayoutResetBridge resetToDefaults={resetCardDetailLayoutToDefaults} />
-			<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
-				{/* Sidebar toolbar + side panel — hidden when diff or file browser is expanded */}
-				{!isDiffExpanded && !isFileBrowserExpanded ? (
-					<>
-						<DetailToolbar
-							visualActiveTab={visualActiveTab}
-							onTabChange={handleToolbarTabChange}
-							hasSelectedTask={selectedCard !== null}
-							hasUncommittedChanges={
-								selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
-							}
-							hasUnmergedChanges={
-								unmergedChangesIndicatorEnabled && selectedCard
-									? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
-									: false
-							}
-						/>
+		<CardActionsProvider stable={stableCardActions} reactive={reactiveCardState}>
+			<LayoutCustomizationsProvider
+				onResetBottomTerminalLayoutCustomizations={resetBottomTerminalLayoutCustomizations}
+			>
+				<LayoutResetBridge resetToDefaults={resetCardDetailLayoutToDefaults} />
+				<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
+					{/* Sidebar toolbar + side panel — hidden when diff or file browser is expanded */}
+					{!isDiffExpanded && !isFileBrowserExpanded ? (
+						<>
+							<DetailToolbar
+								visualActiveTab={visualActiveTab}
+								onTabChange={handleToolbarTabChange}
+								hasSelectedTask={selectedCard !== null}
+								hasUncommittedChanges={
+									selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
+								}
+								hasUnmergedChanges={
+									unmergedChangesIndicatorEnabled && selectedCard
+										? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
+										: false
+								}
+							/>
 
-						{/* Home side panel — project nav */}
-						{activeTab === "home" ? (
-							<>
-								<div
-									style={{
-										display: "flex",
-										flexDirection: "column",
-										flex: `0 0 ${homeSidePanelPercent}`,
-										minWidth: 0,
-										minHeight: 0,
-										overflow: "hidden",
-									}}
-								>
-									<ProjectNavigationPanel
-										projects={displayedProjects}
-										isLoadingProjects={isProjectListLoading}
-										currentProjectId={navigationCurrentProjectId}
-										removingProjectId={removingProjectId}
-										activeSection={homeSidebarSection}
-										onActiveSectionChange={setHomeSidebarSection}
-										canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-										agentSectionContent={homeSidebarAgentPanel}
-										onSelectProject={(projectId) => {
-											void handleSelectProject(projectId);
+							{/* Home side panel — project nav */}
+							{activeTab === "home" ? (
+								<>
+									<div
+										style={{
+											display: "flex",
+											flexDirection: "column",
+											flex: `0 0 ${homeSidePanelPercent}`,
+											minWidth: 0,
+											minHeight: 0,
+											overflow: "hidden",
 										}}
-										onRemoveProject={handleRemoveProject}
-										onAddProject={() => {
-											void handleAddProject();
-										}}
-									/>
-								</div>
-								<ResizeHandle
-									orientation="vertical"
-									ariaLabel="Resize home side panel"
-									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
-									className="z-10"
-								/>
-							</>
-						) : null}
-					</>
-				) : null}
-
-				{/* Main area — varies by selection state */}
-				{selectedCard && detailSession ? (
-					<CardDetailView
-						selection={selectedCard}
-						currentProjectId={currentProjectId}
-						sessionSummary={detailSession}
-						taskSessions={sessions}
-						onSessionSummary={upsertSession}
-						onCardSelect={handleCardSelect}
-						onTaskDragEnd={handleDetailTaskDragEnd}
-						onCreateTask={handleOpenCreateTask}
-						onStartTask={handleStartTaskFromBoard}
-						onStartAllTasks={handleStartAllBacklogTasksFromBoard}
-						onClearTrash={handleOpenClearTrash}
-						editingTaskId={editingTaskId}
-						inlineTaskEditor={inlineTaskEditor}
-						onEditTask={(task) => {
-							handleOpenEditTask(task, { preserveDetailSelection: true });
-						}}
-						moveToTrashLoadingById={moveToTrashLoadingById}
-						onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
-						migratingTaskId={migratingTaskId}
-						showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
-						onRequestDisplaySummary={handleRequestDisplaySummary}
-						onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
-						onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
-						onRestartSessionTask={handleRestartTaskSession}
-						onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
-						onRegenerateTitleTask={handleRegenerateTitleTask}
-						isLlmGenerationDisabled={isLlmGenerationDisabled}
-						onUpdateTaskTitle={handleUpdateTaskTitle}
-						onTogglePinTask={handleToggleTaskPinned}
-						onAddReviewComments={(taskId: string, text: string) => {
-							void handleAddReviewComments(taskId, text);
-						}}
-						onSendReviewComments={(taskId: string, text: string) => {
-							void handleSendReviewComments(taskId, text);
-						}}
-						gitHistoryPanel={
-							isGitHistoryOpen ? (
-								<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
-							) : undefined
-						}
-						bottomTerminalOpen={isDetailTerminalOpen}
-						bottomTerminalTaskId={detailTerminalTaskId}
-						bottomTerminalSummary={detailTerminalSummary}
-						bottomTerminalSubtitle={detailTerminalSubtitle}
-						onBottomTerminalClose={closeDetailTerminal}
-						onBottomTerminalCollapse={collapseDetailTerminal}
-						bottomTerminalPaneHeight={detailTerminalPaneHeight}
-						onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
-						onBottomTerminalConnectionReady={markTerminalConnectionReady}
-						bottomTerminalAgentCommand={agentCommand}
-						onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
-						isBottomTerminalExpanded={isDetailTerminalExpanded}
-						onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
-						onBottomTerminalRestart={handleRestartDetailTerminal}
-						onBottomTerminalExit={handleShellExit}
-						isDocumentVisible={isDocumentVisible}
-						activeTab={activeTab}
-						topBar={topBar}
-						sidePanelRatio={sidePanelRatio}
-						setSidePanelRatio={setSidePanelRatio}
-						isDiffExpanded={isDiffExpanded}
-						isFileBrowserExpanded={isFileBrowserExpanded}
-						onDiffExpandedChange={setIsDiffExpanded}
-						onFileBrowserExpandedChange={setIsFileBrowserExpanded}
-						detailDiffFileTreeRatio={detailDiffFileTreeRatio}
-						setDetailDiffFileTreeRatio={setDetailDiffFileTreeRatio}
-						detailFileBrowserTreeRatio={detailFileBrowserTreeRatio}
-						setDetailFileBrowserTreeRatio={setDetailFileBrowserTreeRatio}
-					/>
-				) : (
-					<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-						{topBar}
-						<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-							{shouldShowProjectLoadingState ? (
-								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
-									<Spinner size={30} />
-								</div>
-							) : hasNoProjects ? (
-								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
-									<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
-										<FolderOpen size={48} strokeWidth={1} />
-										<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
-										<p className="text-[13px] text-text-secondary">
-											Add a git repository to start using Quarterdeck.
-										</p>
-										<Button
-											variant="primary"
-											onClick={() => {
+									>
+										<ProjectNavigationPanel
+											projects={displayedProjects}
+											isLoadingProjects={isProjectListLoading}
+											currentProjectId={navigationCurrentProjectId}
+											removingProjectId={removingProjectId}
+											activeSection={homeSidebarSection}
+											onActiveSectionChange={setHomeSidebarSection}
+											canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+											agentSectionContent={homeSidebarAgentPanel}
+											onSelectProject={(projectId) => {
+												void handleSelectProject(projectId);
+											}}
+											onRemoveProject={handleRemoveProject}
+											onAddProject={() => {
 												void handleAddProject();
 											}}
-										>
-											Add Project
-										</Button>
+										/>
 									</div>
-								</div>
-							) : (
-								<div className="flex flex-1 flex-col min-h-0 min-w-0">
-									<div className="flex flex-1 min-h-0 min-w-0">
-										{isGitHistoryOpen ? (
-											<GitHistoryView
-												workspaceId={currentProjectId}
-												gitHistory={gitHistory}
-												onCheckoutBranch={(branch) => {
-													void switchHomeBranch(branch);
-												}}
-												onDiscardWorkingChanges={() => {
-													void discardHomeWorkingChanges();
-												}}
-												isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
-											/>
-										) : (
-											<QuarterdeckBoard
-												data={board}
-												taskSessions={sessions}
-												showSummaryOnCards={runtimeProjectConfig?.showSummaryOnCards ?? false}
-												onRequestDisplaySummary={handleRequestDisplaySummary}
-												onCardSelect={handleCardSelect}
-												onCreateTask={handleOpenCreateTask}
-												onStartTask={handleStartTaskFromBoard}
-												onRestartSessionTask={handleRestartTaskSession}
-												onStartAllTasks={handleStartAllBacklogTasksFromBoard}
-												onClearTrash={handleOpenClearTrash}
-												editingTaskId={editingTaskId}
-												inlineTaskEditor={inlineTaskEditor}
-												onEditTask={handleOpenEditTask}
-												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
-												onRegenerateTitleTask={handleRegenerateTitleTask}
-												isLlmGenerationDisabled={isLlmGenerationDisabled}
-												onUpdateTaskTitle={handleUpdateTaskTitle}
-												onTogglePinTask={handleToggleTaskPinned}
-												moveToTrashLoadingById={moveToTrashLoadingById}
-												onMoveToTrashTask={handleMoveReviewCardToTrash}
-												onRestoreFromTrashTask={handleRestoreTaskFromTrash}
-												onMigrateWorkingDirectory={handleMigrateWorkingDirectory}
-												migratingTaskId={migratingTaskId}
-												dependencies={board.dependencies}
-												onCreateDependency={handleCreateDependency}
-												onDeleteDependency={handleDeleteDependency}
-												onRequestProgrammaticCardMoveReady={handleProgrammaticCardMoveReady}
-												onDragEnd={handleDragEnd}
-											/>
-										)}
+									<ResizeHandle
+										orientation="vertical"
+										ariaLabel="Resize home side panel"
+										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+										className="z-10"
+									/>
+								</>
+							) : null}
+						</>
+					) : null}
+
+					{/* Main area — varies by selection state */}
+					{selectedCard && detailSession ? (
+						<CardDetailView
+							selection={selectedCard}
+							currentProjectId={currentProjectId}
+							sessionSummary={detailSession}
+							taskSessions={sessions}
+							onSessionSummary={upsertSession}
+							onCardSelect={handleCardSelect}
+							onTaskDragEnd={handleDetailTaskDragEnd}
+							onCreateTask={handleOpenCreateTask}
+							onStartAllTasks={handleStartAllBacklogTasksFromBoard}
+							onClearTrash={handleOpenClearTrash}
+							editingTaskId={editingTaskId}
+							inlineTaskEditor={inlineTaskEditor}
+							onEditTask={(task) => {
+								handleOpenEditTask(task, { preserveDetailSelection: true });
+							}}
+							onAddReviewComments={(taskId: string, text: string) => {
+								void handleAddReviewComments(taskId, text);
+							}}
+							onSendReviewComments={(taskId: string, text: string) => {
+								void handleSendReviewComments(taskId, text);
+							}}
+							gitHistoryPanel={
+								isGitHistoryOpen ? (
+									<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
+								) : undefined
+							}
+							bottomTerminalOpen={isDetailTerminalOpen}
+							bottomTerminalTaskId={detailTerminalTaskId}
+							bottomTerminalSummary={detailTerminalSummary}
+							bottomTerminalSubtitle={detailTerminalSubtitle}
+							onBottomTerminalClose={closeDetailTerminal}
+							onBottomTerminalCollapse={collapseDetailTerminal}
+							bottomTerminalPaneHeight={detailTerminalPaneHeight}
+							onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
+							onBottomTerminalConnectionReady={markTerminalConnectionReady}
+							bottomTerminalAgentCommand={agentCommand}
+							onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
+							isBottomTerminalExpanded={isDetailTerminalExpanded}
+							onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
+							onBottomTerminalRestart={handleRestartDetailTerminal}
+							onBottomTerminalExit={handleShellExit}
+							isDocumentVisible={isDocumentVisible}
+							activeTab={activeTab}
+							topBar={topBar}
+							sidePanelRatio={sidePanelRatio}
+							setSidePanelRatio={setSidePanelRatio}
+							isDiffExpanded={isDiffExpanded}
+							isFileBrowserExpanded={isFileBrowserExpanded}
+							onDiffExpandedChange={setIsDiffExpanded}
+							onFileBrowserExpandedChange={setIsFileBrowserExpanded}
+							detailDiffFileTreeRatio={detailDiffFileTreeRatio}
+							setDetailDiffFileTreeRatio={setDetailDiffFileTreeRatio}
+							detailFileBrowserTreeRatio={detailFileBrowserTreeRatio}
+							setDetailFileBrowserTreeRatio={setDetailFileBrowserTreeRatio}
+						/>
+					) : (
+						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+							{topBar}
+							<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+								{shouldShowProjectLoadingState ? (
+									<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
+										<Spinner size={30} />
 									</div>
-									{showHomeBottomTerminal ? (
-										<ResizableBottomPane
-											minHeight={200}
-											initialHeight={homeTerminalPaneHeight}
-											onHeightChange={setHomeTerminalPaneHeight}
-											onCollapse={collapseHomeTerminal}
-										>
-											<div
-												style={{
-													display: "flex",
-													flex: "1 1 0",
-													minWidth: 0,
-													paddingLeft: 12,
-													paddingRight: 12,
+								) : hasNoProjects ? (
+									<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
+										<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
+											<FolderOpen size={48} strokeWidth={1} />
+											<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
+											<p className="text-[13px] text-text-secondary">
+												Add a git repository to start using Quarterdeck.
+											</p>
+											<Button
+												variant="primary"
+												onClick={() => {
+													void handleAddProject();
 												}}
 											>
-												<AgentTerminalPanel
-													key={`home-shell-${homeTerminalTaskId}`}
-													taskId={homeTerminalTaskId}
-													workspaceId={currentProjectId}
-													summary={homeTerminalSummary}
-													onSummary={upsertSession}
-													showSessionToolbar={false}
-													autoFocus
-													onClose={closeHomeTerminal}
-													minimalHeaderTitle="Terminal"
-													minimalHeaderSubtitle={homeTerminalSubtitle}
-													panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-													terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-													cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-													onConnectionReady={markTerminalConnectionReady}
-													agentCommand={agentCommand}
-													onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
-													isExpanded={isHomeTerminalExpanded}
-													onToggleExpand={handleToggleExpandHomeTerminal}
-													onRestart={handleRestartHomeTerminal}
-													onExit={handleShellExit}
-												/>
-											</div>
-										</ResizableBottomPane>
-									) : null}
-								</div>
-							)}
-						</div>
-					</div>
-				)}
-				<RuntimeSettingsDialog
-					open={isSettingsOpen}
-					workspaceId={settingsWorkspaceId}
-					initialConfig={settingsRuntimeProjectConfig}
-					initialSection={settingsInitialSection}
-					onOpenChange={(nextOpen) => {
-						setIsSettingsOpen(nextOpen);
-						if (!nextOpen) {
-							setSettingsInitialSection(null);
-						}
-					}}
-					onSaved={() => {
-						refreshRuntimeProjectConfig();
-						refreshSettingsRuntimeProjectConfig();
-					}}
-				/>
-				<PromptShortcutEditorDialog
-					open={promptShortcutEditorOpen}
-					onOpenChange={setPromptShortcutEditorOpen}
-					shortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
-					onSave={savePromptShortcuts}
-				/>
-				<DebugDialog
-					open={isDebugDialogOpen}
-					onOpenChange={handleDebugDialogOpenChange}
-					isResetAllStatePending={isResetAllStatePending}
-					onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
-					onResetAllState={handleResetAllState}
-				/>
-				<TaskCreateDialog
-					open={isInlineTaskCreateOpen}
-					onOpenChange={handleCreateDialogOpenChange}
-					prompt={newTaskPrompt}
-					onPromptChange={setNewTaskPrompt}
-					images={newTaskImages}
-					onImagesChange={setNewTaskImages}
-					onCreate={handleCreateTask}
-					onCreateAndStart={handleCreateAndStartTask}
-					onCreateStartAndOpen={handleCreateStartAndOpenTask}
-					onCreateMultiple={handleCreateTasks}
-					onCreateAndStartMultiple={handleCreateAndStartTasks}
-					startInPlanMode={newTaskStartInPlanMode}
-					onStartInPlanModeChange={setNewTaskStartInPlanMode}
-					startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
-					autoReviewEnabled={newTaskAutoReviewEnabled}
-					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
-					useWorktree={newTaskUseWorktree}
-					onUseWorktreeChange={setNewTaskUseWorktree}
-					createFeatureBranch={createFeatureBranch}
-					onCreateFeatureBranchChange={setCreateFeatureBranch}
-					branchName={branchName}
-					onBranchNameEdit={handleBranchNameEdit}
-					onGenerateBranchName={generateBranchNameFromPrompt}
-					isGeneratingBranchName={isGeneratingBranchName}
-					isLlmGenerationDisabled={isLlmGenerationDisabled}
-					workspaceId={currentProjectId}
-					branchRef={newTaskBranchRef}
-					branchOptions={createTaskBranchOptions}
-					onBranchRefChange={setNewTaskBranchRef}
-				/>
-				<ClearTrashDialog
-					open={isClearTrashDialogOpen}
-					taskCount={trashTaskCount}
-					onCancel={() => setIsClearTrashDialogOpen(false)}
-					onConfirm={handleConfirmClearTrash}
-				/>
-				<TaskTrashWarningDialog
-					open={trashWarningState.open}
-					warning={trashWarningState.warning}
-					onCancel={handleCancelTrashWarning}
-					onConfirm={handleConfirmTrashWarning}
-				/>
-				<MigrateWorkingDirectoryDialog
-					open={pendingMigrate !== null}
-					direction={pendingMigrate?.direction ?? "isolate"}
-					isMigrating={migratingTaskId !== null}
-					onCancel={() => setPendingMigrate(null)}
-					onConfirm={handleConfirmMigrate}
-				/>
-				<StartupOnboardingDialog
-					open={isStartupOnboardingDialogOpen}
-					onClose={handleCloseStartupOnboardingDialog}
-					selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
-					agents={runtimeProjectConfig?.agents ?? []}
-					workspaceId={currentProjectId}
-					runtimeConfig={runtimeProjectConfig ?? null}
-					onSelectAgent={handleSelectOnboardingAgent}
-				/>
-
-				<AlertDialog
-					open={pendingGitInitializationPath !== null}
-					onOpenChange={(open) => {
-						if (!open) {
-							handleCancelInitializeGitProject();
-						}
-					}}
-				>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Initialize git repository?</AlertDialogTitle>
-					</AlertDialogHeader>
-					<AlertDialogBody>
-						<AlertDialogDescription asChild>
-							<div className="flex flex-col gap-3">
-								<p>
-									Quarterdeck requires git to manage workspaces for tasks. This folder is not a git repository
-									yet.
-								</p>
-								{pendingGitInitializationPath ? (
-									<p className="font-mono text-xs text-text-secondary break-all">
-										{pendingGitInitializationPath}
-									</p>
-								) : null}
-								<p>If you cancel, the project will not be added.</p>
-							</div>
-						</AlertDialogDescription>
-					</AlertDialogBody>
-					<AlertDialogFooter>
-						<AlertDialogCancel asChild>
-							<Button
-								variant="default"
-								disabled={isInitializingGitProject}
-								onClick={handleCancelInitializeGitProject}
-							>
-								Cancel
-							</Button>
-						</AlertDialogCancel>
-						<AlertDialogAction asChild>
-							<Button
-								variant="primary"
-								disabled={isInitializingGitProject}
-								onClick={() => {
-									void handleConfirmInitializeGitProject();
-								}}
-							>
-								{isInitializingGitProject ? (
-									<>
-										<Spinner size={14} />
-										Initializing...
-									</>
+												Add Project
+											</Button>
+										</div>
+									</div>
 								) : (
-									"Initialize git"
+									<div className="flex flex-1 flex-col min-h-0 min-w-0">
+										<div className="flex flex-1 min-h-0 min-w-0">
+											{isGitHistoryOpen ? (
+												<GitHistoryView
+													workspaceId={currentProjectId}
+													gitHistory={gitHistory}
+													onCheckoutBranch={(branch) => {
+														void switchHomeBranch(branch);
+													}}
+													onDiscardWorkingChanges={() => {
+														void discardHomeWorkingChanges();
+													}}
+													isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+												/>
+											) : (
+												<QuarterdeckBoard
+													data={board}
+													taskSessions={sessions}
+													onCardSelect={handleCardSelect}
+													onCreateTask={handleOpenCreateTask}
+													onStartAllTasks={handleStartAllBacklogTasksFromBoard}
+													onClearTrash={handleOpenClearTrash}
+													editingTaskId={editingTaskId}
+													inlineTaskEditor={inlineTaskEditor}
+													onEditTask={handleOpenEditTask}
+													dependencies={board.dependencies}
+													onCreateDependency={handleCreateDependency}
+													onDeleteDependency={handleDeleteDependency}
+													onRequestProgrammaticCardMoveReady={handleProgrammaticCardMoveReady}
+													onDragEnd={handleDragEnd}
+												/>
+											)}
+										</div>
+										{showHomeBottomTerminal ? (
+											<ResizableBottomPane
+												minHeight={200}
+												initialHeight={homeTerminalPaneHeight}
+												onHeightChange={setHomeTerminalPaneHeight}
+												onCollapse={collapseHomeTerminal}
+											>
+												<div
+													style={{
+														display: "flex",
+														flex: "1 1 0",
+														minWidth: 0,
+														paddingLeft: 12,
+														paddingRight: 12,
+													}}
+												>
+													<AgentTerminalPanel
+														key={`home-shell-${homeTerminalTaskId}`}
+														taskId={homeTerminalTaskId}
+														workspaceId={currentProjectId}
+														summary={homeTerminalSummary}
+														onSummary={upsertSession}
+														showSessionToolbar={false}
+														autoFocus
+														onClose={closeHomeTerminal}
+														minimalHeaderTitle="Terminal"
+														minimalHeaderSubtitle={homeTerminalSubtitle}
+														panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+														terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+														cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+														onConnectionReady={markTerminalConnectionReady}
+														agentCommand={agentCommand}
+														onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
+														isExpanded={isHomeTerminalExpanded}
+														onToggleExpand={handleToggleExpandHomeTerminal}
+														onRestart={handleRestartHomeTerminal}
+														onExit={handleShellExit}
+													/>
+												</div>
+											</ResizableBottomPane>
+										) : null}
+									</div>
 								)}
-							</Button>
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialog>
+							</div>
+						</div>
+					)}
+					{debugLogging.isDebugLogPanelOpen ? (
+						<DebugLogPanel
+							entries={debugLogging.filteredEntries}
+							entryCount={debugLogging.entryCount}
+							levelFilter={debugLogging.levelFilter}
+							sourceFilter={debugLogging.sourceFilter}
+							searchText={debugLogging.searchText}
+							onSetLevelFilter={debugLogging.setLevelFilter}
+							onSetSourceFilter={debugLogging.setSourceFilter}
+							onSetSearchText={debugLogging.setSearchText}
+							onClear={debugLogging.clearLogEntries}
+							onClose={debugLogging.closeDebugLogPanel}
+						/>
+					) : null}
+					<RuntimeSettingsDialog
+						open={isSettingsOpen}
+						workspaceId={settingsWorkspaceId}
+						initialConfig={settingsRuntimeProjectConfig}
+						initialSection={settingsInitialSection}
+						onOpenChange={(nextOpen) => {
+							setIsSettingsOpen(nextOpen);
+							if (!nextOpen) {
+								setSettingsInitialSection(null);
+							}
+						}}
+						onSaved={() => {
+							refreshRuntimeProjectConfig();
+							refreshSettingsRuntimeProjectConfig();
+						}}
+					/>
+					<PromptShortcutEditorDialog
+						open={promptShortcutEditorOpen}
+						onOpenChange={setPromptShortcutEditorOpen}
+						shortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+						onSave={savePromptShortcuts}
+					/>
+					<DebugDialog
+						open={isDebugDialogOpen}
+						onOpenChange={handleDebugDialogOpenChange}
+						isResetAllStatePending={isResetAllStatePending}
+						onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
+						onResetAllState={handleResetAllState}
+					/>
+					<TaskCreateDialog
+						open={isInlineTaskCreateOpen}
+						onOpenChange={handleCreateDialogOpenChange}
+						prompt={newTaskPrompt}
+						onPromptChange={setNewTaskPrompt}
+						images={newTaskImages}
+						onImagesChange={setNewTaskImages}
+						onCreate={handleCreateTask}
+						onCreateAndStart={handleCreateAndStartTask}
+						onCreateStartAndOpen={handleCreateStartAndOpenTask}
+						onCreateMultiple={handleCreateTasks}
+						onCreateAndStartMultiple={handleCreateAndStartTasks}
+						startInPlanMode={newTaskStartInPlanMode}
+						onStartInPlanModeChange={setNewTaskStartInPlanMode}
+						startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
+						autoReviewEnabled={newTaskAutoReviewEnabled}
+						onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
+						useWorktree={newTaskUseWorktree}
+						onUseWorktreeChange={setNewTaskUseWorktree}
+						createFeatureBranch={createFeatureBranch}
+						onCreateFeatureBranchChange={setCreateFeatureBranch}
+						branchName={branchName}
+						onBranchNameEdit={handleBranchNameEdit}
+						onGenerateBranchName={generateBranchNameFromPrompt}
+						isGeneratingBranchName={isGeneratingBranchName}
+						isLlmGenerationDisabled={isLlmGenerationDisabled}
+						workspaceId={currentProjectId}
+						branchRef={newTaskBranchRef}
+						branchOptions={createTaskBranchOptions}
+						onBranchRefChange={setNewTaskBranchRef}
+					/>
+					<ClearTrashDialog
+						open={isClearTrashDialogOpen}
+						taskCount={trashTaskCount}
+						onCancel={() => setIsClearTrashDialogOpen(false)}
+						onConfirm={handleConfirmClearTrash}
+					/>
+					<TaskTrashWarningDialog
+						open={trashWarningState.open}
+						warning={trashWarningState.warning}
+						onCancel={handleCancelTrashWarning}
+						onConfirm={handleConfirmTrashWarning}
+					/>
+					<MigrateWorkingDirectoryDialog
+						open={pendingMigrate !== null}
+						direction={pendingMigrate?.direction ?? "isolate"}
+						isMigrating={migratingTaskId !== null}
+						onCancel={() => setPendingMigrate(null)}
+						onConfirm={handleConfirmMigrate}
+					/>
+					<StartupOnboardingDialog
+						open={isStartupOnboardingDialogOpen}
+						onClose={handleCloseStartupOnboardingDialog}
+						selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+						agents={runtimeProjectConfig?.agents ?? []}
+						workspaceId={currentProjectId}
+						runtimeConfig={runtimeProjectConfig ?? null}
+						onSelectAgent={handleSelectOnboardingAgent}
+					/>
 
-				<AlertDialog
-					open={gitActionError !== null}
-					onOpenChange={(open) => {
-						if (!open) {
-							clearGitActionError();
-						}
-					}}
-				>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{gitActionErrorTitle}</AlertDialogTitle>
-					</AlertDialogHeader>
-					<AlertDialogBody>
-						<p>{gitActionError?.message}</p>
-						{gitActionError?.output ? (
-							<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
-								{gitActionError.output}
-							</pre>
-						) : null}
-					</AlertDialogBody>
-					<AlertDialogFooter className="justify-end">
-						<AlertDialogAction asChild>
-							<Button variant="default" onClick={clearGitActionError}>
-								Close
-							</Button>
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialog>
-			</div>
-		</LayoutCustomizationsProvider>
+					<AlertDialog
+						open={pendingGitInitializationPath !== null}
+						onOpenChange={(open) => {
+							if (!open) {
+								handleCancelInitializeGitProject();
+							}
+						}}
+					>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Initialize git repository?</AlertDialogTitle>
+						</AlertDialogHeader>
+						<AlertDialogBody>
+							<AlertDialogDescription asChild>
+								<div className="flex flex-col gap-3">
+									<p>
+										Quarterdeck requires git to manage workspaces for tasks. This folder is not a git
+										repository yet.
+									</p>
+									{pendingGitInitializationPath ? (
+										<p className="font-mono text-xs text-text-secondary break-all">
+											{pendingGitInitializationPath}
+										</p>
+									) : null}
+									<p>If you cancel, the project will not be added.</p>
+								</div>
+							</AlertDialogDescription>
+						</AlertDialogBody>
+						<AlertDialogFooter>
+							<AlertDialogCancel asChild>
+								<Button
+									variant="default"
+									disabled={isInitializingGitProject}
+									onClick={handleCancelInitializeGitProject}
+								>
+									Cancel
+								</Button>
+							</AlertDialogCancel>
+							<AlertDialogAction asChild>
+								<Button
+									variant="primary"
+									disabled={isInitializingGitProject}
+									onClick={() => {
+										void handleConfirmInitializeGitProject();
+									}}
+								>
+									{isInitializingGitProject ? (
+										<>
+											<Spinner size={14} />
+											Initializing...
+										</>
+									) : (
+										"Initialize git"
+									)}
+								</Button>
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialog>
+
+					<AlertDialog
+						open={gitActionError !== null}
+						onOpenChange={(open) => {
+							if (!open) {
+								clearGitActionError();
+							}
+						}}
+					>
+						<AlertDialogHeader>
+							<AlertDialogTitle>{gitActionErrorTitle}</AlertDialogTitle>
+						</AlertDialogHeader>
+						<AlertDialogBody>
+							<p>{gitActionError?.message}</p>
+							{gitActionError?.output ? (
+								<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
+									{gitActionError.output}
+								</pre>
+							) : null}
+						</AlertDialogBody>
+						<AlertDialogFooter className="justify-end">
+							<AlertDialogAction asChild>
+								<Button variant="default" onClick={clearGitActionError}>
+									Close
+								</Button>
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialog>
+				</div>
+			</LayoutCustomizationsProvider>
+		</CardActionsProvider>
 	);
 }

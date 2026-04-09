@@ -110,6 +110,7 @@ describe("git-sync --no-optional-locks", () => {
 			behindCount: 0,
 			changedFiles: 0,
 			untrackedPaths: [],
+			pathFingerprints: [],
 			stateToken: "fake-token",
 		};
 

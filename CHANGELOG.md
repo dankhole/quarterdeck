@@ -2,6 +2,34 @@
 
 ## [0.3.1]
 
+### Git polling efficiency
+
+- Replaced the fixed 1-second poll-everything-equally approach with three independent timers — focused task (2s default), background tasks (5s), home repo (10s). The selected task gets priority polling with an immediate probe on selection change.
+- Added `p-limit(3)` concurrency cap on git child processes to prevent 20+ simultaneous spawns at scale.
+- Added mtime-based cache for untracked file line counting — skips `readFile` when file hasn't changed since last poll. Bounded at 2000 entries.
+- Backpressure guards on partial refresh functions prevent overlapping calls from piling up.
+- All three poll intervals are configurable in Settings under "Git Polling."
+
+### Runtime debug logging
+
+- New runtime-togglable debug logging system — press `Cmd+Shift+D` to toggle the debug log panel and stream server-side logs to the browser in real-time. Ephemeral (resets on server restart), zero overhead when disabled.
+- Bottom panel with level/source filters, search, auto-scroll. Batched WebSocket delivery (150ms) to avoid flooding.
+- Targeted instrumentation on LLM client, title/summary generation, hook ingest, and the `generateDisplaySummary` / `regenerateTaskTitle` mutations to aid diagnosis of transient summary-unlinking issues.
+- Client-side logger with same API for UI-side debug logging.
+- Removed the debug logging toggle from Settings — the shortcut-only approach avoids a confusing UX where the toggle took effect immediately without enabling the Save button. Settings now shows a keyboard shortcut hint instead.
+- Fixed debug log panel width overflow — long messages and data now word-wrap instead of overflowing horizontally.
+
+### Config defaults and save path unification
+
+- Extracted all runtime config defaults into a shared `config-defaults.ts` — server, frontend, and test factories now import from one source. Adding a new setting no longer requires copying the default value to 4-5 locations.
+- Unified the two near-identical config save functions (`updateRuntimeConfig` / `updateGlobalRuntimeConfig`) into a single `applyConfigUpdates` internal function, eliminating the 8-edit-per-setting maintenance burden that had already caused a silent persistence bug.
+- Fixed duplicated commit prompt template string in `DEFAULT_PROMPT_SHORTCUTS`.
+- Fixed: autonomous mode initial state in settings dialog now matches server default (disabled by default).
+
+### Windows runtime compatibility
+
+- Fixed 7 runtime code paths that would crash or silently fail on Windows — `/dev/null` in git diff, `isProcessAlive` liveness check, unsupported signal registration (SIGHUP/SIGQUIT), symlinks requiring admin privileges (now uses junctions for directories), chmod no-op, case-sensitive lock ordering on case-insensitive filesystem, and Unix tilde in display paths.
+
 ### Diff sidebar indicator
 
 - Blue dot on the Changes sidebar icon when a task's branch has unmerged changes relative to its base ref — content-based comparison resilient to squash merges. Red dot (uncommitted changes) takes priority. Configurable via a new setting toggle.
@@ -20,11 +48,28 @@
 - The expand button is hidden when no file is selected.
 - Removed redundant X buttons from the expanded diff and file browser toolbars — they duplicated the collapse button with a misleading icon.
 
+### Incremental expand in diff viewer
+
+- Collapsed context blocks in diffs now show "show 20 more lines" buttons for progressive expansion instead of all-or-nothing expand. Cherry-picked from upstream cline/kanban#247.
+
+### Resume conversation on session restart
+
+- Restarting an agent session now resumes the existing conversation (`--continue`) instead of starting fresh. Cards stay in their current column on restart instead of being forced back to in-progress.
+
+### Unify card action prop threading
+
+- Replaced ~15 individually-threaded card action props with two React contexts (`StableCardActions` for handler callbacks, `ReactiveCardState` for per-render values). Both board and sidebar card paths now consume from the same source, eliminating prop drilling divergence between views.
+
 ### Other changes
 
+- Fixed trash column sorting — was showing newest-trashed at top (same as active columns), now shows oldest-first so newly trashed items appear at the bottom in chronological order.
 - Added a beta notice card at the bottom of the project sidebar with a "Report issue" link. Removed the dead Featurebase feedback widget.
 - The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
 - The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
+- Default side panel ratio reduced from 25% to 15%.
+- Default prompt shortcut textarea height increased from 3 to 5 rows.
+- Base ref dropdown in the create task dialog is now greyed out when isolated worktree is unchecked.
+- Fixed permission notification sound playing wrong beep count — hook activity data was arriving after the 500ms settle window expired due to slow checkpoint capture.
 
 ## [0.3.0]
 
