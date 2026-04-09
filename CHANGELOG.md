@@ -2,6 +2,10 @@
 
 ## [0.3.1]
 
+### Fix: stale "unmerged changes" badge
+
+- Fixed stale blue notification dot on the Changes tab persisting after a task branch was merged to main. The metadata monitor's cache key only tracked the worktree's own state (HEAD, branch, working-tree status) — it didn't notice when the base ref (e.g. `main`) advanced. Added the resolved base ref commit to the cache invalidation check so the diff is re-evaluated when the target branch moves.
+
 ### Fix: stuck "waiting for approval" state
 
 - Fixed three independent root causes that could leave a task card stuck in "Waiting for approval":

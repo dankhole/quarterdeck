@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix stale hasUnmergedChanges badge after baseRef advances (2026-04-09)
+
+**Problem**: The blue "unmerged changes" notification dot on the Changes toolbar tab persisted after a task branch was merged to main. Users saw the badge even when `git diff main HEAD` showed zero differences.
+
+**Root cause**: `loadTaskWorkspaceMetadata` in the workspace metadata monitor uses a cache keyed on `probe.stateToken` (which captures the worktree's HEAD commit, branch, working-tree status, and path fingerprints). When a task branch gets merged to main, `main` advances to a new commit, but the worktree's own state is unchanged — same HEAD, same branch, same working tree. The `stateToken` matched, so the cache returned the previously computed `hasUnmergedChanges: true` without re-running `git diff --quiet main HEAD`.
+
+**Fix**: Added a parallel `git rev-parse --verify <baseRef>` call (runs alongside the existing `probeGitWorkspaceState` — no serial latency added) and stored the resolved commit hash as `baseRefCommit` in the cache entry. The cache invalidation check now requires `current.baseRefCommit === baseRefCommit` in addition to the existing `stateToken` match. When `main` advances, `baseRefCommit` changes, the cache misses, and the diff is correctly re-evaluated.
+
+**Files**: `src/server/workspace-metadata-monitor.ts` (added `baseRefCommit` to `CachedTaskWorkspaceMetadata`, parallel `rev-parse` in `loadTaskWorkspaceMetadata`, cache key comparison)
+
+**Commit**: 9d4eb8c9
+
 ## Fix stuck "waiting for approval" state — 3 root causes (2026-04-09)
 
 **Problem**: Task cards would get stuck showing "Waiting for approval" after the agent had already resumed working. Three independent root causes all presented identically, which is why previous fix attempts failed — each attempt addressed only one cause.
