@@ -72,6 +72,7 @@ import { type SidebarTabId, useCardDetailLayout } from "@/resize/use-card-detail
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -265,6 +266,18 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+
+	// Notify the runtime which task is focused so it can prioritize git polling.
+	useEffect(() => {
+		if (!currentProjectId || selectedTaskId === null) {
+			return;
+		}
+		getRuntimeTrpcClient(currentProjectId)
+			.workspace.setFocusedTask.mutate({ taskId: selectedTaskId })
+			.catch(() => {
+				// Fire-and-forget — polling priority is non-critical.
+			});
+	}, [currentProjectId, selectedTaskId]);
 
 	// Reactive subscriptions — re-render when the metadata store updates for the selected task.
 	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);

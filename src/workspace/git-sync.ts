@@ -26,6 +26,7 @@ export interface GitWorkspaceProbe {
 	behindCount: number;
 	changedFiles: number;
 	untrackedPaths: string[];
+	pathFingerprints: GitPathFingerprint[];
 	stateToken: string;
 }
 
@@ -186,6 +187,7 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 		behindCount,
 		changedFiles,
 		untrackedPaths,
+		pathFingerprints: fingerprints,
 		stateToken: [
 			repoRoot,
 			headCommit ?? "no-head",
@@ -207,12 +209,38 @@ async function resolveRepoRoot(cwd: string): Promise<string> {
 	return result.stdout;
 }
 
-async function countUntrackedAdditions(repoRoot: string, untrackedPaths: string[]): Promise<number> {
+const untrackedLineCountCache = new Map<string, { mtimeMs: number; lineCount: number }>();
+const UNTRACKED_CACHE_MAX_SIZE = 2_000;
+
+async function countUntrackedAdditions(
+	repoRoot: string,
+	untrackedPaths: string[],
+	fingerprints: GitPathFingerprint[],
+): Promise<number> {
+	const fingerprintByPath = new Map(fingerprints.map((fp) => [fp.path, fp]));
 	const counts = await Promise.all(
 		untrackedPaths.map(async (relativePath) => {
+			const absolutePath = join(repoRoot, relativePath);
+			const fp = fingerprintByPath.get(relativePath);
+			if (fp?.mtimeMs != null) {
+				const cached = untrackedLineCountCache.get(absolutePath);
+				if (cached && cached.mtimeMs === fp.mtimeMs) {
+					return cached.lineCount;
+				}
+			}
 			try {
-				const contents = await readFile(join(repoRoot, relativePath), "utf8");
-				return countLines(contents);
+				const contents = await readFile(absolutePath, "utf8");
+				const lineCount = countLines(contents);
+				if (fp?.mtimeMs != null) {
+					if (untrackedLineCountCache.size >= UNTRACKED_CACHE_MAX_SIZE) {
+						const firstKey = untrackedLineCountCache.keys().next().value;
+						if (firstKey !== undefined) {
+							untrackedLineCountCache.delete(firstKey);
+						}
+					}
+					untrackedLineCountCache.set(absolutePath, { mtimeMs: fp.mtimeMs, lineCount });
+				}
+				return lineCount;
 			} catch {
 				return 0;
 			}
@@ -233,7 +261,11 @@ export async function getGitSyncSummary(
 	const probe = options?.probe ?? (await probeGitWorkspaceState(cwd));
 	const diffResult = await runGit(probe.repoRoot, ["--no-optional-locks", "diff", "--numstat", "HEAD", "--"]);
 	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
-	const untrackedAdditions = await countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths);
+	const untrackedAdditions = await countUntrackedAdditions(
+		probe.repoRoot,
+		probe.untrackedPaths,
+		probe.pathFingerprints,
+	);
 
 	return {
 		currentBranch: probe.currentBranch,

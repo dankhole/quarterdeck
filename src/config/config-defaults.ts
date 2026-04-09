@@ -45,6 +45,9 @@ Steps:
    - Base branch
    - Head branch
    - Any follow-up needed`;
+export const DEFAULT_FOCUSED_TASK_POLL_MS = 2_000;
+export const DEFAULT_BACKGROUND_TASK_POLL_MS = 5_000;
+export const DEFAULT_HOME_REPO_POLL_MS = 10_000;
 export const DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED = true;
 export const DEFAULT_AUDIBLE_NOTIFICATION_VOLUME = 0.7;
 export const DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN = true;
@@ -77,4 +80,7 @@ export const CONFIG_DEFAULTS = {
 	audibleNotificationVolume: DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
 	audibleNotificationsOnlyWhenHidden: DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+	focusedTaskPollMs: DEFAULT_FOCUSED_TASK_POLL_MS,
+	backgroundTaskPollMs: DEFAULT_BACKGROUND_TASK_POLL_MS,
+	homeRepoPollMs: DEFAULT_HOME_REPO_POLL_MS,
 };

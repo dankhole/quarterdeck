@@ -37,6 +37,10 @@ import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manage
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import { formatPathForDisplay } from "@/utils/path-display";
 
+function clampPollInterval(value: string): number {
+	return Math.max(500, Math.min(60000, Number(value)));
+}
+
 interface RuntimeSettingsAgentRowModel {
 	id: RuntimeAgentId;
 	label: string;
@@ -267,6 +271,9 @@ export function RuntimeSettingsDialog({
 	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(
 		CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
 	);
+	const [focusedTaskPollMs, setFocusedTaskPollMs] = useState(CONFIG_DEFAULTS.focusedTaskPollMs);
+	const [backgroundTaskPollMs, setBackgroundTaskPollMs] = useState(CONFIG_DEFAULTS.backgroundTaskPollMs);
+	const [homeRepoPollMs, setHomeRepoPollMs] = useState(CONFIG_DEFAULTS.homeRepoPollMs);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
@@ -320,6 +327,9 @@ export function RuntimeSettingsDialog({
 		config?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
 	const initialAudibleNotificationsOnlyWhenHidden =
 		config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
+	const initialFocusedTaskPollMs = config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs;
+	const initialBackgroundTaskPollMs = config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs;
+	const initialHomeRepoPollMs = config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -366,6 +376,15 @@ export function RuntimeSettingsDialog({
 		if (audibleNotificationsOnlyWhenHidden !== initialAudibleNotificationsOnlyWhenHidden) {
 			return true;
 		}
+		if (focusedTaskPollMs !== initialFocusedTaskPollMs) {
+			return true;
+		}
+		if (backgroundTaskPollMs !== initialBackgroundTaskPollMs) {
+			return true;
+		}
+		if (homeRepoPollMs !== initialHomeRepoPollMs) {
+			return true;
+		}
 		return !areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts);
 	}, [
 		agentAutonomousModeEnabled,
@@ -374,13 +393,19 @@ export function RuntimeSettingsDialog({
 		audibleNotificationVolume,
 		audibleNotificationsEnabled,
 		audibleNotificationsOnlyWhenHidden,
+		backgroundTaskPollMs,
 		config,
+		focusedTaskPollMs,
+		homeRepoPollMs,
 		initialAgentAutonomousModeEnabled,
 		initialAutoGenerateSummary,
 		initialAudibleNotificationEvents,
 		initialAudibleNotificationVolume,
 		initialAudibleNotificationsEnabled,
 		initialAudibleNotificationsOnlyWhenHidden,
+		initialBackgroundTaskPollMs,
+		initialFocusedTaskPollMs,
+		initialHomeRepoPollMs,
 		initialSelectedAgentId,
 		initialShellAutoRestartEnabled,
 		initialShowSummaryOnCards,
@@ -421,6 +446,9 @@ export function RuntimeSettingsDialog({
 		setAudibleNotificationsOnlyWhenHidden(
 			config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
 		);
+		setFocusedTaskPollMs(config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs);
+		setBackgroundTaskPollMs(config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs);
+		setHomeRepoPollMs(config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs);
 		setShortcuts(config?.shortcuts ?? []);
 		setSaveError(null);
 	}, [
@@ -430,6 +458,9 @@ export function RuntimeSettingsDialog({
 		config?.audibleNotificationVolume,
 		config?.audibleNotificationsEnabled,
 		config?.audibleNotificationsOnlyWhenHidden,
+		config?.focusedTaskPollMs,
+		config?.backgroundTaskPollMs,
+		config?.homeRepoPollMs,
 		config?.showTrashWorktreeNotice,
 		config?.unmergedChangesIndicatorEnabled,
 		config?.selectedAgentId,
@@ -495,6 +526,9 @@ export function RuntimeSettingsDialog({
 			audibleNotificationVolume,
 			audibleNotificationEvents,
 			audibleNotificationsOnlyWhenHidden,
+			focusedTaskPollMs,
+			backgroundTaskPollMs,
+			homeRepoPollMs,
 			shortcuts,
 		});
 		if (!saved) {
@@ -957,6 +991,71 @@ export function RuntimeSettingsDialog({
 				{shortcuts.length === 0 ? (
 					<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
 				) : null}
+
+				<h5 className="font-semibold text-text-primary m-0 mt-5">Git Polling</h5>
+				<p className="text-text-secondary text-[13px] mt-1 mb-3">
+					How often to check for git changes in task worktrees. Lower values show changes faster but use more
+					resources when many tasks are active.
+				</p>
+				<div className="flex flex-col gap-2">
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
+							Selected task
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="focused-task-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={focusedTaskPollMs}
+								onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
+							Background tasks
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="background-task-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={backgroundTaskPollMs}
+								onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
+							Home repository
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="home-repo-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={homeRepoPollMs}
+								onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+				</div>
 
 				{saveError ? (
 					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">

@@ -157,6 +157,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			broadcastRuntimeProjectsUpdated: vi.fn(),
 			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -206,6 +207,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			broadcastRuntimeProjectsUpdated: vi.fn(),
 			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -243,6 +245,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			broadcastRuntimeProjectsUpdated: vi.fn(),
 			broadcastTaskTitleUpdated: vi.fn(),
 			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
 		});
 
 		const response = await api.loadChanges(
@@ -270,6 +273,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 		broadcastRuntimeProjectsUpdated: vi.fn(),
 		broadcastTaskTitleUpdated: vi.fn(),
 		buildWorkspaceStateSnapshot: vi.fn(),
+		setFocusedTask: vi.fn(),
 		...overrides,
 	};
 }

@@ -52,6 +52,9 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	showSummaryOnCards: CONFIG_DEFAULTS.showSummaryOnCards,
 	autoGenerateSummary: CONFIG_DEFAULTS.autoGenerateSummary,
 	summaryStaleAfterSeconds: CONFIG_DEFAULTS.summaryStaleAfterSeconds,
+	focusedTaskPollMs: CONFIG_DEFAULTS.focusedTaskPollMs,
+	backgroundTaskPollMs: CONFIG_DEFAULTS.backgroundTaskPollMs,
+	homeRepoPollMs: CONFIG_DEFAULTS.homeRepoPollMs,
 	llmConfigured: false,
 };
 
