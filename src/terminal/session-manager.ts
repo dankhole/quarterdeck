@@ -415,7 +415,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 								const trustConfirmDelayMs = WORKSPACE_TRUST_CONFIRM_DELAY_MS;
 								entry.active.workspaceTrustConfirmTimer = setTimeout(() => {
 									const activeEntry = this.entries.get(request.taskId)?.active;
-									if (!activeEntry || !activeEntry.autoConfirmedWorkspaceTrust) {
+									if (!activeEntry?.autoConfirmedWorkspaceTrust) {
 										return;
 									}
 									activeEntry.session.write("\r");
@@ -847,13 +847,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 		const before = entry.summary;
-		// Clear latestHookActivity before transitioning so stale permission-related
-		// fields (hookEventName, notificationType) from a previous event don't leak
-		// into the new review state — applyHookActivity runs after this and would
-		// otherwise carry forward the old values when the new hook has no event name.
-		if (entry.summary.latestHookActivity) {
-			updateSummary(entry, { latestHookActivity: null });
-		}
+		// RC4 invariant: Do NOT clear latestHookActivity here. The caller (hooks-api.ts)
+		// calls applyHookActivity immediately after this method in the same synchronous tick,
+		// which replaces the activity atomically via isNewEvent=true clearing. Clearing here
+		// would create a null-window observable by WebSocket listeners between transitionToReview
+		// and applyHookActivity. See SDD: 2026-04-09-fix-stuck-approval-state.md Phase 1.
 		const summary = this.applySessionEvent(entry, { type: "hook.to_review" });
 		if (summary !== before && entry.active) {
 			for (const listener of entry.listeners.values()) {
