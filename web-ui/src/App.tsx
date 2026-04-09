@@ -10,6 +10,7 @@ import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
+import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { GitHistoryView } from "@/components/git-history-view";
@@ -42,6 +43,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useDebugLogging } from "@/hooks/use-debug-logging";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
@@ -139,6 +141,8 @@ export default function App(): ReactElement {
 		notificationSessions,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		debugLoggingEnabled,
+		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -198,6 +202,11 @@ export default function App(): ReactElement {
 		runtimeProjectConfig,
 		settingsRuntimeProjectConfig,
 		onOpenStartupOnboardingDialog: handleOpenStartupOnboardingDialog,
+	});
+	const debugLogging = useDebugLogging({
+		currentProjectId,
+		debugLoggingEnabled,
+		debugLogEntries,
 	});
 	const {
 		markConnectionReady: markTerminalConnectionReady,
@@ -790,6 +799,7 @@ export default function App(): ReactElement {
 		handleOpenSettings,
 		handleToggleGitHistory,
 		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
+		handleToggleDebugLogPanel: debugLogging.toggleDebugLogPanel,
 	});
 
 	useEffect(() => {
@@ -1329,11 +1339,27 @@ export default function App(): ReactElement {
 							</div>
 						</div>
 					)}
+					{debugLogging.isDebugLogPanelOpen ? (
+						<DebugLogPanel
+							entries={debugLogging.filteredEntries}
+							entryCount={debugLogging.entryCount}
+							levelFilter={debugLogging.levelFilter}
+							sourceFilter={debugLogging.sourceFilter}
+							searchText={debugLogging.searchText}
+							onSetLevelFilter={debugLogging.setLevelFilter}
+							onSetSourceFilter={debugLogging.setSourceFilter}
+							onSetSearchText={debugLogging.setSearchText}
+							onClear={debugLogging.clearLogEntries}
+							onClose={debugLogging.closeDebugLogPanel}
+						/>
+					) : null}
 					<RuntimeSettingsDialog
 						open={isSettingsOpen}
 						workspaceId={settingsWorkspaceId}
 						initialConfig={settingsRuntimeProjectConfig}
 						initialSection={settingsInitialSection}
+						debugLoggingEnabled={debugLogging.debugLoggingEnabled}
+						onToggleDebugLogging={debugLogging.toggleDebugLogging}
 						onOpenChange={(nextOpen) => {
 							setIsSettingsOpen(nextOpen);
 							if (!nextOpen) {

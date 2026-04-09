@@ -229,6 +229,8 @@ export function RuntimeSettingsDialog({
 	onOpenChange,
 	onSaved,
 	initialSection,
+	debugLoggingEnabled = false,
+	onToggleDebugLogging,
 }: {
 	open: boolean;
 	workspaceId: string | null;
@@ -236,6 +238,8 @@ export function RuntimeSettingsDialog({
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
+	debugLoggingEnabled?: boolean;
+	onToggleDebugLogging?: () => void;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
@@ -833,6 +837,25 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-2 mb-0">
 					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
 					distorted after moving between monitors.
+				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Debug</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						id="debug-logging-toggle"
+						className="flex h-5 w-9 shrink-0 items-center rounded-full bg-surface-4 p-0.5 transition-colors data-[state=checked]:bg-accent"
+						checked={debugLoggingEnabled}
+						onCheckedChange={onToggleDebugLogging}
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white transition-transform data-[state=checked]:translate-x-4" />
+					</RadixSwitch.Root>
+					<label htmlFor="debug-logging-toggle" className="text-sm text-text-primary cursor-pointer">
+						Debug logging
+					</label>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Stream server debug logs to the browser in real-time. Toggle the log panel with{" "}
+					<kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd>.
 				</p>
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>

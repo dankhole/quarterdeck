@@ -2,6 +2,13 @@
 
 ## [0.3.1]
 
+### Runtime debug logging
+
+- New runtime-togglable debug logging system — toggle from Settings (Debug section) or `Cmd+Shift+D` to stream server-side logs to a browser panel in real-time. Ephemeral (resets on server restart), zero overhead when disabled.
+- Bottom panel with level/source filters, search, auto-scroll. Batched WebSocket delivery (150ms) to avoid flooding.
+- Targeted instrumentation on LLM client, title/summary generation, hook ingest, and the `generateDisplaySummary` / `regenerateTaskTitle` mutations to aid diagnosis of transient summary-unlinking issues.
+- Client-side logger with same API for UI-side debug logging.
+
 ### Config defaults and save path unification
 
 - Extracted all runtime config defaults into a shared `config-defaults.ts` — server, frontend, and test factories now import from one source. Adding a new setting no longer requires copying the default value to 4-5 locations.

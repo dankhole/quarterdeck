@@ -17,7 +17,7 @@ const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
 	"Quarterdeck could not open a directory picker on this runtime. Enter a project path to add:";
 
 export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
-	if (!streamError || !streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
+	if (!streamError?.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
 		return null;
 	}
 	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
@@ -62,6 +62,8 @@ export interface UseProjectNavigationResult {
 	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: ReturnType<typeof useRuntimeStateStream>["latestTaskTitleUpdate"];
+	debugLoggingEnabled: boolean;
+	debugLogEntries: ReturnType<typeof useRuntimeStateStream>["debugLogEntries"];
 	notificationSessions: ReturnType<typeof useRuntimeStateStream>["notificationSessions"];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -96,6 +98,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		notificationSessions,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		debugLoggingEnabled,
+		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -312,6 +316,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		workspaceMetadata,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		debugLoggingEnabled,
+		debugLogEntries,
 		notificationSessions,
 		streamError,
 		isRuntimeDisconnected,

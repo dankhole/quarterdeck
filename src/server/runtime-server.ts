@@ -145,6 +145,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				runCommand: deps.runCommand,
 				prepareForStateReset,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
+				broadcastDebugLoggingState: deps.runtimeStateHub.broadcastDebugLoggingState,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
