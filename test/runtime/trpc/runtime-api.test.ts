@@ -560,7 +560,37 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		expect(taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist).toHaveBeenCalled();
 		expect(taskWorktreeMocks.applyTaskPatch).toHaveBeenCalledWith("/tmp/patches/task-1.patch", "/tmp/worktree");
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/worktree", resumeFromTrash: false }),
+			expect.objectContaining({ cwd: "/tmp/worktree", resumeConversation: false }),
+		);
+	});
+
+	it("preserves awaitReview when migrating a task in awaiting_review state", async () => {
+		const card = createCard({ workingDirectory: "/tmp/repo" });
+		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
+		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
+			ok: true,
+			path: "/tmp/worktree",
+		});
+		taskWorktreeMocks.findTaskPatch.mockResolvedValue(null);
+
+		const terminalManager = {
+			getSummary: vi.fn(() => createSummary({ state: "awaiting_review" })),
+			stopTaskSession: vi.fn(() => createSummary()),
+			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
+			startTaskSession: vi.fn(async () => createSummary()),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
+			taskId: "task-1",
+			direction: "isolate",
+		});
+
+		expect(result.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({ cwd: "/tmp/worktree", resumeConversation: false, awaitReview: true }),
 		);
 	});
 
@@ -746,7 +776,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		expect(result.error).toMatch(/git worktree add failed/);
 		// Session should have been restarted at the old CWD.
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/repo", resumeFromTrash: true }),
+			expect.objectContaining({ cwd: "/tmp/repo", resumeConversation: true }),
 		);
 		// State should NOT have been mutated.
 		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();

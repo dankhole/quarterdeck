@@ -138,10 +138,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				// race where the server bumps the revision while the client's
 				// persist debounce is in flight.
 
-				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeSession;
+				const shouldCaptureTurnCheckpoint = !body.resumeConversation && !isHomeSession;
 
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const previousTerminalAgentId = body.resumeFromTrash
+				const previousTerminalAgentId = body.resumeConversation
 					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
 					: null;
 				const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
@@ -168,7 +168,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					prompt: body.prompt,
 					images: body.images,
 					startInPlanMode: body.startInPlanMode,
-					resumeFromTrash: body.resumeFromTrash,
+					resumeConversation: body.resumeConversation,
+					awaitReview: body.awaitReview,
 					cols: body.cols,
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,
@@ -403,7 +404,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 
 				// Only called when wasRunning is true, so resolved and scopedRuntimeConfig
 				// are guaranteed to be set (guarded above with an early return).
-				const buildRestartRequest = (cwd: string, resumeFromTrash: boolean) => {
+				const buildRestartRequest = (cwd: string, resumeConversation: boolean) => {
 					if (!resolved || !scopedRuntimeConfig) {
 						throw new Error("buildRestartRequest called without resolved agent command");
 					}
@@ -415,7 +416,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
 						cwd,
 						prompt: "",
-						resumeFromTrash,
+						resumeConversation,
+						awaitReview: summary?.state === "awaiting_review",
 						workspaceId: workspaceScope.workspaceId,
 						workspacePath: workspaceScope.workspacePath,
 					};
@@ -515,7 +517,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						// Restart session at the new working directory. When the CWD changes
 						// (isolate/de-isolate), agent CLIs like Claude treat it as a different
 						// project and --continue won't find the old conversation. Use
-						// resumeFromTrash only when the CWD hasn't changed (error recovery).
+						// resumeConversation only when the CWD hasn't changed (error recovery).
 						const cwdChanged = resolve(currentWorkingDirectory) !== resolve(newWorkingDirectory);
 						log("restarting session at", newWorkingDirectory, cwdChanged ? "(fresh — cwd changed)" : "(resume)");
 						const restartedSummary = await terminalManager.startTaskSession(
