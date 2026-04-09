@@ -92,6 +92,13 @@ Board state single-writer rule
 - Instead of writing board state from the server, send a lightweight WebSocket message (via `RuntimeStateHub.broadcast*`) with just the data the UI needs, and let the UI apply it to its local board + persist through its normal debounced cycle. See `task_title_updated` as the reference pattern.
 - `mutateWorkspaceState` is only safe for CLI-only code paths where no browser UI is connected (e.g. `quarterdeck hooks ingest`, `quarterdeck task` subcommands).
 
+Completing a feature or fix (release hygiene)
+- When a todo item is done, **all three files must be updated in the same commit or PR**:
+  1. `docs/todo.md` — remove the completed item and renumber remaining items. Update any cross-references (e.g. `#12` → `#11`).
+  2. `CHANGELOG.md` — add a bullet under the current version section matching the existing style (feature-area headings, em-dash descriptions). If no current version section exists, create one with the next patch bump.
+  3. `docs/implementation-log.md` — add a detailed entry at the top with: what changed, why, which files were touched, and the commit hash. This is the forensic record — include enough detail that someone debugging a regression can understand the full scope of the change without reading the diff.
+- Skipping any of these creates drift that compounds quickly across concurrent worktrees. The changelog and implementation log are easy to forget after the code is working — do them immediately, not in a follow-up.
+
 Test fixtures and merge conflicts
 - Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.
 
