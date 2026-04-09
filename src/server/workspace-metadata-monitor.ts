@@ -33,6 +33,7 @@ interface CachedHomeGitMetadata {
 interface CachedTaskWorkspaceMetadata {
 	data: RuntimeTaskWorkspaceMetadata;
 	stateToken: string | null;
+	baseRefCommit: string | null;
 }
 
 interface WorkspaceMetadataEntry {
@@ -251,14 +252,20 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
+			baseRefCommit: null,
 		};
 	}
 
 	try {
-		const probe = await probeGitWorkspaceState(pathInfo.path);
+		const [probe, baseRefResult] = await Promise.all([
+			probeGitWorkspaceState(pathInfo.path),
+			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef]),
+		]);
+		const baseRefCommit = baseRefResult.ok ? baseRefResult.stdout : null;
 		if (
 			current &&
 			current.stateToken === probe.stateToken &&
+			current.baseRefCommit === baseRefCommit &&
 			current.data.path === pathInfo.path &&
 			current.data.baseRef === pathInfo.baseRef
 		) {
@@ -284,6 +291,7 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: probe.stateToken,
+			baseRefCommit,
 		};
 	} catch {
 		if (current) {
@@ -305,6 +313,7 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
+			baseRefCommit: null,
 		};
 	}
 }
