@@ -20,6 +20,34 @@
 
 const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
+// ── Rate limiter ────────────────────────────────────────────────────────
+// Guards against runaway API costs from bugs or rapid state transitions.
+// When a limit is hit, callLlm returns null — all callers already handle this.
+const MAX_CONCURRENT = 5;
+const MAX_PER_MINUTE = 20;
+const WINDOW_MS = 60_000;
+
+let inFlight = 0;
+const callTimestamps: number[] = [];
+
+function acquireSlot(): boolean {
+	const now = Date.now();
+	// Prune timestamps outside the rolling window.
+	while (callTimestamps.length > 0 && callTimestamps[0]! < now - WINDOW_MS) {
+		callTimestamps.shift();
+	}
+	if (inFlight >= MAX_CONCURRENT || callTimestamps.length >= MAX_PER_MINUTE) {
+		return false;
+	}
+	inFlight++;
+	callTimestamps.push(now);
+	return true;
+}
+
+function releaseSlot(): void {
+	inFlight = Math.max(0, inFlight - 1);
+}
+
 /** Hard display limit — summaries longer than this are truncated with an ellipsis. */
 export const DISPLAY_SUMMARY_MAX_LENGTH = 90;
 
@@ -48,9 +76,13 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		return null;
 	}
 
-	const model = process.env.QUARTERDECK_LLM_MODEL || process.env.QUARTERDECK_TITLE_MODEL || DEFAULT_LLM_MODEL;
+	if (!acquireSlot()) {
+		console.warn("[llm-client] Rate limit hit — dropping call");
+		return null;
+	}
 
 	try {
+		const model = process.env.QUARTERDECK_LLM_MODEL || process.env.QUARTERDECK_TITLE_MODEL || DEFAULT_LLM_MODEL;
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");
 		const response = await fetch(`${origin}/v1/chat/completions`, {
 			method: "POST",
@@ -79,6 +111,8 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		return data.choices?.[0]?.message?.content?.trim() || null;
 	} catch {
 		return null;
+	} finally {
+		releaseSlot();
 	}
 }
 
@@ -89,3 +123,25 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 export function isLlmConfigured(): boolean {
 	return Boolean(process.env.ANTHROPIC_BEDROCK_BASE_URL && process.env.ANTHROPIC_AUTH_TOKEN);
 }
+
+// ── Test helpers ────────────────────────────────────────────────────────
+// Exported exclusively for unit tests. Not part of the public API.
+
+/** @internal */
+export const _testing = {
+	acquireSlot,
+	releaseSlot,
+	resetRateLimiter(): void {
+		inFlight = 0;
+		callTimestamps.length = 0;
+	},
+	get inFlight() {
+		return inFlight;
+	},
+	get callTimestamps() {
+		return callTimestamps;
+	},
+	MAX_CONCURRENT,
+	MAX_PER_MINUTE,
+	WINDOW_MS,
+};
