@@ -3,7 +3,7 @@ import type { BoardCard, BoardColumnId } from "@/types";
 /**
  * Sorts column cards for display.
  * - Backlog: preserves insertion order (no sorting).
- * - Trash: oldest-trashed first (newest at bottom, like a chronological list).
+ * - Trash: most-recently-trashed first.
  * - Other columns: pinned first, then most-recently-updated.
  */
 export function sortColumnCards(cards: readonly BoardCard[], columnId: BoardColumnId): BoardCard[] {
@@ -11,7 +11,7 @@ export function sortColumnCards(cards: readonly BoardCard[], columnId: BoardColu
 		return cards as BoardCard[];
 	}
 	if (columnId === "trash") {
-		return [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
+		return [...cards].sort((a, b) => b.updatedAt - a.updatedAt);
 	}
 	return [...cards].sort((a, b) => {
 		const aPinned = a.pinned ? 1 : 0;
