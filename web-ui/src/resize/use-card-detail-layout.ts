@@ -14,7 +14,7 @@ export type SidebarTabId = "home" | TaskTabId;
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
-	defaultValue: 0.25,
+	defaultValue: 0.15,
 	normalize: (value) => clampBetween(value, 0.14, 0.8),
 };
 
