@@ -79,7 +79,7 @@ export function FileBrowserPanel({
 
 	return (
 		<div className="flex flex-1 min-w-0 min-h-0">
-			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${treePanelFlex}` }}>
+			<div className="flex min-w-0 min-h-0" style={{ flex: selectedPath ? `0 0 ${treePanelFlex}` : "1 1 0" }}>
 				<FileBrowserTreePanel
 					files={fileListQuery.data?.files ?? null}
 					selectedPath={selectedPath}
@@ -91,22 +91,26 @@ export function FileBrowserPanel({
 					onInitializedExpansion={onInitializedExpansion}
 				/>
 			</div>
-			<ResizeHandle
-				orientation="vertical"
-				ariaLabel="Resize file browser panels"
-				onMouseDown={onTreeResizeStart}
-				className="z-10"
-			/>
-			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${contentPanelFlex}` }}>
-				<FileContentViewer
-					content={fileContentQuery.data?.content ?? null}
-					binary={fileContentQuery.data?.binary ?? false}
-					truncated={fileContentQuery.data?.truncated ?? false}
-					isLoading={fileContentQuery.isLoading}
-					isError={fileContentQuery.isError}
-					filePath={selectedPath}
-				/>
-			</div>
+			{selectedPath ? (
+				<>
+					<ResizeHandle
+						orientation="vertical"
+						ariaLabel="Resize file browser panels"
+						onMouseDown={onTreeResizeStart}
+						className="z-10"
+					/>
+					<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${contentPanelFlex}` }}>
+						<FileContentViewer
+							content={fileContentQuery.data?.content ?? null}
+							binary={fileContentQuery.data?.binary ?? false}
+							truncated={fileContentQuery.data?.truncated ?? false}
+							isLoading={fileContentQuery.isLoading}
+							isError={fileContentQuery.isError}
+							filePath={selectedPath}
+						/>
+					</div>
+				</>
+			) : null}
 		</div>
 	);
 }
