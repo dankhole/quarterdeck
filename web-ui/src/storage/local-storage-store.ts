@@ -15,10 +15,7 @@ export enum LocalStorageKey {
 	GitHistoryCommitsPanelWidth = "quarterdeck.git-history-commits-panel-width",
 	GitDiffFileTreePanelRatio = "quarterdeck.git-diff-file-tree-panel-ratio",
 	OnboardingDialogShown = "quarterdeck.onboarding.dialog.shown",
-	NotificationPermissionPrompted = "quarterdeck.notifications.permission-prompted",
 	PreferredOpenTarget = "quarterdeck.preferred-open-target",
-	NotificationBadgeClearEvent = "quarterdeck.notification-badge-clear.v1",
-	TabVisibilityPresence = "quarterdeck.tab-visibility-presence.v1",
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 }
 

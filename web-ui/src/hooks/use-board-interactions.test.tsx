@@ -124,7 +124,6 @@ function HookHarness({
 		startTaskSession,
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
 		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
-		readyForReviewNotificationsEnabled: false,
 		showTrashWorktreeNotice: true,
 		saveTrashWorktreeNoticeDismissed: () => {},
 		taskGitActionLoadingByTaskId: {},

@@ -1,9 +1,5 @@
 # Dev Todo
 
-## 1. Audit OS notification feature
-
-The browser `Notification` API integration in `use-review-ready-notifications.ts` fires OS-level notifications when tasks move to review while the tab is hidden. Investigate whether this actually works reliably — test the permission flow, verify notifications appear on macOS, and decide whether to keep, improve, or remove it. The feature has a settings toggle (`readyForReviewNotificationsEnabled`) and permission request UI in the settings dialog.
-
 ## 2. Investigate auto-trashing of tasks on restart
 
 When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.

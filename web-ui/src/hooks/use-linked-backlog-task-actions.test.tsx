@@ -134,7 +134,6 @@ function HookHarness({
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		stopTaskSession: stopTaskSession ?? (async () => {}),
 		cleanupTaskWorkspace: cleanupTaskWorkspace ?? (async () => null),
-		maybeRequestNotificationPermissionForTaskStart: () => {},
 		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
 		startBacklogTaskWithAnimation,
 		waitForBacklogStartAnimationAvailability,

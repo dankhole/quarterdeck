@@ -209,7 +209,6 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
 		llmConfigured,
 	);
-	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
@@ -335,11 +334,7 @@ export default function App(): ReactElement {
 
 	useReviewReadyNotifications({
 		activeWorkspaceId: navigationCurrentProjectId,
-		board,
-		isDocumentVisible,
 		latestTaskReadyForReview,
-		taskSessions: sessions,
-		readyForReviewNotificationsEnabled,
 		workspacePath,
 	});
 
@@ -726,7 +721,6 @@ export default function App(): ReactElement {
 		startTaskSession,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
-		readyForReviewNotificationsEnabled,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,
 		taskGitActionLoadingByTaskId,
