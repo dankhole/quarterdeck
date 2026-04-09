@@ -150,11 +150,11 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 - Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
 - The research doc is organized module-by-module to support incremental porting
 
-## 16. Fix: reset session button delay and functionality
+## 16. Fix: reset session button restart action
 
-The reset session button on task cards pops up too quickly and doesn't actually work when clicked. Two issues:
-- Add a ~1 second delay before the button appears to avoid accidental clicks
-- Investigate and fix whatever is broken in the reset session action itself
+The reset session button's restart action re-sends the original task prompt instead of resuming the existing conversation. The handler in `use-board-interactions.ts` calls `startTaskSession(selection.card)` which uses `card.prompt` as the kickoff — but for a restart it should pass `{ resumeFromTrash: true }` to send an empty prompt and let the agent resume (or start fresh with `--continue`-style semantics).
+
+The ~1s appearance delay was fixed — `BoardCard` now gates `isSessionRestartable` behind a 1-second timer so the button doesn't flash during transient dead states or hydration.
 
 ## 17. Diff sidebar notification for unmerged branch changes
 
