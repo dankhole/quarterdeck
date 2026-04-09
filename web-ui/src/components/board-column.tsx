@@ -6,28 +6,20 @@ import { BoardCard } from "@/components/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useReactiveCardState, useStableCardActions } from "@/state/card-actions-context";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
+import { sortColumnCards } from "@/state/sort-column-cards";
 import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardColumnModel } from "@/types";
 
 export function BoardColumn({
 	column,
 	taskSessions,
 	onCreateTask,
-	onStartTask,
-	onRestartSessionTask,
 	onStartAllTasks,
 	onClearTrash,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onCancelAutomaticTaskAction,
-	onRegenerateTitleTask,
-	isLlmGenerationDisabled,
-	onUpdateTaskTitle,
-	onTogglePinTask,
-	onMoveToTrashTask,
-	onRestoreFromTrashTask,
-	moveToTrashLoadingById,
 	onCardClick,
 	activeDragTaskId,
 	activeDragSourceColumnId,
@@ -36,30 +28,16 @@ export function BoardColumn({
 	onDependencyPointerEnter,
 	dependencySourceTaskId,
 	dependencyTargetTaskId,
-	onMigrateWorkingDirectory,
-	migratingTaskId,
 	isDependencyLinking,
-	showSummaryOnCards = false,
-	onRequestDisplaySummary,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
-	onStartTask?: (taskId: string) => void;
-	onRestartSessionTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
-	onCancelAutomaticTaskAction?: (taskId: string) => void;
-	onRegenerateTitleTask?: (taskId: string) => void;
-	isLlmGenerationDisabled?: boolean;
-	onUpdateTaskTitle?: (taskId: string, title: string) => void;
-	onTogglePinTask?: (taskId: string) => void;
-	onMoveToTrashTask?: (taskId: string) => void;
-	onRestoreFromTrashTask?: (taskId: string) => void;
-	moveToTrashLoadingById?: Record<string, boolean>;
 	onCardClick?: (card: BoardCardModel) => void;
 	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
@@ -68,12 +46,22 @@ export function BoardColumn({
 	onDependencyPointerEnter?: (taskId: string) => void;
 	dependencySourceTaskId?: string | null;
 	dependencyTargetTaskId?: string | null;
-	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
-	migratingTaskId?: string | null;
 	isDependencyLinking?: boolean;
-	showSummaryOnCards?: boolean;
-	onRequestDisplaySummary?: (taskId: string) => void;
 }): React.ReactElement {
+	const {
+		onStartTask,
+		onRestartSessionTask,
+		onMoveToTrashTask,
+		onRestoreFromTrashTask,
+		onCancelAutomaticTaskAction,
+		onRegenerateTitleTask,
+		onUpdateTaskTitle,
+		onTogglePinTask,
+		onMigrateWorkingDirectory,
+		onRequestDisplaySummary,
+	} = useStableCardActions();
+	const { moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, showSummaryOnCards } =
+		useReactiveCardState();
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -155,15 +143,7 @@ export function BoardColumn({
 							{(() => {
 								const items: ReactNode[] = [];
 								let draggableIndex = 0;
-								const sortByRecent = ["in_progress", "review", "trash"].includes(column.id);
-								const cards = sortByRecent
-									? [...column.cards].sort((a, b) => {
-											const aPinned = a.pinned ? 1 : 0;
-											const bPinned = b.pinned ? 1 : 0;
-											if (aPinned !== bPinned) return bPinned - aPinned;
-											return b.updatedAt - a.updatedAt;
-										})
-									: column.cards;
+								const cards = sortColumnCards(column.cards, column.id);
 								for (const card of cards) {
 									if (column.id === "backlog" && editingTaskId === card.id) {
 										items.push(
@@ -194,7 +174,7 @@ export function BoardColumn({
 											isLlmGenerationDisabled={isLlmGenerationDisabled}
 											onUpdateTitle={onUpdateTaskTitle}
 											onTogglePin={onTogglePinTask}
-											isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
+											isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
 											onDependencyPointerDown={onDependencyPointerDown}
 											onDependencyPointerEnter={onDependencyPointerEnter}
 											isDependencySource={dependencySourceTaskId === card.id}

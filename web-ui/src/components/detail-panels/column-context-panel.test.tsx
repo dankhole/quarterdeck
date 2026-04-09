@@ -4,7 +4,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
+import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import type { BoardColumn, CardSelection } from "@/types";
+
+const noopStableActions: StableCardActions = {};
+const noopReactiveState: ReactiveCardState = {
+	moveToTrashLoadingById: {},
+	migratingTaskId: null,
+	isLlmGenerationDisabled: false,
+	showSummaryOnCards: false,
+};
 
 vi.mock("@/components/board-card", () => ({
 	BoardCard: ({
@@ -110,12 +119,14 @@ describe("ColumnContextPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<ColumnContextPanel
-					selection={createSelection(columns, "task-2")}
-					onCardSelect={() => {}}
-					taskSessions={{}}
-					onTaskDragEnd={() => {}}
-				/>,
+				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+					<ColumnContextPanel
+						selection={createSelection(columns, "task-2")}
+						onCardSelect={() => {}}
+						taskSessions={{}}
+						onTaskDragEnd={() => {}}
+					/>
+				</CardActionsProvider>,
 			);
 		});
 
@@ -127,12 +138,14 @@ describe("ColumnContextPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<ColumnContextPanel
-					selection={createSelection(columns, "task-3")}
-					onCardSelect={() => {}}
-					taskSessions={{}}
-					onTaskDragEnd={() => {}}
-				/>,
+				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+					<ColumnContextPanel
+						selection={createSelection(columns, "task-3")}
+						onCardSelect={() => {}}
+						taskSessions={{}}
+						onTaskDragEnd={() => {}}
+					/>
+				</CardActionsProvider>,
 			);
 		});
 

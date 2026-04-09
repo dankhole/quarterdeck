@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CardDetailView } from "@/components/card-detail-view";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
@@ -148,8 +149,20 @@ function requireDetailDiffFileTreePanel(container: HTMLElement): HTMLElement {
 	return panel;
 }
 
+const noopStableActions: StableCardActions = {};
+const noopReactiveState: ReactiveCardState = {
+	moveToTrashLoadingById: {},
+	migratingTaskId: null,
+	isLlmGenerationDisabled: false,
+	showSummaryOnCards: false,
+};
+
 function renderWithProviders(root: Root, ui: ReactNode): void {
-	root.render(<TooltipProvider>{ui}</TooltipProvider>);
+	root.render(
+		<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+			<TooltipProvider>{ui}</TooltipProvider>
+		</CardActionsProvider>,
+	);
 }
 
 describe("CardDetailView", () => {
