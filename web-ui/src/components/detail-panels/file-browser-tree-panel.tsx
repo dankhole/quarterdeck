@@ -9,7 +9,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
@@ -53,17 +53,23 @@ export function FileBrowserTreePanel({
 	selectedPath,
 	onSelectPath,
 	panelFlex,
+	expandedDirs,
+	onExpandedDirsChange,
+	hasInitializedExpansion,
+	onInitializedExpansion,
 }: {
 	files: string[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string | null) => void;
 	panelFlex?: string;
+	expandedDirs: Set<string>;
+	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
+	hasInitializedExpansion: boolean;
+	onInitializedExpansion: () => void;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [debouncedQuery, setDebouncedQuery] = useState("");
 	const [focusedIndex, setFocusedIndex] = useState(-1);
-	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-	const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -89,12 +95,12 @@ export function FileBrowserTreePanel({
 	// Auto-expand directories on first load (limited depth) or fully when searching
 	useEffect(() => {
 		if (debouncedQuery.trim()) {
-			setExpandedDirs(new Set(collectDirectoryPaths(tree)));
+			onExpandedDirsChange(new Set(collectDirectoryPaths(tree)));
 		} else if (!hasInitializedExpansion && tree.length > 0) {
-			setExpandedDirs(new Set(collectDirectoryPaths(tree, INITIAL_EXPANSION_DEPTH)));
-			setHasInitializedExpansion(true);
+			onExpandedDirsChange(new Set(collectDirectoryPaths(tree, INITIAL_EXPANSION_DEPTH)));
+			onInitializedExpansion();
 		}
-	}, [tree, debouncedQuery, hasInitializedExpansion]);
+	}, [tree, debouncedQuery, hasInitializedExpansion, onExpandedDirsChange, onInitializedExpansion]);
 
 	const visibleItems = useMemo(() => {
 		const items: FlatTreeItem[] = [];
@@ -110,24 +116,27 @@ export function FileBrowserTreePanel({
 	const hasDirectories = allDirectoryPaths.length > 0;
 
 	const handleExpandAll = useCallback(() => {
-		setExpandedDirs(new Set(allDirectoryPaths));
-	}, [allDirectoryPaths]);
+		onExpandedDirsChange(new Set(allDirectoryPaths));
+	}, [allDirectoryPaths, onExpandedDirsChange]);
 
 	const handleCollapseAll = useCallback(() => {
-		setExpandedDirs(new Set());
-	}, []);
+		onExpandedDirsChange(new Set());
+	}, [onExpandedDirsChange]);
 
-	const toggleDirectory = useCallback((dirPath: string) => {
-		setExpandedDirs((prev) => {
-			const next = new Set(prev);
-			if (next.has(dirPath)) {
-				next.delete(dirPath);
-			} else {
-				next.add(dirPath);
-			}
-			return next;
-		});
-	}, []);
+	const toggleDirectory = useCallback(
+		(dirPath: string) => {
+			onExpandedDirsChange((prev) => {
+				const next = new Set(prev);
+				if (next.has(dirPath)) {
+					next.delete(dirPath);
+				} else {
+					next.add(dirPath);
+				}
+				return next;
+			});
+		},
+		[onExpandedDirsChange],
+	);
 
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {

@@ -332,6 +332,8 @@ export function CardDetailView({
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [fileBrowserSelectedPath, setFileBrowserSelectedPath] = useState<string | null>(null);
+	const [fileBrowserExpandedDirs, setFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
+	const [fileBrowserHasInitializedExpansion, setFileBrowserHasInitializedExpansion] = useState(false);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 
@@ -482,13 +484,15 @@ export function CardDetailView({
 		setSelectedPath(availablePaths[0] ?? null);
 	}, [availablePaths, selectedPath]);
 
+	// Reset parent-owned state on task switch. The key={selection.card.id} on
+	// FileBrowserPanel resets child-internal state (search, focus); this effect
+	// resets lifted state that lives here and survives the child remount.
 	useEffect(() => {
 		setDiffComments(new Map());
-	}, [selection.card.id]);
-
-	useEffect(() => {
 		setDiffMode("working_copy");
 		setFileBrowserSelectedPath(null);
+		setFileBrowserExpandedDirs(new Set());
+		setFileBrowserHasInitializedExpansion(false);
 	}, [selection.card.id]);
 
 	const handleToggleDiffExpand = useCallback(() => {
@@ -513,6 +517,10 @@ export function CardDetailView({
 		onFileBrowserExpandedChange,
 	]);
 
+	const handleFileBrowserInitializedExpansion = useCallback(() => {
+		setFileBrowserHasInitializedExpansion(true);
+	}, []);
+
 	const fileBrowserContent = useMemo(() => {
 		if (!currentProjectId) {
 			return (
@@ -536,6 +544,10 @@ export function CardDetailView({
 					treePanelFlex={fileBrowserTreePanelPercent}
 					contentPanelFlex={fileBrowserContentPanelPercent}
 					onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+					expandedDirs={fileBrowserExpandedDirs}
+					onExpandedDirsChange={setFileBrowserExpandedDirs}
+					hasInitializedExpansion={fileBrowserHasInitializedExpansion}
+					onInitializedExpansion={handleFileBrowserInitializedExpansion}
 				/>
 			</div>
 		);
@@ -547,6 +559,9 @@ export function CardDetailView({
 		fileBrowserTreePanelPercent,
 		fileBrowserContentPanelPercent,
 		handleFileBrowserTreeSeparatorMouseDown,
+		fileBrowserExpandedDirs,
+		fileBrowserHasInitializedExpansion,
+		handleFileBrowserInitializedExpansion,
 	]);
 
 	const handleAddDiffComments = useCallback(
