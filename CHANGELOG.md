@@ -38,11 +38,27 @@
 - The expand button is hidden when no file is selected.
 - Removed redundant X buttons from the expanded diff and file browser toolbars — they duplicated the collapse button with a misleading icon.
 
+### Incremental expand in diff viewer
+
+- Collapsed context blocks in diffs now show "show 20 more lines" buttons for progressive expansion instead of all-or-nothing expand. Cherry-picked from upstream cline/kanban#247.
+
+### Resume conversation on session restart
+
+- Restarting an agent session now resumes the existing conversation (`--continue`) instead of starting fresh. Cards stay in their current column on restart instead of being forced back to in-progress.
+
+### Unify card action prop threading
+
+- Replaced ~15 individually-threaded card action props with two React contexts (`StableCardActions` for handler callbacks, `ReactiveCardState` for per-render values). Both board and sidebar card paths now consume from the same source, eliminating prop drilling divergence between views.
+
 ### Other changes
 
 - Added a beta notice card at the bottom of the project sidebar with a "Report issue" link. Removed the dead Featurebase feedback widget.
 - The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
 - The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
+- Default side panel ratio reduced from 25% to 15%.
+- Default prompt shortcut textarea height increased from 3 to 5 rows.
+- Base ref dropdown in the create task dialog is now greyed out when isolated worktree is unchecked.
+- Fixed permission notification sound playing wrong beep count — hook activity data was arriving after the 500ms settle window expired due to slow checkpoint capture.
 
 ## [0.3.0]
 
