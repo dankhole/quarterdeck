@@ -9,6 +9,24 @@ import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { detectInstalledCommands } from "../terminal/agent-registry";
+import {
+	DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
+	DEFAULT_AGENT_ID,
+	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,
+	DEFAULT_AUDIBLE_NOTIFICATION_VOLUME,
+	DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
+	DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
+	DEFAULT_AUTO_GENERATE_SUMMARY,
+	DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+	DEFAULT_PROMPT_SHORTCUTS,
+	DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+	DEFAULT_SHELL_AUTO_RESTART_ENABLED,
+	DEFAULT_SHOW_SUMMARY_ON_CARDS,
+	DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
+	DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
+	DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+} from "./config-defaults";
 import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils";
 
 interface AudibleNotificationEventsShape {
@@ -98,57 +116,7 @@ export interface RuntimeConfigUpdateInput {
 const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".quarterdeck";
 const PROJECT_CONFIG_FILENAME = "config.json";
-const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
-const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = false;
-const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_SHELL_AUTO_RESTART_ENABLED = true;
-const DEFAULT_SHOW_SUMMARY_ON_CARDS = false;
-const DEFAULT_AUTO_GENERATE_SUMMARY = false;
-const DEFAULT_SUMMARY_STALE_AFTER_SECONDS = 300;
-const DEFAULT_SHOW_TRASH_WORKTREE_NOTICE = true;
-const DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED = false;
-const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
-
-First, check your current git state: run \`git status\` and \`git branch --show-current\`.
-
-- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
-- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
-
-Report:
-- Branch name
-- Final commit hash
-- Final commit message
-- Whether a new branch was created (detached HEAD case)`;
-const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `When you are finished with the task, open a pull request against {{base_ref}}.
-
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not modify the base worktree.
-- Keep all PR preparation in the current worktree.
-
-Steps:
-1. Ensure all intended changes are committed.
-2. If currently on detached HEAD, create a branch at the current commit.
-3. Push the branch to origin and set upstream.
-4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
-5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
-6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
-7. Report:
-   - PR title: PR URL
-   - Base branch
-   - Head branch
-   - Any follow-up needed`;
-const DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_AUDIBLE_NOTIFICATION_VOLUME = 0.7;
-const DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN = true;
-const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
-	permission: true,
-	review: true,
-	failure: true,
-	completion: true,
-};
 
 /** Assembled defaults for test fixtures — not used in production paths. */
 export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
@@ -176,25 +144,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 };
 
-export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
-	{
-		label: "Commit",
-		prompt: `When you are finished with the task, commit your working changes.
-
-First, check your current git state: run \`git status\` and \`git branch --show-current\`.
-
-- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
-- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
-
-Report:
-- Branch name
-- Final commit hash
-- Final commit message
-- Whether a new branch was created (detached HEAD case)`,
-	},
-];
+export { DEFAULT_PROMPT_SHORTCUTS } from "./config-defaults";
 
 export function normalizePromptShortcuts(
 	shortcuts: Array<{ label: string; prompt: string }> | null | undefined,
@@ -892,6 +842,120 @@ export async function saveRuntimeConfig(
 	});
 }
 
+async function applyConfigUpdates({
+	globalConfigPath,
+	projectConfigPath,
+	current,
+	updates,
+}: {
+	globalConfigPath: string;
+	projectConfigPath: string | null;
+	current: RuntimeConfigState;
+	updates: RuntimeConfigUpdateInput;
+}): Promise<RuntimeConfigState> {
+	const nextConfig = {
+		selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
+		selectedShortcutLabel:
+			updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel,
+		agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
+		readyForReviewNotificationsEnabled:
+			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+		shellAutoRestartEnabled: updates.shellAutoRestartEnabled ?? current.shellAutoRestartEnabled,
+		showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
+		autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
+		summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
+		showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
+		unmergedChangesIndicatorEnabled:
+			updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
+		commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
+		openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
+		audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
+		audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
+		audibleNotificationEvents: updates.audibleNotificationEvents
+			? normalizeAudibleNotificationEvents({
+					...current.audibleNotificationEvents,
+					...updates.audibleNotificationEvents,
+				})
+			: current.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden:
+			updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
+		shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
+		promptShortcuts: updates.promptShortcuts ?? current.promptShortcuts,
+	};
+
+	const hasChanges =
+		nextConfig.selectedAgentId !== current.selectedAgentId ||
+		nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
+		nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
+		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+		nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled ||
+		JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
+		nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
+		nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
+		nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
+		nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
+		nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
+		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
+		nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
+		nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
+		nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
+		nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
+		nextConfig.audibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
+		nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
+		nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
+		nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden ||
+		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts));
+
+	if (!hasChanges) {
+		return current;
+	}
+
+	await writeRuntimeGlobalConfigFile(globalConfigPath, {
+		selectedAgentId: nextConfig.selectedAgentId,
+		selectedShortcutLabel: nextConfig.selectedShortcutLabel,
+		agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
+		readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+		shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
+		promptShortcuts: nextConfig.promptShortcuts,
+		showSummaryOnCards: nextConfig.showSummaryOnCards,
+		autoGenerateSummary: nextConfig.autoGenerateSummary,
+		summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
+		showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+		unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
+		commitPromptTemplate: nextConfig.commitPromptTemplate,
+		openPrPromptTemplate: nextConfig.openPrPromptTemplate,
+		audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+		audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+		audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
+	});
+	if (projectConfigPath !== null) {
+		await writeRuntimeProjectConfigFile(projectConfigPath, {
+			shortcuts: nextConfig.shortcuts,
+		});
+	}
+	return createRuntimeConfigStateFromValues({
+		globalConfigPath,
+		projectConfigPath,
+		selectedAgentId: nextConfig.selectedAgentId,
+		selectedShortcutLabel: nextConfig.selectedShortcutLabel,
+		agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
+		readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
+		shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
+		showSummaryOnCards: nextConfig.showSummaryOnCards,
+		autoGenerateSummary: nextConfig.autoGenerateSummary,
+		summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
+		showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
+		unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
+		audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
+		audibleNotificationVolume: nextConfig.audibleNotificationVolume,
+		audibleNotificationEvents: nextConfig.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
+		shortcuts: nextConfig.shortcuts,
+		promptShortcuts: nextConfig.promptShortcuts,
+	});
+}
+
 export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpdateInput): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd), async () => {
@@ -899,109 +963,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
-		const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
-		const nextAudibleEvents = updates.audibleNotificationEvents
-			? normalizeAudibleNotificationEvents({
-					...current.audibleNotificationEvents,
-					...updates.audibleNotificationEvents,
-				})
-			: current.audibleNotificationEvents;
-		const nextConfig = {
-			selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
-			selectedShortcutLabel:
-				updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel,
-			agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
-			readyForReviewNotificationsEnabled:
-				updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
-			shellAutoRestartEnabled: updates.shellAutoRestartEnabled ?? current.shellAutoRestartEnabled,
-			showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
-			autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
-			summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
-			showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled:
-				updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
-			commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
-			openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
-			audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
-			audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
-			audibleNotificationEvents: nextAudibleEvents,
-			audibleNotificationsOnlyWhenHidden:
-				updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
-			shortcuts: projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts,
-			promptShortcuts: nextPromptShortcuts,
-		};
-
-		// Keep in sync with updateGlobalRuntimeConfig's hasChanges check.
-		// See docs/research/2026-04-09-config-save-dual-path.md for why two paths exist.
-		const hasChanges =
-			nextConfig.selectedAgentId !== current.selectedAgentId ||
-			nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
-			nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
-			nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-			nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled ||
-			JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
-			nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
-			nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
-			nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
-			nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
-			nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
-			nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
-			nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
-			nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
-			nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
-			nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
-			nextConfig.audibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
-			nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
-			nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
-			nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden ||
-			!areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
-
-		if (!hasChanges) {
-			return current;
-		}
-
-		await writeRuntimeGlobalConfigFile(globalConfigPath, {
-			selectedAgentId: nextConfig.selectedAgentId,
-			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
-			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
-			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-			shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
-			promptShortcuts: nextConfig.promptShortcuts,
-			showSummaryOnCards: nextConfig.showSummaryOnCards,
-			autoGenerateSummary: nextConfig.autoGenerateSummary,
-			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
-			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
-			commitPromptTemplate: nextConfig.commitPromptTemplate,
-			openPrPromptTemplate: nextConfig.openPrPromptTemplate,
-			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
-			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
-			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
-			audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
-		});
-		await writeRuntimeProjectConfigFile(projectConfigPath, {
-			shortcuts: nextConfig.shortcuts,
-		});
-		return createRuntimeConfigStateFromValues({
-			globalConfigPath,
-			projectConfigPath,
-			selectedAgentId: nextConfig.selectedAgentId,
-			selectedShortcutLabel: nextConfig.selectedShortcutLabel,
-			agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
-			readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-			shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
-			showSummaryOnCards: nextConfig.showSummaryOnCards,
-			autoGenerateSummary: nextConfig.autoGenerateSummary,
-			summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
-			showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
-			audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
-			audibleNotificationVolume: nextConfig.audibleNotificationVolume,
-			audibleNotificationEvents: nextConfig.audibleNotificationEvents,
-			audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
-			shortcuts: nextConfig.shortcuts,
-			promptShortcuts: nextConfig.promptShortcuts,
-		});
+		return applyConfigUpdates({ globalConfigPath, projectConfigPath, current, updates });
 	});
 }
 
@@ -1010,114 +972,16 @@ export async function updateGlobalRuntimeConfig(
 	updates: RuntimeConfigUpdateInput,
 ): Promise<RuntimeConfigState> {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
-	return await lockedFileSystem.withLocks(
-		[
-			{
-				path: globalConfigPath,
-				type: "file",
-			},
-		],
-		async () => {
-			const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
-			const nextConfig = {
-				selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
-				selectedShortcutLabel:
-					updates.selectedShortcutLabel === undefined
-						? current.selectedShortcutLabel
-						: updates.selectedShortcutLabel,
-				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
-				readyForReviewNotificationsEnabled:
-					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
-				shellAutoRestartEnabled: updates.shellAutoRestartEnabled ?? current.shellAutoRestartEnabled,
-				showSummaryOnCards: updates.showSummaryOnCards ?? current.showSummaryOnCards,
-				autoGenerateSummary: updates.autoGenerateSummary ?? current.autoGenerateSummary,
-				summaryStaleAfterSeconds: updates.summaryStaleAfterSeconds ?? current.summaryStaleAfterSeconds,
-				showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
-				unmergedChangesIndicatorEnabled:
-					updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
-				commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
-				openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
-				audibleNotificationsEnabled: updates.audibleNotificationsEnabled ?? current.audibleNotificationsEnabled,
-				audibleNotificationVolume: updates.audibleNotificationVolume ?? current.audibleNotificationVolume,
-				audibleNotificationEvents: updates.audibleNotificationEvents
-					? normalizeAudibleNotificationEvents({
-							...current.audibleNotificationEvents,
-							...updates.audibleNotificationEvents,
-						})
-					: current.audibleNotificationEvents,
-				audibleNotificationsOnlyWhenHidden:
-					updates.audibleNotificationsOnlyWhenHidden ?? current.audibleNotificationsOnlyWhenHidden,
-				shortcuts: current.shortcuts,
-				promptShortcuts: nextPromptShortcuts,
-			};
-
-			// Keep in sync with updateRuntimeConfig's hasChanges check.
-			// See docs/research/2026-04-09-config-save-dual-path.md for why two paths exist.
-			const hasChanges =
-				nextConfig.selectedAgentId !== current.selectedAgentId ||
-				nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
-				nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
-				nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-				nextConfig.shellAutoRestartEnabled !== current.shellAutoRestartEnabled ||
-				JSON.stringify(nextConfig.promptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
-				nextConfig.showSummaryOnCards !== current.showSummaryOnCards ||
-				nextConfig.autoGenerateSummary !== current.autoGenerateSummary ||
-				nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
-				nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
-				nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
-				nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
-				nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
-				nextConfig.audibleNotificationsEnabled !== current.audibleNotificationsEnabled ||
-				nextConfig.audibleNotificationVolume !== current.audibleNotificationVolume ||
-				nextConfig.audibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
-				nextConfig.audibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
-				nextConfig.audibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
-				nextConfig.audibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
-				nextConfig.audibleNotificationsOnlyWhenHidden !== current.audibleNotificationsOnlyWhenHidden;
-
-			if (!hasChanges) {
-				return current;
-			}
-
-			await writeRuntimeGlobalConfigFile(globalConfigPath, {
-				selectedAgentId: nextConfig.selectedAgentId,
-				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
-				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
-				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-				shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
-				promptShortcuts: nextConfig.promptShortcuts,
-				showSummaryOnCards: nextConfig.showSummaryOnCards,
-				autoGenerateSummary: nextConfig.autoGenerateSummary,
-				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
-				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
-				commitPromptTemplate: nextConfig.commitPromptTemplate,
-				openPrPromptTemplate: nextConfig.openPrPromptTemplate,
-				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
-				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
-				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
-				audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
-			});
-
-			return createRuntimeConfigStateFromValues({
-				globalConfigPath,
-				projectConfigPath: current.projectConfigPath,
-				selectedAgentId: nextConfig.selectedAgentId,
-				selectedShortcutLabel: nextConfig.selectedShortcutLabel,
-				agentAutonomousModeEnabled: nextConfig.agentAutonomousModeEnabled,
-				readyForReviewNotificationsEnabled: nextConfig.readyForReviewNotificationsEnabled,
-				shellAutoRestartEnabled: nextConfig.shellAutoRestartEnabled,
-				showSummaryOnCards: nextConfig.showSummaryOnCards,
-				autoGenerateSummary: nextConfig.autoGenerateSummary,
-				summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
-				showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
-				unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
-				audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
-				audibleNotificationVolume: nextConfig.audibleNotificationVolume,
-				audibleNotificationEvents: nextConfig.audibleNotificationEvents,
-				audibleNotificationsOnlyWhenHidden: nextConfig.audibleNotificationsOnlyWhenHidden,
-				shortcuts: nextConfig.shortcuts,
-				promptShortcuts: nextConfig.promptShortcuts,
-			});
-		},
-	);
+	return await lockedFileSystem.withLocks([{ path: globalConfigPath, type: "file" }], async () => {
+		const result = await applyConfigUpdates({
+			globalConfigPath,
+			projectConfigPath: null,
+			current,
+			updates,
+		});
+		if (result === current) {
+			return current;
+		}
+		return { ...result, projectConfigPath: current.projectConfigPath };
+	});
 }

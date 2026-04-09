@@ -3,6 +3,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import {
 	Check,
@@ -238,23 +239,30 @@ export function RuntimeSettingsDialog({
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
-	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
-	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
-	const [showSummaryOnCards, setShowSummaryOnCards] = useState(false);
-	const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
-	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(300);
-	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(true);
-	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
-	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(false);
-	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
-	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
+	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>(CONFIG_DEFAULTS.selectedAgentId);
+	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(
+		CONFIG_DEFAULTS.agentAutonomousModeEnabled,
+	);
+	const [showSummaryOnCards, setShowSummaryOnCards] = useState(CONFIG_DEFAULTS.showSummaryOnCards);
+	const [autoGenerateSummary, setAutoGenerateSummary] = useState(CONFIG_DEFAULTS.autoGenerateSummary);
+	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(CONFIG_DEFAULTS.summaryStaleAfterSeconds);
+	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
+	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
+	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
+		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
+	);
+	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(
+		CONFIG_DEFAULTS.audibleNotificationsEnabled,
+	);
+	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(
+		CONFIG_DEFAULTS.audibleNotificationVolume,
+	);
 	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
-		permission: true,
-		review: true,
-		failure: true,
-		completion: true,
+		...CONFIG_DEFAULTS.audibleNotificationEvents,
 	});
-	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(true);
+	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(
+		CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
+	);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
@@ -290,23 +298,24 @@ export function RuntimeSettingsDialog({
 	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
 	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
 	const initialSelectedAgentId = config?.selectedAgentId ?? fallbackAgentId;
-	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
-	const initialShowSummaryOnCards = config?.showSummaryOnCards ?? false;
-	const initialAutoGenerateSummary = config?.autoGenerateSummary ?? false;
-	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? 300;
+	const initialAgentAutonomousModeEnabled =
+		config?.agentAutonomousModeEnabled ?? CONFIG_DEFAULTS.agentAutonomousModeEnabled;
+	const initialShowSummaryOnCards = config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards;
+	const initialAutoGenerateSummary = config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary;
+	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds;
 	const llmConfigured = config?.llmConfigured ?? false;
-	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? true;
-	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
-	const initialUnmergedChangesIndicatorEnabled = config?.unmergedChangesIndicatorEnabled ?? false;
-	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
-	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
-	const initialAudibleNotificationEvents = config?.audibleNotificationEvents ?? {
-		permission: true,
-		review: true,
-		failure: true,
-		completion: true,
-	};
-	const initialAudibleNotificationsOnlyWhenHidden = config?.audibleNotificationsOnlyWhenHidden ?? true;
+	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
+	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
+	const initialUnmergedChangesIndicatorEnabled =
+		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
+	const initialAudibleNotificationsEnabled =
+		config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
+	const initialAudibleNotificationVolume =
+		config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
+	const initialAudibleNotificationEvents =
+		config?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
+	const initialAudibleNotificationsOnlyWhenHidden =
+		config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -389,19 +398,25 @@ export function RuntimeSettingsDialog({
 			return;
 		}
 		setSelectedAgentId(config?.selectedAgentId ?? fallbackAgentId);
-		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
-		setShowSummaryOnCards(config?.showSummaryOnCards ?? false);
-		setAutoGenerateSummary(config?.autoGenerateSummary ?? false);
-		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? 300);
-		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? true);
-		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
-		setUnmergedChangesIndicatorEnabled(config?.unmergedChangesIndicatorEnabled ?? false);
-		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
-		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
-		setAudibleNotificationEvents(
-			config?.audibleNotificationEvents ?? { permission: true, review: true, failure: true, completion: true },
+		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? CONFIG_DEFAULTS.agentAutonomousModeEnabled);
+		setShowSummaryOnCards(config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards);
+		setAutoGenerateSummary(config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary);
+		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds);
+		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
+		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
+		setUnmergedChangesIndicatorEnabled(
+			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 		);
-		setAudibleNotificationsOnlyWhenHidden(config?.audibleNotificationsOnlyWhenHidden ?? true);
+		setAudibleNotificationsEnabled(
+			config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
+		);
+		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume);
+		setAudibleNotificationEvents(
+			config?.audibleNotificationEvents ?? { ...CONFIG_DEFAULTS.audibleNotificationEvents },
+		);
+		setAudibleNotificationsOnlyWhenHidden(
+			config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
+		);
 		setShortcuts(config?.shortcuts ?? []);
 		setSaveError(null);
 	}, [
