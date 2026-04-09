@@ -173,17 +173,17 @@ Two related bugs with the notification audio system:
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 20. File browser: preserve state between sidebar and full-size views
+## 20. Allow sidebar to resize past 50%
+
+The detail sidebar currently can't be dragged past the halfway point of the viewport. Allow it to expand up to ~80% width for users who want a larger diff/file view without going full-screen.
+
+## 21. File browser: preserve state between sidebar and full-size views
 
 When switching from the sidebar file browser to the full-size view (or vice versa), the current file selection and expand/collapse state of the tree should be preserved. Currently the full-size view resets to a fresh state.
 
-## 21. Add markdown renderer
+## 22. Add markdown renderer
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
-
-## ~~22. Investigate X button in file browser~~ ✓
-
-Removed. The X button in the expanded file browser toolbar was redundant — it did the exact same thing as the adjacent Minimize2 collapse button (`onToggleExpand`). The Minimize2 button already clearly communicates the action, so the confusing X was removed.
 
 ## 23. Fix: project view task state indicators not staying up to date
 
