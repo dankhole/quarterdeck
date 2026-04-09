@@ -45,11 +45,6 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 	openFileOnHost: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/utils/notification-permission", () => ({
-	getBrowserNotificationPermission: () => "unsupported",
-	requestBrowserNotificationPermission: vi.fn(async () => "unsupported"),
-}));
-
 vi.mock("@/utils/notification-audio", () => ({
 	notificationAudioPlayer: {
 		ensureContext: vi.fn(),
@@ -67,7 +62,6 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 
 function createSavedConfig(overrides?: Partial<RuntimeConfigResponse>): RuntimeConfigResponse {
 	return createTestRuntimeConfigResponse({
-		readyForReviewNotificationsEnabled: false,
 		detectedCommands: [],
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
 		projectConfigPath: null,

@@ -43,6 +43,7 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 		changedFiles: 3,
 		additions: 10,
 		deletions: 2,
+		hasUnmergedChanges: true,
 	},
 };
 

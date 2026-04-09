@@ -209,8 +209,8 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.summaryStaleAfterSeconds ?? 300,
 		llmConfigured,
 	);
-	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const showTrashWorktreeNotice = runtimeProjectConfig?.showTrashWorktreeNotice ?? true;
+	const unmergedChangesIndicatorEnabled = runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? false;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
 			refreshRuntimeProjectConfig();
@@ -335,11 +335,7 @@ export default function App(): ReactElement {
 
 	useReviewReadyNotifications({
 		activeWorkspaceId: navigationCurrentProjectId,
-		board,
-		isDocumentVisible,
 		latestTaskReadyForReview,
-		taskSessions: sessions,
-		readyForReviewNotificationsEnabled,
 		workspacePath,
 	});
 
@@ -726,7 +722,6 @@ export default function App(): ReactElement {
 		startTaskSession,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
-		readyForReviewNotificationsEnabled,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,
 		taskGitActionLoadingByTaskId,
@@ -1077,6 +1072,11 @@ export default function App(): ReactElement {
 							hasSelectedTask={selectedCard !== null}
 							hasUncommittedChanges={
 								selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
+							}
+							hasUnmergedChanges={
+								unmergedChangesIndicatorEnabled && selectedCard
+									? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
+									: false
 							}
 						/>
 

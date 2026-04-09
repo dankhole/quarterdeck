@@ -21,6 +21,7 @@ export interface UseRuntimeConfigResult {
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
+		unmergedChangesIndicatorEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;

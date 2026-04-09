@@ -35,6 +35,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	readyForReviewNotificationsEnabled: true,
 	shellAutoRestartEnabled: true,
 	showTrashWorktreeNotice: true,
+	unmergedChangesIndicatorEnabled: false,
 	audibleNotificationsEnabled: true,
 	audibleNotificationVolume: 0.7,
 	audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },

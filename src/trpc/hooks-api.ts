@@ -110,6 +110,18 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
+				// Apply hook activity and conversation summary BEFORE the async
+				// checkpoint capture. The browser uses a 500ms settle window to
+				// upgrade "review" → "permission" sounds based on activity data.
+				// Checkpoint capture runs multiple git operations that routinely
+				// exceed 500ms, so deferring activity would cause the settle
+				// window to expire and the wrong (review) sound to play.
+				if (body.metadata) {
+					manager.applyHookActivity(taskId, body.metadata);
+				}
+
+				applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
+
 				if (event === "to_review") {
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;
@@ -133,12 +145,6 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						// Best effort checkpointing only.
 					}
 				}
-
-				if (body.metadata) {
-					manager.applyHookActivity(taskId, body.metadata);
-				}
-
-				applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				if (event === "to_review") {

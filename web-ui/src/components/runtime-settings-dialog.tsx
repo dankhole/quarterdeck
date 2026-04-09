@@ -34,13 +34,7 @@ import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } fr
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
-import {
-	type BrowserNotificationPermission,
-	getBrowserNotificationPermission,
-	requestBrowserNotificationPermission,
-} from "@/utils/notification-permission";
 import { formatPathForDisplay } from "@/utils/path-display";
-import { useWindowEvent } from "@/utils/react-use";
 
 interface RuntimeSettingsAgentRowModel {
 	id: RuntimeAgentId;
@@ -73,13 +67,6 @@ function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOpt
 function ShortcutIconComponent({ icon, size = 14 }: { icon: string | undefined; size?: number }): React.ReactElement {
 	const Component = getRuntimeShortcutIconComponent(icon);
 	return <Component size={size} />;
-}
-
-function formatNotificationPermissionStatus(permission: BrowserNotificationPermission): string {
-	if (permission === "default") {
-		return "not requested yet";
-	}
-	return permission;
 }
 
 function getNextShortcutLabel(shortcuts: RuntimeProjectShortcut[], baseLabel: string): string {
@@ -176,41 +163,6 @@ function AgentRow({
 	);
 }
 
-function InlineUtilityButton({
-	text,
-	onClick,
-	disabled,
-	monospace,
-	widthCh,
-}: {
-	text: string;
-	onClick: () => void;
-	disabled?: boolean;
-	monospace?: boolean;
-	widthCh?: number;
-}): React.ReactElement {
-	return (
-		<Button
-			size="sm"
-			disabled={disabled}
-			onClick={onClick}
-			className={cn(monospace && "font-mono")}
-			style={{
-				fontSize: 10,
-				verticalAlign: "middle",
-				...(typeof widthCh === "number"
-					? {
-							width: `${widthCh}ch`,
-							justifyContent: "center",
-						}
-					: {}),
-			}}
-		>
-			{text}
-		</Button>
-	);
-}
-
 function ShortcutIconPicker({
 	value,
 	onSelect,
@@ -291,9 +243,9 @@ export function RuntimeSettingsDialog({
 	const [showSummaryOnCards, setShowSummaryOnCards] = useState(false);
 	const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
 	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(300);
-	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(true);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(true);
+	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(false);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(true);
 	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(0.7);
 	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
@@ -303,7 +255,6 @@ export function RuntimeSettingsDialog({
 		completion: true,
 	});
 	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(true);
-	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
@@ -311,10 +262,6 @@ export function RuntimeSettingsDialog({
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
-	const refreshNotificationPermission = useCallback(() => {
-		setNotificationPermission(getBrowserNotificationPermission());
-	}, []);
-
 	const supportedAgents = useMemo<RuntimeSettingsAgentRowModel[]>(() => {
 		const agents =
 			config?.agents.map((agent) => ({
@@ -348,9 +295,9 @@ export function RuntimeSettingsDialog({
 	const initialAutoGenerateSummary = config?.autoGenerateSummary ?? false;
 	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? 300;
 	const llmConfigured = config?.llmConfigured ?? false;
-	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? true;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? true;
+	const initialUnmergedChangesIndicatorEnabled = config?.unmergedChangesIndicatorEnabled ?? false;
 	const initialAudibleNotificationsEnabled = config?.audibleNotificationsEnabled ?? true;
 	const initialAudibleNotificationVolume = config?.audibleNotificationVolume ?? 0.7;
 	const initialAudibleNotificationEvents = config?.audibleNotificationEvents ?? {
@@ -380,13 +327,13 @@ export function RuntimeSettingsDialog({
 		if (summaryStaleAfterSeconds !== initialSummaryStaleAfterSeconds) {
 			return true;
 		}
-		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
-			return true;
-		}
 		if (shellAutoRestartEnabled !== initialShellAutoRestartEnabled) {
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
+			return true;
+		}
+		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
 			return true;
 		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
@@ -421,20 +368,20 @@ export function RuntimeSettingsDialog({
 		initialAudibleNotificationVolume,
 		initialAudibleNotificationsEnabled,
 		initialAudibleNotificationsOnlyWhenHidden,
-		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
 		initialShellAutoRestartEnabled,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
+		initialUnmergedChangesIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
-		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shellAutoRestartEnabled,
 		shortcuts,
 		showSummaryOnCards,
 		showTrashWorktreeNotice,
 		summaryStaleAfterSeconds,
+		unmergedChangesIndicatorEnabled,
 	]);
 
 	useEffect(() => {
@@ -446,9 +393,9 @@ export function RuntimeSettingsDialog({
 		setShowSummaryOnCards(config?.showSummaryOnCards ?? false);
 		setAutoGenerateSummary(config?.autoGenerateSummary ?? false);
 		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? 300);
-		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? true);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? true);
+		setUnmergedChangesIndicatorEnabled(config?.unmergedChangesIndicatorEnabled ?? false);
 		setAudibleNotificationsEnabled(config?.audibleNotificationsEnabled ?? true);
 		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? 0.7);
 		setAudibleNotificationEvents(
@@ -464,8 +411,8 @@ export function RuntimeSettingsDialog({
 		config?.audibleNotificationVolume,
 		config?.audibleNotificationsEnabled,
 		config?.audibleNotificationsOnlyWhenHidden,
-		config?.readyForReviewNotificationsEnabled,
 		config?.showTrashWorktreeNotice,
+		config?.unmergedChangesIndicatorEnabled,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.shortcuts,
@@ -474,14 +421,6 @@ export function RuntimeSettingsDialog({
 		fallbackAgentId,
 		open,
 	]);
-
-	useEffect(() => {
-		if (!open) {
-			return;
-		}
-		refreshNotificationPermission();
-	}, [open, refreshNotificationPermission]);
-	useWindowEvent("focus", open ? refreshNotificationPermission : null);
 
 	useEffect(() => {
 		if (!open || initialSection !== "shortcuts") {
@@ -524,23 +463,15 @@ export function RuntimeSettingsDialog({
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
 		}
-		const shouldRequestNotificationPermission =
-			!initialReadyForReviewNotificationsEnabled &&
-			readyForReviewNotificationsEnabled &&
-			notificationPermission === "default";
-		if (shouldRequestNotificationPermission) {
-			const nextPermission = await requestBrowserNotificationPermission();
-			setNotificationPermission(nextPermission);
-		}
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
 			showSummaryOnCards,
 			autoGenerateSummary,
 			summaryStaleAfterSeconds,
-			readyForReviewNotificationsEnabled,
 			shellAutoRestartEnabled,
 			showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -553,13 +484,6 @@ export function RuntimeSettingsDialog({
 		}
 		onSaved?.();
 		onOpenChange(false);
-	};
-
-	const handleRequestPermission = () => {
-		void (async () => {
-			const nextPermission = await requestBrowserNotificationPermission();
-			setNotificationPermission(nextPermission);
-		})();
 	};
 
 	const handleOpenFilePath = useCallback(
@@ -713,31 +637,6 @@ export function RuntimeSettingsDialog({
 					</div>
 				) : null}
 
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={readyForReviewNotificationsEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setReadyForReviewNotificationsEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Notify when a task is ready for review</span>
-				</div>
-				<div className="flex items-center gap-2 mt-2 mb-2">
-					<p className="text-text-secondary text-[13px] m-0">
-						Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
-					</p>
-					{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
-						<InlineUtilityButton
-							text="Request permission"
-							onClick={handleRequestPermission}
-							disabled={controlsDisabled}
-						/>
-					) : null}
-				</div>
-
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
 				<div className="flex items-center gap-2">
 					<RadixSwitch.Root
@@ -752,6 +651,23 @@ export function RuntimeSettingsDialog({
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
+				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Changes</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={unmergedChangesIndicatorEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setUnmergedChangesIndicatorEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
+					branch.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>

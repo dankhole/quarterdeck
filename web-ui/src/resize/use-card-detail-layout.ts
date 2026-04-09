@@ -15,7 +15,7 @@ export type SidebarTabId = "home" | TaskTabId;
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
 	defaultValue: 0.25,
-	normalize: (value) => clampBetween(value, 0.14, 0.45),
+	normalize: (value) => clampBetween(value, 0.14, 0.8),
 };
 
 const COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {

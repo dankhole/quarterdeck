@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
 import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
@@ -18,6 +18,10 @@ export function FileBrowserPanel({
 	treePanelFlex,
 	contentPanelFlex,
 	onTreeResizeStart,
+	expandedDirs,
+	onExpandedDirsChange,
+	hasInitializedExpansion,
+	onInitializedExpansion,
 }: {
 	taskId: string;
 	baseRef: string;
@@ -27,6 +31,10 @@ export function FileBrowserPanel({
 	treePanelFlex: string;
 	contentPanelFlex: string;
 	onTreeResizeStart: (e: ReactMouseEvent<HTMLDivElement>) => void;
+	expandedDirs: Set<string>;
+	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
+	hasInitializedExpansion: boolean;
+	onInitializedExpansion: () => void;
 }): React.ReactElement {
 	const listFilesQueryFn = useCallback(async () => {
 		const trpcClient = getRuntimeTrpcClient(workspaceId);
@@ -71,30 +79,38 @@ export function FileBrowserPanel({
 
 	return (
 		<div className="flex flex-1 min-w-0 min-h-0">
-			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${treePanelFlex}` }}>
+			<div className="flex min-w-0 min-h-0" style={{ flex: selectedPath ? `0 0 ${treePanelFlex}` : "1 1 0" }}>
 				<FileBrowserTreePanel
 					files={fileListQuery.data?.files ?? null}
 					selectedPath={selectedPath}
 					onSelectPath={onSelectPath}
 					panelFlex="1 1 0"
+					expandedDirs={expandedDirs}
+					onExpandedDirsChange={onExpandedDirsChange}
+					hasInitializedExpansion={hasInitializedExpansion}
+					onInitializedExpansion={onInitializedExpansion}
 				/>
 			</div>
-			<ResizeHandle
-				orientation="vertical"
-				ariaLabel="Resize file browser panels"
-				onMouseDown={onTreeResizeStart}
-				className="z-10"
-			/>
-			<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${contentPanelFlex}` }}>
-				<FileContentViewer
-					content={fileContentQuery.data?.content ?? null}
-					binary={fileContentQuery.data?.binary ?? false}
-					truncated={fileContentQuery.data?.truncated ?? false}
-					isLoading={fileContentQuery.isLoading}
-					isError={fileContentQuery.isError}
-					filePath={selectedPath}
-				/>
-			</div>
+			{selectedPath ? (
+				<>
+					<ResizeHandle
+						orientation="vertical"
+						ariaLabel="Resize file browser panels"
+						onMouseDown={onTreeResizeStart}
+						className="z-10"
+					/>
+					<div className="flex min-w-0 min-h-0" style={{ flex: `0 0 ${contentPanelFlex}` }}>
+						<FileContentViewer
+							content={fileContentQuery.data?.content ?? null}
+							binary={fileContentQuery.data?.binary ?? false}
+							truncated={fileContentQuery.data?.truncated ?? false}
+							isLoading={fileContentQuery.isLoading}
+							isError={fileContentQuery.isError}
+							filePath={selectedPath}
+						/>
+					</div>
+				</>
+			) : null}
 		</div>
 	);
 }

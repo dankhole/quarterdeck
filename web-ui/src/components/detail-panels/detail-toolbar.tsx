@@ -10,6 +10,7 @@ interface DetailToolbarProps {
 	onTabChange: (tab: SidebarTabId) => void;
 	hasSelectedTask: boolean;
 	hasUncommittedChanges?: boolean;
+	hasUnmergedChanges?: boolean;
 }
 
 function ToolbarButton({
@@ -18,7 +19,7 @@ function ToolbarButton({
 	onTabChange,
 	icon,
 	label,
-	showBadge,
+	badgeColor,
 	disabled,
 }: {
 	tabId: SidebarTabId;
@@ -26,7 +27,7 @@ function ToolbarButton({
 	onTabChange: (tab: SidebarTabId) => void;
 	icon: React.ReactElement;
 	label: string;
-	showBadge?: boolean;
+	badgeColor?: "red" | "blue";
 	disabled?: boolean;
 }): React.ReactElement {
 	const isActive = visualActiveTab === tabId;
@@ -47,7 +48,14 @@ function ToolbarButton({
 				aria-pressed={isActive}
 			>
 				{icon}
-				{showBadge ? <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-status-red" /> : null}
+				{badgeColor ? (
+					<span
+						className={cn(
+							"absolute top-1 right-1 w-2 h-2 rounded-full",
+							badgeColor === "red" ? "bg-status-red" : "bg-status-blue",
+						)}
+					/>
+				) : null}
 			</button>
 		</Tooltip>
 	);
@@ -60,7 +68,16 @@ export function DetailToolbar({
 	onTabChange,
 	hasSelectedTask,
 	hasUncommittedChanges,
+	hasUnmergedChanges,
 }: DetailToolbarProps): React.ReactElement {
+	const changesBadgeColor: "red" | "blue" | undefined = hasSelectedTask
+		? hasUncommittedChanges
+			? "red"
+			: hasUnmergedChanges
+				? "blue"
+				: undefined
+		: undefined;
+
 	return (
 		<aside
 			className="flex flex-col items-center shrink-0 py-2 gap-1"
@@ -98,7 +115,7 @@ export function DetailToolbar({
 				onTabChange={onTabChange}
 				icon={<GitCompareArrows size={18} />}
 				label="Changes"
-				showBadge={hasSelectedTask && hasUncommittedChanges}
+				badgeColor={changesBadgeColor}
 				disabled={!hasSelectedTask}
 			/>
 			<ToolbarButton

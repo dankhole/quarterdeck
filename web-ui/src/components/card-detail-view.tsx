@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -109,16 +109,6 @@ function DiffToolbar({
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
-			{isExpanded ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<X size={14} />}
-					onClick={onToggleExpand}
-					className="h-5"
-					aria-label="Collapse expanded diff view"
-				/>
-			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<Button
 					variant="ghost"
@@ -178,16 +168,6 @@ function FileBrowserToolbar({
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-			{isExpanded ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<X size={14} />}
-					onClick={onToggleExpand}
-					className="h-5"
-					aria-label="Collapse expanded file browser"
-				/>
-			) : null}
 			<div className="flex items-center gap-1.5 text-xs text-text-secondary">
 				<FolderOpen size={14} />
 				<span>Files</span>
@@ -332,6 +312,8 @@ export function CardDetailView({
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [fileBrowserSelectedPath, setFileBrowserSelectedPath] = useState<string | null>(null);
+	const [fileBrowserExpandedDirs, setFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
+	const [fileBrowserHasInitializedExpansion, setFileBrowserHasInitializedExpansion] = useState(false);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 
@@ -482,13 +464,15 @@ export function CardDetailView({
 		setSelectedPath(availablePaths[0] ?? null);
 	}, [availablePaths, selectedPath]);
 
+	// Reset parent-owned state on task switch. The key={selection.card.id} on
+	// FileBrowserPanel resets child-internal state (search, focus); this effect
+	// resets lifted state that lives here and survives the child remount.
 	useEffect(() => {
 		setDiffComments(new Map());
-	}, [selection.card.id]);
-
-	useEffect(() => {
 		setDiffMode("working_copy");
 		setFileBrowserSelectedPath(null);
+		setFileBrowserExpandedDirs(new Set());
+		setFileBrowserHasInitializedExpansion(false);
 	}, [selection.card.id]);
 
 	const handleToggleDiffExpand = useCallback(() => {
@@ -513,6 +497,10 @@ export function CardDetailView({
 		onFileBrowserExpandedChange,
 	]);
 
+	const handleFileBrowserInitializedExpansion = useCallback(() => {
+		setFileBrowserHasInitializedExpansion(true);
+	}, []);
+
 	const fileBrowserContent = useMemo(() => {
 		if (!currentProjectId) {
 			return (
@@ -536,6 +524,10 @@ export function CardDetailView({
 					treePanelFlex={fileBrowserTreePanelPercent}
 					contentPanelFlex={fileBrowserContentPanelPercent}
 					onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
+					expandedDirs={fileBrowserExpandedDirs}
+					onExpandedDirsChange={setFileBrowserExpandedDirs}
+					hasInitializedExpansion={fileBrowserHasInitializedExpansion}
+					onInitializedExpansion={handleFileBrowserInitializedExpansion}
 				/>
 			</div>
 		);
@@ -547,6 +539,9 @@ export function CardDetailView({
 		fileBrowserTreePanelPercent,
 		fileBrowserContentPanelPercent,
 		handleFileBrowserTreeSeparatorMouseDown,
+		fileBrowserExpandedDirs,
+		fileBrowserHasInitializedExpansion,
+		handleFileBrowserInitializedExpansion,
 	]);
 
 	const handleAddDiffComments = useCallback(
