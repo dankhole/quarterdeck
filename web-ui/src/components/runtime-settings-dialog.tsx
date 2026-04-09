@@ -35,7 +35,6 @@ import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import { formatPathForDisplay } from "@/utils/path-display";
-import { useWindowEvent } from "@/utils/react-use";
 
 interface RuntimeSettingsAgentRowModel {
 	id: RuntimeAgentId;
@@ -161,41 +160,6 @@ function AgentRow({
 				</Button>
 			) : null}
 		</div>
-	);
-}
-
-function InlineUtilityButton({
-	text,
-	onClick,
-	disabled,
-	monospace,
-	widthCh,
-}: {
-	text: string;
-	onClick: () => void;
-	disabled?: boolean;
-	monospace?: boolean;
-	widthCh?: number;
-}): React.ReactElement {
-	return (
-		<Button
-			size="sm"
-			disabled={disabled}
-			onClick={onClick}
-			className={cn(monospace && "font-mono")}
-			style={{
-				fontSize: 10,
-				verticalAlign: "middle",
-				...(typeof widthCh === "number"
-					? {
-							width: `${widthCh}ch`,
-							justifyContent: "center",
-						}
-					: {}),
-			}}
-		>
-			{text}
-		</Button>
 	);
 }
 
