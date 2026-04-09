@@ -132,7 +132,7 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.toolInputSummary).toBe("src/main.ts");
 	});
 
-	it("clears latestHookActivity on transitionToReview so stale permission fields do not persist", () => {
+	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -150,25 +150,26 @@ describe("TerminalSessionManager", () => {
 			}),
 		});
 
-		// Transition to review (simulates a to_review hook event)
+		// Transition to review — must NOT clear latestHookActivity (RC4 invariant).
+		// The caller (hooks-api.ts) applies new activity via applyHookActivity in
+		// the same synchronous tick, which replaces it atomically.
 		const reviewed = manager.transitionToReview("task-1", "hook");
 		expect(reviewed?.state).toBe("awaiting_review");
 		expect(reviewed?.reviewReason).toBe("hook");
-		// The stale permission fields must be gone
-		expect(reviewed?.latestHookActivity).toBeNull();
+		// Activity is preserved — no null-window
+		expect(reviewed?.latestHookActivity).not.toBeNull();
+		expect(reviewed?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
 
-		// Now apply the new hook's metadata (no hookEventName/notificationType)
+		// applyHookActivity with a new event clears stale fields via isNewEvent=true
 		const updated = manager.applyHookActivity("task-1", {
 			source: "claude",
+			hookEventName: "Stop",
 			activityText: "Task complete",
 			finalMessage: "Done with the work",
 		});
 
-		// Without the fix, hookEventName/notificationType would carry forward
-		// from the previous permission event, causing isPermissionRequest() to
-		// return true and the UI to show "Waiting for approval" instead of
-		// "Ready for review".
-		expect(updated?.latestHookActivity?.hookEventName).toBeNull();
+		// isNewEvent=true: hookEventName replaced, old notificationType cleared
+		expect(updated?.latestHookActivity?.hookEventName).toBe("Stop");
 		expect(updated?.latestHookActivity?.notificationType).toBeNull();
 		expect(updated?.latestHookActivity?.activityText).toBe("Task complete");
 		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");

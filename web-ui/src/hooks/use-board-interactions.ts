@@ -540,6 +540,7 @@ export function useBoardInteractions({
 
 	useReviewAutoActions({
 		board,
+		sessions,
 		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
 		resetKey: currentProjectId,
 	});

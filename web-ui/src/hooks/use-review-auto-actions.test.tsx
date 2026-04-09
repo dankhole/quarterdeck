@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
 
@@ -49,14 +50,17 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 
 function HookHarness({
 	board,
+	sessions = {},
 	requestMoveTaskToTrash,
 }: {
 	board: BoardData;
+	sessions?: Record<string, import("@/runtime/types").RuntimeTaskSessionSummary>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
 	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
+		sessions,
 		requestMoveTaskToTrash,
 	});
 	return null;
@@ -108,5 +112,184 @@ describe("useReviewAutoActions", () => {
 		});
 
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("does not trash card in approval state", async () => {
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+		const approvalSession: RuntimeTaskSessionSummary = {
+			taskId: "task-1",
+			state: "awaiting_review",
+			agentId: "claude",
+			workspacePath: "/tmp/worktree",
+			pid: 1234,
+			startedAt: Date.now(),
+			updatedAt: Date.now(),
+			lastOutputAt: Date.now(),
+			reviewReason: "hook",
+			exitCode: null,
+			lastHookAt: Date.now(),
+			latestHookActivity: {
+				hookEventName: "PermissionRequest",
+				notificationType: null,
+				activityText: "Waiting for approval",
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: null,
+				source: "claude",
+				conversationSummaryText: null,
+			},
+			warningMessage: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
+			conversationSummaries: [],
+			displaySummary: null,
+			displaySummaryGeneratedAt: null,
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": approvalSession }}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("trashes card in completed state with autoReviewEnabled", async () => {
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+		const completedSession: RuntimeTaskSessionSummary = {
+			taskId: "task-1",
+			state: "awaiting_review",
+			agentId: "claude",
+			workspacePath: "/tmp/worktree",
+			pid: null,
+			startedAt: Date.now(),
+			updatedAt: Date.now(),
+			lastOutputAt: Date.now(),
+			reviewReason: "exit",
+			exitCode: 0,
+			lastHookAt: Date.now(),
+			latestHookActivity: null,
+			warningMessage: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
+			conversationSummaries: [],
+			displaySummary: null,
+			displaySummaryGeneratedAt: null,
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": completedSession }}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(requestMoveTaskToTrash).toHaveBeenCalledWith("task-1", "review", { skipWorkingChangeWarning: true });
+	});
+
+	it("handles null session summary gracefully", async () => {
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness board={createBoard(true)} sessions={{}} requestMoveTaskToTrash={requestMoveTaskToTrash} />,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		// No crash. isApprovalState(null) returns false, so auto-review proceeds.
+		expect(requestMoveTaskToTrash).toHaveBeenCalled();
+	});
+
+	it("re-evaluates when session transitions out of approval state", async () => {
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+		const approvalSession: RuntimeTaskSessionSummary = {
+			taskId: "task-1",
+			state: "awaiting_review",
+			agentId: "claude",
+			workspacePath: "/tmp/worktree",
+			pid: 1234,
+			startedAt: Date.now(),
+			updatedAt: Date.now(),
+			lastOutputAt: Date.now(),
+			reviewReason: "hook",
+			exitCode: null,
+			lastHookAt: Date.now(),
+			latestHookActivity: {
+				hookEventName: "PermissionRequest",
+				notificationType: null,
+				activityText: "Waiting for approval",
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: null,
+				source: "claude",
+				conversationSummaryText: null,
+			},
+			warningMessage: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
+			conversationSummaries: [],
+			displaySummary: null,
+			displaySummaryGeneratedAt: null,
+		};
+
+		// First render: approval state — should NOT trash
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": approvalSession }}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+
+		// Second render: approval cleared — should now trash
+		const clearedSession: RuntimeTaskSessionSummary = {
+			...approvalSession,
+			latestHookActivity: null,
+			updatedAt: Date.now() + 1,
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": clearedSession }}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(requestMoveTaskToTrash).toHaveBeenCalledWith("task-1", "review", { skipWorkingChangeWarning: true });
 	});
 });

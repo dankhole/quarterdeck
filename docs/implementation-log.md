@@ -4,6 +4,31 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix stuck "waiting for approval" state — 3 root causes (2026-04-09)
+
+**Problem**: Task cards would get stuck showing "Waiting for approval" after the agent had already resumed working. Three independent root causes all presented identically, which is why previous fix attempts failed — each attempt addressed only one cause.
+
+**Root causes identified**:
+1. **RC1 — Stop hook clobbering permission metadata**: When a PermissionRequest hook fired `to_review` (transitioning to `awaiting_review`), a subsequent Stop hook on the non-transition path called `applyHookActivity` unconditionally. Stop's metadata had `hookEventName: "Stop"` which triggered `isNewEvent=true`, clearing the permission-related `notificationType` and `activityText` fields. The UI's `isApprovalState()` then returned false.
+2. **RC3 — Auto-review trashing permission-waiting cards**: `use-review-auto-actions.ts` had no `isApprovalState` guard. Cards in the review column with `autoReviewEnabled=true` were trashed 500ms after arriving, even during a permission prompt.
+3. **RC4 — Null-window flash**: `transitionToReview` cleared `latestHookActivity` to null before `applyHookActivity` repopulated it. This created a window where the UI briefly showed "Ready for review" before correcting to "Waiting for approval".
+
+Natural recovery for missed `to_in_progress` hooks was also investigated (RC2) but not implemented — PostToolUse and UserPromptSubmit hooks provide natural recovery when the agent resumes after permission approval/denial. A 30s reconciliation check was prototyped but removed because it introduced new behavior (permission badge timeout) rather than purely fixing bugs.
+
+**Implementation**:
+- **Phase 1** (RC1 + RC4): Added a permission metadata guard on the non-transition path in `hooks-api.ts`. When the task is in `awaiting_review` with permission-related `latestHookActivity`, non-permission hooks skip `applyHookActivity` (but conversation summaries are still captured). Permission-on-permission is allowed through. Removed the preemptive `latestHookActivity = null` clear from `transitionToReview` — the caller's `applyHookActivity` call handles replacement atomically in the same synchronous tick. Added RC4 invariant comment.
+- **Phase 3** (RC3): Added `sessions` prop to `UseReviewAutoActionsOptions`, threaded from `use-board-interactions.ts`. Added `isApprovalState(sessionsRef.current[taskId] ?? null)` guard in the evaluation loop. Uses `sessionsRef` pattern (matching existing `boardRef`) to avoid stale closures.
+
+**Architectural decisions**:
+- No third `isPermissionHookMetadata` function — incoming partial metadata is null-filled to a full `RuntimeTaskHookActivity` and passed to existing `isPermissionActivity`.
+- RC2 (30s reconciliation) was designed and spec'd but intentionally omitted from the final implementation to avoid introducing new behavior. The `checkStaleAwaitingReview` function exists in the spec artifacts if needed later.
+
+**Files**: `src/trpc/hooks-api.ts` (permission guard + null-fill pattern), `src/terminal/session-manager.ts` (removed preemptive clear, added RC4 invariant comment), `web-ui/src/hooks/use-review-auto-actions.ts` (sessions prop, sessionsRef, isApprovalState guard), `web-ui/src/hooks/use-board-interactions.ts` (thread sessions), `test/runtime/trpc/hooks-api.test.ts` (+15 tests), `test/runtime/terminal/session-manager.test.ts` (updated RC4 test), `web-ui/src/hooks/use-review-auto-actions.test.tsx` (+4 tests)
+
+**Spec**: `docs/specs/2026-04-09-fix-stuck-approval-state.md` (3 adversarial review passes)
+
+**Commit**: *(pending)*
+
 ## Dead code audit and cleanup (2026-04-09)
 
 **Problem**: Todo #13 called for a systematic dead code sweep across the entire codebase — unused exports, orphan files, dead hooks, stale CSS, unused config fields, dead CLI paths, and leftover upstream code.

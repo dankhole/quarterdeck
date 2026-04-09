@@ -163,34 +163,30 @@ Currently trash operations are bulk (clear all trash). Add per-card actions for 
 
 Document the full code path for both trash and hard delete. What board state changes? What git operations happen (worktree removal, branch deletion, patch capture)? What about sessions — are they killed, and is any state preserved? Does auto-trash on restart (#11) follow the same path as manual trash? Build a clear picture of the current behavior before deciding what should change.
 
-## 19. Fix: task card stuck in "waiting for approval" UI state
+## 19. Fix: notification beep count wrong for rapid state transitions
 
-Task cards sometimes get stuck showing the "waiting for approval" state even after the approval prompt has been dismissed or the agent has resumed working. The UI doesn't clear the permission-waiting indicator reliably. Investigate whether the issue is a missed WebSocket event, a stale frontend state, or the hook/agent not emitting the expected state transition back to `in_progress`.
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #20 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
 
-## 20. Fix: notification beep count wrong for rapid state transitions
-
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #21 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
-
-## 21. Fix: audible notification double-beep and missed cues
+## 20. Fix: audible notification double-beep and missed cues
 
 Two related bugs with the notification audio system:
 - Sometimes getting a double beep when only one should fire
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 22. Fix: project view task state indicators not staying up to date
+## 21. Fix: project view task state indicators not staying up to date
 
 The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
 
-## 23. Add markdown renderer
+## 22. Add markdown renderer
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 24. Reorder settings menu
+## 23. Reorder settings menu
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 25. Archive remaining docs
+## 24. Archive remaining docs
 
 Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
 

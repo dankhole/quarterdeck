@@ -2,6 +2,13 @@
 
 ## [0.3.1]
 
+### Fix: stuck "waiting for approval" state
+
+- Fixed three independent root causes that could leave a task card stuck in "Waiting for approval":
+  - **RC1 — Stop hook clobbering permission metadata**: Added a guard on the hook ingest non-transition path that prevents non-permission hooks (Stop, PreToolUse, SubagentStop) from overwriting permission-related `latestHookActivity` fields when the task is in `awaiting_review`.
+  - **RC3 — Auto-review trashing permission-waiting cards**: Added an `isApprovalState` guard in the auto-review evaluation loop so cards actively waiting for permission are skipped.
+  - **RC4 — Null-window flash during `transitionToReview`**: Removed the preemptive `latestHookActivity` clear that created a brief window where the UI showed "Ready for review" before correcting to "Waiting for approval". The caller already handles activity replacement atomically.
+
 ### Dead code cleanup
 
 - Removed orphan `text-shimmer.tsx` component (never imported) and its sole dependency `motion` (Framer Motion).

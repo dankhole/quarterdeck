@@ -1,6 +1,7 @@
 import type {
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
+	RuntimeTaskHookActivity,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
@@ -8,6 +9,7 @@ import { parseHookIngestRequest } from "../core/api-validation";
 import { createTaggedLogger } from "../core/debug-logger";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { isPermissionActivity } from "../terminal/session-reconciliation";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -102,6 +104,37 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				if (!canTransitionTaskForHookEvent(summary, event)) {
 					if (body.metadata) {
+						// Guard: protect permission metadata from being clobbered by non-permission hooks.
+						// When the task is in awaiting_review with permission-related activity, only allow
+						// permission events to overwrite the activity. Non-permission hooks (Stop, PreToolUse,
+						// SubagentStop, etc.) are silently skipped to preserve the "Waiting for approval" state.
+						const currentActivity = summary.latestHookActivity;
+						const shouldGuardPermission =
+							summary.state === "awaiting_review" &&
+							currentActivity != null &&
+							isPermissionActivity(currentActivity);
+
+						if (shouldGuardPermission) {
+							const incomingActivity: RuntimeTaskHookActivity = {
+								hookEventName: body.metadata.hookEventName ?? null,
+								notificationType: body.metadata.notificationType ?? null,
+								activityText: body.metadata.activityText ?? null,
+								toolName: body.metadata.toolName ?? null,
+								toolInputSummary: body.metadata.toolInputSummary ?? null,
+								finalMessage: body.metadata.finalMessage ?? null,
+								source: body.metadata.source ?? null,
+								conversationSummaryText: body.metadata.conversationSummaryText ?? null,
+							};
+							if (!isPermissionActivity(incomingActivity)) {
+								// Skip applyHookActivity — the incoming event is not permission-related
+								// and would clobber the existing permission metadata.
+								applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
+								return {
+									ok: true,
+								} satisfies RuntimeHookIngestResponse;
+							}
+						}
+
 						manager.applyHookActivity(taskId, body.metadata);
 					}
 					applyConversationSummaryFromMetadata(manager, taskId, body.metadata);

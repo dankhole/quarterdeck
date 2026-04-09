@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import { subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
+import { isApprovalState } from "@/utils/session-status";
 
 const AUTO_REVIEW_ACTION_DELAY_MS = 500;
 
@@ -17,6 +19,7 @@ interface RequestMoveTaskToTrashOptions {
 
 interface UseReviewAutoActionsOptions {
 	board: BoardData;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	requestMoveTaskToTrash: (
 		taskId: string,
 		fromColumnId: BoardColumnId,
@@ -25,8 +28,14 @@ interface UseReviewAutoActionsOptions {
 	resetKey?: string | null;
 }
 
-export function useReviewAutoActions({ board, requestMoveTaskToTrash, resetKey }: UseReviewAutoActionsOptions): void {
+export function useReviewAutoActions({
+	board,
+	sessions,
+	requestMoveTaskToTrash,
+	resetKey,
+}: UseReviewAutoActionsOptions): void {
 	const boardRef = useRef<BoardData>(board);
+	const sessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>(sessions);
 	const requestMoveTaskToTrashRef = useRef(requestMoveTaskToTrash);
 	const timerByTaskIdRef = useRef<Record<string, number>>({});
 	const scheduledActionByTaskIdRef = useRef<Record<string, TaskAutoReviewMode>>({});
@@ -35,6 +44,10 @@ export function useReviewAutoActions({ board, requestMoveTaskToTrash, resetKey }
 	useEffect(() => {
 		boardRef.current = board;
 	}, [board]);
+
+	useEffect(() => {
+		sessionsRef.current = sessions;
+	}, [sessions]);
 
 	useEffect(() => {
 		requestMoveTaskToTrashRef.current = requestMoveTaskToTrash;
@@ -113,6 +126,14 @@ export function useReviewAutoActions({ board, requestMoveTaskToTrash, resetKey }
 
 			for (const reviewTask of reviewCardsForAutomation) {
 				if (!isTaskAutoReviewEnabled(reviewTask)) {
+					clearAutoReviewTimer(reviewTask.id);
+					continue;
+				}
+
+				// Guard: skip cards actively waiting for permission approval.
+				// These should not be auto-trashed — the agent needs user input.
+				const sessionSummary = sessionsRef.current[reviewTask.id] ?? null;
+				if (isApprovalState(sessionSummary)) {
 					clearAutoReviewTimer(reviewTask.id);
 					continue;
 				}
