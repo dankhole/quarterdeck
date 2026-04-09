@@ -185,9 +185,9 @@ When switching from the sidebar file browser to the full-size view (or vice vers
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 23. Investigate X button in file browser
+## ~~23. Investigate X button in file browser~~ ✓
 
-The X button in the top-left of the file browser panel — what does it do? If it's unclear or non-functional, either fix it or remove it. If it's a close/dismiss action, make its purpose obvious.
+Removed. The X button in the expanded file browser toolbar was redundant — it did the exact same thing as the adjacent Minimize2 collapse button (`onToggleExpand`). The Minimize2 button already clearly communicates the action, so the confusing X was removed.
 
 ## 24. Fix: project view task state indicators not staying up to date
 
