@@ -4,6 +4,21 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Dead code audit and cleanup (2026-04-09)
+
+**Problem**: Todo #13 called for a systematic dead code sweep across the entire codebase — unused exports, orphan files, dead hooks, stale CSS, unused config fields, dead CLI paths, and leftover upstream code.
+
+**Audit results**: The codebase was remarkably clean across most categories. All 30 custom hooks are actively used, all exports are imported, all 19 config fields are read/written, all CLI commands are reachable, and no functional kanban remnants exist. The only dead code found was:
+
+1. `web-ui/src/components/ui/text-shimmer.tsx` — an orphan component never imported by any file. It was the sole consumer of the `motion` (Framer Motion v12) dependency, which was also removed from `web-ui/package.json`.
+2. Six stale CSS classes in `globals.css` — `kb-home-layout`, `kb-status-banner`, `kb-project-count-tag`, `kb-task-preview-pane`, `kb-task-preview-text`, `kb-markdown` — all upstream kanban remnants superseded by Tailwind utilities or never wired up.
+
+A second-pass investigation also identified unused Zod schemas in `api-contract.ts` (slash command schemas, entire chat API contract, conflict response schema) and one dead tRPC route (`workspace.getGitSummary`), but these were left for a separate cleanup pass.
+
+**Files**: `web-ui/src/components/ui/text-shimmer.tsx` (deleted), `web-ui/package.json` (removed `motion`), `web-ui/src/styles/globals.css` (removed 6 classes)
+
+**Commit**: `1fb0589b`
+
 ## Drag-and-drop reordering for prompt shortcuts (2026-04-09)
 
 **Problem**: Prompt shortcuts in the editor dialog could only be added or removed — there was no way to reorder them. The order matters because the first shortcut is the default active one in the sidebar.

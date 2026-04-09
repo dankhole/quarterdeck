@@ -71,13 +71,6 @@ body,
 	position: relative;
 }
 
-.kb-home-layout {
-	display: flex;
-	flex: 1 1 0;
-	min-height: 0;
-	overflow: hidden;
-}
-
 .kb-column-cards {
 	display: flex;
 	flex: 1 1 0;
@@ -232,10 +225,6 @@ body.kb-dependency-link-mode {
 
 /* -- Shared UI patterns -- */
 
-.kb-status-banner {
-	padding: 8px 12px;
-}
-
 .kb-navbar-tag {
 	margin-left: 8px;
 }
@@ -261,10 +250,6 @@ body.kb-dependency-link-mode {
 
 .kb-project-row:hover .kb-project-row-actions {
 	opacity: 1;
-}
-
-.kb-project-count-tag {
-	font-size: 10px;
 }
 
 /* -- File tree rows -- */
@@ -598,22 +583,6 @@ body.kb-dependency-link-mode {
 	overflow: hidden;
 }
 
-.kb-task-preview-pane {
-	margin-top: 8px;
-	padding: 8px;
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius-md);
-	background: var(--color-surface-0);
-}
-
-.kb-task-preview-text {
-	margin: 0;
-	font-size: 12px;
-	line-height: 1.35;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-}
-
 /* -- Read-only diff -- */
 
 .kb-diff-readonly .kb-diff-row {
@@ -750,20 +719,6 @@ body.kb-dependency-link-mode {
 	animation: kb-skeleton 1.5s ease-in-out infinite;
 	background: var(--color-surface-3);
 	border-radius: var(--radius-sm);
-}
-
-/* -- Chat markdown -- */
-
-.kb-markdown > * {
-	margin: 0;
-}
-
-.kb-markdown > :first-child {
-	margin-top: 0 !important;
-}
-
-.kb-markdown > * + * {
-	margin-top: 0.5em;
 }
 
 /* -- PWA Window Controls Overlay --
