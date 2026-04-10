@@ -35,6 +35,7 @@ export function ProjectNavigationPanel({
 	isLoadingProjects = false,
 	currentProjectId,
 	removingProjectId,
+	projectIdsWithApprovals,
 	activeSection,
 	onActiveSectionChange,
 	canShowAgentSection,
@@ -47,6 +48,7 @@ export function ProjectNavigationPanel({
 	isLoadingProjects?: boolean;
 	currentProjectId: string | null;
 	removingProjectId: string | null;
+	projectIdsWithApprovals?: Set<string>;
 	activeSection: "projects" | "agent";
 	onActiveSectionChange: (section: "projects" | "agent") => void;
 	canShowAgentSection: boolean;
@@ -131,6 +133,7 @@ export function ProjectNavigationPanel({
 								key={project.id}
 								project={project}
 								isCurrent={currentProjectId === project.id}
+								hasApproval={projectIdsWithApprovals?.has(project.id) ?? false}
 								removingProjectId={removingProjectId}
 								onSelect={onSelectProject}
 								onRemove={(projectId) => {
@@ -421,12 +424,14 @@ function ProjectRowSkeleton(): React.ReactElement {
 function ProjectRow({
 	project,
 	isCurrent,
+	hasApproval,
 	removingProjectId,
 	onSelect,
 	onRemove,
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
+	hasApproval: boolean;
 	removingProjectId: string | null;
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
@@ -486,13 +491,18 @@ function ProjectRow({
 			}}
 		>
 			<div className="flex-1 min-w-0">
-				<div
-					className={cn(
-						"font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm",
-						isCurrent ? "text-white" : "text-text-primary",
-					)}
-				>
-					{project.name}
+				<div className="flex items-center gap-1.5">
+					<span
+						className={cn(
+							"font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm",
+							isCurrent ? "text-white" : "text-text-primary",
+						)}
+					>
+						{project.name}
+					</span>
+					{hasApproval ? (
+						<span className="shrink-0 w-2 h-2 rounded-full bg-status-orange" title="Task waiting for approval" />
+					) : null}
 				</div>
 				<div
 					className={cn(

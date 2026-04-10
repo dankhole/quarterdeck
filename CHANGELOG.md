@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Dual-selection sidebar rework
+
+- Split the sidebar toolbar from a single tab into two independent dimensions: **main view** (Home, Terminal, Files) above a divider, and **sidebar** (Projects, Board, Changes) below — each with its own active highlight style (filled bg vs left-border accent).
+- Auto-coupling rules: selecting a task switches to terminal + task column, clicking Home returns to board + projects with task deselected, clicking Files opens the file browser (both home repo and task worktree).
+- Disabled states: Terminal, Board, Changes icons grey out when no task is selected.
+- Always opens to Home + Projects on page load — view state is transient, not persisted across sessions.
+- Per-project approval indicators: orange dot on project rows in the sidebar when a task in that project is waiting for approval. Projects toolbar badge excludes the current project's approvals (already visible on the board).
+- Cross-project notification workspaceId now preserved from `task_notification` WebSocket messages through the store.
+
 ### Project switcher sidebar tab
 
 - New "Projects" icon (FolderKanban) in the detail toolbar between Home and the divider — always enabled, opens the ProjectNavigationPanel from any context (home view, task terminal, diff viewer) without deselecting the current task.

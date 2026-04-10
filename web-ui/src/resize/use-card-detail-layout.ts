@@ -9,8 +9,10 @@ import {
 } from "@/resize/resize-preferences";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
-export type TaskTabId = "task_column" | "changes" | "files";
-export type SidebarTabId = "home" | "projects" | TaskTabId;
+// --- New dual-selection types ---
+
+export type MainViewId = "home" | "terminal" | "files";
+export type SidebarId = "projects" | "task_column" | "changes";
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -42,32 +44,64 @@ const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.12, 0.6),
 };
 
-// --- localStorage loaders / persisters ---
+// --- localStorage loaders / persisters (migration-aware) ---
 
-export function loadActiveTab(): SidebarTabId | null {
-	const stored = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
-	// Migration: "quarterdeck" was the old Task Column panel ID — map to "home"
-	// so existing users land on the Home tab after upgrade.
-	if (stored === "quarterdeck" || stored === "home") return "home";
-	if (stored === "projects") return "projects";
-	if (stored === "task_column" || stored === "changes" || stored === "files") return stored;
-	if (stored === "") return null; // panel was collapsed
-	return "home"; // default for new installs
+/**
+ * Load mainView from localStorage with migration from old single-tab model.
+ * Old `DetailActivePanel` values map to: home→home, projects→home, task_column→terminal,
+ * changes→terminal, files→files, ""→home.
+ */
+export function loadMainView(): MainViewId {
+	const stored = readLocalStorageItem(LocalStorageKey.DetailMainView);
+	if (stored === "home" || stored === "terminal" || stored === "files") return stored;
+
+	// Migration: read old key
+	const legacy = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
+	if (legacy === "task_column" || legacy === "changes") return "terminal";
+	if (legacy === "files") return "files";
+	return "home"; // default for new installs and all other legacy values
 }
 
-function persistActiveTab(tab: SidebarTabId | null): SidebarTabId | null {
-	writeLocalStorageItem(LocalStorageKey.DetailActivePanel, tab ?? "");
-	return tab;
+function persistMainView(view: MainViewId): MainViewId {
+	writeLocalStorageItem(LocalStorageKey.DetailMainView, view);
+	return view;
 }
 
-export function loadLastTaskTab(): TaskTabId {
-	const stored = readLocalStorageItem(LocalStorageKey.DetailLastTaskTab);
-	if (stored === "task_column" || stored === "changes" || stored === "files") return stored;
+/**
+ * Load sidebar from localStorage with migration from old single-tab model.
+ * Old `DetailActivePanel` values map to: home→projects, projects→projects,
+ * task_column→task_column, changes→changes, files→projects, ""→null.
+ */
+export function loadSidebar(): SidebarId | null {
+	const stored = readLocalStorageItem(LocalStorageKey.DetailSidebar);
+	if (stored === "projects" || stored === "task_column" || stored === "changes") return stored;
+	if (stored === "") return null; // sidebar was collapsed
+
+	// Migration: read old key
+	const legacy = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
+	if (legacy === "task_column") return "task_column";
+	if (legacy === "changes") return "changes";
+	if (legacy === "") return null;
+	return "projects"; // default for new installs and all other legacy values
+}
+
+function persistSidebar(sidebar: SidebarId | null): SidebarId | null {
+	writeLocalStorageItem(LocalStorageKey.DetailSidebar, sidebar ?? "");
+	return sidebar;
+}
+
+export function loadLastSidebarTab(): SidebarId {
+	const stored = readLocalStorageItem(LocalStorageKey.DetailLastSidebarTab);
+	if (stored === "projects" || stored === "task_column" || stored === "changes") return stored;
+
+	// Migration: read old key
+	const legacy = readLocalStorageItem(LocalStorageKey.DetailLastTaskTab);
+	if (legacy === "task_column" || legacy === "changes") return legacy;
 	return "task_column"; // default
 }
 
-function persistLastTaskTab(tab: TaskTabId): TaskTabId {
-	writeLocalStorageItem(LocalStorageKey.DetailLastTaskTab, tab);
+function persistLastSidebarTab(tab: SidebarId): SidebarId {
+	writeLocalStorageItem(LocalStorageKey.DetailLastSidebarTab, tab);
 	return tab;
 }
 
@@ -80,11 +114,13 @@ export function useCardDetailLayout({
 	isFileBrowserExpanded: boolean;
 	selectedTaskId: string | null;
 }): {
-	activeTab: SidebarTabId | null;
-	setActiveTab: (tab: SidebarTabId | null) => void;
-	lastTaskTab: TaskTabId;
-	handleTabChange: (tab: SidebarTabId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
-	visualActiveTab: SidebarTabId;
+	mainView: MainViewId;
+	sidebar: SidebarId | null;
+	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
+	toggleSidebar: (id: SidebarId) => void;
+	visualMainView: MainViewId;
+	visualSidebar: SidebarId | null;
+	lastSidebarTab: SidebarId;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	detailDiffFileTreeRatio: number;
@@ -93,8 +129,11 @@ export function useCardDetailLayout({
 	setDetailFileBrowserTreeRatio: (ratio: number) => void;
 	resetToDefaults: () => void;
 } {
-	const [activeTab, setActiveTabState] = useState<SidebarTabId | null>(loadActiveTab);
-	const [lastTaskTab, setLastTaskTabState] = useState<TaskTabId>(loadLastTaskTab);
+	// Always start on home+projects — view state is transient, not worth restoring across tab reopens.
+	// localStorage is still written (for within-session auto-coupling) but not read on mount.
+	const [mainView, setMainViewState] = useState<MainViewId>("home");
+	const [sidebar, setSidebarState] = useState<SidebarId | null>("projects");
+	const [lastSidebarTab, setLastSidebarTabState] = useState<SidebarId>(loadLastSidebarTab);
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
 	const [collapsedDetailDiffFileTreeRatio, setCollapsedDetailDiffFileTreeRatioState] = useState(() =>
 		loadResizePreference(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE),
@@ -109,70 +148,87 @@ export function useCardDetailLayout({
 		loadResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 	);
 
-	const setActiveTab = useCallback((tab: SidebarTabId | null) => {
-		setActiveTabState(persistActiveTab(tab));
+	const setMainViewPersist = useCallback((view: MainViewId) => {
+		setMainViewState(persistMainView(view));
 	}, []);
 
-	const setLastTaskTab = useCallback((tab: TaskTabId) => {
-		setLastTaskTabState(persistLastTaskTab(tab));
+	const setSidebarPersist = useCallback((s: SidebarId | null) => {
+		setSidebarState(persistSidebar(s));
 	}, []);
 
-	const handleTabChange = useCallback(
-		(tab: SidebarTabId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => {
-			if (tab === activeTab) {
-				// Toggle side panel closed
-				setActiveTab(null);
-				return;
-			}
-			if (tab === "home") {
-				setActiveTab("home");
-				// Deselect task if one is selected
+	const setLastSidebarTab = useCallback((tab: SidebarId) => {
+		setLastSidebarTabState(persistLastSidebarTab(tab));
+	}, []);
+
+	/**
+	 * Set the main view. Auto-coupling rules:
+	 * - "home" → also sets sidebar to "projects" and deselects the task.
+	 * - "terminal" / "files" → no side effects on sidebar or task selection.
+	 */
+	const setMainView = useCallback(
+		(view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => {
+			setMainViewPersist(view);
+			if (view === "home") {
+				setSidebarPersist("projects");
 				callbacks?.setSelectedTaskId?.(null);
-				return;
 			}
-			if (tab === "projects") {
-				// Open project sidebar without deselecting the current task
-				setActiveTab("projects");
-				return;
-			}
-			// Task-tied tab
-			setActiveTab(tab);
-			setLastTaskTab(tab);
 		},
-		[activeTab, setActiveTab, setLastTaskTab],
+		[setMainViewPersist, setSidebarPersist],
 	);
 
-	// Derive the visual highlight indicator for the sidebar toolbar.
-	// When activeTab is null (panel collapsed), show which tab *would* be active.
+	/**
+	 * Toggle sidebar. Clicking the active sidebar tab collapses it (null).
+	 * Clicking a different tab switches to it and persists as lastSidebarTab
+	 * for task-tied tabs.
+	 */
+	const toggleSidebar = useCallback(
+		(id: SidebarId) => {
+			if (id === sidebar) {
+				setSidebarPersist(null);
+				return;
+			}
+			setSidebarPersist(id);
+			if (id === "task_column" || id === "changes") {
+				setLastSidebarTab(id);
+			}
+		},
+		[sidebar, setSidebarPersist, setLastSidebarTab],
+	);
+
+	// Derive visual highlight indicators for the toolbar.
 	const selectedCard = selectedTaskId !== null;
-	const visualActiveTab: SidebarTabId = activeTab ?? (selectedCard ? lastTaskTab : "home");
+	const visualMainView: MainViewId = mainView;
+	// When mainView is "files", the file tree replaces the sidebar panel — no sidebar icon is active.
+	// When sidebar is collapsed, show which tab *would* reopen (accent highlight).
+	const visualSidebar: SidebarId | null =
+		mainView === "files" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
 
-	// --- Auto-switch tabs when selectedTaskId changes ---
-	const activeTabRef = useRef(activeTab);
-	activeTabRef.current = activeTab;
-
+	// --- Auto-switch when selectedTaskId changes (not on initial mount) ---
+	const mainViewRef = useRef(mainView);
+	mainViewRef.current = mainView;
+	const isInitialMountRef = useRef(true);
 	useEffect(() => {
-		const currentTab = activeTabRef.current;
+		if (isInitialMountRef.current) {
+			isInitialMountRef.current = false;
+			return;
+		}
+		const currentMainView = mainViewRef.current;
 
 		if (selectedTaskId) {
-			// Task selected from home (board view): open board sidebar so user keeps column context.
-			// Task selected from collapsed: stay collapsed (respect user's preference).
-			// Task-to-task switch: stay on the current tab.
-			if (currentTab === "home") {
-				setActiveTab("task_column");
-				setLastTaskTab("task_column");
-			} else if (currentTab === null) {
-				setActiveTab(null);
+			// Task selected: switch to terminal + task_column from home or files.
+			// From terminal view or collapsed sidebar: keep current state.
+			if (currentMainView === "home" || currentMainView === "files") {
+				setMainViewPersist("terminal");
+				setSidebarPersist("task_column");
+				setLastSidebarTab("task_column");
 			}
+			// else: already on terminal — leave mainView and sidebar as-is
 		} else {
-			// Task deselected: switch to home, but only if currently on a task-only tab.
-			// Files and Projects tabs work without a task, so stay on them.
-			// If activeTab is null (panel collapsed), stay collapsed.
-			if (currentTab !== null && currentTab !== "home" && currentTab !== "projects" && currentTab !== "files") {
-				setActiveTab("home");
-			}
+			// Task deselected: return to home + projects.
+			setMainViewPersist("home");
+			setSidebarPersist("projects");
 		}
-	}, [selectedTaskId, setActiveTab, setLastTaskTab]);
+	}, [selectedTaskId, setMainViewPersist, setSidebarPersist, setLastSidebarTab]);
 
 	const setSidePanelRatio = useCallback((ratio: number) => {
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));
@@ -225,11 +281,13 @@ export function useCardDetailLayout({
 	}, []);
 
 	return {
-		activeTab,
-		setActiveTab,
-		lastTaskTab,
-		handleTabChange,
-		visualActiveTab,
+		mainView,
+		sidebar,
+		setMainView,
+		toggleSidebar,
+		visualMainView,
+		visualSidebar,
+		lastSidebarTab,
 		sidePanelRatio,
 		setSidePanelRatio,
 		detailDiffFileTreeRatio: isDiffExpanded ? expandedDetailDiffFileTreeRatio : collapsedDetailDiffFileTreeRatio,
