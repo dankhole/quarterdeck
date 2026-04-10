@@ -149,9 +149,13 @@ export function useCardDetailLayout({
 		const currentTab = activeTabRef.current;
 
 		if (selectedTaskId) {
-			// Task selected from home/collapsed: always open to agent view (panel collapsed, terminal full-width).
+			// Task selected from home (board view): open board sidebar so user keeps column context.
+			// Task selected from collapsed: stay collapsed (respect user's preference).
 			// Task-to-task switch: stay on the current tab.
-			if (currentTab === "home" || currentTab === null) {
+			if (currentTab === "home") {
+				setActiveTab("task_column");
+				setLastTaskTab("task_column");
+			} else if (currentTab === null) {
 				setActiveTab(null);
 			}
 		} else {
@@ -162,7 +166,7 @@ export function useCardDetailLayout({
 				setActiveTab("home");
 			}
 		}
-	}, [selectedTaskId, setActiveTab]);
+	}, [selectedTaskId, setActiveTab, setLastTaskTab]);
 
 	const setSidePanelRatio = useCallback((ratio: number) => {
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));
