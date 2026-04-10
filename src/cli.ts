@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { createServer as createNetServer } from "node:net";
+import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
@@ -550,6 +550,22 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		},
 		suppressImmediateDuplicateSignals: shouldSuppressImmediateDuplicateShutdownSignals(),
 	});
+
+	// When quarterdeck is launched as a child process (by Cline, an agent, etc.),
+	// stdin is a pipe from the parent. If the parent exits without signaling, the
+	// pipe closes — detect that and trigger graceful shutdown so we don't orphan.
+	// Only arm this when stdin is a pipe (net.Socket) — not a TTY (direct terminal
+	// launch, where SIGHUP already handles close) and not /dev/null (stdio: "ignore"
+	// in test harnesses and launchers that intentionally detach stdin).
+	if (process.stdin instanceof NetSocket && !process.stdin.isTTY) {
+		process.stdin.resume();
+		process.stdin.on("end", () => {
+			if (!isShuttingDown) {
+				console.warn("Parent process disconnected (stdin closed). Shutting down.");
+				process.kill(process.pid, "SIGHUP");
+			}
+		});
+	}
 }
 
 function createProgram(invocationArgs: string[]): Command {

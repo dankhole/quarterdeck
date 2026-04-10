@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: prevent orphaned processes when parent exits without signaling (2026-04-10)
+
+Addresses todo #5. Four zombie processes from `.cline/worktrees/` were found running days after their parent tasks ended (see `docs/research/2026-04-08-orphaned-process-investigation.md`). Three root causes identified and fixed:
+
+**Stdin pipe EOF detection** (`src/cli.ts`): Added parent liveness detection for child-process launches. When quarterdeck is spawned by Cline, an agent, or another process, stdin is a pipe (`net.Socket`). If the parent exits without sending SIGTERM/SIGINT, the pipe closes — now detected via `process.stdin.on("end", ...)` which sends SIGHUP to self, funneling through the existing graceful shutdown handler. Guard uses `process.stdin instanceof NetSocket && !process.stdin.isTTY` to correctly distinguish pipes from TTY (direct terminal, where SIGHUP already handles close) and `/dev/null` (`stdio: "ignore"` in test harnesses). The `!isTTY` check is necessary because `tty.ReadStream` extends `net.Socket`, so `instanceof` alone would match TTY stdin and cause Ctrl-D to unexpectedly kill the server.
+
+**Shutdown coordinator cleanup timeout** (`src/server/shutdown-coordinator.ts`): The parallel `Promise.all` that persists workspace state and deletes worktrees had no timeout. If any operation hung (e.g., `git worktree remove` on a corrupted worktree, `saveWorkspaceState` on a locked file), the entire shutdown stalled until the 10s hard process timeout killed it mid-I/O — skipping `closeRuntimeServer()` entirely. Added a 7s internal timeout via `Promise.race` so the server close always runs orderly within the 10s window.
+
+**Codex wrapper cleanup timeout** (`src/commands/hooks.ts`): The `cleanup()` function in `runCodexWrapperSubcommand` awaited `watcherStartPromise` + `stopWatcher()` with no timeout. If either stalled, the wrapper process hung forever. Added a 3s timeout via `Promise.race`.
+
+**Test**: New `test/runtime/shutdown-coordinator-timeout.test.ts` — mocks `saveWorkspaceState` to never resolve (simulating hung filesystem I/O), verifies `closeRuntimeServer` is still called after the 7s timeout. Also verifies the normal path (cleanup within timeout) works without warnings.
+
+**Files**: `src/cli.ts`, `src/commands/hooks.ts`, `src/server/shutdown-coordinator.ts`, `test/runtime/shutdown-coordinator-timeout.test.ts`
+
 ## Terminal font weight and ligature tuning (2026-04-10)
 
 Previous commits went from Regular (400) weight → Light (300) to combat chunky WebGL rendering on low-DPR monitors. 300 turned out to be too thin. Set `fontWeight: 350` as a numeric value (xterm's `FontWeight` type accepts `number`) — the browser snaps to an intermediate rendering between Light and Regular discrete font files. `fontWeightBold` set to `"500"` (Medium) for subtle emphasis without the heaviness of 700.

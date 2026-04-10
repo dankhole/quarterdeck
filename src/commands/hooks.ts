@@ -736,10 +736,15 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 	process.on("SIGINT", onSigint);
 	process.on("SIGTERM", onSigterm);
 
+	const WRAPPER_CLEANUP_TIMEOUT_MS = 3000;
 	const cleanup = async () => {
 		shuttingDown = true;
-		await watcherStartPromise;
-		await stopWatcher();
+		const cleanupWork = (async () => {
+			await watcherStartPromise;
+			await stopWatcher();
+		})();
+		const timeout = new Promise<void>((resolve) => setTimeout(resolve, WRAPPER_CLEANUP_TIMEOUT_MS));
+		await Promise.race([cleanupWork, timeout]);
 		process.off("SIGINT", onSigint);
 		process.off("SIGTERM", onSigterm);
 	};

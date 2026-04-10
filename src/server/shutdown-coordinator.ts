@@ -205,7 +205,12 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		}
 	}
 
-	await Promise.all(
+	// Wrap cleanup I/O in a timeout so closeRuntimeServer() always gets called
+	// orderly. Without this, a hung git operation or stale filesystem write blocks
+	// until the hard 10s process-level timeout kills us mid-I/O, skipping server
+	// close entirely.
+	const CLEANUP_TIMEOUT_MS = 7000;
+	const cleanupPromise = Promise.all(
 		interruptedByWorkspace.map(async (workspace) => {
 			const worktreeTaskIds = await persistInterruptedSessions(
 				workspace.workspacePath,
@@ -218,6 +223,11 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 			await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds, deps.warn);
 		}),
 	);
+	const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), CLEANUP_TIMEOUT_MS));
+	const result = await Promise.race([cleanupPromise.then(() => "done" as const), timeoutPromise]);
+	if (result === "timeout") {
+		deps.warn(`Shutdown cleanup timed out after ${CLEANUP_TIMEOUT_MS}ms. Closing server without full cleanup.`);
+	}
 
 	await deps.closeRuntimeServer();
 }

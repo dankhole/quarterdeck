@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: prevent orphaned processes when parent exits without signaling
+
+- Runtime servers now detect when their parent process (Cline, an agent launcher, etc.) exits without sending a signal — stdin pipe EOF triggers graceful shutdown via SIGHUP. Only activates for pipe-connected child processes, not direct terminal launches or detached stdin.
+- Shutdown coordinator cleanup has a 7s timeout so `closeRuntimeServer()` always runs orderly, even if workspace state persistence or worktree deletion hangs.
+- Codex wrapper cleanup has a 3s timeout so the wrapper can't hang forever if the session watcher stalls.
+
 ### Fix: terminal font weight and ligature tuning
 
 - Bumped terminal font weight from 300 (Light) to 350 for a middle ground between the too-thin Light weight and the too-chunky Regular (400) on low-DPR monitors. Bold weight set to 500 (Medium).
