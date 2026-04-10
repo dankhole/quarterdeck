@@ -1,3 +1,4 @@
+import { extractGlobalConfigFields } from "../config/global-config-fields";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract";
@@ -101,35 +102,21 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 	const effectiveCommand = resolved ? joinCommand(resolved.binary, resolved.args) : null;
 
 	return {
+		// Registry fields (booleans, numbers) via generic spread
+		...extractGlobalConfigFields(runtimeConfig),
+		// Special fields
 		selectedAgentId: runtimeConfig.selectedAgentId,
 		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
-		agentAutonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
 		debugModeEnabled: isRuntimeDebugModeEnabled(),
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,
-		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
-		shellAutoRestartEnabled: runtimeConfig.shellAutoRestartEnabled,
-		showSummaryOnCards: runtimeConfig.showSummaryOnCards,
-		autoGenerateSummary: runtimeConfig.autoGenerateSummary,
-		summaryStaleAfterSeconds: runtimeConfig.summaryStaleAfterSeconds,
 		llmConfigured: isLlmConfigured(),
-		showTrashWorktreeNotice: runtimeConfig.showTrashWorktreeNotice,
-		unmergedChangesIndicatorEnabled: runtimeConfig.unmergedChangesIndicatorEnabled,
-		behindBaseIndicatorEnabled: runtimeConfig.behindBaseIndicatorEnabled,
-		skipTaskCheckoutConfirmation: runtimeConfig.skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation: runtimeConfig.skipHomeCheckoutConfirmation,
-		audibleNotificationsEnabled: runtimeConfig.audibleNotificationsEnabled,
-		audibleNotificationVolume: runtimeConfig.audibleNotificationVolume,
 		audibleNotificationEvents: runtimeConfig.audibleNotificationEvents,
-		audibleNotificationsOnlyWhenHidden: runtimeConfig.audibleNotificationsOnlyWhenHidden,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
 		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
-		focusedTaskPollMs: runtimeConfig.focusedTaskPollMs,
-		backgroundTaskPollMs: runtimeConfig.backgroundTaskPollMs,
-		homeRepoPollMs: runtimeConfig.homeRepoPollMs,
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,
