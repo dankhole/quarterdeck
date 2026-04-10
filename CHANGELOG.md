@@ -1,6 +1,8 @@
 # Changelog
 
-## [0.3.1]
+## [Unreleased]
+
+## [0.4.0]
 
 ### Scope bar, branch selector, and context-aware file browser
 
@@ -27,6 +29,13 @@
 
 - Removed orphan `text-shimmer.tsx` component (never imported) and its sole dependency `motion` (Framer Motion).
 - Removed 6 stale CSS classes from `globals.css` — leftover upstream kanban styles (`kb-home-layout`, `kb-status-banner`, `kb-project-count-tag`, `kb-task-preview-pane`, `kb-task-preview-text`, `kb-markdown`).
+
+### Other changes
+
+- Prompt shortcuts can now be reordered via drag-and-drop in the editor dialog.
+- Added close button (X) to the file content viewer header — deselects the current file and returns to the full tree view.
+
+## [0.3.1]
 
 ### Git polling efficiency
 
@@ -73,7 +82,6 @@
 - File browser expand/collapse state and file selection now persist when toggling between the sidebar panel and the full-size view.
 - The expand button is hidden when no file is selected.
 - Removed redundant X buttons from the expanded diff and file browser toolbars — they duplicated the collapse button with a misleading icon.
-- Added close button (X) to the file content viewer header — deselects the current file and returns to the full tree view.
 
 ### Incremental expand in diff viewer
 
@@ -94,7 +102,6 @@
 - The detail sidebar can now be dragged up to 80% of viewport width (was capped at 45%).
 - The restart session button on task cards now waits 1 second before appearing to prevent flashing during transient states.
 - Default side panel ratio reduced from 25% to 15%.
-- Prompt shortcuts can now be reordered via drag-and-drop in the editor dialog.
 - Default prompt shortcut textarea height increased from 3 to 5 rows.
 - Base ref dropdown in the create task dialog is now greyed out when isolated worktree is unchecked.
 - Fixed permission notification sound playing wrong beep count — hook activity data was arriving after the 500ms settle window expired due to slow checkpoint capture.

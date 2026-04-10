@@ -34,7 +34,7 @@ For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHAN
 
 **Deleted files**: `web-ui/src/components/detail-panels/file-browser-panel.tsx` (replaced by split architecture)
 
-**Commit**: *(pending squash)*
+**Commit**: `16c33bef`
 
 ## Fix stale hasUnmergedChanges badge after baseRef advances (2026-04-09)
 
@@ -71,7 +71,7 @@ Natural recovery for missed `to_in_progress` hooks was also investigated (RC2) b
 
 **Spec**: `docs/specs/2026-04-09-fix-stuck-approval-state.md` (3 adversarial review passes)
 
-**Commit**: *(pending)*
+**Commit**: `0e94fef2`
 
 ## Dead code audit and cleanup (2026-04-09)
 
