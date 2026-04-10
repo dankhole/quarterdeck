@@ -275,7 +275,7 @@ async function loadTaskWorkspaceMetadata(
 		}
 		const [summary, unmergedResult, behindBase] = await Promise.all([
 			getGitSyncSummary(pathInfo.path, { probe }),
-			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
+			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`]),
 			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
 		]);
 		return {

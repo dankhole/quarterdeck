@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: diff tab badge false positive when worktree is only behind base
+
+- The Changes tab notification badge lit up when a task worktree was behind its base ref (e.g. main advanced) even if the worktree had no new changes to land. Switched the unmerged-changes detection from a two-dot diff (`baseRef HEAD`) to a three-dot diff (`baseRef...HEAD`) so it only flags changes the worktree introduced since diverging.
+
 ## [0.4.0]
 
 ### Scope bar, branch selector, and context-aware file browser
