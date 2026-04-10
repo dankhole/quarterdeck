@@ -1,13 +1,15 @@
-import { FolderKanban, FolderOpen, GitCompareArrows, House, LayoutGrid } from "lucide-react";
+import { FolderKanban, FolderOpen, GitCompareArrows, House, LayoutGrid, SquareTerminal } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { SidebarTabId } from "@/resize/use-card-detail-layout";
+import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
 
 const TOOLBAR_WIDTH = 40;
 
 interface DetailToolbarProps {
-	visualActiveTab: SidebarTabId;
-	onTabChange: (tab: SidebarTabId) => void;
+	activeMainView: MainViewId;
+	activeSidebar: SidebarId | null;
+	onMainViewChange: (view: MainViewId) => void;
+	onSidebarChange: (id: SidebarId) => void;
 	hasSelectedTask: boolean;
 	hasUncommittedChanges?: boolean;
 	hasUnmergedChanges?: boolean;
@@ -15,53 +17,98 @@ interface DetailToolbarProps {
 	projectsBadgeColor?: "orange";
 }
 
-function ToolbarButton({
-	tabId,
-	visualActiveTab,
-	onTabChange,
+function Badge({ color }: { color: "red" | "blue" | "orange" }): React.ReactElement {
+	return (
+		<span
+			className={cn(
+				"absolute top-1 right-1 w-2 h-2 rounded-full",
+				color === "red" ? "bg-status-red" : color === "orange" ? "bg-status-orange" : "bg-status-blue",
+			)}
+		/>
+	);
+}
+
+/** Main view button — filled background when active */
+function MainViewButton({
+	viewId,
+	activeMainView,
+	onMainViewChange,
 	icon,
 	label,
 	badgeColor,
 	disabled,
 }: {
-	tabId: SidebarTabId;
-	visualActiveTab: SidebarTabId;
-	onTabChange: (tab: SidebarTabId) => void;
+	viewId: MainViewId;
+	activeMainView: MainViewId;
+	onMainViewChange: (view: MainViewId) => void;
 	icon: React.ReactElement;
 	label: string;
 	badgeColor?: "red" | "blue" | "orange";
 	disabled?: boolean;
 }): React.ReactElement {
-	const isActive = visualActiveTab === tabId;
+	const isActive = !disabled && activeMainView === viewId;
 	return (
 		<Tooltip content={label} side="right">
 			<button
 				type="button"
-				onClick={() => onTabChange(tabId)}
+				onClick={() => onMainViewChange(viewId)}
 				disabled={disabled}
 				className={cn(
 					"relative flex items-center justify-center w-8 h-8 rounded-md cursor-pointer border-0",
-					isActive
-						? "bg-surface-3 text-text-primary"
-						: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
-					disabled && "opacity-35 pointer-events-none cursor-default",
+					disabled
+						? "opacity-35 pointer-events-none cursor-default text-text-tertiary"
+						: isActive
+							? "bg-surface-3 text-text-primary"
+							: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
 				)}
 				aria-label={label}
 				aria-pressed={isActive}
 			>
 				{icon}
-				{badgeColor ? (
-					<span
-						className={cn(
-							"absolute top-1 right-1 w-2 h-2 rounded-full",
-							badgeColor === "red"
-								? "bg-status-red"
-								: badgeColor === "orange"
-									? "bg-status-orange"
-									: "bg-status-blue",
-						)}
-					/>
-				) : null}
+				{badgeColor ? <Badge color={badgeColor} /> : null}
+			</button>
+		</Tooltip>
+	);
+}
+
+/** Sidebar button — left border accent when active */
+function SidebarButton({
+	sidebarId,
+	activeSidebar,
+	onSidebarChange,
+	icon,
+	label,
+	badgeColor,
+	disabled,
+}: {
+	sidebarId: SidebarId;
+	activeSidebar: SidebarId | null;
+	onSidebarChange: (id: SidebarId) => void;
+	icon: React.ReactElement;
+	label: string;
+	badgeColor?: "red" | "blue" | "orange";
+	disabled?: boolean;
+}): React.ReactElement {
+	const isActive = !disabled && activeSidebar === sidebarId;
+	return (
+		<Tooltip content={label} side="right">
+			<button
+				type="button"
+				onClick={() => onSidebarChange(sidebarId)}
+				disabled={disabled}
+				className={cn(
+					"relative flex items-center justify-center w-8 h-8 rounded-md cursor-pointer border-0",
+					disabled
+						? "opacity-35 pointer-events-none cursor-default text-text-tertiary"
+						: isActive
+							? "bg-transparent text-accent border-l-2 border-accent"
+							: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
+				)}
+				aria-label={label}
+				aria-pressed={isActive}
+			>
+				{icon}
+				{badgeColor ? <Badge color={badgeColor} /> : null}
 			</button>
 		</Tooltip>
 	);
@@ -70,8 +117,10 @@ function ToolbarButton({
 export { TOOLBAR_WIDTH };
 
 export function DetailToolbar({
-	visualActiveTab,
-	onTabChange,
+	activeMainView,
+	activeSidebar,
+	onMainViewChange,
+	onSidebarChange,
 	hasSelectedTask,
 	hasUncommittedChanges,
 	hasUnmergedChanges,
@@ -98,53 +147,59 @@ export function DetailToolbar({
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
-			{/* Home — always enabled */}
-			<ToolbarButton
-				tabId="home"
-				visualActiveTab={visualActiveTab}
-				onTabChange={onTabChange}
+			{/* Main view buttons — above divider */}
+			<MainViewButton
+				viewId="home"
+				activeMainView={activeMainView}
+				onMainViewChange={onMainViewChange}
 				icon={<House size={18} />}
 				label="Home"
 			/>
+			<MainViewButton
+				viewId="terminal"
+				activeMainView={activeMainView}
+				onMainViewChange={onMainViewChange}
+				icon={<SquareTerminal size={18} />}
+				label="Terminal"
+				disabled={!hasSelectedTask}
+			/>
+			<MainViewButton
+				viewId="files"
+				activeMainView={activeMainView}
+				onMainViewChange={onMainViewChange}
+				icon={<FolderOpen size={18} />}
+				label="Files"
+				badgeColor={filesBadgeColor}
+			/>
 
-			{/* Projects — always enabled */}
-			<ToolbarButton
-				tabId="projects"
-				visualActiveTab={visualActiveTab}
-				onTabChange={onTabChange}
+			{/* Divider between main view and sidebar buttons */}
+			<div className="w-5 my-1" style={{ height: 1, background: "var(--color-divider)" }} />
+
+			{/* Sidebar buttons — below divider */}
+			<SidebarButton
+				sidebarId="projects"
+				activeSidebar={activeSidebar}
+				onSidebarChange={onSidebarChange}
 				icon={<FolderKanban size={18} />}
 				label="Projects"
 				badgeColor={projectsBadgeColor}
 			/>
-
-			{/* Divider between global and task-tied tabs */}
-			<div className="w-5 my-1" style={{ height: 1, background: "var(--color-divider)" }} />
-
-			{/* Task-tied tabs — greyed out when no task selected */}
-			<ToolbarButton
-				tabId="task_column"
-				visualActiveTab={visualActiveTab}
-				onTabChange={onTabChange}
+			<SidebarButton
+				sidebarId="task_column"
+				activeSidebar={activeSidebar}
+				onSidebarChange={onSidebarChange}
 				icon={<LayoutGrid size={18} />}
 				label="Board"
 				disabled={!hasSelectedTask}
 			/>
-			<ToolbarButton
-				tabId="changes"
-				visualActiveTab={visualActiveTab}
-				onTabChange={onTabChange}
+			<SidebarButton
+				sidebarId="changes"
+				activeSidebar={activeSidebar}
+				onSidebarChange={onSidebarChange}
 				icon={<GitCompareArrows size={18} />}
 				label="Changes"
 				badgeColor={changesBadgeColor}
 				disabled={!hasSelectedTask}
-			/>
-			<ToolbarButton
-				tabId="files"
-				visualActiveTab={visualActiveTab}
-				onTabChange={onTabChange}
-				icon={<FolderOpen size={18} />}
-				label="Files"
-				badgeColor={filesBadgeColor}
 			/>
 		</aside>
 	);

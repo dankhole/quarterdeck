@@ -77,7 +77,7 @@ import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
-import { type SidebarTabId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
+import { type MainViewId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
@@ -150,6 +150,7 @@ export default function App(): ReactElement {
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
 		notificationSessions,
+		notificationWorkspaceIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		debugLoggingEnabled,
@@ -177,9 +178,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		isBoardHydrated: hasReceivedSnapshot,
 	});
-	const handleDeselectTask = useCallback(() => {
-		setSelectedTaskId(null);
-	}, [setSelectedTaskId]);
 	const isDocumentVisible = useDocumentVisibility();
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
@@ -906,9 +904,12 @@ export default function App(): ReactElement {
 	}, [selectedTaskId]);
 
 	const {
-		activeTab,
-		handleTabChange,
-		visualActiveTab,
+		mainView,
+		sidebar,
+		setMainView,
+		toggleSidebar,
+		visualMainView,
+		visualSidebar,
 		sidePanelRatio,
 		setSidePanelRatio,
 		detailDiffFileTreeRatio,
@@ -920,11 +921,11 @@ export default function App(): ReactElement {
 		selectedTaskId,
 	});
 
-	const handleToolbarTabChange = useCallback(
-		(tab: SidebarTabId) => {
-			handleTabChange(tab, { setSelectedTaskId });
+	const handleMainViewChange = useCallback(
+		(view: MainViewId) => {
+			setMainView(view, { setSelectedTaskId });
 		},
-		[handleTabChange, setSelectedTaskId],
+		[setMainView, setSelectedTaskId],
 	);
 
 	// --- Home side panel resize ---
@@ -1104,6 +1105,32 @@ export default function App(): ReactElement {
 		[moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, runtimeProjectConfig?.showSummaryOnCards],
 	);
 
+	// notificationSessions is seeded from the current project only on initial load;
+	// cross-project entries arrive incrementally via task_notification messages after page load.
+	// Exclude the current project — its approvals are already visible in the board.
+	const projectsBadgeColor: "orange" | undefined = useMemo(
+		() =>
+			Object.entries(notificationSessions).some(
+				([taskId, session]) => notificationWorkspaceIds[taskId] !== currentProjectId && isApprovalState(session),
+			)
+				? "orange"
+				: undefined,
+		[notificationSessions, notificationWorkspaceIds, currentProjectId],
+	);
+
+	// Per-project approval indicators for the project navigation sidebar.
+	// Excludes the current project — its approvals are already visible on the board.
+	const projectIdsWithApprovals = useMemo(() => {
+		const ids = new Set<string>();
+		for (const [taskId, session] of Object.entries(notificationSessions)) {
+			if (isApprovalState(session)) {
+				const wsId = notificationWorkspaceIds[taskId];
+				if (wsId && wsId !== currentProjectId) ids.add(wsId);
+			}
+		}
+		return ids;
+	}, [notificationSessions, notificationWorkspaceIds, currentProjectId]);
+
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
 	}
@@ -1112,12 +1139,6 @@ export default function App(): ReactElement {
 	}
 
 	const homeSidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
-
-	// notificationSessions is seeded from the current project only on initial load;
-	// cross-project entries arrive incrementally via task_notification messages after page load.
-	const projectsBadgeColor: "orange" | undefined = Object.values(notificationSessions).some(isApprovalState)
-		? "orange"
-		: undefined;
 
 	const topBar = (
 		<TopBar
@@ -1194,8 +1215,10 @@ export default function App(): ReactElement {
 					{!isDiffExpanded ? (
 						<>
 							<DetailToolbar
-								visualActiveTab={visualActiveTab}
-								onTabChange={handleToolbarTabChange}
+								activeMainView={visualMainView}
+								activeSidebar={visualSidebar}
+								onMainViewChange={handleMainViewChange}
+								onSidebarChange={toggleSidebar}
 								hasSelectedTask={selectedCard !== null}
 								hasUncommittedChanges={
 									selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
@@ -1213,45 +1236,8 @@ export default function App(): ReactElement {
 								projectsBadgeColor={projectsBadgeColor}
 							/>
 
-							{/* Home / Projects side panel — project nav */}
-							{activeTab === "home" || activeTab === "projects" ? (
-								<>
-									<div
-										style={{
-											display: "flex",
-											flexDirection: "column",
-											flex: `0 0 ${homeSidePanelPercent}`,
-											minWidth: 0,
-											minHeight: 0,
-											overflow: "hidden",
-										}}
-									>
-										<ProjectNavigationPanel
-											projects={displayedProjects}
-											isLoadingProjects={isProjectListLoading}
-											currentProjectId={navigationCurrentProjectId}
-											removingProjectId={removingProjectId}
-											activeSection={homeSidebarSection}
-											onActiveSectionChange={setHomeSidebarSection}
-											canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-											agentSectionContent={homeSidebarAgentPanel}
-											onSelectProject={(projectId) => {
-												void handleSelectProject(projectId);
-											}}
-											onRemoveProject={handleRemoveProject}
-											onAddProject={() => {
-												void handleAddProject();
-											}}
-										/>
-									</div>
-									<ResizeHandle
-										orientation="vertical"
-										ariaLabel="Resize home side panel"
-										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
-										className="z-10"
-									/>
-								</>
-							) : activeTab === "files" && !selectedCard ? (
+							{/* Sidebar panel content — depends on sidebar state or mainView override */}
+							{mainView === "files" && !selectedCard ? (
 								<>
 									<div
 										style={{
@@ -1325,6 +1311,44 @@ export default function App(): ReactElement {
 										className="z-10"
 									/>
 								</>
+							) : sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
+								<>
+									<div
+										style={{
+											display: "flex",
+											flexDirection: "column",
+											flex: `0 0 ${homeSidePanelPercent}`,
+											minWidth: 0,
+											minHeight: 0,
+											overflow: "hidden",
+										}}
+									>
+										<ProjectNavigationPanel
+											projects={displayedProjects}
+											isLoadingProjects={isProjectListLoading}
+											currentProjectId={navigationCurrentProjectId}
+											removingProjectId={removingProjectId}
+											projectIdsWithApprovals={projectIdsWithApprovals}
+											activeSection={homeSidebarSection}
+											onActiveSectionChange={setHomeSidebarSection}
+											canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+											agentSectionContent={homeSidebarAgentPanel}
+											onSelectProject={(projectId) => {
+												void handleSelectProject(projectId);
+											}}
+											onRemoveProject={handleRemoveProject}
+											onAddProject={() => {
+												void handleAddProject();
+											}}
+										/>
+									</div>
+									<ResizeHandle
+										orientation="vertical"
+										ariaLabel="Resize home side panel"
+										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+										className="z-10"
+									/>
+								</>
 							) : null}
 						</>
 					) : null}
@@ -1374,7 +1398,8 @@ export default function App(): ReactElement {
 							onBottomTerminalRestart={handleRestartDetailTerminal}
 							onBottomTerminalExit={handleShellExit}
 							isDocumentVisible={isDocumentVisible}
-							activeTab={activeTab}
+							mainView={mainView}
+							sidebar={sidebar}
 							topBar={topBar}
 							sidePanelRatio={sidePanelRatio}
 							setSidePanelRatio={setSidePanelRatio}
@@ -1386,7 +1411,7 @@ export default function App(): ReactElement {
 							skipTaskCheckoutConfirmation={skipTaskCheckoutConfirmation}
 							skipHomeCheckoutConfirmation={skipHomeCheckoutConfirmation}
 							onSkipTaskCheckoutConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
-							onDeselectTask={handleDeselectTask}
+							onDeselectTask={() => setSelectedTaskId(null)}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1429,7 +1454,7 @@ export default function App(): ReactElement {
 													}}
 													isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
 												/>
-											) : activeTab === "files" ? (
+											) : mainView === "files" ? (
 												<FileContentViewer
 													content={homeFileBrowserData.fileContent?.content ?? null}
 													binary={homeFileBrowserData.fileContent?.binary ?? false}

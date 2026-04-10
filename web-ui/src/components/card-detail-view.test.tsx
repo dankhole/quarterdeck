@@ -103,7 +103,8 @@ function createSelection(): CardSelection {
 
 /** Default new required props for CardDetailView */
 const newRequiredProps = {
-	activeTab: "task_column" as const,
+	mainView: "terminal" as const,
+	sidebar: "task_column" as const,
 	topBar: <div data-testid="top-bar" />,
 	sidePanelRatio: 0.25,
 	setSidePanelRatio: () => {},
@@ -216,7 +217,7 @@ describe("CardDetailView", () => {
 		}
 	});
 
-	it("renders the diff side panel when activeTab is changes", async () => {
+	it("renders the diff side panel when sidebar is changes", async () => {
 		await act(async () => {
 			renderWithProviders(
 				root,
@@ -233,7 +234,7 @@ describe("CardDetailView", () => {
 					bottomTerminalSummary={null}
 					onBottomTerminalClose={() => {}}
 					{...newRequiredProps}
-					activeTab="changes"
+					sidebar="changes"
 				/>,
 			);
 		});
@@ -258,7 +259,7 @@ describe("CardDetailView", () => {
 					bottomTerminalSummary={null}
 					onBottomTerminalClose={() => {}}
 					{...newRequiredProps}
-					activeTab="changes"
+					sidebar="changes"
 				/>,
 			);
 		});
@@ -396,7 +397,7 @@ describe("CardDetailView", () => {
 					bottomTerminalSummary={null}
 					onBottomTerminalClose={() => {}}
 					{...newRequiredProps}
-					activeTab="changes"
+					sidebar="changes"
 					detailDiffFileTreeRatio={0.42}
 					onDiffExpandedChange={onDiffExpandedChange}
 				/>,

@@ -4,6 +4,24 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Dual-selection sidebar rework (2026-04-10)
+
+Split the sidebar toolbar from a single `SidebarTabId` state into two independent dimensions: `mainView` ("home" | "terminal" | "files") and `sidebar` ("projects" | "task_column" | "changes" | null). The toolbar is visually split by a divider — main view buttons above with filled-bg highlight, sidebar buttons below with left-border accent highlight.
+
+**State management** (`use-card-detail-layout.ts`): Full rewrite. `MainViewId` + `SidebarId` types replace the old `SidebarTabId`. `setMainView()` handles auto-coupling (Home → projects + deselect, Files/Terminal → no side effects). `toggleSidebar()` handles collapse-on-reclick. Auto-coupling `useEffect` fires on `selectedTaskId` changes with an initial-mount guard to avoid overwriting state on first render. `visualSidebar` returns null when `mainView === "files"` since the file tree overrides the sidebar panel. State always initializes to home+projects — localStorage is written for within-session use but not read on mount (view state is transient).
+
+**Toolbar** (`detail-toolbar.tsx`): Split into `MainViewButton` (filled bg) and `SidebarButton` (left-border accent). Disabled state priority fix: `disabled` branch renders first in `cn()` chain, and `isActive` gates on `!disabled` so previously-active-now-disabled buttons don't flash their highlight.
+
+**Files view with selected task** (`card-detail-view.tsx`): Restored file browser handling that was initially removed during the rework. When `mainView === "files"` with a selected task, CardDetailView renders `ScopeBar` + `FileBrowserTreePanel` in the sidebar panel and `FileContentViewer` in the main content area, using the task's worktree scope (`useFileBrowserData`, `useScopeContext`).
+
+**Per-project approval indicators** (`use-runtime-state-stream.ts`, `App.tsx`, `project-navigation-panel.tsx`): The `task_notification` wire message already included `workspaceId` but the frontend was dropping it. Now preserved in a `notificationWorkspaceIds: Record<taskId, workspaceId>` map. `projectsBadgeColor` and `projectIdsWithApprovals` both exclude the current project (its approvals are visible on the board). Orange dot rendered next to project names in the sidebar.
+
+**New localStorage keys** (`local-storage-store.ts`): `DetailMainView`, `DetailSidebar`, `DetailLastSidebarTab` — with migration from the old `DetailActivePanel` key.
+
+Files touched: `use-card-detail-layout.ts`, `use-card-detail-layout.test.ts`, `detail-toolbar.tsx`, `App.tsx`, `card-detail-view.tsx`, `card-detail-view.test.tsx`, `project-navigation-panel.tsx`, `use-project-navigation.ts`, `use-runtime-state-stream.ts`, `local-storage-store.ts`.
+
+Closes todo #5. Commits: `cce4e782`, `95f29f09`, `c9a8bcd8`.
+
 ## Configurable terminal font weight (2026-04-10)
 
 Terminal font weight was hardcoded at 350 in `terminal-options.ts`. Made it configurable through the standard settings pipeline.

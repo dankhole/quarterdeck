@@ -248,17 +248,41 @@ Extract the agent terminal from CardDetailView into a standalone component that 
 
 ## Verification Plan
 
-1. Open app → main view is "home" (board), sidebar is "projects" (project list)
-2. Click a task → main view switches to "terminal", sidebar switches to "task_column"
-3. Click Projects sidebar icon → sidebar shows projects, terminal stays in main view
-4. Click Home main view icon → main view shows board, sidebar stays on projects
-5. Click Changes sidebar icon → sidebar shows diff tree, main view unchanged
-6. Click active sidebar icon → sidebar collapses, main view unchanged
-7. Deselect task → main view switches to "home", sidebar switches to "projects"
-8. All localStorage persistence round-trips correctly
-9. Resize handles work for sidebar in all combinations
-10. Badge notifications appear on correct icons
-11. Disabled states: Board and Changes sidebar icons greyed out when no task selected
+### Toolbar layout and visual
+1. Toolbar shows two groups: Home, Terminal, Files (main view) above divider; Projects (FolderKanban), Board, Changes below divider
+2. Two distinct highlight treatments: filled bg for active main view button, left-border accent for active sidebar button
+3. Disabled states: Terminal, Board, and Changes icons greyed out when no task selected
+
+### Main view behavior
+4. Open app fresh → main: home (board), sidebar: projects (project list)
+5. Click a task from board → main: terminal (agent), sidebar: task_column
+6. Click Home → main: home, sidebar: projects, **task deselected**
+7. Click Files main view → main: files, file tree in sidebar area
+8. Select a task while on Files → main switches to terminal (auto-coupling fires from files view too)
+
+### Sidebar behavior
+9. Click Projects sidebar icon (task selected) → sidebar: projects, terminal stays, task stays selected
+10. Click Projects again → sidebar collapses (toggle behavior)
+11. Click active sidebar icon (changes) → sidebar collapses
+
+### Task lifecycle
+12. Press Escape → task deselected, main: home, sidebar: projects
+13. Terminal icon is greyed out after deselect (no task selected)
+14. Select a task → main: terminal (agent), sidebar: task_column
+
+### Projects sidebar
+15. Projects sidebar shows ProjectNavigationPanel with project list, add button, agent tab
+16. Switch projects in the sidebar → board reloads, task deselects
+17. Task count badges on project rows (B, IP, R, T) update in real-time as tasks are created/started/completed
+
+### Persistence
+18. localStorage round-trips correctly on refresh (both mainView and sidebar dimensions)
+19. Click Projects tab, refresh → reopens on Projects tab
+20. Migration: old `quarterdeck.detail-active-panel` values correctly mapped on first load
+
+### Badges and resize
+21. Badge notifications on correct icons: Projects=orange (cross-project approval needed), Changes=red (uncommitted)/blue (unmerged), Files=blue (behind base)
+22. Resize handles work for sidebar in all main/sidebar combinations
 
 ## Estimated Scope
 
