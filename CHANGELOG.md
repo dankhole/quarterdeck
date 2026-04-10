@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-10
+
 ### Error boundary & disconnection UX
 
 - When the server shuts down, the UI now shows a clean "Disconnected from Quarterdeck" card instead of a confusing minified React error — a module-level flag tracks WebSocket state outside React so the error boundary can detect disconnection synchronously.
