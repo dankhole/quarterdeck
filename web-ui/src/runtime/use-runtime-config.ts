@@ -22,6 +22,7 @@ export interface UseRuntimeConfigResult {
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
+		behindBaseIndicatorEnabled?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
 		commitPromptTemplate?: string;
@@ -110,6 +111,7 @@ export function useRuntimeConfig(
 			summaryStaleAfterSeconds?: number;
 			showTrashWorktreeNotice?: boolean;
 			unmergedChangesIndicatorEnabled?: boolean;
+			behindBaseIndicatorEnabled?: boolean;
 			skipTaskCheckoutConfirmation?: boolean;
 			skipHomeCheckoutConfirmation?: boolean;
 			commitPromptTemplate?: string;

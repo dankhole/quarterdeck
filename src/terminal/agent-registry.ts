@@ -116,6 +116,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		llmConfigured: isLlmConfigured(),
 		showTrashWorktreeNotice: runtimeConfig.showTrashWorktreeNotice,
 		unmergedChangesIndicatorEnabled: runtimeConfig.unmergedChangesIndicatorEnabled,
+		behindBaseIndicatorEnabled: runtimeConfig.behindBaseIndicatorEnabled,
 		skipTaskCheckoutConfirmation: runtimeConfig.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation: runtimeConfig.skipHomeCheckoutConfirmation,
 		audibleNotificationsEnabled: runtimeConfig.audibleNotificationsEnabled,

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Configurable behind-base indicator on Files tab
+
+- The blue dot on the Files toolbar icon (showing when the base branch has advanced) is now controlled by a `behindBaseIndicatorEnabled` setting (default: on). Toggle it in Settings under the Changes section.
+
 ### Fix: diff tab badge false positive when worktree is only behind base
 
 - The Changes tab notification badge lit up when a task worktree was behind its base ref (e.g. main advanced) even if the worktree had no new changes to land. Switched the unmerged-changes detection from a two-dot diff (`baseRef HEAD`) to a three-dot diff (`baseRef...HEAD`) so it only flags changes the worktree introduced since diverging.

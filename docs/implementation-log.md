@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Configurable behind-base indicator on Files tab (2026-04-10)
+
+**Problem**: The blue badge on the Files toolbar icon (indicating the base branch advanced since the task branched off) was always on with no way to disable it. Unlike the Changes tab badge which has `unmergedChangesIndicatorEnabled`, the Files tab badge had no corresponding setting.
+
+**Fix**: Added `behindBaseIndicatorEnabled` (default: `true`) following the same config pipeline pattern as `unmergedChangesIndicatorEnabled`. The setting gates the `isBehindBase` prop passed to `DetailToolbar` in `App.tsx`. A toggle was added to the Settings dialog under the existing "Changes" section.
+
+**Files**: `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/core/api-contract.ts`, `src/terminal/agent-registry.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`
+
+**Commit**: `f94cf563`
+
 ## Fix diff tab badge false positive when worktree is only behind base (2026-04-09)
 
 **Problem**: The blue "unmerged changes" notification badge on the Changes toolbar tab appeared when a task worktree was behind its base ref (i.e. `main` had advanced), even though the worktree itself had no new code changes to land. This was distinct from the earlier cache-staleness fix (commit `9d4eb8c9`) — even with correct cache invalidation, the underlying diff command produced a false positive.

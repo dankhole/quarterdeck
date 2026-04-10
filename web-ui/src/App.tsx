@@ -237,6 +237,8 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const unmergedChangesIndicatorEnabled =
 		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
+	const behindBaseIndicatorEnabled =
+		runtimeProjectConfig?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
 	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
 		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
 			refreshRuntimeProjectConfig();
@@ -1197,7 +1199,11 @@ export default function App(): ReactElement {
 										? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
 										: false
 								}
-								isBehindBase={selectedCard ? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0 : false}
+								isBehindBase={
+									behindBaseIndicatorEnabled && selectedCard
+										? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0
+										: false
+								}
 							/>
 
 							{/* Home side panel — project nav */}

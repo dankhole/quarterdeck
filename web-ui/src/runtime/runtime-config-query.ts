@@ -30,6 +30,7 @@ export async function saveRuntimeConfig(
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
+		behindBaseIndicatorEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;

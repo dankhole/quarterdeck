@@ -255,6 +255,9 @@ export function RuntimeSettingsDialog({
 	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
 		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 	);
+	const [behindBaseIndicatorEnabled, setBehindBaseIndicatorEnabled] = useState(
+		CONFIG_DEFAULTS.behindBaseIndicatorEnabled,
+	);
 	const [skipTaskCheckoutConfirmation, setSkipTaskCheckoutConfirmation] = useState(
 		CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
 	);
@@ -321,6 +324,8 @@ export function RuntimeSettingsDialog({
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const initialUnmergedChangesIndicatorEnabled =
 		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
+	const initialBehindBaseIndicatorEnabled =
+		config?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
 	const initialSkipTaskCheckoutConfirmation =
 		config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation;
 	const initialSkipHomeCheckoutConfirmation =
@@ -363,6 +368,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
+			return true;
+		}
+		if (behindBaseIndicatorEnabled !== initialBehindBaseIndicatorEnabled) {
 			return true;
 		}
 		if (skipTaskCheckoutConfirmation !== initialSkipTaskCheckoutConfirmation) {
@@ -425,9 +433,11 @@ export function RuntimeSettingsDialog({
 		initialSkipHomeCheckoutConfirmation,
 		initialSkipTaskCheckoutConfirmation,
 		initialUnmergedChangesIndicatorEnabled,
+		initialBehindBaseIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
 		selectedAgentId,
+		behindBaseIndicatorEnabled,
 		shellAutoRestartEnabled,
 		shortcuts,
 		skipHomeCheckoutConfirmation,
@@ -452,6 +462,7 @@ export function RuntimeSettingsDialog({
 		setUnmergedChangesIndicatorEnabled(
 			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 		);
+		setBehindBaseIndicatorEnabled(config?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled);
 		setSkipTaskCheckoutConfirmation(
 			config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
 		);
@@ -485,6 +496,7 @@ export function RuntimeSettingsDialog({
 		config?.homeRepoPollMs,
 		config?.showTrashWorktreeNotice,
 		config?.unmergedChangesIndicatorEnabled,
+		config?.behindBaseIndicatorEnabled,
 		config?.skipTaskCheckoutConfirmation,
 		config?.skipHomeCheckoutConfirmation,
 		config?.selectedAgentId,
@@ -546,6 +558,7 @@ export function RuntimeSettingsDialog({
 			shellAutoRestartEnabled,
 			showTrashWorktreeNotice,
 			unmergedChangesIndicatorEnabled,
+			behindBaseIndicatorEnabled,
 			skipTaskCheckoutConfirmation,
 			skipHomeCheckoutConfirmation,
 			audibleNotificationsEnabled,
@@ -747,6 +760,20 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
 					branch.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={behindBaseIndicatorEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setBehindBaseIndicatorEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>

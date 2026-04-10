@@ -18,6 +18,7 @@ import {
 	DEFAULT_AUDIBLE_NOTIFICATIONS_ONLY_WHEN_HIDDEN,
 	DEFAULT_AUTO_GENERATE_SUMMARY,
 	DEFAULT_BACKGROUND_TASK_POLL_MS,
+	DEFAULT_BEHIND_BASE_INDICATOR_ENABLED,
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_FOCUSED_TASK_POLL_MS,
 	DEFAULT_HOME_REPO_POLL_MS,
@@ -53,6 +54,7 @@ interface RuntimeGlobalConfigFileShape {
 	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
 	unmergedChangesIndicatorEnabled?: boolean;
+	behindBaseIndicatorEnabled?: boolean;
 	skipTaskCheckoutConfirmation?: boolean;
 	skipHomeCheckoutConfirmation?: boolean;
 	commitPromptTemplate?: string;
@@ -90,6 +92,7 @@ export interface RuntimeConfigState {
 	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
 	unmergedChangesIndicatorEnabled: boolean;
+	behindBaseIndicatorEnabled: boolean;
 	skipTaskCheckoutConfirmation: boolean;
 	skipHomeCheckoutConfirmation: boolean;
 	audibleNotificationsEnabled: boolean;
@@ -118,6 +121,7 @@ export interface RuntimeConfigUpdateInput {
 	summaryStaleAfterSeconds?: number;
 	showTrashWorktreeNotice?: boolean;
 	unmergedChangesIndicatorEnabled?: boolean;
+	behindBaseIndicatorEnabled?: boolean;
 	skipTaskCheckoutConfirmation?: boolean;
 	skipHomeCheckoutConfirmation?: boolean;
 	audibleNotificationsEnabled?: boolean;
@@ -154,6 +158,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	summaryStaleAfterSeconds: DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
 	showTrashWorktreeNotice: DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
 	unmergedChangesIndicatorEnabled: DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+	behindBaseIndicatorEnabled: DEFAULT_BEHIND_BASE_INDICATOR_ENABLED,
 	skipTaskCheckoutConfirmation: DEFAULT_SKIP_TASK_CHECKOUT_CONFIRMATION,
 	skipHomeCheckoutConfirmation: DEFAULT_SKIP_HOME_CHECKOUT_CONFIRMATION,
 	audibleNotificationsEnabled: DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
@@ -414,6 +419,10 @@ function toRuntimeConfigState({
 			globalConfig?.unmergedChangesIndicatorEnabled,
 			DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
 		),
+		behindBaseIndicatorEnabled: normalizeBoolean(
+			globalConfig?.behindBaseIndicatorEnabled,
+			DEFAULT_BEHIND_BASE_INDICATOR_ENABLED,
+		),
 		skipTaskCheckoutConfirmation: normalizeBoolean(
 			globalConfig?.skipTaskCheckoutConfirmation,
 			DEFAULT_SKIP_TASK_CHECKOUT_CONFIRMATION,
@@ -473,6 +482,7 @@ async function writeRuntimeGlobalConfigFile(
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
+		behindBaseIndicatorEnabled?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
 		commitPromptTemplate?: string;
@@ -528,6 +538,10 @@ async function writeRuntimeGlobalConfigFile(
 		config.unmergedChangesIndicatorEnabled === undefined
 			? DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED
 			: normalizeBoolean(config.unmergedChangesIndicatorEnabled, DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED);
+	const behindBaseIndicatorEnabled =
+		config.behindBaseIndicatorEnabled === undefined
+			? DEFAULT_BEHIND_BASE_INDICATOR_ENABLED
+			: normalizeBoolean(config.behindBaseIndicatorEnabled, DEFAULT_BEHIND_BASE_INDICATOR_ENABLED);
 	const skipTaskCheckoutConfirmation =
 		config.skipTaskCheckoutConfirmation === undefined
 			? DEFAULT_SKIP_TASK_CHECKOUT_CONFIRMATION
@@ -606,6 +620,12 @@ async function writeRuntimeGlobalConfigFile(
 		unmergedChangesIndicatorEnabled !== DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED
 	) {
 		payload.unmergedChangesIndicatorEnabled = unmergedChangesIndicatorEnabled;
+	}
+	if (
+		hasOwnKey(existing, "behindBaseIndicatorEnabled") ||
+		behindBaseIndicatorEnabled !== DEFAULT_BEHIND_BASE_INDICATOR_ENABLED
+	) {
+		payload.behindBaseIndicatorEnabled = behindBaseIndicatorEnabled;
 	}
 	if (
 		hasOwnKey(existing, "skipTaskCheckoutConfirmation") ||
@@ -775,6 +795,7 @@ function createRuntimeConfigStateFromValues(input: {
 	summaryStaleAfterSeconds: number;
 	showTrashWorktreeNotice: boolean;
 	unmergedChangesIndicatorEnabled: boolean;
+	behindBaseIndicatorEnabled: boolean;
 	skipTaskCheckoutConfirmation: boolean;
 	skipHomeCheckoutConfirmation: boolean;
 	audibleNotificationsEnabled: boolean;
@@ -808,6 +829,10 @@ function createRuntimeConfigStateFromValues(input: {
 		unmergedChangesIndicatorEnabled: normalizeBoolean(
 			input.unmergedChangesIndicatorEnabled,
 			DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+		),
+		behindBaseIndicatorEnabled: normalizeBoolean(
+			input.behindBaseIndicatorEnabled,
+			DEFAULT_BEHIND_BASE_INDICATOR_ENABLED,
 		),
 		skipTaskCheckoutConfirmation: normalizeBoolean(
 			input.skipTaskCheckoutConfirmation,
@@ -853,6 +878,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		summaryStaleAfterSeconds: current.summaryStaleAfterSeconds,
 		showTrashWorktreeNotice: current.showTrashWorktreeNotice,
 		unmergedChangesIndicatorEnabled: current.unmergedChangesIndicatorEnabled,
+		behindBaseIndicatorEnabled: current.behindBaseIndicatorEnabled,
 		skipTaskCheckoutConfirmation: current.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation: current.skipHomeCheckoutConfirmation,
 		audibleNotificationsEnabled: current.audibleNotificationsEnabled,
@@ -902,6 +928,7 @@ export async function saveRuntimeConfig(
 		summaryStaleAfterSeconds: number;
 		showTrashWorktreeNotice: boolean;
 		unmergedChangesIndicatorEnabled: boolean;
+		behindBaseIndicatorEnabled: boolean;
 		skipTaskCheckoutConfirmation: boolean;
 		skipHomeCheckoutConfirmation: boolean;
 		audibleNotificationsEnabled: boolean;
@@ -929,6 +956,7 @@ export async function saveRuntimeConfig(
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			unmergedChangesIndicatorEnabled: config.unmergedChangesIndicatorEnabled,
+			behindBaseIndicatorEnabled: config.behindBaseIndicatorEnabled,
 			skipTaskCheckoutConfirmation: config.skipTaskCheckoutConfirmation,
 			skipHomeCheckoutConfirmation: config.skipHomeCheckoutConfirmation,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
@@ -953,6 +981,7 @@ export async function saveRuntimeConfig(
 			summaryStaleAfterSeconds: config.summaryStaleAfterSeconds,
 			showTrashWorktreeNotice: config.showTrashWorktreeNotice,
 			unmergedChangesIndicatorEnabled: config.unmergedChangesIndicatorEnabled,
+			behindBaseIndicatorEnabled: config.behindBaseIndicatorEnabled,
 			skipTaskCheckoutConfirmation: config.skipTaskCheckoutConfirmation,
 			skipHomeCheckoutConfirmation: config.skipHomeCheckoutConfirmation,
 			audibleNotificationsEnabled: config.audibleNotificationsEnabled,
@@ -993,6 +1022,7 @@ async function applyConfigUpdates({
 		showTrashWorktreeNotice: updates.showTrashWorktreeNotice ?? current.showTrashWorktreeNotice,
 		unmergedChangesIndicatorEnabled:
 			updates.unmergedChangesIndicatorEnabled ?? current.unmergedChangesIndicatorEnabled,
+		behindBaseIndicatorEnabled: updates.behindBaseIndicatorEnabled ?? current.behindBaseIndicatorEnabled,
 		skipTaskCheckoutConfirmation: updates.skipTaskCheckoutConfirmation ?? current.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation: updates.skipHomeCheckoutConfirmation ?? current.skipHomeCheckoutConfirmation,
 		commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
@@ -1026,6 +1056,7 @@ async function applyConfigUpdates({
 		nextConfig.summaryStaleAfterSeconds !== current.summaryStaleAfterSeconds ||
 		nextConfig.showTrashWorktreeNotice !== current.showTrashWorktreeNotice ||
 		nextConfig.unmergedChangesIndicatorEnabled !== current.unmergedChangesIndicatorEnabled ||
+		nextConfig.behindBaseIndicatorEnabled !== current.behindBaseIndicatorEnabled ||
 		nextConfig.skipTaskCheckoutConfirmation !== current.skipTaskCheckoutConfirmation ||
 		nextConfig.skipHomeCheckoutConfirmation !== current.skipHomeCheckoutConfirmation ||
 		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
@@ -1058,6 +1089,7 @@ async function applyConfigUpdates({
 		summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 		showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 		unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
+		behindBaseIndicatorEnabled: nextConfig.behindBaseIndicatorEnabled,
 		skipTaskCheckoutConfirmation: nextConfig.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation: nextConfig.skipHomeCheckoutConfirmation,
 		commitPromptTemplate: nextConfig.commitPromptTemplate,
@@ -1088,6 +1120,7 @@ async function applyConfigUpdates({
 		summaryStaleAfterSeconds: nextConfig.summaryStaleAfterSeconds,
 		showTrashWorktreeNotice: nextConfig.showTrashWorktreeNotice,
 		unmergedChangesIndicatorEnabled: nextConfig.unmergedChangesIndicatorEnabled,
+		behindBaseIndicatorEnabled: nextConfig.behindBaseIndicatorEnabled,
 		skipTaskCheckoutConfirmation: nextConfig.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation: nextConfig.skipHomeCheckoutConfirmation,
 		audibleNotificationsEnabled: nextConfig.audibleNotificationsEnabled,
