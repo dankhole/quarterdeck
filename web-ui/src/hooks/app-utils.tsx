@@ -51,6 +51,23 @@ export function countTasksByColumn(board: BoardData): {
 	return counts;
 }
 
+export function parseTaskIdFromSearch(search: string): string | null {
+	const params = new URLSearchParams(search);
+	const taskId = params.get("task");
+	return taskId && taskId.length > 0 ? taskId : null;
+}
+
+export function buildTaskSearchParam(currentSearch: string, taskId: string | null): string {
+	const params = new URLSearchParams(currentSearch);
+	if (taskId) {
+		params.set("task", taskId);
+	} else {
+		params.delete("task");
+	}
+	const result = params.toString();
+	return result ? `?${result}` : "";
+}
+
 export function parseProjectIdFromPathname(pathname: string): string | null {
 	const segments = pathname.split("/").filter((segment) => segment.length > 0);
 	if (segments.length === 0) {

@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Lightbulb, Plus, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -17,8 +17,10 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
+import { useBooleanLocalStorageValue } from "@/utils/react-use";
 
 interface TaskCountBadge {
 	id: string;
@@ -154,6 +156,7 @@ export function ProjectNavigationPanel({
 							</button>
 						) : null}
 					</div>
+					<OnboardingTips />
 					<ShortcutsCard />
 					<BetaNotice />
 				</>
@@ -231,6 +234,59 @@ export function ProjectNavigationPanel({
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialog>
+		</div>
+	);
+}
+
+const ONBOARDING_TIPS = [
+	{ label: "Create tasks", hint: "Add prompts to the backlog, then start them to spawn isolated agents" },
+	{ label: "Run in parallel", hint: "Each task gets its own git worktree — agents work simultaneously" },
+	{ label: "Review changes", hint: "When an agent finishes, review its diff and commit or iterate" },
+] as const;
+
+function OnboardingTips(): React.ReactElement | null {
+	const [isDismissed, setIsDismissed] = useBooleanLocalStorageValue(LocalStorageKey.OnboardingTipsDismissed, false);
+
+	if (isDismissed) {
+		return (
+			<div style={{ padding: "0 20px 4px" }}>
+				<button
+					type="button"
+					onClick={() => setIsDismissed(false)}
+					className="flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] text-text-tertiary hover:text-text-secondary"
+				>
+					<Lightbulb size={11} />
+					Show tips
+				</button>
+			</div>
+		);
+	}
+
+	return (
+		<div style={{ padding: "4px 12px" }}>
+			<div className="rounded-md border border-border-bright/50 bg-surface-0/60 px-3 py-2">
+				<div className="flex items-center justify-between mb-1.5">
+					<span className="text-[11px] font-medium text-text-secondary flex items-center gap-1">
+						<Lightbulb size={11} className="text-status-gold" />
+						Getting started
+					</span>
+					<button
+						type="button"
+						onClick={() => setIsDismissed(true)}
+						className="cursor-pointer border-none bg-transparent p-0 text-text-tertiary hover:text-text-secondary"
+						aria-label="Dismiss tips"
+					>
+						<X size={12} />
+					</button>
+				</div>
+				<ul className="m-0 p-0 list-none space-y-1">
+					{ONBOARDING_TIPS.map((tip) => (
+						<li key={tip.label} className="text-[11px] text-text-tertiary">
+							<span className="text-text-primary font-medium">{tip.label}</span> — {tip.hint}
+						</li>
+					))}
+				</ul>
+			</div>
 		</div>
 	);
 }
