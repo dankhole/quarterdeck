@@ -156,6 +156,7 @@ export function BoardCard({
 	onRestartSession,
 	onMoveToTrash,
 	onRestoreFromTrash,
+	onHardDelete,
 	onCancelAutomaticAction,
 	onRegenerateTitle,
 	isLlmGenerationDisabled,
@@ -182,6 +183,7 @@ export function BoardCard({
 	onRestartSession?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
+	onHardDelete?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
 	onRegenerateTitle?: (taskId: string) => void;
 	isLlmGenerationDisabled?: boolean;
@@ -526,28 +528,44 @@ export function BoardCard({
 											/>
 										</>
 									) : columnId === "trash" ? (
-										<Tooltip
-											side="bottom"
-											content={
-												<>
-													Restore session
-													<br />
-													in new workspace
-												</>
-											}
-										>
-											<Button
-												icon={<RotateCcw size={12} />}
-												variant="ghost"
-												size="sm"
-												aria-label="Restore task from trash"
-												onMouseDown={stopEvent}
-												onClick={(event) => {
-													stopEvent(event);
-													onRestoreFromTrash?.(card.id);
-												}}
-											/>
-										</Tooltip>
+										<>
+											<Tooltip
+												side="bottom"
+												content={
+													<>
+														Restore session
+														<br />
+														in new workspace
+													</>
+												}
+											>
+												<Button
+													icon={<RotateCcw size={12} />}
+													variant="ghost"
+													size="sm"
+													aria-label="Restore task from trash"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														onRestoreFromTrash?.(card.id);
+													}}
+												/>
+											</Tooltip>
+											<Tooltip side="bottom" content="Delete permanently">
+												<Button
+													icon={<Trash2 size={12} />}
+													variant="ghost"
+													size="sm"
+													className="text-status-red hover:text-status-red"
+													aria-label="Delete task permanently"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														onHardDelete?.(card.id);
+													}}
+												/>
+											</Tooltip>
+										</>
 									) : null}
 								</div>
 								{showSummaryOnCards && latestSummaryText ? (

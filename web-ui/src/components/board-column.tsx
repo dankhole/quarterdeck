@@ -53,6 +53,7 @@ export function BoardColumn({
 		onRestartSessionTask,
 		onMoveToTrashTask,
 		onRestoreFromTrashTask,
+		onHardDeleteTrashTask,
 		onCancelAutomaticTaskAction,
 		onRegenerateTitleTask,
 		onUpdateTaskTitle,
@@ -169,6 +170,7 @@ export function BoardColumn({
 											onRestartSession={onRestartSessionTask}
 											onMoveToTrash={onMoveToTrashTask}
 											onRestoreFromTrash={onRestoreFromTrashTask}
+											onHardDelete={onHardDeleteTrashTask}
 											onCancelAutomaticAction={onCancelAutomaticTaskAction}
 											onRegenerateTitle={onRegenerateTitleTask}
 											isLlmGenerationDisabled={isLlmGenerationDisabled}

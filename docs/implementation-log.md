@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Per-card hard delete in trash column (2026-04-10)
+
+Added a permanent delete button (red `Trash2` icon) next to the existing restore button on each trash card. Previously, the only way to permanently delete a single trashed card was to clear all trash.
+
+**Implementation**: Added `onHardDeleteTrashTask` to `StableCardActions` interface and `handleHardDeleteTrashTask` handler in `useBoardInteractions`. The handler uses `removeTask()` from `board-state.ts` (which already existed for bulk clear), then cleans up the session and workspace. The trash-column guard runs inside the `setBoard` updater callback (using fresh `currentBoard`) to avoid a TOCTOU race where a concurrent state update could move the card out of trash between the guard check and the irreversible delete. This also eliminates `board` from the callback's dependency array, reducing unnecessary re-renders of `StableCardActions` consumers.
+
+The button is wired through `board-column.tsx` and `column-context-panel.tsx` (both trash card render sites) via the existing `CardActionsProvider` context pattern.
+
+**Files**: `web-ui/src/hooks/use-board-interactions.ts`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/board-column.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`
+
+**Closes**: todo #17
+
 ## Upstream sync tracker, browser nav, onboarding tips, dev:full (2026-04-10)
 
 **Upstream sync tracker**: Replaced `docs/upstream-sync-2026-04-08.md` with a living `docs/upstream-sync.md`. Comprehensively reviewed all 22 upstream cline/kanban commits since fork point (`255e940d`). Categorized into Adopted (5 — incremental diff expand cherry-picked, editable titles / diff mode fix / plan mode / trash restore independently implemented), Backlog (2 — mobile responsive foundations, HTTPS+passcode auth), and Decided against (11 — Cline SDK/billing, color themes, etc.). Updated `docs/todo.md` items #9 and #24 to be recurring.

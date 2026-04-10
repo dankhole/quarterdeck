@@ -22,6 +22,7 @@ import {
 	findCardSelection,
 	getTaskColumnId,
 	moveTaskToColumn,
+	removeTask,
 	updateTask,
 } from "@/state/board-state";
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
@@ -98,6 +99,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleHardDeleteTrashTask: (taskId: string) => void;
 	handleRestartTaskSession: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
@@ -892,6 +894,46 @@ export function useBoardInteractions({
 		trashTaskIds,
 	]);
 
+	const handleHardDeleteTrashTask = useCallback(
+		(taskId: string) => {
+			let didRemove = false;
+			setBoard((currentBoard) => {
+				const selection = findCardSelection(currentBoard, taskId);
+				if (!selection || selection.column.id !== "trash") {
+					return currentBoard;
+				}
+				const result = removeTask(currentBoard, taskId);
+				if (!result.removed) {
+					return currentBoard;
+				}
+				didRemove = true;
+				return result.board;
+			});
+			if (!didRemove) {
+				return;
+			}
+
+			setSessions((currentSessions) => {
+				const nextSessions = { ...currentSessions };
+				delete nextSessions[taskId];
+				return nextSessions;
+			});
+			setSelectedTaskId((current) => {
+				if (current === taskId) {
+					clearTaskWorkspaceInfo(taskId);
+					return null;
+				}
+				return current;
+			});
+
+			void (async () => {
+				await stopTaskSession(taskId, { waitForExit: true });
+				await cleanupTaskWorkspace(taskId);
+			})();
+		},
+		[cleanupTaskWorkspace, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
+	);
+
 	const handleCancelTrashWarning = useCallback(() => {
 		// When the user clicks confirm, Radix AlertDialog fires onOpenChange(false) which triggers
 		// this cancel handler with a stale closure (React state hasn't re-rendered yet). The ref
@@ -962,6 +1004,7 @@ export function useBoardInteractions({
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleHardDeleteTrashTask,
 		handleRestartTaskSession,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
