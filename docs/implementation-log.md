@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix diff tab badge false positive when worktree is only behind base (2026-04-09)
+
+**Problem**: The blue "unmerged changes" notification badge on the Changes toolbar tab appeared when a task worktree was behind its base ref (i.e. `main` had advanced), even though the worktree itself had no new code changes to land. This was distinct from the earlier cache-staleness fix (commit `9d4eb8c9`) — even with correct cache invalidation, the underlying diff command produced a false positive.
+
+**Root cause**: The unmerged-changes check used `git diff --quiet baseRef HEAD` (two-dot), which is a symmetric tree comparison. It flags any difference between the two trees — including changes on the baseRef side that the worktree hasn't merged yet. For a worktree that's only behind (baseRef advanced, no worktree commits), the two trees differ and the check incorrectly reports unmerged changes.
+
+**Fix**: Changed to three-dot diff syntax: `git diff --quiet baseRef...HEAD`. Three-dot diff compares HEAD against the merge-base of baseRef and HEAD, so it only detects changes the worktree introduced since diverging. A worktree that's only behind (no new commits) produces an empty diff and `hasUnmergedChanges` stays false.
+
+**Files**: `src/server/workspace-metadata-monitor.ts` (line 278 — `pathInfo.baseRef, "HEAD"` → `` `${pathInfo.baseRef}...HEAD` ``)
+
+**Commit**: `87639770`
+
 ## Scope bar, branch selector, and context-aware file browser (2026-04-09)
 
 **Problem**: The Files tab in the detail view was hard-coded to show the focused task's worktree. Users had no way to browse the home repo's files, view a different branch's contents, or switch a worktree's checked-out branch from the UI.
