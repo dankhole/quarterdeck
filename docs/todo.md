@@ -158,34 +158,30 @@ Research and implementation plan at [docs/research/2026-04-07-interactive-diff-b
 
 Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #6 (project switcher) and should ship independently without requiring the full project panel redesign.
 
-## 17. Investigate exactly what trashing and hard deleting a task does
+## 17. Fix: notification beep count wrong for rapid state transitions
 
-Document the full code path for both trash and hard delete. What board state changes? What git operations happen (worktree removal, branch deletion, patch capture)? What about sessions — are they killed, and is any state preserved? Does auto-trash on restart (#11) follow the same path as manual trash? Build a clear picture of the current behavior before deciding what should change.
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #18 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
 
-## 18. Fix: notification beep count wrong for rapid state transitions
-
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #19 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
-
-## 19. Fix: audible notification double-beep and missed cues
+## 18. Fix: audible notification double-beep and missed cues
 
 Two related bugs with the notification audio system:
 - Sometimes getting a double beep when only one should fire
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 20. Fix: project view task state indicators not staying up to date
+## 19. Fix: project view task state indicators not staying up to date
 
 The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
 
-## 21. Add markdown renderer
+## 20. Add markdown renderer
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 22. Reorder settings menu
+## 21. Reorder settings menu
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 23. Archive stale docs (recurring)
+## 22. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
