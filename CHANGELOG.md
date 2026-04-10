@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: always open to agent view when selecting a task from home
+
+- Clicking a task card from the home board now always opens the agent terminal view instead of restoring the last active tab (which could be the file browser). Task-to-task switching still preserves the current tab.
+
 ### Fix: file browser folders start collapsed by default
 
 - The file browser tree panel no longer auto-expands directories two levels deep on load. All folders start collapsed, reducing visual noise when opening the Files tab.

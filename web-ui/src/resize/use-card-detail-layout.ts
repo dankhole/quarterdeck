@@ -145,19 +145,15 @@ export function useCardDetailLayout({
 	const activeTabRef = useRef(activeTab);
 	activeTabRef.current = activeTab;
 
-	const lastTaskTabRef = useRef(lastTaskTab);
-	lastTaskTabRef.current = lastTaskTab;
-
 	useEffect(() => {
 		const currentTab = activeTabRef.current;
-		const currentLastTaskTab = lastTaskTabRef.current;
 
 		if (selectedTaskId) {
-			// Task selected: switch to last task tab (opens panel if collapsed or on home)
+			// Task selected from home/collapsed: always open to agent view (panel collapsed, terminal full-width).
+			// Task-to-task switch: stay on the current tab.
 			if (currentTab === "home" || currentTab === null) {
-				setActiveTab(currentLastTaskTab);
+				setActiveTab(null);
 			}
-			// If already on a task-tied tab, stay there (task-to-task switch)
 		} else {
 			// Task deselected: switch to home, but only if currently on a task-only tab.
 			// Files tab works without a task (home context), so stay on it.
