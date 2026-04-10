@@ -1,5 +1,9 @@
 import { toast } from "sonner";
 
+import { createClientLogger } from "@/utils/client-logger";
+
+const log = createClientLogger("toast");
+
 interface AppToastProps {
 	intent?: "danger" | "warning" | "success" | "primary" | "none";
 	icon?: string;
@@ -33,6 +37,7 @@ export function notifyError(message: string | null | undefined, options?: Notify
 	if (!normalized) {
 		return;
 	}
+	log.error(normalized);
 	showAppToast(
 		{
 			intent: "danger",

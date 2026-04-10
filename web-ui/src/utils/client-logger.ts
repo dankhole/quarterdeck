@@ -10,6 +10,7 @@
  */
 
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
+import { setIsEmitting } from "@/utils/global-error-capture";
 
 type DebugLogLevel = RuntimeDebugLogEntry["level"];
 
@@ -50,10 +51,20 @@ function emit(level: DebugLogLevel, tag: string, message: string, data: unknown)
 	}
 
 	const prefix = `[${tag}]`;
-	if (data !== undefined) {
-		console[level](prefix, message, data);
-	} else {
-		console[level](prefix, message);
+	// Suppress global-error-capture's console intercept while we call console[level].
+	// Without this, our console.error/warn call would be re-captured by the patched
+	// console method, producing a duplicate "console"-tagged entry alongside the
+	// properly tagged entry from addEntryCallback below. See global-error-capture.ts
+	// header comment for the full coupling explanation.
+	setIsEmitting(true);
+	try {
+		if (data !== undefined) {
+			console[level](prefix, message, data);
+		} else {
+			console[level](prefix, message);
+		}
+	} finally {
+		setIsEmitting(false);
 	}
 
 	addEntryCallback?.(level, tag, message, data);

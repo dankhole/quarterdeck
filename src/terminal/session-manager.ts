@@ -309,12 +309,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 	}
 
-	async getRestoreSnapshot(taskId: string, targetCols?: number, targetRows?: number) {
+	async getRestoreSnapshot(taskId: string) {
 		const entry = this.entries.get(taskId);
 		if (!entry?.terminalStateMirror) {
 			return null;
 		}
-		return await entry.terminalStateMirror.getSnapshot(targetCols, targetRows);
+		return await entry.terminalStateMirror.getSnapshot();
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {

@@ -1497,11 +1497,14 @@ export default function App(): ReactElement {
 							levelFilter={debugLogging.levelFilter}
 							sourceFilter={debugLogging.sourceFilter}
 							searchText={debugLogging.searchText}
+							showConsoleCapture={debugLogging.showConsoleCapture}
 							onSetLevelFilter={debugLogging.setLevelFilter}
 							onSetSourceFilter={debugLogging.setSourceFilter}
 							onSetSearchText={debugLogging.setSearchText}
+							onSetShowConsoleCapture={debugLogging.setShowConsoleCapture}
 							onClear={debugLogging.clearLogEntries}
 							onClose={debugLogging.closeDebugLogPanel}
+							onStopLogging={debugLogging.stopLogging}
 						/>
 					) : null}
 					<RuntimeSettingsDialog

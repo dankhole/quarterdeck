@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { setDebugLogging } from "@/runtime/runtime-config-query";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
 import { registerClientLogCallback, setClientLoggingEnabled } from "@/utils/client-logger";
+import { setGlobalErrorCallback } from "@/utils/global-error-capture";
 
 export type DebugLogLevelFilter = "all" | "debug" | "info" | "warn" | "error";
 export type DebugLogSourceFilter = "all" | "server" | "client";
@@ -15,15 +16,18 @@ export interface UseDebugLoggingResult {
 	levelFilter: DebugLogLevelFilter;
 	sourceFilter: DebugLogSourceFilter;
 	searchText: string;
+	showConsoleCapture: boolean;
 	isToggling: boolean;
 	toggleDebugLogging: () => void;
 	openDebugLogPanel: () => void;
 	closeDebugLogPanel: () => void;
 	toggleDebugLogPanel: () => void;
+	stopLogging: () => void;
 	clearLogEntries: () => void;
 	setLevelFilter: (level: DebugLogLevelFilter) => void;
 	setSourceFilter: (source: DebugLogSourceFilter) => void;
 	setSearchText: (text: string) => void;
+	setShowConsoleCapture: (show: boolean) => void;
 	addClientLogEntry: (level: RuntimeDebugLogEntry["level"], tag: string, message: string, data?: unknown) => void;
 }
 
@@ -44,6 +48,9 @@ export function useDebugLogging({
 	const [levelFilter, setLevelFilter] = useState<DebugLogLevelFilter>("all");
 	const [sourceFilter, setSourceFilter] = useState<DebugLogSourceFilter>("all");
 	const [searchText, setSearchText] = useState("");
+	// Console-intercepted entries (React dev warnings, library noise, etc.) are hidden
+	// by default. Users opt in via the "Show console" toggle in the filter bar.
+	const [showConsoleCapture, setShowConsoleCapture] = useState(false);
 	const [isToggling, setIsToggling] = useState(false);
 	const [clientEntries, setClientEntries] = useState<RuntimeDebugLogEntry[]>([]);
 	const [clearedAt, setClearedAt] = useState(0);
@@ -57,6 +64,9 @@ export function useDebugLogging({
 
 	const filteredEntries = useMemo(() => {
 		let entries = allEntries;
+		if (!showConsoleCapture) {
+			entries = entries.filter((e) => e.tag !== "console");
+		}
 		if (levelFilter !== "all") {
 			const minOrder = LEVEL_ORDER[levelFilter] ?? 0;
 			entries = entries.filter((e) => (LEVEL_ORDER[e.level] ?? 0) >= minOrder);
@@ -74,7 +84,7 @@ export function useDebugLogging({
 			);
 		}
 		return entries;
-	}, [allEntries, levelFilter, sourceFilter, searchText]);
+	}, [allEntries, showConsoleCapture, levelFilter, sourceFilter, searchText]);
 
 	const toggleDebugLogging = useCallback(() => {
 		if (isToggling) return;
@@ -97,6 +107,22 @@ export function useDebugLogging({
 	}, [currentProjectId, debugLoggingEnabled, isToggling]);
 
 	const closeDebugLogPanel = useCallback(() => setIsDebugLogPanelOpen(false), []);
+
+	/** Disable server-side logging and close the panel. */
+	const stopLogging = useCallback(() => {
+		setIsDebugLogPanelOpen(false);
+		// Immediately disable client-side capture so entries don't accumulate
+		// during the server round-trip.
+		setClientLoggingEnabled(false);
+		registerClientLogCallback(null);
+		setGlobalErrorCallback(null);
+		if (debugLoggingEnabled && !isToggling) {
+			setIsToggling(true);
+			void setDebugLogging(currentProjectId, false)
+				.catch(() => {})
+				.finally(() => setIsToggling(false));
+		}
+	}, [currentProjectId, debugLoggingEnabled, isToggling]);
 
 	const toggleDebugLogPanel = useCallback(() => {
 		setIsDebugLogPanelOpen((open) => {
@@ -137,11 +163,14 @@ export function useDebugLogging({
 		setClientLoggingEnabled(debugLoggingEnabled);
 		if (debugLoggingEnabled) {
 			registerClientLogCallback(addClientLogEntry);
+			setGlobalErrorCallback(addClientLogEntry);
 		} else {
 			registerClientLogCallback(null);
+			setGlobalErrorCallback(null);
 		}
 		return () => {
 			registerClientLogCallback(null);
+			setGlobalErrorCallback(null);
 			setClientLoggingEnabled(false);
 		};
 	}, [debugLoggingEnabled, addClientLogEntry]);
@@ -154,15 +183,18 @@ export function useDebugLogging({
 		levelFilter,
 		sourceFilter,
 		searchText,
+		showConsoleCapture,
 		isToggling,
 		toggleDebugLogging,
 		openDebugLogPanel,
 		closeDebugLogPanel,
 		toggleDebugLogPanel,
+		stopLogging,
 		clearLogEntries,
 		setLevelFilter,
 		setSourceFilter,
 		setSearchText,
+		setShowConsoleCapture,
 		addClientLogEntry,
 	};
 }
