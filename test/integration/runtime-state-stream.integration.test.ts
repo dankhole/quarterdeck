@@ -936,11 +936,11 @@ describe.sequential("runtime state stream integration", () => {
 			const board = createReviewBoard(taskId, "Metadata stream task", trashTaskId);
 			const reviewColumn = board.columns.find((column) => column.id === "review");
 			const trashColumn = board.columns.find((column) => column.id === "trash");
-			if (!reviewColumn || !reviewColumn.cards[0]) {
+			if (!reviewColumn?.cards[0]) {
 				throw new Error("Expected seeded review card.");
 			}
 			reviewColumn.cards[0].baseRef = baseRef;
-			if (!trashColumn || !trashColumn.cards[0]) {
+			if (!trashColumn?.cards[0]) {
 				throw new Error("Expected seeded trash card.");
 			}
 			trashColumn.cards[0].baseRef = baseRef;
@@ -1056,7 +1056,7 @@ describe.sequential("runtime state stream integration", () => {
 			const taskId = "preserve-worktree-task";
 			const board = createBoard("Preserve existing worktree");
 			const backlogColumn = board.columns.find((column) => column.id === "backlog");
-			if (!backlogColumn || !backlogColumn.cards[0]) {
+			if (!backlogColumn?.cards[0]) {
 				throw new Error("Expected a backlog card for seed board.");
 			}
 			backlogColumn.cards[0].id = taskId;

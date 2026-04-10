@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Error boundary & disconnection UX
+
+- When the server shuts down, the UI now shows a clean "Disconnected from Quarterdeck" card instead of a confusing minified React error — a module-level flag tracks WebSocket state outside React so the error boundary can detect disconnection synchronously.
+- Upgraded the disconnection fallback to a polished card with an Unplug icon, clear messaging, and a Reload button (consistent with the error boundary card style).
+- Fixed 3 pre-existing lint warnings (optional chain) in the integration test.
+
 ### Dual-selection sidebar rework
 
 - Split the sidebar toolbar from a single tab into two independent dimensions: **main view** (Home, Terminal, Files) above a divider, and **sidebar** (Projects, Board, Changes) below — each with its own active highlight style (filled bg vs left-border accent).

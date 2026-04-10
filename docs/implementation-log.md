@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Error boundary disconnection detection (2026-04-10)
+
+When the Quarterdeck server shuts down, two things happen simultaneously: the WebSocket `onclose` fires (dispatching a React state update) and components depending on server data throw during their next render cycle. The `AppErrorBoundary` (wrapping the entire tree in `main.tsx`) caught those render errors before `isRuntimeDisconnected` state propagated to the check in `App.tsx`, so users saw a confusing minified React error #300 instead of the clean "Disconnected from Quarterdeck" fallback.
+
+**Fix**: A module-level boolean flag (`runtime-connection-state.ts`) is set synchronously in the WebSocket `onclose`/`onerror` handlers, before any React re-render. The `AppErrorFallback` component checks `isRuntimeDisconnected()` first — if true, it renders `RuntimeDisconnectedFallback` instead of the generic crash card. The flag is cleared on `onopen` so reconnection works correctly.
+
+Also upgraded `RuntimeDisconnectedFallback` from plain centered text to a polished card (rounded border, `Unplug` icon, descriptive message, Reload button) matching the error boundary's card style. Both the error-boundary path and the `App.tsx` state-check path now share the same component.
+
+Files touched: `web-ui/src/runtime/runtime-connection-state.ts` (new), `web-ui/src/runtime/use-runtime-state-stream.ts`, `web-ui/src/components/app-error-boundary.tsx`, `web-ui/src/hooks/runtime-disconnected-fallback.tsx`, `test/integration/runtime-state-stream.integration.test.ts`.
+
+Commit: `90835014`.
+
 ## Dual-selection sidebar rework (2026-04-10)
 
 Split the sidebar toolbar from a single `SidebarTabId` state into two independent dimensions: `mainView` ("home" | "terminal" | "files") and `sidebar` ("projects" | "task_column" | "changes" | null). The toolbar is visually split by a divider — main view buttons above with filled-bg highlight, sidebar buttons below with left-border accent highlight.

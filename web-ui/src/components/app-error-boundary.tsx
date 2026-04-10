@@ -2,8 +2,14 @@ import { RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 import { Component, type ErrorInfo, type ReactElement, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { isRuntimeDisconnected } from "@/runtime/runtime-connection-state";
 
 function AppErrorFallback({ error, resetError }: { error: unknown; resetError: () => void }): ReactElement {
+	if (isRuntimeDisconnected()) {
+		return <RuntimeDisconnectedFallback />;
+	}
+
 	const message = error instanceof Error ? error.message : "Quarterdeck hit an unexpected UI error.";
 
 	return (
