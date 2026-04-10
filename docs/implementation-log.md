@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: terminal restore snapshot wraps at stale dimensions on reconnect (2026-04-10)
+
+When a browser reconnects to a resumed agent session, the `TerminalStateMirror` (headless xterm.js instance) serialized its snapshot at whatever column width it was last set to. The browser wrote the snapshot at those stale dimensions, then resized to fit its container — but xterm.js doesn't reflow serialized restore content after writing.
+
+**Root cause**: The control WebSocket restore flow takes the snapshot immediately when the socket connects, before the browser has reported its current dimensions. The browser's geometry is only sent after the restore completes (via the resize message in the `restore_complete` handler).
+
+**Fix**: Pass the browser's current terminal geometry as `cols`/`rows` query parameters on the control WebSocket URL. The backend reads these, resizes the headless mirror to match before serializing, and sends the snapshot already formatted for the browser's actual width.
+
+**Caveat**: The mirror resize in `getSnapshot` is permanent — between the snapshot and the browser's follow-up resize message (milliseconds later), the mirror and PTY dimensions are briefly out of sync. This is identical to the transient mismatch during any normal resize and is documented in code comments.
+
+**Files**: `src/terminal/terminal-state-mirror.ts` (resize before serialize), `src/terminal/terminal-session-service.ts` (interface), `src/terminal/session-manager.ts` (forwarding), `src/terminal/ws-server.ts` (URL parsing + passthrough), `web-ui/src/terminal/persistent-terminal-manager.ts` (send geometry in URL)
+
+**Commit**: 5ddcd88a
+
 ## Fix: prevent orphaned processes when parent exits without signaling (2026-04-10)
 
 Addresses todo #5. Four zombie processes from `.cline/worktrees/` were found running days after their parent tasks ended (see `docs/research/2026-04-08-orphaned-process-investigation.md`). Three root causes identified and fixed:

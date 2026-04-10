@@ -58,7 +58,21 @@ export class TerminalStateMirror {
 		});
 	}
 
-	async getSnapshot(): Promise<TerminalRestoreSnapshot | null> {
+	// When targetCols/targetRows are provided, the mirror is resized before serializing so the
+	// headless xterm instance reflows content to the caller's dimensions. This resize is permanent —
+	// until the browser sends a follow-up resize message (which arrives right after restore_complete),
+	// the mirror and PTY dimensions are briefly out of sync. Any agent output during that window is
+	// captured at the new mirror width while the PTY still reports the old $COLUMNS. In practice this
+	// gap is milliseconds and identical to the transient mismatch during any normal resize.
+	async getSnapshot(targetCols?: number, targetRows?: number): Promise<TerminalRestoreSnapshot | null> {
+		if (this.disposed) {
+			return null;
+		}
+		if (targetCols && targetRows && (targetCols !== this.terminal.cols || targetRows !== this.terminal.rows)) {
+			this.enqueueOperation(() => {
+				this.terminal.resize(targetCols, targetRows);
+			});
+		}
 		await this.operationQueue;
 		if (this.disposed) {
 			return null;
