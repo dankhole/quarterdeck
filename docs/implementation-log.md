@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: always open to agent view when selecting a task from home (2026-04-10)
+
+**Problem**: Clicking a task card from the home board restored the last active task tab from localStorage (`lastTaskTab`). If the user's last tab was "files," the file browser would open instead of the agent terminal — unintuitive when you want to see agent output first.
+
+**Fix**: In the `useCardDetailLayout` effect that auto-switches tabs on task selection, changed the `currentTab === "home" || currentTab === null` branch to always set `activeTab` to `null` (collapsed side panel, agent terminal full-width) instead of restoring `lastTaskTab`. Task-to-task switching is unaffected — it stays on whatever tab was already open. Removed the now-unused `lastTaskTabRef`.
+
+**Files**: `web-ui/src/resize/use-card-detail-layout.ts`
+
+**Commit**: `329a66c0`
+
 ## Fix: file browser folders start collapsed by default (2026-04-10)
 
 **Problem**: The file browser tree panel auto-expanded directories to depth 2 on initial load, which was noisy for worktrees with many top-level directories.
