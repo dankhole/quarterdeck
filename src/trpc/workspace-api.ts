@@ -17,7 +17,6 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
-import { findCardInBoard } from "../core/task-board-mutations";
 import { loadWorkspaceState, saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { generateTaskTitle } from "../title/title-generator";
@@ -35,10 +34,9 @@ import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
-	getTaskWorkingDirectory,
 	getTaskWorkspaceInfo,
-	pathExists,
-	resolveTaskCwd,
+	isMissingTaskWorktreeError,
+	resolveTaskWorkingDirectory,
 } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
 
@@ -173,44 +171,6 @@ function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardRe
 	};
 }
 
-async function resolveTaskWorkingDirectory(
-	workspacePath: string,
-	taskScope: { taskId: string; baseRef: string },
-): Promise<string> {
-	const state = await loadWorkspaceState(workspacePath);
-	const persisted = getTaskWorkingDirectory(state.board, taskScope.taskId);
-	if (persisted && (await pathExists(persisted))) return resolve(persisted);
-
-	// Fallback for tasks started before workingDirectory was persisted.
-	try {
-		return resolve(
-			await resolveTaskCwd({
-				cwd: workspacePath,
-				taskId: taskScope.taskId,
-				baseRef: taskScope.baseRef,
-				ensure: false,
-			}),
-		);
-	} catch (error) {
-		// Legacy non-worktree tasks (useWorktree === false) have no persisted
-		// workingDirectory and no worktree on disk. They use the workspace path.
-		if (isMissingTaskWorktreeError(error)) {
-			const card = findCardInBoard(state.board, taskScope.taskId);
-			if (card && card.useWorktree === false) {
-				return resolve(workspacePath);
-			}
-		}
-		throw error;
-	}
-}
-
-function isMissingTaskWorktreeError(error: unknown): boolean {
-	if (!(error instanceof Error)) {
-		return false;
-	}
-	return error.message.startsWith("Task worktree not found for task ");
-}
-
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
 	return {
 		loadGitSummary: async (workspaceScope, input) => {
@@ -218,7 +178,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
 				let summaryCwd = workspaceScope.workspacePath;
 				if (taskScope) {
-					summaryCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+					summaryCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
 				}
 				const summary = await getGitSyncSummary(summaryCwd);
 				return {
@@ -245,7 +208,8 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 				// Task-scoped checkout: resolve task worktree and checkout there
 				if (input.taskId) {
-					const taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, {
+					const taskCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
 						taskId: input.taskId,
 						baseRef: input.baseRef ?? "",
 					});
@@ -296,7 +260,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
 				let discardCwd = workspaceScope.workspacePath;
 				if (taskScope) {
-					discardCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+					discardCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
 					// Block discard for non-worktree tasks to avoid destroying shared checkout state.
 					if (resolve(discardCwd) === resolve(workspaceScope.workspacePath)) {
 						return createEmptyGitDiscardErrorResponse(
@@ -322,7 +289,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {
-				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+				taskCwd = await resolveTaskWorkingDirectory({
+					workspacePath: workspaceScope.workspacePath,
+					...normalizedInput,
+				});
 			} catch (error) {
 				if (isMissingTaskWorktreeError(error)) {
 					return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
@@ -412,7 +382,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 				let taskCwd: string;
 				try {
-					taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+					taskCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...normalizedInput,
+					});
 				} catch (error) {
 					if (!isMissingTaskWorktreeError(error)) {
 						throw error;
@@ -427,7 +400,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {
-				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+				taskCwd = await resolveTaskWorkingDirectory({
+					workspacePath: workspaceScope.workspacePath,
+					...normalizedInput,
+				});
 			} catch (error) {
 				if (!isMissingTaskWorktreeError(error)) {
 					throw error;
@@ -450,7 +426,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				}
 				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 				try {
-					return await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+					return await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...normalizedInput,
+					});
 				} catch (error) {
 					if (isMissingTaskWorktreeError(error)) {
 						return null;
@@ -561,7 +540,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
 			let logCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				logCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+				logCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
 			}
 			return await getGitLog({
 				cwd: logCwd,
@@ -575,7 +554,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input ?? null);
 			let refsCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				refsCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+				refsCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
 			}
 			return await getGitRefs(refsCwd);
 		},
@@ -583,7 +562,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
 			let diffCwd = workspaceScope.workspacePath;
 			if (taskScope) {
-				diffCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, taskScope);
+				diffCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
 			}
 			return await getCommitDiff({
 				cwd: diffCwd,

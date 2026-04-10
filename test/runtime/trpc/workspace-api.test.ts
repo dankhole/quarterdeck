@@ -4,6 +4,10 @@ import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesResponse } from 
 
 const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
+	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
+	isMissingTaskWorktreeError: vi.fn(
+		(error: unknown) => error instanceof Error && error.message.startsWith("Task worktree not found for task "),
+	),
 	getTaskWorkingDirectory: vi.fn((): string | null => null),
 	deleteTaskWorktree: vi.fn(),
 }));
@@ -34,6 +38,8 @@ vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskWorkspaceInfo: vi.fn(),
 	resolveTaskCwd: workspaceTaskWorktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory,
+	isMissingTaskWorktreeError: workspaceTaskWorktreeMocks.isMissingTaskWorktreeError,
 	getTaskWorkingDirectory: workspaceTaskWorktreeMocks.getTaskWorkingDirectory,
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
@@ -113,17 +119,16 @@ function createChangesResponse(): RuntimeWorkspaceChangesResponse {
 describe("createWorkspaceApi loadChanges", () => {
 	beforeEach(() => {
 		workspaceTaskWorktreeMocks.resolveTaskCwd.mockReset();
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReset();
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		workspaceStateMocks.loadWorkspaceState.mockReset();
 		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockReset();
 		workspaceChangesMocks.getWorkspaceChanges.mockReset();
 		workspaceChangesMocks.getWorkspaceChangesBetweenRefs.mockReset();
 		workspaceChangesMocks.getWorkspaceChangesFromRef.mockReset();
 
-		// Default: persisted workingDirectory resolves to /tmp/worktree.
+		// Default: resolveTaskWorkingDirectory resolves to /tmp/worktree.
 		workspaceStateMocks.loadWorkspaceState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue("/tmp/worktree");
-		workspaceTaskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/worktree");
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(createChangesResponse());
 		workspaceChangesMocks.getWorkspaceChanges.mockResolvedValue(createChangesResponse());
 		workspaceChangesMocks.getWorkspaceChangesBetweenRefs.mockResolvedValue(createChangesResponse());
@@ -231,8 +236,7 @@ describe("createWorkspaceApi loadChanges", () => {
 
 	it("returns an empty diff when the task worktree does not exist yet", async () => {
 		// No persisted workingDirectory, and worktree doesn't exist on disk.
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue(null);
-		workspaceTaskWorktreeMocks.resolveTaskCwd.mockRejectedValue(
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
 			new Error('Task worktree not found for task "task-1".'),
 		);
 
@@ -285,7 +289,7 @@ const defaultScope = {
 
 describe("createWorkspaceApi discardGitChanges", () => {
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReset();
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		workspaceStateMocks.loadWorkspaceState.mockReset();
 		gitSyncMocks.discardGitChanges.mockReset();
 
@@ -293,7 +297,7 @@ describe("createWorkspaceApi discardGitChanges", () => {
 	});
 
 	it("blocks discard when task CWD resolves to the shared workspace path", async () => {
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue("/tmp/repo");
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
 
 		const api = createWorkspaceApi(createWorkspaceDeps());
 
@@ -308,7 +312,7 @@ describe("createWorkspaceApi discardGitChanges", () => {
 	});
 
 	it("allows discard when task CWD differs from workspace path", async () => {
-		workspaceTaskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue("/tmp/worktree");
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.discardGitChanges.mockResolvedValue({
 			ok: true,
 			summary: {

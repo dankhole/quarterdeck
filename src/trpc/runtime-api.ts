@@ -7,6 +7,7 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
+import { buildRuntimeConfigResponse, resolveAgentCommand } from "../config/agent-registry";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type { RuntimeCommandRunResponse } from "../core/api-contract";
@@ -23,16 +24,15 @@ import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
 import { loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
-import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
 	applyTaskPatch,
 	captureTaskPatch,
 	ensureTaskWorktreeIfDoesntExist,
 	findTaskPatch,
-	getTaskWorkingDirectory,
 	pathExists,
 	resolveTaskCwd,
+	resolveTaskWorkingDirectory,
 } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
@@ -269,20 +269,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const shell = deps.resolveInteractiveShellCommand();
 				let shellCwd = workspaceScope.workspacePath;
 				if (body.workspaceTaskId) {
-					const state = await loadWorkspaceState(workspaceScope.workspacePath);
-					const persisted = getTaskWorkingDirectory(state.board, body.workspaceTaskId);
-					const persistedExists = persisted !== null && (await pathExists(persisted));
-					if (persistedExists) {
-						shellCwd = resolve(persisted);
-					} else {
-						// Fallback for tasks started before workingDirectory was persisted.
-						shellCwd = await resolveTaskCwd({
-							cwd: workspaceScope.workspacePath,
-							taskId: body.workspaceTaskId,
-							baseRef: body.baseRef,
-							ensure: true,
-						});
-					}
+					shellCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: body.workspaceTaskId,
+						baseRef: body.baseRef,
+						ensure: true,
+					});
 				}
 				const summary = await terminalManager.startShellSession({
 					taskId: body.taskId,

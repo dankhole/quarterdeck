@@ -181,7 +181,15 @@ Add a markdown renderer for viewing `.md` files in the file browser / file viewe
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 22. Archive stale docs (recurring)
+## 22. Decouple session summary dual-sourcing between terminal and state layers
+
+The terminal layer (`TerminalSessionManager`) owns session summaries in memory, but the state/persistence layer reads them back via `listSummaries()` to persist. This creates a one-directional but tight coupling between 7 files. The TRPC layer also makes direct mutation calls into the terminal layer (10+ methods on the public surface).
+
+**Context**: Research doc at [docs/research/2026-04-10-session-summary-dual-sourcing.md](research/2026-04-10-session-summary-dual-sourcing.md) covers the full data flow, files involved, and three decoupling options.
+
+**Recommendation**: If the Go rewrite (#1) happens soon, design the session store correctly from the start — the current coupling maps cleanly to a Go interface. If TypeScript needs to live longer, extract a `SessionSummaryStore` service (~2-3 days).
+
+## 23. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
