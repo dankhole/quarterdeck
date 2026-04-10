@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { buildStatuslineCommand } from "../commands/statusline";
 import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
@@ -36,6 +37,7 @@ export interface AgentAdapterLaunchInput {
 	resumeConversation?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	statuslineEnabled?: boolean;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -555,6 +557,12 @@ const claudeAdapter: AgentSessionAdapter = {
 						},
 					],
 				},
+				...(input.statuslineEnabled !== false && {
+					statusLine: {
+						type: "command",
+						command: buildStatuslineCommand(),
+					},
+				}),
 			};
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);

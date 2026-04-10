@@ -10,7 +10,7 @@ import {
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
 export type TaskTabId = "task_column" | "changes" | "files";
-export type SidebarTabId = "home" | TaskTabId;
+export type SidebarTabId = "home" | "projects" | TaskTabId;
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -49,6 +49,7 @@ export function loadActiveTab(): SidebarTabId | null {
 	// Migration: "quarterdeck" was the old Task Column panel ID — map to "home"
 	// so existing users land on the Home tab after upgrade.
 	if (stored === "quarterdeck" || stored === "home") return "home";
+	if (stored === "projects") return "projects";
 	if (stored === "task_column" || stored === "changes" || stored === "files") return stored;
 	if (stored === "") return null; // panel was collapsed
 	return "home"; // default for new installs
@@ -129,6 +130,11 @@ export function useCardDetailLayout({
 				callbacks?.setSelectedTaskId?.(null);
 				return;
 			}
+			if (tab === "projects") {
+				// Open project sidebar without deselecting the current task
+				setActiveTab("projects");
+				return;
+			}
 			// Task-tied tab
 			setActiveTab(tab);
 			setLastTaskTab(tab);
@@ -160,9 +166,9 @@ export function useCardDetailLayout({
 			}
 		} else {
 			// Task deselected: switch to home, but only if currently on a task-only tab.
-			// Files tab works without a task (home context), so stay on it.
+			// Files and Projects tabs work without a task, so stay on them.
 			// If activeTab is null (panel collapsed), stay collapsed.
-			if (currentTab !== null && currentTab !== "home" && currentTab !== "files") {
+			if (currentTab !== null && currentTab !== "home" && currentTab !== "projects" && currentTab !== "files") {
 				setActiveTab("home");
 			}
 		}

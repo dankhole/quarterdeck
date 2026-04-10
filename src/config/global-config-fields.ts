@@ -90,6 +90,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	focusedTaskPollMs: pollField(2_000),
 	backgroundTaskPollMs: pollField(5_000),
 	homeRepoPollMs: pollField(10_000),
+	statuslineEnabled: boolField(true),
 } as const;
 
 // --- Derived types ---

@@ -107,6 +107,7 @@ import {
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
+import { isApprovalState } from "@/utils/session-status";
 
 /**
  * Bridge component that connects `useCardDetailLayout`'s reset callback to the
@@ -1106,6 +1107,12 @@ export default function App(): ReactElement {
 
 	const homeSidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
 
+	// notificationSessions is seeded from the current project only on initial load;
+	// cross-project entries arrive incrementally via task_notification messages after page load.
+	const projectsBadgeColor: "orange" | undefined = Object.values(notificationSessions).some(isApprovalState)
+		? "orange"
+		: undefined;
+
 	const topBar = (
 		<TopBar
 			onBack={selectedCard ? handleBack : undefined}
@@ -1197,10 +1204,11 @@ export default function App(): ReactElement {
 										? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0
 										: false
 								}
+								projectsBadgeColor={projectsBadgeColor}
 							/>
 
-							{/* Home side panel — project nav */}
-							{activeTab === "home" ? (
+							{/* Home / Projects side panel — project nav */}
+							{activeTab === "home" || activeTab === "projects" ? (
 								<>
 									<div
 										style={{

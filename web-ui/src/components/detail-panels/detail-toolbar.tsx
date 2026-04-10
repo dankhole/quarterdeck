@@ -1,4 +1,4 @@
-import { FolderOpen, GitCompareArrows, House, LayoutGrid } from "lucide-react";
+import { FolderKanban, FolderOpen, GitCompareArrows, House, LayoutGrid } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { SidebarTabId } from "@/resize/use-card-detail-layout";
@@ -12,6 +12,7 @@ interface DetailToolbarProps {
 	hasUncommittedChanges?: boolean;
 	hasUnmergedChanges?: boolean;
 	isBehindBase?: boolean;
+	projectsBadgeColor?: "orange";
 }
 
 function ToolbarButton({
@@ -28,7 +29,7 @@ function ToolbarButton({
 	onTabChange: (tab: SidebarTabId) => void;
 	icon: React.ReactElement;
 	label: string;
-	badgeColor?: "red" | "blue";
+	badgeColor?: "red" | "blue" | "orange";
 	disabled?: boolean;
 }): React.ReactElement {
 	const isActive = visualActiveTab === tabId;
@@ -53,7 +54,11 @@ function ToolbarButton({
 					<span
 						className={cn(
 							"absolute top-1 right-1 w-2 h-2 rounded-full",
-							badgeColor === "red" ? "bg-status-red" : "bg-status-blue",
+							badgeColor === "red"
+								? "bg-status-red"
+								: badgeColor === "orange"
+									? "bg-status-orange"
+									: "bg-status-blue",
 						)}
 					/>
 				) : null}
@@ -71,6 +76,7 @@ export function DetailToolbar({
 	hasUncommittedChanges,
 	hasUnmergedChanges,
 	isBehindBase,
+	projectsBadgeColor,
 }: DetailToolbarProps): React.ReactElement {
 	const changesBadgeColor: "red" | "blue" | undefined = hasSelectedTask
 		? hasUncommittedChanges
@@ -101,7 +107,17 @@ export function DetailToolbar({
 				label="Home"
 			/>
 
-			{/* Divider between Home and task-tied tabs */}
+			{/* Projects — always enabled */}
+			<ToolbarButton
+				tabId="projects"
+				visualActiveTab={visualActiveTab}
+				onTabChange={onTabChange}
+				icon={<FolderKanban size={18} />}
+				label="Projects"
+				badgeColor={projectsBadgeColor}
+			/>
+
+			{/* Divider between global and task-tied tabs */}
 			<div className="w-5 my-1" style={{ height: 1, background: "var(--color-divider)" }} />
 
 			{/* Task-tied tabs — greyed out when no task selected */}

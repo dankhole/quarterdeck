@@ -5,6 +5,7 @@ import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
 import { registerHooksCommand } from "./commands/hooks";
+import { registerStatuslineCommand } from "./commands/statusline";
 import { registerTaskCommand } from "./commands/task";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
 import type { RuntimeCommandRunResponse } from "./core/api-contract";
@@ -586,6 +587,7 @@ function createProgram(invocationArgs: string[]): Command {
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
+	registerStatuslineCommand(program);
 
 	program
 		.command("mcp")

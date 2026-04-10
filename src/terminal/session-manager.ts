@@ -103,6 +103,7 @@ export interface StartTaskSessionRequest {
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
 	workspacePath?: string;
+	statuslineEnabled?: boolean;
 }
 
 export interface StartShellSessionRequest {
@@ -360,6 +361,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			resumeConversation: request.resumeConversation,
 			env: request.env,
 			workspaceId: request.workspaceId,
+			statuslineEnabled: request.statuslineEnabled,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);

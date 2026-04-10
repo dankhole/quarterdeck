@@ -187,6 +187,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,
 					workspacePath: workspaceScope.workspacePath,
+					statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
+					env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 				});
 
 				let nextSummary = summary;
@@ -430,6 +432,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						awaitReview: summary?.state === "awaiting_review",
 						workspaceId: workspaceScope.workspaceId,
 						workspacePath: workspaceScope.workspacePath,
+						statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
+						env: card.baseRef ? { QUARTERDECK_BASE_REF: card.baseRef } : undefined,
 					};
 				};
 

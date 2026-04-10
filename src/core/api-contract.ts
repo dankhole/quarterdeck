@@ -653,6 +653,7 @@ export const runtimeConfigResponseSchema = z.object({
 	focusedTaskPollMs: z.number(),
 	backgroundTaskPollMs: z.number(),
 	homeRepoPollMs: z.number(),
+	statuslineEnabled: z.boolean(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -689,6 +690,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	focusedTaskPollMs: z.number().min(500).max(60000).optional(),
 	backgroundTaskPollMs: z.number().min(500).max(60000).optional(),
 	homeRepoPollMs: z.number().min(500).max(60000).optional(),
+	statuslineEnabled: z.boolean().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 
