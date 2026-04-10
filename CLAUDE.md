@@ -9,6 +9,7 @@ This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kan
 ```bash
 npm run install:all          # Install root + web-ui deps
 npm run dev                  # Runtime server (watch mode, port 3500)
+npm run dev:full             # Both runtime + web UI in one process
 npm run web:dev              # Web UI dev server (Vite HMR, port 4173)
 npm run build                # Full production build
 npm run check                # Biome lint + typecheck + tests

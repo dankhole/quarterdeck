@@ -107,9 +107,12 @@ Add a UI action to land individual task commits (or a squashed commit) from a ta
 
 This is distinct from #14 (committing *within* the task worktree) and #4 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 9. Upstream sync: check kanban project for cherry-pickable fixes
+## 9. Upstream sync: periodic review of cline/kanban (recurring)
 
-Review the upstream [kanban-org/kanban](https://github.com/kanban-org/kanban) project for recent bug fixes and improvements worth cherry-picking or reimplementing. The codebase has diverged significantly so most changes will need reimplementation rather than direct cherry-picks. See [docs/upstream-sync-2026-04-08.md](upstream-sync-2026-04-08.md) for the last sync review.
+Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
+
+**Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
+**Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
 
 ## 10. Audit CI/CD and deployment infrastructure
 
@@ -186,7 +189,7 @@ Add a markdown renderer for viewing `.md` files in the file browser / file viewe
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 24. Archive remaining docs
+## 24. Archive stale docs (recurring)
 
-Read through all leftover docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents.
+Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 

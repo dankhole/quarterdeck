@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Upstream sync tracker, browser nav, onboarding tips, dev:full
+
+- Replaced date-stamped upstream sync doc with a living tracker (`docs/upstream-sync.md`) — covers all 22 upstream commits since fork with Adopted / Backlog / Decided against sections. Made upstream sync and doc archiving recurring items in todo.md.
+- Browser back/forward now works for task detail views — opening a task pushes `?task=<id>` to the URL, so the browser back button closes the detail view. Implemented via new `use-detail-task-navigation.ts` hook.
+- Added "Getting started" onboarding tips in the project sidebar — dismissible with localStorage persistence, Quarterdeck-specific tips about creating tasks, parallel agents, and reviewing changes.
+- Added `npm run dev:full` script (`scripts/dev-full.mjs`) — launches both runtime and web UI dev servers in a single process with prefixed output.
+
 ### Fix: file browser shows deleted files
 
 - The file browser tree and file search no longer show files that were deleted from disk but not yet committed. `git ls-files --cached` still lists them; now cross-referenced with `git status --porcelain=v1` to filter out `D`-status entries.

@@ -51,6 +51,7 @@ import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useDebugLogging } from "@/hooks/use-debug-logging";
 import { useDebugTools } from "@/hooks/use-debug-tools";
+import { useDetailTaskNavigation } from "@/hooks/use-detail-task-navigation";
 import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
@@ -120,7 +121,6 @@ function LayoutResetBridge({ resetToDefaults }: { resetToDefaults: () => void })
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
-	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
@@ -138,13 +138,9 @@ export default function App(): ReactElement {
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
-		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
-	}, []);
-	const handleDeselectTask = useCallback(() => {
-		setSelectedTaskId(null);
 	}, []);
 	const {
 		currentProjectId,
@@ -174,6 +170,14 @@ export default function App(): ReactElement {
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
 	});
+	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({
+		board,
+		currentProjectId,
+		isBoardHydrated: hasReceivedSnapshot,
+	});
+	const handleDeselectTask = useCallback(() => {
+		setSelectedTaskId(null);
+	}, [setSelectedTaskId]);
 	const isDocumentVisible = useDocumentVisibility();
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
@@ -273,13 +277,6 @@ export default function App(): ReactElement {
 			});
 		},
 	});
-
-	const selectedCard = useMemo(() => {
-		if (!selectedTaskId) {
-			return null;
-		}
-		return findCardSelection(board, selectedTaskId);
-	}, [board, selectedTaskId]);
 
 	// Notify the runtime which task is focused so it can prioritize git polling.
 	useEffect(() => {
@@ -721,7 +718,6 @@ export default function App(): ReactElement {
 	}, [isRuntimeDisconnected, streamError]);
 
 	useEffect(() => {
-		setSelectedTaskId(null);
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();
@@ -734,12 +730,6 @@ export default function App(): ReactElement {
 		resetTaskEditorState,
 		resetTerminalPanelsState,
 	]);
-
-	useEffect(() => {
-		if (selectedTaskId && !selectedCard) {
-			setSelectedTaskId(null);
-		}
-	}, [selectedTaskId, selectedCard]);
 
 	useEffect(() => {
 		if (selectedCard) {

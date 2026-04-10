@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Upstream sync tracker, browser nav, onboarding tips, dev:full (2026-04-10)
+
+**Upstream sync tracker**: Replaced `docs/upstream-sync-2026-04-08.md` with a living `docs/upstream-sync.md`. Comprehensively reviewed all 22 upstream cline/kanban commits since fork point (`255e940d`). Categorized into Adopted (5 — incremental diff expand cherry-picked, editable titles / diff mode fix / plan mode / trash restore independently implemented), Backlog (2 — mobile responsive foundations, HTTPS+passcode auth), and Decided against (11 — Cline SDK/billing, color themes, etc.). Updated `docs/todo.md` items #9 and #24 to be recurring.
+
+**Browser back/forward**: Created `web-ui/src/hooks/use-detail-task-navigation.ts` — manages `selectedTaskId` with URL search param `?task=<id>`. Uses `pushState` when opening a task (so browser back closes it), `replaceState` when clearing, and `popstate` listener for back/forward. Replaces raw `useState` + `useMemo` for `selectedTaskId`/`selectedCard` in `App.tsx`. Added `isBoardHydrated` guard to prevent URL task ID from being cleared before the board loads from the server. Added `parseTaskIdFromSearch` and `buildTaskSearchParam` utilities to `app-utils.tsx`.
+
+**Onboarding tips**: Added `OnboardingTips` component in `project-navigation-panel.tsx` — 3 Quarterdeck-specific tips (create tasks, run in parallel, review changes), dismissible with X button, "Show tips" restore link. Uses `useBooleanLocalStorageValue` with new `OnboardingTipsDismissed` localStorage key. Positioned between project list and keyboard shortcuts card.
+
+**Combined dev script**: Created `scripts/dev-full.mjs` — spawns `tsx watch src/cli.ts` and `npm --prefix web-ui run dev` as child processes, prefixes output with `[runtime]`/`[web-ui]`, kills both on exit. Added `dev:full` to `package.json` scripts and `CLAUDE.md` quick reference.
+
+**Files**: `docs/upstream-sync.md` (new), `docs/upstream-sync-2026-04-08.md` (deleted), `docs/todo.md`, `web-ui/src/hooks/use-detail-task-navigation.ts` (new), `web-ui/src/hooks/app-utils.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/project-navigation-panel.tsx`, `web-ui/src/storage/local-storage-store.ts`, `scripts/dev-full.mjs` (new), `package.json`, `CLAUDE.md`, `CHANGELOG.md`
+
+**Commit**: `48049bcb`
+
 ## Fix: file browser shows deleted files (2026-04-10)
 
 **Problem**: The file browser and file search used `git ls-files --cached --others --exclude-standard` to build the file tree. The `--cached` flag lists all files in the git index, which includes files that were deleted from the working tree but not yet committed. Agents that delete files would leave ghost entries in the file browser.
