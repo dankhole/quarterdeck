@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Config field registry — single source of truth for settings (2026-04-10)
+
+**Problem**: Adding a new boolean config setting (like `behindBaseIndicatorEnabled`) required threading the field through ~12 files and ~44 individual code locations: type definitions, normalization, serialization, merge logic, dirty checks, Zod schemas, test fixtures, and frontend type signatures. The earlier `config-defaults.ts` refactor (commit `f0c85b32`) centralized default *values* but didn't address the structural duplication.
+
+**Fix**: Created `src/config/global-config-fields.ts` with a field registry pattern. Each "regular" field (booleans, numbers, poll intervals, volume) is defined once with its default and normalizer. Generic helpers (`normalizeGlobalConfigFields`, `buildSparseGlobalConfigPayload`, `mergeGlobalConfigFields`, `hasGlobalConfigFieldChanges`, `extractGlobalConfigFields`) replace the per-field boilerplate in runtime-config.ts. Special fields with custom logic (selectedAgentId, selectedShortcutLabel, audibleNotificationEvents, promptShortcuts, prompt templates) retain explicit handling. `config-defaults.ts` now derives `CONFIG_DEFAULTS` from the registry via `getGlobalConfigDefaults()`. `agent-registry.ts` uses `extractGlobalConfigFields` spread instead of per-field mapping.
+
+**Result**: runtime-config.ts reduced from 1167 to 683 lines (42% smaller). Adding a new boolean setting now requires: 1 line in the field registry, 2 lines in api-contract.ts Zod schemas, UI toggle, and consumption. The normalize/serialize/merge/dirty plumbing is automatic.
+
+**Files**: `src/config/global-config-fields.ts` (new), `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/terminal/agent-registry.ts`
+
+**Commit**: `5afb2a91`
+
 ## Configurable behind-base indicator on Files tab (2026-04-10)
 
 **Problem**: The blue badge on the Files toolbar icon (indicating the base branch advanced since the task branched off) was always on with no way to disable it. Unlike the Changes tab badge which has `unmergedChangesIndicatorEnabled`, the Files tab badge had no corresponding setting.

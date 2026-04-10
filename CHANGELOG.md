@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Config field registry — single source of truth for settings
+
+- Extracted a field registry pattern (`global-config-fields.ts`) so adding a new boolean/number config setting requires 1 line instead of ~12 files. Runtime-config.ts reduced from 1167 to 683 lines.
+
 ### Configurable behind-base indicator on Files tab
 
 - The blue dot on the Files toolbar icon (showing when the base branch has advanced) is now controlled by a `behindBaseIndicatorEnabled` setting (default: on). Toggle it in Settings under the Changes section.
