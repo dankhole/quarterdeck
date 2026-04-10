@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: unmerged-changes badge false positive after squash merge
+
+- The blue dot on the Changes icon persisted when a worktree's changes had already landed on the base branch via squash merge or commit-tree (identical trees but divergent commit graphs). Now cross-checks the three-dot merge-base diff with a two-dot tree comparison — if the trees are identical, the badge is suppressed.
+
 ### Debug log panel — right-side push layout, stop button, global error capture
 
 - Debug log panel is now a 420px right-side panel that pushes main content over, instead of an overlay that took over the screen. Filters moved to a dedicated row below the header.

@@ -273,9 +273,10 @@ async function loadTaskWorkspaceMetadata(
 		) {
 			return current;
 		}
-		const [summary, unmergedResult, behindBase] = await Promise.all([
+		const [summary, unmergedResult, treeDiffResult, behindBase] = await Promise.all([
 			getGitSyncSummary(pathInfo.path, { probe }),
 			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", `${pathInfo.baseRef}...HEAD`]),
+			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
 			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
 		]);
 		return {
@@ -290,7 +291,12 @@ async function loadTaskWorkspaceMetadata(
 				changedFiles: summary.changedFiles,
 				additions: summary.additions,
 				deletions: summary.deletions,
-				hasUnmergedChanges: unmergedResult.exitCode === 0 ? false : unmergedResult.exitCode === 1 ? true : null,
+				hasUnmergedChanges:
+					unmergedResult.exitCode === 0
+						? false
+						: unmergedResult.exitCode === 1
+							? treeDiffResult.exitCode !== 0 // suppress when trees are identical (already landed)
+							: null,
 				behindBaseCount: behindBase?.behindCount ?? null,
 				stateVersion: Date.now(),
 			},
