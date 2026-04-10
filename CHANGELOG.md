@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: terminal restore snapshot wraps at stale dimensions on reconnect
+
+- When a browser reconnects to a resumed agent session, the terminal snapshot was serialized at whatever column width the headless mirror was last set to — restored output stayed wrapped at the wrong width and didn't reflow when the browser resized. The browser now passes its current geometry via the control WebSocket URL so the mirror reflows content to the correct width before serializing the snapshot.
+
 ### Fix: prevent orphaned processes when parent exits without signaling
 
 - Runtime servers now detect when their parent process (Cline, an agent launcher, etc.) exits without sending a signal — stdin pipe EOF triggers graceful shutdown via SIGHUP. Only activates for pipe-connected child processes, not direct terminal launches or detached stdin.

@@ -14,6 +14,8 @@ interface TerminalWebSocketConnectionContext {
 	workspaceId: string;
 	clientId: string;
 	terminalManager: TerminalSessionService;
+	initialCols: number | undefined;
+	initialRows: number | undefined;
 }
 
 interface UpgradeRequest extends IncomingMessage {
@@ -392,8 +394,19 @@ export function createTerminalWebSocketBridge({
 
 			const targetServer = isIoRequest ? ioServer : controlServer;
 			const clientId = getTerminalClientId(url);
+			const rawCols = Number(url.searchParams.get("cols"));
+			const rawRows = Number(url.searchParams.get("rows"));
+			const initialCols = Number.isFinite(rawCols) && rawCols > 0 ? Math.floor(rawCols) : undefined;
+			const initialRows = Number.isFinite(rawRows) && rawRows > 0 ? Math.floor(rawRows) : undefined;
 			targetServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-				targetServer.emit("connection", ws, { taskId, workspaceId, clientId, terminalManager });
+				targetServer.emit("connection", ws, {
+					taskId,
+					workspaceId,
+					clientId,
+					terminalManager,
+					initialCols,
+					initialRows,
+				});
 			});
 		} catch {
 			socket.destroy();
@@ -447,6 +460,7 @@ export function createTerminalWebSocketBridge({
 		const workspaceId = (context as TerminalWebSocketConnectionContext).workspaceId;
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
+		const { initialCols, initialRows } = context as TerminalWebSocketConnectionContext;
 		const connectionKey = buildConnectionKey(workspaceId, taskId);
 		terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
@@ -475,8 +489,10 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 
+		// Pass the browser's geometry so the mirror reflows content before serializing.
+		// See TerminalStateMirror.getSnapshot for the mirror/PTY sync caveat.
 		void terminalManager
-			.getRestoreSnapshot(taskId)
+			.getRestoreSnapshot(taskId, initialCols, initialRows)
 			.then((snapshot) => {
 				sendControlMessage(ws, {
 					type: "restore",
