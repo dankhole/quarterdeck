@@ -17,6 +17,7 @@ export interface UseRuntimeConfigResult {
 		promptShortcuts?: PromptShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		shellAutoRestartEnabled?: boolean;
+		terminalFontWeight?: number;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
@@ -106,6 +107,7 @@ export function useRuntimeConfig(
 			promptShortcuts?: PromptShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
 			shellAutoRestartEnabled?: boolean;
+			terminalFontWeight?: number;
 			showSummaryOnCards?: boolean;
 			autoGenerateSummary?: boolean;
 			summaryStaleAfterSeconds?: number;

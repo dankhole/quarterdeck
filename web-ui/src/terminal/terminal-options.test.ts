@@ -6,6 +6,7 @@ describe("createQuarterdeckTerminalOptions", () => {
 	it("enables richer terminal capability reporting", () => {
 		const options = createQuarterdeckTerminalOptions({
 			cursorColor: "#abcdef",
+			fontWeight: 325,
 			isMacPlatform: true,
 			terminalBackgroundColor: "#101112",
 		});

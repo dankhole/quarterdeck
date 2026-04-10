@@ -59,6 +59,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	backgroundTaskPollMs: CONFIG_DEFAULTS.backgroundTaskPollMs,
 	homeRepoPollMs: CONFIG_DEFAULTS.homeRepoPollMs,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
+	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	llmConfigured: false,
 };
 
