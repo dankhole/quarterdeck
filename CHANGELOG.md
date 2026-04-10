@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.0]
+
 ### Per-card hard delete in trash column
 
 - Trash cards now have a permanent delete button (red trash icon) next to the existing restore button. Clicking it removes the task from the board, stops the session, and cleans up the workspace — no need to clear all trash or drag the card.
