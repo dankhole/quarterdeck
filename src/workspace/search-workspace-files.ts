@@ -13,6 +13,7 @@ interface CachedFileIndex {
 	expiresAt: number;
 	files: string[];
 	changedPaths: Set<string>;
+	deletedPaths: Set<string>;
 }
 
 const fileIndexCache = new Map<string, CachedFileIndex>();
@@ -31,37 +32,21 @@ function normalizeLines(stdout: string): string[] {
 	return files;
 }
 
-function getCachedFileIndex(cwd: string): readonly string[] | null {
-	const cached = fileIndexCache.get(cwd);
-	if (!cached) {
-		return null;
-	}
-	if (cached.expiresAt <= Date.now()) {
-		fileIndexCache.delete(cwd);
-		return null;
-	}
-	return cached.files;
+interface PorcelainParseResult {
+	changed: Set<string>;
+	deleted: Set<string>;
 }
 
-function getCachedChangedPaths(cwd: string): ReadonlySet<string> | null {
-	const cached = fileIndexCache.get(cwd);
-	if (!cached) {
-		return null;
-	}
-	if (cached.expiresAt <= Date.now()) {
-		fileIndexCache.delete(cwd);
-		return null;
-	}
-	return cached.changedPaths;
-}
-
-function parsePorcelainChangedPaths(stdout: string): Set<string> {
+function parsePorcelainStatus(stdout: string): PorcelainParseResult {
 	const changed = new Set<string>();
+	const deleted = new Set<string>();
 	for (const rawLine of stdout.split(/\r?\n/g)) {
 		const line = rawLine.trimEnd();
 		if (!line || line.length < 4) {
 			continue;
 		}
+		const indexStatus = line.charAt(0);
+		const workTreeStatus = line.charAt(1);
 		const payload = line.slice(3).trim();
 		if (!payload) {
 			continue;
@@ -71,20 +56,25 @@ function parsePorcelainChangedPaths(stdout: string): Set<string> {
 		if (!path) {
 			continue;
 		}
-		changed.add(path);
+		// D in either column means the file is gone from the working tree or staged for deletion
+		if (indexStatus === "D" || workTreeStatus === "D") {
+			deleted.add(path);
+		} else {
+			changed.add(path);
+		}
 	}
-	return changed;
+	return { changed, deleted };
 }
 
 async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; changedPaths: ReadonlySet<string> }> {
-	const cached = getCachedFileIndex(cwd);
-	const cachedChangedPaths = getCachedChangedPaths(cwd);
-	if (cached && cachedChangedPaths) {
+	const cached = fileIndexCache.get(cwd);
+	if (cached && cached.expiresAt > Date.now()) {
 		return {
-			files: cached,
-			changedPaths: cachedChangedPaths,
+			files: cached.files,
+			changedPaths: cached.changedPaths,
 		};
 	}
+	fileIndexCache.delete(cwd);
 
 	try {
 		const [filesResult, statusResult] = await Promise.all([
@@ -103,12 +93,15 @@ async function loadFileIndex(cwd: string): Promise<{ files: readonly string[]; c
 				env: createGitProcessEnv(),
 			}).catch(() => ({ stdout: "" })),
 		]);
-		const files = normalizeLines(filesResult.stdout);
-		const changedPaths = parsePorcelainChangedPaths(statusResult.stdout);
+		const allFiles = normalizeLines(filesResult.stdout);
+		const { changed: changedPaths, deleted: deletedPaths } = parsePorcelainStatus(statusResult.stdout);
+		// Filter out deleted files — git ls-files --cached still lists them
+		const files = deletedPaths.size > 0 ? allFiles.filter((path) => !deletedPaths.has(path)) : allFiles;
 		fileIndexCache.set(cwd, {
 			expiresAt: Date.now() + CACHE_TTL_MS,
 			files,
 			changedPaths,
+			deletedPaths,
 		});
 		return { files, changedPaths };
 	} catch {

@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: file browser shows deleted files (2026-04-10)
+
+**Problem**: The file browser and file search used `git ls-files --cached --others --exclude-standard` to build the file tree. The `--cached` flag lists all files in the git index, which includes files that were deleted from the working tree but not yet committed. Agents that delete files would leave ghost entries in the file browser.
+
+**Root cause**: `parsePorcelainChangedPaths` already ran `git status --porcelain=v1` but only extracted changed paths for sort-priority boosting — it didn't distinguish deleted files from other changes, so they were never filtered from the file list.
+
+**Fix**: Renamed `parsePorcelainChangedPaths` to `parsePorcelainStatus` and split the return into `changed` and `deleted` sets (mutually exclusive — `D` in either porcelain column routes to `deleted`, everything else to `changed`). `loadFileIndex` now filters `deleted` paths from the `ls-files` output before caching. Also consolidated two separate cache-lookup functions (`getCachedFileIndex`/`getCachedChangedPaths`) into a single inline check, and removed `deletedPaths` from the return type since it's only needed internally for filtering.
+
+**Files**: `src/workspace/search-workspace-files.ts`
+
+**Commit**: `82a35561`
+
 ## Fix: always open to agent view when selecting a task from home (2026-04-10)
 
 **Problem**: Clicking a task card from the home board restored the last active task tab from localStorage (`lastTaskTab`). If the user's last tab was "files," the file browser would open instead of the agent terminal — unintuitive when you want to see agent output first.
