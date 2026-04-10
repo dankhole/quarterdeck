@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: file browser folders start collapsed by default
+
+- The file browser tree panel no longer auto-expands directories two levels deep on load. All folders start collapsed, reducing visual noise when opening the Files tab.
+
 ### Config field registry — single source of truth for settings
 
 - Extracted a field registry pattern (`global-config-fields.ts`) so adding a new boolean/number config setting requires 1 line instead of ~12 files. Runtime-config.ts reduced from 1167 to 683 lines.
