@@ -104,6 +104,7 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
+import { setTerminalFontWeight } from "@/terminal/persistent-terminal-manager";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
@@ -448,6 +449,11 @@ export default function App(): ReactElement {
 		audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden,
 	});
+
+	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
+	useEffect(() => {
+		setTerminalFontWeight(terminalFontWeight);
+	}, [terminalFontWeight]);
 
 	// Apply task title updates received via WebSocket. Auto-generated titles
 	// are only applied when the card title is still null (not yet set by the user).

@@ -1,3 +1,4 @@
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -29,6 +30,8 @@ const RESIZE_DEBOUNCE_MS = 50;
 const FONT_READY_TIMEOUT_MS = 3000;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
+
+let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 
 interface PersistentTerminalAppearance {
 	cursorColor: string;
@@ -188,6 +191,7 @@ class PersistentTerminal {
 		this.terminal = new Terminal({
 			...createQuarterdeckTerminalOptions({
 				cursorColor: this.appearance.cursorColor,
+				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
 			}),
@@ -567,6 +571,7 @@ class PersistentTerminal {
 			...this.terminal.options.theme,
 			...createQuarterdeckTerminalOptions({
 				cursorColor: appearance.cursorColor,
+				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
 				terminalBackgroundColor: appearance.terminalBackgroundColor,
 			}).theme,
@@ -575,6 +580,10 @@ class PersistentTerminal {
 
 	setAppearance(appearance: PersistentTerminalAppearance): void {
 		this.updateAppearance(appearance);
+	}
+
+	setFontWeight(weight: number): void {
+		this.terminal.options.fontWeight = weight;
 	}
 
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
@@ -859,4 +868,11 @@ export function resetAllTerminalRenderers(): number {
 		terminal.resetRenderer();
 	}
 	return count;
+}
+
+export function setTerminalFontWeight(weight: number): void {
+	currentTerminalFontWeight = weight;
+	for (const terminal of terminals.values()) {
+		terminal.setFontWeight(weight);
+	}
 }

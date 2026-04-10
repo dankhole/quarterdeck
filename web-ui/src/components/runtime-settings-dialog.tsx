@@ -251,6 +251,7 @@ export function RuntimeSettingsDialog({
 	const [autoGenerateSummary, setAutoGenerateSummary] = useState(CONFIG_DEFAULTS.autoGenerateSummary);
 	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(CONFIG_DEFAULTS.summaryStaleAfterSeconds);
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
+	const [terminalFontWeight, setTerminalFontWeight] = useState(CONFIG_DEFAULTS.terminalFontWeight);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
 	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
 		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
@@ -321,6 +322,7 @@ export function RuntimeSettingsDialog({
 	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds;
 	const llmConfigured = config?.llmConfigured ?? false;
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
+	const initialTerminalFontWeight = config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const initialUnmergedChangesIndicatorEnabled =
 		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
@@ -362,6 +364,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (shellAutoRestartEnabled !== initialShellAutoRestartEnabled) {
+			return true;
+		}
+		if (terminalFontWeight !== initialTerminalFontWeight) {
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
@@ -428,6 +433,7 @@ export function RuntimeSettingsDialog({
 		initialHomeRepoPollMs,
 		initialSelectedAgentId,
 		initialShellAutoRestartEnabled,
+		initialTerminalFontWeight,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
 		initialSkipHomeCheckoutConfirmation,
@@ -439,6 +445,7 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		behindBaseIndicatorEnabled,
 		shellAutoRestartEnabled,
+		terminalFontWeight,
 		shortcuts,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
@@ -458,6 +465,7 @@ export function RuntimeSettingsDialog({
 		setAutoGenerateSummary(config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary);
 		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds);
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
+		setTerminalFontWeight(config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
 		setUnmergedChangesIndicatorEnabled(
 			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
@@ -501,6 +509,7 @@ export function RuntimeSettingsDialog({
 		config?.skipHomeCheckoutConfirmation,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
+		config?.terminalFontWeight,
 		config?.shortcuts,
 		config?.showSummaryOnCards,
 		config?.summaryStaleAfterSeconds,
@@ -556,6 +565,7 @@ export function RuntimeSettingsDialog({
 			autoGenerateSummary,
 			summaryStaleAfterSeconds,
 			shellAutoRestartEnabled,
+			terminalFontWeight,
 			showTrashWorktreeNotice,
 			unmergedChangesIndicatorEnabled,
 			behindBaseIndicatorEnabled,
@@ -743,6 +753,32 @@ export function RuntimeSettingsDialog({
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
+				</p>
+				<div className="flex items-center justify-between gap-3 mt-3">
+					<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
+						Font weight
+					</label>
+					<div className="flex items-center gap-1.5">
+						<input
+							id="terminal-font-weight"
+							type="number"
+							min={100}
+							max={900}
+							step={25}
+							value={terminalFontWeight}
+							onChange={(event) => {
+								const value = Number(event.target.value);
+								if (Number.isFinite(value)) {
+									setTerminalFontWeight(Math.max(100, Math.min(900, value)));
+								}
+							}}
+							disabled={controlsDisabled}
+							className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+						/>
+					</div>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Changes</h6>

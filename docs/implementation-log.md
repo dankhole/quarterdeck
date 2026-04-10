@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Configurable terminal font weight (2026-04-10)
+
+Terminal font weight was hardcoded at 350 in `terminal-options.ts`. Made it configurable through the standard settings pipeline.
+
+**Config layer**: Added `terminalFontWeight: numField(325)` to the global config field registry. The registry's generic spread (`extractGlobalConfigFields`) auto-includes it in API responses. Added to Zod schemas: `z.number()` on response, `z.number().min(100).max(900).optional()` on save request. Default lowered from 350 to 325 for thinner terminal text.
+
+**Terminal rendering**: `createQuarterdeckTerminalOptions` now requires a `fontWeight: number` parameter (no default — single-sourced from config). Module-level `currentTerminalFontWeight` in `persistent-terminal-manager.ts` is initialized from `CONFIG_DEFAULTS.terminalFontWeight` and updated via `setTerminalFontWeight()`, which iterates all live terminals and sets `terminal.options.fontWeight`. This pattern follows the existing `resetAllTerminalRenderers` module-level approach.
+
+**Settings UI**: Number input (100–900, step 25) in the Terminal section of the settings dialog, following the standard state/dirty-check/sync/save pattern.
+
+**App wiring**: `useEffect` in `App.tsx` calls `setTerminalFontWeight(terminalFontWeight)` when the config value changes, applying to all live terminals without restart.
+
+**Files**: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `web-ui/src/terminal/terminal-options.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/terminal/terminal-options.test.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
+
 ## Statusline headless worktree display + pulse cleanup (2026-04-10)
 
 The CLI statusline (`quarterdeck statusline`) showed no git info at all for detached HEAD worktrees — `getGitBranch` returned null for HEAD and the entire git section was skipped. Headless worktrees (quarterdeck's default isolation mode) appeared as just the directory name with no branch/hash context.
@@ -15,6 +29,7 @@ Also added "based on {baseRef}" to the web UI top bar (`TopBarGitStatusSection`)
 **Pulse cleanup**: Removed the `pulse/` Rust reference source directory and `docs/plans/pulse-statusline-integration.md` (completed plan) from the repo. The port to TypeScript was already complete. Removed via rebase amend on the statusline commit to keep pulse out of git history entirely (not yet pushed). Removed todo #6 (Pulse integration) — completed.
 
 **Files**: `src/commands/statusline.ts`, `src/trpc/runtime-api.ts`, `web-ui/src/components/top-bar.tsx`, `docs/todo.md`, `CHANGELOG.md`
+
 
 ## Project switcher sidebar tab (2026-04-10)
 

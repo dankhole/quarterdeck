@@ -303,6 +303,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					backgroundTaskPollMs: 5000,
 					homeRepoPollMs: 10000,
 					statuslineEnabled: true,
+					terminalFontWeight: 325,
 					shortcuts: [],
 					promptShortcuts: [],
 				});
@@ -358,6 +359,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					backgroundTaskPollMs: 5000,
 					homeRepoPollMs: 10000,
 					statuslineEnabled: true,
+					terminalFontWeight: 325,
 					shortcuts: [],
 					promptShortcuts: [],
 				});
@@ -401,6 +403,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					backgroundTaskPollMs: 5000,
 					homeRepoPollMs: 10000,
 					statuslineEnabled: true,
+					terminalFontWeight: 325,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
 					promptShortcuts: [],
 				});

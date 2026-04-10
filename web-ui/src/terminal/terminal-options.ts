@@ -4,6 +4,7 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 
 interface CreateQuarterdeckTerminalOptionsInput {
 	cursorColor: string;
+	fontWeight: number;
 	isMacPlatform: boolean;
 	terminalBackgroundColor: string;
 }
@@ -15,6 +16,7 @@ const TERMINAL_FONT_FAMILY = `'${TERMINAL_PRIMARY_FONT}', 'JetBrainsMono Nerd Fo
 
 export function createQuarterdeckTerminalOptions({
 	cursorColor,
+	fontWeight,
 	isMacPlatform,
 	terminalBackgroundColor,
 }: CreateQuarterdeckTerminalOptionsInput): ITerminalOptions {
@@ -28,7 +30,7 @@ export function createQuarterdeckTerminalOptions({
 		disableStdin: false,
 		fontFamily: TERMINAL_FONT_FAMILY,
 		fontSize: 13,
-		fontWeight: 350,
+		fontWeight,
 		fontWeightBold: "500",
 		letterSpacing: 0,
 		lineHeight: 1,
