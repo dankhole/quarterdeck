@@ -69,24 +69,12 @@ function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string, clientId
 	return url.toString();
 }
 
-function getTerminalControlWebSocketUrl(
-	taskId: string,
-	workspaceId: string,
-	clientId: string,
-	cols?: number,
-	rows?: number,
-): string {
+function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/control`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
 	url.searchParams.set("clientId", clientId);
-	if (cols && cols > 0) {
-		url.searchParams.set("cols", String(cols));
-	}
-	if (rows && rows > 0) {
-		url.searchParams.set("rows", String(rows));
-	}
 	return url.toString();
 }
 
@@ -485,15 +473,7 @@ class PersistentTerminal {
 	}
 
 	private connectControl(): void {
-		const controlSocket = new WebSocket(
-			getTerminalControlWebSocketUrl(
-				this.taskId,
-				this.workspaceId,
-				this.clientId,
-				this.terminal.cols,
-				this.terminal.rows,
-			),
-		);
+		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {

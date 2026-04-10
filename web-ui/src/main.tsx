@@ -4,7 +4,10 @@ import { Toaster } from "sonner";
 import App from "@/App";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { installGlobalErrorCapture } from "@/utils/global-error-capture";
 import "@/styles/globals.css";
+
+installGlobalErrorCapture();
 
 const root = document.getElementById("root");
 if (!root) {

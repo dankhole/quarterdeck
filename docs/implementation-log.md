@@ -4,19 +4,25 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
-## Fix: terminal restore snapshot wraps at stale dimensions on reconnect (2026-04-10)
+## Debug log panel — right-side push layout, stop button, global error capture (2026-04-10)
 
-When a browser reconnects to a resumed agent session, the `TerminalStateMirror` (headless xterm.js instance) serialized its snapshot at whatever column width it was last set to. The browser wrote the snapshot at those stale dimensions, then resized to fit its container — but xterm.js doesn't reflow serialized restore content after writing.
+Converted the debug log panel from a bottom overlay (220px height, `border-t`) to a right-side push panel (420px width, `border-l`, `shrink-0`) within the main flex row. The panel pushes the board content rather than overlapping it.
 
-**Root cause**: The control WebSocket restore flow takes the snapshot immediately when the socket connects, before the browser has reported its current dimensions. The browser's geometry is only sent after the restore completes (via the resize message in the `restore_complete` handler).
+**Panel header rework**: Split the header into two rows — top row has title, entry count, and action buttons (Clear, Stop, Close); bottom row has level filter, source filter, search input, and a "Console" toggle checkbox. The Stop button (Power icon) disables server-side logging AND closes the panel, as opposed to Close (X) which only hides it.
 
-**Fix**: Pass the browser's current terminal geometry as `cols`/`rows` query parameters on the control WebSocket URL. The backend reads these, resizes the headless mirror to match before serializing, and sends the snapshot already formatted for the browser's actual width.
+**Stop-logging timing fix**: `stopLogging` immediately calls `setClientLoggingEnabled(false)`, `registerClientLogCallback(null)`, and `setGlobalErrorCallback(null)` before the async tRPC round-trip to the server. This prevents entries from accumulating invisibly during the server acknowledgment gap.
 
-**Caveat**: The mirror resize in `getSnapshot` is permanent — between the snapshot and the browser's follow-up resize message (milliseconds later), the mirror and PTY dimensions are briefly out of sync. This is identical to the transient mismatch during any normal resize and is documented in code comments.
+**Global error capture** (`web-ui/src/utils/global-error-capture.ts`, new): Module installed once at app startup in `main.tsx`. Captures three categories: (1) uncaught errors via `window.addEventListener("error")`, tagged "uncaught"; (2) unhandled promise rejections via `window.addEventListener("unhandledrejection")`, tagged "unhandled-rejection"; (3) intercepted `console.error`/`console.warn`, tagged "console". The patched console methods have an early bail (`if (!callback || isEmitting) return`) so there's zero overhead when logging is off, and no string formatting happens unnecessarily.
 
-**Files**: `src/terminal/terminal-state-mirror.ts` (resize before serialize), `src/terminal/terminal-session-service.ts` (interface), `src/terminal/session-manager.ts` (forwarding), `src/terminal/ws-server.ts` (URL parsing + passthrough), `web-ui/src/terminal/persistent-terminal-manager.ts` (send geometry in URL)
+**Duplicate entry prevention**: `client-logger.ts` calls `console[level]()` which would be re-captured by the patched console methods. Fixed by sharing an `isEmitting` flag — `client-logger.emit()` sets `setIsEmitting(true)` around its console call, and the patched console methods bail when the flag is set. This is a cross-module coupling documented in both files' header comments.
 
-**Commit**: 5ddcd88a
+**Console noise opt-in**: Console-intercepted entries (React dev warnings, xterm.js canvas errors, library deprecation notices) are hidden by default. The `filteredEntries` memo in `useDebugLogging` excludes entries with `tag === "console"` unless `showConsoleCapture` state is true. A "Console" checkbox in the filter bar toggles this. Uncaught errors and unhandled rejections always show since they have different tags.
+
+**Error surfaces wired to debug panel**: `notifyError` in `app-toaster.ts` now calls `createClientLogger("toast").error()` before showing the toast. `use-runtime-state-stream.ts` added a `createClientLogger("ws-stream")` for WebSocket connection failures and malformed message warnings.
+
+**Files**: `web-ui/src/utils/global-error-capture.ts` (new), `web-ui/src/utils/client-logger.ts`, `web-ui/src/components/debug-log-panel.tsx`, `web-ui/src/hooks/use-debug-logging.ts`, `web-ui/src/components/app-toaster.ts`, `web-ui/src/runtime/use-runtime-state-stream.ts`, `web-ui/src/main.tsx`, `web-ui/src/App.tsx`
+
+**Commits**: `1bb3b6e8`, `352106c5`, `250f0b62`
 
 ## Fix: prevent orphaned processes when parent exits without signaling (2026-04-10)
 

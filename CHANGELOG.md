@@ -2,9 +2,13 @@
 
 ## [Unreleased]
 
-### Fix: terminal restore snapshot wraps at stale dimensions on reconnect
+### Debug log panel — right-side push layout, stop button, global error capture
 
-- When a browser reconnects to a resumed agent session, the terminal snapshot was serialized at whatever column width the headless mirror was last set to — restored output stayed wrapped at the wrong width and didn't reflow when the browser resized. The browser now passes its current geometry via the control WebSocket URL so the mirror reflows content to the correct width before serializing the snapshot.
+- Debug log panel is now a 420px right-side panel that pushes main content over, instead of an overlay that took over the screen. Filters moved to a dedicated row below the header.
+- Three distinct close actions: Clear (removes entries), Close (hides panel, logging continues in background), Stop (disables server-side logging and closes).
+- Global error capture installed at app startup — catches uncaught exceptions (`window.onerror`), unhandled promise rejections, and intercepted `console.error`/`console.warn` from libraries and React.
+- Console-intercepted entries hidden by default behind a "Console" checkbox in the filter bar to avoid noise from React dev warnings and third-party libraries. Uncaught errors and unhandled rejections always show.
+- `notifyError` toast calls and WebSocket stream errors now also appear in the debug panel when logging is active.
 
 ### Fix: prevent orphaned processes when parent exits without signaling
 

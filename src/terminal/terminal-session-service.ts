@@ -9,11 +9,7 @@ export interface TerminalSessionListener {
 
 export interface TerminalSessionService {
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null;
-	getRestoreSnapshot(
-		taskId: string,
-		targetCols?: number,
-		targetRows?: number,
-	): Promise<TerminalRestoreSnapshot | null>;
+	getRestoreSnapshot(taskId: string): Promise<TerminalRestoreSnapshot | null>;
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null;
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null;
 	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean;

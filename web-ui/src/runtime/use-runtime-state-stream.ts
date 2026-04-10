@@ -11,6 +11,9 @@ import type {
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
+import { createClientLogger } from "@/utils/client-logger";
+
+const log = createClientLogger("ws-stream");
 
 const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
@@ -450,8 +453,8 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 							message: payload.message,
 						});
 					}
-				} catch {
-					// Ignore malformed stream messages.
+				} catch (err) {
+					log.warn("Malformed stream message", err);
 				}
 			};
 			socket.onclose = () => {
@@ -468,6 +471,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 				if (cancelled) {
 					return;
 				}
+				log.error("WebSocket connection failed");
 				dispatch({
 					type: "stream_disconnected",
 					message: "Runtime stream connection failed.",
