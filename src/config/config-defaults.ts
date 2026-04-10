@@ -13,6 +13,7 @@ export const DEFAULT_AUTO_GENERATE_SUMMARY = false;
 export const DEFAULT_SUMMARY_STALE_AFTER_SECONDS = 300;
 export const DEFAULT_SHOW_TRASH_WORKTREE_NOTICE = true;
 export const DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED = false;
+export const DEFAULT_BEHIND_BASE_INDICATOR_ENABLED = true;
 export const DEFAULT_SKIP_TASK_CHECKOUT_CONFIRMATION = false;
 export const DEFAULT_SKIP_HOME_CHECKOUT_CONFIRMATION = false;
 export const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
@@ -78,6 +79,7 @@ export const CONFIG_DEFAULTS = {
 	summaryStaleAfterSeconds: DEFAULT_SUMMARY_STALE_AFTER_SECONDS,
 	showTrashWorktreeNotice: DEFAULT_SHOW_TRASH_WORKTREE_NOTICE,
 	unmergedChangesIndicatorEnabled: DEFAULT_UNMERGED_CHANGES_INDICATOR_ENABLED,
+	behindBaseIndicatorEnabled: DEFAULT_BEHIND_BASE_INDICATOR_ENABLED,
 	skipTaskCheckoutConfirmation: DEFAULT_SKIP_TASK_CHECKOUT_CONFIRMATION,
 	skipHomeCheckoutConfirmation: DEFAULT_SKIP_HOME_CHECKOUT_CONFIRMATION,
 	audibleNotificationsEnabled: DEFAULT_AUDIBLE_NOTIFICATIONS_ENABLED,
