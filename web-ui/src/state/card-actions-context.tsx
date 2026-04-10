@@ -19,6 +19,7 @@ export interface StableCardActions {
 	onRegenerateTitleTask?: (taskId: string) => void;
 	onUpdateTaskTitle?: (taskId: string, title: string) => void;
 	onTogglePinTask?: (taskId: string) => void;
+	onHardDeleteTrashTask?: (taskId: string) => void;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
 }
@@ -84,6 +85,7 @@ export function CardActionsProvider({
 			stable.onRegenerateTitleTask,
 			stable.onUpdateTaskTitle,
 			stable.onTogglePinTask,
+			stable.onHardDeleteTrashTask,
 			stable.onMigrateWorkingDirectory,
 			stable.onRequestDisplaySummary,
 		],
