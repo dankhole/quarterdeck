@@ -12,7 +12,12 @@ import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
+import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
+import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
+import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
+import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { GitHistoryView } from "@/components/git-history-view";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
@@ -43,10 +48,12 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useDebugLogging } from "@/hooks/use-debug-logging";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useFileBrowserData } from "@/hooks/use-file-browser-data";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
@@ -56,6 +63,7 @@ import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
 import { useQuarterdeckAccessGate } from "@/hooks/use-quarterdeck-access-gate";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
+import { useScopeContext } from "@/hooks/use-scope-context";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
@@ -91,6 +99,7 @@ import {
 	replaceWorkspaceMetadata,
 	resetWorkspaceMetadataStore,
 	subscribeToAnyTaskMetadata,
+	useHomeGitSummaryValue,
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
@@ -133,6 +142,9 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
+	}, []);
+	const handleDeselectTask = useCallback(() => {
+		setSelectedTaskId(null);
 	}, []);
 	const {
 		currentProjectId,
@@ -282,6 +294,58 @@ export default function App(): ReactElement {
 	// Reactive subscriptions — re-render when the metadata store updates for the selected task.
 	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+	const homeGitSummary = useHomeGitSummaryValue();
+
+	const {
+		scopeMode: homeScopeMode,
+		resolvedScope: homeResolvedScope,
+		switchToHome: homeSwitchToHome,
+		returnToContextual: homeReturnToContextual,
+		selectBranchView: homeSelectBranchView,
+	} = useScopeContext({
+		selectedTaskId: null,
+		selectedCard: null,
+		currentProjectId,
+	});
+
+	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
+	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
+
+	const handleSkipTaskCheckoutConfirmationChange = useCallback(
+		(skip: boolean) => {
+			if (!currentProjectId) return;
+			void saveRuntimeConfig(currentProjectId, { skipTaskCheckoutConfirmation: skip }).then(() => {
+				refreshRuntimeProjectConfig();
+			});
+		},
+		[currentProjectId, refreshRuntimeProjectConfig],
+	);
+
+	const homeBranchActions = useBranchActions({
+		workspaceId: currentProjectId,
+		board,
+		selectBranchView: homeSelectBranchView,
+		homeGitSummary,
+		skipHomeCheckoutConfirmation,
+		skipTaskCheckoutConfirmation,
+		onCheckoutSuccess: homeReturnToContextual,
+	});
+
+	// Home-scope file browser data + tree state
+	const homeFileBrowserData = useFileBrowserData({
+		workspaceId: currentProjectId,
+		taskId: homeResolvedScope?.type === "task" ? homeResolvedScope.taskId : null,
+		baseRef: homeResolvedScope?.type === "task" ? homeResolvedScope.baseRef : undefined,
+		ref: homeResolvedScope?.type === "branch_view" ? homeResolvedScope.ref : undefined,
+	});
+	const [homeFileBrowserExpandedDirs, setHomeFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
+	const [homeFileBrowserInitialized, setHomeFileBrowserInitialized] = useState(false);
+
+	// Reset home file browser tree state on project switch
+	useEffect(() => {
+		setHomeFileBrowserExpandedDirs(new Set());
+		setHomeFileBrowserInitialized(false);
+	}, [currentProjectId]);
 
 	const {
 		workspacePath,
@@ -835,12 +899,10 @@ export default function App(): ReactElement {
 
 	// --- Sidebar layout ---
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
-	const [isFileBrowserExpanded, setIsFileBrowserExpanded] = useState(false);
 
 	// Reset expanded state when task changes
 	useEffect(() => {
 		setIsDiffExpanded(false);
-		setIsFileBrowserExpanded(false);
 	}, [selectedTaskId]);
 
 	const {
@@ -851,12 +913,10 @@ export default function App(): ReactElement {
 		setSidePanelRatio,
 		detailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
-		detailFileBrowserTreeRatio,
-		setDetailFileBrowserTreeRatio,
 		resetToDefaults: resetCardDetailLayoutToDefaults,
 	} = useCardDetailLayout({
 		isDiffExpanded,
-		isFileBrowserExpanded,
+		isFileBrowserExpanded: false,
 		selectedTaskId,
 	});
 
@@ -913,14 +973,7 @@ export default function App(): ReactElement {
 				(event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable);
 			if (isTyping) return;
 
-			// 2. File browser expanded → collapse
-			if (isFileBrowserExpanded) {
-				event.preventDefault();
-				setIsFileBrowserExpanded(false);
-				return;
-			}
-
-			// 3. Diff expanded → collapse
+			// 2. Diff expanded → collapse
 			if (isDiffExpanded) {
 				event.preventDefault();
 				setIsDiffExpanded(false);
@@ -934,7 +987,7 @@ export default function App(): ReactElement {
 				return;
 			}
 		},
-		[isGitHistoryOpen, isFileBrowserExpanded, isDiffExpanded, selectedCard],
+		[isGitHistoryOpen, isDiffExpanded, selectedCard],
 	);
 	useWindowEvent("keydown", handleEscapeKeydown);
 
@@ -1130,7 +1183,7 @@ export default function App(): ReactElement {
 				<LayoutResetBridge resetToDefaults={resetCardDetailLayoutToDefaults} />
 				<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
 					{/* Sidebar toolbar + side panel — hidden when diff or file browser is expanded */}
-					{!isDiffExpanded && !isFileBrowserExpanded ? (
+					{!isDiffExpanded ? (
 						<>
 							<DetailToolbar
 								visualActiveTab={visualActiveTab}
@@ -1144,6 +1197,7 @@ export default function App(): ReactElement {
 										? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
 										: false
 								}
+								isBehindBase={selectedCard ? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0 : false}
 							/>
 
 							{/* Home side panel — project nav */}
@@ -1180,6 +1234,80 @@ export default function App(): ReactElement {
 									<ResizeHandle
 										orientation="vertical"
 										ariaLabel="Resize home side panel"
+										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+										className="z-10"
+									/>
+								</>
+							) : activeTab === "files" && !selectedCard ? (
+								<>
+									<div
+										style={{
+											display: "flex",
+											flexDirection: "column",
+											flex: `0 0 ${homeSidePanelPercent}`,
+											minWidth: 0,
+											minHeight: 0,
+											overflow: "hidden",
+										}}
+									>
+										<ScopeBar
+											resolvedScope={homeResolvedScope}
+											scopeMode={homeScopeMode}
+											homeGitSummary={homeGitSummary}
+											taskTitle={null}
+											taskBranch={null}
+											taskBaseRef={null}
+											behindBaseCount={null}
+											isDetachedHead={homeGitSummary?.currentBranch === null && homeGitSummary !== null}
+											onSwitchToHome={homeSwitchToHome}
+											onReturnToContextual={homeReturnToContextual}
+											branchPillSlot={
+												<BranchSelectorPopover
+													isOpen={homeBranchActions.isBranchPopoverOpen}
+													onOpenChange={homeBranchActions.setBranchPopoverOpen}
+													branches={homeBranchActions.branches}
+													currentBranch={homeBranchActions.currentBranch}
+													worktreeBranches={homeBranchActions.worktreeBranches}
+													onSelectBranchView={homeBranchActions.handleSelectBranchView}
+													onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
+													trigger={
+														<BranchPillTrigger
+															label={
+																homeResolvedScope?.type === "branch_view"
+																	? homeResolvedScope.ref
+																	: (homeGitSummary?.currentBranch ?? "unknown")
+															}
+														/>
+													}
+												/>
+											}
+											onCheckoutBrowsingBranch={
+												homeResolvedScope?.type === "branch_view"
+													? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
+													: undefined
+											}
+										/>
+										{currentProjectId ? (
+											<FileBrowserTreePanel
+												key={currentProjectId}
+												files={homeFileBrowserData.files}
+												selectedPath={homeFileBrowserData.selectedPath}
+												onSelectPath={homeFileBrowserData.onSelectPath}
+												panelFlex="1 1 0"
+												expandedDirs={homeFileBrowserExpandedDirs}
+												onExpandedDirsChange={setHomeFileBrowserExpandedDirs}
+												hasInitializedExpansion={homeFileBrowserInitialized}
+												onInitializedExpansion={() => setHomeFileBrowserInitialized(true)}
+											/>
+										) : (
+											<div className="flex flex-1 items-center justify-center text-text-tertiary">
+												<FolderOpen size={40} />
+											</div>
+										)}
+									</div>
+									<ResizeHandle
+										orientation="vertical"
+										ariaLabel="Resize file browser panel"
 										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
 										className="z-10"
 									/>
@@ -1238,13 +1366,14 @@ export default function App(): ReactElement {
 							sidePanelRatio={sidePanelRatio}
 							setSidePanelRatio={setSidePanelRatio}
 							isDiffExpanded={isDiffExpanded}
-							isFileBrowserExpanded={isFileBrowserExpanded}
 							onDiffExpandedChange={setIsDiffExpanded}
-							onFileBrowserExpandedChange={setIsFileBrowserExpanded}
 							detailDiffFileTreeRatio={detailDiffFileTreeRatio}
 							setDetailDiffFileTreeRatio={setDetailDiffFileTreeRatio}
-							detailFileBrowserTreeRatio={detailFileBrowserTreeRatio}
-							setDetailFileBrowserTreeRatio={setDetailFileBrowserTreeRatio}
+							board={board}
+							skipTaskCheckoutConfirmation={skipTaskCheckoutConfirmation}
+							skipHomeCheckoutConfirmation={skipHomeCheckoutConfirmation}
+							onSkipTaskCheckoutConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
+							onDeselectTask={handleDeselectTask}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1286,6 +1415,16 @@ export default function App(): ReactElement {
 														void discardHomeWorkingChanges();
 													}}
 													isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+												/>
+											) : activeTab === "files" ? (
+												<FileContentViewer
+													content={homeFileBrowserData.fileContent?.content ?? null}
+													binary={homeFileBrowserData.fileContent?.binary ?? false}
+													truncated={homeFileBrowserData.fileContent?.truncated ?? false}
+													isLoading={homeFileBrowserData.isContentLoading}
+													isError={homeFileBrowserData.isContentError}
+													filePath={homeFileBrowserData.selectedPath}
+													onClose={homeFileBrowserData.onCloseFile}
 												/>
 											) : (
 												<QuarterdeckBoard
@@ -1437,6 +1576,11 @@ export default function App(): ReactElement {
 						warning={trashWarningState.warning}
 						onCancel={handleCancelTrashWarning}
 						onConfirm={handleConfirmTrashWarning}
+					/>
+					<CheckoutConfirmationDialog
+						state={homeBranchActions.checkoutDialogState}
+						onClose={homeBranchActions.closeCheckoutDialog}
+						onConfirmCheckout={homeBranchActions.handleConfirmCheckout}
 					/>
 					<MigrateWorkingDirectoryDialog
 						open={pendingMigrate !== null}

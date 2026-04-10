@@ -255,6 +255,12 @@ export function RuntimeSettingsDialog({
 	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
 		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 	);
+	const [skipTaskCheckoutConfirmation, setSkipTaskCheckoutConfirmation] = useState(
+		CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
+	);
+	const [skipHomeCheckoutConfirmation, setSkipHomeCheckoutConfirmation] = useState(
+		CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
+	);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(
 		CONFIG_DEFAULTS.audibleNotificationsEnabled,
 	);
@@ -315,6 +321,10 @@ export function RuntimeSettingsDialog({
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const initialUnmergedChangesIndicatorEnabled =
 		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
+	const initialSkipTaskCheckoutConfirmation =
+		config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation;
+	const initialSkipHomeCheckoutConfirmation =
+		config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation;
 	const initialAudibleNotificationsEnabled =
 		config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
 	const initialAudibleNotificationVolume =
@@ -353,6 +363,12 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
+			return true;
+		}
+		if (skipTaskCheckoutConfirmation !== initialSkipTaskCheckoutConfirmation) {
+			return true;
+		}
+		if (skipHomeCheckoutConfirmation !== initialSkipHomeCheckoutConfirmation) {
 			return true;
 		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
@@ -406,12 +422,16 @@ export function RuntimeSettingsDialog({
 		initialShellAutoRestartEnabled,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
+		initialSkipHomeCheckoutConfirmation,
+		initialSkipTaskCheckoutConfirmation,
 		initialUnmergedChangesIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
 		selectedAgentId,
 		shellAutoRestartEnabled,
 		shortcuts,
+		skipHomeCheckoutConfirmation,
+		skipTaskCheckoutConfirmation,
 		showSummaryOnCards,
 		showTrashWorktreeNotice,
 		summaryStaleAfterSeconds,
@@ -431,6 +451,12 @@ export function RuntimeSettingsDialog({
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
 		setUnmergedChangesIndicatorEnabled(
 			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
+		);
+		setSkipTaskCheckoutConfirmation(
+			config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
+		);
+		setSkipHomeCheckoutConfirmation(
+			config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
 		);
 		setAudibleNotificationsEnabled(
 			config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
@@ -459,6 +485,8 @@ export function RuntimeSettingsDialog({
 		config?.homeRepoPollMs,
 		config?.showTrashWorktreeNotice,
 		config?.unmergedChangesIndicatorEnabled,
+		config?.skipTaskCheckoutConfirmation,
+		config?.skipHomeCheckoutConfirmation,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.shortcuts,
@@ -518,6 +546,8 @@ export function RuntimeSettingsDialog({
 			shellAutoRestartEnabled,
 			showTrashWorktreeNotice,
 			unmergedChangesIndicatorEnabled,
+			skipTaskCheckoutConfirmation,
+			skipHomeCheckoutConfirmation,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -731,6 +761,36 @@ export function RuntimeSettingsDialog({
 					</RadixSwitch.Root>
 					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
 				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={skipTaskCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={setSkipTaskCheckoutConfirmation}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Skip task worktree checkout confirmation</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Don't show the confirmation dialog when checking out a branch in a task worktree
+				</p>
+				<div className="flex items-center gap-2 mt-2">
+					<RadixSwitch.Root
+						checked={skipHomeCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={setSkipHomeCheckoutConfirmation}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Skip home checkout confirmation</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Don't show the confirmation dialog when checking out a branch in the home repository
+				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
 				<div className="flex items-center gap-2">

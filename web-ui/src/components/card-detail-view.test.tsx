@@ -48,6 +48,8 @@ vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
 vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceStateVersionValue: () => 0,
 	useTaskWorkspaceInfoValue: () => null,
+	useTaskWorkspaceSnapshotValue: () => null,
+	useHomeGitSummaryValue: () => null,
 }));
 
 vi.mock("@/resize/layout-customizations", () => ({
@@ -106,13 +108,13 @@ const newRequiredProps = {
 	sidePanelRatio: 0.25,
 	setSidePanelRatio: () => {},
 	isDiffExpanded: false,
-	isFileBrowserExpanded: false,
 	onDiffExpandedChange: () => {},
-	onFileBrowserExpandedChange: () => {},
 	detailDiffFileTreeRatio: 0.3333,
 	setDetailDiffFileTreeRatio: () => {},
-	detailFileBrowserTreeRatio: 0.25,
-	setDetailFileBrowserTreeRatio: () => {},
+	board: { columns: [], dependencies: [] },
+	skipTaskCheckoutConfirmation: false,
+	skipHomeCheckoutConfirmation: false,
+	onDeselectTask: () => {},
 };
 
 function requireSidePanelSeparator(container: HTMLElement): HTMLElement {

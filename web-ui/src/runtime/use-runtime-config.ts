@@ -22,6 +22,8 @@ export interface UseRuntimeConfigResult {
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
+		skipTaskCheckoutConfirmation?: boolean;
+		skipHomeCheckoutConfirmation?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
@@ -107,6 +109,9 @@ export function useRuntimeConfig(
 			autoGenerateSummary?: boolean;
 			summaryStaleAfterSeconds?: number;
 			showTrashWorktreeNotice?: boolean;
+			unmergedChangesIndicatorEnabled?: boolean;
+			skipTaskCheckoutConfirmation?: boolean;
+			skipHomeCheckoutConfirmation?: boolean;
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
 			audibleNotificationsEnabled?: boolean;

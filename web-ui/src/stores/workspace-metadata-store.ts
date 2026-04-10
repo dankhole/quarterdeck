@@ -74,6 +74,7 @@ function toTaskWorkspaceSnapshot(metadata: RuntimeTaskWorkspaceMetadata): Review
 		additions: metadata.additions,
 		deletions: metadata.deletions,
 		hasUnmergedChanges: metadata.hasUnmergedChanges,
+		behindBaseCount: metadata.behindBaseCount,
 	};
 }
 
@@ -151,7 +152,8 @@ function areTaskWorkspaceSnapshotsEqual(
 		a.changedFiles === b.changedFiles &&
 		a.additions === b.additions &&
 		a.deletions === b.deletions &&
-		a.hasUnmergedChanges === b.hasUnmergedChanges
+		a.hasUnmergedChanges === b.hasUnmergedChanges &&
+		a.behindBaseCount === b.behindBaseCount
 	);
 }
 
