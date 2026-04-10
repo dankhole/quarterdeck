@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: unmerged-changes badge false positive after squash merge (2026-04-10)
+
+Third fix in the `hasUnmergedChanges` detection chain. History: original feature used two-dot diff (`baseRef HEAD`), which showed false positives when main advanced ahead (behind-base commits appeared as unmerged). Commit `87639770` switched to three-dot (`baseRef...HEAD`) to only detect branch-introduced changes. But three-dot still reports changes when the branch's work has already landed via squash merge or commit-tree — the commit graphs diverge even though the trees are identical.
+
+**Fix**: Added a parallel two-dot tree comparison (`git diff --quiet baseRef HEAD`) as a guard. When the three-dot diff reports unmerged changes (exit 1), the two-dot check verifies the trees actually differ. If trees are identical (exit 0), the badge is suppressed. This doesn't regress the behind-base case because when a worktree is only behind (no changes of its own), the three-dot already returns exit 0 and the two-dot guard is never consulted.
+
+**Edge case**: If changes landed via squash AND main advanced further, the two-dot diff shows differences (from main's additional commits), so `hasUnmergedChanges` stays `true`. This is a minor false positive but the behind-base indicator on the Files icon would also be showing, giving correct overall signal.
+
+**Files**: `src/server/workspace-metadata-monitor.ts`
+
+**Commits**: `8be33dcd`, `dc847cc8`
+
 ## Debug log panel — right-side push layout, stop button, global error capture (2026-04-10)
 
 Converted the debug log panel from a bottom overlay (220px height, `border-t`) to a right-side push panel (420px width, `border-l`, `shrink-0`) within the main flex row. The panel pushes the board content rather than overlapping it.
