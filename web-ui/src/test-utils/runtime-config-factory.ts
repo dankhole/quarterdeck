@@ -58,6 +58,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	focusedTaskPollMs: CONFIG_DEFAULTS.focusedTaskPollMs,
 	backgroundTaskPollMs: CONFIG_DEFAULTS.backgroundTaskPollMs,
 	homeRepoPollMs: CONFIG_DEFAULTS.homeRepoPollMs,
+	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	llmConfigured: false,
 };
 

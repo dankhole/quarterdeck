@@ -4,6 +4,56 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Statusline headless worktree display + pulse cleanup (2026-04-10)
+
+The CLI statusline (`quarterdeck statusline`) showed no git info at all for detached HEAD worktrees — `getGitBranch` returned null for HEAD and the entire git section was skipped. Headless worktrees (quarterdeck's default isolation mode) appeared as just the directory name with no branch/hash context.
+
+**Fix**: Replaced `getGitBranch` with `getGitHead` that returns a discriminated union: `{type: "branch", label}` or `{type: "detached", label: shortHash}`. For detached HEAD, resolves the short hash via `git rev-parse --short HEAD` and reads `QUARTERDECK_BASE_REF` from the environment to display "based on {baseRef}". The env var is set by the runtime when spawning agent sessions — added to both `startTaskSession` (initial launch) and `buildRestartRequest` (migration restart) in `runtime-api.ts`.
+
+Also added "based on {baseRef}" to the web UI top bar (`TopBarGitStatusSection`) for consistency with the scope bar, which already showed this info.
+
+**Pulse cleanup**: Removed the `pulse/` Rust reference source directory and `docs/plans/pulse-statusline-integration.md` (completed plan) from the repo. The port to TypeScript was already complete. Removed via rebase amend on the statusline commit to keep pulse out of git history entirely (not yet pushed). Removed todo #6 (Pulse integration) — completed.
+
+**Files**: `src/commands/statusline.ts`, `src/trpc/runtime-api.ts`, `web-ui/src/components/top-bar.tsx`, `docs/todo.md`, `CHANGELOG.md`
+
+## Project switcher sidebar tab (2026-04-10)
+
+Added a dedicated "Projects" tab to the sidebar toolbar so users can switch projects from any context without clicking Home (which deselects the current task). This addresses todo #6 (project switcher in detail toolbar) and #16 (notification badges on project sidebar).
+
+**What changed:**
+- `web-ui/src/resize/use-card-detail-layout.ts`: Added `"projects"` to `SidebarTabId` union type. `handleTabChange("projects")` opens the sidebar without calling `setSelectedTaskId(null)` — the key behavioral difference from "home". Auto-switch `useEffect` preserves "projects" tab on task deselect (added to the stay-put list alongside "files").
+- `web-ui/src/components/detail-panels/detail-toolbar.tsx`: Added FolderKanban Projects button between Home and divider, always enabled. Extended `badgeColor` type to include `"orange"` mapping to `bg-status-orange`. New `projectsBadgeColor` prop on `DetailToolbarProps`.
+- `web-ui/src/App.tsx`: Sidebar rendering condition expanded from `activeTab === "home"` to `activeTab === "home" || activeTab === "projects"` — both render the same `ProjectNavigationPanel` with identical props. Badge computed as `Object.values(notificationSessions).some(isApprovalState) ? "orange" : undefined`. Note: `notificationSessions` is seeded from the current project only on initial load; cross-project entries arrive incrementally via `task_notification` messages.
+
+**What didn't change:**
+- `card-detail-view.tsx`: No changes needed — `isTaskSidePanelOpen` only matches `task_column | changes | files`, so "projects" falls through to no-sidebar correctly.
+- `project-navigation-panel.tsx`: Reused as-is, no visual changes.
+- Backend: No changes. Task count sync (todo #19) investigated — `broadcastRuntimeProjectsUpdated` is already called on every session flush, and `displayedProjects` in `use-project-ui-state.ts` correctly overrides the current project's counts from `countTasksByColumn(board)`.
+
+**Design decision:** The "projects" tab is a separate toolbar icon from "home" rather than replacing it. Home stays for deselecting tasks and returning to the board overview. Projects is for quick project switching without disrupting the current task context. A future dual-selection rework (new todo #5, spec at `docs/specs/2026-04-10-dual-selection-sidebar-rework.md`) will split the toolbar into independent main-view and sidebar dimensions.
+
+Commit: ea1ec7fc
+
+## Native Claude Code statusline (2026-04-10)
+
+Ported the `pulse` Rust CLI statusline tool to TypeScript as a native quarterdeck feature. Pulse used Starship (an external binary) to render a two-line prompt — line 1 from Starship's shell context modules (`$all`), line 2 from Claude session metrics formatted as environment variables. The port drops both the Rust binary and the Starship dependency, rendering directly with ANSI escape codes.
+
+**Line 1 (shell context)**: Directory basename with folder icon (bright cyan), `on` keyword (default grey), git branch with icon (purple), git status indicators `[+!?]` (yellow), battery percentage with icon and color tiers (green/yellow/red). Git branch via `execFileSync("git", ["rev-parse", ...])`, status via `git status --porcelain`, battery via `pmset -g batt` (macOS) or `/sys/class/power_supply/BAT0/capacity` (Linux). All subprocess calls have 2-second timeouts since Claude Code polls the statusline frequently.
+
+**Line 2 (Claude metrics)**: Session ID (last 8 chars, dim white), model with Nerd Font icon — brain for Opus, hubot for Sonnet, bolt for others (cyan), context window usage with tier coloring — OK green <50%, WARN yellow 50-80%, CRIT red >80%, cost (yellow, glyph only — no literal `$` to avoid double-dollar with the Nerd Font dollar glyph), duration in top-2 units (bright yellow), cumulative tokens in/out (bright yellow), lines added (green), lines removed (red).
+
+**Agent integration**: The Claude adapter in `agent-session-adapters.ts` already writes a settings JSON for hooks and passes it via `--settings`. Added `statusLine: { type: "command", command: "quarterdeck statusline" }` to this same object. Claude Code merges `--settings` with global config, so this overrides any user-configured statusline (e.g., standalone pulse) for quarterdeck-managed sessions only — standalone sessions keep their own config.
+
+**Config toggle**: Added `statuslineEnabled` boolean (defaults `true`) to the global config field registry in `global-config-fields.ts`. Threaded through `api-contract.ts` (response + save request schemas), `runtime-api.ts` (passed to `startTaskSession`), `session-manager.ts` (forwarded to `prepareAgentLaunch`), and `agent-session-adapters.ts` (conditionally includes `statusLine` in settings). When disabled, the statusline key is omitted entirely.
+
+**Input validation**: Added Zod schema matching Claude Code's statusline JSON contract. Uses `safeParse` with structured error output to stderr on validation failure, plus a defense-in-depth try/catch around the render call. Shell quoting via `quoteShellArg` on command parts to handle paths with spaces.
+
+**Intentional divergences from Rust original**: Token formatting adds `>= 1M` tier (Rust only had `>= 1k`), lines changed show `+`/`-` prefix (Rust showed bare numbers), directory shows basename only (Rust delegated to Starship's full path rendering).
+
+**Files**: `src/commands/statusline.ts` (new, 428 lines), `src/cli.ts`, `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-manager.ts`, `src/trpc/runtime-api.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
+
+**Commits**: `e94d6e4c`, `f19843e0`
+
 ## Fix: unmerged-changes badge false positive after squash merge (2026-04-10)
 
 Third fix in the `hasUnmergedChanges` detection chain. History: original feature used two-dot diff (`baseRef HEAD`), which showed false positives when main advanced ahead (behind-base commits appeared as unmerged). Commit `87639770` switched to three-dot (`baseRef...HEAD`) to only detect branch-introduced changes. But three-dot still reports changes when the branch's work has already landed via squash merge or commit-tree — the commit graphs diverge even though the trees are identical.

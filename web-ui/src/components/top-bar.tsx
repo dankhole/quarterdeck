@@ -255,6 +255,8 @@ function TopBarGitStatusSection({
 	}
 
 	if (selectedTaskId && (taskWorkspaceInfo || taskWorkspaceSnapshot)) {
+		const isDetached = taskWorkspaceInfo?.isDetached ?? false;
+		const baseRef = selectedTaskBaseRef;
 		return (
 			<>
 				<div className="w-px h-5 bg-border mx-1" />
@@ -268,6 +270,11 @@ function TopBarGitStatusSection({
 					onToggleGitHistory={onToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
 				/>
+				{isDetached && baseRef ? (
+					<span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
+						based on <span className="font-mono">{baseRef}</span>
+					</span>
+				) : null}
 			</>
 		);
 	}

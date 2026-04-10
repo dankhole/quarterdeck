@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Project switcher sidebar tab
+
+- New "Projects" icon (FolderKanban) in the detail toolbar between Home and the divider — always enabled, opens the ProjectNavigationPanel from any context (home view, task terminal, diff viewer) without deselecting the current task.
+- Orange notification badge on the Projects icon when any cross-project task is in approval/permission state, computed from `notificationSessions` via `isApprovalState()`.
+- "projects" tab persists to localStorage and survives page refresh. Auto-switch on task deselect preserves the Projects tab (like Files).
+- Investigated todo #19 (task count badge sync) — the data flow is already correct: current project counts derive from the live board, other projects update via `projects_updated` WebSocket messages.
+
+### Native Claude Code statusline
+
+- TypeScript statusline — renders a two-line ANSI statusline for Claude Code sessions without requiring Starship or a compiled binary.
+- Line 1: directory name (light blue), git branch (purple) with status indicators, battery level. Headless worktrees show the short commit hash and "based on {baseRef}" instead of a branch name.
+- Line 2: session ID, model with icon, context window usage with color-coded tiers (green/yellow/red), cost, duration, cumulative tokens, lines changed.
+- Registered as `quarterdeck statusline` CLI subcommand — reads JSON from stdin, writes ANSI to stdout.
+- Automatically injected into Claude agent sessions via `--settings` when quarterdeck spawns agents. Gated by `statuslineEnabled` global config field (defaults on). Base ref passed via `QUARTERDECK_BASE_REF` env var for headless worktree display.
+- Input validated with Zod schema; command parts shell-quoted for paths with spaces.
+- Web UI top bar also shows "based on {baseRef}" for headless worktrees, matching the scope bar.
+
 ### Fix: unmerged-changes badge false positive after squash merge
 
 - The blue dot on the Changes icon persisted when a worktree's changes had already landed on the base branch via squash merge or commit-tree (identical trees but divergent commit graphs). Now cross-checks the three-dot merge-base diff with a two-dot tree comparison — if the trees are identical, the badge is suppressed.
