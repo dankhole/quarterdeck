@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from "react";
-
+import { setRuntimeDisconnected } from "@/runtime/runtime-connection-state";
 import type {
 	RuntimeDebugLogEntry,
 	RuntimeProjectSummary,
@@ -353,6 +353,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 			try {
 				socket = new WebSocket(getRuntimeStreamUrl(requestedWorkspaceForConnection));
 			} catch (error) {
+				setRuntimeDisconnected(true);
 				dispatch({
 					type: "stream_disconnected",
 					message: error instanceof Error ? error.message : String(error),
@@ -362,6 +363,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 			}
 			socket.onopen = () => {
 				reconnectAttempt = 0;
+				setRuntimeDisconnected(false);
 				dispatch({ type: "stream_connected" });
 			};
 			socket.onmessage = (event) => {
@@ -477,6 +479,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 				if (cancelled) {
 					return;
 				}
+				setRuntimeDisconnected(true);
 				dispatch({
 					type: "stream_disconnected",
 					message: "Runtime stream disconnected.",
@@ -487,6 +490,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 				if (cancelled) {
 					return;
 				}
+				setRuntimeDisconnected(true);
 				log.error("WebSocket connection failed");
 				dispatch({
 					type: "stream_disconnected",
