@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: file browser shows deleted files
+
+- The file browser tree and file search no longer show files that were deleted from disk but not yet committed. `git ls-files --cached` still lists them; now cross-referenced with `git status --porcelain=v1` to filter out `D`-status entries.
+
 ### Fix: always open to agent view when selecting a task from home
 
 - Clicking a task card from the home board now always opens the agent terminal view instead of restoring the last active tab (which could be the file browser). Task-to-task switching still preserves the current tab.
