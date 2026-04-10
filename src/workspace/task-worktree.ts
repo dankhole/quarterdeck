@@ -1,5 +1,5 @@
 import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import type {
 	RuntimeBoardData,
@@ -9,7 +9,12 @@ import type {
 } from "../core/api-contract";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
-import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state";
+import {
+	getRuntimeHomePath,
+	getTaskWorktreesHomePath,
+	loadWorkspaceContext,
+	loadWorkspaceState,
+} from "../state/workspace-state";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
 import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
@@ -717,6 +722,48 @@ export async function resolveTaskCwd(options: {
 		return worktreePath;
 	}
 	throw new Error(`Task worktree not found for task "${options.taskId}".`);
+}
+
+export function isMissingTaskWorktreeError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	return error.message.startsWith("Task worktree not found for task ");
+}
+
+export async function resolveTaskWorkingDirectory(options: {
+	workspacePath: string;
+	taskId: string;
+	baseRef: string;
+	ensure?: boolean;
+	branch?: string | null;
+}): Promise<string> {
+	const state = await loadWorkspaceState(options.workspacePath);
+	const persisted = getTaskWorkingDirectory(state.board, options.taskId);
+	if (persisted && (await pathExists(persisted))) return resolve(persisted);
+
+	// Fallback for tasks started before workingDirectory was persisted.
+	try {
+		return resolve(
+			await resolveTaskCwd({
+				cwd: options.workspacePath,
+				taskId: options.taskId,
+				baseRef: options.baseRef,
+				ensure: options.ensure ?? false,
+				branch: options.branch,
+			}),
+		);
+	} catch (error) {
+		// Legacy non-worktree tasks (useWorktree === false) have no persisted
+		// workingDirectory and no worktree on disk. They use the workspace path.
+		if (isMissingTaskWorktreeError(error)) {
+			const card = findCardInBoard(state.board, options.taskId);
+			if (card && card.useWorktree === false) {
+				return resolve(options.workspacePath);
+			}
+		}
+		throw error;
+	}
 }
 
 export function getTaskWorkingDirectory(board: RuntimeBoardData, taskId: string): string | null {

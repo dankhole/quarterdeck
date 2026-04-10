@@ -4,7 +4,7 @@ const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
 }));
 
-vi.mock("../../../src/terminal/command-discovery.js", () => ({
+vi.mock("../../../src/core/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
 }));
 
@@ -12,7 +12,7 @@ import {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
-} from "../../../src/terminal/agent-registry";
+} from "../../../src/config/agent-registry";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 beforeEach(() => {

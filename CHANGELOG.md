@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Backend domain boundary cleanup
+
+- Moved `agent-registry.ts` from `src/terminal/` to `src/config/` — it builds config responses and only depended on config types, not terminal internals.
+- Moved `command-discovery.ts` from `src/terminal/` to `src/core/` — it's a pure PATH inspection utility used by both config and server layers.
+- Consolidated working directory resolution: extracted `resolveTaskWorkingDirectory` and `isMissingTaskWorktreeError` to `src/workspace/task-worktree.ts` as the single source of truth. Removed the duplicate local copy from `workspace-api.ts` and replaced the inline copy-paste in `runtime-api.ts` `startShellSession`. `startTaskSession` and `migrateTaskWorkingDirectory` keep their specialized inline logic (different `ensure`/`useWorktree`/`branch` requirements).
+- Added research doc and TODO (#22) for the remaining coupling hotspot: session summary dual-sourcing between terminal and state layers.
+
 ### Board sidebar opens when clicking task from board view
 
 - Clicking a task card from the board now opens the terminal with the board sidebar (`task_column` tab) visible, so you keep column context alongside the agent terminal. Previously it collapsed the sidebar entirely for a full-width terminal. If the sidebar was already manually collapsed, it stays collapsed to respect user preference.

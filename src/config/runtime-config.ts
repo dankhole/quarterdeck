@@ -8,7 +8,7 @@ import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath } from "../state/workspace-state";
-import { detectInstalledCommands } from "../terminal/agent-registry";
+import { detectInstalledCommands } from "./agent-registry";
 import {
 	DEFAULT_AGENT_ID,
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,

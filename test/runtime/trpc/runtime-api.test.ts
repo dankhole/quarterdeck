@@ -12,6 +12,7 @@ const agentRegistryMocks = vi.hoisted(() => ({
 
 const taskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
+	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	captureTaskPatch: vi.fn(),
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	findTaskPatch: vi.fn(),
@@ -50,13 +51,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../../src/terminal/agent-registry.js", () => ({
+vi.mock("../../../src/config/agent-registry.js", () => ({
 	resolveAgentCommand: agentRegistryMocks.resolveAgentCommand,
 	buildRuntimeConfigResponse: agentRegistryMocks.buildRuntimeConfigResponse,
 }));
 
 vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	resolveTaskCwd: taskWorktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: taskWorktreeMocks.resolveTaskWorkingDirectory,
 	getTaskWorkingDirectory: taskWorktreeMocks.getTaskWorkingDirectory,
 	pathExists: taskWorktreeMocks.pathExists,
 	applyTaskPatch: taskWorktreeMocks.applyTaskPatch,
@@ -785,15 +787,12 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 describe("createRuntimeApi startShellSession", () => {
 	beforeEach(() => {
-		workspaceStateMocks.loadWorkspaceState.mockReset();
-		taskWorktreeMocks.getTaskWorkingDirectory.mockReset();
-		taskWorktreeMocks.resolveTaskCwd.mockReset();
-
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		taskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		taskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 	});
 
-	it("uses persisted workingDirectory for shell sessions", async () => {
-		taskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue("/tmp/my-worktree");
+	it("uses resolveTaskWorkingDirectory for shell sessions", async () => {
+		taskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/my-worktree");
 
 		const terminalManager = {
 			startShellSession: vi.fn(async () => createSummary()),
@@ -809,16 +808,18 @@ describe("createRuntimeApi startShellSession", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
+		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
+			workspacePath: "/tmp/repo",
+			taskId: "task-1",
+			baseRef: "main",
+			ensure: true,
+		});
 		expect(terminalManager.startShellSession).toHaveBeenCalledWith(
 			expect.objectContaining({ cwd: "/tmp/my-worktree" }),
 		);
 	});
 
-	it("falls back to resolveTaskCwd when no persisted workingDirectory exists", async () => {
-		taskWorktreeMocks.getTaskWorkingDirectory.mockReturnValue(null);
-		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/worktree-from-lookup");
-
+	it("uses workspace path when no workspaceTaskId is provided", async () => {
 		const terminalManager = {
 			startShellSession: vi.fn(async () => createSummary()),
 		};
@@ -828,14 +829,11 @@ describe("createRuntimeApi startShellSession", () => {
 
 		const result = await api.startShellSession(defaultScope, {
 			taskId: "shell-1",
-			workspaceTaskId: "task-1",
 			baseRef: "main",
 		});
 
 		expect(result.ok).toBe(true);
-		expect(taskWorktreeMocks.resolveTaskCwd).toHaveBeenCalled();
-		expect(terminalManager.startShellSession).toHaveBeenCalledWith(
-			expect.objectContaining({ cwd: "/tmp/worktree-from-lookup" }),
-		);
+		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
+		expect(terminalManager.startShellSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 });

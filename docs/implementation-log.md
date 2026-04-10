@@ -4,6 +4,25 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Backend domain boundary cleanup (2026-04-10)
+
+Improved domain segregation in the backend to create cleaner boundaries for the eventual Go rewrite.
+
+**Agent registry relocation**: Moved `agent-registry.ts` from `src/terminal/` to `src/config/`. The file builds `RuntimeConfigResponse` objects and imports config types (`RuntimeConfigState`, `extractGlobalConfigFields`), so it naturally belongs in the config domain. The terminal layer now has zero imports from config. Also moved `command-discovery.ts` (pure PATH inspection utility) from `src/terminal/` to `src/core/` since it was used by both `config/agent-registry.ts` and `server/browser.ts` — keeping it in terminal would have created a backwards dependency from config→terminal.
+
+**Working directory resolution consolidation**: The pattern "check persisted directory → verify it exists on disk → fall back to resolveTaskCwd → handle legacy non-worktree tasks" was implemented three times:
+1. `resolveTaskWorkingDirectory()` in `workspace-api.ts` (the good abstraction)
+2. Inline in `startShellSession` in `runtime-api.ts`
+3. Inline in `migrateTaskWorkingDirectory` in `runtime-api.ts`
+
+Moved `resolveTaskWorkingDirectory` and `isMissingTaskWorktreeError` from `workspace-api.ts` to `workspace/task-worktree.ts` (where the primitive `resolveTaskCwd` lives). Added `ensure` and `branch` parameters. Updated `startShellSession` to call the shared function. Left `startTaskSession` and `migrateTaskWorkingDirectory` with their inline logic — `startTaskSession` has the home-session bypass, body.useWorktree flag, and branch threading that make it different enough; `migrateTaskWorkingDirectory` doesn't check if the persisted path exists on disk (intentional, since it's about to change it).
+
+**Session summary dual-sourcing**: Documented the remaining coupling hotspot (terminal ↔ state read-back pattern) in `docs/research/2026-04-10-session-summary-dual-sourcing.md` and added TODO #22 with three decoupling options. Recommendation: design it right in the Go rewrite rather than refactoring TypeScript.
+
+**Files moved**: `src/terminal/agent-registry.ts` → `src/config/agent-registry.ts`, `src/terminal/command-discovery.ts` → `src/core/command-discovery.ts`, `test/runtime/terminal/agent-registry.test.ts` → `test/runtime/config/agent-registry.test.ts`
+
+**Files modified**: `src/config/runtime-config.ts` (import path), `src/trpc/runtime-api.ts` (import paths + startShellSession refactor), `src/trpc/workspace-api.ts` (removed local functions, updated imports and call sites), `src/server/browser.ts` (import path), `src/workspace/task-worktree.ts` (added resolveTaskWorkingDirectory + isMissingTaskWorktreeError + resolve/loadWorkspaceState imports), `test/runtime/trpc/runtime-api.test.ts` (mock paths + shell session test rewrite), `test/runtime/trpc/workspace-api.test.ts` (added new mocks, updated test setup), `docs/todo.md` (added #22, renumbered #23), `CHANGELOG.md`, `docs/research/2026-04-10-session-summary-dual-sourcing.md` (new)
+
 ## Board sidebar opens when clicking task from board view (2026-04-10)
 
 Changed the `useCardDetailLayout` effect that fires on `selectedTaskId` changes. Previously, selecting a task from the home/board view (`currentTab === "home"`) collapsed the sidebar (`setActiveTab(null)`), giving a full-width terminal. Now it opens the `task_column` tab so the user sees the board column context alongside the terminal. The `currentTab === null` (manually collapsed) case is handled separately and stays collapsed, respecting the user's explicit preference.
