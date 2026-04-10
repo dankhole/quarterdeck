@@ -163,3 +163,41 @@ The terminal layer (`TerminalSessionManager`) owns session summaries in memory, 
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
+## 20. Move agent chat out of the project switcher sidebar
+
+The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
+
+## 21. Slow project switching — cache or preload board state
+
+Switching projects has a noticeable delay because the board tasks take a moment to load after the switch. Investigate caching strategies to make project switching feel instant — e.g. keeping the previous project's board state in memory, preloading the target project's state in the background when hovering or when the project switcher is open, or caching the last-known board state client-side so it can render immediately while fresh data loads behind it.
+
+## 22. Independent sidebar widths per panel type (post diff rewrite)
+
+The sidebar width is currently shared across all panel types — the task column, project switcher, and git diff sidebar all use the same width. These panels have different content density and ideal widths, so resizing one shouldn't affect the others. Store and restore sidebar width independently per panel type (e.g. task column, project switcher, changes/diff) so each remembers its own preferred width. This should be done after the diff viewer rewrite lands.
+
+## 23. Un-trashing shared-workspace tasks clobbers session state
+
+When un-trashing tasks that share the main repo (no isolated worktree), the restore logic reattaches to the most recent agent chat session rather than the original session that belonged to that task. This means un-trashing multiple shared-workspace tasks doesn't work — each subsequent un-trash steals the session from the previously restored task, and any external agent session started in the same workspace will replace it too. The root issue is that shared-workspace tasks all compete for a single "current session" with no per-task session scoping. Needs a way to associate and restore the correct session per task, even when they share a workspace.
+
+Related: #10 (un-trash / restart paths for non-isolated worktrees).
+
+## 24. Un-trash doesn't always auto-resume the agent session
+
+After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context — the agent session isn't fully restored. Manually typing `/resume` in the terminal works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash and ensure the full session context is restored automatically. Observed primarily with isolated worktree tasks but may affect shared-workspace tasks too.
+
+Related: #2 (resume sessions after crash/closure), #10 (un-trash / restart paths for non-isolated worktrees).
+
+## 25. Task stuck in "running" when agent is waiting for permission
+
+A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
+
+## 26. Delayed transition to "running" state on prompt submission
+
+When sending a prompt to an agent, the task card doesn't always move to the running/in-progress state right away. It appears to stay in its previous state during the agent's initial thinking phase, then transitions on what looks like a second burst of activity. Investigate the hook or state transition trigger — it may be keying off a terminal output pattern that doesn't match the agent's first response, or there's a debounce/settle delay that's too long. The transition should happen as soon as the prompt is submitted or the agent begins processing, not after a noticeable delay.
+
+Related: #25 (agent state detection issues).
+
+## 27. Reorder projects in the project switcher
+
+The project list in the project switcher sidebar has no way to reorder entries. Add drag-and-drop or manual reordering so users can arrange projects in their preferred order. Persist the ordering across sessions.
+
