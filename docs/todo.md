@@ -66,18 +66,7 @@ A new detail sidebar panel for managing the main repository's state — branch s
 
 **What this is NOT**: This is not a full Git GUI. It covers the common operations needed when orchestrating multiple agents — checking what's on main, pulling latest, merging completed task branches back, and diffing to verify. Complex operations (rebase, cherry-pick, conflict resolution) are out of scope.
 
-## 5. Investigate and fix orphaned processes
-
-Runtime servers and hook ingest processes can get orphaned when their parent process (Cline, a terminal, etc.) exits without signaling shutdown. Observed in the wild: 4 zombie processes running for days, consuming CPU, and resisting SIGTERM (required SIGKILL).
-
-Three issues to address:
-- **No parent liveness detection**: The runtime has no way to know its parent died (no stdin EOF watch, no heartbeat). Investigate the existing IPC shutdown hook (`shutdown-ipc-hook.cjs`) — it didn't fire in the observed case.
-- **Shutdown handler hangs on SIGTERM**: Both runtime servers spiked to high CPU on SIGTERM instead of exiting cleanly. The shutdown coordinator may block on stale filesystem state. Add timeouts and a hard exit deadline.
-- **Hook ingest processes don't exit**: `hooks ingest` processes survived SIGTERM. They likely need their own timeout on the HTTP request to the runtime and proper signal handling.
-
-Investigation doc at [docs/research/2026-04-08-orphaned-process-investigation.md](research/2026-04-08-orphaned-process-investigation.md).
-
-## 6. Project switcher in the detail toolbar
+## 5. Project switcher in the detail toolbar
 
 Add a project panel to the left detail toolbar (alongside the existing Board and Changes panels) for quickly jumping between projects without leaving the detail view. Adapt the existing project view from the main board into a compact sidebar format.
 
@@ -87,7 +76,7 @@ Add a project panel to the left detail toolbar (alongside the existing Board and
 
 **Implementation**: Take the existing project list/view from the main board and refactor it into a sidebar-compatible component for the detail toolbar panel slot.
 
-## 7. Pulse integration for enhanced status display (Nerd Fonts)
+## 6. Pulse integration for enhanced status display (Nerd Fonts)
 
 Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that enhances the Claude Code status bar with rich glyphs — into Quarterdeck's terminal/status display when Nerd Fonts are detected.
 
@@ -101,30 +90,30 @@ Integrate [Pulse](https://github.com/anthropics/pulse) — a Rust CLI tool that 
 - Should be seamless — no user configuration required beyond having Nerd Fonts installed
 - Pulse is a tool made by a coworker, so coordinate with them on the integration surface
 
-## 8. Cherry-pick / land individual commits onto main from the UI
+## 7. Cherry-pick / land individual commits onto main from the UI
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
-This is distinct from #14 (committing *within* the task worktree) and #4 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
+This is distinct from #13 (committing *within* the task worktree) and #4 (full git management with branch merging). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 9. Upstream sync: periodic review of cline/kanban (recurring)
+## 8. Upstream sync: periodic review of cline/kanban (recurring)
 
 Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
 
 **Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
 **Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
 
-## 10. Audit CI/CD and deployment infrastructure
+## 9. Audit CI/CD and deployment infrastructure
 
 Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
-## 11. Investigate auto-trashing of tasks on restart
+## 10. Investigate auto-trashing of tasks on restart
 
 When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
 
 If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #2 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
 
-## 12. Investigate un-trash / restart paths for non-isolated worktrees
+## 11. Investigate un-trash / restart paths for non-isolated worktrees
 
 Investigate what happens on the un-trash and session restart code paths for tasks that are **not** using isolated git worktrees. Specifically:
 
@@ -135,11 +124,11 @@ Investigate what happens on the un-trash and session restart code paths for task
 
 This is about ensuring the full trash → un-trash → resume cycle works for both execution modes, not just isolated worktrees.
 
-## 13. Publish to npm
+## 12. Publish to npm
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 14. Server-side commit in the diff viewer
+## 13. Server-side commit in the diff viewer
 
 Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
 
@@ -148,40 +137,40 @@ Add a real commit action to the Changes/diff panel — select files to stage, wr
 - **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
 - **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git management view (#4), which would also support committing.
 
-## 15. Interactive base ref switcher
+## 14. Interactive base ref switcher
 
 The diff toolbar shows the branch comparison (e.g. `feat/my-feature → main`) as a static label. Make this interactive — clicking the base ref should open a dropdown/popover to select a different branch to diff against, so users can compare their work against any branch, not just the original base ref.
 
 Research and implementation plan at [docs/research/2026-04-07-interactive-diff-base-ref-switcher.md](research/2026-04-07-interactive-diff-base-ref-switcher.md) and [docs/plans/2026-04-07-interactive-diff-base-ref-switcher.md](plans/2026-04-07-interactive-diff-base-ref-switcher.md).
 
-## 16. Notification badges on project sidebar for cross-project alerts
+## 15. Notification badges on project sidebar for cross-project alerts
 
-Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #6 (project switcher) and should ship independently without requiring the full project panel redesign.
+Add notification badges to the existing project sidebar icons to surface when tasks in other projects need attention — primarily permission prompts and review-ready states. This is a smaller, standalone version of the badge system described in #5 (project switcher) and should ship independently without requiring the full project panel redesign.
 
-## 17. Fix: notification beep count wrong for rapid state transitions
+## 16. Fix: notification beep count wrong for rapid state transitions
 
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #18 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #17 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
 
-## 18. Fix: audible notification double-beep and missed cues
+## 17. Fix: audible notification double-beep and missed cues
 
 Two related bugs with the notification audio system:
 - Sometimes getting a double beep when only one should fire
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 19. Fix: project view task state indicators not staying up to date
+## 18. Fix: project view task state indicators not staying up to date
 
 The UI element in the project view that shows task state counts (how many tasks are in_progress, review, etc.) doesn't update in real-time when task states change. It likely needs to subscribe to WebSocket state updates or re-derive from the current board state.
 
-## 20. Add markdown renderer
+## 19. Add markdown renderer
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 21. Reorder settings menu
+## 20. Reorder settings menu
 
 The settings dialog sections/items aren't in an intuitive order. Reorganize them so the most commonly used settings are near the top and related settings are grouped logically.
 
-## 22. Decouple session summary dual-sourcing between terminal and state layers
+## 21. Decouple session summary dual-sourcing between terminal and state layers
 
 The terminal layer (`TerminalSessionManager`) owns session summaries in memory, but the state/persistence layer reads them back via `listSummaries()` to persist. This creates a one-directional but tight coupling between 7 files. The TRPC layer also makes direct mutation calls into the terminal layer (10+ methods on the public surface).
 
@@ -189,7 +178,7 @@ The terminal layer (`TerminalSessionManager`) owns session summaries in memory, 
 
 **Recommendation**: If the Go rewrite (#1) happens soon, design the session store correctly from the start — the current coupling maps cleanly to a Go interface. If TypeScript needs to live longer, extract a `SessionSummaryStore` service (~2-3 days).
 
-## 23. Archive stale docs (recurring)
+## 22. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
