@@ -98,6 +98,7 @@ Completing a feature or fix (release hygiene)
   2. `CHANGELOG.md` — add a bullet under the current version section matching the existing style (feature-area headings, em-dash descriptions). If no current version section exists, create one with the next patch bump.
   3. `docs/implementation-log.md` — add a detailed entry at the top with: what changed, why, which files were touched, and the commit hash. This is the forensic record — include enough detail that someone debugging a regression can understand the full scope of the change without reading the diff.
 - Skipping any of these creates drift that compounds quickly across concurrent worktrees. The changelog and implementation log are easy to forget after the code is working — do them immediately, not in a follow-up.
+- When bumping the version number, always keep a `## [Unreleased]` section at the top of `CHANGELOG.md` above the new version heading. This is where subsequent changes land before the next release.
 
 Test fixtures and merge conflicts
 - Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.
