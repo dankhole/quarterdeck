@@ -368,7 +368,7 @@ function BetaNotice(): React.ReactElement {
 			<div className="flex items-start gap-2 rounded-md border border-status-orange/25 bg-status-orange/5 px-3 py-2.5">
 				<div className="flex flex-col gap-1.5">
 					<p className="m-0 text-xs text-status-orange/80">
-						Quarterdeck is in beta. Help us improve by sharing your experience.
+						Quarterdeck is in beta. Help me improve by sharing your experience.
 					</p>
 					<a
 						href={GITHUB_ISSUES_URL}
