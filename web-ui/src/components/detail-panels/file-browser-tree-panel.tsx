@@ -30,7 +30,7 @@ function flattenVisible(nodes: FileTreeNode[], expandedDirs: Set<string>, depth:
 	}
 }
 
-const INITIAL_EXPANSION_DEPTH = 2;
+const INITIAL_EXPANSION_DEPTH = 0;
 
 function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE_INFINITY, depth = 0): string[] {
 	if (depth >= maxDepth) {

@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: file browser folders start collapsed by default (2026-04-10)
+
+**Problem**: The file browser tree panel auto-expanded directories to depth 2 on initial load, which was noisy for worktrees with many top-level directories.
+
+**Fix**: Changed `INITIAL_EXPANSION_DEPTH` from `2` to `0`. The `collectDirectoryPaths(tree, 0)` call now returns an empty set on initialization, so all folders start collapsed. Search-triggered expansion (fully opens tree while filtering) and expand/collapse-all buttons are unaffected.
+
+**Files**: `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx`
+
+**Commit**: `819ee36c`
+
 ## Config field registry — single source of truth for settings (2026-04-10)
 
 **Problem**: Adding a new boolean config setting (like `behindBaseIndicatorEnabled`) required threading the field through ~12 files and ~44 individual code locations: type definitions, normalization, serialization, merge logic, dirty checks, Zod schemas, test fixtures, and frontend type signatures. The earlier `config-defaults.ts` refactor (commit `f0c85b32`) centralized default *values* but didn't address the structural duplication.
