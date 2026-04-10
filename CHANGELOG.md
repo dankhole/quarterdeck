@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: terminal font weight and ligature tuning
+
+- Bumped terminal font weight from 300 (Light) to 350 for a middle ground between the too-thin Light weight and the too-chunky Regular (400) on low-DPR monitors. Bold weight set to 500 (Medium).
+- Switched back from the NL (No Ligatures) variant to standard JetBrainsMono Nerd Font Mono — ligatures are fine and the NL switch wasn't meaningfully helping with rendering weight.
+
 ### Backend domain boundary cleanup
 
 - Moved `agent-registry.ts` from `src/terminal/` to `src/config/` — it builds config responses and only depended on config types, not terminal internals.

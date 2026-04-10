@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Terminal font weight and ligature tuning (2026-04-10)
+
+Previous commits went from Regular (400) weight → Light (300) to combat chunky WebGL rendering on low-DPR monitors. 300 turned out to be too thin. Set `fontWeight: 350` as a numeric value (xterm's `FontWeight` type accepts `number`) — the browser snaps to an intermediate rendering between Light and Regular discrete font files. `fontWeightBold` set to `"500"` (Medium) for subtle emphasis without the heaviness of 700.
+
+Also reverted the NL (No Ligatures) font variant switch from `df2cd2d0`. The original rationale was that skipping ligature table processing might reduce visual weight in the WebGL renderer, but the commit itself noted it was "marginal." Ligatures (`=>`, `!=`, etc.) are useful and the NL variant wasn't pulling its weight as a rendering fix.
+
+**Files**: `web-ui/src/terminal/terminal-options.ts`
+
 ## Backend domain boundary cleanup (2026-04-10)
 
 Improved domain segregation in the backend to create cleaner boundaries for the eventual Go rewrite.
