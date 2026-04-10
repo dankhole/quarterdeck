@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Board sidebar opens when clicking task from board view (2026-04-10)
+
+Changed the `useCardDetailLayout` effect that fires on `selectedTaskId` changes. Previously, selecting a task from the home/board view (`currentTab === "home"`) collapsed the sidebar (`setActiveTab(null)`), giving a full-width terminal. Now it opens the `task_column` tab so the user sees the board column context alongside the terminal. The `currentTab === null` (manually collapsed) case is handled separately and stays collapsed, respecting the user's explicit preference.
+
+Also added `setLastTaskTab("task_column")` so the tab is remembered as the last-used task tab, and added `setLastTaskTab` to the effect dependency array.
+
+**Files**: `web-ui/src/resize/use-card-detail-layout.ts`
+
 ## Per-card hard delete in trash column (2026-04-10)
 
 Added a permanent delete button (red `Trash2` icon) next to the existing restore button on each trash card. Previously, the only way to permanently delete a single trashed card was to clear all trash.

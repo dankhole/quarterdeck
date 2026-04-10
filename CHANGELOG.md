@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Board sidebar opens when clicking task from board view
+
+- Clicking a task card from the board now opens the terminal with the board sidebar (`task_column` tab) visible, so you keep column context alongside the agent terminal. Previously it collapsed the sidebar entirely for a full-width terminal. If the sidebar was already manually collapsed, it stays collapsed to respect user preference.
+
 ## [0.5.0]
 
 ### Per-card hard delete in trash column
