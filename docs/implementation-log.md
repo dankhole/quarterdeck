@@ -4,6 +4,38 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Scope bar, branch selector, and context-aware file browser (2026-04-09)
+
+**Problem**: The Files tab in the detail view was hard-coded to show the focused task's worktree. Users had no way to browse the home repo's files, view a different branch's contents, or switch a worktree's checked-out branch from the UI.
+
+**Design**: A three-layer architecture — scope context determines *what* to show, the scope bar renders *where* you are, and the file browser derives its data source from the resolved scope.
+
+1. **`useScopeContext` hook**: Manages a `scopeMode` state machine (`contextual` → `home` → `branch_view`). The `resolvedScope` output provides the file path, branch, and base ref for whichever context is active. Switching modes resets the file browser selection.
+
+2. **`ScopeBar` component**: Renders in the Files tab toolbar. Shows the current context (task name + branch pill, or "Home" badge). The branch pill is a `BranchSelectorPopover` trigger that lists all worktree branches. Behind-base count is shown as a warning badge. Actions: "Switch to Home" (house icon), "Return to contextual" (when in home/branch_view mode).
+
+3. **`useBranchActions` hook**: Orchestrates branch selection and checkout. Selecting a branch opens a read-only `branch_view` (file tree populated via `git ls-tree`, file content via `git show`). The "Checkout" button opens a `CheckoutConfirmationDialog` that warns about agent disruption. Checkout calls the existing `workspace.checkoutBranch` tRPC mutation. On success, scope returns to contextual mode. "Don't show again" preference persists to runtime config.
+
+4. **`useFileBrowserData` hook**: Unified data source — fetches file tree from either the worktree path (for task/home scopes) or `git ls-tree` (for branch_view scope). File content similarly reads from disk or `git show` depending on scope.
+
+5. **File browser split**: The monolithic `FileBrowserPanel` was replaced by `FileBrowserTreePanel` (tree sidebar) + `FileContentViewer` (content pane), allowing each to be independently wired to scope-derived data.
+
+**Key fixes during development**:
+- Nested Radix `asChild` bug — `Tooltip > PopoverTrigger > button` caused React to render `<button><button>`. Fixed by removing the redundant Tooltip wrapper around the popover trigger.
+- Stale `performCheckout` closure — the checkout handler captured an outdated `resolvedScope` ref. Fixed by reading scope from `useBranchActions`'s own state rather than a captured closure.
+- Reserved `ref` prop — React's `ref` was being used as a git ref prop name, causing silent prop forwarding issues. Renamed to `gitRef` throughout.
+- Checkout from `branch_view` scope — was targeting the home repo instead of the task worktree. Fixed by using `taskId` to resolve the correct worktree path.
+- Headless worktree display — detached HEAD worktrees showed "unknown" for the branch name. Now shows abbreviated commit hash via `headCommit?.substring(0, 7)`.
+- Trash column was included in the worktree branch list. Added a filter to exclude trashed tasks.
+
+**New files**: `web-ui/src/components/detail-panels/scope-bar.tsx`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/components/detail-panels/checkout-confirmation-dialog.tsx`, `web-ui/src/hooks/use-scope-context.ts`, `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/hooks/use-file-browser-data.ts`, `docs/specs/2026-04-09-scope-bar-file-browser-rework.md`, `docs/specs/2026-04-09-scope-bar-file-browser-rework-tasks.md`, `docs/specs/2026-04-09-scope-bar-handoff.md`
+
+**Modified files**: `web-ui/src/components/card-detail-view.tsx` (scope bar integration, file browser rewiring), `web-ui/src/App.tsx` (checkout confirmation state, skip-confirmation config props), `web-ui/src/components/detail-panels/detail-toolbar.tsx` (scope bar slot), `web-ui/src/components/runtime-settings-dialog.tsx` (checkout confirmation toggle), `web-ui/src/resize/use-card-detail-layout.ts` (files tab layout), `src/trpc/workspace-api.ts` (checkoutBranch, listBranches, gitShow, lsTree mutations/queries), `src/workspace/git-utils.ts` (checkout, ls-tree, git-show helpers), `src/config/runtime-config.ts` + `src/config/config-defaults.ts` (skip-confirmation config fields), `src/core/api-contract.ts` (new Zod schemas for checkout/branch APIs)
+
+**Deleted files**: `web-ui/src/components/detail-panels/file-browser-panel.tsx` (replaced by split architecture)
+
+**Commit**: *(pending squash)*
+
 ## Fix stale hasUnmergedChanges badge after baseRef advances (2026-04-09)
 
 **Problem**: The blue "unmerged changes" notification dot on the Changes toolbar tab persisted after a task branch was merged to main. Users saw the badge even when `git diff main HEAD` showed zero differences.

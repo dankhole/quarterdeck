@@ -11,6 +11,7 @@ interface DetailToolbarProps {
 	hasSelectedTask: boolean;
 	hasUncommittedChanges?: boolean;
 	hasUnmergedChanges?: boolean;
+	isBehindBase?: boolean;
 }
 
 function ToolbarButton({
@@ -69,6 +70,7 @@ export function DetailToolbar({
 	hasSelectedTask,
 	hasUncommittedChanges,
 	hasUnmergedChanges,
+	isBehindBase,
 }: DetailToolbarProps): React.ReactElement {
 	const changesBadgeColor: "red" | "blue" | undefined = hasSelectedTask
 		? hasUncommittedChanges
@@ -77,6 +79,8 @@ export function DetailToolbar({
 				? "blue"
 				: undefined
 		: undefined;
+
+	const filesBadgeColor: "blue" | undefined = hasSelectedTask && isBehindBase ? "blue" : undefined;
 
 	return (
 		<aside
@@ -124,7 +128,7 @@ export function DetailToolbar({
 				onTabChange={onTabChange}
 				icon={<FolderOpen size={18} />}
 				label="Files"
-				disabled={!hasSelectedTask}
+				badgeColor={filesBadgeColor}
 			/>
 		</aside>
 	);

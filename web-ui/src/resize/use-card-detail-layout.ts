@@ -159,9 +159,10 @@ export function useCardDetailLayout({
 			}
 			// If already on a task-tied tab, stay there (task-to-task switch)
 		} else {
-			// Task deselected: switch to home, but only if currently on a task-tied tab.
+			// Task deselected: switch to home, but only if currently on a task-only tab.
+			// Files tab works without a task (home context), so stay on it.
 			// If activeTab is null (panel collapsed), stay collapsed.
-			if (currentTab !== null && currentTab !== "home") {
+			if (currentTab !== null && currentTab !== "home" && currentTab !== "files") {
 				setActiveTab("home");
 			}
 		}

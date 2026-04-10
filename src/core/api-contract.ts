@@ -59,8 +59,9 @@ export const runtimeWorkspaceFileSearchResponseSchema = z.object({
 export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
 
 export const runtimeListFilesRequestSchema = z.object({
-	taskId: z.string(),
-	baseRef: z.string(),
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
+	ref: z.string().optional(),
 });
 export type RuntimeListFilesRequest = z.infer<typeof runtimeListFilesRequestSchema>;
 
@@ -70,9 +71,10 @@ export const runtimeListFilesResponseSchema = z.object({
 export type RuntimeListFilesResponse = z.infer<typeof runtimeListFilesResponseSchema>;
 
 export const runtimeFileContentRequestSchema = z.object({
-	taskId: z.string(),
-	baseRef: z.string(),
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
 	path: z.string().min(1),
+	ref: z.string().optional(),
 });
 export type RuntimeFileContentRequest = z.infer<typeof runtimeFileContentRequestSchema>;
 
@@ -192,6 +194,8 @@ export type RuntimeGitSyncResponse = z.infer<typeof runtimeGitSyncResponseSchema
 
 export const runtimeGitCheckoutRequestSchema = z.object({
 	branch: z.string(),
+	taskId: z.string().optional(),
+	baseRef: z.string().optional(),
 });
 export type RuntimeGitCheckoutRequest = z.infer<typeof runtimeGitCheckoutRequestSchema>;
 
@@ -332,6 +336,7 @@ export const runtimeTaskWorkspaceMetadataSchema = z.object({
 	additions: z.number().nullable(),
 	deletions: z.number().nullable(),
 	hasUnmergedChanges: z.boolean().nullable(),
+	behindBaseCount: z.number().nullable(),
 	stateVersion: z.number().int().nonnegative(),
 });
 export type RuntimeTaskWorkspaceMetadata = z.infer<typeof runtimeTaskWorkspaceMetadataSchema>;
@@ -622,6 +627,8 @@ export const runtimeConfigResponseSchema = z.object({
 	shellAutoRestartEnabled: z.boolean(),
 	showTrashWorktreeNotice: z.boolean(),
 	unmergedChangesIndicatorEnabled: z.boolean(),
+	skipTaskCheckoutConfirmation: z.boolean(),
+	skipHomeCheckoutConfirmation: z.boolean(),
 	audibleNotificationsEnabled: z.boolean(),
 	audibleNotificationVolume: z.number().min(0).max(1),
 	audibleNotificationEvents: z.object({
@@ -662,6 +669,8 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	summaryStaleAfterSeconds: z.number().min(5).optional(),
 	showTrashWorktreeNotice: z.boolean().optional(),
 	unmergedChangesIndicatorEnabled: z.boolean().optional(),
+	skipTaskCheckoutConfirmation: z.boolean().optional(),
+	skipHomeCheckoutConfirmation: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
 	audibleNotificationsEnabled: z.boolean().optional(),

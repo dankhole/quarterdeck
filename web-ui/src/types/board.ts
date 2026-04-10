@@ -60,6 +60,7 @@ export interface ReviewTaskWorkspaceSnapshot {
 	additions: number | null;
 	deletions: number | null;
 	hasUnmergedChanges: boolean | null;
+	behindBaseCount: number | null;
 }
 
 export interface CardSelection {

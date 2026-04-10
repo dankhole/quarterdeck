@@ -29,6 +29,7 @@ import {
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync";
+import { getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
 import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
@@ -75,16 +76,16 @@ function normalizeOptionalTaskWorkspaceScopeInput(
 }
 
 function normalizeRequiredTaskWorkspaceScopeInput(input: {
-	taskId: string;
-	baseRef: string;
+	taskId: string | null;
+	baseRef?: string;
 	mode?: RuntimeWorkspaceChangesMode;
 }): {
 	taskId: string;
 	baseRef: string;
 	mode: RuntimeWorkspaceChangesMode;
 } {
-	const taskId = input.taskId.trim();
-	const baseRef = input.baseRef.trim();
+	const taskId = (input.taskId ?? "").trim();
+	const baseRef = (input.baseRef ?? "").trim();
 	if (!taskId) {
 		throw new Error("Missing taskId query parameter.");
 	}
@@ -240,7 +241,22 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		checkoutGitBranch: async (workspaceScope, input) => {
 			try {
-				// Block branch switch when an active task is running in the shared checkout.
+				const body = parseGitCheckoutRequest(input);
+
+				// Task-scoped checkout: resolve task worktree and checkout there
+				if (input.taskId) {
+					const taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, {
+						taskId: input.taskId,
+						baseRef: input.baseRef ?? "",
+					});
+					const response = await runGitCheckoutAction({
+						cwd: taskCwd,
+						branch: body.branch,
+					});
+					return response;
+				}
+
+				// Home repo checkout: block when an active task is running in the shared checkout
 				const state = await loadWorkspaceState(workspaceScope.workspacePath);
 				const activeColumnIds = new Set(["in_progress", "review"]);
 				const hasSharedCheckoutTask = state.board.columns
@@ -260,7 +276,6 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						),
 					);
 				}
-				const body = parseGitCheckoutRequest(input);
 				const response = await runGitCheckoutAction({
 					cwd: workspaceScope.workspacePath,
 					branch: body.branch,
@@ -382,6 +397,33 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			} satisfies RuntimeWorkspaceFileSearchResponse;
 		},
 		listFiles: async (workspaceScope, input) => {
+			// Home-scoped or branch-view: no task resolution needed
+			if (!input.taskId) {
+				if (input.ref) {
+					const files = await listFilesAtRef(workspaceScope.workspacePath, input.ref);
+					return { files } satisfies RuntimeListFilesResponse;
+				}
+				const files = await listAllWorkspaceFiles(workspaceScope.workspacePath);
+				return { files } satisfies RuntimeListFilesResponse;
+			}
+
+			// Ref-based browsing against a task worktree's repo
+			if (input.ref) {
+				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
+				let taskCwd: string;
+				try {
+					taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+				} catch (error) {
+					if (!isMissingTaskWorktreeError(error)) {
+						throw error;
+					}
+					return { files: [] } satisfies RuntimeListFilesResponse;
+				}
+				const files = await listFilesAtRef(taskCwd, input.ref);
+				return { files } satisfies RuntimeListFilesResponse;
+			}
+
+			// Task-scoped: existing behavior
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {
@@ -396,18 +438,29 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			return { files } satisfies RuntimeListFilesResponse;
 		},
 		getFileContent: async (workspaceScope, input) => {
-			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			const filePath = input.path.trim();
 			if (!filePath) {
 				throw new Error("Missing path parameter.");
 			}
-			let taskCwd: string;
-			try {
-				taskCwd = await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
-			} catch (error) {
-				if (!isMissingTaskWorktreeError(error)) {
+
+			// Determine the working directory for file reading
+			const resolveCwd = async (): Promise<string | null> => {
+				if (!input.taskId) {
+					return workspaceScope.workspacePath;
+				}
+				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
+				try {
+					return await resolveTaskWorkingDirectory(workspaceScope.workspacePath, normalizedInput);
+				} catch (error) {
+					if (isMissingTaskWorktreeError(error)) {
+						return null;
+					}
 					throw error;
 				}
+			};
+
+			const cwd = await resolveCwd();
+			if (!cwd) {
 				return {
 					content: "",
 					language: "",
@@ -416,7 +469,30 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					truncated: false,
 				} satisfies RuntimeFileContentResponse;
 			}
-			return await readWorkspaceFile(taskCwd, filePath);
+
+			// Ref-based content: read from git object store
+			if (input.ref) {
+				const refContent = await getFileContentAtRef(cwd, input.ref, filePath);
+				if (!refContent) {
+					return {
+						content: "",
+						language: "",
+						binary: false,
+						size: 0,
+						truncated: false,
+					} satisfies RuntimeFileContentResponse;
+				}
+				return {
+					content: refContent.content,
+					language: "",
+					binary: refContent.binary,
+					size: refContent.content.length,
+					truncated: false,
+				} satisfies RuntimeFileContentResponse;
+			}
+
+			// Disk-based content: existing behavior
+			return await readWorkspaceFile(cwd, filePath);
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);

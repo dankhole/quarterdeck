@@ -37,6 +37,8 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	shellAutoRestartEnabled: CONFIG_DEFAULTS.shellAutoRestartEnabled,
 	showTrashWorktreeNotice: CONFIG_DEFAULTS.showTrashWorktreeNotice,
 	unmergedChangesIndicatorEnabled: CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
+	skipTaskCheckoutConfirmation: CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
+	skipHomeCheckoutConfirmation: CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
 	audibleNotificationsEnabled: CONFIG_DEFAULTS.audibleNotificationsEnabled,
 	audibleNotificationVolume: CONFIG_DEFAULTS.audibleNotificationVolume,
 	audibleNotificationEvents: { ...CONFIG_DEFAULTS.audibleNotificationEvents },

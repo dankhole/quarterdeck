@@ -2,6 +2,16 @@
 
 ## [0.3.1]
 
+### Scope bar, branch selector, and context-aware file browser
+
+- New scope bar in the Files tab showing which worktree context you're viewing (task worktree, home repo, or a different branch). Supports switching between the task's worktree and the home repo, with a "return to contextual" action.
+- Branch selector popover — pill-styled trigger showing the current branch name, with a dropdown listing all worktree branches. Selecting a branch opens a read-only file browser view of that ref. Checkout button to switch the worktree to a different branch.
+- Checkout confirmation dialog with "don't show again" persistence via runtime config. Warns when checking out to a branch while the agent is running or when switching the home repo.
+- Context-aware file browser — the file tree and file content viewer now derive their data source from the scope bar's resolved context (task worktree path, home repo path, or a `git show` ref for branch browsing).
+- Behind-base detection — scope bar shows a warning badge when the task branch is behind its base ref.
+- Headless (detached HEAD) worktree display — shows abbreviated commit hash instead of branch name when the worktree is in detached HEAD state.
+- Deleted orphaned `FileBrowserPanel` component, replaced by the new `FileBrowserTreePanel` + `FileContentViewer` split architecture.
+
 ### Fix: stale "unmerged changes" badge
 
 - Fixed stale blue notification dot on the Changes tab persisting after a task branch was merged to main. The metadata monitor's cache key only tracked the worktree's own state (HEAD, branch, working-tree status) — it didn't notice when the base ref (e.g. `main`) advanced. Added the resolved base ref commit to the cache invalidation check so the diff is re-evaluated when the target branch moves.

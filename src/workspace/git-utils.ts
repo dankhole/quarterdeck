@@ -108,6 +108,98 @@ export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
 	};
 }
 
+/**
+ * Checks how many commits the base ref has advanced since the worktree branched from it.
+ * Tries `origin/{baseRef}` first (reflects latest remote state from periodic fetch),
+ * falls back to local `refs/heads/{baseRef}`.
+ * Returns null if neither ref can be resolved (e.g. ref doesn't exist).
+ */
+export async function getCommitsBehindBase(
+	cwd: string,
+	baseRef: string,
+): Promise<{ behindCount: number; mergeBase: string } | null> {
+	if (!validateGitRef(baseRef)) return null;
+	const originRef = `origin/${baseRef}`;
+
+	// Try origin first — more up-to-date after git fetch
+	const originMergeBase = await runGit(cwd, ["merge-base", "HEAD", originRef]);
+	if (originMergeBase.ok) {
+		const countResult = await runGit(cwd, ["rev-list", "--count", `${originMergeBase.stdout}..${originRef}`]);
+		return {
+			behindCount: countResult.ok ? parseInt(countResult.stdout, 10) || 0 : 0,
+			mergeBase: originMergeBase.stdout,
+		};
+	}
+
+	// Fallback to local ref
+	const localMergeBase = await runGit(cwd, ["merge-base", "HEAD", baseRef]);
+	if (!localMergeBase.ok) {
+		return null;
+	}
+	const countResult = await runGit(cwd, ["rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`]);
+	return {
+		behindCount: countResult.ok ? parseInt(countResult.stdout, 10) || 0 : 0,
+		mergeBase: localMergeBase.stdout,
+	};
+}
+
+/**
+ * Validate a git ref string for safe use in git commands.
+ * Rejects refs that start with `-` (flag injection) or contain `..` (traversal).
+ */
+export function validateGitRef(ref: string): boolean {
+	return ref.length > 0 && !ref.startsWith("-") && !ref.includes("..");
+}
+
+/**
+ * Validate a file path for safe use in git show commands.
+ * Rejects paths containing `..` traversal.
+ */
+export function validateGitPath(path: string): boolean {
+	return path.length > 0 && !path.includes("..");
+}
+
+/**
+ * List all files at a specific git ref without touching the working tree.
+ * Uses `git ls-tree -r --name-only`.
+ */
+export async function listFilesAtRef(cwd: string, ref: string): Promise<string[]> {
+	if (!validateGitRef(ref)) {
+		return [];
+	}
+	const result = await runGit(cwd, ["ls-tree", "-r", "--name-only", ref, "--"]);
+	if (!result.ok) {
+		return [];
+	}
+	return result.stdout.split("\n").filter(Boolean);
+}
+
+/**
+ * Read file content at a specific git ref without touching the working tree.
+ * Uses `git show ref:path`. Returns binary flag based on NUL byte detection.
+ */
+export async function getFileContentAtRef(
+	cwd: string,
+	ref: string,
+	path: string,
+): Promise<{ content: string; binary: boolean } | null> {
+	if (!validateGitRef(ref) || !validateGitPath(path)) {
+		return null;
+	}
+	const result = await runGit(cwd, ["show", `${ref}:${path}`], { trimStdout: false });
+	if (!result.ok) {
+		return null;
+	}
+	// Binary detection: check for NUL bytes in the first 8KB
+	const sampleSize = Math.min(result.stdout.length, 8192);
+	for (let i = 0; i < sampleSize; i++) {
+		if (result.stdout.charCodeAt(i) === 0) {
+			return { content: "", binary: true };
+		}
+	}
+	return { content: result.stdout, binary: false };
+}
+
 export function getGitCommandErrorMessage(error: unknown): string {
 	if (error && typeof error === "object" && "stderr" in error) {
 		const stderr = (error as { stderr?: unknown }).stderr;

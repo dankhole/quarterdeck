@@ -7,7 +7,7 @@ import type {
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
 import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
-import { runGit } from "../workspace/git-utils";
+import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
 const GIT_PROBE_CONCURRENCY_LIMIT = 3;
@@ -124,6 +124,7 @@ function areTaskMetadataEqual(a: RuntimeTaskWorkspaceMetadata, b: RuntimeTaskWor
 		a.additions === b.additions &&
 		a.deletions === b.deletions &&
 		a.hasUnmergedChanges === b.hasUnmergedChanges &&
+		a.behindBaseCount === b.behindBaseCount &&
 		a.stateVersion === b.stateVersion
 	);
 }
@@ -249,6 +250,7 @@ async function loadTaskWorkspaceMetadata(
 				additions: null,
 				deletions: null,
 				hasUnmergedChanges: null,
+				behindBaseCount: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
@@ -271,9 +273,10 @@ async function loadTaskWorkspaceMetadata(
 		) {
 			return current;
 		}
-		const [summary, unmergedResult] = await Promise.all([
+		const [summary, unmergedResult, behindBase] = await Promise.all([
 			getGitSyncSummary(pathInfo.path, { probe }),
 			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
+			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
 		]);
 		return {
 			data: {
@@ -288,6 +291,7 @@ async function loadTaskWorkspaceMetadata(
 				additions: summary.additions,
 				deletions: summary.deletions,
 				hasUnmergedChanges: unmergedResult.exitCode === 0 ? false : unmergedResult.exitCode === 1 ? true : null,
+				behindBaseCount: behindBase?.behindCount ?? null,
 				stateVersion: Date.now(),
 			},
 			stateToken: probe.stateToken,
@@ -310,6 +314,7 @@ async function loadTaskWorkspaceMetadata(
 				additions: null,
 				deletions: null,
 				hasUnmergedChanges: null,
+				behindBaseCount: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,

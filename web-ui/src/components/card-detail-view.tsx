@@ -1,15 +1,22 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { ArrowRight, FolderOpen, GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowRight, GitCompareArrows, Maximize2, Minimize2 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
+import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
-import { FileBrowserPanel } from "@/components/detail-panels/file-browser-panel";
+import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
+import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
+import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useBranchActions } from "@/hooks/use-branch-actions";
+import { useFileBrowserData } from "@/hooks/use-file-browser-data";
+import { useScopeContext } from "@/hooks/use-scope-context";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import type { SidebarTabId } from "@/resize/use-card-detail-layout";
@@ -17,9 +24,14 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useStableCardActions } from "@/state/card-actions-context";
-import { useTaskWorkspaceInfoValue, useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+import {
+	useHomeGitSummaryValue,
+	useTaskWorkspaceInfoValue,
+	useTaskWorkspaceSnapshotValue,
+	useTaskWorkspaceStateVersionValue,
+} from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import { type BoardCard, type BoardData, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
@@ -160,35 +172,6 @@ function DiffToolbar({
 	);
 }
 
-function FileBrowserToolbar({
-	isExpanded,
-	onToggleExpand,
-	showExpandButton = true,
-}: {
-	isExpanded: boolean;
-	onToggleExpand: () => void;
-	showExpandButton?: boolean;
-}): React.ReactElement {
-	return (
-		<div className="flex items-center gap-1 px-2 py-1 border-b border-border">
-			<div className="flex items-center gap-1.5 text-xs text-text-secondary">
-				<FolderOpen size={14} />
-				<span>Files</span>
-			</div>
-			{showExpandButton ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-					onClick={onToggleExpand}
-					className="ml-auto h-5"
-					aria-label={isExpanded ? "Collapse file browser" : "Expand file browser"}
-				/>
-			) : null}
-		</div>
-	);
-}
-
 /**
  * Renders the task detail area: side panel (for task-tied tabs) + right column (TopBar + main content).
  * Returns a Fragment — its children are direct flex items of the parent container.
@@ -233,13 +216,14 @@ export function CardDetailView({
 	sidePanelRatio,
 	setSidePanelRatio,
 	isDiffExpanded,
-	isFileBrowserExpanded,
 	onDiffExpandedChange,
-	onFileBrowserExpandedChange,
 	detailDiffFileTreeRatio,
 	setDetailDiffFileTreeRatio,
-	detailFileBrowserTreeRatio,
-	setDetailFileBrowserTreeRatio,
+	board,
+	skipTaskCheckoutConfirmation,
+	skipHomeCheckoutConfirmation,
+	onSkipTaskCheckoutConfirmationChange,
+	onDeselectTask,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -279,16 +263,17 @@ export function CardDetailView({
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	isDiffExpanded: boolean;
-	isFileBrowserExpanded: boolean;
 	onDiffExpandedChange: (expanded: boolean) => void;
-	onFileBrowserExpandedChange: (expanded: boolean) => void;
 	detailDiffFileTreeRatio: number;
 	setDetailDiffFileTreeRatio: (ratio: number) => void;
-	detailFileBrowserTreeRatio: number;
-	setDetailFileBrowserTreeRatio: (ratio: number) => void;
+	board: BoardData;
+	skipTaskCheckoutConfirmation: boolean;
+	skipHomeCheckoutConfirmation: boolean;
+	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
+	/** Deselects the current task, returning to the board/home view. Used by the Home icon in the scope bar. */
+	onDeselectTask: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
-	const [fileBrowserSelectedPath, setFileBrowserSelectedPath] = useState<string | null>(null);
 	const [fileBrowserExpandedDirs, setFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
 	const [fileBrowserHasInitializedExpansion, setFileBrowserHasInitializedExpansion] = useState(false);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
@@ -297,11 +282,9 @@ export function CardDetailView({
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { startDrag: startDetailDiffResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
-	const { startDrag: startFileBrowserTreeResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
-	const fileBrowserRowRef = useRef<HTMLDivElement | null>(null);
 
 	const handleSidePanelSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
@@ -361,19 +344,59 @@ export function CardDetailView({
 		[createRatioResizeHandler, detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
 	);
 
-	const handleFileBrowserTreeSeparatorMouseDown = useMemo(
-		() =>
-			createRatioResizeHandler(
-				fileBrowserRowRef,
-				detailFileBrowserTreeRatio,
-				setDetailFileBrowserTreeRatio,
-				startFileBrowserTreeResize,
-			),
-		[createRatioResizeHandler, detailFileBrowserTreeRatio, setDetailFileBrowserTreeRatio, startFileBrowserTreeResize],
-	);
-
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selection.card.id, selection.card.baseRef);
+	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selection.card.id);
+	const homeGitSummary = useHomeGitSummaryValue();
+
+	const {
+		scopeMode: taskScopeMode,
+		resolvedScope: taskResolvedScope,
+		returnToContextual: taskReturnToContextual,
+		selectBranchView: taskSelectBranchView,
+	} = useScopeContext({
+		selectedTaskId: selection.card.id,
+		selectedCard: selection.card,
+		currentProjectId,
+	});
+
+	const taskBranchActions = useBranchActions({
+		workspaceId: currentProjectId,
+		board,
+		selectBranchView: taskSelectBranchView,
+		homeGitSummary,
+		taskBranch: taskWorkspaceInfo?.branch ?? selection.card.branch ?? null,
+		taskChangedFiles: taskWorkspaceSnapshot?.changedFiles ?? 0,
+		skipTaskCheckoutConfirmation,
+		skipHomeCheckoutConfirmation,
+		taskId: selection.card.id,
+		baseRef: selection.card.baseRef,
+		onCheckoutSuccess: taskReturnToContextual,
+	});
+
+	// Derive what the file browser should show based on scope
+	const fileBrowserTaskId = taskResolvedScope?.type === "task" ? taskResolvedScope.taskId : null;
+	const fileBrowserBaseRef = taskResolvedScope?.type === "task" ? taskResolvedScope.baseRef : undefined;
+	const fileBrowserRef = taskResolvedScope?.type === "branch_view" ? taskResolvedScope.ref : undefined;
+
+	const fileBrowserData = useFileBrowserData({
+		workspaceId: currentProjectId,
+		taskId: fileBrowserTaskId,
+		baseRef: fileBrowserBaseRef,
+		ref: fileBrowserRef,
+	});
+
+	// Branch pill label: branch name for named-branch worktrees, short commit hash for headless,
+	// browsed ref for branch_view. Null only when workspace info hasn't loaded yet (genuinely initializing).
+	const pillBranchLabel = useMemo(() => {
+		if (taskResolvedScope?.type === "branch_view") {
+			return taskResolvedScope.ref;
+		}
+		return (
+			taskWorkspaceInfo?.branch ?? selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null
+		);
+	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
+
 	const lastTurnViewKey =
 		diffMode === "last_turn"
 			? [
@@ -401,9 +424,6 @@ export function CardDetailView({
 	const detailDiffFileTreePanelPercent = `${(detailDiffFileTreeRatio * 100).toFixed(1)}%`;
 	const detailDiffContentPanelPercent = `${((1 - detailDiffFileTreeRatio) * 100).toFixed(1)}%`;
 	const detailDiffFileTreePanelFlex = `0 0 ${detailDiffFileTreePanelPercent}`;
-	const fileBrowserTreePanelPercent = `${(detailFileBrowserTreeRatio * 100).toFixed(1)}%`;
-	const fileBrowserContentPanelPercent = `${((1 - detailFileBrowserTreeRatio) * 100).toFixed(1)}%`;
-
 	const isTaskSidePanelOpen = activeTab === "task_column" || activeTab === "changes" || activeTab === "files";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const availablePaths = useMemo(() => {
@@ -442,13 +462,10 @@ export function CardDetailView({
 		setSelectedPath(availablePaths[0] ?? null);
 	}, [availablePaths, selectedPath]);
 
-	// Reset parent-owned state on task switch. The key={selection.card.id} on
-	// FileBrowserPanel resets child-internal state (search, focus); this effect
-	// resets lifted state that lives here and survives the child remount.
+	// Reset parent-owned state on task switch.
 	useEffect(() => {
 		setDiffComments(new Map());
 		setDiffMode("working_copy");
-		setFileBrowserSelectedPath(null);
 		setFileBrowserExpandedDirs(new Set());
 		setFileBrowserHasInitializedExpansion(false);
 	}, [selection.card.id]);
@@ -457,70 +474,12 @@ export function CardDetailView({
 		if (!isDiffExpanded && bottomTerminalOpen) {
 			onBottomTerminalClose();
 		}
-		onFileBrowserExpandedChange(false);
 		onDiffExpandedChange(!isDiffExpanded);
-	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose, onDiffExpandedChange, onFileBrowserExpandedChange]);
-
-	const handleToggleFileBrowserExpand = useCallback(() => {
-		if (!isFileBrowserExpanded && bottomTerminalOpen) {
-			onBottomTerminalClose();
-		}
-		onDiffExpandedChange(false);
-		onFileBrowserExpandedChange(!isFileBrowserExpanded);
-	}, [
-		bottomTerminalOpen,
-		isFileBrowserExpanded,
-		onBottomTerminalClose,
-		onDiffExpandedChange,
-		onFileBrowserExpandedChange,
-	]);
+	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose, onDiffExpandedChange]);
 
 	const handleFileBrowserInitializedExpansion = useCallback(() => {
 		setFileBrowserHasInitializedExpansion(true);
 	}, []);
-
-	const fileBrowserContent = useMemo(() => {
-		if (!currentProjectId) {
-			return (
-				<div className="flex flex-1 items-center justify-center text-text-tertiary">
-					<div className="flex flex-col items-center gap-3 py-12">
-						<FolderOpen size={40} />
-						<span className="text-sm text-text-secondary font-semibold">No project selected</span>
-					</div>
-				</div>
-			);
-		}
-		return (
-			<div ref={fileBrowserRowRef} className="flex flex-1 min-h-0">
-				<FileBrowserPanel
-					key={selection.card.id}
-					taskId={selection.card.id}
-					baseRef={selection.card.baseRef}
-					workspaceId={currentProjectId}
-					selectedPath={fileBrowserSelectedPath}
-					onSelectPath={setFileBrowserSelectedPath}
-					treePanelFlex={fileBrowserTreePanelPercent}
-					contentPanelFlex={fileBrowserContentPanelPercent}
-					onTreeResizeStart={handleFileBrowserTreeSeparatorMouseDown}
-					expandedDirs={fileBrowserExpandedDirs}
-					onExpandedDirsChange={setFileBrowserExpandedDirs}
-					hasInitializedExpansion={fileBrowserHasInitializedExpansion}
-					onInitializedExpansion={handleFileBrowserInitializedExpansion}
-				/>
-			</div>
-		);
-	}, [
-		currentProjectId,
-		selection.card.id,
-		selection.card.baseRef,
-		fileBrowserSelectedPath,
-		fileBrowserTreePanelPercent,
-		fileBrowserContentPanelPercent,
-		handleFileBrowserTreeSeparatorMouseDown,
-		fileBrowserExpandedDirs,
-		fileBrowserHasInitializedExpansion,
-		handleFileBrowserInitializedExpansion,
-	]);
 
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
@@ -551,7 +510,7 @@ export function CardDetailView({
 			}}
 		>
 			{/* Task-tied side panel — only when a task tab is active and not expanded */}
-			{!isDiffExpanded && !isFileBrowserExpanded && isTaskSidePanelOpen ? (
+			{!isDiffExpanded && isTaskSidePanelOpen ? (
 				<>
 					<div
 						style={{
@@ -642,12 +601,49 @@ export function CardDetailView({
 							</>
 						) : activeTab === "files" ? (
 							<>
-								<FileBrowserToolbar
-									isExpanded={isFileBrowserExpanded}
-									onToggleExpand={handleToggleFileBrowserExpand}
-									showExpandButton={fileBrowserSelectedPath !== null}
+								<ScopeBar
+									resolvedScope={taskResolvedScope}
+									scopeMode={taskScopeMode}
+									homeGitSummary={homeGitSummary}
+									taskTitle={selection.card.title}
+									taskBranch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
+									taskBaseRef={selection.card.baseRef}
+									behindBaseCount={taskWorkspaceSnapshot?.behindBaseCount ?? null}
+									isDetachedHead={taskWorkspaceInfo?.isDetached ?? false}
+									taskIsDetached={taskWorkspaceInfo?.isDetached ?? false}
+									onSwitchToHome={onDeselectTask}
+									onReturnToContextual={taskReturnToContextual}
+									branchPillSlot={
+										pillBranchLabel ? (
+											<BranchSelectorPopover
+												isOpen={taskBranchActions.isBranchPopoverOpen}
+												onOpenChange={taskBranchActions.setBranchPopoverOpen}
+												branches={taskBranchActions.branches}
+												currentBranch={taskBranchActions.currentBranch}
+												worktreeBranches={taskBranchActions.worktreeBranches}
+												onSelectBranchView={taskBranchActions.handleSelectBranchView}
+												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
+												trigger={<BranchPillTrigger label={pillBranchLabel} />}
+											/>
+										) : undefined
+									}
+									onCheckoutBrowsingBranch={
+										taskResolvedScope?.type === "branch_view"
+											? () => taskBranchActions.handleCheckoutBranch(taskResolvedScope.ref)
+											: undefined
+									}
 								/>
-								{fileBrowserContent}
+								<FileBrowserTreePanel
+									key={`${selection.card.id}-${taskScopeMode}`}
+									files={fileBrowserData.files}
+									selectedPath={fileBrowserData.selectedPath}
+									onSelectPath={fileBrowserData.onSelectPath}
+									panelFlex="1 1 0"
+									expandedDirs={fileBrowserExpandedDirs}
+									onExpandedDirsChange={setFileBrowserExpandedDirs}
+									hasInitializedExpansion={fileBrowserHasInitializedExpansion}
+									onInitializedExpansion={handleFileBrowserInitializedExpansion}
+								/>
 							</>
 						) : null}
 					</div>
@@ -739,15 +735,17 @@ export function CardDetailView({
 							</div>
 						</div>
 					</div>
-				) : isFileBrowserExpanded ? (
+				) : activeTab === "files" ? (
 					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-						<div style={{ display: "flex", width: "100%", minWidth: 0, minHeight: 0, flexDirection: "column" }}>
-							<FileBrowserToolbar
-								isExpanded={isFileBrowserExpanded}
-								onToggleExpand={handleToggleFileBrowserExpand}
-							/>
-							{fileBrowserContent}
-						</div>
+						<FileContentViewer
+							content={fileBrowserData.fileContent?.content ?? null}
+							binary={fileBrowserData.fileContent?.binary ?? false}
+							truncated={fileBrowserData.fileContent?.truncated ?? false}
+							isLoading={fileBrowserData.isContentLoading}
+							isError={fileBrowserData.isContentError}
+							filePath={fileBrowserData.selectedPath}
+							onClose={fileBrowserData.onCloseFile}
+						/>
 					</div>
 				) : (
 					<>
@@ -821,6 +819,12 @@ export function CardDetailView({
 					</>
 				)}
 			</div>
+			<CheckoutConfirmationDialog
+				state={taskBranchActions.checkoutDialogState}
+				onClose={taskBranchActions.closeCheckoutDialog}
+				onConfirmCheckout={taskBranchActions.handleConfirmCheckout}
+				onSkipTaskConfirmationChange={onSkipTaskCheckoutConfirmationChange}
+			/>
 		</div>
 	);
 }
