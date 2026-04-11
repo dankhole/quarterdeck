@@ -137,6 +137,9 @@ A task can appear as running/in-progress on the board when the agent is actually
 
 Move the branch name display off the top bar into the git view. Replace the top bar branch display with a compact branch management pill. Add branch switching, pulling from remote, and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
 
+- **Merge into worktree**: Merge another branch (e.g. main, a sibling feature branch) into the task's worktree branch from the git view. This is the primary "keep my worktree up to date" workflow — pick a source branch, merge it in, surface conflicts if any. Should be accessible from the branch list or a dedicated merge action in the git view UI.
+- **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
+
 ## 22. Commit sidebar tab (JetBrains-style)
 
 New sidebar tab showing a simplified view of uncommitted changes — just file names in a list — with a commit message input and commit/push buttons at the bottom, similar to the JetBrains "Commit" tool window. This is where server-side commit functionality (todo #10) will eventually live. Distinct from the git main view's Uncommitted tab, which shows full diffs — this sidebar is for quick commit workflows without leaving your current main view.
@@ -144,3 +147,43 @@ New sidebar tab showing a simplified view of uncommitted changes — just file n
 ## 23. "Compare against" context action for branch viewers
 
 Add a right-click context menu or button to branch viewers across the app (scope bar branch selector, git history refs panel, etc.) that opens the git view's Compare tab with that branch pre-selected as the comparison target. The task's working branch stays as the source (left side). Enables quick "compare my work against this branch" workflow from anywhere branches are shown.
+
+## 24. Fix: compacting conversation doesn't transition task to running
+
+When an agent compacts its conversation context (e.g. Claude Code's auto-compact), the task card doesn't move to "running" / in_progress. The compact action is part of the agent's active work cycle, so it should trigger the same state transition as any other agent activity. Investigate whether the compact event isn't emitting the expected hook or whether the output pattern isn't being detected by the adapter.
+
+## 25. Clicking a task shouldn't always swap sidebar to board view
+
+Currently, clicking a task card auto-switches the sidebar from the project switcher (or wherever you are) to the board/task sidebar. This is disruptive when you're actively using the project switcher and just want to glance at a task. Options to explore: a setting to disable the auto-switch, a "pin" button on the project switcher panel that locks it in place, or only auto-switching when the task is opened from the board sidebar itself rather than from other contexts.
+
+## 26. Fix: font weight input pill too wide in settings
+
+The font weight number input in the settings dialog is visually too wide for its content. It only needs to fit 3–4 digit values (100–900) but takes up more horizontal space than necessary. Tighten the input width to match the expected content size.
+
+## 27. Fix: terminal scrollback shows duplicate chat history at different widths
+
+Scrolling up in an agent terminal reveals duplicated copies of the chat history rendered at different column widths. Likely a reflow or resize issue — when the terminal is resized (or the panel changes width), the PTY redraws the content at the new width but the old rendering remains in the scrollback buffer, producing visible duplicates.
+
+## 28. Fix: clicking a task causes laggy scroll-to-bottom in terminal
+
+When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
+
+## 29. Re-enable "don't show again" dialogs in settings
+
+Any dialog or confirmation that offers a "don't show again" checkbox should be re-enableable from the settings menu. Add a section in settings that lists all suppressed dialogs and lets the user reset them individually or all at once. Without this, dismissing a dialog permanently is a one-way decision with no recovery path.
+
+## 30. Fix: LLM title/summary prompts must never return anything but a title/summary
+
+The prompts used to generate task titles and summaries via LLM need to be hardened so the model always returns just the title or summary text — never a question, clarification, refusal, or preamble. A bad title is better than a non-title response. Add explicit instructions to the prompts that the response must be the title/summary only, no matter what the input content is. Apply the same fix to both the title generation and summary generation prompts.
+
+## 31. Rewrite README with current features
+
+The README is outdated and doesn't reflect the significant feature work since the fork diverged. Rewrite it to cover the current state of Quarterdeck — git view with Compare tab, drag-and-drop project reorder, agent adapters, session management, notification system, settings, prompt shortcuts, etc. Include updated screenshots/GIFs if possible.
+
+## 32. Show target branch when creating a non-isolated task
+
+When creating a task without an isolated worktree, the create dialog should display which branch the task will run on (i.e. the current branch of the shared workspace). The user needs to know this upfront — running on an unexpected branch can cause confusion or unintended changes. Show the branch name inline in the create form when the "isolated worktree" option is off.
+
+## 33. Uncommitted changes indicator on task cards
+
+Show a simple dot/badge on task cards when the task's worktree has uncommitted changes, same style as the git tab icon's uncommitted indicator. Always-on when uncommitted changes exist, regardless of task state. Requires periodic or event-driven git status checks per worktree.
