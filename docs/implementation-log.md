@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Show target branch when creating non-isolated task (2026-04-11)
+
+When "Use isolated worktree" is unchecked in the task create dialog, the warning previously said "the task runs directly in your main checkout" with no indication of which branch that checkout is on. Now it displays the actual current branch name from `workspaceGit.currentBranch` inline in a monospace `<code>` tag (e.g. "runs directly on `feature/xyz`"), falling back to "detached HEAD" when `currentBranch` is null. Closes todo #29 (originally #32).
+
+Files touched: `web-ui/src/components/task-create-dialog.tsx` (new `currentBranch` prop, updated warning JSX), `web-ui/src/App.tsx` (passes `workspaceGit?.currentBranch ?? null`), `docs/todo.md` (removed #29, renumbered), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## README refresh (2026-04-11)
 
 Updated the README to close the gap between the documented feature set and reality. The README still had the original fork-era descriptions — the git view section described clicking a branch name in the navbar (replaced months ago by a full main view with three tabs), no mention of multi-project management, file browser, settings, or which agents are actually supported. Changes: named Claude Code and Codex CLI as supported agents, added experimental Windows note, described multi-project workflow in step 2, added file browser and settings mentions in the review step, rewrote the git view section to cover Uncommitted/Last Turn/Compare tabs and the integrated file tree.

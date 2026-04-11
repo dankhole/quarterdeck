@@ -168,10 +168,6 @@ Scrolling up in an agent terminal reveals duplicated copies of the chat history 
 
 When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
 
-## 29. Show target branch when creating a non-isolated task
-
-When creating a task without an isolated worktree, the create dialog should display which branch the task will run on (i.e. the current branch of the shared workspace). The user needs to know this upfront — running on an unexpected branch can cause confusion or unintended changes. Show the branch name inline in the create form when the "isolated worktree" option is off.
-
-## 30. Uncommitted changes indicator on task cards
+## 29. Uncommitted changes indicator on task cards
 
 Show a simple dot/badge on task cards when the task's worktree has uncommitted changes, same style as the git tab icon's uncommitted indicator. Always-on when uncommitted changes exist, regardless of task state. Requires periodic or event-driven git status checks per worktree.

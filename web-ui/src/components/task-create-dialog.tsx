@@ -124,6 +124,7 @@ export function TaskCreateDialog({
 	isGeneratingBranchName,
 	isLlmGenerationDisabled = false,
 	workspaceId,
+	currentBranch,
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
@@ -154,6 +155,7 @@ export function TaskCreateDialog({
 	isGeneratingBranchName: boolean;
 	isLlmGenerationDisabled?: boolean;
 	workspaceId: string | null;
+	currentBranch: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
 	onBranchRefChange: (value: string) => void;
@@ -560,8 +562,11 @@ export function TaskCreateDialog({
 						<div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-status-orange/10 border border-status-orange/20 px-2 py-1.5 text-[11px] text-status-orange leading-snug">
 							<AlertTriangle size={12} className="mt-0.5 shrink-0" />
 							<span>
-								Without isolation, the task runs directly in your main checkout. Running multiple tasks at once
-								may cause file conflicts.
+								Without isolation, the task runs directly on{" "}
+								<code className="rounded bg-status-orange/15 px-1 py-px font-mono text-[11px]">
+									{currentBranch ?? "detached HEAD"}
+								</code>{" "}
+								in your main checkout. Running multiple tasks at once may cause file conflicts.
 							</span>
 						</div>
 					) : null}

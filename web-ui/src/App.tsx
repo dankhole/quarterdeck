@@ -1603,6 +1603,7 @@ export default function App(): ReactElement {
 						onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 						useWorktree={newTaskUseWorktree}
 						onUseWorktreeChange={setNewTaskUseWorktree}
+						currentBranch={workspaceGit?.currentBranch ?? null}
 						createFeatureBranch={createFeatureBranch}
 						onCreateFeatureBranchChange={setCreateFeatureBranch}
 						branchName={branchName}

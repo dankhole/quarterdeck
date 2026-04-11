@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Show target branch when creating non-isolated task
+
+- When "Use isolated worktree" is unchecked in the create dialog, the warning now shows the current workspace branch name (e.g. `main`, `feature/xyz`) so users know exactly which branch the task will run on. Falls back to "detached HEAD" when applicable.
+
 ### README refresh
 
 - Updated README to reflect current feature set — names supported agents (Claude Code, Codex CLI), describes the git view's three tabs (Uncommitted / Last Turn / Compare), adds multi-project management, file browser, settings overview, and an experimental Windows support note.
