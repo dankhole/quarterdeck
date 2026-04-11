@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: Compare tab branch pill dropdowns not opening
+
+- `BranchPillTrigger` now forwards ref and rest props so Radix Popover's `asChild` pattern can inject click handlers — previously the pills rendered but clicking them was a no-op.
+
 ### Git view — promote diff viewer to full main view
 
 - The diff viewer is now a main view ("Git") instead of a sidebar panel ("Changes") — three internal tabs: **Uncommitted** (HEAD vs working tree, renamed from "All Changes"), **Last Turn** (preserved as-is), and **Compare** (new branch-to-branch diffing with dual pill dropdowns). The Compare tab defaults to the task's working branch vs base branch, shows a "Browsing" indicator when viewing a different branch, and has a "Return to context" button to reset. Works without a task selected (home repo context). Integrated file tree is toggleable, resizable, and persists width independently to localStorage. Git icon badge shows red for uncommitted changes in both task and home repo contexts. External navigation API (`openGitCompare`) enables future "compare against" entry points. Backend extended with nullable `taskId` and `fromRef`/`toRef` on `workspace.getChanges` for home repo and arbitrary ref-to-ref diffing, with `validateRef` input sanitization.

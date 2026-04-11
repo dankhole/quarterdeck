@@ -1,7 +1,7 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
 import { Check, ChevronDown, GitBranch, LogIn, Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -147,11 +147,19 @@ export function BranchSelectorPopover({
 	);
 }
 
-export function BranchPillTrigger({ label }: { label: string }): React.ReactElement {
+export const BranchPillTrigger = forwardRef<
+	HTMLButtonElement,
+	{ label: string } & React.ComponentPropsWithoutRef<"button">
+>(function BranchPillTrigger({ label, className, ...rest }, ref) {
 	return (
 		<button
+			ref={ref}
+			{...rest}
 			type="button"
-			className="inline-flex items-center gap-1 px-1.5 h-5 rounded border border-border-bright bg-surface-2 hover:bg-surface-3 text-xs font-mono cursor-pointer shrink min-w-0"
+			className={cn(
+				"inline-flex items-center gap-1 px-1.5 h-5 rounded border border-border-bright bg-surface-2 hover:bg-surface-3 text-xs font-mono cursor-pointer shrink min-w-0",
+				className,
+			)}
 			aria-label="Switch branch"
 		>
 			<GitBranch size={11} className="shrink-0 text-text-tertiary" />
@@ -159,7 +167,7 @@ export function BranchPillTrigger({ label }: { label: string }): React.ReactElem
 			<ChevronDown size={10} className="shrink-0 text-text-tertiary" />
 		</button>
 	);
-}
+});
 
 function BranchItem({
 	gitRef,

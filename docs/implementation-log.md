@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: Compare tab branch pill dropdowns not opening (2026-04-11)
+
+`BranchPillTrigger` was a plain function component that only accepted `{ label }`. When used as a child of `<RadixPopover.Trigger asChild>`, Radix's internal Slot called `cloneElement` to inject `onClick`, `aria-expanded`, `data-state`, and a `ref` — but since the component didn't spread rest props or forward refs, those were silently dropped. The pills rendered correctly but never opened the popover on click.
+
+Fix: converted `BranchPillTrigger` to use `React.forwardRef` and spread `...rest` props onto the root `<button>`, placed before hardcoded `type="button"` and `aria-label` so those can't be overridden. Added the `asChild` + `forwardRef` requirement to AGENTS.md tribal knowledge.
+
+Files touched: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `AGENTS.md`. Commit `15fe9379`.
+
 ## Git view rework — promote diff viewer to full main view (2026-04-11)
 
 Promoted the diff viewer from the "Changes" sidebar panel to a full main view called "Git" with three internal tabs. Addresses todo #4 (diffing portion) and todo #12 (interactive base ref switcher). The remaining branch management scope from #4 is now tracked as #21 (branch management in git view). Follow-up items #22 (commit sidebar tab) and #23 ("compare against" context action) were created.
