@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatOutputAccumulator } from "@/terminal/chat-output-accumulator";
-import { createChatOutputAccumulator } from "@/terminal/chat-output-accumulator";
+
 import { ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
 
-const BATCH_INTERVAL_MS = 60;
+const SNAPSHOT_INTERVAL_MS = 100;
 
 interface UseChatOutputInput {
 	taskId: string;
@@ -19,10 +18,14 @@ export interface UseChatOutputResult {
 }
 
 /**
- * Subscribes to a persistent terminal's output text stream and accumulates
- * clean, ANSI-stripped lines for HTML rendering.
+ * Reads the terminal's rendered buffer content for HTML display.
  *
- * Batches updates to avoid excessive React re-renders during fast output.
+ * Instead of parsing the raw ANSI stream (which fails for full-screen TUIs
+ * like Claude Code that use cursor positioning for all output), this hook
+ * reads from xterm.js's already-processed buffer — the same content visible
+ * in the terminal canvas, just as plain text lines.
+ *
+ * Snapshots are throttled to avoid excessive reads during fast output.
  */
 export function useChatOutput({
 	taskId,
@@ -32,50 +35,58 @@ export function useChatOutput({
 	cursorColor,
 }: UseChatOutputInput): UseChatOutputResult {
 	const [lines, setLines] = useState<string[]>([]);
-	const accumulatorRef = useRef<ChatOutputAccumulator>(createChatOutputAccumulator());
-	const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
 
-	const flush = useCallback(() => {
-		batchTimerRef.current = null;
-		setLines(accumulatorRef.current.getLines());
-	}, []);
-
-	const scheduleBatchFlush = useCallback(() => {
-		if (batchTimerRef.current !== null) {
+	const snapshot = useCallback(() => {
+		snapshotTimerRef.current = null;
+		const terminal = terminalRef.current;
+		if (!terminal) {
 			return;
 		}
-		batchTimerRef.current = setTimeout(flush, BATCH_INTERVAL_MS);
-	}, [flush]);
+		setLines(terminal.readBufferLines());
+	}, []);
+
+	const scheduleSnapshot = useCallback(() => {
+		if (snapshotTimerRef.current !== null) {
+			return;
+		}
+		snapshotTimerRef.current = setTimeout(snapshot, SNAPSHOT_INTERVAL_MS);
+	}, [snapshot]);
 
 	useEffect(() => {
 		if (!enabled || !workspaceId) {
+			terminalRef.current = null;
 			return;
 		}
-		// ensurePersistentTerminal returns the existing instance for this task if
-		// one is already managed by the terminal session hook.
 		const terminal = ensurePersistentTerminal({
 			taskId,
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
 		});
+		terminalRef.current = terminal;
+
+		// Take an initial snapshot to show existing buffer content
+		setLines(terminal.readBufferLines());
+
+		// Subscribe to output events to trigger re-snapshots
 		const unsubscribe = terminal.subscribe({
-			onOutputText: (text) => {
-				accumulatorRef.current.push(text);
-				scheduleBatchFlush();
+			onOutputText: () => {
+				scheduleSnapshot();
 			},
 		});
 		return () => {
 			unsubscribe();
-			if (batchTimerRef.current !== null) {
-				clearTimeout(batchTimerRef.current);
-				batchTimerRef.current = null;
+			terminalRef.current = null;
+			if (snapshotTimerRef.current !== null) {
+				clearTimeout(snapshotTimerRef.current);
+				snapshotTimerRef.current = null;
 			}
 		};
-	}, [cursorColor, enabled, scheduleBatchFlush, taskId, terminalBackgroundColor, workspaceId]);
+	}, [cursorColor, enabled, scheduleSnapshot, taskId, terminalBackgroundColor, workspaceId]);
 
 	const clear = useCallback(() => {
-		accumulatorRef.current.clear();
 		setLines([]);
 	}, []);
 

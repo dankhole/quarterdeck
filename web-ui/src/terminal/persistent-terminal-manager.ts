@@ -609,6 +609,22 @@ class PersistentTerminal {
 		}
 	}
 
+	/**
+	 * Read the full terminal buffer content as an array of lines.
+	 * This reads the already-rendered state from xterm.js — all ANSI escape
+	 * sequences have been processed, cursor positioning applied, etc.
+	 */
+	readBufferLines(): string[] {
+		const buffer = this.terminal.buffer.active;
+		const totalLines = buffer.length;
+		const result: string[] = [];
+		for (let i = 0; i < totalLines; i++) {
+			const line = buffer.getLine(i);
+			result.push(line ? line.translateToString(true) : "");
+		}
+		return result;
+	}
+
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
 		this.subscribers.add(subscriber);
 		subscriber.onLastError?.(this.lastError);
