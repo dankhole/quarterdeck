@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: behind-base indicator not detecting local branch advancement (2026-04-11)
+
+Fixed a bug where the "behind base" indicator on headless worktrees always showed 0 when local `main` advanced but `origin/main` was stale (no `git fetch` had occurred).
+
+**Root cause**: `getCommitsBehindBase` in `git-utils.ts` tried `origin/{baseRef}` first via `git merge-base HEAD origin/main`. If this succeeded (which it always does when the remote ref exists, even if stale), it computed the behind count against the stale `origin/main` and returned immediately — never falling through to check local `main`. So when another agent's branch was merged into local `main`, the behind count stayed at 0.
+
+**Secondary issue**: The metadata cache in `workspace-metadata-monitor.ts` only tracked `baseRefCommit` (the local ref's commit hash) for cache invalidation. After a `git fetch` that advanced `origin/main`, the cache wouldn't invalidate for a headless worktree because the local `main` ref and the worktree's `stateToken` were both unchanged.
+
+**Fix 1 — check both refs**: `getCommitsBehindBase` now runs `merge-base` for both `origin/{baseRef}` and `{baseRef}` in parallel, computes the behind count for each, and returns whichever is higher. This handles the common cases: local `main` advanced (local wins), `git fetch` ran (origin wins), or both (max wins).
+
+**Fix 2 — dual cache key**: Added `originBaseRefCommit` to `CachedTaskWorkspaceMetadata`. The cache now resolves both `rev-parse {baseRef}` and `rev-parse origin/{baseRef}` on every poll cycle. If either changes, the cache invalidates and triggers a full recomputation.
+
+Files touched: `src/workspace/git-utils.ts`, `src/server/workspace-metadata-monitor.ts`.
+
 ## Fix: terminal scroll glitch and duplicate chat on task switch (2026-04-11)
 
 Fixed two related bugs in `persistent-terminal-manager.ts` that shared the same root cause — the RAF-delayed resize in `mount()` combined with no deduplication of resize messages to the PTY.

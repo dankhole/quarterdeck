@@ -34,6 +34,7 @@ interface CachedTaskWorkspaceMetadata {
 	data: RuntimeTaskWorkspaceMetadata;
 	stateToken: string | null;
 	baseRefCommit: string | null;
+	originBaseRefCommit: string | null;
 }
 
 interface WorkspaceMetadataEntry {
@@ -255,19 +256,24 @@ async function loadTaskWorkspaceMetadata(
 			},
 			stateToken: null,
 			baseRefCommit: null,
+			originBaseRefCommit: null,
 		};
 	}
 
 	try {
-		const [probe, baseRefResult] = await Promise.all([
+		const originRef = `origin/${pathInfo.baseRef}`;
+		const [probe, baseRefResult, originBaseRefResult] = await Promise.all([
 			probeGitWorkspaceState(pathInfo.path),
 			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", pathInfo.baseRef]),
+			runGit(pathInfo.path, ["--no-optional-locks", "rev-parse", "--verify", originRef]),
 		]);
 		const baseRefCommit = baseRefResult.ok ? baseRefResult.stdout : null;
+		const originBaseRefCommit = originBaseRefResult.ok ? originBaseRefResult.stdout : null;
 		if (
 			current &&
 			current.stateToken === probe.stateToken &&
 			current.baseRefCommit === baseRefCommit &&
+			current.originBaseRefCommit === originBaseRefCommit &&
 			current.data.path === pathInfo.path &&
 			current.data.baseRef === pathInfo.baseRef
 		) {
@@ -302,6 +308,7 @@ async function loadTaskWorkspaceMetadata(
 			},
 			stateToken: probe.stateToken,
 			baseRefCommit,
+			originBaseRefCommit,
 		};
 	} catch {
 		if (current) {
@@ -325,6 +332,7 @@ async function loadTaskWorkspaceMetadata(
 			},
 			stateToken: null,
 			baseRefCommit: null,
+			originBaseRefCommit: null,
 		};
 	}
 }

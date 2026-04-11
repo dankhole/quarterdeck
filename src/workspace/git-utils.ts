@@ -110,8 +110,8 @@ export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
 
 /**
  * Checks how many commits the base ref has advanced since the worktree branched from it.
- * Tries `origin/{baseRef}` first (reflects latest remote state from periodic fetch),
- * falls back to local `refs/heads/{baseRef}`.
+ * Checks both `origin/{baseRef}` and local `{baseRef}` in parallel and returns whichever
+ * shows more commits ahead, since either ref may be stale depending on fetch/pull timing.
  * Returns null if neither ref can be resolved (e.g. ref doesn't exist).
  */
 export async function getCommitsBehindBase(
@@ -121,26 +121,29 @@ export async function getCommitsBehindBase(
 	if (!validateGitRef(baseRef)) return null;
 	const originRef = `origin/${baseRef}`;
 
-	// Try origin first — more up-to-date after git fetch
-	const originMergeBase = await runGit(cwd, ["merge-base", "HEAD", originRef]);
-	if (originMergeBase.ok) {
-		const countResult = await runGit(cwd, ["rev-list", "--count", `${originMergeBase.stdout}..${originRef}`]);
-		return {
-			behindCount: countResult.ok ? parseInt(countResult.stdout, 10) || 0 : 0,
-			mergeBase: originMergeBase.stdout,
-		};
-	}
+	// Check both origin and local refs, return whichever is further ahead.
+	// Origin may be stale (no fetch), local may be stale (no pull) — take the max.
+	const [originMergeBase, localMergeBase] = await Promise.all([
+		runGit(cwd, ["merge-base", "HEAD", originRef]),
+		runGit(cwd, ["merge-base", "HEAD", baseRef]),
+	]);
 
-	// Fallback to local ref
-	const localMergeBase = await runGit(cwd, ["merge-base", "HEAD", baseRef]);
-	if (!localMergeBase.ok) {
-		return null;
+	const [originCount, localCount] = await Promise.all([
+		originMergeBase.ok ? runGit(cwd, ["rev-list", "--count", `${originMergeBase.stdout}..${originRef}`]) : null,
+		localMergeBase.ok ? runGit(cwd, ["rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`]) : null,
+	]);
+	const originBehind = originCount?.ok ? parseInt(originCount.stdout, 10) || 0 : 0;
+	const originMB = originMergeBase.ok ? originMergeBase.stdout : null;
+	const localBehind = localCount?.ok ? parseInt(localCount.stdout, 10) || 0 : 0;
+	const localMB = localMergeBase.ok ? localMergeBase.stdout : null;
+
+	if (originBehind >= localBehind && originMB) {
+		return { behindCount: originBehind, mergeBase: originMB };
 	}
-	const countResult = await runGit(cwd, ["rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`]);
-	return {
-		behindCount: countResult.ok ? parseInt(countResult.stdout, 10) || 0 : 0,
-		mergeBase: localMergeBase.stdout,
-	};
+	if (localMB) {
+		return { behindCount: localBehind, mergeBase: localMB };
+	}
+	return null;
 }
 
 /**

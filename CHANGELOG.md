@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: behind-base indicator not detecting when local branch advances
+
+- The blue "behind base" indicator on headless worktrees now correctly detects when the local base branch (e.g. `main`) advances — previously it only checked `origin/main` which could be stale if no `git fetch` had occurred. Now checks both origin and local refs in parallel and reports whichever is further ahead. Also fixes cache staleness after `git fetch` by tracking the origin ref commit in the metadata cache.
+
 ### Fix: terminal scroll glitch and duplicate chat on task switch
 
 - Switching tasks no longer causes a visible slow scroll from the top of the terminal buffer to the bottom — the terminal now fits to the container synchronously on mount instead of deferring to the next animation frame. Duplicate resize messages to the PTY are eliminated by tracking last-sent dimensions, preventing agents from redrawing their chat display at multiple widths and leaving duplicates in the scrollback.
