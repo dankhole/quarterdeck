@@ -42,26 +42,59 @@ Audit and address performance bottlenecks that emerge when running many agents s
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
-This is distinct from #10 (committing *within* the task worktree). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
+This is distinct from #6 (committing *within* the task worktree). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
-## 5. Upstream sync: periodic review of cline/kanban (recurring)
+## 5. Branch management in git view
 
-Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
+Move the branch name display off the top bar into the git view. Replace the top bar branch display with a compact branch management pill. Add branch switching, pulling from remote, and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
 
-**Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
-**Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
+- **Merge into worktree**: Merge another branch (e.g. main, a sibling feature branch) into the task's worktree branch from the git view. This is the primary "keep my worktree up to date" workflow — pick a source branch, merge it in, surface conflicts if any. Should be accessible from the branch list or a dedicated merge action in the git view UI.
+- **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
 
-## 6. Audit CI/CD and deployment infrastructure
+## 6. Server-side commit in the diff viewer
 
-Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
+Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
 
-## 7. Investigate auto-trashing of tasks on restart
+- **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
+- **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
+- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
+- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git view (#5), which would also support committing.
+
+## 7. Commit sidebar tab (JetBrains-style)
+
+New sidebar tab showing a simplified view of uncommitted changes — just file names in a list — with a commit message input and commit/push buttons at the bottom, similar to the JetBrains "Commit" tool window. This is where server-side commit functionality (#6) will eventually live. Distinct from the git main view's Uncommitted tab, which shows full diffs — this sidebar is for quick commit workflows without leaving your current main view.
+
+## 8. Move agent chat out of the project switcher sidebar
+
+The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
+
+## 9. Un-trashing shared-workspace tasks clobbers session state
+
+When un-trashing tasks that share the main repo (no isolated worktree), the restore logic reattaches to the most recent agent chat session rather than the original session that belonged to that task. This means un-trashing multiple shared-workspace tasks doesn't work — each subsequent un-trash steals the session from the previously restored task, and any external agent session started in the same workspace will replace it too. The root issue is that shared-workspace tasks all compete for a single "current session" with no per-task session scoping. Needs a way to associate and restore the correct session per task, even when they share a workspace.
+
+Related: #14 (un-trash / restart paths for non-isolated worktrees).
+
+## 10. Task stuck in "running" when agent is waiting for permission
+
+A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
+
+## 11. Slow project switching — cache or preload board state
+
+Switching projects has a noticeable delay because the board tasks take a moment to load after the switch. Investigate caching strategies to make project switching feel instant — e.g. keeping the previous project's board state in memory, preloading the target project's state in the background when hovering or when the project switcher is open, or caching the last-known board state client-side so it can render immediately while fresh data loads behind it.
+
+## 12. Un-trash doesn't always auto-resume the agent session
+
+After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context — the agent session isn't fully restored. Manually typing `/resume` in the terminal works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash and ensure the full session context is restored automatically. Observed primarily with isolated worktree tasks but may affect shared-workspace tasks too.
+
+Related: #2 (resume sessions after crash/closure), #14 (un-trash / restart paths for non-isolated worktrees).
+
+## 13. Investigate auto-trashing of tasks on restart
 
 When Quarterdeck is closed and reopened, all open tasks (in_progress, review) get moved to trash. Investigate whether this is a technical requirement (e.g. agent sessions can't be resumed so the tasks are considered dead) or just a UX decision that was made early and never revisited.
 
 If it's not technically required, reconsider whether this makes sense — losing your board state on every restart is disruptive, especially for tasks that were waiting for review or had meaningful progress. This is closely related to #2 (resume sessions after crash/closure) but is worth investigating independently since keeping cards in place may be possible even if session resumption isn't.
 
-## 8. Investigate un-trash / restart paths for non-isolated worktrees
+## 14. Investigate un-trash / restart paths for non-isolated worktrees
 
 Investigate what happens on the un-trash and session restart code paths for tasks that are **not** using isolated git worktrees. Specifically:
 
@@ -72,79 +105,22 @@ Investigate what happens on the un-trash and session restart code paths for task
 
 This is about ensuring the full trash → un-trash → resume cycle works for both execution modes, not just isolated worktrees.
 
-## 9. Publish to npm
+## 15. Upstream sync: periodic review of cline/kanban (recurring)
 
-Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
+Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
 
-## 10. Server-side commit in the diff viewer
+**Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
+**Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
 
-Add a real commit action to the Changes/diff panel — select files to stage, write a commit message, commit via server-side `runGit()`. No agent session required.
+## 16. Audit CI/CD and deployment infrastructure
 
-- **File selection**: The diff viewer already shows changed files in the file tree. Add checkboxes or a select-all toggle to choose which files to stage.
-- **Commit message**: Inline text input in the diff panel. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
-- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
-- **Scope**: This is the quick-commit flow for the common case — commit from the review you're already looking at. More complex git operations (merge, branch management) live in the git view (#21), which would also support committing.
-
-## 11. Fix: notification beep count wrong for rapid state transitions
-
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #12 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
-
-## 12. Fix: audible notification double-beep and missed cues
-
-Two related bugs with the notification audio system:
-- Sometimes getting a double beep when only one should fire
-- Sometimes getting 1 beep when 2 separate events should produce 2 beeps
-- The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
-
-## 13. Add markdown renderer
-
-Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
-
-## 14. Archive stale docs (recurring)
-
-Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
-
-## 15. Move agent chat out of the project switcher sidebar
-
-The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
-
-## 16. Slow project switching — cache or preload board state
-
-Switching projects has a noticeable delay because the board tasks take a moment to load after the switch. Investigate caching strategies to make project switching feel instant — e.g. keeping the previous project's board state in memory, preloading the target project's state in the background when hovering or when the project switcher is open, or caching the last-known board state client-side so it can render immediately while fresh data loads behind it.
+Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
 ## 17. Independent sidebar widths per panel type
 
 The sidebar width is currently shared across all panel types — the task column, project switcher, and file browser sidebar all use the same width. These panels have different content density and ideal widths, so resizing one shouldn't affect the others. Store and restore sidebar width independently per panel type (e.g. task column, project switcher) so each remembers its own preferred width.
 
-## 18. Un-trashing shared-workspace tasks clobbers session state
-
-When un-trashing tasks that share the main repo (no isolated worktree), the restore logic reattaches to the most recent agent chat session rather than the original session that belonged to that task. This means un-trashing multiple shared-workspace tasks doesn't work — each subsequent un-trash steals the session from the previously restored task, and any external agent session started in the same workspace will replace it too. The root issue is that shared-workspace tasks all compete for a single "current session" with no per-task session scoping. Needs a way to associate and restore the correct session per task, even when they share a workspace.
-
-Related: #8 (un-trash / restart paths for non-isolated worktrees).
-
-## 19. Un-trash doesn't always auto-resume the agent session
-
-After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context — the agent session isn't fully restored. Manually typing `/resume` in the terminal works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash and ensure the full session context is restored automatically. Observed primarily with isolated worktree tasks but may affect shared-workspace tasks too.
-
-Related: #2 (resume sessions after crash/closure), #8 (un-trash / restart paths for non-isolated worktrees).
-
-## 20. Task stuck in "running" when agent is waiting for permission
-
-A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
-
-
-## 21. Branch management in git view
-
-Move the branch name display off the top bar into the git view. Replace the top bar branch display with a compact branch management pill. Add branch switching, pulling from remote, and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
-
-- **Merge into worktree**: Merge another branch (e.g. main, a sibling feature branch) into the task's worktree branch from the git view. This is the primary "keep my worktree up to date" workflow — pick a source branch, merge it in, surface conflicts if any. Should be accessible from the branch list or a dedicated merge action in the git view UI.
-- **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
-
-## 22. Commit sidebar tab (JetBrains-style)
-
-New sidebar tab showing a simplified view of uncommitted changes — just file names in a list — with a commit message input and commit/push buttons at the bottom, similar to the JetBrains "Commit" tool window. This is where server-side commit functionality (todo #10) will eventually live. Distinct from the git main view's Uncommitted tab, which shows full diffs — this sidebar is for quick commit workflows without leaving your current main view.
-
-## 23. Right-click context menu for branch pill dropdowns
+## 18. Right-click context menu for branch pill dropdowns
 
 Add a right-click context menu to branches in the pill dropdowns (scope bar branch selector, git history refs panel, etc.) with actions:
 - **Checkout this branch** — switch the task's worktree to the selected branch
@@ -153,9 +129,32 @@ Add a right-click context menu to branches in the pill dropdowns (scope bar bran
 
 Requires `@radix-ui/react-context-menu` (already installed for the file browser context menu).
 
-## 24. Fix: compacting conversation doesn't transition task to running
+## 19. Add markdown renderer
+
+Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
+
+## 20. Fix: notification beep count wrong for rapid state transitions
+
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #21 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+
+## 21. Fix: audible notification double-beep and missed cues
+
+Two related bugs with the notification audio system:
+- Sometimes getting a double beep when only one should fire
+- Sometimes getting 1 beep when 2 separate events should produce 2 beeps
+- The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
+
+## 22. Fix: compacting conversation doesn't transition task to running
 
 When an agent compacts its conversation context (e.g. Claude Code's auto-compact), the task card doesn't move to "running" / in_progress. The compact action is part of the agent's active work cycle, so it should trigger the same state transition as any other agent activity. Investigate whether the compact event isn't emitting the expected hook or whether the output pattern isn't being detected by the adapter.
+
+## 23. Publish to npm
+
+Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
+
+## 24. Archive stale docs (recurring)
+
+Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
 ## 25. Fix: font weight input pill too wide in settings
 
@@ -164,4 +163,3 @@ The font weight number input in the settings dialog is visually too wide for its
 ## 26. "Copy file" in file browser context menu
 
 Add a "Copy file" action to the file browser right-click context menu that copies the full file contents to the clipboard. Currently the context menu has "Copy name" and "Copy path" — this would complete the set. Needs to fetch the file content (or reuse the already-fetched content if the file is currently open in the viewer) before writing to clipboard.
-
