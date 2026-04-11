@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: stale review sessions recover instead of dropping to idle
+
+- When an agent process exits while a task is in "ready for review" and no viewer is connected, clicking the card no longer drops it to idle — `recoverStaleSession` now detects the task was launched this server lifetime and schedules an auto-restart instead. Clean exits (code 0) preserve the "Completed" state without restarting. A new reconciliation check (`checkProcesslessActiveSession`) proactively marks orphaned review sessions as "Error" so the card shows the correct status even before the user clicks it.
+
 ### Project switcher drag-and-drop reorder
 
 - Projects in the sidebar can now be reordered via drag-and-drop — grab the grip handle (visible on hover) and drag to a new position. Ordering persists across sessions in the workspace index file, with alphabetical fallback for projects that haven't been reordered. Optimistic UI prevents visual snap-back during the server roundtrip.

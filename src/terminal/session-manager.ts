@@ -748,6 +748,39 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 
+		// The session is in an active state (running or awaiting_review) but has
+		// no backing process. Two scenarios lead here:
+		//
+		// 1. The task was launched this server lifetime and the process exited
+		//    while no WebSocket listeners were attached (so auto-restart in onExit
+		//    was skipped). restartRequest is set — we can attempt a restart now
+		//    that a viewer is reconnecting.
+		//
+		// 2. The entry was hydrated from persisted state after a server restart.
+		//    restartRequest is null — we don't have the launch parameters and the
+		//    process is genuinely gone. Reset to idle.
+		if (entry.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
+			// Clean exit (code 0) means the agent finished its work — restarting
+			// would re-run it from scratch. Keep the state as-is so the user can
+			// review the completed work in the terminal.
+			if (entry.summary.reviewReason === "exit") {
+				return cloneSummary(entry.summary);
+			}
+			// Error exits, stale hook/attention reviews, or running state without a
+			// process — attempt restart now that a viewer is reconnecting.
+			const summary = updateSummary(entry, {
+				state: "awaiting_review",
+				reviewReason: "error",
+			});
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
+			this.scheduleAutoRestart(entry);
+			return cloneSummary(summary);
+		}
+
+		// Hydrated entry or shell session — reset to idle.
 		// Preserve agentId so the server can route to the correct agent type
 		// when a task is restored from trash.
 		const summary = updateSummary(entry, {
@@ -1313,6 +1346,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 				if (cleanupFn) {
 					cleanupFn().catch(() => {});
 				}
+				break;
+			}
+			case "mark_processless_error": {
+				const summary = updateSummary(entry, {
+					state: "awaiting_review",
+					reviewReason: "error",
+				});
+				for (const listener of entry.listeners.values()) {
+					listener.onState?.(cloneSummary(summary));
+				}
+				this.emitSummary(summary);
 				break;
 			}
 			case "clear_hook_activity": {

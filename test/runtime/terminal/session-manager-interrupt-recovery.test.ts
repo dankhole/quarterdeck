@@ -334,3 +334,101 @@ describe("session-state-machine interrupt.recovery event", () => {
 		expect(result.changed).toBe(false);
 	});
 });
+
+describe("recoverStaleSession with launched sessions", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		prepareAgentLaunchMock.mockReset();
+		ptySessionSpawnMock.mockReset();
+		prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
+			binary: input.binary,
+			args: [...input.args],
+			env: {},
+		}));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("attempts restart when process exited with error during review", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+
+		const manager = new TerminalSessionManager();
+		// No listeners attached — simulates user not viewing this task
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		// Transition to review, then process exits with error
+		manager.transitionToReview("task-1", "hook");
+		spawnedSessions[0]?.triggerExit(1);
+
+		// State should be awaiting_review/error with no process
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+
+		// Now simulate viewer connecting (recoverStaleSession is called by WS handler)
+		const recovered = manager.recoverStaleSession("task-1");
+
+		// Should stay in error review state and schedule a restart
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("error");
+
+		// Let the restart complete
+		await vi.advanceTimersByTimeAsync(0);
+
+		// A new session should have been spawned
+		expect(spawnedSessions).toHaveLength(2);
+		expect(manager.getSummary("task-1")?.state).toBe("running");
+	});
+
+	it("does not restart for clean exits (reviewReason: exit)", async () => {
+		const spawnedSessions = setupMockPtySpawn();
+
+		const manager = new TerminalSessionManager();
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		// Transition to review, then process exits cleanly
+		manager.transitionToReview("task-1", "hook");
+		spawnedSessions[0]?.triggerExit(0);
+
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+
+		// Viewer connects
+		const recovered = manager.recoverStaleSession("task-1");
+
+		// Should keep the "exit" state and NOT restart
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("exit");
+		expect(spawnedSessions).toHaveLength(1);
+	});
+
+	it("resets hydrated entries to idle even with active state", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+			}),
+		});
+
+		const recovered = manager.recoverStaleSession("task-1");
+
+		// Hydrated entry has no restartRequest — should reset to idle
+		expect(recovered?.state).toBe("idle");
+		expect(recovered?.reviewReason).toBeNull();
+	});
+});

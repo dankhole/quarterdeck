@@ -4,6 +4,23 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: stale review sessions recover instead of dropping to idle (2026-04-11)
+
+When an agent process exited while a task was in `awaiting_review` and no WebSocket listeners were attached (user not viewing that task), the `shouldAutoRestart` check in `onExit` returned false (0 listeners). The session stayed in `awaiting_review` with `entry.active = null`. When the user later clicked the card and the terminal WebSocket connected, `recoverStaleSession` saw `active === null` + `isActiveState(state) === true` and unconditionally reset to `idle` — losing review context and confusing the user.
+
+**Root cause**: `recoverStaleSession` couldn't distinguish "process launched this server lifetime and exited" (recoverable) from "entry hydrated from persisted state after server restart" (genuinely gone). Both had `entry.active === null` with an active state.
+
+**Fix**: Use `entry.restartRequest` as the discriminator — set when `startTaskSession` is called, null on hydration. Three paths:
+- `restartRequest.kind === "task"` + `reviewReason !== "exit"`: transition to `awaiting_review/error` and call `scheduleAutoRestart` (agent relaunches)
+- `restartRequest.kind === "task"` + `reviewReason === "exit"`: return summary as-is (agent completed normally)
+- `restartRequest === null`: reset to idle (hydrated entry, unchanged behavior)
+
+Also added `checkProcesslessActiveSession` reconciliation check that proactively detects tasks in active states (`running`, `awaiting_review/hook`, `awaiting_review/attention`) with no process and `restartRequest` set. Transitions to `awaiting_review/error` so the card shows "Error" instead of a stale status badge — even before the user clicks. Skips already-classified exits (`error`, `exit`, `interrupted`) to avoid double-handling.
+
+Files touched: `src/terminal/session-manager.ts` (recoverStaleSession, applyReconciliationAction), `src/terminal/session-reconciliation.ts` (ReconciliationEntry, checkProcesslessActiveSession, reconciliationChecks), `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`, `test/runtime/terminal/session-reconciliation.test.ts`.
+
+Commit: `61b64e2d`.
+
 ## Project switcher drag-and-drop reorder (2026-04-11)
 
 Added drag-and-drop reordering for projects in the sidebar. The workspace index file (`~/.quarterdeck/workspaces/index.json`) gained a `projectOrder: string[]` field — an ordered array of workspace IDs. The Zod schema uses `.optional().default([])` for backward compatibility with existing index files. When `projectOrder` is empty, `listWorkspaceIndexEntries()` falls back to the previous alphabetical-by-path sort. When populated, entries sort by position in the array, with unmatched entries appended alphabetically.

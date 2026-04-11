@@ -3,12 +3,17 @@
 // The sweep in TerminalSessionManager applies the first non-null action per entry.
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
 
-export type ReconciliationAction = { type: "clear_hook_activity" } | { type: "recover_dead_process" };
+export type ReconciliationAction =
+	| { type: "clear_hook_activity" }
+	| { type: "recover_dead_process" }
+	| { type: "mark_processless_error" };
 
 /** Minimal shape of a session entry needed by the check functions. */
 export interface ReconciliationEntry {
 	summary: RuntimeTaskSessionSummary;
 	active: unknown;
+	restartRequest: unknown;
+	pendingAutoRestart: unknown;
 }
 
 export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
@@ -93,5 +98,49 @@ export function checkStaleHookActivity(entry: ReconciliationEntry, _nowMs: numbe
 	return null;
 }
 
-/** Ordered by priority: dead process > clear activity. */
-export const reconciliationChecks: ReconciliationCheck[] = [checkDeadProcess, checkStaleHookActivity];
+/**
+ * Detects sessions in an active state (running or awaiting_review) that have
+ * lost their process handle without going through the normal onExit path's
+ * auto-restart logic — typically because no WebSocket listeners were attached
+ * when the process exited. Only fires for sessions that were launched this
+ * server lifetime (restartRequest is set) and aren't already being restarted.
+ *
+ * Does NOT auto-restart — that happens in recoverStaleSession when a viewer
+ * reconnects. This check just ensures the card shows "Error" instead of a
+ * stale "Ready for review" or "Running" status.
+ */
+export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "running" && summary.state !== "awaiting_review") {
+		return null;
+	}
+	if (entry.active) {
+		return null;
+	}
+	if (!entry.restartRequest) {
+		return null;
+	}
+	if (entry.pendingAutoRestart) {
+		return null;
+	}
+	// Skip review states that were already classified by the onExit handler:
+	// - "error": already marked as error, nothing to do.
+	// - "exit": clean exit (code 0), agent completed its work normally.
+	// - "interrupted": user-initiated stop.
+	// Only "running", "hook", and "attention" indicate a genuinely stale state
+	// where the process disappeared without proper exit handling.
+	if (summary.state === "awaiting_review") {
+		const reason = summary.reviewReason;
+		if (reason === "error" || reason === "exit" || reason === "interrupted") {
+			return null;
+		}
+	}
+	return { type: "mark_processless_error" };
+}
+
+/** Ordered by priority: dead process > processless recovery > clear activity. */
+export const reconciliationChecks: ReconciliationCheck[] = [
+	checkDeadProcess,
+	checkProcesslessActiveSession,
+	checkStaleHookActivity,
+];

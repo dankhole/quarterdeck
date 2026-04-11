@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import {
 	checkDeadProcess,
+	checkProcesslessActiveSession,
 	checkStaleHookActivity,
 	isPermissionActivity,
 	type ReconciliationEntry,
@@ -36,11 +37,13 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 
 function createEntry(
 	summaryOverrides: Partial<RuntimeTaskSessionSummary> = {},
-	active: unknown = {},
+	options: { active?: unknown; restartRequest?: unknown; pendingAutoRestart?: unknown } = {},
 ): ReconciliationEntry {
 	return {
 		summary: createSummary(summaryOverrides),
-		active,
+		active: "active" in options ? options.active : {},
+		restartRequest: options.restartRequest !== undefined ? options.restartRequest : null,
+		pendingAutoRestart: options.pendingAutoRestart !== undefined ? options.pendingAutoRestart : null,
 	};
 }
 
@@ -147,7 +150,7 @@ describe("checkDeadProcess", () => {
 	});
 
 	it("returns null when entry.active is falsy (5)", () => {
-		const entry = createEntry({ state: "running", pid: 999_999_999 }, null);
+		const entry = createEntry({ state: "running", pid: 999_999_999 }, { active: null });
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
 	});
 
@@ -241,13 +244,86 @@ describe("checkStaleHookActivity", () => {
 	});
 });
 
+// ── checkProcesslessActiveSession ────────────────────────────────────────
+
+describe("checkProcesslessActiveSession", () => {
+	it("returns mark_processless_error for running state with no process and restartRequest set", () => {
+		const entry = createEntry({ state: "running" }, { active: null, restartRequest: { kind: "task" } });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+	});
+
+	it("returns mark_processless_error for awaiting_review/hook with no process and restartRequest set", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "hook" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+	});
+
+	it("returns null when already in error state", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "error" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when active process exists", () => {
+		const entry = createEntry({ state: "running" }, { active: {}, restartRequest: { kind: "task" } });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when restartRequest is null (hydrated entry)", () => {
+		const entry = createEntry({ state: "running" }, { active: null, restartRequest: null });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when pendingAutoRestart is set", () => {
+		const entry = createEntry(
+			{ state: "running" },
+			{ active: null, restartRequest: { kind: "task" }, pendingAutoRestart: Promise.resolve() },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null for idle state", () => {
+		const entry = createEntry({ state: "idle" }, { active: null, restartRequest: { kind: "task" } });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null for awaiting_review/exit (clean completion)", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "exit" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null for awaiting_review/interrupted", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "interrupted" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns mark_processless_error for awaiting_review/attention with no process", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "attention" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+	});
+});
+
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > clear activity (24)", () => {
+	it("are ordered by priority: dead process > processless recovery > clear activity (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
-		expect(reconciliationChecks[1]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks).toHaveLength(2);
+		expect(reconciliationChecks[1]).toBe(checkProcesslessActiveSession);
+		expect(reconciliationChecks[2]).toBe(checkStaleHookActivity);
+		expect(reconciliationChecks).toHaveLength(3);
 	});
 });
 
@@ -283,7 +359,7 @@ describe("reconciliation edge cases", () => {
 	});
 
 	it("skips sessions with no active handle and no pid (41)", () => {
-		const entry = createEntry({ state: "running", pid: null }, null);
+		const entry = createEntry({ state: "running", pid: null }, { active: null });
 		expect(checkDeadProcess(entry, Date.now())).toBeNull();
 	});
 });
