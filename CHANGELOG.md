@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### README refresh
+
+- Updated README to reflect current feature set — names supported agents (Claude Code, Codex CLI), describes the git view's three tabs (Uncommitted / Last Turn / Compare), adds multi-project management, file browser, settings overview, and an experimental Windows support note.
+
 ### Suppressed Dialogs section in settings
 
 - Dialog suppression toggles (trash worktree notice, task/home checkout confirmations) moved from "Git & Worktrees" into a dedicated "Suppressed Dialogs" section at the bottom of Global settings — provides a single place to re-enable any dialog previously dismissed via "don't show again". Checkout toggle labels flipped to positive phrasing ("Show X confirmation"). Convention documented in AGENTS.md.

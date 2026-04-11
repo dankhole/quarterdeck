@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## README refresh (2026-04-11)
+
+Updated the README to close the gap between the documented feature set and reality. The README still had the original fork-era descriptions — the git view section described clicking a branch name in the navbar (replaced months ago by a full main view with three tabs), no mention of multi-project management, file browser, settings, or which agents are actually supported. Changes: named Claude Code and Codex CLI as supported agents, added experimental Windows note, described multi-project workflow in step 2, added file browser and settings mentions in the review step, rewrote the git view section to cover Uncommitted/Last Turn/Compare tabs and the integrated file tree.
+
+Files touched: `README.md`, `docs/todo.md` (removed #29, renumbered), `CHANGELOG.md`, `docs/implementation-log.md`. Closes todo #29 (originally #31).
+
 ## Suppressed Dialogs section in settings (2026-04-11)
 
 Moved the three dialog suppression toggles (`showTrashWorktreeNotice`, `skipTaskCheckoutConfirmation`, `skipHomeCheckoutConfirmation`) out of the "Git & Worktrees" section in the settings dialog into a new dedicated "Suppressed Dialogs" section placed after "Layout & Debug" at the bottom of Global settings. This gives users a single, discoverable place to re-enable any dialog they've previously dismissed.
