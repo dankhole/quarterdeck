@@ -1,14 +1,13 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
-import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
-import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
+import { FilesView } from "@/components/files-view";
 import { GitView } from "@/components/git-view";
 import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
@@ -133,9 +132,6 @@ export function CardDetailView({
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
 }): React.ReactElement {
-	const [fileBrowserExpandedDirs, setFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
-	const [fileBrowserHasInitializedExpansion, setFileBrowserHasInitializedExpansion] = useState(false);
-
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -218,7 +214,7 @@ export function CardDetailView({
 	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
 
 	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
-	const isTaskSidePanelOpen = mainView === "files" || sidebar === "task_column";
+	const isTaskSidePanelOpen = sidebar === "task_column";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 
 	const handleSelectAdjacentCard = useCallback(
@@ -247,16 +243,6 @@ export function CardDetailView({
 		[handleSelectAdjacentCard],
 	);
 
-	// Reset parent-owned state on task switch.
-	useEffect(() => {
-		setFileBrowserExpandedDirs(new Set());
-		setFileBrowserHasInitializedExpansion(false);
-	}, [selection.card.id]);
-
-	const handleFileBrowserInitializedExpansion = useCallback(() => {
-		setFileBrowserHasInitializedExpansion(true);
-	}, []);
-
 	// The component renders as a wrapper div whose children are the side panel + right column.
 	// The wrapper is a flex row that fills the parent container.
 	return (
@@ -283,67 +269,19 @@ export function CardDetailView({
 							overflow: "hidden",
 						}}
 					>
-						{mainView === "files" ? (
-							<>
-								<ScopeBar
-									resolvedScope={taskResolvedScope}
-									scopeMode={taskScopeMode}
-									homeGitSummary={homeGitSummary}
-									taskTitle={selection.card.title}
-									taskBranch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
-									taskBaseRef={selection.card.baseRef}
-									behindBaseCount={taskWorkspaceSnapshot?.behindBaseCount ?? null}
-									isDetachedHead={taskWorkspaceInfo?.isDetached ?? false}
-									taskIsDetached={taskWorkspaceInfo?.isDetached ?? false}
-									onSwitchToHome={onDeselectTask}
-									onReturnToContextual={taskReturnToContextual}
-									branchPillSlot={
-										pillBranchLabel ? (
-											<BranchSelectorPopover
-												isOpen={taskBranchActions.isBranchPopoverOpen}
-												onOpenChange={taskBranchActions.setBranchPopoverOpen}
-												branches={taskBranchActions.branches}
-												currentBranch={taskBranchActions.currentBranch}
-												worktreeBranches={taskBranchActions.worktreeBranches}
-												onSelectBranchView={taskBranchActions.handleSelectBranchView}
-												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
-												trigger={<BranchPillTrigger label={pillBranchLabel} />}
-											/>
-										) : undefined
-									}
-									onCheckoutBrowsingBranch={
-										taskResolvedScope?.type === "branch_view"
-											? () => taskBranchActions.handleCheckoutBranch(taskResolvedScope.ref)
-											: undefined
-									}
-								/>
-								<FileBrowserTreePanel
-									key={`${selection.card.id}-${taskScopeMode}`}
-									files={fileBrowserData.files}
-									selectedPath={fileBrowserData.selectedPath}
-									onSelectPath={fileBrowserData.onSelectPath}
-									panelFlex="1 1 0"
-									expandedDirs={fileBrowserExpandedDirs}
-									onExpandedDirsChange={setFileBrowserExpandedDirs}
-									hasInitializedExpansion={fileBrowserHasInitializedExpansion}
-									onInitializedExpansion={handleFileBrowserInitializedExpansion}
-								/>
-							</>
-						) : sidebar === "task_column" ? (
-							<ColumnContextPanel
-								selection={selection}
-								onCardSelect={onCardSelect}
-								taskSessions={taskSessions}
-								onTaskDragEnd={onTaskDragEnd}
-								onCreateTask={onCreateTask}
-								onStartAllTasks={onStartAllTasks}
-								onClearTrash={onClearTrash}
-								editingTaskId={editingTaskId}
-								inlineTaskEditor={inlineTaskEditor}
-								onEditTask={onEditTask}
-								panelWidth="100%"
-							/>
-						) : null}
+						<ColumnContextPanel
+							selection={selection}
+							onCardSelect={onCardSelect}
+							taskSessions={taskSessions}
+							onTaskDragEnd={onTaskDragEnd}
+							onCreateTask={onCreateTask}
+							onStartAllTasks={onStartAllTasks}
+							onClearTrash={onClearTrash}
+							editingTaskId={editingTaskId}
+							inlineTaskEditor={inlineTaskEditor}
+							onEditTask={onEditTask}
+							panelWidth="100%"
+						/>
 					</div>
 					<ResizeHandle
 						orientation="vertical"
@@ -382,14 +320,43 @@ export function CardDetailView({
 					</div>
 				) : mainView === "files" ? (
 					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-						<FileContentViewer
-							content={fileBrowserData.fileContent?.content ?? null}
-							binary={fileBrowserData.fileContent?.binary ?? false}
-							truncated={fileBrowserData.fileContent?.truncated ?? false}
-							isLoading={fileBrowserData.isContentLoading}
-							isError={fileBrowserData.isContentError}
-							filePath={fileBrowserData.selectedPath}
-							onClose={fileBrowserData.onCloseFile}
+						<FilesView
+							key={`${selection.card.id}-${taskScopeMode}`}
+							scopeBar={
+								<ScopeBar
+									resolvedScope={taskResolvedScope}
+									scopeMode={taskScopeMode}
+									homeGitSummary={homeGitSummary}
+									taskTitle={selection.card.title}
+									taskBranch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
+									taskBaseRef={selection.card.baseRef}
+									behindBaseCount={taskWorkspaceSnapshot?.behindBaseCount ?? null}
+									isDetachedHead={taskWorkspaceInfo?.isDetached ?? false}
+									taskIsDetached={taskWorkspaceInfo?.isDetached ?? false}
+									onSwitchToHome={onDeselectTask}
+									onReturnToContextual={taskReturnToContextual}
+									branchPillSlot={
+										pillBranchLabel ? (
+											<BranchSelectorPopover
+												isOpen={taskBranchActions.isBranchPopoverOpen}
+												onOpenChange={taskBranchActions.setBranchPopoverOpen}
+												branches={taskBranchActions.branches}
+												currentBranch={taskBranchActions.currentBranch}
+												worktreeBranches={taskBranchActions.worktreeBranches}
+												onSelectBranchView={taskBranchActions.handleSelectBranchView}
+												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
+												trigger={<BranchPillTrigger label={pillBranchLabel} />}
+											/>
+										) : undefined
+									}
+									onCheckoutBrowsingBranch={
+										taskResolvedScope?.type === "branch_view"
+											? () => taskBranchActions.handleCheckoutBranch(taskResolvedScope.ref)
+											: undefined
+									}
+								/>
+							}
+							fileBrowserData={fileBrowserData}
 						/>
 					</div>
 				) : (

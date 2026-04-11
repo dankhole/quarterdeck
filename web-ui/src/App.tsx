@@ -15,9 +15,8 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
-import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
-import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
+import { FilesView } from "@/components/files-view";
 import { GitHistoryView } from "@/components/git-history-view";
 import { GitView } from "@/components/git-view";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
@@ -341,14 +340,6 @@ export default function App(): ReactElement {
 		baseRef: homeResolvedScope?.type === "task" ? homeResolvedScope.baseRef : undefined,
 		ref: homeResolvedScope?.type === "branch_view" ? homeResolvedScope.ref : undefined,
 	});
-	const [homeFileBrowserExpandedDirs, setHomeFileBrowserExpandedDirs] = useState<Set<string>>(new Set());
-	const [homeFileBrowserInitialized, setHomeFileBrowserInitialized] = useState(false);
-
-	// Reset home file browser tree state on project switch
-	useEffect(() => {
-		setHomeFileBrowserExpandedDirs(new Set());
-		setHomeFileBrowserInitialized(false);
-	}, [currentProjectId]);
 
 	const {
 		workspacePath,
@@ -912,7 +903,6 @@ export default function App(): ReactElement {
 		setSidePanelRatio,
 		resetToDefaults: resetCardDetailLayoutToDefaults,
 	} = useCardDetailLayout({
-		isFileBrowserExpanded: false,
 		selectedTaskId,
 	});
 
@@ -1232,82 +1222,8 @@ export default function App(): ReactElement {
 							projectsBadgeColor={projectsBadgeColor}
 						/>
 
-						{/* Sidebar panel content — depends on sidebar state or mainView override */}
-						{mainView === "files" && !selectedCard ? (
-							<>
-								<div
-									style={{
-										display: "flex",
-										flexDirection: "column",
-										flex: `0 0 ${homeSidePanelPercent}`,
-										minWidth: 0,
-										minHeight: 0,
-										overflow: "hidden",
-									}}
-								>
-									<ScopeBar
-										resolvedScope={homeResolvedScope}
-										scopeMode={homeScopeMode}
-										homeGitSummary={homeGitSummary}
-										taskTitle={null}
-										taskBranch={null}
-										taskBaseRef={null}
-										behindBaseCount={null}
-										isDetachedHead={homeGitSummary?.currentBranch === null && homeGitSummary !== null}
-										onSwitchToHome={homeSwitchToHome}
-										onReturnToContextual={homeReturnToContextual}
-										branchPillSlot={
-											<BranchSelectorPopover
-												isOpen={homeBranchActions.isBranchPopoverOpen}
-												onOpenChange={homeBranchActions.setBranchPopoverOpen}
-												branches={homeBranchActions.branches}
-												currentBranch={homeBranchActions.currentBranch}
-												worktreeBranches={homeBranchActions.worktreeBranches}
-												onSelectBranchView={homeBranchActions.handleSelectBranchView}
-												onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
-												trigger={
-													<BranchPillTrigger
-														label={
-															homeResolvedScope?.type === "branch_view"
-																? homeResolvedScope.ref
-																: (homeGitSummary?.currentBranch ?? "unknown")
-														}
-													/>
-												}
-											/>
-										}
-										onCheckoutBrowsingBranch={
-											homeResolvedScope?.type === "branch_view"
-												? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
-												: undefined
-										}
-									/>
-									{currentProjectId ? (
-										<FileBrowserTreePanel
-											key={currentProjectId}
-											files={homeFileBrowserData.files}
-											selectedPath={homeFileBrowserData.selectedPath}
-											onSelectPath={homeFileBrowserData.onSelectPath}
-											panelFlex="1 1 0"
-											expandedDirs={homeFileBrowserExpandedDirs}
-											onExpandedDirsChange={setHomeFileBrowserExpandedDirs}
-											hasInitializedExpansion={homeFileBrowserInitialized}
-											onInitializedExpansion={() => setHomeFileBrowserInitialized(true)}
-										/>
-									) : (
-										<div className="flex flex-1 items-center justify-center text-text-tertiary">
-											<FolderOpen size={40} />
-										</div>
-									)}
-								</div>
-								<ResizeHandle
-									orientation="vertical"
-									ariaLabel="Resize file browser panel"
-									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
-									className="z-10"
-								/>
-							</>
-						) : sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
+						{/* Sidebar panel content — depends on sidebar state */}
+						{sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
 							<>
 								<div
 									style={{
@@ -1458,14 +1374,50 @@ export default function App(): ReactElement {
 													onCompareNavigationConsumed={clearPendingCompareNavigation}
 												/>
 											) : mainView === "files" ? (
-												<FileContentViewer
-													content={homeFileBrowserData.fileContent?.content ?? null}
-													binary={homeFileBrowserData.fileContent?.binary ?? false}
-													truncated={homeFileBrowserData.fileContent?.truncated ?? false}
-													isLoading={homeFileBrowserData.isContentLoading}
-													isError={homeFileBrowserData.isContentError}
-													filePath={homeFileBrowserData.selectedPath}
-													onClose={homeFileBrowserData.onCloseFile}
+												<FilesView
+													key={currentProjectId ?? "no-project"}
+													scopeBar={
+														<ScopeBar
+															resolvedScope={homeResolvedScope}
+															scopeMode={homeScopeMode}
+															homeGitSummary={homeGitSummary}
+															taskTitle={null}
+															taskBranch={null}
+															taskBaseRef={null}
+															behindBaseCount={null}
+															isDetachedHead={
+																homeGitSummary?.currentBranch === null && homeGitSummary !== null
+															}
+															onSwitchToHome={homeSwitchToHome}
+															onReturnToContextual={homeReturnToContextual}
+															branchPillSlot={
+																<BranchSelectorPopover
+																	isOpen={homeBranchActions.isBranchPopoverOpen}
+																	onOpenChange={homeBranchActions.setBranchPopoverOpen}
+																	branches={homeBranchActions.branches}
+																	currentBranch={homeBranchActions.currentBranch}
+																	worktreeBranches={homeBranchActions.worktreeBranches}
+																	onSelectBranchView={homeBranchActions.handleSelectBranchView}
+																	onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
+																	trigger={
+																		<BranchPillTrigger
+																			label={
+																				homeResolvedScope?.type === "branch_view"
+																					? homeResolvedScope.ref
+																					: (homeGitSummary?.currentBranch ?? "unknown")
+																			}
+																		/>
+																	}
+																/>
+															}
+															onCheckoutBrowsingBranch={
+																homeResolvedScope?.type === "branch_view"
+																	? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
+																	: undefined
+															}
+														/>
+													}
+													fileBrowserData={homeFileBrowserData}
 												/>
 											) : (
 												<QuarterdeckBoard

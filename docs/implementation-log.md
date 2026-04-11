@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Files view — Board sidebar can coexist (2026-04-11)
+
+The Files main view (`mainView === "files"`) previously rendered its `ScopeBar` + `FileBrowserTreePanel` in the sidebar slot, which displaced the Board sidebar (`ColumnContextPanel`). The Git view didn't have this problem because its `FileTreePanel` was embedded inside the `GitView` component itself. This inconsistency meant you could have the Board sidebar open alongside the Git view, but not alongside the Files view.
+
+**Fix**: Created a `FilesView` component (`web-ui/src/components/files-view.tsx`) modeled after `GitView` — a self-contained component that internally manages a `ScopeBar` slot, `FileBrowserTreePanel` with resize handle and visibility toggle, and `FileContentViewer`. The file tree ratio persists to `LocalStorageKey.DetailFileBrowserTreePanelRatio`. Internal state (`expandedDirs`, `hasInitializedExpansion`) resets via React key prop when the parent context changes (task ID or project ID).
+
+**Layout changes**: `isTaskSidePanelOpen` in `CardDetailView` changed from `mainView === "files" || sidebar === "task_column"` to just `sidebar === "task_column"`. The sidebar rendering no longer has a `mainView === "files"` branch — it only renders `ColumnContextPanel`. The `visualSidebar` computation in `useCardDetailLayout` was updated to only suppress sidebar highlight for `"git"`, not `"files"`. Dead code removed: `isFileBrowserExpanded` parameter, `COLLAPSED/EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE` constants, `detailFileBrowserTreeRatio`/`setDetailFileBrowserTreeRatio` from hook return, `DetailExpandedFileBrowserTreePanelRatio` localStorage key.
+
+Files touched: `web-ui/src/components/files-view.tsx` (new), `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/App.tsx`, `web-ui/src/resize/use-card-detail-layout.ts`, `web-ui/src/storage/local-storage-store.ts`, `docs/ui-layout-architecture.md`.
+
 ## Uncommitted changes indicator on task cards (2026-04-11)
 
 Added a configurable orange dot indicator on board cards that shows when the task's worktree has uncommitted file changes (`changedFiles > 0`). The feature reuses the existing `workspace-metadata-monitor` polling infrastructure and `workspace-metadata-store` hooks — no new polling, detection, or WebSocket broadcast code was needed.

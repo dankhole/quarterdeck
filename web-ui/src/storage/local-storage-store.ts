@@ -12,7 +12,6 @@ export enum LocalStorageKey {
 	DetailDiffFileTreePanelRatio = "quarterdeck.detail-diff-file-tree-panel-ratio",
 	DetailExpandedDiffFileTreePanelRatio = "quarterdeck.detail-expanded-diff-file-tree-panel-ratio",
 	DetailFileBrowserTreePanelRatio = "quarterdeck.detail-file-browser-tree-panel-ratio",
-	DetailExpandedFileBrowserTreePanelRatio = "quarterdeck.detail-expanded-file-browser-tree-panel-ratio",
 	DetailLastTaskTab = "quarterdeck.detail-last-task-tab",
 	GitHistoryRefsPanelWidth = "quarterdeck.git-history-refs-panel-width",
 	GitHistoryCommitsPanelWidth = "quarterdeck.git-history-commits-panel-width",
@@ -34,7 +33,6 @@ export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
 	LocalStorageKey.GitHistoryCommitsPanelWidth,
 	LocalStorageKey.GitDiffFileTreePanelRatio,
 	LocalStorageKey.DetailFileBrowserTreePanelRatio,
-	LocalStorageKey.DetailExpandedFileBrowserTreePanelRatio,
 	LocalStorageKey.GitViewFileTreeRatio,
 ] as const;
 

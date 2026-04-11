@@ -55,24 +55,22 @@ App.tsx
 │   └── SidebarButton × 2                  # Projects, Board
 │
 ├── [Sidebar panel]                        # Conditional — rendered at App.tsx level OR inside CardDetailView
-│   ├── (home + files, no task) → ScopeBar + FileBrowserTreePanel
 │   ├── (home + projects sidebar) → ProjectNavigationPanel
-│   └── (task selected) → delegated to CardDetailView
+│   └── (task selected + sidebar=task_column) → ColumnContextPanel (inside CardDetailView)
 │
 ├── [Main content]                         # Conditional on selection state
 │   ├── (task selected) → CardDetailView   # Owns task-context layout
-│   │   ├── [Left panel]                   # Task-scoped sidebar
-│   │   │   ├── (mainView=files) → ScopeBar + FileBrowserTreePanel
-│   │   │   └── (sidebar=task_column) → ColumnContextPanel
+│   │   ├── [Left panel]                   # Task-scoped sidebar (only when sidebar=task_column)
+│   │   │   └── ColumnContextPanel
 │   │   │
 │   │   └── [Right panel]                  # Task-scoped main content
-│   │       ├── (mainView=git) → GitView
-│   │       ├── (mainView=files) → FileContentViewer
+│   │       ├── (mainView=git) → GitView (internal file tree)
+│   │       ├── (mainView=files) → FilesView (internal ScopeBar + file tree + content viewer)
 │   │       └── (mainView=terminal|home) → AgentTerminalPanel + optional bottom terminal
 │   │
 │   └── (no task) → Top-level main content
 │       ├── (mainView=git) → GitView
-│       ├── (mainView=files) → FileContentViewer
+│       ├── (mainView=files) → FilesView
 │       └── (mainView=home) → QuarterdeckBoard
 ```
 
@@ -83,7 +81,7 @@ The sidebar is rendered in **two different places** depending on whether a task 
 - **No task**: App.tsx renders the sidebar directly (ProjectNavigationPanel, or home-context FileBrowserTreePanel).
 - **Task selected**: `CardDetailView` renders its own left panel (task-scoped FileBrowserTreePanel or ColumnContextPanel).
 
-This split exists because task-scoped sidebar panels need access to task context (workspace info, scope resolution, branch actions) that `CardDetailView` already manages. The `mainView === "files"` and `mainView === "git"` views suppress the sidebar highlight — they have integrated tree panels that replace the sidebar visually.
+This split exists because task-scoped sidebar panels need access to task context (workspace info, scope resolution, branch actions) that `CardDetailView` already manages. The `mainView === "git"` view suppresses the sidebar highlight — it has an integrated tree panel that replaces the sidebar visually. The `mainView === "files"` view (`FilesView`) also has an integrated tree panel but does **not** suppress the sidebar, allowing the Board/Projects sidebar to coexist alongside it.
 
 ---
 
@@ -107,8 +105,6 @@ The single hook that owns all layout state. Called in `App.tsx`, results threade
 | `lastSidebarTab` | `SidebarId` | Remembers last task-tied sidebar for re-open |
 | `sidePanelRatio` | `number` | Sidebar width as ratio of container |
 | `setSidePanelRatio` | function | Update sidebar width |
-| `detailFileBrowserTreeRatio` | `number` | File browser tree width ratio |
-| `setDetailFileBrowserTreeRatio` | function | Update file browser tree width |
 | `resetToDefaults` | function | Reset all ratios to defaults |
 
 **Initial state on mount**: Always starts at `home` + `projects` (view state is transient, not restored across tab reopens). localStorage is written for within-session auto-coupling but not read on mount.
@@ -131,7 +127,7 @@ The toolbar needs to distinguish between what's structurally active and what's v
 
 - `visualMainView` = `mainView` (always matches)
 - `visualSidebar`:
-  - If `mainView` is `"files"` or `"git"` → `null` (integrated trees replace sidebar visually)
+  - If `mainView` is `"git"` → `null` (integrated tree replaces sidebar visually)
   - Else if sidebar is open → shows the active sidebar
   - Else if sidebar is collapsed → shows which tab *would* reopen (accent hint)
 
@@ -150,8 +146,7 @@ Defined in `web-ui/src/storage/local-storage-store.ts` (`LocalStorageKey` enum):
 | `DetailLastSidebarTab` | Last active task-tied sidebar tab |
 | `GitViewActiveTab` | Which Git view internal tab was last active |
 | `DetailSidePanelRatio` | Sidebar width ratio |
-| `DetailFileBrowserTreePanelRatio` | File browser tree width (collapsed mode) |
-| `DetailExpandedFileBrowserTreePanelRatio` | File browser tree width (expanded mode) |
+| `DetailFileBrowserTreePanelRatio` | File browser tree width (FilesView internal) |
 | `GitViewFileTreeRatio` | Git view's integrated file tree width ratio |
 
 ### Migration from legacy single-tab model
@@ -182,11 +177,11 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 
 ### Files (`mainView === "files"`)
 
-- Renders `FileContentViewer` in the main area (syntax-highlighted file content)
-- Renders `ScopeBar` + `FileBrowserTreePanel` in the left panel (replaces sidebar visually)
+- Renders the `FilesView` component — a self-contained view with ScopeBar, file tree, and content viewer
+- `FilesView` has its own internal `FileBrowserTreePanel` with resize handle and visibility toggle (same pattern as `GitView`)
 - Works in both task context (browsing task worktree) and home context (browsing main repo)
 - Scope-aware: shows home files, task working copy, or a read-only branch view depending on `useScopeContext()`
-- Sidebar visual highlight is suppressed (tree panel acts as its own sidebar)
+- Does **not** suppress the sidebar — Board and Projects sidebars can coexist alongside Files view
 
 ### Git (`mainView === "git"`)
 
@@ -260,7 +255,7 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 5. **Update visual sidebar suppression** in `useCardDetailLayout()` if your view has an integrated panel that replaces the sidebar:
    ```typescript
    const visualSidebar: SidebarId | null =
-       mainView === "files" || mainView === "git" || mainView === "your_view"
+       mainView === "git" || mainView === "your_view"
            ? null
            : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
    ```
@@ -334,8 +329,9 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 | `web-ui/src/hooks/use-file-browser-data.ts` | Files tab data: file list, content, polling |
 | `web-ui/src/hooks/use-scope-context.ts` | Scope resolution: home vs task vs branch-view context |
 | `web-ui/src/components/detail-panels/scope-bar.tsx` | Scope indicator bar (home/task/browsing) with branch pill |
-| `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx` | Virtualized file tree for Files view |
-| `web-ui/src/components/detail-panels/file-content-viewer.tsx` | Syntax-highlighted file content display |
+| `web-ui/src/components/files-view.tsx` | Files main view (ScopeBar + file tree + content viewer) |
+| `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx` | Virtualized file tree (used inside FilesView) |
+| `web-ui/src/components/detail-panels/file-content-viewer.tsx` | Syntax-highlighted file content display (used inside FilesView) |
 | `web-ui/src/components/detail-panels/diff-viewer-panel.tsx` | Unified/split diff display with inline comments |
 | `web-ui/src/components/detail-panels/file-tree-panel.tsx` | Simple file tree for Git view changed files |
 | `web-ui/src/components/detail-panels/branch-selector-popover.tsx` | Branch picker with FZF search, used by scope bar + compare tab |

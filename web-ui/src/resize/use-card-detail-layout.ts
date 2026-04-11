@@ -20,18 +20,6 @@ const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.14, 0.8),
 };
 
-const COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
-	key: LocalStorageKey.DetailFileBrowserTreePanelRatio,
-	defaultValue: 0.25,
-	normalize: (value) => clampBetween(value, 0.12, 0.6),
-};
-
-const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
-	key: LocalStorageKey.DetailExpandedFileBrowserTreePanelRatio,
-	defaultValue: 0.16,
-	normalize: (value) => clampBetween(value, 0.12, 0.6),
-};
-
 // --- localStorage loaders / persisters (migration-aware) ---
 
 /**
@@ -97,13 +85,7 @@ function persistLastSidebarTab(tab: SidebarId): SidebarId {
 	return tab;
 }
 
-export function useCardDetailLayout({
-	isFileBrowserExpanded,
-	selectedTaskId,
-}: {
-	isFileBrowserExpanded: boolean;
-	selectedTaskId: string | null;
-}): {
+export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string | null }): {
 	mainView: MainViewId;
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
@@ -113,8 +95,6 @@ export function useCardDetailLayout({
 	lastSidebarTab: SidebarId;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
-	detailFileBrowserTreeRatio: number;
-	setDetailFileBrowserTreeRatio: (ratio: number) => void;
 	resetToDefaults: () => void;
 } {
 	// Always start on home+projects — view state is transient, not worth restoring across tab reopens.
@@ -123,12 +103,6 @@ export function useCardDetailLayout({
 	const [sidebar, setSidebarState] = useState<SidebarId | null>("projects");
 	const [lastSidebarTab, setLastSidebarTabState] = useState<SidebarId>(loadLastSidebarTab);
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
-	const [collapsedFileBrowserTreeRatio, setCollapsedFileBrowserTreeRatioState] = useState(() =>
-		loadResizePreference(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
-	);
-	const [expandedFileBrowserTreeRatio, setExpandedFileBrowserTreeRatioState] = useState(() =>
-		loadResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
-	);
 
 	const setMainViewPersist = useCallback((view: MainViewId) => {
 		setMainViewState(persistMainView(view));
@@ -180,10 +154,10 @@ export function useCardDetailLayout({
 	// Derive visual highlight indicators for the toolbar.
 	const selectedCard = selectedTaskId !== null;
 	const visualMainView: MainViewId = mainView;
-	// When mainView is "files" or "git", the integrated tree replaces the sidebar panel — no sidebar icon is active.
+	// When mainView is "git", the integrated tree replaces the sidebar panel — no sidebar icon is active.
 	// When sidebar is collapsed, show which tab *would* reopen (accent highlight).
 	const visualSidebar: SidebarId | null =
-		mainView === "files" || mainView === "git" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
+		mainView === "git" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
 
 	// --- Auto-switch when selectedTaskId changes (not on initial mount) ---
 	const mainViewRef = useRef(mainView);
@@ -219,29 +193,8 @@ export function useCardDetailLayout({
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));
 	}, []);
 
-	const setDetailFileBrowserTreeRatio = useCallback(
-		(ratio: number) => {
-			if (isFileBrowserExpanded) {
-				setExpandedFileBrowserTreeRatioState(
-					persistResizePreference(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE, ratio),
-				);
-				return;
-			}
-			setCollapsedFileBrowserTreeRatioState(
-				persistResizePreference(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE, ratio),
-			);
-		},
-		[isFileBrowserExpanded],
-	);
-
 	const resetToDefaults = useCallback(() => {
 		setSidePanelRatioState(getResizePreferenceDefaultValue(SIDE_PANEL_RATIO_PREFERENCE));
-		setCollapsedFileBrowserTreeRatioState(
-			getResizePreferenceDefaultValue(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
-		);
-		setExpandedFileBrowserTreeRatioState(
-			getResizePreferenceDefaultValue(EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
-		);
 	}, []);
 
 	return {
@@ -254,8 +207,6 @@ export function useCardDetailLayout({
 		lastSidebarTab,
 		sidePanelRatio,
 		setSidePanelRatio,
-		detailFileBrowserTreeRatio: isFileBrowserExpanded ? expandedFileBrowserTreeRatio : collapsedFileBrowserTreeRatio,
-		setDetailFileBrowserTreeRatio,
 		resetToDefaults,
 	};
 }
