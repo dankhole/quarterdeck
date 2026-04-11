@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: LLM title/summary prompts hardened against non-content responses
+
+- All three LLM system prompts (title, branch name, summary) now include explicit rules forbidding questions, refusals, preamble, or clarification requests — a bad title is better than a non-title response. A new `sanitizeLlmResponse()` sanitizer in `callLlm()` provides defense-in-depth by stripping preamble patterns (`"Title: ..."`, `"Here's a title: ..."`), outer quotes, and trailing conversational noise, and rejecting responses that look like questions or refusals.
+
 ### Fix: Compare tab branch pill dropdowns not opening
 
 - `BranchPillTrigger` now forwards ref and rest props so Radix Popover's `asChild` pattern can inject click handlers — previously the pills rendered but clicking them was a no-op.

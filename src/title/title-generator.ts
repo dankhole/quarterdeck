@@ -9,10 +9,24 @@ const log = createTaggedLogger("title-gen");
 const TITLE_SYSTEM_PROMPT = `Generate a concise 2-4 word title for this coding task.
 If an "Agent summary" section is provided, prioritize the LAST entry — it reflects the most recent work.
 Capture the core action or outcome, not setup steps.
-Return only the title text, nothing else. No quotes, no punctuation at the end.`;
 
-const BRANCH_NAME_SYSTEM_PROMPT =
-	"Generate a concise 2-4 word git branch name for this coding task. Use lowercase words separated by hyphens. Return only the branch name, nothing else. No quotes, no slashes, no prefixes. Examples: fix-auth-bug, add-search-filter, refactor-api-client.";
+CRITICAL RULES:
+- Output ONLY the title text. Nothing else.
+- No quotes, no punctuation at the end, no prefix like "Title:" or "Here's a title:".
+- NEVER ask a question, request clarification, or say you need more information.
+- NEVER refuse. NEVER say "I can't" or "I'm not sure".
+- If the input is unclear, vague, or empty, generate your best guess anyway — a bad title is better than a non-title response.
+- Your entire response must be the title and nothing else.`;
+
+const BRANCH_NAME_SYSTEM_PROMPT = `Generate a concise 2-4 word git branch name for this coding task. Use lowercase words separated by hyphens. Examples: fix-auth-bug, add-search-filter, refactor-api-client.
+
+CRITICAL RULES:
+- Output ONLY the branch name. Nothing else.
+- No quotes, no slashes, no prefixes like "Branch:" or "Here's a branch name:".
+- NEVER ask a question, request clarification, or say you need more information.
+- NEVER refuse. NEVER say "I can't" or "I'm not sure".
+- If the input is unclear, vague, or empty, generate your best guess anyway — a bad branch name is better than a non-branch-name response.
+- Your entire response must be the branch name and nothing else.`;
 
 const MAX_PROMPT_LENGTH = 800;
 

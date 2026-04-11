@@ -61,6 +61,58 @@ export const DISPLAY_SUMMARY_MAX_LENGTH = 90;
  */
 export const DISPLAY_SUMMARY_LLM_BUDGET = 75;
 
+// ── Response sanitizer ─────────────────────────────────────────────────
+// Defense-in-depth: strip common preamble/wrapper patterns even if the
+// model ignores the system prompt instructions.
+
+const PREAMBLE_PATTERNS = [
+	/^(?:here(?:'s| is)(?: a| the)?|the)\s+(?:title|branch\s*name|summary|result)\s*(?:is|would be|could be)?[:\-—]\s*/i,
+	/^(?:title|branch\s*name|summary|result)\s*[:\-—]\s*/i,
+	/^(?:sure|okay|of course|certainly|absolutely)[!,.]?\s*(?:here(?:'s| is))?[:\-—]?\s*/i,
+];
+
+/** Trailing question marks or "let me know" style suffixes. */
+const TRAILING_NOISE =
+	/\s*(?:let me know.*|is that (?:ok|okay|good|helpful).*|would you like.*|do you want.*|shall i.*)\s*[?.!]*$/i;
+
+/**
+ * Strip preamble, trailing noise, and outer quotes from an LLM response.
+ * Returns null if the result looks like a question or refusal rather than
+ * the requested content.
+ */
+export function sanitizeLlmResponse(raw: string): string | null {
+	let text = raw.trim();
+
+	// Strip outer quotes (single or double).
+	if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+		text = text.slice(1, -1).trim();
+	}
+
+	// Strip known preamble patterns.
+	for (const pattern of PREAMBLE_PATTERNS) {
+		text = text.replace(pattern, "");
+	}
+
+	// Strip quotes again — preamble removal may have exposed them (e.g. 'Title: "Fix Bug"').
+	if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+		text = text.slice(1, -1).trim();
+	}
+
+	// Strip trailing conversational noise.
+	text = text.replace(TRAILING_NOISE, "").trim();
+
+	// If the entire response is a question or refusal, reject it.
+	if (
+		/^(?:i (?:can't|cannot|couldn't|don't|need|would need)|what |which |could you|can you|please (?:provide|clarify))/i.test(
+			text,
+		)
+	) {
+		return null;
+	}
+
+	return text || null;
+}
+
 interface LlmCallOptions {
 	systemPrompt: string;
 	userPrompt: string;
@@ -114,8 +166,17 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		const data = (await response.json()) as {
 			choices?: Array<{ message?: { content?: string } }>;
 		};
-		const result = data.choices?.[0]?.message?.content?.trim() || null;
-		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result?.length ?? 0 });
+		const rawContent = data.choices?.[0]?.message?.content?.trim() || null;
+		if (!rawContent) {
+			log.warn("LLM call returned empty content", { durationMs: Date.now() - startTime });
+			return null;
+		}
+		const result = sanitizeLlmResponse(rawContent);
+		if (!result) {
+			log.warn("LLM response rejected by sanitizer", { rawContent, durationMs: Date.now() - startTime });
+			return null;
+		}
+		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result.length });
 		return result;
 	} catch (error) {
 		log.warn("LLM call error", { error: error instanceof Error ? error.message : String(error) });

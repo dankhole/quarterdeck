@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: LLM title/summary prompts hardened against non-content responses (2026-04-11)
+
+Addresses todo #30. The LLM prompts used for generating task titles, branch names, and display summaries could occasionally return questions, clarifications, refusals, or responses prefixed with preamble like `"Title: ..."` or `"Here's a title: ..."` instead of the raw content. A bad title displayed on a card is preferable to a non-title response that looks broken.
+
+**Two-layer fix**:
+
+1. **Prompt hardening**: Added a `CRITICAL RULES` block to all three system prompts (`TITLE_SYSTEM_PROMPT`, `BRANCH_NAME_SYSTEM_PROMPT`, `SUMMARY_SYSTEM_PROMPT`) explicitly forbidding questions, refusals, preamble prefixes, and clarification requests. Instructs the model that a bad guess is always preferable to a non-content response.
+
+2. **Response sanitizer** (`sanitizeLlmResponse()` in `llm-client.ts`): Defense-in-depth post-processing applied inside `callLlm()` so all callers benefit. Strips: outer quotes (single/double), known preamble patterns (`Title:`, `Here's a title:`, `Sure,`, `Certainly!`), and trailing conversational noise (`let me know...`, `would you like...`). Rejects responses that start with question or refusal patterns (`I can't...`, `What kind of...`, `Could you provide...`) by returning `null`, which all callers already handle gracefully.
+
+Files touched: `src/title/llm-client.ts`, `src/title/title-generator.ts`, `src/title/summary-generator.ts`, `test/runtime/title/llm-client.test.ts` (17 new sanitizer tests). Commit `b2acee7a`.
+
 ## Fix: Compare tab branch pill dropdowns not opening (2026-04-11)
 
 `BranchPillTrigger` was a plain function component that only accepted `{ label }`. When used as a child of `<RadixPopover.Trigger asChild>`, Radix's internal Slot called `cloneElement` to inject `onClick`, `aria-expanded`, `data-state`, and a `ref` — but since the component didn't spread rest props or forward refs, those were silently dropped. The pills rendered correctly but never opened the popover on click.

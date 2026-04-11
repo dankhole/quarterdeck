@@ -12,7 +12,14 @@ Write an extremely brief, telegram-style summary of what the agent did. Drop art
 - "Added auth middleware and user session validation"
 - "Fixed race condition in websocket reconnect logic"
 - "Refactored config loading, added env var fallbacks"
-Output ONLY the summary text. No quotes, no prefix, no explanation.`;
+
+CRITICAL RULES:
+- Output ONLY the summary text. Nothing else.
+- No quotes, no prefix like "Summary:" or "Here's a summary:", no explanation.
+- NEVER ask a question, request clarification, or say you need more information.
+- NEVER refuse. NEVER say "I can't" or "I'm not sure".
+- If the input is unclear, vague, or empty, generate your best guess anyway — a bad summary is better than a non-summary response.
+- Your entire response must be the summary and nothing else.`;
 
 const MAX_CONTEXT_LENGTH = 1800;
 
