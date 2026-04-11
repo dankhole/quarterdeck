@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: project pills double-counting needs-input tasks as review
+
+- Project navigation pills no longer show an erroneous "R" (Review) badge alongside the "NI" (Needs Input) badge for the same task. When a task's session is `awaiting_review` with an `attention` or permission-request reason, it's now counted exclusively in `needs_input` — not also in `review`. Previously, two independent `if` blocks in `applyLiveSessionStateToProjectTaskCounts` both fired for the same session, inflating the review count.
+
 ### Fix: git index lock contention from workspace metadata polling
 
 - The workspace-metadata-monitor's polling cycle no longer holds the git index lock on active worktrees. Seven read-only git commands (`merge-base`, `rev-list`) across `git-utils.ts` and `git-history.ts` were missing the `--no-optional-locks` flag, causing them to acquire the index lock unnecessarily on every poll cycle (every 2–5 seconds per worktree). This blocked concurrent git operations — commits, staging, and other write operations — in worktrees with active task cards. All polling git commands now consistently pass `--no-optional-locks`.

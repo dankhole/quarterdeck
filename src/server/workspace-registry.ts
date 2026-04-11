@@ -170,22 +170,27 @@ function applyLiveSessionStateToProjectTaskCounts(
 		if (!columnId) {
 			continue;
 		}
-		if (summary.state === "awaiting_review" && columnId === "in_progress") {
-			next.in_progress = Math.max(0, next.in_progress - 1);
-			next.review += 1;
+		if (summary.state === "awaiting_review") {
+			const isNeedsInput =
+				summary.reviewReason === "attention" ||
+				(summary.reviewReason === "hook" && isPermissionRequestSession(summary));
+			if (isNeedsInput) {
+				// Task needs user action — count as needs_input, not review
+				if (columnId === "in_progress") {
+					next.in_progress = Math.max(0, next.in_progress - 1);
+				} else if (columnId === "review") {
+					next.review = Math.max(0, next.review - 1);
+				}
+				next.needs_input += 1;
+			} else if (columnId === "in_progress") {
+				// Normal review — move from in_progress to review
+				next.in_progress = Math.max(0, next.in_progress - 1);
+				next.review += 1;
+			}
 		}
 		if (summary.state === "interrupted" && columnId !== "trash") {
 			next[columnId] = Math.max(0, next[columnId] - 1);
 			next.trash += 1;
-		}
-		// Count tasks that need user action: waiting for input or waiting for approval
-		if (summary.state === "awaiting_review") {
-			if (
-				summary.reviewReason === "attention" ||
-				(summary.reviewReason === "hook" && isPermissionRequestSession(summary))
-			) {
-				next.needs_input += 1;
-			}
 		}
 	}
 	return next;

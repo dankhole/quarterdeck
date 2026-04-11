@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: project pills double-counting needs-input tasks as review (2026-04-11)
+
+The project navigation sidebar shows small status pills (R, NI, IP, B) with task counts. When a task's session was `awaiting_review` with `reviewReason: "attention"` (or a permission-request hook), `applyLiveSessionStateToProjectTaskCounts` counted it in **both** `review` and `needs_input`. Two separate `if` blocks fired independently: the first moved the count from `in_progress` → `review`, and the second added to `needs_input` — resulting in pills showing R:1 and NI:1 for a single task.
+
+**Root cause**: The `needs_input` increment (lines 182-189) was a standalone `if` block that never subtracted from `review`. It was additive on top of the earlier `in_progress → review` move (lines 173-176), with no coordination between them.
+
+**Fix**: Merged both blocks into a single `if (summary.state === "awaiting_review")` block. A `const isNeedsInput` boolean is computed once, then used to route the count to either `needs_input` (with decrements from `in_progress` or `review` as appropriate) or `review` (for normal non-attention reviews). The `interrupted` handling is unchanged and remains a separate block.
+
+**Files touched**: `src/server/workspace-registry.ts` (lines 168-194, the `applyLiveSessionStateToProjectTaskCounts` loop body).
+
 ## Fix: git index lock contention from workspace metadata polling (2026-04-11)
 
 The workspace-metadata-monitor polls git on all active worktrees every 2–10 seconds (focused: 2s, background: 5s, home: 10s) to derive uncommitted-changes dots, behind-base counts, and sync indicators. Most git commands already passed `--no-optional-locks` to avoid acquiring the index lock, but `getCommitsBehindBase()` in `git-utils.ts` was missing the flag on all 4 of its calls (2× `merge-base`, 2× `rev-list --count`). These run on every task poll cycle via `loadTaskWorkspaceMetadata` in `workspace-metadata-monitor.ts:286`, so with multiple active tasks the index lock was held almost continuously on each worktree — blocking manual commits, staging, and any other write operation.
