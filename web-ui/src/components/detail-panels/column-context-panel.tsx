@@ -52,8 +52,13 @@ function ColumnSection({
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, showSummaryOnCards } =
-		useReactiveCardState();
+	const {
+		moveToTrashLoadingById,
+		migratingTaskId,
+		isLlmGenerationDisabled,
+		showSummaryOnCards,
+		uncommittedChangesOnCardsEnabled,
+	} = useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -200,6 +205,7 @@ function ColumnSection({
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
 												showSummaryOnCards={showSummaryOnCards}
+												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 												onRequestDisplaySummary={onRequestDisplaySummary}
 												onClick={() => {
 													if (column.id === "backlog") {

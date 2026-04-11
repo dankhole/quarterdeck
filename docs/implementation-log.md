@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Uncommitted changes indicator on task cards (2026-04-11)
+
+Added a configurable orange dot indicator on board cards that shows when the task's worktree has uncommitted file changes (`changedFiles > 0`). The feature reuses the existing `workspace-metadata-monitor` polling infrastructure and `workspace-metadata-store` hooks — no new polling, detection, or WebSocket broadcast code was needed.
+
+**Config pipeline**: New `uncommittedChangesOnCardsEnabled` boolean field (default `true`) added to `global-config-fields.ts` → `api-contract.ts` (response + save schemas) → `runtime-settings-dialog.tsx` (toggle in "Git & Worktrees" section with full state/sync/dirty/save wiring) → `card-actions-context.tsx` (`ReactiveCardState` interface) → `App.tsx` (reads from `runtimeProjectConfig`, passes via context memo) → `board-column.tsx` + `column-context-panel.tsx` (destructure from context, pass as prop) → `board-card.tsx` (renders the dot).
+
+**Rendering**: Small 6px orange dot (`bg-status-orange`) in the card title row alongside existing status markers (spinner, pin, shared badge). Wrapped in a `Tooltip` showing "N uncommitted change(s)" with correct singular/plural. Gated on `uncommittedChangesOnCardsEnabled && showWorkspaceStatus && !isTrashCard && changedFiles > 0` — appears only on in_progress and review cards, excluded from backlog (no workspace status) and trash (explicitly excluded).
+
+Files touched: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/board-column.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/App.tsx`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, plus 2 test files. Closes todo #29 (originally #33).
+
 ## Centralize status colors and sync card/project/column color coding (2026-04-11)
 
 The status color system was inconsistent: running badges on task cards were green while the In Progress column indicator was blue, review badges were blue while the Review column was green, and project sidebar pill colors were hardcoded inline rather than referencing the same source as card badges.

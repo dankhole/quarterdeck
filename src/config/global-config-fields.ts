@@ -80,6 +80,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	autoGenerateSummary: boolField(false),
 	summaryStaleAfterSeconds: numField(300),
 	showTrashWorktreeNotice: boolField(true),
+	uncommittedChangesOnCardsEnabled: boolField(true),
 	unmergedChangesIndicatorEnabled: boolField(false),
 	behindBaseIndicatorEnabled: boolField(true),
 	skipTaskCheckoutConfirmation: boolField(false),

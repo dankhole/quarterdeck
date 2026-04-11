@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Uncommitted changes indicator on task cards
+
+- Orange dot appears on task cards (in_progress and review columns) when the task's worktree has uncommitted file changes. Shares the existing workspace-metadata-monitor polling infrastructure — no new detection or broadcast code. Tooltip shows "N uncommitted change(s)". Configurable via Settings > Git & Worktrees toggle (`uncommittedChangesOnCardsEnabled`, default on). Excluded from backlog and trash cards.
+
 ### Centralize status colors — card badges, project pills, and column indicators in sync
 
 - Running status badges on task cards and the terminal panel now use accent blue (matching the In Progress column indicator) instead of green. Review states (ready for review, waiting for input, completed) now use green (matching the Review column indicator) instead of blue. All status colors derive from a single centralized module (`column-colors.ts`) — card badges, project-sidebar pills, and column-header SVGs all inherit from one place.

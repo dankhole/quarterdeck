@@ -61,8 +61,13 @@ export function BoardColumn({
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, showSummaryOnCards } =
-		useReactiveCardState();
+	const {
+		moveToTrashLoadingById,
+		migratingTaskId,
+		isLlmGenerationDisabled,
+		showSummaryOnCards,
+		uncommittedChangesOnCardsEnabled,
+	} = useReactiveCardState();
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -185,6 +190,7 @@ export function BoardColumn({
 											isMigrateLoading={migratingTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
 											showSummaryOnCards={showSummaryOnCards}
+											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 											onRequestDisplaySummary={onRequestDisplaySummary}
 											onClick={() => {
 												if (column.id === "backlog") {

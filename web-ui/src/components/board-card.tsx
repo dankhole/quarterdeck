@@ -151,6 +151,7 @@ export function BoardCard({
 	sessionSummary,
 	selected = false,
 	showSummaryOnCards = false,
+	uncommittedChangesOnCardsEnabled = false,
 	onClick,
 	onStart,
 	onRestartSession,
@@ -178,6 +179,7 @@ export function BoardCard({
 	sessionSummary?: RuntimeTaskSessionSummary;
 	selected?: boolean;
 	showSummaryOnCards?: boolean;
+	uncommittedChangesOnCardsEnabled?: boolean;
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
@@ -409,6 +411,18 @@ export function BoardCard({
 									{isCwdDiverged ? (
 										<Tooltip content="Agent session is running in a different directory than expected. Restart the task to fix.">
 											<AlertCircle size={12} className="shrink-0 text-status-orange" />
+										</Tooltip>
+									) : null}
+									{uncommittedChangesOnCardsEnabled &&
+									showWorkspaceStatus &&
+									!isTrashCard &&
+									(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 ? (
+										<Tooltip
+											content={`${reviewWorkspaceSnapshot!.changedFiles} uncommitted change${reviewWorkspaceSnapshot!.changedFiles === 1 ? "" : "s"}`}
+										>
+											<span className="inline-flex items-center shrink-0">
+												<span className="block size-1.5 rounded-full bg-status-orange" />
+											</span>
 										</Tooltip>
 									) : null}
 									{onMigrateWorkingDirectory &&

@@ -29,6 +29,7 @@ export async function saveRuntimeConfig(
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
+		uncommittedChangesOnCardsEnabled?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
 		behindBaseIndicatorEnabled?: boolean;
 		commitPromptTemplate?: string;

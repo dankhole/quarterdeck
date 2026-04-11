@@ -22,6 +22,7 @@ export interface UseRuntimeConfigResult {
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
 		showTrashWorktreeNotice?: boolean;
+		uncommittedChangesOnCardsEnabled?: boolean;
 		unmergedChangesIndicatorEnabled?: boolean;
 		behindBaseIndicatorEnabled?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
@@ -112,6 +113,7 @@ export function useRuntimeConfig(
 			autoGenerateSummary?: boolean;
 			summaryStaleAfterSeconds?: number;
 			showTrashWorktreeNotice?: boolean;
+			uncommittedChangesOnCardsEnabled?: boolean;
 			unmergedChangesIndicatorEnabled?: boolean;
 			behindBaseIndicatorEnabled?: boolean;
 			skipTaskCheckoutConfirmation?: boolean;

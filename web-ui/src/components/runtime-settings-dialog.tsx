@@ -253,6 +253,9 @@ export function RuntimeSettingsDialog({
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
 	const [terminalFontWeight, setTerminalFontWeight] = useState(CONFIG_DEFAULTS.terminalFontWeight);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
+	const [uncommittedChangesOnCardsEnabled, setUncommittedChangesOnCardsEnabled] = useState(
+		CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
+	);
 	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
 		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 	);
@@ -324,6 +327,8 @@ export function RuntimeSettingsDialog({
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
 	const initialTerminalFontWeight = config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
+	const initialUncommittedChangesOnCardsEnabled =
+		config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled;
 	const initialUnmergedChangesIndicatorEnabled =
 		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
 	const initialBehindBaseIndicatorEnabled =
@@ -370,6 +375,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
+			return true;
+		}
+		if (uncommittedChangesOnCardsEnabled !== initialUncommittedChangesOnCardsEnabled) {
 			return true;
 		}
 		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
@@ -438,11 +446,13 @@ export function RuntimeSettingsDialog({
 		initialShowTrashWorktreeNotice,
 		initialSkipHomeCheckoutConfirmation,
 		initialSkipTaskCheckoutConfirmation,
+		initialUncommittedChangesOnCardsEnabled,
 		initialUnmergedChangesIndicatorEnabled,
 		initialBehindBaseIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
 		selectedAgentId,
+		uncommittedChangesOnCardsEnabled,
 		behindBaseIndicatorEnabled,
 		shellAutoRestartEnabled,
 		terminalFontWeight,
@@ -467,6 +477,9 @@ export function RuntimeSettingsDialog({
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
 		setTerminalFontWeight(config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
+		setUncommittedChangesOnCardsEnabled(
+			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
+		);
 		setUnmergedChangesIndicatorEnabled(
 			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
 		);
@@ -503,6 +516,7 @@ export function RuntimeSettingsDialog({
 		config?.backgroundTaskPollMs,
 		config?.homeRepoPollMs,
 		config?.showTrashWorktreeNotice,
+		config?.uncommittedChangesOnCardsEnabled,
 		config?.unmergedChangesIndicatorEnabled,
 		config?.behindBaseIndicatorEnabled,
 		config?.skipTaskCheckoutConfirmation,
@@ -567,6 +581,7 @@ export function RuntimeSettingsDialog({
 			shellAutoRestartEnabled,
 			terminalFontWeight,
 			showTrashWorktreeNotice,
+			uncommittedChangesOnCardsEnabled,
 			unmergedChangesIndicatorEnabled,
 			behindBaseIndicatorEnabled,
 			skipTaskCheckoutConfirmation,
@@ -911,6 +926,20 @@ export function RuntimeSettingsDialog({
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
 				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={uncommittedChangesOnCardsEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setUncommittedChangesOnCardsEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show uncommitted changes dot on cards</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show an orange dot on task cards when the worktree has uncommitted file changes.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
 					<RadixSwitch.Root
 						checked={unmergedChangesIndicatorEnabled}
 						disabled={controlsDisabled}

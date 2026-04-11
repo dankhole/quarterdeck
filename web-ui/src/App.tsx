@@ -1099,8 +1099,16 @@ export default function App(): ReactElement {
 			migratingTaskId: migratingTaskId ?? null,
 			isLlmGenerationDisabled,
 			showSummaryOnCards: runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
+			uncommittedChangesOnCardsEnabled:
+				runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
 		}),
-		[moveToTrashLoadingById, migratingTaskId, isLlmGenerationDisabled, runtimeProjectConfig?.showSummaryOnCards],
+		[
+			moveToTrashLoadingById,
+			migratingTaskId,
+			isLlmGenerationDisabled,
+			runtimeProjectConfig?.showSummaryOnCards,
+			runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
+		],
 	);
 
 	// notificationSessions is seeded from the current project only on initial load;

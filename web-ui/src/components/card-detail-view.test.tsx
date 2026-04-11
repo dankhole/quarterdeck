@@ -133,6 +133,7 @@ const noopReactiveState: ReactiveCardState = {
 	migratingTaskId: null,
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
+	uncommittedChangesOnCardsEnabled: false,
 };
 
 function renderWithProviders(root: Root, ui: ReactNode): void {
