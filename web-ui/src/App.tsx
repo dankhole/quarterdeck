@@ -1116,19 +1116,6 @@ export default function App(): ReactElement {
 		[notificationSessions, notificationWorkspaceIds, currentProjectId],
 	);
 
-	// Per-project approval indicators for the project navigation sidebar.
-	// Excludes the current project — its approvals are already visible on the board.
-	const projectIdsWithApprovals = useMemo(() => {
-		const ids = new Set<string>();
-		for (const [taskId, session] of Object.entries(notificationSessions)) {
-			if (isApprovalState(session)) {
-				const wsId = notificationWorkspaceIds[taskId];
-				if (wsId && wsId !== currentProjectId) ids.add(wsId);
-			}
-		}
-		return ids;
-	}, [notificationSessions, notificationWorkspaceIds, currentProjectId]);
-
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
 	}
@@ -1329,7 +1316,6 @@ export default function App(): ReactElement {
 										isLoadingProjects={isProjectListLoading}
 										currentProjectId={navigationCurrentProjectId}
 										removingProjectId={removingProjectId}
-										projectIdsWithApprovals={projectIdsWithApprovals}
 										activeSection={homeSidebarSection}
 										onActiveSectionChange={setHomeSidebarSection}
 										canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}

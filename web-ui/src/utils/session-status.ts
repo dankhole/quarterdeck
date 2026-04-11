@@ -1,6 +1,7 @@
+import { type StatusBadgeStyle, statusBadgeColors } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
-export type SessionStatusTagStyle = "neutral" | "success" | "warning" | "danger" | "info";
+export { type StatusBadgeStyle, statusBadgeColors };
 
 export function isApprovalState(summary: RuntimeTaskSessionSummary | null): boolean {
 	if (!summary) return false;
@@ -52,35 +53,27 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 	return "Idle";
 }
 
-export function getSessionStatusTagStyle(summary: RuntimeTaskSessionSummary | null): SessionStatusTagStyle {
+export function getSessionStatusBadgeStyle(summary: RuntimeTaskSessionSummary | null): StatusBadgeStyle {
 	if (!summary) {
 		return "neutral";
 	}
 	if (summary.state === "running") {
-		return "success";
+		return "running";
 	}
 	if (summary.state === "awaiting_review") {
 		switch (summary.reviewReason) {
 			case "exit":
-				return "success";
+				return "review";
 			case "error":
-				return "danger";
+				return "error";
 			case "interrupted":
 				return "neutral";
 			default:
-				return isPermissionRequest(summary) ? "warning" : "info";
+				return isPermissionRequest(summary) ? "needs_input" : "review";
 		}
 	}
 	if (summary.state === "interrupted" || summary.state === "failed") {
-		return "danger";
+		return "error";
 	}
 	return "neutral";
 }
-
-export const sessionStatusTagColors: Record<SessionStatusTagStyle, string> = {
-	neutral: "bg-surface-3 text-text-secondary",
-	success: "bg-status-green/15 text-status-green",
-	warning: "bg-status-orange/15 text-status-orange",
-	danger: "bg-status-red/15 text-status-red",
-	info: "bg-status-blue/15 text-status-blue",
-};

@@ -4,6 +4,24 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Centralize status colors and sync card/project/column color coding (2026-04-11)
+
+The status color system was inconsistent: running badges on task cards were green while the In Progress column indicator was blue, review badges were blue while the Review column was green, and project sidebar pill colors were hardcoded inline rather than referencing the same source as card badges.
+
+**Centralized color module** (`web-ui/src/data/column-colors.ts`): Expanded from just `columnIndicatorColors` to also export `statusBadgeColors` (card/terminal badges with 15% bg opacity) and `statusPillColors` (project sidebar count pills with 20% bg opacity). Changing a status color now requires updating one place.
+
+**Session status mapping** (`web-ui/src/utils/session-status.ts`): Renamed `getSessionStatusTagStyle` to `getSessionStatusBadgeStyle`, removed `SessionStatusTagStyle` and `sessionStatusTagColors` (moved to centralized module, re-exported for backward-compatible import paths). Running now maps to `"running"` (accent blue), all review states map to `"review"` (green), approval maps to `"needs_input"` (orange), error/failed maps to `"error"` (red).
+
+**Project navigation panel** (`web-ui/src/components/project-navigation-panel.tsx`): Removed `hasApproval` prop and the orange approval dot next to project names. Removed the trash (T) pill. Added orange "NI" (Needs Input) pill sourced from `project.taskCounts.needs_input`. All pill colors now reference `statusPillColors` from the centralized module.
+
+**Backend needs_input computation** (`src/core/api-contract.ts`, `src/server/workspace-registry.ts`): Added `needs_input: z.number()` to `runtimeProjectTaskCountsSchema`. `applyLiveSessionStateToProjectTaskCounts` counts sessions with `state === "awaiting_review"` and either `reviewReason === "attention"` or permission-request hook activity. New `isPermissionRequestSession` helper mirrors the frontend's `isPermissionRequest` logic.
+
+**Frontend preservation** (`web-ui/src/hooks/use-project-ui-state.ts`): When overriding the current project's task counts with local board state, the server-provided `needs_input` value is preserved (column counts come from the board, but `needs_input` is session-derived and only the server has that data).
+
+**App.tsx cleanup**: Removed `projectIdsWithApprovals` useMemo (no longer needed — the NI pill replaces the per-project approval dot). The toolbar badge (`projectsBadgeColor`) still works independently via `isApprovalState`.
+
+Files touched: `web-ui/src/data/column-colors.ts`, `web-ui/src/utils/session-status.ts`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/detail-panels/agent-terminal-panel.tsx`, `web-ui/src/components/project-navigation-panel.tsx`, `web-ui/src/App.tsx`, `web-ui/src/hooks/app-utils.tsx`, `web-ui/src/hooks/use-project-ui-state.ts`, `src/core/api-contract.ts`, `src/server/workspace-registry.ts`, plus 2 test files.
+
 ## Show target branch when creating non-isolated task (2026-04-11)
 
 When "Use isolated worktree" is unchecked in the task create dialog, the warning previously said "the task runs directly in your main checkout" with no indication of which branch that checkout is on. Now it displays the actual current branch name from `workspaceGit.currentBranch` inline in a monospace `<code>` tag (e.g. "runs directly on `feature/xyz`"), falling back to "detached HEAD" when `currentBranch` is null. Closes todo #29 (originally #32).

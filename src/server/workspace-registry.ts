@@ -98,6 +98,7 @@ function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
 		in_progress: 0,
 		review: 0,
 		trash: 0,
+		needs_input: 0,
 	};
 }
 
@@ -137,6 +138,19 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 	return taskIds;
 }
 
+function isPermissionRequestSession(summary: RuntimeWorkspaceStateResponse["sessions"][string]): boolean {
+	const activity = summary.latestHookActivity;
+	if (!activity) return false;
+	const hook = (activity.hookEventName ?? "").toLowerCase();
+	const notif = (activity.notificationType ?? "").toLowerCase();
+	return (
+		hook === "permissionrequest" ||
+		notif === "permission_prompt" ||
+		notif === "permission.asked" ||
+		(activity.activityText ?? "").toLowerCase() === "waiting for approval"
+	);
+}
+
 function applyLiveSessionStateToProjectTaskCounts(
 	counts: RuntimeProjectTaskCounts,
 	board: RuntimeBoardData,
@@ -159,11 +173,19 @@ function applyLiveSessionStateToProjectTaskCounts(
 		if (summary.state === "awaiting_review" && columnId === "in_progress") {
 			next.in_progress = Math.max(0, next.in_progress - 1);
 			next.review += 1;
-			continue;
 		}
 		if (summary.state === "interrupted" && columnId !== "trash") {
 			next[columnId] = Math.max(0, next[columnId] - 1);
 			next.trash += 1;
+		}
+		// Count tasks that need user action: waiting for input or waiting for approval
+		if (summary.state === "awaiting_review") {
+			if (
+				summary.reviewReason === "attention" ||
+				(summary.reviewReason === "hook" && isPermissionRequestSession(summary))
+			) {
+				next.needs_input += 1;
+			}
 		}
 	}
 	return next;

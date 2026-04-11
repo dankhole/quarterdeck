@@ -19,6 +19,7 @@ const PROJECTS: RuntimeProjectSummary[] = [
 			in_progress: 0,
 			review: 0,
 			trash: 0,
+			needs_input: 0,
 		},
 	},
 ];

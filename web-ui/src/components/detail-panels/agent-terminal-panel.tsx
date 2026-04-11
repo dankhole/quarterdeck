@@ -9,7 +9,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
-import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
+import { describeSessionState, getSessionStatusBadgeStyle, statusBadgeColors } from "@/utils/session-status";
 
 interface AgentTerminalSessionControls {
 	clearTerminal: () => void;
@@ -73,7 +73,7 @@ function AgentTerminalPanelLayout({
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
-	const statusTagStyle = useMemo(() => getSessionStatusTagStyle(summary), [summary]);
+	const statusTagStyle = useMemo(() => getSessionStatusBadgeStyle(summary), [summary]);
 	const agentLabel = useMemo(() => {
 		const normalizedCommand = agentCommand?.trim();
 		if (!normalizedCommand) {
@@ -106,7 +106,7 @@ function AgentTerminalPanelLayout({
 					>
 						<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
 							<span
-								className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${sessionStatusTagColors[statusTagStyle]}`}
+								className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${statusBadgeColors[statusTagStyle]}`}
 							>
 								{statusLabel}
 							</span>

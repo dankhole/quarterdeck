@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Centralize status colors — card badges, project pills, and column indicators in sync
+
+- Running status badges on task cards and the terminal panel now use accent blue (matching the In Progress column indicator) instead of green. Review states (ready for review, waiting for input, completed) now use green (matching the Review column indicator) instead of blue. All status colors derive from a single centralized module (`column-colors.ts`) — card badges, project-sidebar pills, and column-header SVGs all inherit from one place.
+- Project sidebar: trash pill removed, replaced by an orange "NI" (Needs Input) pill that shows how many tasks need user action (waiting for input or approval) per project. The per-project approval dot is replaced by this pill.
+- New `needs_input` field in `RuntimeProjectTaskCounts` — computed server-side from live session state (attention + approval).
+
 ### Show target branch when creating non-isolated task
 
 - When "Use isolated worktree" is unchecked in the create dialog, the warning now shows the current workspace branch name (e.g. `main`, `feature/xyz`) so users know exactly which branch the task will run on. Falls back to "detached HEAD" when applicable.

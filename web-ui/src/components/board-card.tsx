@@ -12,7 +12,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getWorkspacePath, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
-import { describeSessionState, getSessionStatusTagStyle, sessionStatusTagColors } from "@/utils/session-status";
+import { describeSessionState, getSessionStatusBadgeStyle, statusBadgeColors } from "@/utils/session-status";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 const CARD_TEXT_COLOR = {
@@ -233,7 +233,7 @@ export function BoardCard({
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
 	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
-	const statusTagStyle = sessionSummary ? getSessionStatusTagStyle(sessionSummary) : null;
+	const statusTagStyle = sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
 	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog" && !isTrashCard;
 
 	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
@@ -576,9 +576,7 @@ export function BoardCard({
 										<span
 											className={cn(
 												"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
-												isTrashCard
-													? "bg-surface-3 text-text-tertiary"
-													: sessionStatusTagColors[statusTagStyle],
+												isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle],
 											)}
 										>
 											{statusLabel}

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import { statusPillColors } from "@/data/column-colors";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -43,7 +44,6 @@ export function ProjectNavigationPanel({
 	isLoadingProjects = false,
 	currentProjectId,
 	removingProjectId,
-	projectIdsWithApprovals,
 	activeSection,
 	onActiveSectionChange,
 	canShowAgentSection,
@@ -57,7 +57,6 @@ export function ProjectNavigationPanel({
 	isLoadingProjects?: boolean;
 	currentProjectId: string | null;
 	removingProjectId: string | null;
-	projectIdsWithApprovals?: Set<string>;
 	activeSection: "projects" | "agent";
 	onActiveSectionChange: (section: "projects" | "agent") => void;
 	canShowAgentSection: boolean;
@@ -209,7 +208,6 @@ export function ProjectNavigationPanel({
 															<ProjectRow
 																project={project}
 																isCurrent={currentProjectId === project.id}
-																hasApproval={projectIdsWithApprovals?.has(project.id) ?? false}
 																removingProjectId={removingProjectId}
 																showDragHandle={canReorder}
 																dragHandleProps={draggableProvided.dragHandleProps}
@@ -518,7 +516,6 @@ function ProjectRowSkeleton(): React.ReactElement {
 function ProjectRow({
 	project,
 	isCurrent,
-	hasApproval,
 	removingProjectId,
 	showDragHandle = false,
 	dragHandleProps,
@@ -528,7 +525,6 @@ function ProjectRow({
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
-	hasApproval: boolean;
 	removingProjectId: string | null;
 	showDragHandle?: boolean;
 	dragHandleProps?: DraggableProvidedDragHandleProps | null;
@@ -545,29 +541,29 @@ function ProjectRow({
 			id: "backlog",
 			title: "Backlog",
 			shortLabel: "B",
-			toneClassName: "bg-text-primary/15 text-text-primary",
+			toneClassName: statusPillColors.backlog,
 			count: project.taskCounts.backlog,
 		},
 		{
 			id: "in_progress",
 			title: "In Progress",
 			shortLabel: "IP",
-			toneClassName: "bg-accent/20 text-accent",
+			toneClassName: statusPillColors.in_progress,
 			count: project.taskCounts.in_progress,
 		},
 		{
 			id: "review",
 			title: "Review",
 			shortLabel: "R",
-			toneClassName: "bg-status-green/20 text-status-green",
+			toneClassName: statusPillColors.review,
 			count: project.taskCounts.review,
 		},
 		{
-			id: "trash",
-			title: "Trash",
-			shortLabel: "T",
-			toneClassName: "bg-status-red/20 text-status-red",
-			count: project.taskCounts.trash,
+			id: "needs_input",
+			title: "Needs Input",
+			shortLabel: "NI",
+			toneClassName: statusPillColors.needs_input,
+			count: project.taskCounts.needs_input,
 		},
 	].filter((item) => item.count > 0);
 
@@ -618,9 +614,6 @@ function ProjectRow({
 					>
 						{project.name}
 					</span>
-					{hasApproval ? (
-						<span className="shrink-0 w-2 h-2 rounded-full bg-status-orange" title="Task waiting for approval" />
-					) : null}
 				</div>
 				<div
 					className={cn(
