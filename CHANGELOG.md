@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Right-click context menu on branch selector items
+
+- Right-clicking a branch in the `BranchSelectorPopover` dropdown (file browser scope bar, task detail scope bar, git view Compare tab) now shows a context menu with up to three actions: **Checkout** (triggers the existing confirmation dialog flow), **Compare with local tree** (switches to the git view Compare tab with that branch as the target), and **Copy branch name**. Actions render conditionally — Checkout and Compare only appear when the parent provides the relevant callback. The git view Compare tab's pickers show only "Copy branch name" since checkout and compare don't apply there. Shared context menu utilities (`CONTEXT_MENU_ITEM_CLASS`, `copyToClipboard`) extracted into `context-menu-utils.ts` and reused by the file browser context menu.
+
 ### Perf: faster project switching — decouple metadata, parallelize reads, cache counts
 
 - Project switching no longer blocks on git probe latency. The initial WebSocket snapshot is sent immediately with board and session data; workspace metadata (git status, changed files, behind-base counts) arrives asynchronously via the existing `workspace_metadata_updated` message. With multiple active task worktrees this removes 1-3 seconds of git subprocess time from the critical path.

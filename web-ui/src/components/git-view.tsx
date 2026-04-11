@@ -163,7 +163,6 @@ function CompareBar({
 					onSourceRefChange(ref);
 					setSourcePopoverOpen(false);
 				}}
-				onCheckoutBranch={() => {}}
 				trigger={<BranchPillTrigger label={sourceRef ?? "select branch"} />}
 			/>
 
@@ -179,7 +178,6 @@ function CompareBar({
 					onTargetRefChange(ref);
 					setTargetPopoverOpen(false);
 				}}
-				onCheckoutBranch={() => {}}
 				trigger={<BranchPillTrigger label={targetRef ?? "select branch"} />}
 			/>
 

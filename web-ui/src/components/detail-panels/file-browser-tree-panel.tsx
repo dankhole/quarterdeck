@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeFileContentResponse } from "@/runtime/types";
@@ -51,16 +52,6 @@ function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE
 }
 
 const ROW_HEIGHT = 28;
-
-const CONTEXT_MENU_ITEM_CLASS =
-	"flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3";
-
-function copyToClipboard(text: string, label: string): void {
-	void navigator.clipboard.writeText(text).then(
-		() => toast.success(`${label} copied to clipboard`),
-		() => toast.error(`Failed to copy ${label.toLowerCase()}`),
-	);
-}
 
 export function FileBrowserTreePanel({
 	files,

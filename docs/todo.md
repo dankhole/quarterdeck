@@ -48,7 +48,7 @@ This is distinct from #6 (committing *within* the task worktree). This is a targ
 
 Add branch switching and merging operations within the git view. The branch pill, git stats, and fetch/pull/push buttons already live in the git view tab bar — this is about adding the interactive operations on top.
 
-- **Right-click context menu on branch pills**: Add a right-click context menu to branches in the pill dropdowns (scope bar branch selector, git history refs panel, etc.) as the primary surface for branch operations. Actions: checkout branch, merge into current branch, compare against local tree (opens git view Compare tab with that branch pre-selected), and copy branch name. Uses `@radix-ui/react-context-menu` (already installed for the file browser context menu).
+- **Right-click context menu on branch pills**: ~~Add a right-click context menu to branches in the pill dropdowns~~ ✓ Done for the `BranchSelectorPopover` — checkout, compare with local tree, and copy branch name. Remaining: add "merge into current branch" action, and extend the context menu to the git history refs panel.
 - **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
 
 ## 6. Commit sidebar tab with server-side commit

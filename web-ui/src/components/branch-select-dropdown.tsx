@@ -5,6 +5,14 @@ import { SearchSelectDropdown, type SearchSelectOption } from "@/components/sear
 
 export type BranchSelectOption = SearchSelectOption;
 
+/**
+ * Simple branch select dropdown for choosing a branch by name, used in task
+ * creation flows (task-create-dialog, task-inline-create-card). Wraps the
+ * generic SearchSelectDropdown with a git branch icon.
+ *
+ * For the full-featured branch picker with local/remote grouping, checkout
+ * actions, and worktree-locked indicators, use BranchSelectorPopover instead.
+ */
 export function BranchSelectDropdown({
 	options,
 	selectedValue,

@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Right-click context menu on branch selector items (2026-04-11)
+
+Added a Radix `ContextMenu` to each `BranchItem` inside `BranchSelectorPopover`. Three actions: Checkout (reuses existing `onCheckoutBranch` callback with confirmation dialogs), Compare with local tree (navigates to git view Compare tab via `openGitCompare`), and Copy branch name (clipboard + toast).
+
+Both `onCheckoutBranch` and `onCompareWithBranch` are now optional props on `BranchSelectorPopover`. Menu items render conditionally — same pattern used for both. This fixed a pre-existing issue where the git view Compare tab passed `onCheckoutBranch={() => {}}` (a silent no-op); now it simply omits the prop and no checkout affordance renders.
+
+Extracted `CONTEXT_MENU_ITEM_CLASS` and `copyToClipboard` from `file-browser-tree-panel.tsx` into a shared `context-menu-utils.ts` module to avoid duplication. Both context menu consumers now import from the shared module.
+
+The `openGitCompare` callback (previously `_openGitCompare`, unused) is now threaded from `App.tsx` through `CardDetailView` to the task scope bar's `BranchSelectorPopover`. It sets `pendingCompareNavigation` and switches to the git main view, where `useGitViewCompare` picks up the navigation and pre-selects the target ref.
+
+**Files touched**: `branch-selector-popover.tsx` (main implementation), `context-menu-utils.ts` (new shared module), `file-browser-tree-panel.tsx` (imports shared utils), `App.tsx` (renamed callback, wired props), `card-detail-view.tsx` (accepts/forwards `onOpenGitCompare`), `git-view.tsx` (removed no-op `onCheckoutBranch`), `branch-select-dropdown.tsx` (doc comment).
+
 ## Perf: faster project switching — server-side latency optimizations (2026-04-11)
 
 Three changes to reduce the wall-clock time between clicking a project and seeing the board:

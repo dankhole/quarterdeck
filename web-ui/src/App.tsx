@@ -1004,8 +1004,8 @@ export default function App(): ReactElement {
 		[setMainView, setSelectedTaskId],
 	);
 
-	/** Navigate to the git view's Compare tab with pre-set branch parameters (!6). */
-	const _openGitCompare = useCallback(
+	/** Navigate to the git view's Compare tab with pre-set branch parameters (#5). */
+	const openGitCompare = useCallback(
 		(navigation: GitViewCompareNavigation) => {
 			setPendingCompareNavigation(navigation);
 			setMainView("git", { setSelectedTaskId });
@@ -1397,6 +1397,7 @@ export default function App(): ReactElement {
 							onDeselectTask={() => setSelectedTaskId(null)}
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={clearPendingCompareNavigation}
+							onOpenGitCompare={openGitCompare}
 							chatViewEnabled={
 								runtimeProjectConfig?.terminalChatViewEnabled ?? CONFIG_DEFAULTS.terminalChatViewEnabled
 							}
@@ -1500,6 +1501,9 @@ export default function App(): ReactElement {
 																	worktreeBranches={homeBranchActions.worktreeBranches}
 																	onSelectBranchView={homeBranchActions.handleSelectBranchView}
 																	onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
+																	onCompareWithBranch={(branch) =>
+																		openGitCompare({ targetRef: branch })
+																	}
 																	trigger={
 																		<BranchPillTrigger
 																			label={

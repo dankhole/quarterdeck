@@ -127,6 +127,7 @@ export function CardDetailView({
 	onDeselectTask,
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
+	onOpenGitCompare,
 	chatViewEnabled = false,
 }: {
 	selection: CardSelection;
@@ -176,6 +177,7 @@ export function CardDetailView({
 	onDeselectTask: () => void;
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
+	onOpenGitCompare?: (navigation: GitViewCompareNavigation) => void;
 	chatViewEnabled?: boolean;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
@@ -408,6 +410,11 @@ export function CardDetailView({
 												worktreeBranches={taskBranchActions.worktreeBranches}
 												onSelectBranchView={taskBranchActions.handleSelectBranchView}
 												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
+												onCompareWithBranch={
+													onOpenGitCompare
+														? (branch) => onOpenGitCompare({ targetRef: branch })
+														: undefined
+												}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}
 											/>
 										) : undefined
