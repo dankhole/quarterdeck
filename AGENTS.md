@@ -84,6 +84,11 @@ Radix UI primitives
 - **Radix AlertDialog `onOpenChange` gotcha**: When using a controlled AlertDialog (`open` + `onOpenChange`), Radix fires `onOpenChange(false)` for ALL close reasons — cancel, confirm action, ESC, and overlay click. This means if `onOpenChange` routes to a cancel handler, it will also fire after confirm. The confirm handler updates state via `setState` (async), so the cancel handler's closure still sees the old state. Fix: use a `useRef` flag — set it synchronously in the confirm handler, check it in the cancel handler, skip the revert if set. See `trashWarningConfirmedRef` in `use-board-interactions.ts` for the reference pattern. This applies to any controlled AlertDialog where confirm and cancel have different side effects.
 - **Radix `asChild` requires `forwardRef` + rest props**: Any component passed as a child of a Radix `asChild` trigger (Popover.Trigger, Dialog.Trigger, DropdownMenu.Trigger, etc.) **must** use `React.forwardRef` and spread `...rest` props onto its root DOM element. Radix's internal `Slot` uses `cloneElement` to inject `onClick`, `aria-expanded`, `data-state`, and a `ref` — if the component doesn't forward these, the trigger renders visually but never opens. No error or warning is emitted. See `BranchPillTrigger` in `branch-selector-popover.tsx` for the correct pattern.
 
+Dialog suppression ("don't show again")
+- Every dialog or confirmation that offers a "don't show again" / "skip this" checkbox **must** have a corresponding toggle in the Settings dialog so the user can re-enable it. Dismissing a dialog permanently must never be a one-way decision.
+- Use a config field in `global-config-fields.ts` (not localStorage) so the preference persists across sessions and is centrally manageable.
+- Add the re-enable toggle to the **"Suppressed Dialogs"** section at the bottom of Global settings. Existing examples: `showTrashWorktreeNotice`, `skipTaskCheckoutConfirmation`, `skipHomeCheckoutConfirmation`.
+
 Dark theme
 - The app is always in dark theme. Colors are set via CSS custom properties in `globals.css`.
 - Surface hierarchy: `bg-surface-0` (app background) -> `bg-surface-1` (raised panels) -> `bg-surface-2` (cards/inputs) -> `bg-surface-3` (hover) -> `bg-surface-4` (pressed).

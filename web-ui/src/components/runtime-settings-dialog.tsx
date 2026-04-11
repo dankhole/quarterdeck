@@ -939,45 +939,6 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
 				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={showTrashWorktreeNotice}
-						disabled={controlsDisabled}
-						onCheckedChange={setShowTrashWorktreeNotice}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
-				</div>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={skipTaskCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={setSkipTaskCheckoutConfirmation}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Skip task worktree checkout confirmation</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Don't show the confirmation dialog when checking out a branch in a task worktree
-				</p>
-				<div className="flex items-center gap-2 mt-2">
-					<RadixSwitch.Root
-						checked={skipHomeCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={setSkipHomeCheckoutConfirmation}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Skip home checkout confirmation</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Don't show the confirmation dialog when checking out a branch in the home repository
-				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
 				<p className="text-text-secondary text-[13px] mt-1 mb-3">
@@ -1055,6 +1016,44 @@ export function RuntimeSettingsDialog({
 					Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the debug
 					log panel. Debug logging activates automatically when the panel is opened.
 				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Suppressed Dialogs</h6>
+				<p className="text-text-secondary text-[13px] mt-0 mb-2">
+					Re-enable dialogs and confirmations you've previously dismissed.
+				</p>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={showTrashWorktreeNotice}
+						disabled={controlsDisabled}
+						onCheckedChange={setShowTrashWorktreeNotice}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
+				</div>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={!skipTaskCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={(checked) => setSkipTaskCheckoutConfirmation(!checked)}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show task worktree checkout confirmation</span>
+				</div>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={!skipHomeCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={(checked) => setSkipHomeCheckoutConfirmation(!checked)}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show home checkout confirmation</span>
+				</div>
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p

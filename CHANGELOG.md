@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Suppressed Dialogs section in settings
+
+- Dialog suppression toggles (trash worktree notice, task/home checkout confirmations) moved from "Git & Worktrees" into a dedicated "Suppressed Dialogs" section at the bottom of Global settings — provides a single place to re-enable any dialog previously dismissed via "don't show again". Checkout toggle labels flipped to positive phrasing ("Show X confirmation"). Convention documented in AGENTS.md.
+
 ### Fix: LLM title/summary prompts hardened against non-content responses
 
 - All three LLM system prompts (title, branch name, summary) now include explicit rules forbidding questions, refusals, preamble, or clarification requests — a bad title is better than a non-title response. A new `sanitizeLlmResponse()` sanitizer in `callLlm()` provides defense-in-depth by stripping preamble patterns (`"Title: ..."`, `"Here's a title: ..."`), outer quotes, and trailing conversational noise, and rejecting responses that look like questions or refusals.

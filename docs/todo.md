@@ -168,18 +168,14 @@ Scrolling up in an agent terminal reveals duplicated copies of the chat history 
 
 When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
 
-## 29. Re-enable "don't show again" dialogs in settings
-
-Any dialog or confirmation that offers a "don't show again" checkbox should be re-enableable from the settings menu. Add a section in settings that lists all suppressed dialogs and lets the user reset them individually or all at once. Without this, dismissing a dialog permanently is a one-way decision with no recovery path.
-
-## 30. Rewrite README with current features
+## 29. Rewrite README with current features
 
 The README is outdated and doesn't reflect the significant feature work since the fork diverged. Rewrite it to cover the current state of Quarterdeck — git view with Compare tab, drag-and-drop project reorder, agent adapters, session management, notification system, settings, prompt shortcuts, etc. Include updated screenshots/GIFs if possible.
 
-## 31. Show target branch when creating a non-isolated task
+## 30. Show target branch when creating a non-isolated task
 
 When creating a task without an isolated worktree, the create dialog should display which branch the task will run on (i.e. the current branch of the shared workspace). The user needs to know this upfront — running on an unexpected branch can cause confusion or unintended changes. Show the branch name inline in the create form when the "isolated worktree" option is off.
 
-## 32. Uncommitted changes indicator on task cards
+## 31. Uncommitted changes indicator on task cards
 
 Show a simple dot/badge on task cards when the task's worktree has uncommitted changes, same style as the git tab icon's uncommitted indicator. Always-on when uncommitted changes exist, regardless of task state. Requires periodic or event-driven git status checks per worktree.

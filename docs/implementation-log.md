@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Suppressed Dialogs section in settings (2026-04-11)
+
+Moved the three dialog suppression toggles (`showTrashWorktreeNotice`, `skipTaskCheckoutConfirmation`, `skipHomeCheckoutConfirmation`) out of the "Git & Worktrees" section in the settings dialog into a new dedicated "Suppressed Dialogs" section placed after "Layout & Debug" at the bottom of Global settings. This gives users a single, discoverable place to re-enable any dialog they've previously dismissed.
+
+The checkout confirmation toggles were also flipped from negative phrasing ("Skip X confirmation") to positive ("Show X confirmation") with inverted binding logic (`checked={!skipTaskCheckoutConfirmation}`, `onCheckedChange={(checked) => setSkipTaskCheckoutConfirmation(!checked)}`), so the toggle-on state means "show the dialog" — consistent with the trash worktree notice toggle which was already positive-phrased.
+
+Added a "Dialog suppression" convention to AGENTS.md requiring that every future "don't show again" checkbox use a config field in `global-config-fields.ts` and have a re-enable toggle in this section. Closes todo #29.
+
+Files touched: `AGENTS.md`, `web-ui/src/components/runtime-settings-dialog.tsx`, `CHANGELOG.md`, `docs/todo.md`, `docs/implementation-log.md`.
+
 ## Fix: LLM title/summary prompts hardened against non-content responses (2026-04-11)
 
 Addresses todo #30. The LLM prompts used for generating task titles, branch names, and display summaries could occasionally return questions, clarifications, refusals, or responses prefixed with preamble like `"Title: ..."` or `"Here's a title: ..."` instead of the raw content. A bad title displayed on a card is preferable to a non-title response that looks broken.
