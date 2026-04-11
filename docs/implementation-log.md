@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: terminal scroll glitch and duplicate chat on task switch (2026-04-11)
+
+Fixed two related bugs in `persistent-terminal-manager.ts` that shared the same root cause — the RAF-delayed resize in `mount()` combined with no deduplication of resize messages to the PTY.
+
+**Bug #27 (laggy scroll)**: When switching tasks, the cached `PersistentTerminal` was moved from the off-screen parking root to the visible container, but `requestResize()` was deferred to the next animation frame via `requestAnimationFrame`. For one frame, the terminal was visible with stale dimensions/scroll position. When `fitAddon.fit()` fired in the next frame, xterm.js reflowed the buffer and adjusted the viewport — producing a visible scroll animation from an incorrect position to the bottom.
+
+**Bug #28 (duplicate chat at different widths)**: On every mount, two resize messages were sent to the server — one from the RAF callback (~16ms after mount) and another from the ResizeObserver's initial fire (~50ms after mount). The server forwarded each to `pty.resize()` with no deduplication, sending `SIGWINCH` twice. Agents like Claude Code redraw their entire chat display on resize, so two redraws at slightly different column widths left the old rendering in scrollback while the new one painted on top.
+
+**Fix 1 — synchronous fit**: Replaced the `requestAnimationFrame` wrapper in `mount()` with a direct synchronous call to `requestResize()`. The container is in the DOM (React `useEffect` guarantees this), so `getComputedStyle` returns correct dimensions. Terminal gets the right size before the browser ever paints a frame.
+
+**Fix 2 — resize dedup**: Added `lastSentCols`/`lastSentRows` tracking to `PersistentTerminal`. After `fitAddon.fit()` computes dimensions, the resize message is only sent if cols/rows differ from what was last sent. The ResizeObserver's follow-up fire sees the same dimensions and is silently skipped. Real container resizes (window resize, panel drag) produce different dimensions and still go through.
+
+**Fix 3 — restore reset**: `applyRestore()` resets `lastSentCols`/`lastSentRows` to 0 so the post-restore `requestResize()` always sends to the server, since a fresh/reconnected connection doesn't know the terminal size.
+
+Files touched: `web-ui/src/terminal/persistent-terminal-manager.ts`. Closes todo #27, #28.
+
 ## File browser right-click context menu (2026-04-11)
 
 Added a right-click context menu to every row (files and directories) in the file browser tree panel. Two actions: "Copy name" (copies `node.name` — just the filename/folder name) and "Copy path" (copies full absolute path by joining the worktree root with the relative file path).

@@ -172,6 +172,8 @@ class PersistentTerminal {
 	private restoreCompleted = false;
 	private outputTextDecoder = new TextDecoder();
 	private terminalWriteQueue: Promise<void> = Promise.resolve();
+	private lastSentCols = 0;
+	private lastSentRows = 0;
 	private disposed = false;
 
 	constructor(
@@ -372,6 +374,11 @@ class PersistentTerminal {
 		cols: number | null | undefined,
 		rows: number | null | undefined,
 	): Promise<void> {
+		// Reset tracked dimensions so the post-restore requestResize() always
+		// sends the resize message — the server connection is fresh/reconnected
+		// and doesn't know the current terminal size.
+		this.lastSentCols = 0;
+		this.lastSentRows = 0;
 		await this.terminalWriteQueue.catch(() => undefined);
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
@@ -388,17 +395,20 @@ class PersistentTerminal {
 			return;
 		}
 		this.fitAddon.fit();
+		const { cols, rows } = this.terminal;
+		if (cols === this.lastSentCols && rows === this.lastSentRows) {
+			return;
+		}
+		this.lastSentCols = cols;
+		this.lastSentRows = rows;
 		const bounds = this.visibleContainer.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
-		reportTerminalGeometry(this.taskId, {
-			cols: this.terminal.cols,
-			rows: this.terminal.rows,
-		});
+		reportTerminalGeometry(this.taskId, { cols, rows });
 		this.sendControlMessage({
 			type: "resize",
-			cols: this.terminal.cols,
-			rows: this.terminal.rows,
+			cols,
+			rows,
 			pixelWidth: pixelWidth > 0 ? pixelWidth : undefined,
 			pixelHeight: pixelHeight > 0 ? pixelHeight : undefined,
 		});
@@ -642,12 +652,10 @@ class PersistentTerminal {
 		this.resizeObserver.observe(container);
 		this.listenForDprChange();
 		if (options.isVisible !== false) {
-			window.requestAnimationFrame(() => {
-				this.requestResize();
-				if (options.autoFocus) {
-					this.terminal.focus();
-				}
-			});
+			this.requestResize();
+			if (options.autoFocus) {
+				this.terminal.focus();
+			}
 		}
 	}
 

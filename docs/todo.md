@@ -161,15 +161,7 @@ When an agent compacts its conversation context (e.g. Claude Code's auto-compact
 
 The font weight number input in the settings dialog is visually too wide for its content. It only needs to fit 3–4 digit values (100–900) but takes up more horizontal space than necessary. Tighten the input width to match the expected content size.
 
-## 26. Fix: terminal scrollback shows duplicate chat history at different widths
-
-Scrolling up in an agent terminal reveals duplicated copies of the chat history rendered at different column widths. Likely a reflow or resize issue — when the terminal is resized (or the panel changes width), the PTY redraws the content at the new width but the old rendering remains in the scrollback buffer, producing visible duplicates.
-
-## 27. Fix: clicking a task causes laggy scroll-to-bottom in terminal
-
-When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
-
-## 28. "Copy file" in file browser context menu
+## 26. "Copy file" in file browser context menu
 
 Add a "Copy file" action to the file browser right-click context menu that copies the full file contents to the clipboard. Currently the context menu has "Copy name" and "Copy path" — this would complete the set. Needs to fetch the file content (or reuse the already-fetched content if the file is currently open in the viewer) before writing to clipboard.
 

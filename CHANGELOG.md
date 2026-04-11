@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: terminal scroll glitch and duplicate chat on task switch
+
+- Switching tasks no longer causes a visible slow scroll from the top of the terminal buffer to the bottom — the terminal now fits to the container synchronously on mount instead of deferring to the next animation frame. Duplicate resize messages to the PTY are eliminated by tracking last-sent dimensions, preventing agents from redrawing their chat display at multiple widths and leaving duplicates in the scrollback.
+
 ### File browser right-click context menu
 
 - Right-clicking any file or directory in the file browser tree now shows a context menu with "Copy name" (file/folder name only) and "Copy path" (full absolute filesystem path). Uses `@radix-ui/react-context-menu`, styled to match existing dropdown menus. Toast confirmation on copy.
