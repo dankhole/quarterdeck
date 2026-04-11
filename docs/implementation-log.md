@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Settings dialog section reorder (2026-04-11)
+
+Reorganized the settings dialog (`runtime-settings-dialog.tsx`) to put frequently used settings near the top and group related items under fewer headings. No logic, state, or behavior changes — purely JSX reordering and heading renames.
+
+**New section order under Global**: Agent → LLM Generation → Sound notifications (moved up from #8) → Terminal (merged with Terminal rendering — reset button now lives under font weight) → Git & Worktrees (merged from Changes + Trash + Git, sub-headings removed, `mt-3` spacing added between items) → Git Polling (demoted from `h5` to `h6`, moved from bottom of dialog) → Layout & Debug (merged from Layout + Debug). Project and Script shortcuts unchanged.
+
+Section count reduced from 14 to 9. No new state variables, no config schema changes, no test changes needed (tests don't reference section headings).
+
+Files touched: `web-ui/src/components/runtime-settings-dialog.tsx`.
+
+Commit: `30c7b106`.
+
 ## Immediate running transition on prompt submit (2026-04-11)
 
 When a user submitted review comments to an agent (Claude Code), the task card stayed in `awaiting_review` for 500ms–2s while waiting for the agent's plugin to fire a `to_in_progress` hook via `quarterdeck hooks ingest`. The delay was architectural: `writeInput()` wrote to the PTY and returned the unchanged summary — no state transition fired until the agent's event bus callback ran asynchronously.

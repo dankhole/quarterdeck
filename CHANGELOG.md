@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Settings dialog reorganization
+
+- Reordered settings sections so frequently used settings (sound notifications, LLM generation) are near the top and related settings are grouped logically — merged Changes/Trash/Git into "Git & Worktrees", Terminal/Terminal rendering into "Terminal", Layout/Debug into "Layout & Debug", and demoted Git Polling from top-level heading to a subsection under Global. Section count reduced from 14 to 9.
+
 ### Fix: delayed transition to "running" on prompt submit
 
 - Task cards now transition to "running" immediately when the user submits a prompt (Enter/CR) from the review sidebar or terminal — previously the card stayed in "awaiting review" for 500ms–2s while waiting for the agent's async `to_in_progress` hook.

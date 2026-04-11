@@ -739,122 +739,6 @@ export function RuntimeSettingsDialog({
 					</div>
 				) : null}
 
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={shellAutoRestartEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setShellAutoRestartEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
-				</p>
-				<div className="flex items-center justify-between gap-3 mt-3">
-					<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
-						Font weight
-					</label>
-					<div className="flex items-center gap-1.5">
-						<input
-							id="terminal-font-weight"
-							type="number"
-							min={100}
-							max={900}
-							step={25}
-							value={terminalFontWeight}
-							onChange={(event) => {
-								const value = Number(event.target.value);
-								if (Number.isFinite(value)) {
-									setTerminalFontWeight(Math.max(100, Math.min(900, value)));
-								}
-							}}
-							disabled={controlsDisabled}
-							className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-						/>
-					</div>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Changes</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={unmergedChangesIndicatorEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setUnmergedChangesIndicatorEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
-					branch.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={behindBaseIndicatorEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setBehindBaseIndicatorEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Trash</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={showTrashWorktreeNotice}
-						disabled={controlsDisabled}
-						onCheckedChange={setShowTrashWorktreeNotice}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
-				</div>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={skipTaskCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={setSkipTaskCheckoutConfirmation}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Skip task worktree checkout confirmation</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Don't show the confirmation dialog when checking out a branch in a task worktree
-				</p>
-				<div className="flex items-center gap-2 mt-2">
-					<RadixSwitch.Root
-						checked={skipHomeCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={setSkipHomeCheckoutConfirmation}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Skip home checkout confirmation</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Don't show the confirmation dialog when checking out a branch in the home repository
-				</p>
-
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
 				<div className="flex items-center gap-2">
 					<RadixSwitch.Root
@@ -965,17 +849,50 @@ export function RuntimeSettingsDialog({
 					</Button>
 				</div>
 
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout</h6>
-				<Button size="sm" onClick={resetLayoutCustomizations}>
-					Reset layout
-				</Button>
-				<p className="text-text-secondary text-[13px] mt-2 mb-0">
-					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={shellAutoRestartEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setShellAutoRestartEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
 				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal rendering</h6>
+				<div className="flex items-center justify-between gap-3 mt-3">
+					<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
+						Font weight
+					</label>
+					<div className="flex items-center gap-1.5">
+						<input
+							id="terminal-font-weight"
+							type="number"
+							min={100}
+							max={900}
+							step={25}
+							value={terminalFontWeight}
+							onChange={(event) => {
+								const value = Number(event.target.value);
+								if (Number.isFinite(value)) {
+									setTerminalFontWeight(Math.max(100, Math.min(900, value)));
+								}
+							}}
+							disabled={controlsDisabled}
+							className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+						/>
+					</div>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+				</p>
 				<Button
 					size="sm"
+					className="mt-3"
 					onClick={() => {
 						const count = resetAllTerminalRenderers();
 						showAppToast({
@@ -992,8 +909,149 @@ export function RuntimeSettingsDialog({
 					distorted after moving between monitors.
 				</p>
 
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Debug</h6>
-				<p className="text-text-secondary text-[13px] mt-0 mb-0">
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={unmergedChangesIndicatorEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setUnmergedChangesIndicatorEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
+					branch.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={behindBaseIndicatorEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setBehindBaseIndicatorEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={showTrashWorktreeNotice}
+						disabled={controlsDisabled}
+						onCheckedChange={setShowTrashWorktreeNotice}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
+				</div>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={skipTaskCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={setSkipTaskCheckoutConfirmation}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Skip task worktree checkout confirmation</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Don't show the confirmation dialog when checking out a branch in a task worktree
+				</p>
+				<div className="flex items-center gap-2 mt-2">
+					<RadixSwitch.Root
+						checked={skipHomeCheckoutConfirmation}
+						disabled={controlsDisabled}
+						onCheckedChange={setSkipHomeCheckoutConfirmation}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Skip home checkout confirmation</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Don't show the confirmation dialog when checking out a branch in the home repository
+				</p>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
+				<p className="text-text-secondary text-[13px] mt-1 mb-3">
+					How often to check for git changes in task worktrees. Lower values show changes faster but use more
+					resources when many tasks are active.
+				</p>
+				<div className="flex flex-col gap-2">
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
+							Selected task
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="focused-task-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={focusedTaskPollMs}
+								onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
+							Background tasks
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="background-task-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={backgroundTaskPollMs}
+								onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
+							Home repository
+						</label>
+						<div className="flex items-center gap-1.5">
+							<input
+								id="home-repo-poll"
+								type="number"
+								min={500}
+								max={60000}
+								step={500}
+								value={homeRepoPollMs}
+								onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
+								disabled={controlsDisabled}
+								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+							/>
+							<span className="text-text-secondary text-[11px]">ms</span>
+						</div>
+					</div>
+				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout & Debug</h6>
+				<Button size="sm" onClick={resetLayoutCustomizations}>
+					Reset layout
+				</Button>
+				<p className="text-text-secondary text-[13px] mt-2 mb-0">
+					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+				</p>
+				<p className="text-text-secondary text-[13px] mt-3 mb-0">
 					Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the debug
 					log panel. Debug logging activates automatically when the panel is opened.
 				</p>
@@ -1097,71 +1155,6 @@ export function RuntimeSettingsDialog({
 				{shortcuts.length === 0 ? (
 					<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
 				) : null}
-
-				<h5 className="font-semibold text-text-primary m-0 mt-5">Git Polling</h5>
-				<p className="text-text-secondary text-[13px] mt-1 mb-3">
-					How often to check for git changes in task worktrees. Lower values show changes faster but use more
-					resources when many tasks are active.
-				</p>
-				<div className="flex flex-col gap-2">
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
-							Selected task
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="focused-task-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={focusedTaskPollMs}
-								onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
-							Background tasks
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="background-task-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={backgroundTaskPollMs}
-								onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
-							Home repository
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="home-repo-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={homeRepoPollMs}
-								onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-				</div>
 
 				{saveError ? (
 					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
