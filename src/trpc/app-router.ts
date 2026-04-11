@@ -36,6 +36,8 @@ import type {
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
+	RuntimeProjectReorderRequest,
+	RuntimeProjectReorderResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
@@ -91,6 +93,8 @@ import {
 	runtimeProjectDirectoryPickerResponseSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
+	runtimeProjectReorderRequestSchema,
+	runtimeProjectReorderResponseSchema,
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
@@ -247,6 +251,10 @@ export interface RuntimeTrpcContext {
 			input: RuntimeProjectRemoveRequest,
 		) => Promise<RuntimeProjectRemoveResponse>;
 		pickProjectDirectory: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
+		reorderProjects: (
+			preferredWorkspaceId: string | null,
+			input: RuntimeProjectReorderRequest,
+		) => Promise<RuntimeProjectReorderResponse>;
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
@@ -616,6 +624,12 @@ export const runtimeAppRouter = t.router({
 		pickDirectory: t.procedure.output(runtimeProjectDirectoryPickerResponseSchema).mutation(async ({ ctx }) => {
 			return await ctx.projectsApi.pickProjectDirectory(ctx.requestedWorkspaceId);
 		}),
+		reorder: t.procedure
+			.input(runtimeProjectReorderRequestSchema)
+			.output(runtimeProjectReorderResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.projectsApi.reorderProjects(ctx.requestedWorkspaceId, input);
+			}),
 	}),
 	hooks: t.router({
 		ingest: t.procedure

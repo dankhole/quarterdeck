@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Project switcher drag-and-drop reorder (2026-04-11)
+
+Added drag-and-drop reordering for projects in the sidebar. The workspace index file (`~/.quarterdeck/workspaces/index.json`) gained a `projectOrder: string[]` field — an ordered array of workspace IDs. The Zod schema uses `.optional().default([])` for backward compatibility with existing index files. When `projectOrder` is empty, `listWorkspaceIndexEntries()` falls back to the previous alphabetical-by-path sort. When populated, entries sort by position in the array, with unmatched entries appended alphabetically.
+
+**Backend**: New `projects.reorder` tRPC mutation calls `updateProjectOrder()` which acquires the index file lock, validates IDs against existing entries, preserves concurrently-added projects (appends any entry IDs not in the caller's list), and writes. `ensureWorkspaceEntry()` appends new projects to the end of `projectOrder`. `removeWorkspaceIndexEntry()` filters the removed ID. After reorder, the server broadcasts `projects_updated` so all connected clients see the new order.
+
+**Frontend**: `ProjectNavigationPanel` wraps the project list in `DragDropContext`/`Droppable`/`Draggable` from `@hello-pangea/dnd` (already a dependency for board cards). Each `ProjectRow` gets a `GripVertical` drag handle (visible on hover via `group`/`group-hover`, hidden with ≤1 project). Drag initiates only from the handle — row clicks still navigate. Dragged items portal to `document.body` to avoid scroll container clipping. Optimistic local state (`optimisticOrder` + `prevProjectIdsRef`) prevents visual snap-back during the server roundtrip — cleared when the `projects` prop changes (server broadcast arrived).
+
+Files touched: `src/core/api-contract.ts`, `src/core/api-validation.ts`, `src/state/workspace-state.ts`, `src/trpc/app-router.ts`, `src/trpc/projects-api.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/project-navigation-panel.tsx`, `web-ui/src/hooks/use-project-navigation.ts`.
+
+Closes todo #24.
+
 ## Settings dialog section reorder (2026-04-11)
 
 Reorganized the settings dialog (`runtime-settings-dialog.tsx`) to put frequently used settings near the top and group related items under fewer headings. No logic, state, or behavior changes — purely JSX reordering and heading renames.

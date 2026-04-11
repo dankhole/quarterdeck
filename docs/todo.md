@@ -174,7 +174,4 @@ Related: #2 (resume sessions after crash/closure), #9 (un-trash / restart paths 
 
 A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
 
-## 24. Reorder projects in the project switcher
-
-The project list in the project switcher sidebar has no way to reorder entries. Add drag-and-drop or manual reordering so users can arrange projects in their preferred order. Persist the ordering across sessions.
 

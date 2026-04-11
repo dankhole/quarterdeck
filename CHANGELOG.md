@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Project switcher drag-and-drop reorder
+
+- Projects in the sidebar can now be reordered via drag-and-drop — grab the grip handle (visible on hover) and drag to a new position. Ordering persists across sessions in the workspace index file, with alphabetical fallback for projects that haven't been reordered. Optimistic UI prevents visual snap-back during the server roundtrip.
+
 ### Settings dialog reorganization
 
 - Reordered settings sections so frequently used settings (sound notifications, LLM generation) are near the top and related settings are grouped logically — merged Changes/Trash/Git into "Git & Worktrees", Terminal/Terminal rendering into "Terminal", Layout/Debug into "Layout & Debug", and demoted Git Polling from top-level heading to a subsection under Global. Section count reduced from 14 to 9.

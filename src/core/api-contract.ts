@@ -503,6 +503,17 @@ export const runtimeProjectRemoveResponseSchema = z.object({
 });
 export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveResponseSchema>;
 
+export const runtimeProjectReorderRequestSchema = z.object({
+	projectOrder: z.array(z.string()),
+});
+export type RuntimeProjectReorderRequest = z.infer<typeof runtimeProjectReorderRequestSchema>;
+
+export const runtimeProjectReorderResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeProjectReorderResponse = z.infer<typeof runtimeProjectReorderResponseSchema>;
+
 export const runtimeWorktreeEnsureRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),

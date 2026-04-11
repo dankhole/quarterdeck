@@ -7,6 +7,7 @@ import {
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
+	type RuntimeProjectReorderRequest,
 	type RuntimeShellSessionStartRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
@@ -22,6 +23,7 @@ import {
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
+	runtimeProjectReorderRequestSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -119,6 +121,17 @@ export function parseProjectRemoveRequest(value: unknown): RuntimeProjectRemoveR
 	}
 	return {
 		projectId,
+	};
+}
+
+export function parseProjectReorderRequest(value: unknown): RuntimeProjectReorderRequest {
+	const parsed = parseWithSchema(runtimeProjectReorderRequestSchema, value);
+	const projectOrder = parsed.projectOrder.map((id) => id.trim()).filter((id) => id.length > 0);
+	if (projectOrder.length === 0) {
+		throw new Error("Project order cannot be empty.");
+	}
+	return {
+		projectOrder,
 	};
 }
 

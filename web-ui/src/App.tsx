@@ -167,6 +167,7 @@ export default function App(): ReactElement {
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,
+		handleReorderProjects,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
 		resetProjectNavigationState,
@@ -1337,6 +1338,7 @@ export default function App(): ReactElement {
 												void handleSelectProject(projectId);
 											}}
 											onRemoveProject={handleRemoveProject}
+											onReorderProjects={handleReorderProjects}
 											onAddProject={() => {
 												void handleAddProject();
 											}}

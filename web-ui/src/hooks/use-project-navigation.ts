@@ -76,6 +76,7 @@ export interface UseProjectNavigationResult {
 	handleConfirmInitializeGitProject: () => Promise<void>;
 	handleCancelInitializeGitProject: () => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
+	handleReorderProjects: (projectOrder: string[]) => Promise<void>;
 	resetProjectNavigationState: () => void;
 }
 
@@ -300,6 +301,22 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		setRequestedProjectId(currentProjectId);
 	}, [currentProjectId, pendingAddedProjectId, projects, requestedProjectId]);
 
+	const handleReorderProjects = useCallback(
+		async (projectOrder: string[]) => {
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const result = await trpcClient.projects.reorder.mutate({ projectOrder });
+				if (!result.ok) {
+					throw new Error(result.error ?? "Could not reorder projects.");
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				notifyError(message);
+			}
+		},
+		[currentProjectId],
+	);
+
 	const resetProjectNavigationState = useCallback(() => {
 		setRemovingProjectId(null);
 		setPendingGitInitializationPath(null);
@@ -332,6 +349,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,
+		handleReorderProjects,
 		resetProjectNavigationState,
 	};
 }

@@ -1,7 +1,15 @@
+import {
+	DragDropContext,
+	Draggable,
+	type DraggableProvidedDragHandleProps,
+	Droppable,
+	type DropResult,
+} from "@hello-pangea/dnd";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Lightbulb, Plus, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, GripVertical, Lightbulb, Plus, X } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import {
@@ -42,6 +50,7 @@ export function ProjectNavigationPanel({
 	agentSectionContent,
 	onSelectProject,
 	onRemoveProject,
+	onReorderProjects,
 	onAddProject,
 }: {
 	projects: RuntimeProjectSummary[];
@@ -55,9 +64,57 @@ export function ProjectNavigationPanel({
 	agentSectionContent?: ReactNode;
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
+	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
 }): React.ReactElement {
-	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
+	const canReorder = projects.length > 1 && onReorderProjects !== undefined;
+
+	const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+	const prevProjectIdsRef = useRef<string>("");
+
+	const displayedProjects = useMemo(() => {
+		if (!optimisticOrder) {
+			return projects;
+		}
+		const projectsById = new Map(projects.map((p) => [p.id, p]));
+		const currentIds = projects.map((p) => p.id).join(",");
+		if (currentIds !== prevProjectIdsRef.current) {
+			prevProjectIdsRef.current = currentIds;
+			setOptimisticOrder(null);
+			return projects;
+		}
+		const ordered: RuntimeProjectSummary[] = [];
+		for (const id of optimisticOrder) {
+			const project = projectsById.get(id);
+			if (project) {
+				ordered.push(project);
+			}
+		}
+		for (const project of projects) {
+			if (!optimisticOrder.includes(project.id)) {
+				ordered.push(project);
+			}
+		}
+		return ordered;
+	}, [optimisticOrder, projects]);
+
+	const handleDragEnd = useCallback(
+		(result: DropResult) => {
+			if (!result.destination || result.source.index === result.destination.index || !onReorderProjects) {
+				return;
+			}
+			const reordered = Array.from(displayedProjects);
+			const [moved] = reordered.splice(result.source.index, 1);
+			if (moved !== undefined) {
+				reordered.splice(result.destination.index, 0, moved);
+			}
+			const newOrder = reordered.map((p) => p.id);
+			prevProjectIdsRef.current = projects.map((p) => p.id).join(",");
+			setOptimisticOrder(newOrder);
+			void onReorderProjects(newOrder);
+		},
+		[onReorderProjects, displayedProjects, projects],
+	);
 
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
 	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
@@ -120,7 +177,7 @@ export function ProjectNavigationPanel({
 						className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
 						style={{ padding: "4px 12px" }}
 					>
-						{sortedProjects.length === 0 && isLoadingProjects ? (
+						{projects.length === 0 && isLoadingProjects ? (
 							<div style={{ padding: "4px 0" }}>
 								{Array.from({ length: 3 }).map((_, index) => (
 									<ProjectRowSkeleton key={`project-skeleton-${index}`} />
@@ -128,23 +185,60 @@ export function ProjectNavigationPanel({
 							</div>
 						) : null}
 
-						{sortedProjects.map((project) => (
-							<ProjectRow
-								key={project.id}
-								project={project}
-								isCurrent={currentProjectId === project.id}
-								hasApproval={projectIdsWithApprovals?.has(project.id) ?? false}
-								removingProjectId={removingProjectId}
-								onSelect={onSelectProject}
-								onRemove={(projectId) => {
-									const found = sortedProjects.find((item) => item.id === projectId);
-									if (!found) {
-										return;
-									}
-									setPendingProjectRemoval(found);
-								}}
-							/>
-						))}
+						<DragDropContext onDragEnd={handleDragEnd}>
+							<Droppable droppableId="project-list">
+								{(droppableProvided) => (
+									<div ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+										{displayedProjects.map((project, index) => (
+											<Draggable
+												key={project.id}
+												draggableId={project.id}
+												index={index}
+												isDragDisabled={!canReorder}
+											>
+												{(draggableProvided, draggableSnapshot) => {
+													const row = (
+														<div
+															ref={draggableProvided.innerRef}
+															{...draggableProvided.draggableProps}
+															style={{
+																...draggableProvided.draggableProps.style,
+																marginBottom: 4,
+															}}
+														>
+															<ProjectRow
+																project={project}
+																isCurrent={currentProjectId === project.id}
+																hasApproval={projectIdsWithApprovals?.has(project.id) ?? false}
+																removingProjectId={removingProjectId}
+																showDragHandle={canReorder}
+																dragHandleProps={draggableProvided.dragHandleProps}
+																isDragging={draggableSnapshot.isDragging}
+																onSelect={onSelectProject}
+																onRemove={(projectId) => {
+																	const found = displayedProjects.find(
+																		(item) => item.id === projectId,
+																	);
+																	if (!found) {
+																		return;
+																	}
+																	setPendingProjectRemoval(found);
+																}}
+															/>
+														</div>
+													);
+													if (draggableSnapshot.isDragging && typeof document !== "undefined") {
+														return createPortal(row, document.body);
+													}
+													return row;
+												}}
+											</Draggable>
+										))}
+										{droppableProvided.placeholder}
+									</div>
+								)}
+							</Droppable>
+						</DragDropContext>
 
 						{!isLoadingProjects ? (
 							<button
@@ -426,6 +520,9 @@ function ProjectRow({
 	isCurrent,
 	hasApproval,
 	removingProjectId,
+	showDragHandle = false,
+	dragHandleProps,
+	isDragging = false,
 	onSelect,
 	onRemove,
 }: {
@@ -433,6 +530,9 @@ function ProjectRow({
 	isCurrent: boolean;
 	hasApproval: boolean;
 	removingProjectId: string | null;
+	showDragHandle?: boolean;
+	dragHandleProps?: DraggableProvidedDragHandleProps | null;
+	isDragging?: boolean;
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
@@ -482,7 +582,11 @@ function ProjectRow({
 					onSelect(project.id);
 				}
 			}}
-			className={cn("kb-project-row cursor-pointer rounded-md", isCurrent && "kb-project-row-selected")}
+			className={cn(
+				"kb-project-row group cursor-pointer rounded-md",
+				isCurrent && "kb-project-row-selected",
+				isDragging && "shadow-lg bg-surface-2 rounded-md",
+			)}
 			style={{
 				display: "flex",
 				alignItems: "center",
@@ -490,6 +594,20 @@ function ProjectRow({
 				padding: "6px 8px",
 			}}
 		>
+			{showDragHandle ? (
+				<div
+					{...dragHandleProps}
+					className={cn(
+						"shrink-0 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity",
+						isCurrent ? "text-white/50 hover:text-white/80" : "text-text-tertiary hover:text-text-secondary",
+						isDragging && "opacity-100 cursor-grabbing",
+					)}
+					onClick={(e) => e.stopPropagation()}
+					onKeyDown={(e) => e.stopPropagation()}
+				>
+					<GripVertical size={14} />
+				</div>
+			) : null}
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1.5">
 					<span

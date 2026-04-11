@@ -51,6 +51,7 @@ interface WorkspaceIndexFile {
 	version: number;
 	entries: Record<string, WorkspaceIndexEntry>;
 	repoPathToId: Record<string, string>;
+	projectOrder: string[];
 }
 
 interface WorkspaceStateMeta {
@@ -73,6 +74,7 @@ const workspaceIndexFileSchema = z
 		version: z.literal(INDEX_VERSION),
 		entries: z.record(z.string(), workspaceIndexEntrySchema),
 		repoPathToId: z.record(z.string(), z.string().min(1, "Workspace ID cannot be empty.")),
+		projectOrder: z.array(z.string()).optional().default([]),
 	})
 	.superRefine((index, context) => {
 		for (const [workspaceId, entry] of Object.entries(index.entries)) {
@@ -154,6 +156,7 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 		version: INDEX_VERSION,
 		entries: {},
 		repoPathToId: {},
+		projectOrder: [],
 	};
 }
 
@@ -413,6 +416,7 @@ function ensureWorkspaceEntry(
 				...index.repoPathToId,
 				[repoPath]: workspaceId,
 			},
+			projectOrder: [...index.projectOrder, workspaceId],
 		},
 		entry,
 		changed: true,
@@ -610,12 +614,23 @@ export async function loadWorkspaceContextById(workspaceId: string): Promise<Run
 
 export async function listWorkspaceIndexEntries(): Promise<RuntimeWorkspaceIndexEntry[]> {
 	const index = await readWorkspaceIndex();
-	return Object.values(index.entries)
-		.map((entry) => ({
-			workspaceId: entry.workspaceId,
-			repoPath: entry.repoPath,
-		}))
-		.sort((left, right) => left.repoPath.localeCompare(right.repoPath));
+	const entries = Object.values(index.entries).map((entry) => ({
+		workspaceId: entry.workspaceId,
+		repoPath: entry.repoPath,
+	}));
+	const order = index.projectOrder;
+	if (order.length === 0) {
+		return entries.sort((left, right) => left.repoPath.localeCompare(right.repoPath));
+	}
+	const positionMap = new Map(order.map((id, i) => [id, i]));
+	return entries.sort((left, right) => {
+		const leftPos = positionMap.get(left.workspaceId) ?? Number.MAX_SAFE_INTEGER;
+		const rightPos = positionMap.get(right.workspaceId) ?? Number.MAX_SAFE_INTEGER;
+		if (leftPos !== rightPos) {
+			return leftPos - rightPos;
+		}
+		return left.repoPath.localeCompare(right.repoPath);
+	});
 }
 
 export async function removeWorkspaceIndexEntry(workspaceId: string): Promise<boolean> {
@@ -627,8 +642,20 @@ export async function removeWorkspaceIndexEntry(workspaceId: string): Promise<bo
 		}
 		delete index.entries[workspaceId];
 		delete index.repoPathToId[entry.repoPath];
+		index.projectOrder = index.projectOrder.filter((id) => id !== workspaceId);
 		await writeWorkspaceIndex(index);
 		return true;
+	});
+}
+
+export async function updateProjectOrder(orderedIds: string[]): Promise<void> {
+	await lockedFileSystem.withLock(getWorkspaceIndexLockRequest(), async () => {
+		const index = await readWorkspaceIndex();
+		const validIds = orderedIds.filter((id) => index.entries[id] !== undefined);
+		const includedIds = new Set(validIds);
+		const missingIds = Object.keys(index.entries).filter((id) => !includedIds.has(id));
+		index.projectOrder = [...validIds, ...missingIds];
+		await writeWorkspaceIndex(index);
 	});
 }
 

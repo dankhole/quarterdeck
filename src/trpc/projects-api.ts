@@ -4,7 +4,7 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
 } from "../core/api-contract";
-import { parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation";
+import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core/api-validation";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -12,6 +12,7 @@ import {
 	loadWorkspaceState,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
+	updateProjectOrder,
 } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
@@ -225,6 +226,17 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					path: null,
 					error: message,
 				};
+			}
+		},
+		reorderProjects: async (_preferredWorkspaceId, input) => {
+			try {
+				const body = parseProjectReorderRequest(input);
+				await updateProjectOrder(body.projectOrder);
+				void deps.broadcastRuntimeProjectsUpdated(deps.getActiveWorkspaceId());
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message };
 			}
 		},
 	};
