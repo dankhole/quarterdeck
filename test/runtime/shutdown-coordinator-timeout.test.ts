@@ -67,8 +67,10 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 	return {
 		stopReconciliation: vi.fn(),
 		markInterruptedAndStopAll: vi.fn().mockReturnValue(summaries),
-		listSummaries: vi.fn().mockReturnValue(summaries),
-		getSummary: vi.fn((taskId: string) => summaries.find((s) => s.taskId === taskId) ?? null),
+		store: {
+			listSummaries: vi.fn().mockReturnValue(summaries),
+			getSummary: vi.fn((taskId: string) => summaries.find((s) => s.taskId === taskId) ?? null),
+		},
 	} as unknown as TerminalSessionManager;
 }
 

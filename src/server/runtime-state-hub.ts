@@ -470,7 +470,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			if (terminalSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
 				return;
 			}
-			const unsubscribe = manager.onSummary((summary) => {
+			const unsubscribe = manager.store.onChange((summary) => {
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
 			});
 			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);

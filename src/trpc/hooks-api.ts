@@ -10,6 +10,7 @@ import { createTaggedLogger } from "../core/debug-logger";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { isPermissionActivity } from "../terminal/session-reconciliation";
+import type { SessionSummaryStore } from "../terminal/session-summary-store";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -21,12 +22,12 @@ const log = createTaggedLogger("hooks");
  * Shared between the early-return (can't transition) and normal transition paths.
  */
 function applyConversationSummaryFromMetadata(
-	manager: TerminalSessionManager,
+	store: SessionSummaryStore,
 	taskId: string,
 	metadata: { conversationSummaryText?: string | null; finalMessage?: string | null } | undefined,
 ): void {
 	if (metadata?.conversationSummaryText) {
-		manager.appendConversationSummary(taskId, {
+		store.appendConversationSummary(taskId, {
 			text: metadata.conversationSummaryText,
 			capturedAt: Date.now(),
 		});
@@ -35,7 +36,7 @@ function applyConversationSummaryFromMetadata(
 		if (fm) {
 			const display =
 				fm.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${fm.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : fm;
-			manager.setDisplaySummary(taskId, display, null);
+			store.setDisplaySummary(taskId, display, null);
 		}
 	}
 }
@@ -94,7 +95,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				const manager = await deps.ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
-				const summary = manager.getSummary(taskId);
+				const { store } = manager;
+				const summary = store.getSummary(taskId);
 				if (!summary) {
 					return {
 						ok: false,
@@ -128,23 +130,23 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							if (!isPermissionActivity(incomingActivity)) {
 								// Skip applyHookActivity — the incoming event is not permission-related
 								// and would clobber the existing permission metadata.
-								applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
+								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 								return {
 									ok: true,
 								} satisfies RuntimeHookIngestResponse;
 							}
 						}
 
-						manager.applyHookActivity(taskId, body.metadata);
+						store.applyHookActivity(taskId, body.metadata);
 					}
-					applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
+					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 					return {
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
 				}
 
 				const transitionedSummary =
-					event === "to_review" ? manager.transitionToReview(taskId, "hook") : manager.transitionToRunning(taskId);
+					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);
 				if (!transitionedSummary) {
 					return {
 						ok: false,
@@ -159,10 +161,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// exceed 500ms, so deferring activity would cause the settle
 				// window to expire and the wrong (review) sound to play.
 				if (body.metadata) {
-					manager.applyHookActivity(taskId, body.metadata);
+					store.applyHookActivity(taskId, body.metadata);
 				}
 
-				applyConversationSummaryFromMetadata(manager, taskId, body.metadata);
+				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 
 				if (event === "to_review") {
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
@@ -174,7 +176,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							taskId,
 							turn: nextTurn,
 						});
-						manager.applyTurnCheckpoint(taskId, checkpoint);
+						store.applyTurnCheckpoint(taskId, checkpoint);
 						if (staleRef) {
 							void checkpointRefDelete({
 								cwd: checkpointCwd,

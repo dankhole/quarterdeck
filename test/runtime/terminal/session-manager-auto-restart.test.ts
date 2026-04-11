@@ -14,6 +14,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 }));
 
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
+import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -57,7 +58,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			return session;
 		});
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", {
 			onState: vi.fn(),
 			onOutput: vi.fn(),
@@ -79,8 +80,8 @@ describe("TerminalSessionManager auto-restart", () => {
 		await vi.waitFor(() => {
 			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
 		});
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.pid).toBe(222);
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 	});
 
 	it("does not restart an attached agent session after an explicit stop", async () => {
@@ -91,7 +92,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			return session;
 		});
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", {
 			onState: vi.fn(),
 			onOutput: vi.fn(),
@@ -113,8 +114,8 @@ describe("TerminalSessionManager auto-restart", () => {
 		await Promise.resolve();
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.pid).toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.pid).toBeNull();
 	});
 
 	it("sends deferred Codex startup input when the prompt marker appears", async () => {
@@ -133,7 +134,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			return session;
 		});
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		await manager.startTaskSession({
 			taskId: "task-1",
 			agentId: "codex",
@@ -174,7 +175,7 @@ describe("TerminalSessionManager auto-restart", () => {
 			return session;
 		});
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		await manager.startTaskSession({
 			taskId: "task-1",
 			agentId: "codex",

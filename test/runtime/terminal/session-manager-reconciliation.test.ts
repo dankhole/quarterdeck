@@ -15,6 +15,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
+import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
 
 // PID that is guaranteed to NOT exist — used for dead process tests.
 const DEAD_PID = 999_999_999;
@@ -93,7 +94,7 @@ const defaultTaskRequest = {
  * must be called before any transitionToReview.
  */
 async function setupStalePermissionAfterEscape(manager: TerminalSessionManager, taskId: string): Promise<void> {
-	manager.applyHookActivity(taskId, {
+	manager.store.applyHookActivity(taskId, {
 		hookEventName: "PermissionRequest",
 		activityText: "Waiting for approval",
 		source: "claude",
@@ -127,16 +128,16 @@ describe("reconciliation sweep lifecycle", () => {
 	it("reconciliation sweep runs every 10s (27)", async () => {
 		setupMockPtySpawn(DEAD_PID);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 		manager.startReconciliation();
 
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 
 		manager.stopReconciliation();
 	});
@@ -144,7 +145,7 @@ describe("reconciliation sweep lifecycle", () => {
 	it("startReconciliation is idempotent (28)", async () => {
 		setupMockPtySpawn(DEAD_PID);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
@@ -152,7 +153,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.startReconciliation(); // second call should be a no-op
 
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 		manager.stopReconciliation();
 	});
@@ -161,20 +162,20 @@ describe("reconciliation sweep lifecycle", () => {
 		// Use process.pid (alive) so dead process check doesn't interfere
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
 		await setupStalePermissionAfterEscape(manager, "task-1");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("attention");
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
 		manager.startReconciliation();
 		manager.stopReconciliation();
 
 		// After 10s, no reconciliation should fire
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 	});
 
 	it("dead process in running state triggers recovery (30)", async () => {
@@ -182,16 +183,16 @@ describe("reconciliation sweep lifecycle", () => {
 
 		const onState = vi.fn();
 		const onExit = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn(), onExit });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 		expect(onExit).toHaveBeenCalledWith(null);
 
 		manager.stopReconciliation();
@@ -201,19 +202,19 @@ describe("reconciliation sweep lifecycle", () => {
 		setupMockPtySpawn(DEAD_PID);
 
 		const onExit = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
+		manager.store.transitionToReview("task-1", "hook");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 		expect(onExit).toHaveBeenCalledWith(null);
 
 		manager.stopReconciliation();
@@ -223,21 +224,21 @@ describe("reconciliation sweep lifecycle", () => {
 		// Use process.pid (alive) so dead process check doesn't interfere
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
 		await setupStalePermissionAfterEscape(manager, "task-1");
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("attention");
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("attention");
 
 		manager.stopReconciliation();
 	});
@@ -247,16 +248,16 @@ describe("reconciliation sweep lifecycle", () => {
 		// while genuinely awaiting review. Reconciliation must not interpret this as "resumed."
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
 		});
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 		await vi.advanceTimersByTimeAsync(1);
 		spawnedSessions[0]?.triggerData("status bar update\n");
@@ -264,8 +265,8 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 
 		manager.stopReconciliation();
 	});
@@ -273,12 +274,12 @@ describe("reconciliation sweep lifecycle", () => {
 	it("legitimate awaiting_review with no output is not touched (34)", async () => {
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
 			source: "claude",
@@ -287,15 +288,15 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
 		manager.stopReconciliation();
 	});
 
 	it("completed and interrupted sessions are not modified (35)", async () => {
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// Hydrate with a completed session (no active process, no auto-restart risk)
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -306,13 +307,13 @@ describe("reconciliation sweep lifecycle", () => {
 			}),
 		});
 
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
 
 		manager.stopReconciliation();
 	});
@@ -321,7 +322,7 @@ describe("reconciliation sweep lifecycle", () => {
 		setupMockPtySpawn(process.pid);
 
 		const onState = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
@@ -342,8 +343,8 @@ describe("reconciliation sweep lifecycle", () => {
 		setupMockPtySpawn(process.pid);
 
 		const summaryListener = vi.fn();
-		const manager = new TerminalSessionManager();
-		manager.onSummary(summaryListener);
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.store.onChange(summaryListener);
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
@@ -365,11 +366,11 @@ describe("reconciliation sweep lifecycle", () => {
 	it("only one action applied per entry per sweep (38)", async () => {
 		setupMockPtySpawn(DEAD_PID);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.applyHookActivity("task-1", {
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
 			source: "claude",
@@ -379,8 +380,8 @@ describe("reconciliation sweep lifecycle", () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// Dead process takes priority → state becomes error review, not just activity cleared
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 
 		manager.stopReconciliation();
 	});
@@ -388,25 +389,25 @@ describe("reconciliation sweep lifecycle", () => {
 	it("error in one entry does not prevent checking others (39)", async () => {
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
 		// Task 1: stale permission badge via Path 1
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 		await setupStalePermissionAfterEscape(manager, "task-1");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("attention");
 
 		// Task 2: another stale permission badge via Path 1
 		manager.attach("task-2", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession({ ...defaultTaskRequest, taskId: "task-2" });
 		await setupStalePermissionAfterEscape(manager, "task-2");
-		expect(manager.getSummary("task-2")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-2")?.reviewReason).toBe("attention");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
-		expect(manager.getSummary("task-2")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-2")?.latestHookActivity).toBeNull();
 
 		manager.stopReconciliation();
 	});
@@ -431,12 +432,12 @@ describe("incidental terminal output does not affect review state", () => {
 	it("continuous status bar updates over 60s do not resume from review (60)", async () => {
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
 			source: "claude",
@@ -449,8 +450,8 @@ describe("incidental terminal output does not affect review state", () => {
 			spawnedSessions[0]?.triggerData("\x1b[1;1H\x1b[K⏳ Waiting for permission...\x1b[0m");
 			await vi.advanceTimersByTimeAsync(2_000);
 
-			expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-			expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 		}
 
 		manager.stopReconciliation();
@@ -459,12 +460,12 @@ describe("incidental terminal output does not affect review state", () => {
 	it("spinner output across multiple reconciliation sweeps stays in review (61)", async () => {
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
 		});
@@ -481,7 +482,7 @@ describe("incidental terminal output does not affect review state", () => {
 			// Reconciliation sweep fires
 			await vi.advanceTimersByTimeAsync(5_000);
 
-			expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		}
 
 		manager.stopReconciliation();
@@ -490,12 +491,12 @@ describe("incidental terminal output does not affect review state", () => {
 	it("permission badge preserved despite terminal output (62)", async () => {
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
 			source: "claude",
@@ -509,10 +510,10 @@ describe("incidental terminal output does not affect review state", () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// Both state and activity badge must survive
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("hook");
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
-		expect(manager.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("PermissionRequest");
 
 		manager.stopReconciliation();
 	});
@@ -520,12 +521,12 @@ describe("incidental terminal output does not affect review state", () => {
 	it("only a proper to_in_progress hook transitions out of review (63)", async () => {
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			source: "claude",
 		});
@@ -537,11 +538,11 @@ describe("incidental terminal output does not affect review state", () => {
 			await vi.advanceTimersByTimeAsync(3_000);
 			spawnedSessions[0]?.triggerData(`output burst ${i}\n`);
 		}
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 		// Only an explicit hook transition should move it to running
-		manager.transitionToRunning("task-1");
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		manager.store.transitionToRunning("task-1");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 
 		manager.stopReconciliation();
 	});
@@ -562,28 +563,28 @@ describe("reconciliation integration edge cases", () => {
 	it("concurrent hook and reconciliation (43)", async () => {
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
 		await setupStalePermissionAfterEscape(manager, "task-1");
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// Reconciliation cleared it
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 
 		// New hook arrives immediately after
-		manager.applyHookActivity("task-1", {
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "ToolUse",
 			activityText: "Running bash",
 			source: "claude",
 		});
 
 		// Hook overwrites the cleared value
-		expect(manager.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("ToolUse");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("ToolUse");
 
 		manager.stopReconciliation();
 	});
@@ -598,27 +599,27 @@ describe("reconciliation integration edge cases", () => {
 			createMockPtySession(process.pid, request),
 		);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
 		// Task A: running with dead PID
 		manager.attach("task-a", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession({ ...defaultTaskRequest, taskId: "task-a" });
-		expect(manager.getSummary("task-a")?.state).toBe("running");
+		expect(manager.store.getSummary("task-a")?.state).toBe("running");
 
 		// Task B: stale permission badge via Path 1 (with alive PID)
 		manager.attach("task-b", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession({ ...defaultTaskRequest, taskId: "task-b" });
 		await setupStalePermissionAfterEscape(manager, "task-b");
-		expect(manager.getSummary("task-b")?.reviewReason).toBe("attention");
+		expect(manager.store.getSummary("task-b")?.reviewReason).toBe("attention");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// Task A: dead process recovered
-		expect(manager.getSummary("task-a")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-a")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-a")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-a")?.reviewReason).toBe("error");
 		// Task B: stale permission cleared
-		expect(manager.getSummary("task-b")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-b")?.latestHookActivity).toBeNull();
 
 		manager.stopReconciliation();
 	});
@@ -639,38 +640,38 @@ describe("Phase 3: proactive latestHookActivity clearing", () => {
 	it("transitionToRunning clears latestHookActivity (50)", async () => {
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
-		manager.transitionToReview("task-1", "hook");
-		manager.applyHookActivity("task-1", {
+		manager.store.transitionToReview("task-1", "hook");
+		manager.store.applyHookActivity("task-1", {
 			hookEventName: "PermissionRequest",
 			activityText: "Waiting for approval",
 			source: "claude",
 		});
-		expect(manager.getSummary("task-1")?.latestHookActivity).not.toBeNull();
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).not.toBeNull();
 
-		manager.transitionToRunning("task-1");
+		manager.store.transitionToRunning("task-1");
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 	});
 
 	it("transitionToRunning with null latestHookActivity is a no-op (51)", async () => {
 		setupMockPtySpawn(process.pid);
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
 		await manager.startTaskSession(defaultTaskRequest);
 
 		// transitionToReview clears latestHookActivity before hook transition
-		manager.transitionToReview("task-1", "hook");
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
+		manager.store.transitionToReview("task-1", "hook");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 
-		manager.transitionToRunning("task-1");
+		manager.store.transitionToRunning("task-1");
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.latestHookActivity).toBeNull();
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.latestHookActivity).toBeNull();
 	});
 });

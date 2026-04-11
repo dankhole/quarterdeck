@@ -138,15 +138,17 @@ describe.sequential("shutdown coordinator integration", () => {
 				const managedTerminalManager = {
 					stopReconciliation: () => {},
 					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
-					listSummaries: () => [createSession("managed-running", "running")],
-					getSummary: (taskId: string) => {
-						if (taskId === "managed-running") {
-							return createSession("managed-running", "running");
-						}
-						if (taskId === "managed-idle") {
-							return createSession("managed-idle", "idle");
-						}
-						return null;
+					store: {
+						listSummaries: () => [createSession("managed-running", "running")],
+						getSummary: (taskId: string) => {
+							if (taskId === "managed-running") {
+								return createSession("managed-running", "running");
+							}
+							if (taskId === "managed-idle") {
+								return createSession("managed-idle", "idle");
+							}
+							return null;
+						},
 					},
 				} as unknown as TerminalSessionManager;
 				await shutdownRuntimeServer({

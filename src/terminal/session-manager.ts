@@ -1,16 +1,7 @@
 // PTY-backed runtime for task sessions and the workspace shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
-import type {
-	ConversationSummaryEntry,
-	RuntimeTaskHookActivity,
-	RuntimeTaskImage,
-	RuntimeTaskSessionReviewReason,
-	RuntimeTaskSessionState,
-	RuntimeTaskSessionSummary,
-	RuntimeTaskTurnCheckpoint,
-} from "../core/api-contract";
-import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -27,7 +18,13 @@ import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } fr
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
 import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
-import { canReturnToRunning, reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
+import { canReturnToRunning } from "./session-state-machine";
+import {
+	cloneSummary,
+	type SessionSummaryStore,
+	type SessionTransitionEvent,
+	type SessionTransitionResult,
+} from "./session-summary-store";
 import {
 	createTerminalProtocolFilterState,
 	disableOscColorQueryIntercept,
@@ -73,8 +70,8 @@ interface ActiveProcessState {
 	interruptRecoveryTimer: NodeJS.Timeout | null;
 }
 
-interface SessionEntry {
-	summary: RuntimeTaskSessionSummary;
+interface ProcessEntry {
+	taskId: string;
 	active: ActiveProcessState | null;
 	terminalStateMirror: TerminalStateMirror | null;
 	listenerIdCounter: number;
@@ -118,48 +115,6 @@ export interface StartShellSessionRequest {
 
 function now(): number {
 	return Date.now();
-}
-
-function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
-	return {
-		taskId,
-		state: "idle",
-		agentId: null,
-		workspacePath: null,
-		pid: null,
-		startedAt: null,
-		updatedAt: now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
-}
-
-function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
-	return {
-		...summary,
-	};
-}
-
-function updateSummary(entry: SessionEntry, patch: Partial<RuntimeTaskSessionSummary>): RuntimeTaskSessionSummary {
-	entry.summary = {
-		...entry.summary,
-		...patch,
-		updatedAt: now(),
-	};
-	return entry.summary;
-}
-
-function isActiveState(state: RuntimeTaskSessionState): boolean {
-	return state === "running" || state === "awaiting_review";
 }
 
 function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
@@ -227,14 +182,30 @@ function clearInterruptRecoveryTimer(active: ActiveProcessState): void {
 }
 
 export class TerminalSessionManager implements TerminalSessionService {
-	private readonly entries = new Map<string, SessionEntry>();
-	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+	readonly store: SessionSummaryStore;
+	private readonly entries = new Map<string, ProcessEntry>();
 	private reconciliationTimer: NodeJS.Timeout | null = null;
+
+	constructor(store: SessionSummaryStore) {
+		this.store = store;
+		// Relay store summary changes to per-task terminal listeners.
+		// This covers mutations from external callers (hooks-api, runtime-api)
+		// that bypass the session manager's own methods.
+		this.store.onChange((summary) => {
+			const entry = this.entries.get(summary.taskId);
+			if (entry?.active) {
+				for (const listener of entry.listeners.values()) {
+					listener.onState?.(cloneSummary(summary));
+				}
+			}
+		});
+	}
 
 	private trySendDeferredCodexStartupInput(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
 		const active = entry?.active;
-		if (!entry || !active || entry.summary.agentId !== "codex") {
+		const summary = this.store.getSummary(taskId);
+		if (!entry || !active || summary?.agentId !== "codex") {
 			return false;
 		}
 		if (active.deferredStartupInput === null) {
@@ -251,7 +222,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return true;
 	}
 
-	private hasLiveOutputListener(entry: SessionEntry): boolean {
+	private hasLiveOutputListener(entry: ProcessEntry): boolean {
 		for (const listener of entry.listeners.values()) {
 			if (listener.onOutput) {
 				return true;
@@ -260,43 +231,26 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return false;
 	}
 
-	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
-		this.summaryListeners.add(listener);
-		return () => {
-			this.summaryListeners.delete(listener);
-		};
-	}
-
+	/**
+	 * Hydrate both the summary store and the process entry map from a persisted
+	 * session record. Called once during workspace bootstrap.
+	 */
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
-		for (const [taskId, summary] of Object.entries(record)) {
-			this.entries.set(taskId, {
-				summary: cloneSummary(summary),
-				active: null,
-				terminalStateMirror: null,
-				listenerIdCounter: 1,
-				listeners: new Map(),
-				restartRequest: null,
-				suppressAutoRestartOnExit: false,
-				autoRestartTimestamps: [],
-				pendingAutoRestart: null,
-				pendingExitResolvers: [],
-			});
+		this.store.hydrateFromRecord(record);
+		for (const taskId of Object.keys(record)) {
+			if (!this.entries.has(taskId)) {
+				this.entries.set(taskId, this.createProcessEntry(taskId));
+			}
 		}
 	}
 
-	getSummary(taskId: string): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		return entry ? cloneSummary(entry.summary) : null;
-	}
-
-	listSummaries(): RuntimeTaskSessionSummary[] {
-		return Array.from(this.entries.values()).map((entry) => cloneSummary(entry.summary));
-	}
-
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
-		const entry = this.ensureEntry(taskId);
+		const entry = this.ensureProcessEntry(taskId);
 
-		listener.onState?.(cloneSummary(entry.summary));
+		const summary = this.store.getSummary(taskId);
+		if (summary) {
+			listener.onState?.(summary);
+		}
 		if (entry.active && listener.onOutput) {
 			disableOscColorQueryIntercept(entry.active.terminalProtocolFilter);
 		}
@@ -319,13 +273,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		const entry = this.ensureEntry(request.taskId);
+		const entry = this.ensureProcessEntry(request.taskId);
 		entry.restartRequest = {
 			kind: "task",
 			request: cloneStartTaskSessionRequest(request),
 		};
-		if (entry.active && isActiveState(entry.summary.state)) {
-			return cloneSummary(entry.summary);
+		const currentSummary = this.store.getSummary(request.taskId);
+		if (
+			entry.active &&
+			currentSummary &&
+			(currentSummary.state === "running" || currentSummary.state === "awaiting_review")
+		) {
+			return currentSummary;
 		}
 
 		if (entry.active) {
@@ -396,10 +355,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					entry.terminalStateMirror?.applyOutput(filteredChunk);
 
+					const liveSummary = this.store.getSummary(request.taskId);
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
 						(entry.active.detectOutputTransition !== null &&
-							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
+							liveSummary !== null &&
+							(entry.active.shouldInspectOutputForTransition?.(liveSummary) ?? true));
 					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
 
 					if (entry.active.workspaceTrustBuffer !== null) {
@@ -431,12 +392,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 							}
 						}
 					}
-					updateSummary(entry, { lastOutputAt: now() });
+					this.store.update(request.taskId, { lastOutputAt: now() });
 
 					// Codex plan-mode startup input is deferred until we know the TUI rendered.
 					// Trigger on either the interactive prompt marker or the startup header text.
+					const agentId = liveSummary?.agentId;
 					if (
-						entry.summary.agentId === "codex" &&
+						agentId === "codex" &&
 						entry.active.deferredStartupInput !== null &&
 						data.length > 0 &&
 						(hasCodexInteractivePrompt(data) ||
@@ -448,21 +410,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 						this.trySendDeferredCodexStartupInput(request.taskId);
 					}
 
-					const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;
+					const adapterEvent = liveSummary
+						? (entry.active.detectOutputTransition?.(data, liveSummary) ?? null)
+						: null;
 					if (adapterEvent) {
 						const requiresEnterForCodex =
 							adapterEvent.type === "agent.prompt-ready" &&
-							entry.summary.agentId === "codex" &&
+							agentId === "codex" &&
 							!entry.active.awaitingCodexPromptAfterEnter;
 						if (!requiresEnterForCodex) {
-							const summary = this.applySessionEvent(entry, adapterEvent);
-							if (adapterEvent.type === "agent.prompt-ready" && entry.summary.agentId === "codex") {
+							this.applySessionEventWithSideEffects(entry, adapterEvent);
+							if (adapterEvent.type === "agent.prompt-ready" && agentId === "codex") {
 								entry.active.awaitingCodexPromptAfterEnter = false;
 							}
-							for (const taskListener of entry.listeners.values()) {
-								taskListener.onState?.(cloneSummary(summary));
-							}
-							this.emitSummary(summary);
 						}
 					}
 
@@ -482,15 +442,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 					stopWorkspaceTrustTimers(currentActive);
 					clearInterruptRecoveryTimer(currentActive);
 
-					const summary = this.applySessionEvent(currentEntry, {
+					const result = this.applySessionEventWithSideEffects(currentEntry, {
 						type: "process.exit",
 						exitCode: event.exitCode,
 						interrupted: currentActive.session.wasInterrupted(),
 					});
 					const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
+					const exitSummary = result?.summary ?? this.store.getSummary(request.taskId);
 
 					for (const taskListener of currentEntry.listeners.values()) {
-						taskListener.onState?.(cloneSummary(summary));
+						if (exitSummary) {
+							taskListener.onState?.(cloneSummary(exitSummary));
+						}
 						taskListener.onExit?.(event.exitCode);
 					}
 					currentEntry.active = null;
@@ -498,7 +461,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 						resolve();
 					}
 					currentEntry.pendingExitResolvers = [];
-					this.emitSummary(summary);
 					if (shouldAutoRestart) {
 						this.scheduleAutoRestart(currentEntry);
 					}
@@ -519,7 +481,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				});
 			}
 			terminalStateMirror.dispose();
-			const summary = updateSummary(entry, {
+			this.store.update(request.taskId, {
 				state: "failed",
 				agentId: request.agentId,
 				workspacePath: request.cwd,
@@ -533,7 +495,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
-			this.emitSummary(summary);
 			throw new Error(formatSpawnFailure(commandBinary, error));
 		}
 
@@ -563,13 +524,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
 
-		const startedAt = now();
-		updateSummary(entry, {
+		const summary = this.store.update(request.taskId, {
 			state: request.awaitReview ? "awaiting_review" : "running",
 			agentId: request.agentId,
 			workspacePath: request.cwd,
 			pid: session.pid,
-			startedAt,
+			startedAt: now(),
 			lastOutputAt: null,
 			reviewReason: request.awaitReview ? "attention" : null,
 			exitCode: null,
@@ -579,19 +539,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
-		this.emitSummary(entry.summary);
 
-		return cloneSummary(entry.summary);
+		return summary ?? this.store.ensureEntry(request.taskId);
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		const entry = this.ensureEntry(request.taskId);
+		const entry = this.ensureProcessEntry(request.taskId);
 		entry.restartRequest = {
 			kind: "shell",
 			request: cloneStartShellSessionRequest(request),
 		};
-		if (entry.active && entry.summary.state === "running") {
-			return cloneSummary(entry.summary);
+		const currentSummary = this.store.getSummary(request.taskId);
+		if (entry.active && currentSummary?.state === "running") {
+			return currentSummary;
 		}
 
 		if (entry.active) {
@@ -646,7 +606,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 							);
 						}
 					}
-					updateSummary(entry, { lastOutputAt: now() });
+					this.store.update(request.taskId, { lastOutputAt: now() });
 
 					for (const taskListener of entry.listeners.values()) {
 						taskListener.onOutput?.(filteredChunk);
@@ -664,7 +624,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					stopWorkspaceTrustTimers(currentActive);
 					clearInterruptRecoveryTimer(currentActive);
 
-					const summary = updateSummary(currentEntry, {
+					const summary = this.store.update(request.taskId, {
 						state: currentActive.session.wasInterrupted() ? "interrupted" : "idle",
 						reviewReason: currentActive.session.wasInterrupted() ? "interrupted" : null,
 						exitCode: event.exitCode,
@@ -672,16 +632,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 					});
 
 					for (const taskListener of currentEntry.listeners.values()) {
-						taskListener.onState?.(cloneSummary(summary));
+						if (summary) {
+							taskListener.onState?.(cloneSummary(summary));
+						}
 						taskListener.onExit?.(event.exitCode);
 					}
 					currentEntry.active = null;
-					this.emitSummary(summary);
 				},
 			});
 		} catch (error) {
 			terminalStateMirror.dispose();
-			const summary = updateSummary(entry, {
+			this.store.update(request.taskId, {
 				state: "failed",
 				agentId: null,
 				workspacePath: request.cwd,
@@ -695,7 +656,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
-			this.emitSummary(summary);
 			throw new Error(formatShellSpawnFailure(request.binary, error));
 		}
 
@@ -719,7 +679,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
 
-		updateSummary(entry, {
+		const summary = this.store.update(request.taskId, {
 			state: "running",
 			agentId: null,
 			workspacePath: request.cwd,
@@ -734,18 +694,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
-		this.emitSummary(entry.summary);
 
-		return cloneSummary(entry.summary);
+		return summary ?? this.store.ensureEntry(request.taskId);
 	}
 
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
-		if (!entry) {
+		const summary = this.store.getSummary(taskId);
+		if (!summary) {
 			return null;
 		}
-		if (entry.active || !isActiveState(entry.summary.state)) {
-			return cloneSummary(entry.summary);
+		if (entry?.active || (summary.state !== "running" && summary.state !== "awaiting_review")) {
+			return summary;
 		}
 
 		// The session is in an active state (running or awaiting_review) but has
@@ -759,49 +719,25 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// 2. The entry was hydrated from persisted state after a server restart.
 		//    restartRequest is null — we don't have the launch parameters and the
 		//    process is genuinely gone. Reset to idle.
-		if (entry.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
+		if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
 			// Clean exit (code 0) means the agent finished its work — restarting
 			// would re-run it from scratch. Keep the state as-is so the user can
 			// review the completed work in the terminal.
-			if (entry.summary.reviewReason === "exit") {
-				return cloneSummary(entry.summary);
+			if (summary.reviewReason === "exit") {
+				return summary;
 			}
 			// Error exits, stale hook/attention reviews, or running state without a
 			// process — attempt restart now that a viewer is reconnecting.
-			const summary = updateSummary(entry, {
+			const updated = this.store.update(taskId, {
 				state: "awaiting_review",
 				reviewReason: "error",
 			});
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-			this.emitSummary(summary);
 			this.scheduleAutoRestart(entry);
-			return cloneSummary(summary);
+			return updated;
 		}
 
 		// Hydrated entry or shell session — reset to idle.
-		// Preserve agentId so the server can route to the correct agent type
-		// when a task is restored from trash.
-		const summary = updateSummary(entry, {
-			state: "idle",
-			workspacePath: null,
-			pid: null,
-			startedAt: null,
-			lastOutputAt: null,
-			reviewReason: null,
-			exitCode: null,
-			lastHookAt: null,
-			latestHookActivity: null,
-			latestTurnCheckpoint: null,
-			previousTurnCheckpoint: null,
-		});
-
-		for (const listener of entry.listeners.values()) {
-			listener.onState?.(cloneSummary(summary));
-		}
-		this.emitSummary(summary);
-		return cloneSummary(summary);
+		return this.store.recoverStaleSession(taskId);
 	}
 
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
@@ -809,12 +745,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.active) {
 			return null;
 		}
+		const summary = this.store.getSummary(taskId);
 		if (
-			entry.summary.agentId === "codex" &&
-			entry.summary.state === "awaiting_review" &&
-			(entry.summary.reviewReason === "hook" ||
-				entry.summary.reviewReason === "attention" ||
-				entry.summary.reviewReason === "error") &&
+			summary?.agentId === "codex" &&
+			summary.state === "awaiting_review" &&
+			(summary.reviewReason === "hook" ||
+				summary.reviewReason === "attention" ||
+				summary.reviewReason === "error") &&
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
@@ -827,12 +764,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// since the state is already "running".
 		// Codex is excluded — it uses detectOutputTransition for its own prompt-ready flow.
 		if (
-			entry.summary.agentId !== "codex" &&
-			entry.summary.state === "awaiting_review" &&
-			canReturnToRunning(entry.summary.reviewReason) &&
+			summary?.agentId !== "codex" &&
+			summary?.state === "awaiting_review" &&
+			canReturnToRunning(summary.reviewReason) &&
 			(data.includes(13) || data.includes(10))
 		) {
-			this.applyTransitionToRunning(entry);
+			this.store.transitionToRunning(taskId);
 		}
 
 		// Detect user interrupt signals — suppress auto-restart and schedule recovery
@@ -841,13 +778,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// (longer buffers starting with 0x1B are ANSI escape sequences, not bare Escape).
 		const isCtrlC = data.length <= MAX_SIGINT_DETECT_BUFFER_SIZE && data.includes(SIGINT_BYTE);
 		const isBareEscape = data.length === 1 && data[0] === ESC_BYTE;
-		if (entry.summary.state === "running" && (isCtrlC || isBareEscape)) {
+		if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
 			entry.suppressAutoRestartOnExit = true;
 			this.scheduleInterruptRecovery(entry);
 		}
 
 		entry.active.session.write(data);
-		return cloneSummary(entry.summary);
+		return this.store.getSummary(taskId);
 	}
 
 	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean {
@@ -888,260 +825,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return true;
 	}
 
-	transitionToReview(taskId: string, reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-		if (reason !== "hook") {
-			return cloneSummary(entry.summary);
-		}
-		const before = entry.summary;
-		// RC4 invariant: Do NOT clear latestHookActivity here. The caller (hooks-api.ts)
-		// calls applyHookActivity immediately after this method in the same synchronous tick,
-		// which replaces the activity atomically via isNewEvent=true clearing. Clearing here
-		// would create a null-window observable by WebSocket listeners between transitionToReview
-		// and applyHookActivity. See SDD: 2026-04-09-fix-stuck-approval-state.md Phase 1.
-		const summary = this.applySessionEvent(entry, { type: "hook.to_review" });
-		if (summary !== before && entry.active) {
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-			this.emitSummary(summary);
-		}
-		return cloneSummary(summary);
-	}
-
-	applyHookActivity(taskId: string, activity: Partial<RuntimeTaskHookActivity>): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-
-		const hasActivityUpdate =
-			typeof activity.activityText === "string" ||
-			typeof activity.toolName === "string" ||
-			typeof activity.toolInputSummary === "string" ||
-			typeof activity.finalMessage === "string" ||
-			typeof activity.hookEventName === "string" ||
-			typeof activity.notificationType === "string" ||
-			typeof activity.source === "string";
-		if (!hasActivityUpdate) {
-			return cloneSummary(entry.summary);
-		}
-
-		const previous = entry.summary.latestHookActivity;
-		const isNewEvent = typeof activity.hookEventName === "string" || typeof activity.notificationType === "string";
-		const next: RuntimeTaskHookActivity = {
-			activityText:
-				typeof activity.activityText === "string"
-					? activity.activityText
-					: isNewEvent
-						? null
-						: (previous?.activityText ?? null),
-			// NOTE: toolName and toolInputSummary always carry forward (not cleared on new events).
-			// The UI doesn't currently render these, but if it starts to, they should be cleared
-			// on new events like activityText/finalMessage above to avoid showing stale tool context.
-			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
-			toolInputSummary:
-				typeof activity.toolInputSummary === "string"
-					? activity.toolInputSummary
-					: (previous?.toolInputSummary ?? null),
-			finalMessage:
-				typeof activity.finalMessage === "string"
-					? activity.finalMessage
-					: isNewEvent
-						? null
-						: (previous?.finalMessage ?? null),
-			hookEventName:
-				typeof activity.hookEventName === "string"
-					? activity.hookEventName
-					: isNewEvent
-						? null
-						: (previous?.hookEventName ?? null),
-			notificationType:
-				typeof activity.notificationType === "string"
-					? activity.notificationType
-					: isNewEvent
-						? null
-						: (previous?.notificationType ?? null),
-			source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
-			conversationSummaryText:
-				typeof activity.conversationSummaryText === "string"
-					? activity.conversationSummaryText
-					: (previous?.conversationSummaryText ?? null),
-		};
-
-		const didChange =
-			next.activityText !== (previous?.activityText ?? null) ||
-			next.toolName !== (previous?.toolName ?? null) ||
-			next.toolInputSummary !== (previous?.toolInputSummary ?? null) ||
-			next.finalMessage !== (previous?.finalMessage ?? null) ||
-			next.hookEventName !== (previous?.hookEventName ?? null) ||
-			next.notificationType !== (previous?.notificationType ?? null) ||
-			next.source !== (previous?.source ?? null) ||
-			next.conversationSummaryText !== (previous?.conversationSummaryText ?? null);
-		if (!didChange) {
-			return cloneSummary(entry.summary);
-		}
-
-		const summary = updateSummary(entry, {
-			lastHookAt: now(),
-			latestHookActivity: next,
-		});
-		if (entry.active) {
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-		}
-		this.emitSummary(summary);
-		return cloneSummary(summary);
-	}
-
-	appendConversationSummary(
-		taskId: string,
-		entry: { text: string; capturedAt: number },
-	): RuntimeTaskSessionSummary | null {
-		const sessionEntry = this.entries.get(taskId);
-		if (!sessionEntry) {
-			return null;
-		}
-
-		// Truncate text to 500 chars as a safety net (parser already caps at 500).
-		const text = entry.text.length > 500 ? `${entry.text.slice(0, 500)}\u2026` : entry.text;
-
-		// Auto-assign sessionIndex from the highest existing index.
-		const existing = sessionEntry.summary.conversationSummaries ?? [];
-		const maxIndex = existing.reduce((max, e) => Math.max(max, e.sessionIndex), -1);
-		const newEntry: ConversationSummaryEntry = {
-			text,
-			capturedAt: entry.capturedAt,
-			sessionIndex: maxIndex + 1,
-		};
-
-		let entries = [...existing, newEntry];
-
-		// Retention: count limit first (max 5), then character cap (max 2000).
-		// Always retain the first entry (index 0 in array) and the latest (just appended).
-		if (entries.length > 5) {
-			const first = entries[0];
-			const latest = entries[entries.length - 1];
-			// Drop oldest non-first entries until count <= 5.
-			const middle = entries.slice(1, -1);
-			const keep = 5 - 2; // slots for first + latest
-			entries = [first, ...middle.slice(middle.length - keep), latest];
-		}
-
-		// Character cap: sum all text lengths, drop oldest non-first (excluding latest) until <= 2000.
-		while (entries.length > 2) {
-			const totalChars = entries.reduce((sum, e) => sum + e.text.length, 0);
-			if (totalChars <= 2000) break;
-			// Drop the second entry (oldest non-first, excluding latest which is last).
-			entries.splice(1, 1);
-		}
-
-		// Only overwrite displaySummary with raw text if there's no existing LLM-generated
-		// summary. When the user has autoGenerateSummary enabled, we don't want a raw last
-		// message to clobber a nicely condensed LLM summary. We preserve
-		// displaySummaryGeneratedAt so it continues to act as a sentinel — staleness is
-		// detected by comparing the generation timestamp against conversationSummaries
-		// capturedAt in the generateDisplaySummary endpoint.
-		const hasLlmSummary = sessionEntry.summary.displaySummaryGeneratedAt !== null;
-		const rawDisplay =
-			text.length > DISPLAY_SUMMARY_MAX_LENGTH ? `${text.slice(0, DISPLAY_SUMMARY_MAX_LENGTH)}\u2026` : text;
-
-		const summaryUpdate: Record<string, unknown> = {
-			conversationSummaries: entries,
-		};
-		if (!hasLlmSummary) {
-			summaryUpdate.displaySummary = rawDisplay;
-		}
-
-		const summary = updateSummary(sessionEntry, summaryUpdate);
-		if (sessionEntry.active) {
-			for (const listener of sessionEntry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-		}
-		this.emitSummary(summary);
-		return cloneSummary(summary);
-	}
-
-	/**
-	 * Set the display summary for a task. Used both by the raw fallback (on hook
-	 * ingest when LLM generation is off) and by the LLM-generated path.
-	 */
-	setDisplaySummary(taskId: string, text: string, generatedAt: number | null): RuntimeTaskSessionSummary | null {
-		const sessionEntry = this.entries.get(taskId);
-		if (!sessionEntry) {
-			return null;
-		}
-		const summary = updateSummary(sessionEntry, {
-			displaySummary: text,
-			displaySummaryGeneratedAt: generatedAt,
-		});
-		if (sessionEntry.active) {
-			for (const listener of sessionEntry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-		}
-		this.emitSummary(summary);
-		return cloneSummary(summary);
-	}
-
-	transitionToRunning(taskId: string): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-		this.applyTransitionToRunning(entry);
-		return cloneSummary(entry.summary);
-	}
-
-	private applyTransitionToRunning(entry: SessionEntry): void {
-		const before = entry.summary;
-		const summary = this.applySessionEvent(entry, { type: "hook.to_in_progress" });
-		if (summary !== before) {
-			if (summary.latestHookActivity) {
-				updateSummary(entry, { latestHookActivity: null });
-			}
-			if (entry.active) {
-				for (const listener of entry.listeners.values()) {
-					listener.onState?.(cloneSummary(entry.summary));
-				}
-			}
-			this.emitSummary(entry.summary);
-		}
-	}
-
-	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
-
-		const latestCheckpoint = entry.summary.latestTurnCheckpoint ?? null;
-		if (latestCheckpoint?.ref === checkpoint.ref && latestCheckpoint.commit === checkpoint.commit) {
-			return cloneSummary(entry.summary);
-		}
-
-		const summary = updateSummary(entry, {
-			previousTurnCheckpoint: latestCheckpoint,
-			latestTurnCheckpoint: checkpoint,
-		});
-		if (entry.active) {
-			for (const listener of entry.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-		}
-		this.emitSummary(summary);
-		return cloneSummary(summary);
-	}
-
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
-			return entry ? cloneSummary(entry.summary) : null;
+			return this.store.getSummary(taskId);
 		}
 		entry.suppressAutoRestartOnExit = true;
 		const cleanupFn = entry.active.onSessionCleanup;
@@ -1154,7 +841,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				// Best effort: cleanup failure is non-critical.
 			});
 		}
-		return cloneSummary(entry.summary);
+		return this.store.getSummary(taskId);
 	}
 
 	/**
@@ -1164,7 +851,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	async stopTaskSessionAndWaitForExit(taskId: string, timeoutMs = 5_000): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
-			return entry ? cloneSummary(entry.summary) : null;
+			return this.store.getSummary(taskId);
 		}
 		const exitPromise = new Promise<void>((resolve) => {
 			entry.pendingExitResolvers.push(resolve);
@@ -1172,115 +859,21 @@ export class TerminalSessionManager implements TerminalSessionService {
 		this.stopTaskSession(taskId);
 		const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 		await Promise.race([exitPromise, timeout]);
-		return entry ? cloneSummary(entry.summary) : null;
+		return this.store.getSummary(taskId);
 	}
 
 	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
-		const activeEntries = Array.from(this.entries.values()).filter((entry) => entry.active != null);
-		for (const entry of activeEntries) {
+		const activeTaskIds: string[] = [];
+		for (const entry of this.entries.values()) {
 			if (!entry.active) {
 				continue;
 			}
+			activeTaskIds.push(entry.taskId);
 			stopWorkspaceTrustTimers(entry.active);
 			clearInterruptRecoveryTimer(entry.active);
 			entry.active.session.stop({ interrupted: true });
 		}
-		return activeEntries.map((entry) => cloneSummary(entry.summary));
-	}
-
-	private applySessionEvent(entry: SessionEntry, event: SessionTransitionEvent): RuntimeTaskSessionSummary {
-		const transition = reduceSessionTransition(entry.summary, event);
-		if (!transition.changed) {
-			return entry.summary;
-		}
-		if (transition.clearAttentionBuffer && entry.active) {
-			if (entry.active.workspaceTrustBuffer !== null) {
-				entry.active.workspaceTrustBuffer = "";
-			}
-		}
-		if (entry.active && transition.changed && transition.patch.state === "awaiting_review") {
-			entry.active.awaitingCodexPromptAfterEnter = false;
-		}
-		return updateSummary(entry, transition.patch);
-	}
-
-	private ensureEntry(taskId: string): SessionEntry {
-		const existing = this.entries.get(taskId);
-		if (existing) {
-			return existing;
-		}
-		const created: SessionEntry = {
-			summary: createDefaultSummary(taskId),
-			active: null,
-			terminalStateMirror: null,
-			listenerIdCounter: 1,
-			listeners: new Map(),
-			restartRequest: null,
-			suppressAutoRestartOnExit: false,
-			autoRestartTimestamps: [],
-			pendingAutoRestart: null,
-			pendingExitResolvers: [],
-		};
-		this.entries.set(taskId, created);
-		return created;
-	}
-
-	private shouldAutoRestart(entry: SessionEntry): boolean {
-		const wasSuppressed = entry.suppressAutoRestartOnExit;
-		entry.suppressAutoRestartOnExit = false;
-		if (wasSuppressed) {
-			return false;
-		}
-		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
-			return false;
-		}
-		const currentTime = now();
-		entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(
-			(timestamp) => currentTime - timestamp < AUTO_RESTART_WINDOW_MS,
-		);
-		if (entry.autoRestartTimestamps.length >= MAX_AUTO_RESTARTS_PER_WINDOW) {
-			return false;
-		}
-		entry.autoRestartTimestamps.push(currentTime);
-		return true;
-	}
-
-	private scheduleAutoRestart(entry: SessionEntry): void {
-		if (entry.pendingAutoRestart) {
-			return;
-		}
-		const restartRequest = entry.restartRequest;
-		if (!restartRequest || restartRequest.kind !== "task") {
-			return;
-		}
-		let pendingAutoRestart: Promise<void> | null = null;
-		pendingAutoRestart = (async () => {
-			try {
-				const request = cloneStartTaskSessionRequest(restartRequest.request);
-				// Don't carry resumeConversation into auto-restarts. If the original
-				// --continue attempt failed (e.g. "No conversation found"), retrying
-				// with --continue would just fail again. Start a fresh session instead.
-				request.resumeConversation = false;
-				request.awaitReview = false;
-				await this.startTaskSession(request);
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				const summary = updateSummary(entry, {
-					warningMessage: message,
-				});
-				const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
-				for (const listener of entry.listeners.values()) {
-					listener.onOutput?.(output);
-					listener.onState?.(cloneSummary(summary));
-				}
-				this.emitSummary(summary);
-			} finally {
-				if (entry.pendingAutoRestart === pendingAutoRestart) {
-					entry.pendingAutoRestart = null;
-				}
-			}
-		})();
-		entry.pendingAutoRestart = pendingAutoRestart;
+		return this.store.markAllInterrupted(activeTaskIds);
 	}
 
 	startReconciliation(): void {
@@ -1300,27 +893,146 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 	}
 
+	// ── Private helpers ──────────────────────────────────────────────────
+
+	/**
+	 * Apply a session state machine event via the store and handle process-side
+	 * side effects (clearing attention buffer, resetting codex flags).
+	 */
+	private applySessionEventWithSideEffects(
+		entry: ProcessEntry,
+		event: SessionTransitionEvent,
+	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
+		const result = this.store.applySessionEvent(entry.taskId, event);
+		if (!result?.changed) {
+			return result;
+		}
+		if (result.clearAttentionBuffer && entry.active) {
+			if (entry.active.workspaceTrustBuffer !== null) {
+				entry.active.workspaceTrustBuffer = "";
+			}
+		}
+		if (entry.active && result.patch.state === "awaiting_review") {
+			entry.active.awaitingCodexPromptAfterEnter = false;
+		}
+		return result;
+	}
+
+	private createProcessEntry(taskId: string): ProcessEntry {
+		return {
+			taskId,
+			active: null,
+			terminalStateMirror: null,
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+			pendingExitResolvers: [],
+		};
+	}
+
+	private ensureProcessEntry(taskId: string): ProcessEntry {
+		const existing = this.entries.get(taskId);
+		if (existing) {
+			return existing;
+		}
+		this.store.ensureEntry(taskId);
+		const created = this.createProcessEntry(taskId);
+		this.entries.set(taskId, created);
+		return created;
+	}
+
+	private shouldAutoRestart(entry: ProcessEntry): boolean {
+		const wasSuppressed = entry.suppressAutoRestartOnExit;
+		entry.suppressAutoRestartOnExit = false;
+		if (wasSuppressed) {
+			return false;
+		}
+		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
+			return false;
+		}
+		const currentTime = now();
+		entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(
+			(timestamp) => currentTime - timestamp < AUTO_RESTART_WINDOW_MS,
+		);
+		if (entry.autoRestartTimestamps.length >= MAX_AUTO_RESTARTS_PER_WINDOW) {
+			return false;
+		}
+		entry.autoRestartTimestamps.push(currentTime);
+		return true;
+	}
+
+	private scheduleAutoRestart(entry: ProcessEntry): void {
+		if (entry.pendingAutoRestart) {
+			return;
+		}
+		const restartRequest = entry.restartRequest;
+		if (!restartRequest || restartRequest.kind !== "task") {
+			return;
+		}
+		let pendingAutoRestart: Promise<void> | null = null;
+		pendingAutoRestart = (async () => {
+			try {
+				const request = cloneStartTaskSessionRequest(restartRequest.request);
+				// Don't carry resumeConversation into auto-restarts. If the original
+				// --continue attempt failed (e.g. "No conversation found"), retrying
+				// with --continue would just fail again. Start a fresh session instead.
+				request.resumeConversation = false;
+				request.awaitReview = false;
+				await this.startTaskSession(request);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				const summary = this.store.update(entry.taskId, {
+					warningMessage: message,
+				});
+				const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
+				for (const listener of entry.listeners.values()) {
+					listener.onOutput?.(output);
+					if (summary) {
+						listener.onState?.(cloneSummary(summary));
+					}
+				}
+			} finally {
+				if (entry.pendingAutoRestart === pendingAutoRestart) {
+					entry.pendingAutoRestart = null;
+				}
+			}
+		})();
+		entry.pendingAutoRestart = pendingAutoRestart;
+	}
+
 	private reconcileSessionStates(): void {
 		const nowMs = Date.now();
 		for (const entry of this.entries.values()) {
 			try {
-				if (!isActiveState(entry.summary.state)) {
+				const summary = this.store.getSummary(entry.taskId);
+				if (!summary || (summary.state !== "running" && summary.state !== "awaiting_review")) {
 					continue;
 				}
 				for (const check of reconciliationChecks) {
-					const action = check(entry, nowMs);
+					const action = check(
+						{
+							summary,
+							active: entry.active,
+							restartRequest: entry.restartRequest,
+							pendingAutoRestart: entry.pendingAutoRestart,
+						},
+						nowMs,
+					);
 					if (action) {
 						this.applyReconciliationAction(entry, action);
 						break;
 					}
 				}
 			} catch (err) {
-				console.error(`[reconciliation] Error processing ${entry.summary.taskId}:`, err);
+				console.error(`[reconciliation] Error processing ${entry.taskId}:`, err);
 			}
 		}
 	}
 
-	private applyReconciliationAction(entry: SessionEntry, action: ReconciliationAction): void {
+	private applyReconciliationAction(entry: ProcessEntry, action: ReconciliationAction): void {
 		switch (action.type) {
 			case "recover_dead_process": {
 				if (!entry.active) break;
@@ -1328,13 +1040,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 				clearInterruptRecoveryTimer(entry.active);
 				const cleanupFn = entry.active.onSessionCleanup;
 				entry.active.onSessionCleanup = null;
-				const summary = this.applySessionEvent(entry, {
+				const result = this.applySessionEventWithSideEffects(entry, {
 					type: "process.exit",
 					exitCode: null,
 					interrupted: false,
 				});
+				const summary = result?.summary ?? this.store.getSummary(entry.taskId);
 				for (const listener of entry.listeners.values()) {
-					listener.onState?.(cloneSummary(summary));
+					if (summary) {
+						listener.onState?.(cloneSummary(summary));
+					}
 					listener.onExit?.(null);
 				}
 				entry.active = null;
@@ -1342,66 +1057,45 @@ export class TerminalSessionManager implements TerminalSessionService {
 					resolve();
 				}
 				entry.pendingExitResolvers = [];
-				this.emitSummary(summary);
 				if (cleanupFn) {
 					cleanupFn().catch(() => {});
 				}
 				break;
 			}
 			case "mark_processless_error": {
-				const summary = updateSummary(entry, {
+				this.store.update(entry.taskId, {
 					state: "awaiting_review",
 					reviewReason: "error",
 				});
-				for (const listener of entry.listeners.values()) {
-					listener.onState?.(cloneSummary(summary));
-				}
-				this.emitSummary(summary);
 				break;
 			}
 			case "clear_hook_activity": {
-				const summary = updateSummary(entry, { latestHookActivity: null });
-				if (entry.active) {
-					for (const listener of entry.listeners.values()) {
-						listener.onState?.(cloneSummary(summary));
-					}
-				}
-				this.emitSummary(summary);
+				this.store.update(entry.taskId, { latestHookActivity: null });
 				break;
 			}
 		}
 	}
 
-	private scheduleInterruptRecovery(entry: SessionEntry): void {
+	private scheduleInterruptRecovery(entry: ProcessEntry): void {
 		if (!entry.active) {
 			return;
 		}
 		clearInterruptRecoveryTimer(entry.active);
-		const taskId = entry.summary.taskId;
+		const taskId = entry.taskId;
 		entry.active.interruptRecoveryTimer = setTimeout(() => {
 			const current = this.entries.get(taskId);
 			if (!current?.active) {
 				return;
 			}
 			current.active.interruptRecoveryTimer = null;
-			if (current.summary.state !== "running") {
+			const summary = this.store.getSummary(taskId);
+			if (summary?.state !== "running") {
 				return;
 			}
 			// Always transition — even if the agent produced output after the interrupt
 			// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
 			// still working, its next hook will move the card back to running.
-			const summary = this.applySessionEvent(current, { type: "interrupt.recovery" });
-			for (const listener of current.listeners.values()) {
-				listener.onState?.(cloneSummary(summary));
-			}
-			this.emitSummary(summary);
+			this.applySessionEventWithSideEffects(current, { type: "interrupt.recovery" });
 		}, INTERRUPT_RECOVERY_DELAY_MS);
-	}
-
-	private emitSummary(summary: RuntimeTaskSessionSummary): void {
-		const snapshot = cloneSummary(summary);
-		for (const listener of this.summaryListeners) {
-			listener(snapshot);
-		}
 	}
 }

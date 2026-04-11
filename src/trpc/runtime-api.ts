@@ -155,7 +155,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const previousTerminalAgentId = body.resumeConversation
-					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
+					? (terminalManager.store.getSummary(body.taskId)?.agentId ?? null)
 					: null;
 				const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
 
@@ -200,7 +200,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							taskId: body.taskId,
 							turn: nextTurn,
 						});
-						nextSummary = terminalManager.applyTurnCheckpoint(body.taskId, checkpoint) ?? summary;
+						nextSummary = terminalManager.store.applyTurnCheckpoint(body.taskId, checkpoint) ?? summary;
 					} catch {
 						// Best effort checkpointing only.
 					}
@@ -392,7 +392,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				}
 
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const summary = terminalManager.getSummary(input.taskId);
+				const summary = terminalManager.store.getSummary(input.taskId);
 				const wasRunning = summary && (summary.state === "running" || summary.state === "awaiting_review");
 				log("wasRunning:", wasRunning, "state:", summary?.state ?? "no session");
 

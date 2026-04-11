@@ -134,43 +134,35 @@ Two related bugs with the notification audio system:
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 16. Decouple session summary dual-sourcing between terminal and state layers
-
-The terminal layer (`TerminalSessionManager`) owns session summaries in memory, but the state/persistence layer reads them back via `listSummaries()` to persist. This creates a one-directional but tight coupling between 7 files. The TRPC layer also makes direct mutation calls into the terminal layer (10+ methods on the public surface).
-
-**Context**: Research doc at [docs/research/2026-04-10-session-summary-dual-sourcing.md](research/2026-04-10-session-summary-dual-sourcing.md) covers the full data flow, files involved, and three decoupling options.
-
-**Recommendation**: If the Go rewrite (#1) happens soon, design the session store correctly from the start — the current coupling maps cleanly to a Go interface. If TypeScript needs to live longer, extract a `SessionSummaryStore` service (~2-3 days).
-
-## 17. Archive stale docs (recurring)
+## 16. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 18. Move agent chat out of the project switcher sidebar
+## 17. Move agent chat out of the project switcher sidebar
 
 The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
 
-## 19. Slow project switching — cache or preload board state
+## 18. Slow project switching — cache or preload board state
 
 Switching projects has a noticeable delay because the board tasks take a moment to load after the switch. Investigate caching strategies to make project switching feel instant — e.g. keeping the previous project's board state in memory, preloading the target project's state in the background when hovering or when the project switcher is open, or caching the last-known board state client-side so it can render immediately while fresh data loads behind it.
 
-## 20. Independent sidebar widths per panel type (post diff rewrite)
+## 19. Independent sidebar widths per panel type (post diff rewrite)
 
 The sidebar width is currently shared across all panel types — the task column, project switcher, and git diff sidebar all use the same width. These panels have different content density and ideal widths, so resizing one shouldn't affect the others. Store and restore sidebar width independently per panel type (e.g. task column, project switcher, changes/diff) so each remembers its own preferred width. This should be done after the diff viewer rewrite lands.
 
-## 21. Un-trashing shared-workspace tasks clobbers session state
+## 20. Un-trashing shared-workspace tasks clobbers session state
 
 When un-trashing tasks that share the main repo (no isolated worktree), the restore logic reattaches to the most recent agent chat session rather than the original session that belonged to that task. This means un-trashing multiple shared-workspace tasks doesn't work — each subsequent un-trash steals the session from the previously restored task, and any external agent session started in the same workspace will replace it too. The root issue is that shared-workspace tasks all compete for a single "current session" with no per-task session scoping. Needs a way to associate and restore the correct session per task, even when they share a workspace.
 
 Related: #9 (un-trash / restart paths for non-isolated worktrees).
 
-## 22. Un-trash doesn't always auto-resume the agent session
+## 21. Un-trash doesn't always auto-resume the agent session
 
 After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context — the agent session isn't fully restored. Manually typing `/resume` in the terminal works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash and ensure the full session context is restored automatically. Observed primarily with isolated worktree tasks but may affect shared-workspace tasks too.
 
 Related: #2 (resume sessions after crash/closure), #9 (un-trash / restart paths for non-isolated worktrees).
 
-## 23. Task stuck in "running" when agent is waiting for permission
+## 22. Task stuck in "running" when agent is waiting for permission
 
 A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
 

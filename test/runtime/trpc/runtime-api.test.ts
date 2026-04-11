@@ -136,12 +136,37 @@ function emptyBoard() {
 	};
 }
 
-function createDeps(terminalManager: Record<string, unknown> = {}) {
+/** Summary method names that now live on manager.store instead of manager directly. */
+const STORE_METHOD_NAMES = new Set([
+	"getSummary",
+	"listSummaries",
+	"applyTurnCheckpoint",
+	"transitionToReview",
+	"transitionToRunning",
+	"applyHookActivity",
+	"appendConversationSummary",
+	"setDisplaySummary",
+]);
+
+/**
+ * Build a fake TerminalSessionManager from a flat Record. Keys matching store
+ * method names are placed under `.store`; the rest stay at the top level.
+ */
+function createDeps(flat: Record<string, unknown> = {}) {
+	const store: Record<string, unknown> = {};
+	const manager: Record<string, unknown> = { store };
+	for (const [key, value] of Object.entries(flat)) {
+		if (STORE_METHOD_NAMES.has(key)) {
+			store[key] = value;
+		} else {
+			manager[key] = value;
+		}
+	}
 	return {
 		getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 		loadScopedRuntimeConfig: vi.fn(async () => createTestRuntimeConfigState()),
 		setActiveRuntimeConfig: vi.fn(),
-		getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+		getScopedTerminalManager: vi.fn(async () => manager as never),
 		resolveInteractiveShellCommand: vi.fn(),
 		runCommand: vi.fn(),
 		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),

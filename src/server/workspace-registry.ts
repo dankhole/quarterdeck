@@ -16,6 +16,7 @@ import {
 	removeWorkspaceStateFiles,
 } from "../state/workspace-state";
 import { TerminalSessionManager } from "../terminal/session-manager";
+import { InMemorySessionSummaryStore } from "../terminal/session-summary-store";
 
 export interface WorkspaceRegistryScope {
 	workspaceId: string;
@@ -235,7 +236,8 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			return loaded;
 		}
 		const loading = (async () => {
-			const manager = new TerminalSessionManager();
+			const store = new InMemorySessionSummaryStore();
+			const manager = new TerminalSessionManager(store);
 			try {
 				const existingWorkspace = await loadWorkspaceState(repoPath);
 				manager.hydrateFromRecord(existingWorkspace.sessions);
@@ -303,7 +305,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 				return persistedCounts;
 			}
 			const liveSessionsByTaskId: RuntimeWorkspaceStateResponse["sessions"] = {};
-			for (const summary of terminalManager.listSummaries()) {
+			for (const summary of terminalManager.store.listSummaries()) {
 				liveSessionsByTaskId[summary.taskId] = summary;
 			}
 			const nextCounts = applyLiveSessionStateToProjectTaskCounts(persistedCounts, board, liveSessionsByTaskId);
@@ -320,7 +322,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 	): Promise<RuntimeWorkspaceStateResponse> => {
 		const response = await loadWorkspaceState(workspacePath);
 		const terminalManager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
-		for (const summary of terminalManager.listSummaries()) {
+		for (const summary of terminalManager.store.listSummaries()) {
 			response.sessions[summary.taskId] = summary;
 		}
 		return response;

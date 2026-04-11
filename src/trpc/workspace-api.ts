@@ -304,7 +304,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					workspaceScope.workspaceId,
 					workspaceScope.workspacePath,
 				);
-				const summary = terminalManager.getSummary(normalizedInput.taskId);
+				const summary = terminalManager.store.getSummary(normalizedInput.taskId);
 				const fromCheckpoint = summary?.previousTurnCheckpoint;
 				const toCheckpoint = summary?.latestTurnCheckpoint;
 				if (!toCheckpoint) {
@@ -489,7 +489,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					workspaceScope.workspaceId,
 					workspaceScope.workspacePath,
 				);
-				for (const summary of terminalManager.listSummaries()) {
+				for (const summary of terminalManager.store.listSummaries()) {
 					input.sessions[summary.taskId] = summary;
 				}
 				const response = await saveWorkspaceState(workspaceScope.workspacePath, input);
@@ -577,7 +577,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				workspaceScope.workspaceId,
 				workspaceScope.workspacePath,
 			);
-			manager.setDisplaySummary(taskId, text, generatedAt);
+			manager.store.setDisplaySummary(taskId, text, generatedAt);
 			void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
 		},
 		setFocusedTask: (workspaceScope, taskId) => {

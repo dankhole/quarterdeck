@@ -137,23 +137,25 @@ describe("createWorkspaceApi loadChanges", () => {
 
 	it("shows the completed turn diff while awaiting review", async () => {
 		const terminalManager = {
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "awaiting_review",
-					latestTurnCheckpoint: {
-						turn: 2,
-						ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
-						commit: "2222222",
-						createdAt: 2,
-					},
-					previousTurnCheckpoint: {
-						turn: 1,
-						ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-						commit: "1111111",
-						createdAt: 1,
-					},
-				}),
-			),
+			store: {
+				getSummary: vi.fn(() =>
+					createSummary({
+						state: "awaiting_review",
+						latestTurnCheckpoint: {
+							turn: 2,
+							ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
+							commit: "2222222",
+							createdAt: 2,
+						},
+						previousTurnCheckpoint: {
+							turn: 1,
+							ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
+							commit: "1111111",
+							createdAt: 1,
+						},
+					}),
+				),
+			},
 		};
 
 		const api = createWorkspaceApi({
@@ -187,23 +189,25 @@ describe("createWorkspaceApi loadChanges", () => {
 
 	it("tracks the current turn from the latest checkpoint while running", async () => {
 		const terminalManager = {
-			getSummary: vi.fn(() =>
-				createSummary({
-					state: "running",
-					latestTurnCheckpoint: {
-						turn: 2,
-						ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
-						commit: "2222222",
-						createdAt: 2,
-					},
-					previousTurnCheckpoint: {
-						turn: 1,
-						ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
-						commit: "1111111",
-						createdAt: 1,
-					},
-				}),
-			),
+			store: {
+				getSummary: vi.fn(() =>
+					createSummary({
+						state: "running",
+						latestTurnCheckpoint: {
+							turn: 2,
+							ref: "refs/quarterdeck/checkpoints/task-1/turn/2",
+							commit: "2222222",
+							createdAt: 2,
+						},
+						previousTurnCheckpoint: {
+							turn: 1,
+							ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
+							commit: "1111111",
+							createdAt: 1,
+						},
+					}),
+				),
+			},
 		};
 
 		const api = createWorkspaceApi({

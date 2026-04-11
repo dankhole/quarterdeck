@@ -131,7 +131,7 @@ function collectShutdownInterruptedTaskIds(
 	terminalManager: TerminalSessionManager,
 ): string[] {
 	const taskIds = new Set(interruptedSummaries.map((summary) => summary.taskId));
-	for (const summary of terminalManager.listSummaries()) {
+	for (const summary of terminalManager.store.listSummaries()) {
 		if (!shouldInterruptSessionOnShutdown(summary)) {
 			continue;
 		}
@@ -175,7 +175,7 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 				workspacePath,
 				interruptedTaskIds: Array.from(interruptedTaskIds),
 				workspaceState,
-				resolveSummary: (taskId) => terminalManager.getSummary(taskId),
+				resolveSummary: (taskId) => terminalManager.store.getSummary(taskId),
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

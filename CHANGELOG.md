@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract SessionSummaryStore from TerminalSessionManager
+
+- Decoupled session summary state management from terminal process lifecycle — new `SessionSummaryStore` interface + `InMemorySessionSummaryStore` owns all `RuntimeTaskSessionSummary` data, mutations, and change subscriptions. External callers (hooks-api, runtime-api, workspace-api, workspace-registry, runtime-state-hub, shutdown-coordinator) now access summaries via `manager.store` instead of reaching into the terminal manager directly. The store is a synchronous, process-agnostic class designed to map 1:1 to a Go interface for the backend rewrite.
+
 ### Fix: stale review sessions recover instead of dropping to idle
 
 - When an agent process exits while a task is in "ready for review" and no viewer is connected, clicking the card no longer drops it to idle — `recoverStaleSession` now detects the task was launched this server lifetime and schedules an auto-restart instead. Clean exits (code 0) preserve the "Completed" state without restarting. A new reconciliation check (`checkProcesslessActiveSession`) proactively marks orphaned review sessions as "Error" so the card shows the correct status even before the user clicks it.

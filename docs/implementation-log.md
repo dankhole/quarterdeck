@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Refactor: extract SessionSummaryStore from TerminalSessionManager (2026-04-11)
+
+Decoupled session summary state management from terminal process lifecycle to address todo #16 (formerly #17). `TerminalSessionManager` was a 1348-line god object owning both summary data and PTY process lifecycle. External code (7+ files) reached into the manager for summary reads and mutations, creating tight coupling.
+
+**Approach**: Extracted a `SessionSummaryStore` interface + `InMemorySessionSummaryStore` class that owns the `Map<taskId, RuntimeTaskSessionSummary>`, all pure-data mutations (state machine transitions, hook activity merging, conversation summaries, turn checkpoints), and change subscriptions. The manager takes the store via constructor injection and delegates all summary operations to it. A constructor `store.onChange()` subscription relays summary changes to per-task terminal listeners, ensuring hook-driven mutations from external callers (hooks-api, runtime-api) still reach the browser terminal panels synchronously.
+
+**Key design decisions**:
+- Store is synchronous with no process-specific logic — maps 1:1 to a Go interface for the backend rewrite (#1).
+- Store exposed as `manager.store` (public readonly) — simplest path, avoids a parallel store registry.
+- `hydrateFromRecord` stays on the manager (coordinates both store + process entry map).
+- Constructor subscription handles per-task listener relay for all store mutations, replacing scattered `notifyListeners` calls.
+
+Files touched: `src/terminal/session-summary-store.ts` (new, 431 lines), `src/terminal/session-manager.ts` (net -260 lines), `src/server/workspace-registry.ts`, `src/server/runtime-state-hub.ts`, `src/server/shutdown-coordinator.ts`, `src/trpc/workspace-api.ts`, `src/trpc/hooks-api.ts`, `src/trpc/runtime-api.ts`, 8 test files updated, `docs/plans/2026-04-11-session-summary-store-extraction.md` (implementation plan).
+
 ## Fix: stale review sessions recover instead of dropping to idle (2026-04-11)
 
 When an agent process exited while a task was in `awaiting_review` and no WebSocket listeners were attached (user not viewing that task), the `shouldAutoRestart` check in `onExit` returned false (0 listeners). The session stayed in `awaiting_review` with `entry.active = null`. When the user later clicked the card and the terminal WebSocket connected, `recoverStaleSession` saw `active === null` + `isActiveState(state) === true` and unconditionally reset to `idle` — losing review context and confusing the user.

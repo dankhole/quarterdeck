@@ -3,7 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import type { TerminalSessionManager } from "../../../src/terminal/session-manager";
 import { isPermissionActivity } from "../../../src/terminal/session-reconciliation";
+import type { SessionSummaryStore } from "../../../src/terminal/session-summary-store";
 import { createHooksApi } from "../../../src/trpc/hooks-api";
+
+function createMockManager(storeMethods: Partial<SessionSummaryStore>): TerminalSessionManager {
+	return { store: storeMethods } as unknown as TerminalSessionManager;
+}
+
+/** Access the mock store's methods for assertions. */
+function mockStore(manager: TerminalSessionManager): Record<string, ReturnType<typeof vi.fn>> {
+	return manager.store as unknown as Record<string, ReturnType<typeof vi.fn>>;
+}
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -58,12 +68,12 @@ function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): RuntimeT
 
 describe("createHooksApi", () => {
 	it("treats ineligible hook transitions as successful no-ops", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -79,18 +89,18 @@ describe("createHooksApi", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(manager.transitionToRunning).not.toHaveBeenCalled();
-		expect(manager.transitionToReview).not.toHaveBeenCalled();
+		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
 	});
 
 	it("stores activity metadata without changing session state", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -110,9 +120,9 @@ describe("createHooksApi", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(manager.transitionToRunning).not.toHaveBeenCalled();
-		expect(manager.transitionToReview).not.toHaveBeenCalled();
-		expect(manager.applyHookActivity).toHaveBeenCalledWith("task-1", {
+		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+		expect(mockStore(manager).transitionToReview).not.toHaveBeenCalled();
+		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", {
 			source: "claude",
 			activityText: "Using Read",
 			hookEventName: undefined,
@@ -126,14 +136,14 @@ describe("createHooksApi", () => {
 
 	it("calls appendConversationSummary when conversationSummaryText is present", async () => {
 		const appendConversationSummary = vi.fn();
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -159,14 +169,14 @@ describe("createHooksApi", () => {
 
 	it("falls back to setDisplaySummary from finalMessage when no conversationSummaryText", async () => {
 		const setDisplaySummary = vi.fn();
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -189,14 +199,14 @@ describe("createHooksApi", () => {
 
 	it("truncates long finalMessage to 80 chars with ellipsis in setDisplaySummary", async () => {
 		const setDisplaySummary = vi.fn();
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary,
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -224,14 +234,14 @@ describe("createHooksApi", () => {
 	it("does not call summary methods when neither conversationSummaryText nor finalMessage is present", async () => {
 		const appendConversationSummary = vi.fn();
 		const setDisplaySummary = vi.fn();
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary,
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -257,14 +267,14 @@ describe("createHooksApi", () => {
 	it("applies summary on the to_review transition path as well", async () => {
 		const appendConversationSummary = vi.fn();
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(() => transitionedSummary),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -291,7 +301,7 @@ describe("createHooksApi", () => {
 	// ── Permission metadata guard ────────────────────────────────────────────
 
 	it("permission metadata survives Stop hook on non-transition path", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "awaiting_review",
@@ -304,7 +314,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -322,11 +332,11 @@ describe("createHooksApi", () => {
 
 		expect(response).toEqual({ ok: true });
 		// Guard blocks applyHookActivity — Stop can't clobber permission metadata
-		expect(manager.applyHookActivity).not.toHaveBeenCalled();
+		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
 	});
 
 	it("permission metadata survives generic activity hook", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "awaiting_review",
@@ -339,7 +349,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -356,11 +366,11 @@ describe("createHooksApi", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(manager.applyHookActivity).not.toHaveBeenCalled();
+		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
 	});
 
 	it("non-permission metadata is still applied on non-transition path", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "awaiting_review",
@@ -382,7 +392,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -399,11 +409,11 @@ describe("createHooksApi", () => {
 		});
 
 		// Non-permission existing activity → guard does not block
-		expect(manager.applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
 	});
 
 	it("new permission hook overwrites old permission metadata (permission-on-permission)", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "awaiting_review",
@@ -416,7 +426,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -433,12 +443,12 @@ describe("createHooksApi", () => {
 		});
 
 		// Permission-on-permission → guard allows through
-		expect(manager.applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
 	});
 
 	it("conversation summary from Stop is still applied even when activity is guarded", async () => {
 		const appendConversationSummary = vi.fn();
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "awaiting_review",
@@ -451,7 +461,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary,
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -472,7 +482,7 @@ describe("createHooksApi", () => {
 		});
 
 		// applyHookActivity blocked, but conversation summary still captured
-		expect(manager.applyHookActivity).not.toHaveBeenCalled();
+		expect(mockStore(manager).applyHookActivity).not.toHaveBeenCalled();
 		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
 			text: "I fixed the bug",
 			capturedAt: expect.any(Number),
@@ -480,7 +490,7 @@ describe("createHooksApi", () => {
 	});
 
 	it("guard does not fire when task is not in awaiting_review", async () => {
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() =>
 				createSummary({
 					state: "running",
@@ -492,7 +502,7 @@ describe("createHooksApi", () => {
 			applyHookActivity: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const api = createHooksApi({
 			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
@@ -509,14 +519,14 @@ describe("createHooksApi", () => {
 		});
 
 		// Task is running, not awaiting_review → guard does not fire
-		expect(manager.applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
+		expect(mockStore(manager).applyHookActivity).toHaveBeenCalledWith("task-1", expect.any(Object));
 	});
 
 	it("permission request followed by approval transitions card correctly (happy path)", async () => {
 		// Step 1: PermissionRequest → to_review → awaiting_review
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 		const runningSummary = createSummary({ state: "running" });
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi
 				.fn<() => RuntimeTaskSessionSummary>()
 				.mockReturnValueOnce(createSummary({ state: "running" })) // first call: running
@@ -533,7 +543,7 @@ describe("createHooksApi", () => {
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
 			setDisplaySummary: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const broadcastTaskReadyForReview = vi.fn();
 		const api = createHooksApi({
@@ -558,7 +568,7 @@ describe("createHooksApi", () => {
 			metadata: { hookEventName: "PermissionRequest", source: "claude" },
 		});
 		expect(r1).toEqual({ ok: true });
-		expect(manager.transitionToReview).toHaveBeenCalledWith("task-1", "hook");
+		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
 		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("workspace-1", "task-1");
 
 		// Step 2: PostToolUse → to_in_progress → running
@@ -569,7 +579,7 @@ describe("createHooksApi", () => {
 			metadata: { source: "claude" },
 		});
 		expect(r2).toEqual({ ok: true });
-		expect(manager.transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
 	});
 
 	it("captures a turn checkpoint when transitioning to review", async () => {
@@ -590,13 +600,13 @@ describe("createHooksApi", () => {
 			},
 		});
 
-		const manager = {
+		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(() => transitionedSummary),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
-		} as unknown as TerminalSessionManager;
+		});
 
 		const captureTaskTurnCheckpoint = vi.fn(async () => ({
 			turn: 3,
@@ -627,7 +637,7 @@ describe("createHooksApi", () => {
 			taskId: "task-1",
 			turn: 3,
 		});
-		expect(manager.applyTurnCheckpoint).toHaveBeenCalledTimes(1);
+		expect(mockStore(manager).applyTurnCheckpoint).toHaveBeenCalledTimes(1);
 		expect(deleteTaskTurnCheckpointRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",

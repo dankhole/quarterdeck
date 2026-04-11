@@ -16,6 +16,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 import { reduceSessionTransition } from "../../../src/terminal/session-state-machine";
+import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -93,7 +94,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 	it("suppresses auto-restart when user sends Ctrl+C", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", {
 			onState: vi.fn(),
 			onOutput: vi.fn(),
@@ -120,15 +121,15 @@ describe("TerminalSessionManager interrupt recovery", () => {
 
 		// Should NOT have auto-restarted
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 	});
 
 	it("transitions to awaiting_review after Ctrl+C if agent stays running with no output", async () => {
 		setupMockPtySpawn();
 
 		const onState = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn() });
 
 		await manager.startTaskSession({
@@ -140,7 +141,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 
 		// User sends Ctrl+C — agent doesn't exit
 		manager.writeInput("task-1", Buffer.from([0x03]));
@@ -148,7 +149,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// Wait for interrupt recovery timeout (5 seconds)
 		await vi.advanceTimersByTimeAsync(5_000);
 
-		const summary = manager.getSummary("task-1");
+		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("attention");
 	});
@@ -157,7 +158,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		setupMockPtySpawn();
 
 		const onState = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn() });
 
 		await manager.startTaskSession({
@@ -169,7 +170,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 
 		// User sends Escape — agent doesn't exit
 		manager.writeInput("task-1", Buffer.from([0x1b]));
@@ -177,7 +178,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		// Wait for interrupt recovery timeout (5 seconds)
 		await vi.advanceTimersByTimeAsync(5_000);
 
-		const summary = manager.getSummary("task-1");
+		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("attention");
 	});
@@ -185,7 +186,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 	it("does not trigger interrupt recovery for ANSI escape sequences", async () => {
 		setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
 		await manager.startTaskSession({
@@ -204,13 +205,13 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		await vi.advanceTimersByTimeAsync(6_000);
 
 		// Should still be running — multi-byte escape sequence is not a bare Escape
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 	});
 
 	it("still transitions to awaiting_review even if agent produces output after Ctrl+C", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
 		await manager.startTaskSession({
@@ -234,7 +235,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 
 		// Should transition regardless — output alone doesn't cancel recovery.
 		// If the agent is genuinely still working, its next hook will move it back.
-		const summary = manager.getSummary("task-1");
+		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("awaiting_review");
 		expect(summary?.reviewReason).toBe("attention");
 	});
@@ -242,7 +243,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 	it("does not trigger interrupt recovery for large pasted buffers containing 0x03", async () => {
 		setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
 
 		await manager.startTaskSession({
@@ -262,11 +263,11 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		await vi.advanceTimersByTimeAsync(6_000);
 
 		// Should still be running — large buffer should not trigger interrupt detection
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 	});
 
 	it("recovers stale sessions when process is dead but exit was missed (hydrated)", () => {
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// Hydrate with a session that claims to be running with a PID that doesn't exist
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -287,7 +288,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 
 		const onState = vi.fn();
 		const onExit = vi.fn();
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState, onOutput: vi.fn(), onExit });
 
 		await manager.startTaskSession({
@@ -299,15 +300,15 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			prompt: "Fix the bug",
 		});
 
-		expect(manager.getSummary("task-1")?.state).toBe("running");
-		expect(manager.getSummary("task-1")?.pid).toBe(DEAD_PID);
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.pid).toBe(DEAD_PID);
 
 		// Start reconciliation and advance past one check interval (10s)
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// The reconciliation sweep should have recovered the card
-		const recovered = manager.getSummary("task-1");
+		const recovered = manager.store.getSummary("task-1");
 		expect(recovered?.state).toBe("awaiting_review");
 		expect(recovered?.reviewReason).toBe("error");
 		expect(onExit).toHaveBeenCalledWith(null);
@@ -354,7 +355,7 @@ describe("recoverStaleSession with launched sessions", () => {
 	it("attempts restart when process exited with error during review", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// No listeners attached — simulates user not viewing this task
 		await manager.startTaskSession({
 			taskId: "task-1",
@@ -366,12 +367,12 @@ describe("recoverStaleSession with launched sessions", () => {
 		});
 
 		// Transition to review, then process exits with error
-		manager.transitionToReview("task-1", "hook");
+		manager.store.transitionToReview("task-1", "hook");
 		spawnedSessions[0]?.triggerExit(1);
 
 		// State should be awaiting_review/error with no process
-		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
 
 		// Now simulate viewer connecting (recoverStaleSession is called by WS handler)
 		const recovered = manager.recoverStaleSession("task-1");
@@ -385,13 +386,13 @@ describe("recoverStaleSession with launched sessions", () => {
 
 		// A new session should have been spawned
 		expect(spawnedSessions).toHaveLength(2);
-		expect(manager.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 	});
 
 	it("does not restart for clean exits (reviewReason: exit)", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		await manager.startTaskSession({
 			taskId: "task-1",
 			agentId: "claude",
@@ -402,10 +403,10 @@ describe("recoverStaleSession with launched sessions", () => {
 		});
 
 		// Transition to review, then process exits cleanly
-		manager.transitionToReview("task-1", "hook");
+		manager.store.transitionToReview("task-1", "hook");
 		spawnedSessions[0]?.triggerExit(0);
 
-		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
 
 		// Viewer connects
 		const recovered = manager.recoverStaleSession("task-1");
@@ -417,7 +418,7 @@ describe("recoverStaleSession with launched sessions", () => {
 	});
 
 	it("resets hydrated entries to idle even with active state", () => {
-		const manager = new TerminalSessionManager();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "awaiting_review",

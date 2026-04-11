@@ -114,3 +114,7 @@ The current coupling is well-understood and has clear boundaries. The `TerminalS
 Option C unless the TypeScript codebase needs to live much longer. The coupling is annoying but not causing bugs — it's a clean seam that maps directly to a Go interface. Refactoring in TypeScript first would be effort that doesn't transfer to Go.
 
 If the TypeScript codebase needs to be maintained long-term, Option A is the pragmatic choice.
+
+## Resolution (2026-04-11)
+
+Option A implemented: `SessionSummaryStore` interface + `InMemorySessionSummaryStore` extracted from `TerminalSessionManager`. The store is designed as a synchronous, process-agnostic class that maps 1:1 to a Go interface. See implementation plan at `docs/plans/2026-04-11-session-summary-store-extraction.md`.
