@@ -421,7 +421,7 @@ export function BoardCard({
 											content={`${reviewWorkspaceSnapshot!.changedFiles} uncommitted change${reviewWorkspaceSnapshot!.changedFiles === 1 ? "" : "s"}`}
 										>
 											<span className="inline-flex items-center shrink-0">
-												<span className="block size-1.5 rounded-full bg-status-orange" />
+												<span className="block size-1.5 rounded-full bg-status-red" />
 											</span>
 										</Tooltip>
 									) : null}

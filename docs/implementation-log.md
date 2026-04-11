@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Uncommitted changes indicator color: orange → red (2026-04-11)
+
+Changed the uncommitted-changes dot on task cards from `bg-status-orange` to `bg-status-red` for stronger visual contrast against the orange "cwd diverged" warning icon that sits in the same indicator row. Updated the settings description text to match.
+
+Files touched: `web-ui/src/components/board-card.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `CHANGELOG.md`.
+
 ## Terminal rendering options — WebGL toggle and experimental HTML chat view (2026-04-11)
 
 Two new settings to address the longstanding font rendering gap between the xterm.js terminal canvas and native HTML text (e.g. the Claude Code status bar).

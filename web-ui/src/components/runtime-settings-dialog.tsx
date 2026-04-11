@@ -987,7 +987,7 @@ export function RuntimeSettingsDialog({
 					<span className="text-[13px] text-text-primary">Show uncommitted changes dot on cards</span>
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show an orange dot on task cards when the worktree has uncommitted file changes.
+					Show a red dot on task cards when the worktree has uncommitted file changes.
 				</p>
 				<div className="flex items-center gap-2 mt-3">
 					<RadixSwitch.Root
