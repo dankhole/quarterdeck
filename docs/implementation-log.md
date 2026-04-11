@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Auto-collapse sidebar when opening Files or Git view (2026-04-11)
+
+Added auto-coupling rule to `setMainView` in `use-card-detail-layout.ts`: when switching to `"files"` or `"git"`, the sidebar collapses (sets to `null`) unless `sidebarPinned` is true. Both views have integrated file trees that functionally replace the sidebar, so leaving it open wastes horizontal space. The git view already suppressed the sidebar toolbar highlight (`visualSidebar` returned `null`), but the panel itself remained rendered — now it actually collapses.
+
+Files touched: `web-ui/src/resize/use-card-detail-layout.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## "Copy file contents" in file browser context menu (2026-04-11)
 
 Added a "Copy file contents" action to the file browser right-click context menu, completing the copy action set (name, path, contents).

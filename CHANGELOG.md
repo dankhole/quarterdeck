@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Auto-collapse sidebar when opening Files or Git view
+
+- Opening the Files or Git main view now automatically collapses the sidebar if it isn't pinned. Both views have integrated file trees that replace the sidebar's role, so leaving it open wastes space. Pinned sidebars are respected and stay open.
+
 ### "Copy file contents" in file browser context menu
 
 - Right-clicking a file in the file browser tree now offers a "Copy file contents" action alongside the existing "Copy name" and "Copy path" options. Fetches the file content from the server (or git ref) and writes it to the clipboard. Handles binary files (shows error toast) and fetch failures gracefully.

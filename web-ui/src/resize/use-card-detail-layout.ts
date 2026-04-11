@@ -134,7 +134,8 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 	/**
 	 * Set the main view. Auto-coupling rules:
 	 * - "home" → also sets sidebar to "projects" and deselects the task.
-	 * - "terminal" / "files" → no side effects on sidebar or task selection.
+	 * - "files" / "git" → collapse sidebar if not pinned (integrated tree replaces it).
+	 * - "terminal" → no side effects on sidebar or task selection.
 	 */
 	const setMainView = useCallback(
 		(view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => {
@@ -142,6 +143,8 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 			if (view === "home") {
 				setSidebarPersist("projects");
 				callbacks?.setSelectedTaskId?.(null);
+			} else if ((view === "files" || view === "git") && !sidebarPinnedRef.current) {
+				setSidebarPersist(null);
 			}
 		},
 		[setMainViewPersist, setSidebarPersist],
