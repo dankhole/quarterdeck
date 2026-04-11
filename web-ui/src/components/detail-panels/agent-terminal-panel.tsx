@@ -4,8 +4,10 @@ import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RotateCw, X } fro
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
+import { ChatOutputView } from "@/components/chat-output-view";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useChatOutput } from "@/hooks/use-chat-output";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
@@ -44,6 +46,7 @@ export interface AgentTerminalPanelProps {
 	onToggleExpand?: () => void;
 	onRestart?: () => void;
 	onExit?: (taskId: string, exitCode: number | null) => void;
+	chatViewEnabled?: boolean;
 }
 
 function AgentTerminalPanelLayout({
@@ -69,7 +72,14 @@ function AgentTerminalPanelLayout({
 	onToggleExpand,
 	onRestart,
 	sessionControls,
-}: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
+	chatViewEnabled = false,
+	chatLines,
+	onClearChat,
+}: AgentTerminalPanelProps & {
+	sessionControls: AgentTerminalSessionControls;
+	chatLines: string[];
+	onClearChat: () => void;
+}): ReactElement {
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
@@ -81,6 +91,11 @@ function AgentTerminalPanelLayout({
 		}
 		return normalizedCommand.split(/\s+/)[0] ?? null;
 	}, [agentCommand]);
+
+	const handleClear = () => {
+		clearTerminal();
+		onClearChat();
+	};
 
 	return (
 		<div
@@ -112,7 +127,7 @@ function AgentTerminalPanelLayout({
 							</span>
 						</div>
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-							<Button variant="default" size="sm" onClick={clearTerminal}>
+							<Button variant="default" size="sm" onClick={handleClear}>
 								Clear
 							</Button>
 							<Button
@@ -170,7 +185,7 @@ function AgentTerminalPanelLayout({
 								icon={<Eraser size={12} />}
 								variant="ghost"
 								size="sm"
-								onClick={clearTerminal}
+								onClick={handleClear}
 								aria-label="Clear terminal"
 							/>
 						</Tooltip>
@@ -220,11 +235,26 @@ function AgentTerminalPanelLayout({
 					</div>
 				</div>
 			) : null}
-			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>
+			<div
+				style={{
+					flex: "1 1 0",
+					minHeight: 0,
+					overflow: "hidden",
+					padding: "3px 1.5px 3px 3px",
+					display: "flex",
+					flexDirection: "column",
+				}}
+			>
+				{chatViewEnabled ? <ChatOutputView lines={chatLines} backgroundColor={terminalBackgroundColor} /> : null}
 				<div
 					ref={containerRef}
 					className="kb-terminal-container"
-					style={{ height: "100%", width: "100%", background: terminalBackgroundColor }}
+					style={{
+						height: chatViewEnabled ? "0px" : "100%",
+						width: "100%",
+						background: terminalBackgroundColor,
+						overflow: "hidden",
+					}}
 				/>
 			</div>
 			{lastError ? (
@@ -260,5 +290,21 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});
 
-	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;
+	const chatViewEnabled = props.chatViewEnabled ?? false;
+	const { lines: chatLines, clear: clearChat } = useChatOutput({
+		taskId: props.taskId,
+		workspaceId: props.workspaceId,
+		enabled: (props.terminalEnabled ?? true) && chatViewEnabled,
+		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
+		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
+	});
+
+	return (
+		<AgentTerminalPanelLayout
+			{...props}
+			sessionControls={sessionControls}
+			chatLines={chatLines}
+			onClearChat={clearChat}
+		/>
+	);
 }

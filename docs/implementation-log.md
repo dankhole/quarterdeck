@@ -4,6 +4,17 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Terminal rendering options — WebGL toggle and experimental HTML chat view (2026-04-11)
+
+Two new settings to address the longstanding font rendering gap between the xterm.js terminal canvas and native HTML text (e.g. the Claude Code status bar).
+
+**WebGL renderer toggle** (`terminalWebGLRenderer`, default `true`): Added a boolean config field that gates whether the `@xterm/addon-webgl` is loaded. When disabled, xterm.js falls back to its built-in canvas 2D renderer which uses the browser's `fillText()` API instead of a WebGL texture atlas. The module-level `currentTerminalWebGLRenderer` flag is checked in `attachWebglAddon()`, and `setTerminalWebGLRenderer()` live-toggles all existing terminals by disposing/recreating the addon. Applied via `useEffect` in App.tsx on config change.
+
+**Experimental HTML chat view** (`terminalChatViewEnabled`, default `false`): When enabled, the main agent terminal panel renders a `ChatOutputView` component instead of the xterm.js canvas. The pipeline: `PersistentTerminal.subscribe({ onOutputText })` → `ChatOutputAccumulator.push()` (filters cursor-save/restore blocks used by Claude Code's status bar, strips all ANSI sequences, collapses carriage-return overwrites, normalizes line endings) → `useChatOutput` hook (batches state updates at 60ms) → `ChatOutputView` (scrollable `<div>` with `pre-wrap`, same JetBrains Mono font, auto-scroll with 40px threshold). The xterm.js terminal stays mounted at `height: 0` and continues receiving all WebSocket data so scroll-back is preserved. Accumulator caps at 10,000 lines.
+
+The chat view is driven by a global settings toggle (not a per-panel toggle) because the main agent terminal has no toolbar of its own — the per-panel approach only appeared on shell terminals where it wasn't useful.
+
+Files touched: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/components/chat-output-view.tsx` (new), `web-ui/src/components/detail-panels/agent-terminal-panel.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/hooks/use-chat-output.ts` (new), `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/terminal/chat-output-accumulator.ts` (new), `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`.
 ## Fix: behind-base indicator not detecting local branch advancement (2026-04-11)
 
 Fixed a bug where the "behind base" indicator on headless worktrees always showed 0 when local `main` advanced but `origin/main` was stale (no `git fetch` had occurred).

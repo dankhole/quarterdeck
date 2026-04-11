@@ -62,6 +62,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	terminalWebGLRenderer: CONFIG_DEFAULTS.terminalWebGLRenderer,
+	terminalChatViewEnabled: CONFIG_DEFAULTS.terminalChatViewEnabled,
 	llmConfigured: false,
 };
 

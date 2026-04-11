@@ -94,6 +94,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	statuslineEnabled: boolField(true),
 	terminalFontWeight: numField(325),
 	terminalWebGLRenderer: boolField(true),
+	terminalChatViewEnabled: boolField(false),
 } as const;
 
 // --- Derived types ---

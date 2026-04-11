@@ -253,6 +253,7 @@ export function RuntimeSettingsDialog({
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
 	const [terminalFontWeight, setTerminalFontWeight] = useState(CONFIG_DEFAULTS.terminalFontWeight);
 	const [terminalWebGLRenderer, setTerminalWebGLRenderer] = useState(CONFIG_DEFAULTS.terminalWebGLRenderer);
+	const [terminalChatViewEnabled, setTerminalChatViewEnabled] = useState(CONFIG_DEFAULTS.terminalChatViewEnabled);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
 	const [uncommittedChangesOnCardsEnabled, setUncommittedChangesOnCardsEnabled] = useState(
 		CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -328,6 +329,7 @@ export function RuntimeSettingsDialog({
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
 	const initialTerminalFontWeight = config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
 	const initialTerminalWebGLRenderer = config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
+	const initialTerminalChatViewEnabled = config?.terminalChatViewEnabled ?? CONFIG_DEFAULTS.terminalChatViewEnabled;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const initialUncommittedChangesOnCardsEnabled =
 		config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled;
@@ -377,6 +379,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (terminalWebGLRenderer !== initialTerminalWebGLRenderer) {
+			return true;
+		}
+		if (terminalChatViewEnabled !== initialTerminalChatViewEnabled) {
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
@@ -463,6 +468,7 @@ export function RuntimeSettingsDialog({
 		shellAutoRestartEnabled,
 		terminalFontWeight,
 		terminalWebGLRenderer,
+		terminalChatViewEnabled,
 		shortcuts,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
@@ -484,6 +490,7 @@ export function RuntimeSettingsDialog({
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
 		setTerminalFontWeight(config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight);
 		setTerminalWebGLRenderer(config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer);
+		setTerminalChatViewEnabled(config?.terminalChatViewEnabled ?? CONFIG_DEFAULTS.terminalChatViewEnabled);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
 		setUncommittedChangesOnCardsEnabled(
 			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -533,6 +540,7 @@ export function RuntimeSettingsDialog({
 		config?.shellAutoRestartEnabled,
 		config?.terminalFontWeight,
 		config?.terminalWebGLRenderer,
+		config?.terminalChatViewEnabled,
 		config?.shortcuts,
 		config?.showSummaryOnCards,
 		config?.summaryStaleAfterSeconds,
@@ -590,6 +598,7 @@ export function RuntimeSettingsDialog({
 			shellAutoRestartEnabled,
 			terminalFontWeight,
 			terminalWebGLRenderer,
+			terminalChatViewEnabled,
 			showTrashWorktreeNotice,
 			uncommittedChangesOnCardsEnabled,
 			unmergedChangesIndicatorEnabled,
@@ -947,6 +956,22 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-2 mb-0">
 					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
 					distorted after moving between monitors.
+				</p>
+
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={terminalChatViewEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setTerminalChatViewEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Experimental: HTML chat view</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Replaces the terminal canvas with browser-rendered HTML text for agent output. Strips ANSI formatting and
+					status bar noise. Testing only — output may be incomplete or noisy.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>

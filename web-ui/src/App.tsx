@@ -1330,6 +1330,9 @@ export default function App(): ReactElement {
 							onDeselectTask={() => setSelectedTaskId(null)}
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={clearPendingCompareNavigation}
+							chatViewEnabled={
+								runtimeProjectConfig?.terminalChatViewEnabled ?? CONFIG_DEFAULTS.terminalChatViewEnabled
+							}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">

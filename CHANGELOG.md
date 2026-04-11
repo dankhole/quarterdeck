@@ -18,9 +18,10 @@
 
 - New pin button in the sidebar toolbar (below Projects/Board buttons) prevents the sidebar from auto-switching when selecting or deselecting a task. When pinned, clicking a task still opens the terminal but the sidebar stays on its current panel (e.g. Projects). Pin state persists to localStorage. The `task_column` sidebar always falls back to Projects on task deselect regardless of pin state, since it requires a task to function.
 
-### Terminal WebGL renderer toggle
+### Terminal WebGL renderer toggle and experimental HTML chat view
 
 - New setting in Settings > Terminal to toggle the WebGL renderer on or off. When disabled, xterm.js falls back to the browser's native canvas 2D renderer for crisper text at the cost of GPU acceleration. Default: on. The toggle applies live to all open terminals without requiring a restart.
+- New "Experimental: HTML chat view" toggle in Settings > Terminal — when enabled, replaces the xterm.js canvas in the main agent terminal with browser-rendered HTML text. Terminal output is streamed through an accumulator that strips ANSI escape sequences and filters cursor-save/restore status bar noise. Default: off. Caps at 10,000 lines.
 
 ### Files view — Board sidebar can coexist
 

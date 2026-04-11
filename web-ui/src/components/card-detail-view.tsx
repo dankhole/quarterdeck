@@ -85,6 +85,7 @@ export function CardDetailView({
 	onDeselectTask,
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
+	chatViewEnabled = false,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -131,6 +132,7 @@ export function CardDetailView({
 	onDeselectTask: () => void;
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
+	chatViewEnabled?: boolean;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
@@ -385,6 +387,7 @@ export function CardDetailView({
 									panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 									terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 									taskColumnId={selection.column.id}
+									chatViewEnabled={chatViewEnabled}
 								/>
 							</div>
 						</div>
