@@ -4,6 +4,27 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Git view rework — promote diff viewer to full main view (2026-04-11)
+
+Promoted the diff viewer from the "Changes" sidebar panel to a full main view called "Git" with three internal tabs. Addresses todo #4 (diffing portion) and todo #12 (interactive base ref switcher). The remaining branch management scope from #4 is now tracked as #21 (branch management in git view). Follow-up items #22 (commit sidebar tab) and #23 ("compare against" context action) were created.
+
+**Frontend changes**:
+- `use-card-detail-layout.ts`: Added `"git"` to `MainViewId`, removed `"changes"` from `SidebarId`. Migration maps old `"changes"` localStorage value to `"git"`. Auto-coupling keeps git view active when task is deselected (unlike terminal, which falls back to home).
+- `git-view.tsx` (new): Top-level component with tab bar (Uncommitted / Last Turn / Compare), integrated file tree panel (toggleable, resizable, width persisted to `GitViewFileTreeRatio`), and diff content area using existing `DiffViewerPanel` and `FileTreePanel`. Tab persistence via `GitViewActiveTab` localStorage key. Resets all state on project switch.
+- `use-git-view-compare.ts` (new): Manages Compare tab state — default refs from task context or home git summary, source/target pill state, browsing indicator (only when source ref differs from default), override detection for "Return to context" button, git refs fetching via `workspace.getGitRefs`. Accepts `pendingNavigation` for external callers to open Compare with pre-set refs.
+- `detail-toolbar.tsx`: Git button (`GitCompareArrows` icon) added above divider as `MainViewButton`. "Changes" sidebar button removed. Badge prop changed from `hasUncommittedChanges`/`hasUnmergedChanges` booleans to `gitBadgeColor: "red" | "blue" | undefined`.
+- `App.tsx`: Computes `gitBadgeColor` for both task context (from `selectedTaskWorkspaceSnapshot`) and home context (from `homeGitSummary`). Renders `GitView` in both no-task (home) and task (`CardDetailView` passthrough) contexts. `openGitCompare` callback + `pendingCompareNavigation` state provide external navigation API.
+- `card-detail-view.tsx`: Removed all diff/changes rendering. Now renders `GitView` when `mainView === "git"`, passing through compare navigation props.
+- `use-runtime-workspace-changes.ts`: Extended with `fromRef`/`toRef` optional parameters, included in request key for cache invalidation.
+- `local-storage-store.ts`: Added `GitViewFileTreeRatio` and `GitViewActiveTab` keys.
+
+**Backend changes**:
+- `api-contract.ts`: `runtimeWorkspaceChangesRequestSchema` now accepts `taskId: z.string().nullable()` (was required string) and optional `fromRef`/`toRef` strings.
+- `workspace-api.ts` `loadChanges()`: Four routing paths — (A) `fromRef`+`toRef` set → `getWorkspaceChangesBetweenRefs` against task CWD or home repo; (B) no `taskId` → `getWorkspaceChanges(workspacePath)` for home uncommitted; (C/D) `taskId` set → existing task-scoped behavior.
+- `get-workspace-changes.ts`: Added `validateRef()` — rejects refs starting with `-` or containing `..` (same validation as file browser's `listFilesAtRef`).
+
+Files touched: 16 files (4 new, 12 modified). Spec at `docs/specs/2026-04-11-git-view-rework.md`. Plan at `docs/plans/2026-04-11-git-view-rework.md`.
+
 ## Refactor: extract SessionSummaryStore from TerminalSessionManager (2026-04-11)
 
 Decoupled session summary state management from terminal process lifecycle to address todo #16 (formerly #17). `TerminalSessionManager` was a 1348-line god object owning both summary data and PTY process lifecycle. External code (7+ files) reached into the manager for summary reads and mutations, creating tight coupling.

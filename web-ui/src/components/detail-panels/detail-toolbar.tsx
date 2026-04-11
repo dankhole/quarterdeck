@@ -11,8 +11,7 @@ interface DetailToolbarProps {
 	onMainViewChange: (view: MainViewId) => void;
 	onSidebarChange: (id: SidebarId) => void;
 	hasSelectedTask: boolean;
-	hasUncommittedChanges?: boolean;
-	hasUnmergedChanges?: boolean;
+	gitBadgeColor?: "red" | "blue";
 	isBehindBase?: boolean;
 	projectsBadgeColor?: "orange";
 }
@@ -122,19 +121,10 @@ export function DetailToolbar({
 	onMainViewChange,
 	onSidebarChange,
 	hasSelectedTask,
-	hasUncommittedChanges,
-	hasUnmergedChanges,
+	gitBadgeColor,
 	isBehindBase,
 	projectsBadgeColor,
 }: DetailToolbarProps): React.ReactElement {
-	const changesBadgeColor: "red" | "blue" | undefined = hasSelectedTask
-		? hasUncommittedChanges
-			? "red"
-			: hasUnmergedChanges
-				? "blue"
-				: undefined
-		: undefined;
-
 	const filesBadgeColor: "blue" | undefined = hasSelectedTask && isBehindBase ? "blue" : undefined;
 
 	return (
@@ -171,6 +161,14 @@ export function DetailToolbar({
 				label="Files"
 				badgeColor={filesBadgeColor}
 			/>
+			<MainViewButton
+				viewId="git"
+				activeMainView={activeMainView}
+				onMainViewChange={onMainViewChange}
+				icon={<GitCompareArrows size={18} />}
+				label="Git"
+				badgeColor={gitBadgeColor}
+			/>
 
 			{/* Divider between main view and sidebar buttons */}
 			<div className="w-5 my-1" style={{ height: 1, background: "var(--color-divider)" }} />
@@ -190,15 +188,6 @@ export function DetailToolbar({
 				onSidebarChange={onSidebarChange}
 				icon={<LayoutGrid size={18} />}
 				label="Board"
-				disabled={!hasSelectedTask}
-			/>
-			<SidebarButton
-				sidebarId="changes"
-				activeSidebar={activeSidebar}
-				onSidebarChange={onSidebarChange}
-				icon={<GitCompareArrows size={18} />}
-				label="Changes"
-				badgeColor={changesBadgeColor}
 				disabled={!hasSelectedTask}
 			/>
 		</aside>

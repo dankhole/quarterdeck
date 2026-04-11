@@ -19,6 +19,7 @@ import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tr
 import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { GitHistoryView } from "@/components/git-history-view";
+import { GitView } from "@/components/git-view";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { PromptShortcutEditorDialog } from "@/components/prompt-shortcut-editor-dialog";
@@ -56,6 +57,7 @@ import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
 import { useGitActions } from "@/hooks/use-git-actions";
+import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
@@ -129,6 +131,7 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [pendingCompareNavigation, setPendingCompareNavigation] = useState<GitViewCompareNavigation | null>(null);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const boardRef = useRef(board);
@@ -897,12 +900,6 @@ export default function App(): ReactElement {
 	const detailTerminalSubtitle = selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? null;
 
 	// --- Sidebar layout ---
-	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
-
-	// Reset expanded state when task changes
-	useEffect(() => {
-		setIsDiffExpanded(false);
-	}, [selectedTaskId]);
 
 	const {
 		mainView,
@@ -913,11 +910,8 @@ export default function App(): ReactElement {
 		visualSidebar,
 		sidePanelRatio,
 		setSidePanelRatio,
-		detailDiffFileTreeRatio,
-		setDetailDiffFileTreeRatio,
 		resetToDefaults: resetCardDetailLayoutToDefaults,
 	} = useCardDetailLayout({
-		isDiffExpanded,
 		isFileBrowserExpanded: false,
 		selectedTaskId,
 	});
@@ -928,6 +922,16 @@ export default function App(): ReactElement {
 		},
 		[setMainView, setSelectedTaskId],
 	);
+
+	/** Navigate to the git view's Compare tab with pre-set branch parameters (!6). */
+	const openGitCompare = useCallback(
+		(navigation: GitViewCompareNavigation) => {
+			setPendingCompareNavigation(navigation);
+			setMainView("git", { setSelectedTaskId });
+		},
+		[setMainView, setSelectedTaskId],
+	);
+	const clearPendingCompareNavigation = useCallback(() => setPendingCompareNavigation(null), []);
 
 	// --- Home side panel resize ---
 	const { startDrag: startHomeSidePanelResize } = useResizeDrag();
@@ -975,21 +979,14 @@ export default function App(): ReactElement {
 				(event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable);
 			if (isTyping) return;
 
-			// 2. Diff expanded → collapse
-			if (isDiffExpanded) {
-				event.preventDefault();
-				setIsDiffExpanded(false);
-				return;
-			}
-
-			// 4. Task selected → deselect
+			// 2. Task selected → deselect
 			if (selectedCard) {
 				event.preventDefault();
 				setSelectedTaskId(null);
 				return;
 			}
 		},
-		[isGitHistoryOpen, isDiffExpanded, selectedCard],
+		[isGitHistoryOpen, selectedCard],
 	);
 	useWindowEvent("keydown", handleEscapeKeydown);
 
@@ -1212,148 +1209,150 @@ export default function App(): ReactElement {
 			>
 				<LayoutResetBridge resetToDefaults={resetCardDetailLayoutToDefaults} />
 				<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
-					{/* Sidebar toolbar + side panel — hidden when diff or file browser is expanded */}
-					{!isDiffExpanded ? (
-						<>
-							<DetailToolbar
-								activeMainView={visualMainView}
-								activeSidebar={visualSidebar}
-								onMainViewChange={handleMainViewChange}
-								onSidebarChange={toggleSidebar}
-								hasSelectedTask={selectedCard !== null}
-								hasUncommittedChanges={
-									selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0 : false
-								}
-								hasUnmergedChanges={
-									unmergedChangesIndicatorEnabled && selectedCard
-										? (selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
-										: false
-								}
-								isBehindBase={
-									behindBaseIndicatorEnabled && selectedCard
-										? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0
-										: false
-								}
-								projectsBadgeColor={projectsBadgeColor}
-							/>
+					{/* Sidebar toolbar + side panel */}
+					<>
+						<DetailToolbar
+							activeMainView={visualMainView}
+							activeSidebar={visualSidebar}
+							onMainViewChange={handleMainViewChange}
+							onSidebarChange={toggleSidebar}
+							hasSelectedTask={selectedCard !== null}
+							gitBadgeColor={
+								selectedCard
+									? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0
+										? "red"
+										: unmergedChangesIndicatorEnabled &&
+												(selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
+											? "blue"
+											: undefined
+									: (homeGitSummary?.changedFiles ?? 0) > 0
+										? "red"
+										: undefined
+							}
+							isBehindBase={
+								behindBaseIndicatorEnabled && selectedCard
+									? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0
+									: false
+							}
+							projectsBadgeColor={projectsBadgeColor}
+						/>
 
-							{/* Sidebar panel content — depends on sidebar state or mainView override */}
-							{mainView === "files" && !selectedCard ? (
-								<>
-									<div
-										style={{
-											display: "flex",
-											flexDirection: "column",
-											flex: `0 0 ${homeSidePanelPercent}`,
-											minWidth: 0,
-											minHeight: 0,
-											overflow: "hidden",
-										}}
-									>
-										<ScopeBar
-											resolvedScope={homeResolvedScope}
-											scopeMode={homeScopeMode}
-											homeGitSummary={homeGitSummary}
-											taskTitle={null}
-											taskBranch={null}
-											taskBaseRef={null}
-											behindBaseCount={null}
-											isDetachedHead={homeGitSummary?.currentBranch === null && homeGitSummary !== null}
-											onSwitchToHome={homeSwitchToHome}
-											onReturnToContextual={homeReturnToContextual}
-											branchPillSlot={
-												<BranchSelectorPopover
-													isOpen={homeBranchActions.isBranchPopoverOpen}
-													onOpenChange={homeBranchActions.setBranchPopoverOpen}
-													branches={homeBranchActions.branches}
-													currentBranch={homeBranchActions.currentBranch}
-													worktreeBranches={homeBranchActions.worktreeBranches}
-													onSelectBranchView={homeBranchActions.handleSelectBranchView}
-													onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
-													trigger={
-														<BranchPillTrigger
-															label={
-																homeResolvedScope?.type === "branch_view"
-																	? homeResolvedScope.ref
-																	: (homeGitSummary?.currentBranch ?? "unknown")
-															}
-														/>
-													}
-												/>
-											}
-											onCheckoutBrowsingBranch={
-												homeResolvedScope?.type === "branch_view"
-													? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
-													: undefined
-											}
-										/>
-										{currentProjectId ? (
-											<FileBrowserTreePanel
-												key={currentProjectId}
-												files={homeFileBrowserData.files}
-												selectedPath={homeFileBrowserData.selectedPath}
-												onSelectPath={homeFileBrowserData.onSelectPath}
-												panelFlex="1 1 0"
-												expandedDirs={homeFileBrowserExpandedDirs}
-												onExpandedDirsChange={setHomeFileBrowserExpandedDirs}
-												hasInitializedExpansion={homeFileBrowserInitialized}
-												onInitializedExpansion={() => setHomeFileBrowserInitialized(true)}
+						{/* Sidebar panel content — depends on sidebar state or mainView override */}
+						{mainView === "files" && !selectedCard ? (
+							<>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										flex: `0 0 ${homeSidePanelPercent}`,
+										minWidth: 0,
+										minHeight: 0,
+										overflow: "hidden",
+									}}
+								>
+									<ScopeBar
+										resolvedScope={homeResolvedScope}
+										scopeMode={homeScopeMode}
+										homeGitSummary={homeGitSummary}
+										taskTitle={null}
+										taskBranch={null}
+										taskBaseRef={null}
+										behindBaseCount={null}
+										isDetachedHead={homeGitSummary?.currentBranch === null && homeGitSummary !== null}
+										onSwitchToHome={homeSwitchToHome}
+										onReturnToContextual={homeReturnToContextual}
+										branchPillSlot={
+											<BranchSelectorPopover
+												isOpen={homeBranchActions.isBranchPopoverOpen}
+												onOpenChange={homeBranchActions.setBranchPopoverOpen}
+												branches={homeBranchActions.branches}
+												currentBranch={homeBranchActions.currentBranch}
+												worktreeBranches={homeBranchActions.worktreeBranches}
+												onSelectBranchView={homeBranchActions.handleSelectBranchView}
+												onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
+												trigger={
+													<BranchPillTrigger
+														label={
+															homeResolvedScope?.type === "branch_view"
+																? homeResolvedScope.ref
+																: (homeGitSummary?.currentBranch ?? "unknown")
+														}
+													/>
+												}
 											/>
-										) : (
-											<div className="flex flex-1 items-center justify-center text-text-tertiary">
-												<FolderOpen size={40} />
-											</div>
-										)}
-									</div>
-									<ResizeHandle
-										orientation="vertical"
-										ariaLabel="Resize file browser panel"
-										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
-										className="z-10"
+										}
+										onCheckoutBrowsingBranch={
+											homeResolvedScope?.type === "branch_view"
+												? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
+												: undefined
+										}
 									/>
-								</>
-							) : sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
-								<>
-									<div
-										style={{
-											display: "flex",
-											flexDirection: "column",
-											flex: `0 0 ${homeSidePanelPercent}`,
-											minWidth: 0,
-											minHeight: 0,
-											overflow: "hidden",
-										}}
-									>
-										<ProjectNavigationPanel
-											projects={displayedProjects}
-											isLoadingProjects={isProjectListLoading}
-											currentProjectId={navigationCurrentProjectId}
-											removingProjectId={removingProjectId}
-											projectIdsWithApprovals={projectIdsWithApprovals}
-											activeSection={homeSidebarSection}
-											onActiveSectionChange={setHomeSidebarSection}
-											canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-											agentSectionContent={homeSidebarAgentPanel}
-											onSelectProject={(projectId) => {
-												void handleSelectProject(projectId);
-											}}
-											onRemoveProject={handleRemoveProject}
-											onReorderProjects={handleReorderProjects}
-											onAddProject={() => {
-												void handleAddProject();
-											}}
+									{currentProjectId ? (
+										<FileBrowserTreePanel
+											key={currentProjectId}
+											files={homeFileBrowserData.files}
+											selectedPath={homeFileBrowserData.selectedPath}
+											onSelectPath={homeFileBrowserData.onSelectPath}
+											panelFlex="1 1 0"
+											expandedDirs={homeFileBrowserExpandedDirs}
+											onExpandedDirsChange={setHomeFileBrowserExpandedDirs}
+											hasInitializedExpansion={homeFileBrowserInitialized}
+											onInitializedExpansion={() => setHomeFileBrowserInitialized(true)}
 										/>
-									</div>
-									<ResizeHandle
-										orientation="vertical"
-										ariaLabel="Resize home side panel"
-										onMouseDown={handleHomeSidePanelSeparatorMouseDown}
-										className="z-10"
+									) : (
+										<div className="flex flex-1 items-center justify-center text-text-tertiary">
+											<FolderOpen size={40} />
+										</div>
+									)}
+								</div>
+								<ResizeHandle
+									orientation="vertical"
+									ariaLabel="Resize file browser panel"
+									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+									className="z-10"
+								/>
+							</>
+						) : sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
+							<>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										flex: `0 0 ${homeSidePanelPercent}`,
+										minWidth: 0,
+										minHeight: 0,
+										overflow: "hidden",
+									}}
+								>
+									<ProjectNavigationPanel
+										projects={displayedProjects}
+										isLoadingProjects={isProjectListLoading}
+										currentProjectId={navigationCurrentProjectId}
+										removingProjectId={removingProjectId}
+										projectIdsWithApprovals={projectIdsWithApprovals}
+										activeSection={homeSidebarSection}
+										onActiveSectionChange={setHomeSidebarSection}
+										canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+										agentSectionContent={homeSidebarAgentPanel}
+										onSelectProject={(projectId) => {
+											void handleSelectProject(projectId);
+										}}
+										onRemoveProject={handleRemoveProject}
+										onReorderProjects={handleReorderProjects}
+										onAddProject={() => {
+											void handleAddProject();
+										}}
 									/>
-								</>
-							) : null}
-						</>
-					) : null}
+								</div>
+								<ResizeHandle
+									orientation="vertical"
+									ariaLabel="Resize home side panel"
+									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+									className="z-10"
+								/>
+							</>
+						) : null}
+					</>
 
 					{/* Main area — varies by selection state */}
 					{selectedCard && detailSession ? (
@@ -1405,15 +1404,13 @@ export default function App(): ReactElement {
 							topBar={topBar}
 							sidePanelRatio={sidePanelRatio}
 							setSidePanelRatio={setSidePanelRatio}
-							isDiffExpanded={isDiffExpanded}
-							onDiffExpandedChange={setIsDiffExpanded}
-							detailDiffFileTreeRatio={detailDiffFileTreeRatio}
-							setDetailDiffFileTreeRatio={setDetailDiffFileTreeRatio}
 							board={board}
 							skipTaskCheckoutConfirmation={skipTaskCheckoutConfirmation}
 							skipHomeCheckoutConfirmation={skipHomeCheckoutConfirmation}
 							onSkipTaskCheckoutConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
 							onDeselectTask={() => setSelectedTaskId(null)}
+							pendingCompareNavigation={pendingCompareNavigation}
+							onCompareNavigationConsumed={clearPendingCompareNavigation}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1455,6 +1452,16 @@ export default function App(): ReactElement {
 														void discardHomeWorkingChanges();
 													}}
 													isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+												/>
+											) : mainView === "git" ? (
+												<GitView
+													currentProjectId={currentProjectId}
+													selectedCard={null}
+													sessionSummary={null}
+													homeGitSummary={homeGitSummary}
+													board={board}
+													pendingCompareNavigation={pendingCompareNavigation}
+													onCompareNavigationConsumed={clearPendingCompareNavigation}
 												/>
 											) : mainView === "files" ? (
 												<FileContentViewer

@@ -21,6 +21,8 @@ export enum LocalStorageKey {
 	OnboardingTipsDismissed = "quarterdeck.onboarding.tips.dismissed",
 	PreferredOpenTarget = "quarterdeck.preferred-open-target",
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
+	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",
+	GitViewActiveTab = "quarterdeck.git-view-active-tab",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
@@ -33,6 +35,7 @@ export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
 	LocalStorageKey.GitDiffFileTreePanelRatio,
 	LocalStorageKey.DetailFileBrowserTreePanelRatio,
 	LocalStorageKey.DetailExpandedFileBrowserTreePanelRatio,
+	LocalStorageKey.GitViewFileTreeRatio,
 ] as const;
 
 function getLocalStorage(): Storage | null {

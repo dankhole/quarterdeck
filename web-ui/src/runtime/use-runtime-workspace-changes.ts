@@ -20,24 +20,29 @@ export function useRuntimeWorkspaceChanges(
 	pollIntervalMs: number | null = null,
 	viewKey: string | null = null,
 	clearOnViewTransition = true,
+	fromRef?: string | null,
+	toRef?: string | null,
 ): UseRuntimeWorkspaceChangesResult {
-	const hasWorkspaceScope = taskId !== null && workspaceId !== null && baseRef !== null;
+	// workspaceId is always required. The backend handles null taskId (home context) and fromRef/toRef (compare).
+	const hasWorkspaceScope = workspaceId !== null;
 	const normalizedViewKey = viewKey ?? "__default__";
-	const requestKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}`;
+	const requestKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}:${fromRef ?? ""}:${toRef ?? ""}`;
 	const previousRequestKeyRef = useRef(requestKey);
 	const isRequestTransitioning = hasWorkspaceScope && previousRequestKeyRef.current !== requestKey;
 	const queryFn = useCallback(async () => {
-		if (!taskId || !workspaceId || !baseRef) {
+		if (!workspaceId) {
 			throw new Error("Missing workspace scope.");
 		}
 		void normalizedViewKey;
 		const trpcClient = getRuntimeTrpcClient(workspaceId);
 		return await trpcClient.workspace.getChanges.query({
-			taskId,
-			baseRef,
+			taskId: taskId ?? null,
+			baseRef: baseRef ?? undefined,
 			mode,
+			...(fromRef ? { fromRef } : {}),
+			...(toRef ? { toRef } : {}),
 		});
-	}, [baseRef, mode, normalizedViewKey, taskId, workspaceId]);
+	}, [baseRef, fromRef, mode, normalizedViewKey, taskId, toRef, workspaceId]);
 	const changesQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
 		enabled: hasWorkspaceScope,
 		queryFn,
@@ -85,15 +90,6 @@ export function useRuntimeWorkspaceChanges(
 			window.clearInterval(interval);
 		};
 	}, [changesQuery.refetch, hasWorkspaceScope, pollIntervalMs]);
-
-	if (!taskId) {
-		return {
-			changes: null,
-			isLoading: false,
-			isRuntimeAvailable: true,
-			refresh,
-		};
-	}
 
 	if (!workspaceId) {
 		return {

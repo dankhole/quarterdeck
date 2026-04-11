@@ -28,6 +28,16 @@ describe("loadMainView", () => {
 		expect(loadMainView()).toBe("terminal");
 	});
 
+	it('returns stored value when new key exists ("git")', () => {
+		window.localStorage.setItem(LocalStorageKey.DetailMainView, "git");
+		expect(loadMainView()).toBe("git");
+	});
+
+	it('migrates stored "changes" to "git"', () => {
+		window.localStorage.setItem(LocalStorageKey.DetailMainView, "changes");
+		expect(loadMainView()).toBe("git");
+	});
+
 	it('migrates legacy "changes" to "terminal"', () => {
 		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
 		expect(loadMainView()).toBe("terminal");
@@ -85,9 +95,9 @@ describe("loadSidebar", () => {
 		expect(loadSidebar()).toBe("task_column");
 	});
 
-	it('migrates legacy "changes" to "changes"', () => {
+	it('migrates legacy "changes" to "task_column"', () => {
 		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "changes");
-		expect(loadSidebar()).toBe("changes");
+		expect(loadSidebar()).toBe("task_column");
 	});
 
 	it("migrates legacy collapsed to null", () => {
@@ -110,9 +120,14 @@ describe("loadSidebar", () => {
 	});
 
 	it("prefers new key over legacy key", () => {
-		window.localStorage.setItem(LocalStorageKey.DetailSidebar, "changes");
+		window.localStorage.setItem(LocalStorageKey.DetailSidebar, "task_column");
 		window.localStorage.setItem(LocalStorageKey.DetailActivePanel, "home");
-		expect(loadSidebar()).toBe("changes");
+		expect(loadSidebar()).toBe("task_column");
+	});
+
+	it('migrates stored "changes" to "task_column"', () => {
+		window.localStorage.setItem(LocalStorageKey.DetailSidebar, "changes");
+		expect(loadSidebar()).toBe("task_column");
 	});
 });
 
@@ -122,14 +137,14 @@ describe("loadLastSidebarTab", () => {
 		expect(loadLastSidebarTab()).toBe("task_column");
 	});
 
-	it('returns stored value when new key exists ("changes")', () => {
+	it('migrates stored "changes" to "task_column"', () => {
 		window.localStorage.setItem(LocalStorageKey.DetailLastSidebarTab, "changes");
-		expect(loadLastSidebarTab()).toBe("changes");
+		expect(loadLastSidebarTab()).toBe("task_column");
 	});
 
-	it('migrates legacy "changes" from old key', () => {
+	it('migrates legacy "changes" from old key to "task_column"', () => {
 		window.localStorage.setItem(LocalStorageKey.DetailLastTaskTab, "changes");
-		expect(loadLastSidebarTab()).toBe("changes");
+		expect(loadLastSidebarTab()).toBe("task_column");
 	});
 
 	it('returns "task_column" when no value stored (default)', () => {
@@ -137,8 +152,8 @@ describe("loadLastSidebarTab", () => {
 	});
 
 	it("prefers new key over legacy key", () => {
-		window.localStorage.setItem(LocalStorageKey.DetailLastSidebarTab, "changes");
-		window.localStorage.setItem(LocalStorageKey.DetailLastTaskTab, "task_column");
-		expect(loadLastSidebarTab()).toBe("changes");
+		window.localStorage.setItem(LocalStorageKey.DetailLastSidebarTab, "task_column");
+		window.localStorage.setItem(LocalStorageKey.DetailLastTaskTab, "projects");
+		expect(loadLastSidebarTab()).toBe("task_column");
 	});
 });

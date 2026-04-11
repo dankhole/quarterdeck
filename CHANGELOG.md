@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Git view — promote diff viewer to full main view
+
+- The diff viewer is now a main view ("Git") instead of a sidebar panel ("Changes") — three internal tabs: **Uncommitted** (HEAD vs working tree, renamed from "All Changes"), **Last Turn** (preserved as-is), and **Compare** (new branch-to-branch diffing with dual pill dropdowns). The Compare tab defaults to the task's working branch vs base branch, shows a "Browsing" indicator when viewing a different branch, and has a "Return to context" button to reset. Works without a task selected (home repo context). Integrated file tree is toggleable, resizable, and persists width independently to localStorage. Git icon badge shows red for uncommitted changes in both task and home repo contexts. External navigation API (`openGitCompare`) enables future "compare against" entry points. Backend extended with nullable `taskId` and `fromRef`/`toRef` on `workspace.getChanges` for home repo and arbitrary ref-to-ref diffing, with `validateRef` input sanitization.
+
 ### Refactor: extract SessionSummaryStore from TerminalSessionManager
 
 - Decoupled session summary state management from terminal process lifecycle — new `SessionSummaryStore` interface + `InMemorySessionSummaryStore` owns all `RuntimeTaskSessionSummary` data, mutations, and change subscriptions. External callers (hooks-api, runtime-api, workspace-api, workspace-registry, runtime-state-hub, shutdown-coordinator) now access summaries via `manager.store` instead of reaching into the terminal manager directly. The store is a synchronous, process-agnostic class designed to map 1:1 to a Go interface for the backend rewrite.

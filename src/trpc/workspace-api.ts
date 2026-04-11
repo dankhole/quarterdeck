@@ -25,6 +25,7 @@ import {
 	getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
+	validateRef,
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync";
@@ -286,6 +287,36 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			}
 		},
 		loadChanges: async (workspaceScope, input) => {
+			// Path A: Ref-to-ref comparison (Compare tab)
+			if (input.fromRef && input.toRef) {
+				validateRef(input.fromRef, "fromRef");
+				validateRef(input.toRef, "toRef");
+				let cwd: string;
+				if (input.taskId) {
+					try {
+						cwd = await resolveTaskWorkingDirectory({
+							workspacePath: workspaceScope.workspacePath,
+							taskId: input.taskId,
+							baseRef: input.baseRef ?? "",
+						});
+					} catch (error) {
+						if (isMissingTaskWorktreeError(error)) {
+							return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+						}
+						throw error;
+					}
+				} else {
+					cwd = workspaceScope.workspacePath;
+				}
+				return await getWorkspaceChangesBetweenRefs({ cwd, fromRef: input.fromRef, toRef: input.toRef });
+			}
+
+			// Path B: Home repo uncommitted (no task)
+			if (!input.taskId) {
+				return await getWorkspaceChanges(workspaceScope.workspacePath);
+			}
+
+			// Path C & D: Task-scoped (existing behavior)
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			let taskCwd: string;
 			try {

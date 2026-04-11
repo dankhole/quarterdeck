@@ -11,25 +11,13 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 
 // --- New dual-selection types ---
 
-export type MainViewId = "home" | "terminal" | "files";
-export type SidebarId = "projects" | "task_column" | "changes";
+export type MainViewId = "home" | "terminal" | "files" | "git";
+export type SidebarId = "projects" | "task_column";
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
 	defaultValue: 0.15,
 	normalize: (value) => clampBetween(value, 0.14, 0.8),
-};
-
-const COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
-	key: LocalStorageKey.DetailDiffFileTreePanelRatio,
-	defaultValue: 0.3333,
-	normalize: (value) => clampBetween(value, 0.12, 0.6),
-};
-
-const EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
-	key: LocalStorageKey.DetailExpandedDiffFileTreePanelRatio,
-	defaultValue: 0.16,
-	normalize: (value) => clampBetween(value, 0.12, 0.6),
 };
 
 const COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
@@ -53,7 +41,8 @@ const EXPANDED_FILE_BROWSER_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
  */
 export function loadMainView(): MainViewId {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailMainView);
-	if (stored === "home" || stored === "terminal" || stored === "files") return stored;
+	if (stored === "home" || stored === "terminal" || stored === "files" || stored === "git") return stored;
+	if (stored === "changes") return "git"; // Old sidebar value → new main view
 
 	// Migration: read old key
 	const legacy = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
@@ -74,13 +63,14 @@ function persistMainView(view: MainViewId): MainViewId {
  */
 export function loadSidebar(): SidebarId | null {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailSidebar);
-	if (stored === "projects" || stored === "task_column" || stored === "changes") return stored;
+	if (stored === "projects" || stored === "task_column") return stored;
+	if (stored === "changes") return "task_column"; // Old "changes" sidebar → task_column
 	if (stored === "") return null; // sidebar was collapsed
 
 	// Migration: read old key
 	const legacy = readLocalStorageItem(LocalStorageKey.DetailActivePanel);
 	if (legacy === "task_column") return "task_column";
-	if (legacy === "changes") return "changes";
+	if (legacy === "changes") return "task_column";
 	if (legacy === "") return null;
 	return "projects"; // default for new installs and all other legacy values
 }
@@ -92,11 +82,13 @@ function persistSidebar(sidebar: SidebarId | null): SidebarId | null {
 
 export function loadLastSidebarTab(): SidebarId {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailLastSidebarTab);
-	if (stored === "projects" || stored === "task_column" || stored === "changes") return stored;
+	if (stored === "projects" || stored === "task_column") return stored;
+	if (stored === "changes") return "task_column";
 
 	// Migration: read old key
 	const legacy = readLocalStorageItem(LocalStorageKey.DetailLastTaskTab);
-	if (legacy === "task_column" || legacy === "changes") return legacy;
+	if (legacy === "task_column") return legacy;
+	if (legacy === "changes") return "task_column";
 	return "task_column"; // default
 }
 
@@ -106,11 +98,9 @@ function persistLastSidebarTab(tab: SidebarId): SidebarId {
 }
 
 export function useCardDetailLayout({
-	isDiffExpanded,
 	isFileBrowserExpanded,
 	selectedTaskId,
 }: {
-	isDiffExpanded: boolean;
 	isFileBrowserExpanded: boolean;
 	selectedTaskId: string | null;
 }): {
@@ -123,8 +113,6 @@ export function useCardDetailLayout({
 	lastSidebarTab: SidebarId;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
-	detailDiffFileTreeRatio: number;
-	setDetailDiffFileTreeRatio: (ratio: number) => void;
 	detailFileBrowserTreeRatio: number;
 	setDetailFileBrowserTreeRatio: (ratio: number) => void;
 	resetToDefaults: () => void;
@@ -135,12 +123,6 @@ export function useCardDetailLayout({
 	const [sidebar, setSidebarState] = useState<SidebarId | null>("projects");
 	const [lastSidebarTab, setLastSidebarTabState] = useState<SidebarId>(loadLastSidebarTab);
 	const [sidePanelRatio, setSidePanelRatioState] = useState(() => loadResizePreference(SIDE_PANEL_RATIO_PREFERENCE));
-	const [collapsedDetailDiffFileTreeRatio, setCollapsedDetailDiffFileTreeRatioState] = useState(() =>
-		loadResizePreference(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE),
-	);
-	const [expandedDetailDiffFileTreeRatio, setExpandedDetailDiffFileTreeRatioState] = useState(() =>
-		loadResizePreference(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
-	);
 	const [collapsedFileBrowserTreeRatio, setCollapsedFileBrowserTreeRatioState] = useState(() =>
 		loadResizePreference(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 	);
@@ -188,7 +170,7 @@ export function useCardDetailLayout({
 				return;
 			}
 			setSidebarPersist(id);
-			if (id === "task_column" || id === "changes") {
+			if (id === "task_column") {
 				setLastSidebarTab(id);
 			}
 		},
@@ -198,10 +180,10 @@ export function useCardDetailLayout({
 	// Derive visual highlight indicators for the toolbar.
 	const selectedCard = selectedTaskId !== null;
 	const visualMainView: MainViewId = mainView;
-	// When mainView is "files", the file tree replaces the sidebar panel — no sidebar icon is active.
+	// When mainView is "files" or "git", the integrated tree replaces the sidebar panel — no sidebar icon is active.
 	// When sidebar is collapsed, show which tab *would* reopen (accent highlight).
 	const visualSidebar: SidebarId | null =
-		mainView === "files" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
+		mainView === "files" || mainView === "git" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
 
 	// --- Auto-switch when selectedTaskId changes (not on initial mount) ---
 	const mainViewRef = useRef(mainView);
@@ -215,39 +197,27 @@ export function useCardDetailLayout({
 		const currentMainView = mainViewRef.current;
 
 		if (selectedTaskId) {
-			// Task selected: switch to terminal + task_column from home or files.
-			// From terminal view or collapsed sidebar: keep current state.
-			if (currentMainView === "home" || currentMainView === "files") {
+			// Task selected: switch to terminal + task_column from home.
+			// From terminal, files, or git view: keep current state (all work with task context).
+			if (currentMainView === "home") {
 				setMainViewPersist("terminal");
 				setSidebarPersist("task_column");
 				setLastSidebarTab("task_column");
 			}
-			// else: already on terminal — leave mainView and sidebar as-is
+			// else: already on terminal/files/git — leave mainView and sidebar as-is
 		} else {
-			// Task deselected: return to home + projects.
-			setMainViewPersist("home");
-			setSidebarPersist("projects");
+			// Task deselected: terminal needs a task, others work without one.
+			if (currentMainView === "terminal") {
+				setMainViewPersist("home");
+				setSidebarPersist("projects");
+			}
+			// else: "home", "files", "git" all work without a task — stay put
 		}
 	}, [selectedTaskId, setMainViewPersist, setSidebarPersist, setLastSidebarTab]);
 
 	const setSidePanelRatio = useCallback((ratio: number) => {
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));
 	}, []);
-
-	const setDetailDiffFileTreeRatio = useCallback(
-		(ratio: number) => {
-			if (isDiffExpanded) {
-				setExpandedDetailDiffFileTreeRatioState(
-					persistResizePreference(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE, ratio),
-				);
-				return;
-			}
-			setCollapsedDetailDiffFileTreeRatioState(
-				persistResizePreference(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE, ratio),
-			);
-		},
-		[isDiffExpanded],
-	);
 
 	const setDetailFileBrowserTreeRatio = useCallback(
 		(ratio: number) => {
@@ -266,12 +236,6 @@ export function useCardDetailLayout({
 
 	const resetToDefaults = useCallback(() => {
 		setSidePanelRatioState(getResizePreferenceDefaultValue(SIDE_PANEL_RATIO_PREFERENCE));
-		setCollapsedDetailDiffFileTreeRatioState(
-			getResizePreferenceDefaultValue(COLLAPSED_DIFF_FILE_TREE_RATIO_PREFERENCE),
-		);
-		setExpandedDetailDiffFileTreeRatioState(
-			getResizePreferenceDefaultValue(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
-		);
 		setCollapsedFileBrowserTreeRatioState(
 			getResizePreferenceDefaultValue(COLLAPSED_FILE_BROWSER_TREE_RATIO_PREFERENCE),
 		);
@@ -290,8 +254,6 @@ export function useCardDetailLayout({
 		lastSidebarTab,
 		sidePanelRatio,
 		setSidePanelRatio,
-		detailDiffFileTreeRatio: isDiffExpanded ? expandedDetailDiffFileTreeRatio : collapsedDetailDiffFileTreeRatio,
-		setDetailDiffFileTreeRatio,
 		detailFileBrowserTreeRatio: isFileBrowserExpanded ? expandedFileBrowserTreeRatio : collapsedFileBrowserTreeRatio,
 		setDetailFileBrowserTreeRatio,
 		resetToDefaults,

@@ -23,9 +23,11 @@ export const runtimeWorkspaceFileChangeSchema = z.object({
 export type RuntimeWorkspaceFileChange = z.infer<typeof runtimeWorkspaceFileChangeSchema>;
 
 export const runtimeWorkspaceChangesRequestSchema = z.object({
-	taskId: z.string(),
-	baseRef: z.string(),
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
 	mode: z.enum(["working_copy", "last_turn"]).optional(),
+	fromRef: z.string().optional(),
+	toRef: z.string().optional(),
 });
 export type RuntimeWorkspaceChangesRequest = z.infer<typeof runtimeWorkspaceChangesRequestSchema>;
 

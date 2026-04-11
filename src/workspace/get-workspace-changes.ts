@@ -24,6 +24,11 @@ interface NameStatusEntry {
 	previousPath?: string;
 }
 
+export function validateRef(ref: string, label: string): void {
+	if (ref.startsWith("-")) throw new Error(`Invalid ${label}: must not start with "-"`);
+	if (ref.includes("..")) throw new Error(`Invalid ${label}: must not contain ".."`);
+}
+
 interface ChangesBetweenRefsInput {
 	cwd: string;
 	fromRef: string;

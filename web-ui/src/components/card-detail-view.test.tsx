@@ -9,9 +9,8 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
 const mockUseRuntimeWorkspaceChanges = vi.fn();
-const { mockAgentTerminalPanel, mockDiffViewerPanel } = vi.hoisted(() => ({
+const { mockAgentTerminalPanel } = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
-	mockDiffViewerPanel: vi.fn((..._args: unknown[]) => null),
 }));
 
 vi.mock("react-hotkeys-hook", () => ({
@@ -27,10 +26,7 @@ vi.mock("@/components/detail-panels/column-context-panel", () => ({
 }));
 
 vi.mock("@/components/detail-panels/diff-viewer-panel", () => ({
-	DiffViewerPanel: (props: unknown) => {
-		mockDiffViewerPanel(props);
-		return <div data-testid="diff-viewer-panel" />;
-	},
+	DiffViewerPanel: () => <div data-testid="diff-viewer-panel" />,
 }));
 
 vi.mock("@/components/detail-panels/file-tree-panel", () => ({
@@ -108,10 +104,6 @@ const newRequiredProps = {
 	topBar: <div data-testid="top-bar" />,
 	sidePanelRatio: 0.25,
 	setSidePanelRatio: () => {},
-	isDiffExpanded: false,
-	onDiffExpandedChange: () => {},
-	detailDiffFileTreeRatio: 0.3333,
-	setDetailDiffFileTreeRatio: () => {},
 	board: { columns: [], dependencies: [] },
 	skipTaskCheckoutConfirmation: false,
 	skipHomeCheckoutConfirmation: false,
@@ -131,23 +123,6 @@ function requireSidePanel(container: HTMLElement): HTMLElement {
 	const panel = separator.previousElementSibling;
 	if (!(panel instanceof HTMLElement)) {
 		throw new Error("Expected a side panel element.");
-	}
-	return panel;
-}
-
-function requireDetailDiffSeparator(container: HTMLElement): HTMLElement {
-	const separator = container.querySelector('[aria-label="Resize detail diff panels"]');
-	if (!(separator instanceof HTMLElement)) {
-		throw new Error("Expected a detail diff resize separator.");
-	}
-	return separator;
-}
-
-function requireDetailDiffFileTreePanel(container: HTMLElement): HTMLElement {
-	const separator = requireDetailDiffSeparator(container);
-	const panel = separator.previousElementSibling;
-	if (!(panel instanceof HTMLElement)) {
-		throw new Error("Expected a detail diff file tree panel element.");
 	}
 	return panel;
 }
@@ -182,7 +157,6 @@ describe("CardDetailView", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		mockAgentTerminalPanel.mockClear();
-		mockDiffViewerPanel.mockClear();
 		mockUseRuntimeWorkspaceChanges.mockReturnValue({
 			changes: {
 				files: [
@@ -206,7 +180,6 @@ describe("CardDetailView", () => {
 		});
 		mockUseRuntimeWorkspaceChanges.mockReset();
 		mockAgentTerminalPanel.mockClear();
-		mockDiffViewerPanel.mockClear();
 		vi.restoreAllMocks();
 		container.remove();
 		if (previousActEnvironment === undefined) {
@@ -215,71 +188,6 @@ describe("CardDetailView", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-	});
-
-	it("renders the diff side panel when sidebar is changes", async () => {
-		await act(async () => {
-			renderWithProviders(
-				root,
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-					{...newRequiredProps}
-					sidebar="changes"
-				/>,
-			);
-		});
-
-		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
-	});
-
-	it("clears stale diff content when switching from all changes to last turn", async () => {
-		await act(async () => {
-			renderWithProviders(
-				root,
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-					{...newRequiredProps}
-					sidebar="changes"
-				/>,
-			);
-		});
-
-		const lastTurnButton = Array.from(container.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Last Turn",
-		);
-		expect(lastTurnButton).toBeInstanceOf(HTMLButtonElement);
-		if (!(lastTurnButton instanceof HTMLButtonElement)) {
-			throw new Error("Expected a Last Turn button.");
-		}
-
-		await act(async () => {
-			lastTurnButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			lastTurnButton.click();
-		});
-
-		const lastCall = mockUseRuntimeWorkspaceChanges.mock.calls.at(-1);
-		expect(lastCall?.[3]).toBe("last_turn");
-		expect(lastCall?.[7]).toBe(true);
 	});
 
 	it("uses surface-primary colors for the detail terminal panel", async () => {
@@ -376,48 +284,5 @@ describe("CardDetailView", () => {
 		});
 
 		expect(setSidePanelRatio).toHaveBeenCalled();
-	});
-
-	it("uses separate file-tree ratios for collapsed and expanded diff layouts", async () => {
-		const onDiffExpandedChange = vi.fn();
-
-		await act(async () => {
-			renderWithProviders(
-				root,
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-					{...newRequiredProps}
-					sidebar="changes"
-					detailDiffFileTreeRatio={0.42}
-					onDiffExpandedChange={onDiffExpandedChange}
-				/>,
-			);
-		});
-
-		// Browser normalizes "42.0%" to "42%"
-		expect(requireDetailDiffFileTreePanel(container).style.flex).toBe("0 0 42%");
-
-		const expandButton = container.querySelector('button[aria-label="Expand split diff view"]');
-		expect(expandButton).toBeInstanceOf(HTMLButtonElement);
-		if (!(expandButton instanceof HTMLButtonElement)) {
-			throw new Error("Expected an expand diff button.");
-		}
-
-		await act(async () => {
-			expandButton.click();
-		});
-
-		// The expand action calls the callback; the parent would re-render with isDiffExpanded=true
-		expect(onDiffExpandedChange).toHaveBeenCalledWith(true);
 	});
 });
