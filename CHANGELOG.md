@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### File browser right-click context menu
+
+- Right-clicking any file or directory in the file browser tree now shows a context menu with "Copy name" (file/folder name only) and "Copy path" (full absolute filesystem path). Uses `@radix-ui/react-context-menu`, styled to match existing dropdown menus. Toast confirmation on copy.
+
 ### Sidebar pin toggle
 
 - New pin button in the sidebar toolbar (below Projects/Board buttons) prevents the sidebar from auto-switching when selecting or deselecting a task. When pinned, clicking a task still opens the terminal but the sidebar stays on its current panel (e.g. Projects). Pin state persists to localStorage. The `task_column` sidebar always falls back to Projects on task deselect regardless of pin state, since it requires a task to function.

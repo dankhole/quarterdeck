@@ -1427,6 +1427,7 @@ export default function App(): ReactElement {
 														/>
 													}
 													fileBrowserData={homeFileBrowserData}
+													rootPath={workspacePath}
 												/>
 											) : (
 												<QuarterdeckBoard

@@ -1,15 +1,18 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ChevronDown,
 	ChevronRight,
 	ChevronsDownUp,
 	ChevronsUpDown,
+	ClipboardCopy,
 	FileText,
 	FolderOpen,
 	Search,
 	X,
 } from "lucide-react";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
@@ -48,6 +51,16 @@ function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE
 
 const ROW_HEIGHT = 28;
 
+const CONTEXT_MENU_ITEM_CLASS =
+	"flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3";
+
+function copyToClipboard(text: string, label: string): void {
+	void navigator.clipboard.writeText(text).then(
+		() => toast.success(`${label} copied to clipboard`),
+		() => toast.error(`Failed to copy ${label.toLowerCase()}`),
+	);
+}
+
 export function FileBrowserTreePanel({
 	files,
 	selectedPath,
@@ -57,6 +70,7 @@ export function FileBrowserTreePanel({
 	onExpandedDirsChange,
 	hasInitializedExpansion,
 	onInitializedExpansion,
+	rootPath,
 }: {
 	files: string[] | null;
 	selectedPath: string | null;
@@ -66,6 +80,8 @@ export function FileBrowserTreePanel({
 	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
 	hasInitializedExpansion: boolean;
 	onInitializedExpansion: () => void;
+	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
+	rootPath?: string | null;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -256,38 +272,61 @@ export function FileBrowserTreePanel({
 							const isFocused = node.path === focusedPath;
 
 							return (
-								<button
-									key={node.path}
-									type="button"
-									className={cn(
-										"kb-file-tree-row absolute top-0 left-0 w-full",
-										isDirectory && "kb-file-tree-row-directory",
-										isSelected && "kb-file-tree-row-selected",
-										isFocused && !isSelected && "ring-1 ring-inset ring-border-focus",
-									)}
-									style={{
-										height: ROW_HEIGHT,
-										transform: `translateY(${virtualItem.start}px)`,
-										paddingLeft: depth * 12 + 8,
-									}}
-									onClick={() => {
-										if (isDirectory) {
-											toggleDirectory(node.path);
-										} else {
-											onSelectPath(node.path);
-										}
-									}}
-								>
-									{isDirectory ? (
-										isExpanded ? (
-											<ChevronDown size={12} className="shrink-0" />
-										) : (
-											<ChevronRight size={12} className="shrink-0" />
-										)
-									) : null}
-									{isDirectory ? <FolderOpen size={14} /> : <FileText size={14} />}
-									<span className="truncate">{node.name}</span>
-								</button>
+								<ContextMenu.Root key={node.path}>
+									<ContextMenu.Trigger asChild>
+										<button
+											type="button"
+											className={cn(
+												"kb-file-tree-row absolute top-0 left-0 w-full",
+												isDirectory && "kb-file-tree-row-directory",
+												isSelected && "kb-file-tree-row-selected",
+												isFocused && !isSelected && "ring-1 ring-inset ring-border-focus",
+											)}
+											style={{
+												height: ROW_HEIGHT,
+												transform: `translateY(${virtualItem.start}px)`,
+												paddingLeft: depth * 12 + 8,
+											}}
+											onClick={() => {
+												if (isDirectory) {
+													toggleDirectory(node.path);
+												} else {
+													onSelectPath(node.path);
+												}
+											}}
+										>
+											{isDirectory ? (
+												isExpanded ? (
+													<ChevronDown size={12} className="shrink-0" />
+												) : (
+													<ChevronRight size={12} className="shrink-0" />
+												)
+											) : null}
+											{isDirectory ? <FolderOpen size={14} /> : <FileText size={14} />}
+											<span className="truncate">{node.name}</span>
+										</button>
+									</ContextMenu.Trigger>
+									<ContextMenu.Portal>
+										<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+											<ContextMenu.Item
+												className={CONTEXT_MENU_ITEM_CLASS}
+												onSelect={() => copyToClipboard(node.name, "Name")}
+											>
+												<ClipboardCopy size={14} className="text-text-secondary" />
+												Copy name
+											</ContextMenu.Item>
+											<ContextMenu.Item
+												className={CONTEXT_MENU_ITEM_CLASS}
+												onSelect={() =>
+													copyToClipboard(rootPath ? `${rootPath}/${node.path}` : node.path, "Path")
+												}
+											>
+												<ClipboardCopy size={14} className="text-text-secondary" />
+												Copy path
+											</ContextMenu.Item>
+										</ContextMenu.Content>
+									</ContextMenu.Portal>
+								</ContextMenu.Root>
 							);
 						})}
 					</div>

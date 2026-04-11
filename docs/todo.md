@@ -144,9 +144,14 @@ Move the branch name display off the top bar into the git view. Replace the top 
 
 New sidebar tab showing a simplified view of uncommitted changes — just file names in a list — with a commit message input and commit/push buttons at the bottom, similar to the JetBrains "Commit" tool window. This is where server-side commit functionality (todo #10) will eventually live. Distinct from the git main view's Uncommitted tab, which shows full diffs — this sidebar is for quick commit workflows without leaving your current main view.
 
-## 23. "Compare against" context action for branch viewers
+## 23. Right-click context menu for branch pill dropdowns
 
-Add a right-click context menu or button to branch viewers across the app (scope bar branch selector, git history refs panel, etc.) that opens the git view's Compare tab with that branch pre-selected as the comparison target. The task's working branch stays as the source (left side). Enables quick "compare my work against this branch" workflow from anywhere branches are shown.
+Add a right-click context menu to branches in the pill dropdowns (scope bar branch selector, git history refs panel, etc.) with actions:
+- **Checkout this branch** — switch the task's worktree to the selected branch
+- **Compare against local tree** — open the git view's Compare tab with that branch pre-selected as the comparison target (the task's working branch stays as the source/left side)
+- **Copy branch name** — copy the branch name to clipboard
+
+Requires `@radix-ui/react-context-menu` (already installed for the file browser context menu).
 
 ## 24. Fix: compacting conversation doesn't transition task to running
 
@@ -163,4 +168,8 @@ Scrolling up in an agent terminal reveals duplicated copies of the chat history 
 ## 27. Fix: clicking a task causes laggy scroll-to-bottom in terminal
 
 When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
+
+## 28. "Copy file" in file browser context menu
+
+Add a "Copy file" action to the file browser right-click context menu that copies the full file contents to the clipboard. Currently the context menu has "Copy name" and "Copy path" — this would complete the set. Needs to fetch the file content (or reuse the already-fetched content if the file is currently open in the viewer) before writing to clipboard.
 

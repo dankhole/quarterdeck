@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## File browser right-click context menu (2026-04-11)
+
+Added a right-click context menu to every row (files and directories) in the file browser tree panel. Two actions: "Copy name" (copies `node.name` — just the filename/folder name) and "Copy path" (copies full absolute path by joining the worktree root with the relative file path).
+
+**Package**: Added `@radix-ui/react-context-menu` to web-ui dependencies. It mirrors the `@radix-ui/react-dropdown-menu` API already in use.
+
+**Context menu implementation**: Each virtualized row wraps in `ContextMenu.Root` > `ContextMenu.Trigger asChild` (on the existing button) > `ContextMenu.Portal` > `ContextMenu.Content`. The `asChild` pattern merges Radix's `onContextMenu` handler onto the button without replacing the existing `onClick`. Styling uses `bg-surface-1 border-border-bright` to match the existing dropdown pattern in `project-navigation-panel.tsx`.
+
+**rootPath plumbing**: New optional `rootPath?: string | null` prop on `FileBrowserTreePanel`. When provided, "Copy path" concatenates `${rootPath}/${node.path}` for the full absolute path; falls back to the relative path when null. `rootPath` flows through `FilesView` (new prop) from two call sites: `App.tsx` passes `workspacePath` (home view), `card-detail-view.tsx` passes `taskWorkspaceInfo?.path ?? selection.card.workingDirectory` (task view).
+
+**Clipboard + feedback**: Reuses the same `navigator.clipboard.writeText` + `toast` from `sonner` pattern already in `file-content-viewer.tsx`.
+
+Files touched: `web-ui/package.json`, `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx`, `web-ui/src/components/files-view.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`. Todo #23 updated to cover branch pill context menu. Todo #28 added for "Copy file" (copy full contents).
+
 ## Sidebar pin toggle — prevent auto-switching on task click (2026-04-11)
 
 Added a pin toggle button to the sidebar toolbar that prevents the sidebar from auto-switching when selecting or deselecting a task. Previously, clicking a task card while on the home view unconditionally switched both the main view to terminal AND the sidebar to `task_column`, which was disruptive when actively using the project switcher.

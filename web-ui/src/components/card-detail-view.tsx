@@ -357,6 +357,7 @@ export function CardDetailView({
 								/>
 							}
 							fileBrowserData={fileBrowserData}
+							rootPath={taskWorkspaceInfo?.path ?? selection.card.workingDirectory}
 						/>
 					</div>
 				) : (

@@ -32,9 +32,11 @@ export interface FilesViewProps {
 	scopeBar: ReactNode;
 	/** File browser data from useFileBrowserData — file list, selection, content. */
 	fileBrowserData: UseFileBrowserDataResult;
+	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
+	rootPath?: string | null;
 }
 
-export function FilesView({ scopeBar, fileBrowserData }: FilesViewProps): React.ReactElement {
+export function FilesView({ scopeBar, fileBrowserData, rootPath }: FilesViewProps): React.ReactElement {
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE),
@@ -132,6 +134,7 @@ export function FilesView({ scopeBar, fileBrowserData }: FilesViewProps): React.
 										onExpandedDirsChange={setExpandedDirs}
 										hasInitializedExpansion={hasInitializedExpansion}
 										onInitializedExpansion={handleInitializedExpansion}
+										rootPath={rootPath}
 									/>
 								</div>
 								<ResizeHandle
