@@ -46,13 +46,10 @@ This is distinct from #6 (committing *within* the task worktree). This is a targ
 
 ## 5. Branch management in git view
 
-~~Move the branch name display off the top bar into the git view.~~ ✓ Done — branch pill, git stats, fetch/pull/push buttons, and git history toggle now live in the git view tab bar. Remaining:
+Add branch switching and merging operations within the git view. The branch pill, git stats, and fetch/pull/push buttons already live in the git view tab bar — this is about adding the interactive operations on top.
 
-Add branch switching and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
-
-- **Merge into worktree**: Merge another branch (e.g. main, a sibling feature branch) into the task's worktree branch from the git view. This is the primary "keep my worktree up to date" workflow — pick a source branch, merge it in, surface conflicts if any. Should be accessible from the branch list or a dedicated merge action in the git view UI.
+- **Right-click context menu on branch pills**: Add a right-click context menu to branches in the pill dropdowns (scope bar branch selector, git history refs panel, etc.) as the primary surface for branch operations. Actions: checkout branch, merge into current branch, compare against local tree (opens git view Compare tab with that branch pre-selected), and copy branch name. Uses `@radix-ui/react-context-menu` (already installed for the file browser context menu).
 - **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
-- **Right-click context menu on branch pills**: Add a right-click context menu to branches in the pill dropdowns (scope bar branch selector, git history refs panel, etc.) with actions: checkout branch, compare against local tree (opens git view Compare tab with that branch pre-selected), and copy branch name. Uses `@radix-ui/react-context-menu` (already installed for the file browser context menu). This is the primary surface for branch operations — the context menu should encompass checkout, compare, and copy in one place.
 
 ## 6. Commit sidebar tab with server-side commit
 
@@ -126,25 +123,34 @@ The sidebar width is currently shared across all panel types — the task column
 
 Add a markdown renderer for viewing `.md` files in the file browser / file viewer. Currently markdown files are shown as raw text.
 
-## 18. Fix: notification beep count wrong for rapid state transitions
+## 18. Fix: workspace metadata monitor holds git index lock on worktrees
 
-When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #19 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+The runtime's workspace-metadata-monitor polls `git status`/`git diff` on all active worktrees (for uncommitted changes dots, behind-base indicators, etc.). This can hold the git index lock (`.git/worktrees/<name>/index.lock`) continuously, blocking any other git operations in that worktree — including manual commits from the CLI or other agents. Observed when trying to commit in a worktree with an active task card: the lock kept reappearing immediately after removal, and only racing the `rm` + `git commit` in a single command chain worked around it.
 
-## 19. Fix: audible notification double-beep and missed cues
+Investigate whether the monitor should:
+- Use a shorter-lived lock or read-only git operations that don't require the index lock
+- Back off when it detects another process needs the lock
+- Skip polling on worktrees that have an active CLI session (where the user/agent is likely to run git commands)
+
+## 19. Fix: notification beep count wrong for rapid state transitions
+
+When a task goes to "ready for review" then quickly switches to "needs input", only 1 beep plays instead of 2. Also, "waiting for approval" may always be playing only 1 beep regardless of config. This may overlap with #20 (double-beep / missed cues) — check the implementation log, as a recent fix may have partially addressed this.
+
+## 20. Fix: audible notification double-beep and missed cues
 
 Two related bugs with the notification audio system:
 - Sometimes getting a double beep when only one should fire
 - Sometimes getting 1 beep when 2 separate events should produce 2 beeps
 - The settle/debounce window may be slightly too short, causing events to either merge when they shouldn't or fire twice when they should merge
 
-## 20. Fix: compacting conversation doesn't transition task to running
+## 21. Fix: compacting conversation doesn't transition task to running
 
 When an agent compacts its conversation context (e.g. Claude Code's auto-compact), the task card doesn't move to "running" / in_progress. The compact action is part of the agent's active work cycle, so it should trigger the same state transition as any other agent activity. Investigate whether the compact event isn't emitting the expected hook or whether the output pattern isn't being detected by the adapter.
 
-## 21. Publish to npm
+## 22. Publish to npm
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 22. Archive stale docs (recurring)
+## 23. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
