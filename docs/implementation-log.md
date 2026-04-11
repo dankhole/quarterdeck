@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Sidebar pin toggle — prevent auto-switching on task click (2026-04-11)
+
+Added a pin toggle button to the sidebar toolbar that prevents the sidebar from auto-switching when selecting or deselecting a task. Previously, clicking a task card while on the home view unconditionally switched both the main view to terminal AND the sidebar to `task_column`, which was disruptive when actively using the project switcher.
+
+**State management**: New `sidebarPinned` boolean state in `useCardDetailLayout` with `toggleSidebarPinned` callback. A `sidebarPinnedRef` keeps the value fresh for the auto-switch `useEffect` (avoids stale closures). Pin state persists to `LocalStorageKey.SidebarPinned` (`"quarterdeck.sidebar-pinned"`) via `readLocalStorageItem`/`writeLocalStorageItem`.
+
+**Auto-switch guard**: The `useEffect` watching `selectedTaskId` now reads `sidebarPinnedRef.current`. When pinned: selecting a task still switches `mainView` from `"home"` to `"terminal"` (the terminal needs a task), but skips `setSidebarPersist("task_column")`. Deselecting a task still switches `mainView` from `"terminal"` to `"home"`, but only skips `setSidebarPersist("projects")` when the current sidebar is NOT `"task_column"` — because `task_column` fundamentally requires a task to function, so it always falls back to `"projects"` on deselect regardless of pin state.
+
+**Explicit actions bypass pin**: `setMainView("home")` (clicking Home) and `toggleSidebar()` (manually clicking sidebar buttons) are unaffected by pin state. The pin only guards automatic sidebar switches triggered by task selection changes.
+
+**Toolbar UI**: Small pin button (6×6 px) below the Board sidebar button. When pinned: `Pin` icon in accent color. When unpinned: `PinOff` icon at 40% opacity, full opacity on hover. Tooltip shows "Pin sidebar" / "Unpin sidebar". `aria-pressed` reflects state.
+
+Files touched: `web-ui/src/resize/use-card-detail-layout.ts`, `web-ui/src/components/detail-panels/detail-toolbar.tsx`, `web-ui/src/App.tsx`, `web-ui/src/storage/local-storage-store.ts`. Closes todo #25.
+
 ## Terminal WebGL renderer toggle (2026-04-11)
 
 Added a configurable toggle (`terminalWebGLRenderer`, default `true`) to enable or disable xterm.js's WebGL renderer. When disabled, terminals fall back to the browser's built-in canvas 2D renderer, which produces crisper text on some displays at the cost of GPU acceleration. The toggle applies live — enabling attaches a new `WebglAddon`, disabling disposes it and lets xterm fall back automatically.

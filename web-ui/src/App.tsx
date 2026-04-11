@@ -902,6 +902,8 @@ export default function App(): ReactElement {
 		sidebar,
 		setMainView,
 		toggleSidebar,
+		sidebarPinned,
+		toggleSidebarPinned,
 		visualMainView,
 		visualSidebar,
 		sidePanelRatio,
@@ -919,7 +921,7 @@ export default function App(): ReactElement {
 	);
 
 	/** Navigate to the git view's Compare tab with pre-set branch parameters (!6). */
-	const openGitCompare = useCallback(
+	const _openGitCompare = useCallback(
 		(navigation: GitViewCompareNavigation) => {
 			setPendingCompareNavigation(navigation);
 			setMainView("git", { setSelectedTaskId });
@@ -1206,6 +1208,8 @@ export default function App(): ReactElement {
 							activeSidebar={visualSidebar}
 							onMainViewChange={handleMainViewChange}
 							onSidebarChange={toggleSidebar}
+							sidebarPinned={sidebarPinned}
+							onToggleSidebarPinned={toggleSidebarPinned}
 							hasSelectedTask={selectedCard !== null}
 							gitBadgeColor={
 								selectedCard

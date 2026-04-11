@@ -90,6 +90,8 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
 	toggleSidebar: (id: SidebarId) => void;
+	sidebarPinned: boolean;
+	toggleSidebarPinned: () => void;
 	visualMainView: MainViewId;
 	visualSidebar: SidebarId | null;
 	lastSidebarTab: SidebarId;
@@ -115,6 +117,19 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 	const setLastSidebarTab = useCallback((tab: SidebarId) => {
 		setLastSidebarTabState(persistLastSidebarTab(tab));
 	}, []);
+
+	const [sidebarPinned, setSidebarPinned] = useState(
+		() => readLocalStorageItem(LocalStorageKey.SidebarPinned) === "true",
+	);
+	const toggleSidebarPinned = useCallback(() => {
+		setSidebarPinned((prev) => {
+			const next = !prev;
+			writeLocalStorageItem(LocalStorageKey.SidebarPinned, String(next));
+			return next;
+		});
+	}, []);
+	const sidebarPinnedRef = useRef(sidebarPinned);
+	sidebarPinnedRef.current = sidebarPinned;
 
 	/**
 	 * Set the main view. Auto-coupling rules:
@@ -162,6 +177,8 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 	// --- Auto-switch when selectedTaskId changes (not on initial mount) ---
 	const mainViewRef = useRef(mainView);
 	mainViewRef.current = mainView;
+	const sidebarRef = useRef(sidebar);
+	sidebarRef.current = sidebar;
 	const isInitialMountRef = useRef(true);
 	useEffect(() => {
 		if (isInitialMountRef.current) {
@@ -169,21 +186,28 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 			return;
 		}
 		const currentMainView = mainViewRef.current;
+		const pinned = sidebarPinnedRef.current;
 
 		if (selectedTaskId) {
 			// Task selected: switch to terminal + task_column from home.
 			// From terminal, files, or git view: keep current state (all work with task context).
 			if (currentMainView === "home") {
 				setMainViewPersist("terminal");
-				setSidebarPersist("task_column");
-				setLastSidebarTab("task_column");
+				if (!pinned) {
+					setSidebarPersist("task_column");
+					setLastSidebarTab("task_column");
+				}
 			}
 			// else: already on terminal/files/git — leave mainView and sidebar as-is
 		} else {
 			// Task deselected: terminal needs a task, others work without one.
 			if (currentMainView === "terminal") {
 				setMainViewPersist("home");
-				setSidebarPersist("projects");
+				// task_column can't function without a task, so always fall back to projects.
+				// For other sidebars (projects), respect the pin.
+				if (!pinned || sidebarRef.current === "task_column") {
+					setSidebarPersist("projects");
+				}
 			}
 			// else: "home", "files", "git" all work without a task — stay put
 		}
@@ -202,6 +226,8 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 		sidebar,
 		setMainView,
 		toggleSidebar,
+		sidebarPinned,
+		toggleSidebarPinned,
 		visualMainView,
 		visualSidebar,
 		lastSidebarTab,

@@ -22,6 +22,7 @@ export enum LocalStorageKey {
 	PromptShortcutLastLabel = "quarterdeck.prompt-shortcut-last-label",
 	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",
 	GitViewActiveTab = "quarterdeck.git-view-active-tab",
+	SidebarPinned = "quarterdeck.sidebar-pinned",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

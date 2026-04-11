@@ -152,19 +152,15 @@ Add a right-click context menu or button to branch viewers across the app (scope
 
 When an agent compacts its conversation context (e.g. Claude Code's auto-compact), the task card doesn't move to "running" / in_progress. The compact action is part of the agent's active work cycle, so it should trigger the same state transition as any other agent activity. Investigate whether the compact event isn't emitting the expected hook or whether the output pattern isn't being detected by the adapter.
 
-## 25. Clicking a task shouldn't always swap sidebar to board view
-
-Currently, clicking a task card auto-switches the sidebar from the project switcher (or wherever you are) to the board/task sidebar. This is disruptive when you're actively using the project switcher and just want to glance at a task. Options to explore: a setting to disable the auto-switch, a "pin" button on the project switcher panel that locks it in place, or only auto-switching when the task is opened from the board sidebar itself rather than from other contexts.
-
-## 26. Fix: font weight input pill too wide in settings
+## 25. Fix: font weight input pill too wide in settings
 
 The font weight number input in the settings dialog is visually too wide for its content. It only needs to fit 3–4 digit values (100–900) but takes up more horizontal space than necessary. Tighten the input width to match the expected content size.
 
-## 27. Fix: terminal scrollback shows duplicate chat history at different widths
+## 26. Fix: terminal scrollback shows duplicate chat history at different widths
 
 Scrolling up in an agent terminal reveals duplicated copies of the chat history rendered at different column widths. Likely a reflow or resize issue — when the terminal is resized (or the panel changes width), the PTY redraws the content at the new width but the old rendering remains in the scrollback buffer, producing visible duplicates.
 
-## 28. Fix: clicking a task causes laggy scroll-to-bottom in terminal
+## 27. Fix: clicking a task causes laggy scroll-to-bottom in terminal
 
 When switching to a task, the terminal sometimes does a visible slow scroll from the top of the buffer down to the bottom instead of jumping instantly to the current position. Investigate whether this is an xterm.js `scrollToBottom()` animation issue, a render timing problem (scroll fires before content is fully loaded), or the terminal being re-attached with the viewport at the top.
 
