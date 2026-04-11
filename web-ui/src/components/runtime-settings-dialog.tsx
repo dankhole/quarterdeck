@@ -908,7 +908,7 @@ export function RuntimeSettingsDialog({
 							type="number"
 							min={100}
 							max={900}
-							step={25}
+							step={10}
 							value={terminalFontWeight}
 							onChange={(event) => {
 								const value = Number(event.target.value);
