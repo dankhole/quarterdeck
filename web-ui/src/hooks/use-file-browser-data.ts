@@ -13,6 +13,8 @@ export interface UseFileBrowserDataResult {
 	isContentLoading: boolean;
 	isContentError: boolean;
 	onCloseFile: () => void;
+	/** Fetch file content for an arbitrary path (used by "Copy file contents" context menu action). */
+	getFileContent: (path: string) => Promise<RuntimeFileContentResponse | null>;
 }
 
 /**
@@ -94,6 +96,24 @@ export function useFileBrowserData(options: {
 		setSelectedPath(null);
 	}, []);
 
+	const getFileContent = useCallback(
+		async (path: string): Promise<RuntimeFileContentResponse | null> => {
+			if (!workspaceId) return null;
+			try {
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				return await trpcClient.workspace.getFileContent.query({
+					taskId,
+					...(baseRef ? { baseRef } : {}),
+					path,
+					...(browseRef ? { ref: browseRef } : {}),
+				});
+			} catch {
+				return null;
+			}
+		},
+		[workspaceId, taskId, baseRef, browseRef],
+	);
+
 	return {
 		files: fileListQuery.data?.files ?? null,
 		selectedPath,
@@ -102,5 +122,6 @@ export function useFileBrowserData(options: {
 		isContentLoading: fileContentQuery.isLoading,
 		isContentError: fileContentQuery.isError,
 		onCloseFile: handleCloseFile,
+		getFileContent,
 	};
 }

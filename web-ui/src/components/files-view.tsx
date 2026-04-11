@@ -135,6 +135,7 @@ export function FilesView({ scopeBar, fileBrowserData, rootPath }: FilesViewProp
 										hasInitializedExpansion={hasInitializedExpansion}
 										onInitializedExpansion={handleInitializedExpansion}
 										rootPath={rootPath}
+										getFileContent={fileBrowserData.getFileContent}
 									/>
 								</div>
 								<ResizeHandle

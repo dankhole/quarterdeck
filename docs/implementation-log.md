@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## "Copy file contents" in file browser context menu (2026-04-11)
+
+Added a "Copy file contents" action to the file browser right-click context menu, completing the copy action set (name, path, contents).
+
+**Data flow**: The `useFileBrowserData` hook already manages workspace/task context for file content fetching. Added a `getFileContent(path)` method to its return interface that makes the same `workspace.getFileContent` tRPC call used by the file viewer. The tree panel receives this as a prop and calls it when the menu item is selected. Binary files are rejected with an error toast; fetch failures show a generic error toast; successful copies show a success toast.
+
+The menu item only appears on files (not directories) and only when `getFileContent` is provided (always true in the current two `FilesView` call sites).
+
+Files touched: `web-ui/src/hooks/use-file-browser-data.ts`, `web-ui/src/components/files-view.tsx`, `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx`.
+
 ## Fix: font weight settings input — text input instead of number spinner (2026-04-11)
 
 Replaced the native `type="number"` input for terminal font weight in the settings dialog with a `type="text"` + `inputMode="numeric"` input backed by local draft state.

@@ -15,6 +15,7 @@ import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState 
 import { toast } from "sonner";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { RuntimeFileContentResponse } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 import { useDebouncedEffect } from "@/utils/react-use";
 
@@ -71,6 +72,7 @@ export function FileBrowserTreePanel({
 	hasInitializedExpansion,
 	onInitializedExpansion,
 	rootPath,
+	getFileContent,
 }: {
 	files: string[] | null;
 	selectedPath: string | null;
@@ -82,12 +84,36 @@ export function FileBrowserTreePanel({
 	onInitializedExpansion: () => void;
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
+	/** Fetch file content for a given path (used by "Copy file contents" context menu action). */
+	getFileContent?: (path: string) => Promise<RuntimeFileContentResponse | null>;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [debouncedQuery, setDebouncedQuery] = useState("");
 	const [focusedIndex, setFocusedIndex] = useState(-1);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+	const copyFileContents = useCallback(
+		async (path: string) => {
+			if (!getFileContent) return;
+			try {
+				const result = await getFileContent(path);
+				if (!result) {
+					toast.error("Failed to copy file contents");
+					return;
+				}
+				if (result.binary) {
+					toast.error("Cannot copy binary file contents");
+					return;
+				}
+				await navigator.clipboard.writeText(result.content);
+				toast.success("File contents copied to clipboard");
+			} catch {
+				toast.error("Failed to copy file contents");
+			}
+		},
+		[getFileContent],
+	);
 
 	useDebouncedEffect(
 		() => {
@@ -324,6 +350,15 @@ export function FileBrowserTreePanel({
 												<ClipboardCopy size={14} className="text-text-secondary" />
 												Copy path
 											</ContextMenu.Item>
+											{!isDirectory && getFileContent ? (
+												<ContextMenu.Item
+													className={CONTEXT_MENU_ITEM_CLASS}
+													onSelect={() => void copyFileContents(node.path)}
+												>
+													<ClipboardCopy size={14} className="text-text-secondary" />
+													Copy file contents
+												</ContextMenu.Item>
+											) : null}
 										</ContextMenu.Content>
 									</ContextMenu.Portal>
 								</ContextMenu.Root>

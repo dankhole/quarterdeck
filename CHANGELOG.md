@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### "Copy file contents" in file browser context menu
+
+- Right-clicking a file in the file browser tree now offers a "Copy file contents" action alongside the existing "Copy name" and "Copy path" options. Fetches the file content from the server (or git ref) and writes it to the clipboard. Handles binary files (shows error toast) and fetch failures gracefully.
+
 ### Fix: font weight settings input — replace number spinner with text input
 
 - The font weight input in Settings > Terminal now uses a plain text field instead of a native `type="number"` spinner. The number spinner was unusable for manual entry — typing "350" would clamp to 100 after the first keystroke, and the step arrows caused jumpy, unpredictable behavior. The new input accepts free-form typing and validates on blur or Enter (reverts on invalid input). Input width narrowed from `w-20` to `w-14` to match the 3-digit value range.

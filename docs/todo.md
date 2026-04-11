@@ -156,6 +156,3 @@ Register the `quarterdeck` package on npm, configure OIDC trusted publishing for
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 25. "Copy file" in file browser context menu
-
-Add a "Copy file" action to the file browser right-click context menu that copies the full file contents to the clipboard. Currently the context menu has "Copy name" and "Copy path" — this would complete the set. Needs to fetch the file content (or reuse the already-fetched content if the file is currently open in the viewer) before writing to clipboard.
