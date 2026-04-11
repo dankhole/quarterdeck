@@ -14,7 +14,11 @@ export interface SessionTransitionResult {
 }
 
 export function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): boolean {
-	return reason === "attention" || reason === "hook" || reason === "error";
+	// "exit" was previously excluded, creating a permanent dead state — a task
+	// that exited cleanly could never transition back to running via hooks.
+	// Note: "interrupted" maps to state "interrupted" (not "awaiting_review"),
+	// so it's handled by a different path and isn't relevant here.
+	return reason === "attention" || reason === "hook" || reason === "error" || reason === "exit";
 }
 
 function asReviewState(reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary["state"] {

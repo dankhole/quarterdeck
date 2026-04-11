@@ -338,10 +338,12 @@ describe("session-state-machine regression for reconciliation", () => {
 		expect(result.patch.reviewReason).toBeNull();
 	});
 
-	it("hook.to_in_progress from awaiting_review with exit reason is rejected (26)", () => {
+	it("hook.to_in_progress from awaiting_review with exit reason transitions to running (26)", () => {
 		const summary = createSummary({ state: "awaiting_review", reviewReason: "exit" });
 		const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
-		expect(result.changed).toBe(false);
+		expect(result.changed).toBe(true);
+		expect(result.patch.state).toBe("running");
+		expect(result.patch.reviewReason).toBeNull();
 	});
 });
 

@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Harden session state transition system (2026-04-11)
+
+Four structural fixes to the hook-based state transition pipeline, plus diagnostic logging to support root-cause investigation of todo #9 (permission prompts) and #21 (compact doesn't transition).
+
+**Dead state fix** (`session-state-machine.ts`): `canReturnToRunning()` now accepts `"exit"` in addition to `"attention"`, `"hook"`, and `"error"`. Previously, a task that exited cleanly (code 0) entered `awaiting_review` with `reviewReason: "exit"` — a permanent dead state that no hook could escape. Note: `"interrupted"` was considered but maps to `state: "interrupted"` (not `"awaiting_review"`), so it's a different code path and wasn't added. The duplicated inline check in `hooks-api.ts` (`canTransitionTaskForHookEvent`) now imports and delegates to the shared `canReturnToRunning` function.
+
+**Interrupt timer leak** (`session-manager.ts`): `applySessionEventWithSideEffects` now calls `clearInterruptRecoveryTimer(entry.active)` when transitioning to `state: "running"`. The bug: user presses Escape → 5s timer scheduled → agent fires `to_in_progress` hook → state goes back to running → timer fires anyway → bounces session to `awaiting_review/attention`. The fix clears the timer on any return-to-running transition.
+
+**Hook delivery retry** (`hooks.ts`): `ingestHookEvent` now retries once after a 1s delay if the initial attempt (3s timeout) fails. The tRPC client is created once and reused across both attempts. On retry failure, the original error is re-thrown. This is the simplest reliability improvement for the only channel that drives state transitions.
+
+**Reconciliation through reducer** (`session-manager.ts`): The `mark_processless_error` reconciliation action now calls `applySessionEventWithSideEffects(entry, { type: "process.exit", exitCode: null, interrupted: false })` instead of directly writing `{ state: "awaiting_review", reviewReason: "error" }` via `store.update`. The outcome is identical (`exitCode: null` maps to `reviewReason: "error"`) but the transition is now validated by the state machine and triggers side effects (interrupt timer clearing, attention buffer reset).
+
+**Diagnostic logging**: Two layers for diagnosing stuck-state root causes. CLI-side: `process.stderr.write` in `runHooksIngest` emits a structured `[hooks:cli]` line on every hook invocation, showing event type, hookEventName, toolName, notificationType, and truncated activityText. Server-side: four `log.debug` calls in `hooks-api.ts` at the key decision points — hook received (full metadata), hook blocked (state mismatch), hook blocked (permission guard), and hook transitioning (before/after state). Server logs go through the existing `createTaggedLogger("hooks")` and are visible in the UI's debug log panel when enabled.
+
+**Files touched**: `session-state-machine.ts` (canReturnToRunning), `hooks-api.ts` (shared import + 4 debug logs), `session-manager.ts` (timer clearing + reconciliation routing), `hooks.ts` (retry + CLI logging), `session-reconciliation.test.ts` (updated exit-reason test + removed unreachable interrupted-reason test).
+
 ## Agent directory access from worktrees (2026-04-11)
 
 Two new global config fields — `worktreeAddParentRepoDir` (default true) and `worktreeAddQuarterdeckDir` (default false) — control whether Claude Code agents in task worktrees receive `--add-dir` flags for the parent repository and the `~/.quarterdeck` state directory respectively.

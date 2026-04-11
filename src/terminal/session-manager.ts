@@ -917,6 +917,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 				entry.active.workspaceTrustBuffer = "";
 			}
 		}
+		// When transitioning back to running, cancel any pending interrupt recovery
+		// timer. Without this, a timer from a prior Escape/Ctrl+C can fire after the
+		// agent has genuinely resumed work (via hook.to_in_progress or agent.prompt-ready)
+		// and incorrectly bounce the session back to awaiting_review/attention.
+		if (entry.active && result.patch.state === "running") {
+			clearInterruptRecoveryTimer(entry.active);
+		}
 		if (entry.active && result.patch.state === "awaiting_review") {
 			entry.active.awaitingCodexPromptAfterEnter = false;
 		}
@@ -1068,9 +1075,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 				break;
 			}
 			case "mark_processless_error": {
-				this.store.update(entry.taskId, {
-					state: "awaiting_review",
-					reviewReason: "error",
+				// Route through the state machine instead of directly mutating the
+				// store. process.exit with exitCode=null maps to reviewReason="error",
+				// which is the same outcome but validated by the reducer.
+				this.applySessionEventWithSideEffects(entry, {
+					type: "process.exit",
+					exitCode: null,
+					interrupted: false,
 				});
 				break;
 			}

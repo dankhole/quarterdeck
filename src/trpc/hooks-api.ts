@@ -10,6 +10,7 @@ import { createTaggedLogger } from "../core/debug-logger";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { isPermissionActivity } from "../terminal/session-reconciliation";
+import { canReturnToRunning } from "../terminal/session-state-machine";
 import type { SessionSummaryStore } from "../terminal/session-summary-store";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
@@ -61,10 +62,7 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 	if (event === "to_review") {
 		return summary.state === "running";
 	}
-	return (
-		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
-	);
+	return summary.state === "awaiting_review" && canReturnToRunning(summary.reviewReason);
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
@@ -78,9 +76,14 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
 				const event = body.event;
-				log.debug("Hook ingest", {
+				log.debug("Hook ingest received", {
 					taskId,
 					event,
+					hookEventName: body.metadata?.hookEventName ?? null,
+					notificationType: body.metadata?.notificationType ?? null,
+					activityText: body.metadata?.activityText ?? null,
+					toolName: body.metadata?.toolName ?? null,
+					source: body.metadata?.source ?? null,
 					hasSummaryText: !!body.metadata?.conversationSummaryText,
 					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
 				});
@@ -105,6 +108,13 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				if (!canTransitionTaskForHookEvent(summary, event)) {
+					log.debug("Hook blocked — can't transition", {
+						taskId,
+						event,
+						currentState: summary.state,
+						currentReviewReason: summary.reviewReason,
+						hookEventName: body.metadata?.hookEventName ?? null,
+					});
 					if (body.metadata) {
 						// Guard: protect permission metadata from being clobbered by non-permission hooks.
 						// When the task is in awaiting_review with permission-related activity, only allow
@@ -128,6 +138,15 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								conversationSummaryText: body.metadata.conversationSummaryText ?? null,
 							};
 							if (!isPermissionActivity(incomingActivity)) {
+								log.debug(
+									"Hook blocked — permission guard (non-permission event clobbering permission state)",
+									{
+										taskId,
+										event,
+										incomingHookEvent: body.metadata.hookEventName,
+										currentPermissionActivity: currentActivity.hookEventName,
+									},
+								);
 								// Skip applyHookActivity — the incoming event is not permission-related
 								// and would clobber the existing permission metadata.
 								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
@@ -144,6 +163,15 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						ok: true,
 					} satisfies RuntimeHookIngestResponse;
 				}
+
+				log.debug("Hook transitioning", {
+					taskId,
+					event,
+					fromState: summary.state,
+					fromReviewReason: summary.reviewReason,
+					toState: event === "to_review" ? "awaiting_review" : "running",
+					hookEventName: body.metadata?.hookEventName ?? null,
+				});
 
 				const transitionedSummary =
 					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);

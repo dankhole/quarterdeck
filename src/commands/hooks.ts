@@ -391,6 +391,9 @@ function parseHooksIngestArgs(
 	};
 }
 
+const HOOK_INGEST_TIMEOUT_MS = 3000;
+const HOOK_INGEST_RETRY_DELAY_MS = 1000;
+
 async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
@@ -400,18 +403,36 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 			}),
 		],
 	});
-	const ingestResponse = await withTimeout(
-		trpcClient.hooks.ingest.mutate({
-			taskId: args.taskId,
-			workspaceId: args.workspaceId,
-			event: args.event,
-			metadata: args.metadata,
-		}),
-		3000,
-		"quarterdeck hooks ingest",
-	);
-	if (ingestResponse.ok === false) {
-		throw new Error(ingestResponse.error ?? "Hook ingest failed");
+
+	const attempt = async (): Promise<void> => {
+		const ingestResponse = await withTimeout(
+			trpcClient.hooks.ingest.mutate({
+				taskId: args.taskId,
+				workspaceId: args.workspaceId,
+				event: args.event,
+				metadata: args.metadata,
+			}),
+			HOOK_INGEST_TIMEOUT_MS,
+			"quarterdeck hooks ingest",
+		);
+		if (ingestResponse.ok === false) {
+			throw new Error(ingestResponse.error ?? "Hook ingest failed");
+		}
+	};
+
+	try {
+		await attempt();
+	} catch (firstError) {
+		// Single retry after a short delay. State-transition hooks (to_review,
+		// to_in_progress) are the only reliable channel — a lost hook means a
+		// stuck task with no automatic recovery.
+		await new Promise((resolve) => setTimeout(resolve, HOOK_INGEST_RETRY_DELAY_MS));
+		try {
+			await attempt();
+		} catch {
+			// Re-throw the original error so callers see the first failure.
+			throw firstError;
+		}
 	}
 }
 
@@ -793,6 +814,13 @@ async function runHooksIngest(
 		process.exitCode = 1;
 		return;
 	}
+
+	// Diagnostic stderr logging — always emitted so it shows in the agent's PTY
+	// output. Enable debug logging in the UI to see the matching server-side logs.
+	const meta = args.metadata;
+	process.stderr.write(
+		`[hooks:cli] event=${args.event} hookEvent=${meta?.hookEventName ?? "-"} tool=${meta?.toolName ?? "-"} notifType=${meta?.notificationType ?? "-"} activity=${meta?.activityText?.slice(0, 60) ?? "-"}\n`,
+	);
 
 	try {
 		await ingestHookEvent(args);

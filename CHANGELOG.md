@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Harden session state transition system
+
+- Fix permanent dead state: tasks that exited cleanly (`reviewReason: "exit"`) could never transition back to running via hooks — `canReturnToRunning()` now accepts the `"exit"` reason. The duplicated guard in `hooks-api.ts` now uses the shared function.
+- Fix interrupt recovery timer leak: when a session transitions back to running (via `hook.to_in_progress` or `agent.prompt-ready`), any pending interrupt recovery timer from a prior Escape/Ctrl+C is now cleared. Previously a stale 5s timer could bounce a resumed session back to `awaiting_review/attention`.
+- Hook delivery retry: `hooks ingest` CLI now retries once after 1s if the initial 3s-timeout attempt fails. Lost hooks were the primary cause of tasks stuck in the wrong state with no automatic recovery.
+- Route `mark_processless_error` reconciliation action through the state machine reducer instead of directly mutating the store, ensuring all state transitions are validated.
+- Add diagnostic logging for hook events — CLI-side `[hooks:cli]` stderr lines show what the agent fired, server-side debug logs (enable in UI) show what the server received, whether it blocked or transitioned, and why. Supports investigation of todo #9 (permissions) and #21 (compact).
+
 ### Agent directory access from worktrees
 
 - Claude Code agents running in task worktrees can now access the parent repository directory via `--add-dir`. Enabled by default — lets agents reference files in the original repo for context. A second setting (off by default) grants access to the `~/.quarterdeck` state directory, with a warning about state corruption risk. Both are configurable in Settings > Git & Worktrees. Only affects Claude Code; other agents are unchanged.
