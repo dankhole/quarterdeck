@@ -38,7 +38,7 @@ function Badge({ color }: { color: "red" | "blue" | "orange" }): React.ReactElem
 	);
 }
 
-/** Main view button — filled background when active */
+/** Main view button — left border accent when active */
 function MainViewButton({
 	viewId,
 	activeMainView,
@@ -68,7 +68,7 @@ function MainViewButton({
 					disabled
 						? "opacity-35 pointer-events-none cursor-default text-text-tertiary"
 						: isActive
-							? "bg-surface-3 text-text-primary"
+							? "bg-transparent text-accent border-l-2 border-accent"
 							: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
 				)}
 				aria-label={label}
@@ -81,7 +81,7 @@ function MainViewButton({
 	);
 }
 
-/** Sidebar button — left border accent when active */
+/** Sidebar button — filled background when active */
 function SidebarButton({
 	sidebarId,
 	activeSidebar,
@@ -111,7 +111,7 @@ function SidebarButton({
 					disabled
 						? "opacity-35 pointer-events-none cursor-default text-text-tertiary"
 						: isActive
-							? "bg-transparent text-accent border-l-2 border-accent"
+							? "bg-surface-3 text-text-primary"
 							: "bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
 				)}
 				aria-label={label}

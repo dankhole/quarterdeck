@@ -170,12 +170,9 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 	);
 
 	// Derive visual highlight indicators for the toolbar.
-	const selectedCard = selectedTaskId !== null;
+	// Both always reflect the actual state — no hints or overrides.
 	const visualMainView: MainViewId = mainView;
-	// When mainView is "git", the integrated tree replaces the sidebar panel — no sidebar icon is active.
-	// When sidebar is collapsed, show which tab *would* reopen (accent highlight).
-	const visualSidebar: SidebarId | null =
-		mainView === "git" ? null : (sidebar ?? (selectedCard ? lastSidebarTab : "projects"));
+	const visualSidebar: SidebarId | null = sidebar;
 
 	// --- Auto-switch when selectedTaskId changes (not on initial mount) ---
 	const mainViewRef = useRef(mainView);
@@ -203,16 +200,18 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 			}
 			// else: already on terminal/files/git — leave mainView and sidebar as-is
 		} else {
-			// Task deselected: terminal needs a task, others work without one.
+			// Task deselected: task_column can't function without a task — always fall back.
+			if (sidebarRef.current === "task_column") {
+				setSidebarPersist("projects");
+			}
+			// Terminal needs a task — fall back to home.
 			if (currentMainView === "terminal") {
 				setMainViewPersist("home");
-				// task_column can't function without a task, so always fall back to projects.
-				// For other sidebars (projects), respect the pin.
-				if (!pinned || sidebarRef.current === "task_column") {
+				// Also switch sidebar to projects if not pinned (and not already switched above).
+				if (!pinned && sidebarRef.current !== "task_column") {
 					setSidebarPersist("projects");
 				}
 			}
-			// else: "home", "files", "git" all work without a task — stay put
 		}
 	}, [selectedTaskId, setMainViewPersist, setSidebarPersist, setLastSidebarTab]);
 

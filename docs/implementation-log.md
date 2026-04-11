@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Toolbar highlight style swap and sidebar sync fixes (2026-04-11)
+
+Swapped the active-state styles between the two toolbar button groups: main view buttons now get the blue left-border accent (`text-accent border-l-2 border-accent`), sidebar buttons now get the gray filled background (`bg-surface-3 text-text-primary`). This gives the primary selection (main view) the more prominent visual treatment.
+
+Simplified `visualSidebar` in the layout hook from a multi-condition ternary to just `sidebar`. The old logic suppressed the sidebar highlight when `mainView === "git"` (because the git view has an integrated file tree), but the sidebar panel can still be open alongside the git view — suppressing the highlight made the toolbar disagree with what was actually visible. The old logic also showed a "hint" highlight when the sidebar was collapsed (previewing which tab would reopen), but this violated the principle of highlighting only what's currently visible.
+
+Fixed a sidebar orphan bug: when a task is deselected, `task_column` now unconditionally falls back to `projects` regardless of the current main view or pin state. Previously this only happened inside the `currentMainView === "terminal"` branch of the task-deselection effect. If the user was on Files or Git with the Board sidebar and deselected the task, the sidebar state would stay stuck on `task_column` — but since Board is disabled without a task, neither sidebar button would be highlighted, and the ProjectNavigationPanel would render as a fallback via the `sidebar !== null && !selectedCard` condition in App.tsx.
+
+Files touched: `web-ui/src/components/detail-panels/detail-toolbar.tsx`, `web-ui/src/resize/use-card-detail-layout.ts`, `docs/ui-layout-architecture.md`, `CHANGELOG.md`.
+
 ## Fix: chat view showing duplicate copies of the conversation (2026-04-11)
 
 The HTML chat view (`ChatOutputView`) showed the entire conversation repeated many times when scrolling up.
@@ -57,6 +67,7 @@ Replaced the native `type="number"` input for terminal font weight in the settin
 **Fix**: Extracted a `FontWeightInput` component that maintains a local `draft` string state. The user types freely into a plain text field. On blur or Enter, the draft is parsed and validated (100–900 range); invalid input reverts to the current value. A `useEffect` syncs the draft from the parent value when the input isn't focused (e.g. config load). Input width narrowed from `w-20` to `w-14` with `tabular-nums` for stable digit widths.
 
 Files touched: `web-ui/src/components/runtime-settings-dialog.tsx`.
+>>>>>>> main
 
 ## Uncommitted changes indicator color: orange → red (2026-04-11)
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: toolbar highlight styles swapped and sidebar highlight sync bugs
+
+- Main view buttons (Home, Terminal, Files, Git) now use blue left-border accent when active. Sidebar buttons (Projects, Board) now use filled gray background when active — swapping the two styles for better visual hierarchy.
+- Sidebar highlight now always reflects exactly what's visible: no ghost highlight when the sidebar is collapsed, and no suppression when on the Git view with a sidebar panel still open.
+- Fixed a bug where deselecting a task while on Files or Git view with the Board sidebar open would leave no sidebar button highlighted — the Board sidebar now always falls back to Projects when a task is deselected, regardless of which main view is active.
+
 ### Fix: chat view showing duplicate copies of the conversation
 
 - Scrolling up in the HTML chat view no longer shows repeated copies of the entire conversation. The root cause was `readBufferLines()` reading the full 10,000-line scrollback buffer — with `scrollOnEraseInDisplay: true`, every TUI screen clear pushed the viewport into scrollback, accumulating many duplicate copies. Now reads only the viewport lines (`baseY` to `baseY + rows`). Also removes the dead `chat-output-accumulator.ts` file.

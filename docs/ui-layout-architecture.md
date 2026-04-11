@@ -12,12 +12,12 @@ The UI has two independent selection dimensions, rendered as two groups of butto
 
 ```
 ┌─────────────┐
-│  Home        │  ← main view (filled bg when active)
+│  Home        │  ← main view (left-border accent when active)
 │  Terminal    │
 │  Files       │
 │  Git         │
 │──────────────│  ← divider
-│  Projects    │  ← sidebar (left-border accent when active)
+│  Projects    │  ← sidebar (filled bg when active)
 │  Board       │
 └──────────────┘
 ```
@@ -123,13 +123,10 @@ These fire automatically when state changes. They are defaults, not locks — th
 
 ### Visual highlight logic
 
-The toolbar needs to distinguish between what's structurally active and what's visually highlighted:
+Both highlights always reflect the actual state — no hints or overrides:
 
 - `visualMainView` = `mainView` (always matches)
-- `visualSidebar`:
-  - If `mainView` is `"git"` → `null` (integrated tree replaces sidebar visually)
-  - Else if sidebar is open → shows the active sidebar
-  - Else if sidebar is collapsed → shows which tab *would* reopen (accent hint)
+- `visualSidebar` = `sidebar` (null when collapsed, the active tab when open)
 
 ---
 
