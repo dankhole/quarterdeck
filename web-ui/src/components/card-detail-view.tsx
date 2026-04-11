@@ -93,8 +93,6 @@ export function CardDetailView({
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
-	onAddReviewComments,
-	onSendReviewComments,
 	gitHistoryPanel,
 	isGitHistoryOpen,
 	onToggleGitHistory,
@@ -113,7 +111,6 @@ export function CardDetailView({
 	onBottomTerminalToggleExpand,
 	onBottomTerminalRestart,
 	onBottomTerminalExit,
-	isDocumentVisible = true,
 	// --- New props for sidebar decoupling ---
 	mainView,
 	sidebar,
@@ -143,8 +140,6 @@ export function CardDetailView({
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
-	onAddReviewComments?: (taskId: string, text: string) => void;
-	onSendReviewComments?: (taskId: string, text: string) => void;
 	gitHistoryPanel?: ReactNode;
 	isGitHistoryOpen?: boolean;
 	onToggleGitHistory?: () => void;
@@ -163,7 +158,6 @@ export function CardDetailView({
 	onBottomTerminalToggleExpand?: () => void;
 	onBottomTerminalRestart?: () => void;
 	onBottomTerminalExit?: (taskId: string, exitCode: number | null) => void;
-	isDocumentVisible?: boolean;
 	// --- New props ---
 	mainView: MainViewId;
 	sidebar: SidebarId | null;

@@ -869,8 +869,6 @@ export default function App(): ReactElement {
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
-		handleAddReviewComments,
-		handleSendReviewComments,
 		moveToTrashLoadingById,
 		trashTaskCount,
 		trashWarningState,
@@ -1359,12 +1357,6 @@ export default function App(): ReactElement {
 							onEditTask={(task) => {
 								handleOpenEditTask(task, { preserveDetailSelection: true });
 							}}
-							onAddReviewComments={(taskId: string, text: string) => {
-								void handleAddReviewComments(taskId, text);
-							}}
-							onSendReviewComments={(taskId: string, text: string) => {
-								void handleSendReviewComments(taskId, text);
-							}}
 							gitHistoryPanel={
 								isGitHistoryOpen ? (
 									<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
@@ -1387,7 +1379,6 @@ export default function App(): ReactElement {
 							onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 							onBottomTerminalRestart={handleRestartDetailTerminal}
 							onBottomTerminalExit={handleShellExit}
-							isDocumentVisible={isDocumentVisible}
 							mainView={mainView}
 							sidebar={sidebar}
 							topBar={topBar}
