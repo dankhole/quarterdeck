@@ -61,6 +61,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	homeRepoPollMs: CONFIG_DEFAULTS.homeRepoPollMs,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
+	terminalWebGLRenderer: CONFIG_DEFAULTS.terminalWebGLRenderer,
 	llmConfigured: false,
 };
 

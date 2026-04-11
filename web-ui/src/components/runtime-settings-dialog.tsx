@@ -252,6 +252,7 @@ export function RuntimeSettingsDialog({
 	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(CONFIG_DEFAULTS.summaryStaleAfterSeconds);
 	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
 	const [terminalFontWeight, setTerminalFontWeight] = useState(CONFIG_DEFAULTS.terminalFontWeight);
+	const [terminalWebGLRenderer, setTerminalWebGLRenderer] = useState(CONFIG_DEFAULTS.terminalWebGLRenderer);
 	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
 	const [uncommittedChangesOnCardsEnabled, setUncommittedChangesOnCardsEnabled] = useState(
 		CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -326,6 +327,7 @@ export function RuntimeSettingsDialog({
 	const llmConfigured = config?.llmConfigured ?? false;
 	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
 	const initialTerminalFontWeight = config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
+	const initialTerminalWebGLRenderer = config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
 	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
 	const initialUncommittedChangesOnCardsEnabled =
 		config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled;
@@ -372,6 +374,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (terminalFontWeight !== initialTerminalFontWeight) {
+			return true;
+		}
+		if (terminalWebGLRenderer !== initialTerminalWebGLRenderer) {
 			return true;
 		}
 		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
@@ -442,6 +447,7 @@ export function RuntimeSettingsDialog({
 		initialSelectedAgentId,
 		initialShellAutoRestartEnabled,
 		initialTerminalFontWeight,
+		initialTerminalWebGLRenderer,
 		initialShowSummaryOnCards,
 		initialShowTrashWorktreeNotice,
 		initialSkipHomeCheckoutConfirmation,
@@ -456,6 +462,7 @@ export function RuntimeSettingsDialog({
 		behindBaseIndicatorEnabled,
 		shellAutoRestartEnabled,
 		terminalFontWeight,
+		terminalWebGLRenderer,
 		shortcuts,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
@@ -476,6 +483,7 @@ export function RuntimeSettingsDialog({
 		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds);
 		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
 		setTerminalFontWeight(config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight);
+		setTerminalWebGLRenderer(config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer);
 		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
 		setUncommittedChangesOnCardsEnabled(
 			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
@@ -524,6 +532,7 @@ export function RuntimeSettingsDialog({
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.terminalFontWeight,
+		config?.terminalWebGLRenderer,
 		config?.shortcuts,
 		config?.showSummaryOnCards,
 		config?.summaryStaleAfterSeconds,
@@ -580,6 +589,7 @@ export function RuntimeSettingsDialog({
 			summaryStaleAfterSeconds,
 			shellAutoRestartEnabled,
 			terminalFontWeight,
+			terminalWebGLRenderer,
 			showTrashWorktreeNotice,
 			uncommittedChangesOnCardsEnabled,
 			unmergedChangesIndicatorEnabled,
@@ -904,6 +914,21 @@ export function RuntimeSettingsDialog({
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={terminalWebGLRenderer}
+						disabled={controlsDisabled}
+						onCheckedChange={setTerminalWebGLRenderer}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Use WebGL renderer</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native
+					canvas 2D renderer.
 				</p>
 				<Button
 					size="sm"

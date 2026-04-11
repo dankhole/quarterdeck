@@ -670,6 +670,7 @@ export const runtimeConfigResponseSchema = z.object({
 	homeRepoPollMs: z.number(),
 	statuslineEnabled: z.boolean(),
 	terminalFontWeight: z.number(),
+	terminalWebGLRenderer: z.boolean(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -709,6 +710,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	homeRepoPollMs: z.number().min(500).max(60000).optional(),
 	statuslineEnabled: z.boolean().optional(),
 	terminalFontWeight: z.number().min(100).max(900).optional(),
+	terminalWebGLRenderer: z.boolean().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

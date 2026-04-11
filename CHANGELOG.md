@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Terminal WebGL renderer toggle
+
+- New setting in Settings > Terminal to toggle the WebGL renderer on or off. When disabled, xterm.js falls back to the browser's native canvas 2D renderer for crisper text at the cost of GPU acceleration. Default: on. The toggle applies live to all open terminals without requiring a restart.
+
 ### Files view — Board sidebar can coexist
 
 - The Files main view now embeds its file browser tree internally (like the Git view) instead of occupying the sidebar slot. Board and Projects sidebars can be open alongside the Files view. New `FilesView` component with integrated ScopeBar, resizable file tree with toggle, and content viewer. Dead `isFileBrowserExpanded` and expanded/collapsed file browser ratio code removed from the layout hook.

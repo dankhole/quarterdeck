@@ -93,6 +93,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	homeRepoPollMs: pollField(10_000),
 	statuslineEnabled: boolField(true),
 	terminalFontWeight: numField(325),
+	terminalWebGLRenderer: boolField(true),
 } as const;
 
 // --- Derived types ---

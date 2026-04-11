@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Terminal WebGL renderer toggle (2026-04-11)
+
+Added a configurable toggle (`terminalWebGLRenderer`, default `true`) to enable or disable xterm.js's WebGL renderer. When disabled, terminals fall back to the browser's built-in canvas 2D renderer, which produces crisper text on some displays at the cost of GPU acceleration. The toggle applies live — enabling attaches a new `WebglAddon`, disabling disposes it and lets xterm fall back automatically.
+
+**Config pipeline**: New `terminalWebGLRenderer` boolean field added to `global-config-fields.ts` → `api-contract.ts` (response + save schemas) → `use-runtime-config.ts` (save payload type) → `runtime-settings-dialog.tsx` (Radix Switch in the Terminal section) → `App.tsx` (syncs config to terminal manager via `useEffect`) → `persistent-terminal-manager.ts` (module-level `setTerminalWebGLRenderer()` iterates all terminals, per-instance `setWebGLRenderer()` attaches/disposes the addon).
+
+**Guard in `attachWebglAddon()`**: The existing method now early-returns when `currentTerminalWebGLRenderer` is `false`, which also correctly handles the `onContextLoss` recovery path — if the user disabled WebGL while a context loss was pending, the re-attach no-ops.
+
+Files touched: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`.
+
 ## Files view — Board sidebar can coexist (2026-04-11)
 
 The Files main view (`mainView === "files"`) previously rendered its `ScopeBar` + `FileBrowserTreePanel` in the sidebar slot, which displaced the Board sidebar (`ColumnContextPanel`). The Git view didn't have this problem because its `FileTreePanel` was embedded inside the `GitView` component itself. This inconsistency meant you could have the Board sidebar open alongside the Git view, but not alongside the Files view.

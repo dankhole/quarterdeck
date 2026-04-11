@@ -18,6 +18,7 @@ export interface UseRuntimeConfigResult {
 		readyForReviewNotificationsEnabled?: boolean;
 		shellAutoRestartEnabled?: boolean;
 		terminalFontWeight?: number;
+		terminalWebGLRenderer?: boolean;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
@@ -109,6 +110,7 @@ export function useRuntimeConfig(
 			readyForReviewNotificationsEnabled?: boolean;
 			shellAutoRestartEnabled?: boolean;
 			terminalFontWeight?: number;
+			terminalWebGLRenderer?: boolean;
 			showSummaryOnCards?: boolean;
 			autoGenerateSummary?: boolean;
 			summaryStaleAfterSeconds?: number;

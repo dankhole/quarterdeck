@@ -32,6 +32,7 @@ const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
+let currentTerminalWebGLRenderer: boolean = CONFIG_DEFAULTS.terminalWebGLRenderer;
 
 interface PersistentTerminalAppearance {
 	cursorColor: string;
@@ -265,6 +266,9 @@ class PersistentTerminal {
 	}
 
 	private attachWebglAddon(): void {
+		if (!currentTerminalWebGLRenderer) {
+			return;
+		}
 		try {
 			const webglAddon = new WebglAddon();
 			webglAddon.onContextLoss(() => {
@@ -586,6 +590,15 @@ class PersistentTerminal {
 		this.terminal.options.fontWeight = weight;
 	}
 
+	setWebGLRenderer(enabled: boolean): void {
+		if (enabled && !this.webglAddon) {
+			this.attachWebglAddon();
+		} else if (!enabled && this.webglAddon) {
+			this.webglAddon.dispose();
+			this.webglAddon = null;
+		}
+	}
+
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
 		this.subscribers.add(subscriber);
 		subscriber.onLastError?.(this.lastError);
@@ -874,5 +887,12 @@ export function setTerminalFontWeight(weight: number): void {
 	currentTerminalFontWeight = weight;
 	for (const terminal of terminals.values()) {
 		terminal.setFontWeight(weight);
+	}
+}
+
+export function setTerminalWebGLRenderer(enabled: boolean): void {
+	currentTerminalWebGLRenderer = enabled;
+	for (const terminal of terminals.values()) {
+		terminal.setWebGLRenderer(enabled);
 	}
 }
