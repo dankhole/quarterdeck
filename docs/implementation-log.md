@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: chat view showing duplicate copies of the conversation (2026-04-11)
+
+The HTML chat view (`ChatOutputView`) showed the entire conversation repeated many times when scrolling up.
+
+**Root cause**: `readBufferLines()` in `PersistentTerminal` iterated from line 0 to `buffer.length` — the full xterm scrollback (10,000 lines) plus viewport. The terminal options include `scrollOnEraseInDisplay: true`, which causes xterm.js to push the current viewport into scrollback every time a TUI agent sends an ED2 (erase-in-display) clear-screen sequence. Claude Code and similar full-screen TUIs clear and redraw frequently (status bar updates, prompt redraws, tool call transitions), so the scrollback accumulated many progressively-longer copies of the conversation. The prior ANSI-accumulator approach didn't have this problem because it built lines incrementally, but it was replaced in `044d3e1f` because it couldn't handle Claude Code's cursor-positioning output.
+
+**Fix**: Changed `readBufferLines()` to read only the viewport region (`buffer.baseY` to `baseY + terminal.rows`). For TUI agents, the viewport is the authoritative current state — the TUI manages its own display within it. Scrollback is accumulated redraw artifacts, not useful history. Also trims trailing empty lines since TUIs often don't fill the full viewport height.
+
+Also deleted the dead `chat-output-accumulator.ts` file (no imports anywhere, superseded in `044d3e1f`).
+
+Files touched: `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/terminal/chat-output-accumulator.ts` (deleted).
+
 ## Move branch status from top bar to git view tab bar (2026-04-11)
 
 Relocated the branch pill (with git history toggle), file change stats, and fetch/pull/push sync buttons from the main top bar (`TopBar` → `TopBarGitStatusSection`) into the git view's tab bar via a `branchStatusSlot` prop on `GitView`.

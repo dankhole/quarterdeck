@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: chat view showing duplicate copies of the conversation
+
+- Scrolling up in the HTML chat view no longer shows repeated copies of the entire conversation. The root cause was `readBufferLines()` reading the full 10,000-line scrollback buffer — with `scrollOnEraseInDisplay: true`, every TUI screen clear pushed the viewport into scrollback, accumulating many duplicate copies. Now reads only the viewport lines (`baseY` to `baseY + rows`). Also removes the dead `chat-output-accumulator.ts` file.
+
 ### Move branch status from top bar to git view tab bar
 
 - The branch pill (showing the current branch name, toggling git history on click), file change stats, and fetch/pull/push buttons have moved from the main top bar into the git view's tab bar. In the home context, the full cluster (branch pill + stats + fetch/pull/push) renders in the tab bar. In the task context, the branch pill + stats + "based on" label render there. Git history now renders inside the git view (below the tab bar) rather than replacing the entire main view. The `Cmd+G` shortcut still works from any view — it auto-switches to the git tab and opens git history. Partially addresses todo #5.

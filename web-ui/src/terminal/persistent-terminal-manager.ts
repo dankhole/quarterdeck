@@ -610,17 +610,26 @@ class PersistentTerminal {
 	}
 
 	/**
-	 * Read the full terminal buffer content as an array of lines.
-	 * This reads the already-rendered state from xterm.js — all ANSI escape
-	 * sequences have been processed, cursor positioning applied, etc.
+	 * Read the current viewport content as an array of lines.
+	 *
+	 * Only reads the viewport (baseY → baseY + rows), not the scrollback
+	 * history. TUI agents like Claude Code clear and redraw the screen
+	 * frequently, and with scrollOnEraseInDisplay the old viewport gets
+	 * pushed into scrollback each time — reading the full buffer would
+	 * return many duplicate copies of the conversation.
 	 */
 	readBufferLines(): string[] {
 		const buffer = this.terminal.buffer.active;
-		const totalLines = buffer.length;
+		const baseY = buffer.baseY;
+		const rows = this.terminal.rows;
 		const result: string[] = [];
-		for (let i = 0; i < totalLines; i++) {
+		for (let i = baseY; i < baseY + rows; i++) {
 			const line = buffer.getLine(i);
 			result.push(line ? line.translateToString(true) : "");
+		}
+		// Trim trailing empty lines — TUIs often don't fill the viewport.
+		while (result.length > 0 && result[result.length - 1]!.trim() === "") {
+			result.pop();
 		}
 		return result;
 	}
