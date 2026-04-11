@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: delayed transition to "running" on prompt submit
+
+- Task cards now transition to "running" immediately when the user submits a prompt (Enter/CR) from the review sidebar or terminal — previously the card stayed in "awaiting review" for 500ms–2s while waiting for the agent's async `to_in_progress` hook.
+
 ## [0.6.0] — 2026-04-10
 
 ### Error boundary & disconnection UX

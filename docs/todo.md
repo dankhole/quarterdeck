@@ -178,13 +178,7 @@ Related: #2 (resume sessions after crash/closure), #9 (un-trash / restart paths 
 
 A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
 
-## 25. Delayed transition to "running" state on prompt submission
-
-When sending a prompt to an agent, the task card doesn't always move to the running/in-progress state right away. It appears to stay in its previous state during the agent's initial thinking phase, then transitions on what looks like a second burst of activity. Investigate the hook or state transition trigger — it may be keying off a terminal output pattern that doesn't match the agent's first response, or there's a debounce/settle delay that's too long. The transition should happen as soon as the prompt is submitted or the agent begins processing, not after a noticeable delay.
-
-Related: #24 (agent state detection issues).
-
-## 26. Reorder projects in the project switcher
+## 25. Reorder projects in the project switcher
 
 The project list in the project switcher sidebar has no way to reorder entries. Add drag-and-drop or manual reordering so users can arrange projects in their preferred order. Persist the ordering across sessions.
 

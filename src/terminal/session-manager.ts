@@ -27,7 +27,7 @@ import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } fr
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
 import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
-import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
+import { canReturnToRunning, reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
 import {
 	createTerminalProtocolFilterState,
 	disableOscColorQueryIntercept,
@@ -785,6 +785,21 @@ export class TerminalSessionManager implements TerminalSessionService {
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
+		}
+
+		// Immediately transition to "running" when the user submits input (CR/LF) while
+		// the session is awaiting review. This eliminates the perceptible delay between
+		// prompt submission and the agent's hook firing to_in_progress — the card moves
+		// as soon as the user hits Enter. The agent's hook will arrive later as a no-op
+		// since the state is already "running".
+		// Codex is excluded — it uses detectOutputTransition for its own prompt-ready flow.
+		if (
+			entry.summary.agentId !== "codex" &&
+			entry.summary.state === "awaiting_review" &&
+			canReturnToRunning(entry.summary.reviewReason) &&
+			(data.includes(13) || data.includes(10))
+		) {
+			this.applyTransitionToRunning(entry);
 		}
 
 		// Detect user interrupt signals — suppress auto-restart and schedule recovery

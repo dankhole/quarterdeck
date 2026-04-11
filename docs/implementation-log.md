@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Immediate running transition on prompt submit (2026-04-11)
+
+When a user submitted review comments to an agent (Claude Code), the task card stayed in `awaiting_review` for 500ms–2s while waiting for the agent's plugin to fire a `to_in_progress` hook via `quarterdeck hooks ingest`. The delay was architectural: `writeInput()` wrote to the PTY and returned the unchanged summary — no state transition fired until the agent's event bus callback ran asynchronously.
+
+**Fix**: Added an eager transition in `writeInput()` that detects CR/LF bytes while the session is in `awaiting_review` with an eligible `reviewReason` (attention, hook, or error) and immediately calls `applyTransitionToRunning()`. This is the same method the hook system uses, so behavior is identical — the agent's hook arrives later as a no-op since the state is already `"running"`. The `canReturnToRunning()` guard (from the state machine) prevents transitions from `exit` or `interrupted` states. Codex is excluded because it has its own prompt-ready detection via `detectOutputTransition`.
+
+The change is safe for all input paths: review comment paste (no CR/LF, no transition), review comment submit (CR triggers transition), direct terminal typing (CR triggers transition), and interrupt after submit (interrupt recovery still fires because state is now `"running"`).
+
+Files touched: `src/terminal/session-manager.ts` (import + 10-line guard in `writeInput()`).
+
+Closes todo #25. Commit: `268cf001`.
+
 ## Error boundary disconnection detection (2026-04-10)
 
 When the Quarterdeck server shuts down, two things happen simultaneously: the WebSocket `onclose` fires (dispatching a React state update) and components depending on server data throw during their next render cycle. The `AppErrorBoundary` (wrapping the entire tree in `main.tsx`) caught those render errors before `isRuntimeDisconnected` state propagated to the check in `App.tsx`, so users saw a confusing minified React error #300 instead of the clean "Disconnected from Quarterdeck" fallback.
