@@ -226,6 +226,62 @@ function ShortcutIconPicker({
 	);
 }
 
+function FontWeightInput({
+	value,
+	onChange,
+	disabled,
+}: {
+	value: number;
+	onChange: (v: number) => void;
+	disabled: boolean;
+}) {
+	const [draft, setDraft] = useState(String(value));
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	// Sync draft when value changes externally (e.g. config load)
+	useEffect(() => {
+		if (document.activeElement !== inputRef.current) {
+			setDraft(String(value));
+		}
+	}, [value]);
+
+	const commit = () => {
+		const parsed = Number(draft);
+		if (Number.isFinite(parsed) && parsed >= 100 && parsed <= 900) {
+			onChange(parsed);
+			setDraft(String(parsed));
+		} else {
+			// Revert to current value on invalid input
+			setDraft(String(value));
+		}
+	};
+
+	return (
+		<div className="flex items-center justify-between gap-3 mt-3">
+			<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
+				Font weight
+			</label>
+			<input
+				ref={inputRef}
+				id="terminal-font-weight"
+				type="text"
+				inputMode="numeric"
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				onBlur={commit}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") {
+						commit();
+						inputRef.current?.blur();
+					}
+				}}
+				disabled={disabled}
+				className="h-7 w-14 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right tabular-nums focus:border-border-focus focus:outline-none"
+			/>
+		</div>
+	);
+}
+
 export function RuntimeSettingsDialog({
 	open,
 	workspaceId,
@@ -898,29 +954,7 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
 				</p>
-				<div className="flex items-center justify-between gap-3 mt-3">
-					<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
-						Font weight
-					</label>
-					<div className="flex items-center gap-1.5">
-						<input
-							id="terminal-font-weight"
-							type="number"
-							min={100}
-							max={900}
-							step={10}
-							value={terminalFontWeight}
-							onChange={(event) => {
-								const value = Number(event.target.value);
-								if (Number.isFinite(value)) {
-									setTerminalFontWeight(Math.max(100, Math.min(900, value)));
-								}
-							}}
-							disabled={controlsDisabled}
-							className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-						/>
-					</div>
-				</div>
+				<FontWeightInput value={terminalFontWeight} onChange={setTerminalFontWeight} disabled={controlsDisabled} />
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 				</p>

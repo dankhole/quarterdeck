@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: font weight settings input — text input instead of number spinner (2026-04-11)
+
+Replaced the native `type="number"` input for terminal font weight in the settings dialog with a `type="text"` + `inputMode="numeric"` input backed by local draft state.
+
+**Problem**: The native number input was unusable for manual entry. The `onChange` handler clamped values immediately (`Math.max(100, Math.min(900, value))`), so typing "350" would clamp after the first keystroke "3" → 100, making it impossible to enter values by typing. The step arrows (previously 25, then 10) also produced jumpy behavior that wasn't intuitive.
+
+**Fix**: Extracted a `FontWeightInput` component that maintains a local `draft` string state. The user types freely into a plain text field. On blur or Enter, the draft is parsed and validated (100–900 range); invalid input reverts to the current value. A `useEffect` syncs the draft from the parent value when the input isn't focused (e.g. config load). Input width narrowed from `w-20` to `w-14` with `tabular-nums` for stable digit widths.
+
+Files touched: `web-ui/src/components/runtime-settings-dialog.tsx`.
+
 ## Uncommitted changes indicator color: orange → red (2026-04-11)
 
 Changed the uncommitted-changes dot on task cards from `bg-status-orange` to `bg-status-red` for stronger visual contrast against the orange "cwd diverged" warning icon that sits in the same indicator row. Updated the settings description text to match.

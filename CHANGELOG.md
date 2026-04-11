@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: font weight settings input — replace number spinner with text input
+
+- The font weight input in Settings > Terminal now uses a plain text field instead of a native `type="number"` spinner. The number spinner was unusable for manual entry — typing "350" would clamp to 100 after the first keystroke, and the step arrows caused jumpy, unpredictable behavior. The new input accepts free-form typing and validates on blur or Enter (reverts on invalid input). Input width narrowed from `w-20` to `w-14` to match the 3-digit value range.
+
 ### Fix: behind-base indicator not detecting when local branch advances
 
 - The blue "behind base" indicator on headless worktrees now correctly detects when the local base branch (e.g. `main`) advances — previously it only checked `origin/main` which could be stale if no `git fetch` had occurred. Now checks both origin and local refs in parallel and reports whichever is further ahead. Also fixes cache staleness after `git fetch` by tracking the origin ref commit in the metadata cache.
