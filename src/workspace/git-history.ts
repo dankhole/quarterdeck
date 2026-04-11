@@ -92,6 +92,7 @@ export async function getGitLog(options: {
 	}
 
 	const countResult = await runGit(repoRoot, [
+		"--no-optional-locks",
 		"rev-list",
 		"--count",
 		...(requestedRefs.length > 0 ? requestedRefs : ["HEAD"]),
@@ -230,8 +231,8 @@ async function buildCommitRelationMap(repoRoot: string, refs: string[]): Promise
 	}
 
 	const [selectedOnlyResult, upstreamOnlyResult] = await Promise.all([
-		runGit(repoRoot, ["rev-list", selectedRef, "--not", upstreamRef]),
-		runGit(repoRoot, ["rev-list", upstreamRef, "--not", selectedRef]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-list", selectedRef, "--not", upstreamRef]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-list", upstreamRef, "--not", selectedRef]),
 	]);
 
 	if (!selectedOnlyResult.ok || !upstreamOnlyResult.ok) {

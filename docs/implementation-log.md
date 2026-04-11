@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: git index lock contention from workspace metadata polling (2026-04-11)
+
+The workspace-metadata-monitor polls git on all active worktrees every 2–10 seconds (focused: 2s, background: 5s, home: 10s) to derive uncommitted-changes dots, behind-base counts, and sync indicators. Most git commands already passed `--no-optional-locks` to avoid acquiring the index lock, but `getCommitsBehindBase()` in `git-utils.ts` was missing the flag on all 4 of its calls (2× `merge-base`, 2× `rev-list --count`). These run on every task poll cycle via `loadTaskWorkspaceMetadata` in `workspace-metadata-monitor.ts:286`, so with multiple active tasks the index lock was held almost continuously on each worktree — blocking manual commits, staging, and any other write operation.
+
+Additionally, `git-history.ts` had 3 `rev-list` calls without the flag (1× total count query, 2× ahead/behind divergence). These aren't on the polling hot path (triggered by UI navigation to git history) but could transiently block.
+
+**Root cause**: Incomplete application of `--no-optional-locks` when the behind-base feature was added. The existing test suite (`git-sync-no-optional-locks.test.ts`) only covered `git-sync.ts` functions (status, rev-parse, diff) and didn't test `git-utils.ts` or `git-history.ts`.
+
+**Fix**: Added `--no-optional-locks` as the first argument to all 7 affected `runGit` calls. Added a test case verifying all `merge-base` and `rev-list` calls from `getCommitsBehindBase` include the flag.
+
+**Files touched**: `src/workspace/git-utils.ts` (4 calls), `src/workspace/git-history.ts` (3 calls), `test/runtime/git-sync-no-optional-locks.test.ts` (new test case).
+
 ## Emergency stop/restart actions for stuck running tasks (2026-04-11)
 
 Added a settings-gated escape hatch for tasks stuck in "running" state. When `showRunningTaskEmergencyActions` is enabled in Settings > Session Recovery, hovering an in-progress card with an active (non-dead) session shows two extra buttons: force-restart (orange RotateCw — stops then restarts the session) and force-trash (red Trash2 — moves the card to trash). Both only appear on hover to keep the default UI clean.

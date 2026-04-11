@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: git index lock contention from workspace metadata polling
+
+- The workspace-metadata-monitor's polling cycle no longer holds the git index lock on active worktrees. Seven read-only git commands (`merge-base`, `rev-list`) across `git-utils.ts` and `git-history.ts` were missing the `--no-optional-locks` flag, causing them to acquire the index lock unnecessarily on every poll cycle (every 2–5 seconds per worktree). This blocked concurrent git operations — commits, staging, and other write operations — in worktrees with active task cards. All polling git commands now consistently pass `--no-optional-locks`.
+
 ### Emergency stop/restart actions for stuck running tasks
 
 - New settings toggle (Settings > Session Recovery > "Show stop & trash buttons on running tasks") adds force-restart and force-trash buttons to in-progress task cards when hovered. Disabled by default to keep the UI clean. When a task is stuck in "running" state (e.g. failed resume, permission prompt, agent hang), enabling this provides an escape hatch without needing to drag the card or restart the server. Related to todo #9 and #20.

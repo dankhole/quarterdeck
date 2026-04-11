@@ -19,9 +19,11 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 import { type GitWorkspaceProbe, getGitSyncSummary, probeGitWorkspaceState } from "../../src/workspace/git-sync";
+import { getCommitsBehindBase } from "../../src/workspace/git-utils";
 
 const FAKE_REPO = "/fake/repo";
 const FAKE_COMMIT = "abc123def456789012345678901234567890abcd";
+const FAKE_MERGE_BASE = "def456789012345678901234567890abcdef4567";
 
 interface ExecCall {
 	args: string[];
@@ -126,6 +128,32 @@ describe("git-sync --no-optional-locks", () => {
 
 		const repoRootCall = findCallContaining("rev-parse", "--show-toplevel");
 		assertFlagBeforeSubcommand(repoRootCall, "rev-parse");
+	});
+
+	it("getCommitsBehindBase passes --no-optional-locks to merge-base and rev-list", async () => {
+		childProcessMocks.execFilePromise.mockImplementation((_cmd: string, args: string[]) => {
+			if (args.includes("merge-base")) {
+				return Promise.resolve({ stdout: `${FAKE_MERGE_BASE}\n`, stderr: "" });
+			}
+			if (args.includes("rev-list")) {
+				return Promise.resolve({ stdout: "3\n", stderr: "" });
+			}
+			return Promise.resolve({ stdout: "", stderr: "" });
+		});
+
+		await getCommitsBehindBase(FAKE_REPO, "main");
+
+		const mergeBaseCalls = capturedCalls().filter((c) => c.args.includes("merge-base"));
+		expect(mergeBaseCalls.length).toBe(2);
+		for (const call of mergeBaseCalls) {
+			assertFlagBeforeSubcommand(call, "merge-base");
+		}
+
+		const revListCalls = capturedCalls().filter((c) => c.args.includes("rev-list"));
+		expect(revListCalls.length).toBe(2);
+		for (const call of revListCalls) {
+			assertFlagBeforeSubcommand(call, "rev-list");
+		}
 	});
 
 	it("probeGitWorkspaceState output is unchanged with --no-optional-locks", async () => {

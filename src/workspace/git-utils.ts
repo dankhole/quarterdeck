@@ -124,13 +124,17 @@ export async function getCommitsBehindBase(
 	// Check both origin and local refs, return whichever is further ahead.
 	// Origin may be stale (no fetch), local may be stale (no pull) — take the max.
 	const [originMergeBase, localMergeBase] = await Promise.all([
-		runGit(cwd, ["merge-base", "HEAD", originRef]),
-		runGit(cwd, ["merge-base", "HEAD", baseRef]),
+		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", originRef]),
+		runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", baseRef]),
 	]);
 
 	const [originCount, localCount] = await Promise.all([
-		originMergeBase.ok ? runGit(cwd, ["rev-list", "--count", `${originMergeBase.stdout}..${originRef}`]) : null,
-		localMergeBase.ok ? runGit(cwd, ["rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`]) : null,
+		originMergeBase.ok
+			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${originMergeBase.stdout}..${originRef}`])
+			: null,
+		localMergeBase.ok
+			? runGit(cwd, ["--no-optional-locks", "rev-list", "--count", `${localMergeBase.stdout}..${baseRef}`])
+			: null,
 	]);
 	const originBehind = originCount?.ok ? parseInt(originCount.stdout, 10) || 0 : 0;
 	const originMB = originMergeBase.ok ? originMergeBase.stdout : null;
