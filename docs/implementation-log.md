@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Agent directory access from worktrees (2026-04-11)
+
+Two new global config fields — `worktreeAddParentRepoDir` (default true) and `worktreeAddQuarterdeckDir` (default false) — control whether Claude Code agents in task worktrees receive `--add-dir` flags for the parent repository and the `~/.quarterdeck` state directory respectively.
+
+The core logic lives in `claudeAdapter.prepare()` in `agent-session-adapters.ts`. It compares `resolve(input.cwd)` against `resolve(input.workspacePath)` — when they differ (agent is in a worktree), it conditionally pushes `--add-dir <path>` args. When the agent runs directly in the parent repo, the block is skipped entirely. The `workspacePath` field was already available on `StartTaskSessionRequest` but wasn't forwarded to `AgentAdapterLaunchInput` — this change threads it through.
+
+The `~/.quarterdeck` path is resolved via the existing `getRuntimeHomePath()` (already imported in the adapter file). The quarterdeck dir setting defaults to false because `--add-dir` grants full read/write access, and rogue writes to `board.json` or `meta.json` would break the revision-based optimistic concurrency model (single-writer rule in AGENTS.md).
+
+Settings UI adds two Radix Switch toggles in the "Git & Worktrees" section of the settings dialog, with description text noting the Claude Code-only scope and a risk warning for the quarterdeck dir toggle. Dirty detection (`hasUnsavedChanges` memo) tracks both fields with initial-value comparisons.
+
+**Files touched**: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-manager.ts`, `src/trpc/runtime-api.ts`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`.
+
 ## Fix: project pills double-counting needs-input tasks as review (2026-04-11)
 
 The project navigation sidebar shows small status pills (R, NI, IP, B) with task counts. When a task's session was `awaiting_review` with `reviewReason: "attention"` (or a permission-request hook), `applyLiveSessionStateToProjectTaskCounts` counted it in **both** `review` and `needs_input`. Two separate `if` blocks fired independently: the first moved the count from `in_progress` → `review`, and the second added to `needs_input` — resulting in pills showing R:1 and NI:1 for a single task.

@@ -45,6 +45,11 @@ export async function saveRuntimeConfig(
 		audibleNotificationsOnlyWhenHidden?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
+		focusedTaskPollMs?: number;
+		backgroundTaskPollMs?: number;
+		homeRepoPollMs?: number;
+		worktreeAddParentRepoDir?: boolean;
+		worktreeAddQuarterdeckDir?: boolean;
 		showRunningTaskEmergencyActions?: boolean;
 	},
 ): Promise<RuntimeConfigResponse> {

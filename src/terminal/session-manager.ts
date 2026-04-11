@@ -101,6 +101,8 @@ export interface StartTaskSessionRequest {
 	workspaceId?: string;
 	workspacePath?: string;
 	statuslineEnabled?: boolean;
+	worktreeAddParentRepoDir?: boolean;
+	worktreeAddQuarterdeckDir?: boolean;
 }
 
 export interface StartShellSessionRequest {
@@ -320,7 +322,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			resumeConversation: request.resumeConversation,
 			env: request.env,
 			workspaceId: request.workspaceId,
+			workspacePath: request.workspacePath,
 			statuslineEnabled: request.statuslineEnabled,
+			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir,
+			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);

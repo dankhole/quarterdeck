@@ -63,6 +63,8 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	terminalWebGLRenderer: CONFIG_DEFAULTS.terminalWebGLRenderer,
 	terminalChatViewEnabled: CONFIG_DEFAULTS.terminalChatViewEnabled,
+	worktreeAddParentRepoDir: CONFIG_DEFAULTS.worktreeAddParentRepoDir,
+	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	showRunningTaskEmergencyActions: CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 	llmConfigured: false,
 };

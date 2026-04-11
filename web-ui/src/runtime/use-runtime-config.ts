@@ -44,6 +44,8 @@ export interface UseRuntimeConfigResult {
 		focusedTaskPollMs?: number;
 		backgroundTaskPollMs?: number;
 		homeRepoPollMs?: number;
+		worktreeAddParentRepoDir?: boolean;
+		worktreeAddQuarterdeckDir?: boolean;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
@@ -134,6 +136,11 @@ export function useRuntimeConfig(
 				completion: boolean;
 			};
 			audibleNotificationsOnlyWhenHidden?: boolean;
+			focusedTaskPollMs?: number;
+			backgroundTaskPollMs?: number;
+			homeRepoPollMs?: number;
+			worktreeAddParentRepoDir?: boolean;
+			worktreeAddQuarterdeckDir?: boolean;
 		}): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {

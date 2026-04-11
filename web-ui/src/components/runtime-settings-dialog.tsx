@@ -344,6 +344,10 @@ export function RuntimeSettingsDialog({
 	const [focusedTaskPollMs, setFocusedTaskPollMs] = useState(CONFIG_DEFAULTS.focusedTaskPollMs);
 	const [backgroundTaskPollMs, setBackgroundTaskPollMs] = useState(CONFIG_DEFAULTS.backgroundTaskPollMs);
 	const [homeRepoPollMs, setHomeRepoPollMs] = useState(CONFIG_DEFAULTS.homeRepoPollMs);
+	const [worktreeAddParentRepoDir, setWorktreeAddParentRepoDir] = useState(CONFIG_DEFAULTS.worktreeAddParentRepoDir);
+	const [worktreeAddQuarterdeckDir, setWorktreeAddQuarterdeckDir] = useState(
+		CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
+	);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
@@ -413,6 +417,9 @@ export function RuntimeSettingsDialog({
 	const initialFocusedTaskPollMs = config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs;
 	const initialBackgroundTaskPollMs = config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs;
 	const initialHomeRepoPollMs = config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs;
+	const initialWorktreeAddParentRepoDir = config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir;
+	const initialWorktreeAddQuarterdeckDir =
+		config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -492,6 +499,12 @@ export function RuntimeSettingsDialog({
 		if (homeRepoPollMs !== initialHomeRepoPollMs) {
 			return true;
 		}
+		if (worktreeAddParentRepoDir !== initialWorktreeAddParentRepoDir) {
+			return true;
+		}
+		if (worktreeAddQuarterdeckDir !== initialWorktreeAddQuarterdeckDir) {
+			return true;
+		}
 		return !areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts);
 	}, [
 		agentAutonomousModeEnabled,
@@ -527,6 +540,8 @@ export function RuntimeSettingsDialog({
 		initialBehindBaseIndicatorEnabled,
 		initialShortcuts,
 		initialSummaryStaleAfterSeconds,
+		initialWorktreeAddParentRepoDir,
+		initialWorktreeAddQuarterdeckDir,
 		selectedAgentId,
 		uncommittedChangesOnCardsEnabled,
 		behindBaseIndicatorEnabled,
@@ -534,6 +549,8 @@ export function RuntimeSettingsDialog({
 		terminalFontWeight,
 		terminalWebGLRenderer,
 		terminalChatViewEnabled,
+		worktreeAddParentRepoDir,
+		worktreeAddQuarterdeckDir,
 		shortcuts,
 		showRunningTaskEmergencyActions,
 		skipHomeCheckoutConfirmation,
@@ -587,6 +604,8 @@ export function RuntimeSettingsDialog({
 		setFocusedTaskPollMs(config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs);
 		setBackgroundTaskPollMs(config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs);
 		setHomeRepoPollMs(config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs);
+		setWorktreeAddParentRepoDir(config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir);
+		setWorktreeAddQuarterdeckDir(config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir);
 		setShortcuts(config?.shortcuts ?? []);
 		setSaveError(null);
 	}, [
@@ -611,6 +630,8 @@ export function RuntimeSettingsDialog({
 		config?.terminalFontWeight,
 		config?.terminalWebGLRenderer,
 		config?.terminalChatViewEnabled,
+		config?.worktreeAddParentRepoDir,
+		config?.worktreeAddQuarterdeckDir,
 		config?.shortcuts,
 		config?.showSummaryOnCards,
 		config?.summaryStaleAfterSeconds,
@@ -683,6 +704,8 @@ export function RuntimeSettingsDialog({
 			focusedTaskPollMs,
 			backgroundTaskPollMs,
 			homeRepoPollMs,
+			worktreeAddParentRepoDir,
+			worktreeAddQuarterdeckDir,
 			shortcuts,
 		});
 		if (!saved) {
@@ -1066,6 +1089,43 @@ export function RuntimeSettingsDialog({
 				</div>
 				<p className="text-text-secondary text-[13px] mt-1 mb-0">
 					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={worktreeAddParentRepoDir}
+						disabled={controlsDisabled}
+						onCheckedChange={setWorktreeAddParentRepoDir}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">
+						Allow agents to access the parent repo from worktrees
+					</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Passes the parent repository path via{" "}
+					<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can read
+					files from the original repo. Claude Code only.
+				</p>
+				<div className="flex items-center gap-2 mt-3">
+					<RadixSwitch.Root
+						checked={worktreeAddQuarterdeckDir}
+						disabled={controlsDisabled}
+						onCheckedChange={setWorktreeAddQuarterdeckDir}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">
+						Allow agents to access the <code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code>{" "}
+						directory
+					</span>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees).
+					Use with caution — rogue writes can corrupt workspace state and cause revision conflicts. Claude Code
+					only.
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>

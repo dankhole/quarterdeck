@@ -1,5 +1,5 @@
 import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { buildStatuslineCommand } from "../commands/statusline";
@@ -37,7 +37,10 @@ export interface AgentAdapterLaunchInput {
 	resumeConversation?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	workspacePath?: string;
 	statuslineEnabled?: boolean;
+	worktreeAddParentRepoDir?: boolean;
+	worktreeAddQuarterdeckDir?: boolean;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -573,6 +576,17 @@ const claudeAdapter: AgentSessionAdapter = {
 					workspaceId: hooks.workspaceId,
 				}),
 			);
+		}
+
+		// When running in a worktree, optionally give the agent access to the
+		// parent repo directory and/or the ~/.quarterdeck state directory via --add-dir.
+		if (input.workspacePath && resolve(input.cwd) !== resolve(input.workspacePath)) {
+			if (input.worktreeAddParentRepoDir) {
+				args.push("--add-dir", input.workspacePath);
+			}
+			if (input.worktreeAddQuarterdeckDir) {
+				args.push("--add-dir", getRuntimeHomePath());
+			}
 		}
 
 		if (

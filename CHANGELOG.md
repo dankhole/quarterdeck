@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Agent directory access from worktrees
+
+- Claude Code agents running in task worktrees can now access the parent repository directory via `--add-dir`. Enabled by default — lets agents reference files in the original repo for context. A second setting (off by default) grants access to the `~/.quarterdeck` state directory, with a warning about state corruption risk. Both are configurable in Settings > Git & Worktrees. Only affects Claude Code; other agents are unchanged.
+
 ### Fix: project pills double-counting needs-input tasks as review
 
 - Project navigation pills no longer show an erroneous "R" (Review) badge alongside the "NI" (Needs Input) badge for the same task. When a task's session is `awaiting_review` with an `attention` or permission-request reason, it's now counted exclusively in `needs_input` — not also in `review`. Previously, two independent `if` blocks in `applyLiveSessionStateToProjectTaskCounts` both fired for the same session, inflating the review count.
