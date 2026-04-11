@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Perf: faster project switching — server-side latency optimizations (2026-04-11)
+
+Three changes to reduce the wall-clock time between clicking a project and seeing the board:
+
+**1. Decouple workspace metadata from the initial snapshot** (`runtime-state-hub.ts`): Previously, `workspaceMetadataMonitor.connectWorkspace()` was awaited before the snapshot was sent to the client. This function runs git probes on the home repo and every tracked task worktree (up to ~35 git subprocess spawns with 5 active tasks, limited to concurrency 3). Now the snapshot is sent immediately with `workspaceMetadata: null`, and `connectWorkspace` fires as a fire-and-forget after the client is registered in the workspace client maps. The existing `onMetadataUpdated` callback delivers metadata via the `workspace_metadata_updated` message type — no new protocol or message types needed. The `workspace_metadata_updated` handler on the frontend already existed for incremental updates; it now also delivers the first metadata load. The `isWorkspaceMetadataPending` flag (which gates the loading spinner) tracks board state hydration, not metadata arrival, so the spinner clears as soon as the board data is applied.
+
+**2. Parallelize file reads** (`workspace-state.ts`): `loadWorkspaceState` previously called `readWorkspaceBoard`, `readWorkspaceSessions`, `readWorkspaceMeta` sequentially. All three read independent JSON files and none acquire locks, so they now run via `Promise.all` after `loadWorkspaceContext` resolves the workspace ID.
+
+**3. Cache inactive project task counts** (`workspace-registry.ts`): `summarizeProjectTaskCounts` was reading the board JSON from disk for every project on every call to `buildProjectsPayload` (triggered every 150ms during active sessions via `flushTaskSessionSummaries`). Now, for workspaces without a terminal manager (no active agent sessions), cached counts are served directly from the existing `projectTaskCountsByWorkspaceId` map. Active workspaces still recompute with live session overlay. Cache is cleared on workspace disposal.
+
+Files touched: `src/server/runtime-state-hub.ts`, `src/server/workspace-registry.ts`, `src/state/workspace-state.ts`, `test/integration/runtime-state-stream.integration.test.ts`.
+
 ## Toolbar highlight style swap and sidebar sync fixes (2026-04-11)
 
 Swapped the active-state styles between the two toolbar button groups: main view buttons now get the blue left-border accent (`text-accent border-l-2 border-accent`), sidebar buttons now get the gray filled background (`bg-surface-3 text-text-primary`). This gives the primary selection (main view) the more prominent visual treatment.
@@ -67,7 +79,6 @@ Replaced the native `type="number"` input for terminal font weight in the settin
 **Fix**: Extracted a `FontWeightInput` component that maintains a local `draft` string state. The user types freely into a plain text field. On blur or Enter, the draft is parsed and validated (100–900 range); invalid input reverts to the current value. A `useEffect` syncs the draft from the parent value when the input isn't focused (e.g. config load). Input width narrowed from `w-20` to `w-14` with `tabular-nums` for stable digit widths.
 
 Files touched: `web-ui/src/components/runtime-settings-dialog.tsx`.
->>>>>>> main
 
 ## Uncommitted changes indicator color: orange → red (2026-04-11)
 

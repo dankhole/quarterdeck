@@ -319,9 +319,17 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		_repoPath: string,
 	): Promise<RuntimeProjectTaskCounts> => {
 		try {
+			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
+			// For workspaces without active sessions, board state is stable —
+			// serve cached counts to avoid repeated disk reads on every broadcast.
+			if (!terminalManager) {
+				const cached = projectTaskCountsByWorkspaceId.get(workspaceId);
+				if (cached) {
+					return cached;
+				}
+			}
 			const board = await loadWorkspaceBoardById(workspaceId);
 			const persistedCounts = countTasksByColumn(board);
-			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
 			if (!terminalManager) {
 				projectTaskCountsByWorkspaceId.set(workspaceId, persistedCounts);
 				return persistedCounts;

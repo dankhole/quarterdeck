@@ -380,43 +380,30 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					projects: RuntimeStateStreamProjectsMessage["projects"];
 				};
 				let workspaceState: RuntimeStateStreamSnapshotMessage["workspaceState"];
-				let workspaceMetadata: RuntimeStateStreamSnapshotMessage["workspaceMetadata"];
 				if (workspace.workspaceId && workspace.workspacePath) {
 					monitorWorkspaceId = workspace.workspaceId;
 					[projectsPayload, workspaceState] = await Promise.all([
 						deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
 						deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
 					]);
-					workspaceMetadata = await workspaceMetadataMonitor.connectWorkspace({
-						workspaceId: workspace.workspaceId,
-						workspacePath: workspace.workspacePath,
-						board: workspaceState.board,
-						pollIntervals: deps.getActivePollIntervals(),
-					});
-					didConnectWorkspaceMonitor = true;
 				} else {
 					projectsPayload = await deps.workspaceRegistry.buildProjectsPayload(null);
 					workspaceState = null;
-					workspaceMetadata = null;
 				}
 				if (client.readyState !== WebSocket.OPEN) {
-					if (monitorWorkspaceId) {
-						workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
-					}
 					cleanupRuntimeStateClient(client);
 					return;
 				}
+				// Workspace metadata is delivered asynchronously via workspace_metadata_updated
+				// after connectWorkspace resolves, avoiding git probe latency on the snapshot.
 				sendRuntimeStateMessage(client, {
 					type: "snapshot",
 					currentProjectId: projectsPayload.currentProjectId,
 					projects: projectsPayload.projects,
 					workspaceState,
-					workspaceMetadata,
+					workspaceMetadata: null,
 				} satisfies RuntimeStateStreamSnapshotMessage);
 				if (client.readyState !== WebSocket.OPEN) {
-					if (monitorWorkspaceId) {
-						workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
-					}
 					cleanupRuntimeStateClient(client);
 					return;
 				}
@@ -426,6 +413,21 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					workspaceClients.add(client);
 					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
 					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);
+				}
+				// Connect the workspace metadata monitor after registering the client
+				// so the onMetadataUpdated callback can deliver results to it.
+				if (monitorWorkspaceId && workspace.workspacePath && workspaceState) {
+					didConnectWorkspaceMonitor = true;
+					void workspaceMetadataMonitor
+						.connectWorkspace({
+							workspaceId: monitorWorkspaceId,
+							workspacePath: workspace.workspacePath,
+							board: workspaceState.board,
+							pollIntervals: deps.getActivePollIntervals(),
+						})
+						.catch(() => {
+							// Non-fatal: metadata arrives on the next poll cycle.
+						});
 				}
 				// Send current debug logging state so newly connected clients
 				// can enable their panel if debug logging is active.

@@ -77,9 +77,12 @@ Related: #13 (un-trash / restart paths for non-isolated worktrees).
 
 A task can appear as running/in-progress on the board when the agent is actually blocked waiting for user permission approval. There's no distinction in the UI between "agent is actively working" and "agent is paused waiting for permission input." Investigate detecting when an agent is in a permission prompt state and surface it on the board — either as a distinct card status, a visual indicator on the running card, or a notification so the user knows action is needed.
 
-## 10. Slow project switching — cache or preload board state
+## 10. Client-side project switch optimizations
 
-Switching projects has a noticeable delay because the board tasks take a moment to load after the switch. Investigate caching strategies to make project switching feel instant — e.g. keeping the previous project's board state in memory, preloading the target project's state in the background when hovering or when the project switcher is open, or caching the last-known board state client-side so it can render immediately while fresh data loads behind it.
+Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Remaining client-side strategies to make switching feel instant:
+
+- **Stale-while-revalidate**: Cache board state per project in memory. On switch, show the cached version immediately while fresh data loads. Requires careful gating of `canPersistWorkspaceState` and `workspaceRevision` to prevent stale data from being persisted back to disk.
+- **Preload on hover**: When hovering a project in the sidebar, background-load its board state via `fetchWorkspaceState`. Needs debounce/throttle and must not trigger `ensureTerminalManagerForWorkspace`.
 
 ## 11. Un-trash doesn't always auto-resume the agent session
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Perf: faster project switching — decouple metadata, parallelize reads, cache counts
+
+- Project switching no longer blocks on git probe latency. The initial WebSocket snapshot is sent immediately with board and session data; workspace metadata (git status, changed files, behind-base counts) arrives asynchronously via the existing `workspace_metadata_updated` message. With multiple active task worktrees this removes 1-3 seconds of git subprocess time from the critical path.
+- The three sequential file reads in `loadWorkspaceState` (board, sessions, meta) now run in parallel via `Promise.all`.
+- Sidebar badge counts for inactive projects (no running agent sessions) are served from an in-memory cache instead of re-reading board files from disk on every broadcast cycle.
+
 ### Fix: toolbar highlight styles swapped and sidebar highlight sync bugs
 
 - Main view buttons (Home, Terminal, Files, Git) now use blue left-border accent when active. Sidebar buttons (Projects, Board) now use filled gray background when active — swapping the two styles for better visual hierarchy.
