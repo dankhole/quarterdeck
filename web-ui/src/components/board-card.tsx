@@ -152,6 +152,7 @@ export function BoardCard({
 	selected = false,
 	showSummaryOnCards = false,
 	uncommittedChangesOnCardsEnabled = false,
+	showRunningTaskEmergencyActions = false,
 	onClick,
 	onStart,
 	onRestartSession,
@@ -180,6 +181,7 @@ export function BoardCard({
 	selected?: boolean;
 	showSummaryOnCards?: boolean;
 	uncommittedChangesOnCardsEnabled?: boolean;
+	showRunningTaskEmergencyActions?: boolean;
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
@@ -499,7 +501,44 @@ export function BoardCard({
 											) : null}
 										</div>
 									)}
-									{columnId === "backlog" ? (
+									{columnId === "in_progress" &&
+									showRunningTaskEmergencyActions &&
+									!isSessionDead &&
+									isHovered ? (
+										<>
+											{onRestartSession ? (
+												<Tooltip content="Force restart session">
+													<Button
+														icon={<RotateCw size={12} />}
+														variant="ghost"
+														size="sm"
+														className="text-status-orange hover:text-text-primary"
+														aria-label="Force restart agent session"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															onRestartSession(card.id);
+														}}
+													/>
+												</Tooltip>
+											) : null}
+											<Tooltip content="Force trash task">
+												<Button
+													icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+													variant="ghost"
+													size="sm"
+													className="text-status-red hover:text-text-primary"
+													disabled={isMoveToTrashLoading}
+													aria-label="Force move task to trash"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														onMoveToTrash?.(card.id);
+													}}
+												/>
+											</Tooltip>
+										</>
+									) : columnId === "backlog" ? (
 										<Button
 											icon={<Play size={14} />}
 											variant="ghost"

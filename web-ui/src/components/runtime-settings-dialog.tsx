@@ -326,6 +326,9 @@ export function RuntimeSettingsDialog({
 	const [skipHomeCheckoutConfirmation, setSkipHomeCheckoutConfirmation] = useState(
 		CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
 	);
+	const [showRunningTaskEmergencyActions, setShowRunningTaskEmergencyActions] = useState(
+		CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
+	);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(
 		CONFIG_DEFAULTS.audibleNotificationsEnabled,
 	);
@@ -397,6 +400,8 @@ export function RuntimeSettingsDialog({
 		config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation;
 	const initialSkipHomeCheckoutConfirmation =
 		config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation;
+	const initialShowRunningTaskEmergencyActions =
+		config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions;
 	const initialAudibleNotificationsEnabled =
 		config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
 	const initialAudibleNotificationVolume =
@@ -458,6 +463,9 @@ export function RuntimeSettingsDialog({
 		if (skipHomeCheckoutConfirmation !== initialSkipHomeCheckoutConfirmation) {
 			return true;
 		}
+		if (showRunningTaskEmergencyActions !== initialShowRunningTaskEmergencyActions) {
+			return true;
+		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
 			return true;
 		}
@@ -513,6 +521,7 @@ export function RuntimeSettingsDialog({
 		initialShowTrashWorktreeNotice,
 		initialSkipHomeCheckoutConfirmation,
 		initialSkipTaskCheckoutConfirmation,
+		initialShowRunningTaskEmergencyActions,
 		initialUncommittedChangesOnCardsEnabled,
 		initialUnmergedChangesIndicatorEnabled,
 		initialBehindBaseIndicatorEnabled,
@@ -526,6 +535,7 @@ export function RuntimeSettingsDialog({
 		terminalWebGLRenderer,
 		terminalChatViewEnabled,
 		shortcuts,
+		showRunningTaskEmergencyActions,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
 		showSummaryOnCards,
@@ -561,6 +571,9 @@ export function RuntimeSettingsDialog({
 		setSkipHomeCheckoutConfirmation(
 			config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
 		);
+		setShowRunningTaskEmergencyActions(
+			config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
+		);
 		setAudibleNotificationsEnabled(
 			config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		);
@@ -592,6 +605,7 @@ export function RuntimeSettingsDialog({
 		config?.behindBaseIndicatorEnabled,
 		config?.skipTaskCheckoutConfirmation,
 		config?.skipHomeCheckoutConfirmation,
+		config?.showRunningTaskEmergencyActions,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.terminalFontWeight,
@@ -661,6 +675,7 @@ export function RuntimeSettingsDialog({
 			behindBaseIndicatorEnabled,
 			skipTaskCheckoutConfirmation,
 			skipHomeCheckoutConfirmation,
+			showRunningTaskEmergencyActions,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -1117,6 +1132,22 @@ export function RuntimeSettingsDialog({
 						</div>
 					</div>
 				</div>
+
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Session Recovery</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={showRunningTaskEmergencyActions}
+						disabled={controlsDisabled}
+						onCheckedChange={setShowRunningTaskEmergencyActions}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
+				</div>
+				<p className="text-text-secondary text-[12px] mt-1 mb-0">
+					Adds emergency stop and trash actions to in-progress cards when a task is stuck.
+				</p>
 
 				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout & Debug</h6>
 				<Button size="sm" onClick={resetLayoutCustomizations}>

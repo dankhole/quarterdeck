@@ -67,6 +67,7 @@ export function BoardColumn({
 		isLlmGenerationDisabled,
 		showSummaryOnCards,
 		uncommittedChangesOnCardsEnabled,
+		showRunningTaskEmergencyActions,
 	} = useReactiveCardState();
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -191,6 +192,7 @@ export function BoardColumn({
 											isDependencyLinking={isDependencyLinking}
 											showSummaryOnCards={showSummaryOnCards}
 											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
+											showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 											onRequestDisplaySummary={onRequestDisplaySummary}
 											onClick={() => {
 												if (column.id === "backlog") {

@@ -29,6 +29,7 @@ export interface UseRuntimeConfigResult {
 		behindBaseIndicatorEnabled?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
+		showRunningTaskEmergencyActions?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;
@@ -121,6 +122,7 @@ export function useRuntimeConfig(
 			behindBaseIndicatorEnabled?: boolean;
 			skipTaskCheckoutConfirmation?: boolean;
 			skipHomeCheckoutConfirmation?: boolean;
+			showRunningTaskEmergencyActions?: boolean;
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
 			audibleNotificationsEnabled?: boolean;

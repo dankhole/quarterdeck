@@ -672,6 +672,7 @@ export const runtimeConfigResponseSchema = z.object({
 	terminalFontWeight: z.number(),
 	terminalWebGLRenderer: z.boolean(),
 	terminalChatViewEnabled: z.boolean(),
+	showRunningTaskEmergencyActions: z.boolean(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -713,6 +714,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	terminalFontWeight: z.number().min(100).max(900).optional(),
 	terminalWebGLRenderer: z.boolean().optional(),
 	terminalChatViewEnabled: z.boolean().optional(),
+	showRunningTaskEmergencyActions: z.boolean().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

@@ -45,6 +45,7 @@ export async function saveRuntimeConfig(
 		audibleNotificationsOnlyWhenHidden?: boolean;
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
+		showRunningTaskEmergencyActions?: boolean;
 	},
 ): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);

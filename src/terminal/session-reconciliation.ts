@@ -1,6 +1,14 @@
 // Pure reconciliation check functions for detecting and correcting session state drift.
 // Each check takes a session entry + timestamp and returns an action or null.
 // The sweep in TerminalSessionManager applies the first non-null action per entry.
+//
+// ADDING NEW CHECKS: When adding dynamic UI state or session-dependent features,
+// consider whether stale/orphaned state needs cleanup here. Currently covers:
+//   - Dead processes (PID no longer exists)
+//   - Processless active sessions (state says running, no PTY)
+//   - Stale hook activity metadata
+// Future candidates: alive-but-stuck detection, auto-restart loop breaking,
+// frontend panel state reconciliation.
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 export type ReconciliationAction =

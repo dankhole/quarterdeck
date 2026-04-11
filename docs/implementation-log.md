@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Emergency stop/restart actions for stuck running tasks (2026-04-11)
+
+Added a settings-gated escape hatch for tasks stuck in "running" state. When `showRunningTaskEmergencyActions` is enabled in Settings > Session Recovery, hovering an in-progress card with an active (non-dead) session shows two extra buttons: force-restart (orange RotateCw — stops then restarts the session) and force-trash (red Trash2 — moves the card to trash). Both only appear on hover to keep the default UI clean.
+
+The root problem: when a task is in "running" state in the in_progress column, the UI doesn't show restart or trash buttons — those only appear in the review column. If the session is alive but useless (failed resume, permission prompt hang, agent stuck in compact), the user has no way to recover without dragging the card or restarting the server. This feature doesn't fix the root causes (todo #9, #20) but provides an immediate workaround.
+
+Also updated `handleMoveReviewCardToTrash` to detect the card's actual column instead of hardcoding `"review"` as the source column, so the trash action works correctly from in_progress.
+
+Added a "Session reconciliation" section to AGENTS.md and a header comment to `session-reconciliation.ts` directing future developers to register cleanup for new dynamic UI state in the reconciliation sweep.
+
+**Config pipeline** (4 files): `global-config-fields.ts` (field definition), `api-contract.ts` (response + save request schemas), `runtime-config-query.ts` and `use-runtime-config.ts` (manual type lists).
+
+**UI pipeline** (7 files): `card-actions-context.tsx` (reactive state type), `runtime-settings-dialog.tsx` (toggle UI + state + dirty check + sync + save), `board-card.tsx` (conditional button rendering), `board-column.tsx` and `column-context-panel.tsx` (prop threading), `App.tsx` (wiring reactive state), `use-board-interactions.ts` (trash handler column detection).
+
+**Test fixtures** (3 files): `runtime-config.test.ts`, `runtime-config-factory.ts`, `card-detail-view.test.tsx`, `column-context-panel.test.tsx`.
+
 ## Right-click context menu on branch selector items (2026-04-11)
 
 Added a Radix `ContextMenu` to each `BranchItem` inside `BranchSelectorPopover`. Three actions: Checkout (reuses existing `onCheckoutBranch` callback with confirmation dialogs), Compare with local tree (navigates to git view Compare tab via `openGitCompare`), and Copy branch name (clipboard + toast).

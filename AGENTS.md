@@ -110,6 +110,9 @@ Completing a feature or fix (release hygiene)
 Test fixtures and merge conflicts
 - Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.
 
+Session reconciliation
+- Before adding dynamic UI state tied to session lifecycle (status indicators, transient panels, auto-triggered actions), check `src/terminal/session-reconciliation.ts` and ensure stale/orphaned instances of the new state have a cleanup path in the reconciliation sweep. The sweep runs every 10 seconds and currently handles dead processes, processless sessions, and stale hook metadata.
+
 Misc. tribal knowledge
 - Quarterdeck is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
 - When Quarterdeck runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.

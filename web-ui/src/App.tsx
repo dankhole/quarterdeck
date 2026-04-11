@@ -1189,6 +1189,8 @@ export default function App(): ReactElement {
 			showSummaryOnCards: runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 			uncommittedChangesOnCardsEnabled:
 				runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
+			showRunningTaskEmergencyActions:
+				runtimeProjectConfig?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 		}),
 		[
 			moveToTrashLoadingById,
@@ -1196,6 +1198,7 @@ export default function App(): ReactElement {
 			isLlmGenerationDisabled,
 			runtimeProjectConfig?.showSummaryOnCards,
 			runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
+			runtimeProjectConfig?.showRunningTaskEmergencyActions,
 		],
 	);
 

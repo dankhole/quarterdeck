@@ -775,12 +775,14 @@ export function useBoardInteractions({
 			if (moveToTrashLoadingByIdRef.current[taskId] || trashWarningState.open) {
 				return;
 			}
+			const selection = findCardSelection(board, taskId);
+			const fromColumnId = selection?.column.id ?? "review";
 			setTaskMoveToTrashLoading(taskId, true);
-			void requestMoveTaskToTrashWithAnimation(taskId, "review").finally(() => {
+			void requestMoveTaskToTrashWithAnimation(taskId, fromColumnId).finally(() => {
 				setTaskMoveToTrashLoading(taskId, false);
 			});
 		},
-		[requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading, trashWarningState.open],
+		[board, requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading, trashWarningState.open],
 	);
 
 	const handleRestoreTaskFromTrash = useCallback(

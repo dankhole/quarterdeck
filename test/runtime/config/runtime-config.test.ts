@@ -307,6 +307,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					terminalFontWeight: 325,
 					terminalWebGLRenderer: true,
 					terminalChatViewEnabled: false,
+					showRunningTaskEmergencyActions: false,
 					shortcuts: [],
 					promptShortcuts: [],
 				});
@@ -366,6 +367,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					terminalFontWeight: 325,
 					terminalWebGLRenderer: true,
 					terminalChatViewEnabled: false,
+					showRunningTaskEmergencyActions: false,
 					shortcuts: [],
 					promptShortcuts: [],
 				});
@@ -413,6 +415,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					terminalFontWeight: 325,
 					terminalWebGLRenderer: true,
 					terminalChatViewEnabled: false,
+					showRunningTaskEmergencyActions: false,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
 					promptShortcuts: [],
 				});

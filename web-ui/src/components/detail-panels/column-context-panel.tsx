@@ -58,6 +58,7 @@ function ColumnSection({
 		isLlmGenerationDisabled,
 		showSummaryOnCards,
 		uncommittedChangesOnCardsEnabled,
+		showRunningTaskEmergencyActions,
 	} = useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
@@ -206,6 +207,7 @@ function ColumnSection({
 												onTogglePin={onTogglePinTask}
 												showSummaryOnCards={showSummaryOnCards}
 												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
+												showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 												onRequestDisplaySummary={onRequestDisplaySummary}
 												onClick={() => {
 													if (column.id === "backlog") {

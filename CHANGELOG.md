@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Emergency stop/restart actions for stuck running tasks
+
+- New settings toggle (Settings > Session Recovery > "Show stop & trash buttons on running tasks") adds force-restart and force-trash buttons to in-progress task cards when hovered. Disabled by default to keep the UI clean. When a task is stuck in "running" state (e.g. failed resume, permission prompt, agent hang), enabling this provides an escape hatch without needing to drag the card or restart the server. Related to todo #9 and #20.
+
+### AGENTS.md: session reconciliation guidance
+
+- Added a "Session reconciliation" section to AGENTS.md directing developers to register cleanup for new dynamic UI state in `src/terminal/session-reconciliation.ts`. Added a corresponding header comment to the reconciliation module listing current coverage and future candidates.
+
 ### Right-click context menu on branch selector items
 
 - Right-clicking a branch in the `BranchSelectorPopover` dropdown (file browser scope bar, task detail scope bar, git view Compare tab) now shows a context menu with up to three actions: **Checkout** (triggers the existing confirmation dialog flow), **Compare with local tree** (switches to the git view Compare tab with that branch as the target), and **Copy branch name**. Actions render conditionally — Checkout and Compare only appear when the parent provides the relevant callback. The git view Compare tab's pickers show only "Copy branch name" since checkout and compare don't apply there. Shared context menu utilities (`CONTEXT_MENU_ITEM_CLASS`, `copyToClipboard`) extracted into `context-menu-utils.ts` and reused by the file browser context menu.
