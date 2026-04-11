@@ -1,12 +1,9 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import {
-	ArrowDown,
 	ArrowLeft,
-	ArrowUp,
 	Bug,
 	Check,
 	ChevronDown,
-	CircleArrowDown,
 	Command,
 	GitBranch,
 	MessageSquare,
@@ -28,12 +25,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { PromptShortcut, RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
-import {
-	useHomeGitSummaryValue,
-	useTaskWorkspaceInfoValue,
-	useTaskWorkspaceSnapshotValue,
-} from "@/stores/workspace-metadata-store";
+import type { PromptShortcut, RuntimeProjectShortcut } from "@/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform } from "@/utils/platform";
@@ -107,7 +99,7 @@ function FirstShortcutIconPicker({
 	);
 }
 
-function GitBranchStatusControl({
+export function GitBranchStatusControl({
 	branchLabel,
 	changedFiles,
 	additions,
@@ -163,143 +155,15 @@ function GitBranchStatusControl({
 	);
 }
 
-function TopBarGitStatusSection({
-	showHomeGitSummary,
-	selectedTaskId,
-	selectedTaskBaseRef,
-	onToggleGitHistory,
-	isGitHistoryOpen,
-	runningGitAction,
-	onGitFetch,
-	onGitPull,
-	onGitPush,
-}: {
-	showHomeGitSummary: boolean;
-	selectedTaskId: string | null;
-	selectedTaskBaseRef: string | null;
-	onToggleGitHistory?: () => void;
-	isGitHistoryOpen?: boolean;
-	runningGitAction?: RuntimeGitSyncAction | null;
-	onGitFetch?: () => void;
-	onGitPull?: () => void;
-	onGitPush?: () => void;
-}): React.ReactElement | null {
-	const homeGitSummary = useHomeGitSummaryValue();
-	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedTaskId, selectedTaskBaseRef);
-	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedTaskId);
-
-	if (showHomeGitSummary && homeGitSummary) {
-		const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
-		const pullCount = homeGitSummary.behindCount ?? 0;
-		const pushCount = homeGitSummary.aheadCount ?? 0;
-		const pullTooltip =
-			pullCount > 0
-				? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
-				: "Pull from upstream. Branch is already up to date.";
-		const pushTooltip =
-			pushCount > 0
-				? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
-				: "Push local commits to upstream. No local commits are pending.";
-		return (
-			<>
-				<div className="w-px h-5 bg-border mx-1" />
-				<GitBranchStatusControl
-					branchLabel={branchLabel}
-					changedFiles={homeGitSummary.changedFiles ?? 0}
-					additions={homeGitSummary.additions ?? 0}
-					deletions={homeGitSummary.deletions ?? 0}
-					onToggleGitHistory={onToggleGitHistory}
-					isGitHistoryOpen={isGitHistoryOpen}
-				/>
-				<div className="flex gap-0 ml-1">
-					<Tooltip
-						side="bottom"
-						content="Fetch latest refs from upstream without changing your local branch or files."
-					>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={18} />}
-							onClick={onGitFetch}
-							disabled={runningGitAction === "fetch"}
-							aria-label="Fetch from upstream"
-						/>
-					</Tooltip>
-					<Tooltip side="bottom" content={pullTooltip}>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
-							onClick={onGitPull}
-							disabled={runningGitAction === "pull"}
-							aria-label="Pull from upstream"
-						>
-							<span className="text-text-tertiary">{pullCount}</span>
-						</Button>
-					</Tooltip>
-					<Tooltip side="bottom" content={pushTooltip}>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
-							onClick={onGitPush}
-							disabled={runningGitAction === "push"}
-							aria-label="Push to upstream"
-						>
-							<span className="text-text-tertiary">{pushCount}</span>
-						</Button>
-					</Tooltip>
-				</div>
-			</>
-		);
-	}
-
-	if (selectedTaskId && (taskWorkspaceInfo || taskWorkspaceSnapshot)) {
-		const isDetached = taskWorkspaceInfo?.isDetached ?? false;
-		const baseRef = selectedTaskBaseRef;
-		return (
-			<>
-				<div className="w-px h-5 bg-border mx-1" />
-				<GitBranchStatusControl
-					branchLabel={
-						taskWorkspaceInfo?.branch ?? taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "initializing"
-					}
-					changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
-					additions={taskWorkspaceSnapshot?.additions ?? 0}
-					deletions={taskWorkspaceSnapshot?.deletions ?? 0}
-					onToggleGitHistory={onToggleGitHistory}
-					isGitHistoryOpen={isGitHistoryOpen}
-				/>
-				{isDetached && baseRef ? (
-					<span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
-						based on <span className="font-mono">{baseRef}</span>
-					</span>
-				) : null}
-			</>
-		);
-	}
-
-	return null;
-}
-
 export function TopBar({
 	onBack,
 	workspacePath,
 	isWorkspacePathLoading = false,
 	workspaceHint,
 	runtimeHint,
-	selectedTaskId,
-	selectedTaskBaseRef,
-	showHomeGitSummary,
-	runningGitAction,
-	onGitFetch,
-	onGitPull,
-	onGitPush,
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
-	onToggleGitHistory,
-	isGitHistoryOpen,
 	onOpenSettings,
 	showDebugButton,
 	onOpenDebugDialog,
@@ -321,6 +185,7 @@ export function TopBar({
 	onOpenWorkspace,
 	canOpenWorkspace,
 	isOpeningWorkspace,
+	selectedTaskId,
 	hideProjectDependentActions = false,
 }: {
 	onBack?: () => void;
@@ -328,18 +193,9 @@ export function TopBar({
 	isWorkspacePathLoading?: boolean;
 	workspaceHint?: string;
 	runtimeHint?: string;
-	selectedTaskId?: string | null;
-	selectedTaskBaseRef?: string | null;
-	showHomeGitSummary?: boolean;
-	runningGitAction?: RuntimeGitSyncAction | null;
-	onGitFetch?: () => void;
-	onGitPull?: () => void;
-	onGitPush?: () => void;
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
-	onToggleGitHistory?: () => void;
-	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
@@ -361,6 +217,7 @@ export function TopBar({
 	onOpenWorkspace: () => void;
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
+	selectedTaskId?: string | null;
 	hideProjectDependentActions?: boolean;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
@@ -490,19 +347,6 @@ export function TopBar({
 								{runtimeHint}
 							</span>
 						)
-					) : null}
-					{!hideProjectDependentActions ? (
-						<TopBarGitStatusSection
-							showHomeGitSummary={showHomeGitSummary === true}
-							selectedTaskId={selectedTaskId ?? null}
-							selectedTaskBaseRef={selectedTaskBaseRef ?? null}
-							onToggleGitHistory={onToggleGitHistory}
-							isGitHistoryOpen={isGitHistoryOpen}
-							runningGitAction={runningGitAction}
-							onGitFetch={onGitFetch}
-							onGitPull={onGitPull}
-							onGitPush={onGitPush}
-						/>
 					) : null}
 				</div>
 				<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">

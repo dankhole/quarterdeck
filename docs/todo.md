@@ -46,7 +46,9 @@ This is distinct from #6 (committing *within* the task worktree). This is a targ
 
 ## 5. Branch management in git view
 
-Move the branch name display off the top bar into the git view. Replace the top bar branch display with a compact branch management pill. Add branch switching, pulling from remote, and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
+~~Move the branch name display off the top bar into the git view.~~ ✓ Done — branch pill, git stats, fetch/pull/push buttons, and git history toggle now live in the git view tab bar. Remaining:
+
+Add branch switching and merging operations within the git view. This is the non-diff portion of the original git management scope — the diffing part is handled by the git view rework that introduced the Compare tab.
 
 - **Merge into worktree**: Merge another branch (e.g. main, a sibling feature branch) into the task's worktree branch from the git view. This is the primary "keep my worktree up to date" workflow — pick a source branch, merge it in, surface conflicts if any. Should be accessible from the branch list or a dedicated merge action in the git view UI.
 - **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Move branch status from top bar to git view tab bar
+
+- The branch pill (showing the current branch name, toggling git history on click), file change stats, and fetch/pull/push buttons have moved from the main top bar into the git view's tab bar. In the home context, the full cluster (branch pill + stats + fetch/pull/push) renders in the tab bar. In the task context, the branch pill + stats + "based on" label render there. Git history now renders inside the git view (below the tab bar) rather than replacing the entire main view. The `Cmd+G` shortcut still works from any view — it auto-switches to the git tab and opens git history. Partially addresses todo #5.
+
 ### Auto-collapse sidebar when opening Files or Git view
 
 - Opening the Files or Git main view now automatically collapses the sidebar if it isn't pinned. Both views have integrated file trees that replace the sidebar's role, so leaving it open wastes space. Pinned sidebars are respected and stay open.

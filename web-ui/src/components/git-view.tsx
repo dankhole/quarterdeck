@@ -208,6 +208,10 @@ export interface GitViewProps {
 	board?: BoardData;
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
+	/** Slot for the branch pill + git status controls rendered in the tab bar. */
+	branchStatusSlot?: React.ReactNode;
+	/** When provided, renders the git history panel instead of the normal diff content. */
+	gitHistoryPanel?: React.ReactNode;
 }
 
 export function GitView({
@@ -218,6 +222,8 @@ export function GitView({
 	board = { columns: [], dependencies: [] },
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
+	branchStatusSlot,
+	gitHistoryPanel,
 }: GitViewProps): React.ReactElement {
 	const [activeTab, setActiveTabState] = useState<GitViewTab>(loadGitViewTab);
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
@@ -407,6 +413,8 @@ export function GitView({
 
 				<div className="flex-1" />
 
+				{branchStatusSlot}
+
 				<Tooltip content={fileTreeVisible ? "Hide file tree" : "Show file tree"}>
 					<button
 						type="button"
@@ -423,8 +431,8 @@ export function GitView({
 				</Tooltip>
 			</div>
 
-			{/* Compare bar — only shown when Compare tab is active */}
-			{activeTab === "compare" && (
+			{/* Compare bar — only shown when Compare tab is active and git history is not open */}
+			{activeTab === "compare" && !gitHistoryPanel && (
 				<CompareBar
 					sourceRef={compare.sourceRef}
 					targetRef={compare.targetRef}
@@ -438,61 +446,65 @@ export function GitView({
 				/>
 			)}
 
-			{/* Content area: file tree + diff */}
-			<div ref={contentRowRef} className="flex flex-1 min-h-0">
-				{activeTab === "compare" && !hasCompareRefs ? (
-					<GitViewEmptyPanel title="Select a branch to compare against." />
-				) : isChangesPending ? (
-					<GitViewLoadingPanel />
-				) : hasNoChanges ? (
-					<GitViewEmptyPanel title={emptyTitle} />
-				) : (
-					<>
-						{fileTreeVisible && (
-							<>
-								<div
-									style={{
-										display: "flex",
-										flex: `0 0 ${fileTreePercent}`,
-										minWidth: 0,
-										minHeight: 0,
-									}}
-								>
-									<FileTreePanel
-										workspaceFiles={isRuntimeAvailable ? activeFiles : null}
-										selectedPath={selectedPath}
-										onSelectPath={setSelectedPath}
-										panelFlex="1 1 0"
+			{/* Content area: git history panel OR file tree + diff */}
+			{gitHistoryPanel ? (
+				<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">{gitHistoryPanel}</div>
+			) : (
+				<div ref={contentRowRef} className="flex flex-1 min-h-0">
+					{activeTab === "compare" && !hasCompareRefs ? (
+						<GitViewEmptyPanel title="Select a branch to compare against." />
+					) : isChangesPending ? (
+						<GitViewLoadingPanel />
+					) : hasNoChanges ? (
+						<GitViewEmptyPanel title={emptyTitle} />
+					) : (
+						<>
+							{fileTreeVisible && (
+								<>
+									<div
+										style={{
+											display: "flex",
+											flex: `0 0 ${fileTreePercent}`,
+											minWidth: 0,
+											minHeight: 0,
+										}}
+									>
+										<FileTreePanel
+											workspaceFiles={isRuntimeAvailable ? activeFiles : null}
+											selectedPath={selectedPath}
+											onSelectPath={setSelectedPath}
+											panelFlex="1 1 0"
+										/>
+									</div>
+									<ResizeHandle
+										orientation="vertical"
+										ariaLabel="Resize git view file tree"
+										onMouseDown={handleFileTreeSeparatorMouseDown}
+										className="z-10"
 									/>
-								</div>
-								<ResizeHandle
-									orientation="vertical"
-									ariaLabel="Resize git view file tree"
-									onMouseDown={handleFileTreeSeparatorMouseDown}
-									className="z-10"
+								</>
+							)}
+							<div
+								style={{
+									display: "flex",
+									flex: fileTreeVisible ? `0 0 ${contentPercent}` : "1 1 0",
+									minWidth: 0,
+									minHeight: 0,
+								}}
+							>
+								<DiffViewerPanel
+									workspaceFiles={isRuntimeAvailable ? activeFiles : null}
+									selectedPath={selectedPath}
+									onSelectedPathChange={setSelectedPath}
+									viewMode="split"
+									comments={diffComments}
+									onCommentsChange={setDiffComments}
 								/>
-							</>
-						)}
-						<div
-							style={{
-								display: "flex",
-								flex: fileTreeVisible ? `0 0 ${contentPercent}` : "1 1 0",
-								minWidth: 0,
-								minHeight: 0,
-							}}
-						>
-							<DiffViewerPanel
-								workspaceFiles={isRuntimeAvailable ? activeFiles : null}
-								selectedPath={selectedPath}
-								onSelectedPathChange={setSelectedPath}
-								viewMode="split"
-								comments={diffComments}
-								onCommentsChange={setDiffComments}
-							/>
-						</div>
-					</>
-				)}
-			</div>
+							</div>
+						</>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

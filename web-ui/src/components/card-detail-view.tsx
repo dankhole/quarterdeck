@@ -9,6 +9,7 @@ import { ColumnContextPanel } from "@/components/detail-panels/column-context-pa
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
 import { GitView } from "@/components/git-view";
+import { GitBranchStatusControl } from "@/components/top-bar";
 import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
 import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
@@ -26,6 +27,45 @@ import {
 } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type BoardData, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+
+/** Branch status slot for the task context git view tab bar. */
+function TaskBranchStatus({
+	branchLabel,
+	changedFiles,
+	additions,
+	deletions,
+	isGitHistoryOpen,
+	onToggleGitHistory,
+	isDetached,
+	baseRef,
+}: {
+	branchLabel: string;
+	changedFiles: number;
+	additions: number;
+	deletions: number;
+	isGitHistoryOpen: boolean;
+	onToggleGitHistory?: () => void;
+	isDetached: boolean;
+	baseRef: string | null | undefined;
+}): React.ReactElement {
+	return (
+		<div className="flex items-center gap-1">
+			<GitBranchStatusControl
+				branchLabel={branchLabel}
+				changedFiles={changedFiles}
+				additions={additions}
+				deletions={deletions}
+				onToggleGitHistory={onToggleGitHistory}
+				isGitHistoryOpen={isGitHistoryOpen}
+			/>
+			{isDetached && baseRef ? (
+				<span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
+					based on <span className="font-mono">{baseRef}</span>
+				</span>
+			) : null}
+		</div>
+	);
+}
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -56,6 +96,8 @@ export function CardDetailView({
 	onAddReviewComments,
 	onSendReviewComments,
 	gitHistoryPanel,
+	isGitHistoryOpen,
+	onToggleGitHistory,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
 	bottomTerminalSummary,
@@ -103,6 +145,8 @@ export function CardDetailView({
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	gitHistoryPanel?: ReactNode;
+	isGitHistoryOpen?: boolean;
+	onToggleGitHistory?: () => void;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
@@ -306,9 +350,7 @@ export function CardDetailView({
 				}}
 			>
 				{topBar}
-				{gitHistoryPanel ? (
-					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
-				) : mainView === "git" ? (
+				{mainView === "git" ? (
 					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 						<GitView
 							currentProjectId={currentProjectId}
@@ -318,6 +360,25 @@ export function CardDetailView({
 							board={board}
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={onCompareNavigationConsumed}
+							branchStatusSlot={
+								taskWorkspaceInfo || taskWorkspaceSnapshot ? (
+									<TaskBranchStatus
+										branchLabel={
+											taskWorkspaceInfo?.branch ??
+											taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ??
+											"initializing"
+										}
+										changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
+										additions={taskWorkspaceSnapshot?.additions ?? 0}
+										deletions={taskWorkspaceSnapshot?.deletions ?? 0}
+										isGitHistoryOpen={isGitHistoryOpen ?? false}
+										onToggleGitHistory={onToggleGitHistory}
+										isDetached={taskWorkspaceInfo?.isDetached ?? false}
+										baseRef={selection.card.baseRef}
+									/>
+								) : undefined
+							}
+							gitHistoryPanel={gitHistoryPanel}
 						/>
 					</div>
 				) : mainView === "files" ? (

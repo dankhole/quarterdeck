@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Move branch status from top bar to git view tab bar (2026-04-11)
+
+Relocated the branch pill (with git history toggle), file change stats, and fetch/pull/push sync buttons from the main top bar (`TopBar` → `TopBarGitStatusSection`) into the git view's tab bar via a `branchStatusSlot` prop on `GitView`.
+
+**Why**: The branch pill was occupying top bar space that's shared across all views. Since it toggles git history (a git-specific feature), it belongs in the git view. This also makes the top bar less cluttered and sets up for future branch management features in the git view (todo #5).
+
+**Architecture**:
+- `GitView` gained two new props: `branchStatusSlot` (rendered in the tab bar, right-aligned before the file-tree toggle) and `gitHistoryPanel` (rendered as the content area, replacing the diff viewer when present).
+- `GitBranchStatusControl` was exported from `top-bar.tsx` for reuse. `TopBarGitStatusSection` was deleted as dead code.
+- Two new local components compose the slot content: `HomeBranchStatus` in `App.tsx` (branch pill + fetch/pull/push buttons) and `TaskBranchStatus` in `card-detail-view.tsx` (branch pill + "based on" label for detached worktrees).
+- `handleToggleGitHistory` stays in App.tsx unchanged, but a new `useEffect` auto-switches to the git main view whenever `isGitHistoryOpen` becomes true. This ensures `Cmd+G` from any view navigates to the git tab and opens history.
+- In `card-detail-view.tsx`, the `gitHistoryPanel ? ... : mainView === "git"` conditional was simplified — `gitHistoryPanel` is now passed through to `GitView` instead of rendering as a standalone replacement panel.
+- The compare bar is hidden when `gitHistoryPanel` is active to avoid showing branch pickers below the tab bar when the content area shows history.
+
+Files touched: `web-ui/src/App.tsx`, `web-ui/src/components/top-bar.tsx`, `web-ui/src/components/git-view.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## Auto-collapse sidebar when opening Files or Git view (2026-04-11)
 
 Added auto-coupling rule to `setMainView` in `use-card-detail-layout.ts`: when switching to `"files"` or `"git"`, the sidebar collapses (sets to `null`) unless `sidebarPinned` is true. Both views have integrated file trees that functionally replace the sidebar, so leaving it open wastes horizontal space. The git view already suppressed the sidebar toolbar highlight (`visualSidebar` returned `null`), but the panel itself remained rendered — now it actually collapses.

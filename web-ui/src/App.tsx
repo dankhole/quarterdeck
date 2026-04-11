@@ -3,7 +3,7 @@
 // push runtime-specific orchestration down into hooks and service modules.
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { FolderOpen } from "lucide-react";
+import { ArrowDown, ArrowUp, CircleArrowDown, FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
@@ -28,7 +28,7 @@ import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog"
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
-import { TopBar } from "@/components/top-bar";
+import { GitBranchStatusControl, TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
@@ -41,6 +41,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
@@ -83,7 +84,7 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
@@ -110,6 +111,89 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 import { isApprovalState } from "@/utils/session-status";
+
+/** Branch status slot for the home context git view tab bar. */
+function HomeBranchStatus({
+	homeGitSummary,
+	isGitHistoryOpen,
+	onToggleGitHistory,
+	runningGitAction,
+	onGitFetch,
+	onGitPull,
+	onGitPush,
+}: {
+	homeGitSummary: RuntimeGitSyncSummary;
+	isGitHistoryOpen: boolean;
+	onToggleGitHistory: () => void;
+	runningGitAction: RuntimeGitSyncAction | null;
+	onGitFetch: () => void;
+	onGitPull: () => void;
+	onGitPush: () => void;
+}): ReactElement {
+	const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
+	const pullCount = homeGitSummary.behindCount ?? 0;
+	const pushCount = homeGitSummary.aheadCount ?? 0;
+	const pullTooltip =
+		pullCount > 0
+			? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
+			: "Pull from upstream. Branch is already up to date.";
+	const pushTooltip =
+		pushCount > 0
+			? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
+			: "Push local commits to upstream. No local commits are pending.";
+
+	return (
+		<div className="flex items-center gap-1">
+			<GitBranchStatusControl
+				branchLabel={branchLabel}
+				changedFiles={homeGitSummary.changedFiles ?? 0}
+				additions={homeGitSummary.additions ?? 0}
+				deletions={homeGitSummary.deletions ?? 0}
+				onToggleGitHistory={onToggleGitHistory}
+				isGitHistoryOpen={isGitHistoryOpen}
+			/>
+			<div className="flex gap-0">
+				<Tooltip
+					side="bottom"
+					content="Fetch latest refs from upstream without changing your local branch or files."
+				>
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={18} />}
+						onClick={onGitFetch}
+						disabled={runningGitAction === "fetch"}
+						aria-label="Fetch from upstream"
+					/>
+				</Tooltip>
+				<Tooltip side="bottom" content={pullTooltip}>
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
+						onClick={onGitPull}
+						disabled={runningGitAction === "pull"}
+						aria-label="Pull from upstream"
+					>
+						<span className="text-text-tertiary">{pullCount}</span>
+					</Button>
+				</Tooltip>
+				<Tooltip side="bottom" content={pushTooltip}>
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
+						onClick={onGitPush}
+						disabled={runningGitAction === "push"}
+						aria-label="Push to upstream"
+					>
+						<span className="text-text-tertiary">{pushCount}</span>
+					</Button>
+				</Tooltip>
+			</div>
+		</div>
+	);
+}
 
 /**
  * Bridge component that connects `useCardDetailLayout`'s reset callback to the
@@ -930,6 +1014,13 @@ export default function App(): ReactElement {
 	);
 	const clearPendingCompareNavigation = useCallback(() => setPendingCompareNavigation(null), []);
 
+	// Auto-switch to git main view when git history is toggled on (e.g. via Cmd+G)
+	useEffect(() => {
+		if (isGitHistoryOpen) {
+			setMainView("git", { setSelectedTaskId });
+		}
+	}, [isGitHistoryOpen, setMainView, setSelectedTaskId]);
+
 	// --- Home side panel resize ---
 	const { startDrag: startHomeSidePanelResize } = useResizeDrag();
 	const sidebarAreaRef = useRef<HTMLDivElement | null>(null);
@@ -1138,30 +1229,6 @@ export default function App(): ReactElement {
 			workspaceHint={navbarWorkspaceHint}
 			runtimeHint={navbarRuntimeHint}
 			selectedTaskId={selectedCard?.card.id ?? null}
-			selectedTaskBaseRef={selectedCard?.card.baseRef ?? null}
-			showHomeGitSummary={!hasNoProjects && !selectedCard}
-			runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
-			onGitFetch={
-				selectedCard
-					? undefined
-					: () => {
-							void runGitAction("fetch");
-						}
-			}
-			onGitPull={
-				selectedCard
-					? undefined
-					: () => {
-							void runGitAction("pull");
-						}
-			}
-			onGitPush={
-				selectedCard
-					? undefined
-					: () => {
-							void runGitAction("push");
-						}
-			}
 			onToggleTerminal={
 				hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
 			}
@@ -1188,8 +1255,6 @@ export default function App(): ReactElement {
 			onOpenWorkspace={onOpenWorkspace}
 			canOpenWorkspace={canOpenWorkspace}
 			isOpeningWorkspace={isOpeningWorkspace}
-			onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
-			isGitHistoryOpen={isGitHistoryOpen}
 			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 		/>
 	);
@@ -1302,6 +1367,8 @@ export default function App(): ReactElement {
 									<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
 								) : undefined
 							}
+							isGitHistoryOpen={isGitHistoryOpen}
+							onToggleGitHistory={handleToggleGitHistory}
 							bottomTerminalOpen={isDetailTerminalOpen}
 							bottomTerminalTaskId={detailTerminalTaskId}
 							bottomTerminalSummary={detailTerminalSummary}
@@ -1363,19 +1430,7 @@ export default function App(): ReactElement {
 								) : (
 									<div className="flex flex-1 flex-col min-h-0 min-w-0">
 										<div className="flex flex-1 min-h-0 min-w-0">
-											{isGitHistoryOpen ? (
-												<GitHistoryView
-													workspaceId={currentProjectId}
-													gitHistory={gitHistory}
-													onCheckoutBranch={(branch) => {
-														void switchHomeBranch(branch);
-													}}
-													onDiscardWorkingChanges={() => {
-														void discardHomeWorkingChanges();
-													}}
-													isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
-												/>
-											) : mainView === "git" ? (
+											{mainView === "git" ? (
 												<GitView
 													currentProjectId={currentProjectId}
 													selectedCard={null}
@@ -1384,6 +1439,40 @@ export default function App(): ReactElement {
 													board={board}
 													pendingCompareNavigation={pendingCompareNavigation}
 													onCompareNavigationConsumed={clearPendingCompareNavigation}
+													branchStatusSlot={
+														homeGitSummary ? (
+															<HomeBranchStatus
+																homeGitSummary={homeGitSummary}
+																isGitHistoryOpen={isGitHistoryOpen}
+																onToggleGitHistory={handleToggleGitHistory}
+																runningGitAction={runningGitAction}
+																onGitFetch={() => {
+																	void runGitAction("fetch");
+																}}
+																onGitPull={() => {
+																	void runGitAction("pull");
+																}}
+																onGitPush={() => {
+																	void runGitAction("push");
+																}}
+															/>
+														) : undefined
+													}
+													gitHistoryPanel={
+														isGitHistoryOpen ? (
+															<GitHistoryView
+																workspaceId={currentProjectId}
+																gitHistory={gitHistory}
+																onCheckoutBranch={(branch) => {
+																	void switchHomeBranch(branch);
+																}}
+																onDiscardWorkingChanges={() => {
+																	void discardHomeWorkingChanges();
+																}}
+																isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+															/>
+														) : undefined
+													}
 												/>
 											) : mainView === "files" ? (
 												<FilesView
