@@ -51,9 +51,9 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 **Done:**
 - Right-click context menu on `BranchSelectorPopover` — checkout, compare with local tree, copy branch name
 - Compare tab — diff any two refs with full file tree + diff viewer
+- Merge branch into current — context menu action, attempts merge with auto-abort on conflict + toast feedback
 
 **Tier 1 — High value, users hit these constantly:**
-- **Merge branch into current** — Core workflow for landing agent work. Add to branch context menu. Requires conflict handling (see below).
 - **Create branch from ref** — Start new work from a ref without dropping to terminal. Useful from both the branch selector and git history refs panel.
 - **Delete branch** — Cleanup after merge. Stale branches pile up fast with per-task worktrees. Guard against deleting the current branch or branches locked to active worktrees.
 - **Stash / unstash** — "Save my spot" before switching context. Especially useful when checkout is blocked by uncommitted changes (pull already blocks on this). Show stash list, allow pop/apply/drop.
@@ -72,7 +72,7 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - **Revert commit** — Undo a specific commit without rewriting history.
 
 **UI surface areas:**
-- Branch context menu in `BranchSelectorPopover` — add merge, delete, rename, create branch actions
+- Branch context menu in `BranchSelectorPopover` — merge done; add delete, rename, create branch actions
 - Branch context menu in `GitRefsPanel` (git history view) — extend with the same actions
 - Git view tab bar or toolbar — stash controls, conflict state indicator, abort button
 

@@ -1224,6 +1224,7 @@ export default function App(): ReactElement {
 						onSelectBranchView={topbarBranchActions.handleCheckoutBranch}
 						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
 						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
+						onMergeBranch={topbarBranchActions.handleMergeBranch}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined
@@ -1469,6 +1470,7 @@ export default function App(): ReactElement {
 																	onCompareWithBranch={(branch) =>
 																		openGitCompare({ targetRef: branch })
 																	}
+																	onMergeBranch={homeBranchActions.handleMergeBranch}
 																	trigger={
 																		<BranchPillTrigger
 																			label={

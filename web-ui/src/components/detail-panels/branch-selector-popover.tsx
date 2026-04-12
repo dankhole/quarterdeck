@@ -1,7 +1,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
-import { Check, ChevronDown, ClipboardCopy, GitBranch, GitCompareArrows, LogIn, Search } from "lucide-react";
+import { Check, ChevronDown, ClipboardCopy, GitBranch, GitCompareArrows, GitMerge, LogIn, Search } from "lucide-react";
 import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { cn } from "@/components/ui/cn";
@@ -30,6 +30,8 @@ interface BranchSelectorPopoverProps {
 	onCheckoutBranch?: (branch: string) => void;
 	/** When provided, shows "Compare with local tree" in the branch right-click menu. */
 	onCompareWithBranch?: (branchName: string) => void;
+	/** When provided, shows "Merge into current" in the branch right-click menu. */
+	onMergeBranch?: (branchName: string) => void;
 	trigger: React.ReactNode;
 }
 
@@ -42,6 +44,7 @@ export function BranchSelectorPopover({
 	onSelectBranchView,
 	onCheckoutBranch,
 	onCompareWithBranch,
+	onMergeBranch,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
 	const [query, setQuery] = useState("");
@@ -87,6 +90,15 @@ export function BranchSelectorPopover({
 			setQuery("");
 		},
 		[onCompareWithBranch, onOpenChange],
+	);
+
+	const handleMerge = useCallback(
+		(branchName: string) => {
+			onMergeBranch?.(branchName);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onMergeBranch, onOpenChange],
 	);
 
 	const closePopover = useCallback(() => {
@@ -145,6 +157,7 @@ export function BranchSelectorPopover({
 										onSelect={handleSelectBranch}
 										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
+										onMerge={onMergeBranch ? handleMerge : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -164,6 +177,7 @@ export function BranchSelectorPopover({
 										onSelect={handleSelectBranch}
 										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
+										onMerge={onMergeBranch ? handleMerge : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -210,6 +224,7 @@ function BranchItem({
 	onSelect,
 	onCheckout,
 	onCompare,
+	onMerge,
 	onClose,
 }: {
 	gitRef: RuntimeGitRef;
@@ -218,6 +233,7 @@ function BranchItem({
 	onSelect: (name: string) => void;
 	onCheckout?: (name: string) => void;
 	onCompare?: (name: string) => void;
+	onMerge?: (name: string) => void;
 	onClose: () => void;
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
@@ -285,7 +301,17 @@ function BranchItem({
 							Compare with local tree
 						</ContextMenu.Item>
 					) : null}
-					{onCheckout || onCompare ? <ContextMenu.Separator className="my-1 h-px bg-border" /> : null}
+					{onMerge ? (
+						<ContextMenu.Item
+							className={cn(CONTEXT_MENU_ITEM_CLASS, isCurrent && "opacity-50 cursor-not-allowed")}
+							disabled={isCurrent}
+							onSelect={() => onMerge(gitRef.name)}
+						>
+							<GitMerge size={14} className="text-text-secondary" />
+							Merge into current
+						</ContextMenu.Item>
+					) : null}
+					{onCheckout || onCompare || onMerge ? <ContextMenu.Separator className="my-1 h-px bg-border" /> : null}
 					<ContextMenu.Item
 						className={CONTEXT_MENU_ITEM_CLASS}
 						onSelect={() => {

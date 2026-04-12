@@ -412,6 +412,7 @@ export function CardDetailView({
 														? (branch) => onOpenGitCompare({ targetRef: branch })
 														: undefined
 												}
+												onMergeBranch={taskBranchActions.handleMergeBranch}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}
 											/>
 										) : undefined

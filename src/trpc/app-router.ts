@@ -19,6 +19,8 @@ import type {
 	RuntimeGitDiscardResponse,
 	RuntimeGitLogRequest,
 	RuntimeGitLogResponse,
+	RuntimeGitMergeRequest,
+	RuntimeGitMergeResponse,
 	RuntimeGitRefsResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
@@ -76,6 +78,8 @@ import {
 	runtimeGitDiscardResponseSchema,
 	runtimeGitLogRequestSchema,
 	runtimeGitLogResponseSchema,
+	runtimeGitMergeRequestSchema,
+	runtimeGitMergeResponseSchema,
 	runtimeGitRefsResponseSchema,
 	runtimeGitSummaryResponseSchema,
 	runtimeGitSyncActionSchema,
@@ -183,6 +187,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCheckoutRequest,
 		) => Promise<RuntimeGitCheckoutResponse>;
+		mergeBranch: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitMergeRequest,
+		) => Promise<RuntimeGitMergeResponse>;
 		discardGitChanges: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskWorkspaceInfoRequest | null,
@@ -396,6 +404,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitCheckoutResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.checkoutGitBranch(ctx.workspaceScope, input);
+			}),
+		mergeBranch: workspaceProcedure
+			.input(runtimeGitMergeRequestSchema)
+			.output(runtimeGitMergeResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.mergeBranch(ctx.workspaceScope, input);
 			}),
 		discardGitChanges: workspaceProcedure
 			.input(optionalTaskWorkspaceInfoRequestSchema)

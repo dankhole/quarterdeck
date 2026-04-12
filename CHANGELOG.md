@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Merge branch into current
+
+- Added "Merge into current" action to the branch selector popover's right-click context menu. Attempts `git merge --no-edit` — if it's a clean fast-forward or auto-merge, shows a success toast. If there are conflicts, auto-runs `git merge --abort` to restore clean state and shows an error toast. Available from all three branch popover locations (top bar, home scope bar, task detail scope bar). Disabled on the current branch. Includes ref validation against flag injection and shared-checkout guard matching the existing checkout behavior.
+
 ### File browser UX — word wrap default + selection memory
 
 - File content viewer now defaults to word wrap ON and persists the preference to localStorage via `useBooleanLocalStorageValue`. Previously reset to OFF on every remount.

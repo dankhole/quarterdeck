@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Merge branch into current — branch context menu action (2026-04-12)
+
+Added "Merge into current" to the branch selector popover's right-click context menu. The approach is deliberately simple: attempt the merge, and if anything goes wrong, abort and tell the user. No conflict resolution UI yet — that's a separate todo item.
+
+**Backend**: New Zod schemas (`runtimeGitMergeRequestSchema`/`runtimeGitMergeResponseSchema`) in `api-contract.ts`. New `runGitMergeAction()` in `git-sync.ts` — runs `git merge <branch> --no-edit`, validates the ref with `validateGitRef()` to prevent flag injection, checks for self-merge, and auto-runs `git merge --abort` on failure to restore clean state. New `mergeBranch` method in `workspace-api.ts` with task-scoped and home-repo paths, shared-checkout guard (blocks merge when a task using the shared checkout is in progress/review), and state broadcast on success. Exposed as `workspace.mergeBranch` tRPC mutation in `app-router.ts`.
+
+**Frontend**: New `handleMergeBranch` callback in `use-branch-actions.ts` — calls the tRPC mutation and shows success/error toasts via sonner. New `onMergeBranch` prop threaded through `BranchSelectorPopover` → `BranchItem` with `GitMerge` icon, disabled on the current branch via `disabled={isCurrent}`. Wired at all three call sites: topbar branch pill (`App.tsx`), home scope bar (`App.tsx`), task detail scope bar (`card-detail-view.tsx`).
+
+**Review fixes**: Added `validateGitRef()` check to prevent branch names starting with `-` (flag injection) or containing `..` (traversal). Added shared-checkout guard matching the existing `checkoutGitBranch` behavior — prevents home repo merges while an active task uses the shared checkout.
+
+**Files touched**: `src/core/api-contract.ts`, `src/workspace/git-sync.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router.ts`, `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## File browser UX — word wrap default + selection memory (2026-04-12)
 
 Two small UX improvements to the file browser:

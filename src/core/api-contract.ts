@@ -218,6 +218,22 @@ export const runtimeGitDiscardResponseSchema = z.object({
 });
 export type RuntimeGitDiscardResponse = z.infer<typeof runtimeGitDiscardResponseSchema>;
 
+export const runtimeGitMergeRequestSchema = z.object({
+	branch: z.string(),
+	taskId: z.string().optional(),
+	baseRef: z.string().optional(),
+});
+export type RuntimeGitMergeRequest = z.infer<typeof runtimeGitMergeRequestSchema>;
+
+export const runtimeGitMergeResponseSchema = z.object({
+	ok: z.boolean(),
+	branch: z.string(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitMergeResponse = z.infer<typeof runtimeGitMergeResponseSchema>;
+
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 

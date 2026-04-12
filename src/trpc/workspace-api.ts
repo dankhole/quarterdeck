@@ -4,6 +4,7 @@ import type {
 	RuntimeFileContentResponse,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
+	RuntimeGitMergeResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
@@ -28,7 +29,13 @@ import {
 	validateRef,
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
-import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync";
+import {
+	discardGitChanges,
+	getGitSyncSummary,
+	runGitCheckoutAction,
+	runGitMergeAction,
+	runGitSyncAction,
+} from "../workspace/git-sync";
 import { getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
 import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
@@ -154,6 +161,25 @@ function createEmptyGitCheckoutErrorResponse(error: unknown): RuntimeGitCheckout
 	};
 }
 
+function createEmptyGitMergeErrorResponse(error: unknown): RuntimeGitMergeResponse {
+	const message = error instanceof Error ? error.message : String(error);
+	return {
+		ok: false,
+		branch: "",
+		summary: {
+			currentBranch: null,
+			upstreamBranch: null,
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+			aheadCount: 0,
+			behindCount: 0,
+		},
+		output: "",
+		error: message,
+	};
+}
+
 function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardResponse {
 	const message = error instanceof Error ? error.message : String(error);
 	return {
@@ -254,6 +280,56 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return response;
 			} catch (error) {
 				return createEmptyGitCheckoutErrorResponse(error);
+			}
+		},
+		mergeBranch: async (workspaceScope, input) => {
+			try {
+				const branchToMerge = input.branch.trim();
+				if (!branchToMerge) {
+					return createEmptyGitMergeErrorResponse(new Error("Branch name cannot be empty."));
+				}
+
+				// Task-scoped merge: resolve task worktree and merge there
+				if (input.taskId) {
+					const taskCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: input.baseRef ?? "",
+					});
+					const response = await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
+					return response;
+				}
+
+				// Home repo merge: block when an active task is running in the shared checkout
+				const state = await loadWorkspaceState(workspaceScope.workspacePath);
+				const activeColumnIds = new Set(["in_progress", "review"]);
+				const hasSharedCheckoutTask = state.board.columns
+					.filter((col) => activeColumnIds.has(col.id))
+					.some((col) =>
+						col.cards.some((card) => {
+							const isSharedCheckout = card.workingDirectory
+								? resolve(card.workingDirectory) === resolve(workspaceScope.workspacePath)
+								: card.useWorktree === false;
+							return isSharedCheckout;
+						}),
+					);
+				if (hasSharedCheckoutTask) {
+					return createEmptyGitMergeErrorResponse(
+						new Error(
+							"Cannot merge while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+						),
+					);
+				}
+				const response = await runGitMergeAction({ cwd: workspaceScope.workspacePath, branch: branchToMerge });
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				return createEmptyGitMergeErrorResponse(error);
 			}
 		},
 		discardGitChanges: async (workspaceScope, input) => {

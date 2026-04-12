@@ -4,11 +4,12 @@ import { join } from "node:path";
 import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
+	RuntimeGitMergeResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../core/api-contract";
-import { runGit } from "./git-utils";
+import { runGit, validateGitRef } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -371,6 +372,55 @@ export async function runGitCheckoutAction(options: {
 		branch: requestedBranch,
 		summary: nextSummary,
 		output: commandResult.output,
+	};
+}
+
+export async function runGitMergeAction(options: { cwd: string; branch: string }): Promise<RuntimeGitMergeResponse> {
+	const branchToMerge = options.branch.trim();
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const initialSummary = await getGitSyncSummary(repoRoot);
+
+	if (!branchToMerge || !validateGitRef(branchToMerge)) {
+		return {
+			ok: false,
+			branch: branchToMerge,
+			summary: initialSummary,
+			output: "",
+			error: "Invalid branch name.",
+		};
+	}
+
+	if (initialSummary.currentBranch === branchToMerge) {
+		return {
+			ok: false,
+			branch: branchToMerge,
+			summary: initialSummary,
+			output: "",
+			error: "Cannot merge a branch into itself.",
+		};
+	}
+
+	const mergeResult = await runGit(repoRoot, ["merge", branchToMerge, "--no-edit"]);
+
+	if (!mergeResult.ok) {
+		// Abort the failed merge to restore clean state
+		await runGit(repoRoot, ["merge", "--abort"]);
+		const abortedSummary = await getGitSyncSummary(repoRoot);
+		return {
+			ok: false,
+			branch: branchToMerge,
+			summary: abortedSummary,
+			output: mergeResult.output,
+			error: `Merge failed and was aborted. The branch may have conflicts with ${initialSummary.currentBranch ?? "the current branch"}.`,
+		};
+	}
+
+	const nextSummary = await getGitSyncSummary(repoRoot);
+	return {
+		ok: true,
+		branch: branchToMerge,
+		summary: nextSummary,
+		output: mergeResult.output,
 	};
 }
 

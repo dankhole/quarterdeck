@@ -41,6 +41,7 @@ export interface UseBranchActionsResult {
 	handleSelectBranchView: (ref: string) => void;
 	handleCheckoutBranch: (branch: string) => void;
 	handleConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
+	handleMergeBranch: (branch: string) => void;
 }
 
 export function useBranchActions(options: UseBranchActionsOptions): UseBranchActionsResult {
@@ -136,6 +137,30 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		[workspaceId, onCheckoutSuccess],
 	);
 
+	const handleMergeBranch = useCallback(
+		async (branch: string) => {
+			if (!workspaceId) {
+				return;
+			}
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				const result = await trpc.workspace.mergeBranch.mutate({
+					branch,
+					...(taskId ? { taskId } : {}),
+					...(baseRef ? { baseRef } : {}),
+				});
+				if (result.ok) {
+					toast.success(`Merged ${branch} into ${currentBranch ?? "current branch"}`);
+				} else {
+					toast.error(result.error ?? `Failed to merge ${branch}`);
+				}
+			} catch (error) {
+				toast.error(`Merge failed: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		},
+		[workspaceId, taskId, baseRef, currentBranch],
+	);
+
 	const handleCheckoutBranch = useCallback(
 		(branch: string) => {
 			// Determine scope from the underlying context, not the current view mode.
@@ -199,5 +224,6 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		handleSelectBranchView,
 		handleCheckoutBranch,
 		handleConfirmCheckout,
+		handleMergeBranch,
 	};
 }
