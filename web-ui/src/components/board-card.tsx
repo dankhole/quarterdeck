@@ -154,6 +154,7 @@ export function BoardCard({
 	uncommittedChangesOnCardsEnabled = false,
 	showRunningTaskEmergencyActions = false,
 	onClick,
+	onDoubleClick,
 	onStart,
 	onRestartSession,
 	onMoveToTrash,
@@ -183,6 +184,7 @@ export function BoardCard({
 	uncommittedChangesOnCardsEnabled?: boolean;
 	showRunningTaskEmergencyActions?: boolean;
 	onClick?: () => void;
+	onDoubleClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
@@ -343,6 +345,15 @@ export function BoardCard({
 							if (!snapshot.isDragging && onClick) {
 								onClick();
 							}
+						}}
+						onDoubleClick={(event) => {
+							if (!isCardInteractive || isDependencyLinking || snapshot.isDragging) {
+								return;
+							}
+							if (event.metaKey || event.ctrlKey) {
+								return;
+							}
+							onDoubleClick?.();
 						}}
 						style={{
 							...provided.draggableProps.style,

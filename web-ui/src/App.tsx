@@ -1002,6 +1002,15 @@ export default function App(): ReactElement {
 		[setMainView, setSelectedTaskId],
 	);
 
+	/** Double-click a task in the sidebar to select it and jump to agent chat. */
+	const handleCardDoubleClick = useCallback(
+		(taskId: string) => {
+			handleCardSelect(taskId);
+			setMainView("terminal", { setSelectedTaskId });
+		},
+		[handleCardSelect, setMainView, setSelectedTaskId],
+	);
+
 	/** Navigate to the git view's Compare tab with pre-set branch parameters (#5). */
 	const openGitCompare = useCallback(
 		(navigation: GitViewCompareNavigation) => {
@@ -1348,6 +1357,7 @@ export default function App(): ReactElement {
 							taskSessions={sessions}
 							onSessionSummary={upsertSession}
 							onCardSelect={handleCardSelect}
+							onCardDoubleClick={handleCardDoubleClick}
 							onTaskDragEnd={handleDetailTaskDragEnd}
 							onCreateTask={handleOpenCreateTask}
 							onStartAllTasks={handleStartAllBacklogTasksFromBoard}

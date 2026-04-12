@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Double-click task in sidebar to open agent chat
+
+- Double-clicking a task card in the sidebar column context panel now selects the task and switches the main view to the agent terminal/chat. A hint ("Double-click a task to open agent chat") is shown at the bottom of the sidebar. Backlog tasks are excluded (they use single-click-to-edit).
+
 ### Harden session state transition system
 
 - Fix permanent dead state: tasks that exited cleanly (`reviewReason: "exit"`) could never transition back to running via hooks — `canReturnToRunning()` now accepts the `"exit"` reason. The duplicated guard in `hooks-api.ts` now uses the shared function.

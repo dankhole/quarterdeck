@@ -17,6 +17,7 @@ function ColumnSection({
 	selectedCardId,
 	defaultOpen,
 	onCardClick,
+	onCardDoubleClick,
 	taskSessions,
 	onCreateTask,
 	onStartAllTasks,
@@ -30,6 +31,7 @@ function ColumnSection({
 	selectedCardId: string;
 	defaultOpen: boolean;
 	onCardClick: (card: BoardCardModel) => void;
+	onCardDoubleClick?: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
@@ -216,6 +218,12 @@ function ColumnSection({
 													}
 													onCardClick(card);
 												}}
+												onDoubleClick={() => {
+													if (column.id === "backlog") {
+														return;
+													}
+													onCardDoubleClick?.(card);
+												}}
 											/>,
 										);
 										draggableIndex += 1;
@@ -238,6 +246,7 @@ function ColumnSection({
 export function ColumnContextPanel({
 	selection,
 	onCardSelect,
+	onCardDoubleClick,
 	taskSessions,
 	onTaskDragEnd,
 	onCreateTask,
@@ -250,6 +259,7 @@ export function ColumnContextPanel({
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
+	onCardDoubleClick?: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
@@ -331,6 +341,7 @@ export function ColumnContextPanel({
 							selectedCardId={selection.card.id}
 							defaultOpen={column.id !== "trash"}
 							onCardClick={(card) => onCardSelect(card.id)}
+							onCardDoubleClick={onCardDoubleClick ? (card) => onCardDoubleClick(card.id) : undefined}
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
 							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
@@ -343,6 +354,9 @@ export function ColumnContextPanel({
 					))}
 				</div>
 			</DragDropContext>
+			<div className="px-3 py-2 text-text-tertiary text-[11px] text-center shrink-0">
+				Double-click a task to open agent chat
+			</div>
 		</div>
 	);
 }

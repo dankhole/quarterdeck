@@ -126,6 +126,7 @@ export function CardDetailView({
 	onCompareNavigationConsumed,
 	onOpenGitCompare,
 	chatViewEnabled = false,
+	onCardDoubleClick,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -133,6 +134,7 @@ export function CardDetailView({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onCardSelect: (taskId: string) => void;
+	onCardDoubleClick?: (taskId: string) => void;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
@@ -314,6 +316,7 @@ export function CardDetailView({
 						<ColumnContextPanel
 							selection={selection}
 							onCardSelect={onCardSelect}
+							onCardDoubleClick={onCardDoubleClick}
 							taskSessions={taskSessions}
 							onTaskDragEnd={onTaskDragEnd}
 							onCreateTask={onCreateTask}

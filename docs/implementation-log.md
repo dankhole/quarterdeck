@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Double-click task in sidebar to open agent chat (2026-04-11)
+
+Added `onDoubleClick` support to the task sidebar so double-clicking a task card selects it and switches the main view to the agent terminal. The change threads an `onDoubleClick` prop through four layers: `BoardCard` (event handler on the card div, guarded against non-interactive/drag/modifier states) → `ColumnSection` → `ColumnContextPanel` → `CardDetailView`. `App.tsx` provides the handler via `handleCardDoubleClick`, which calls `handleCardSelect` then `setMainView("terminal")`. Backlog cards are excluded since they use single-click to open the inline editor. A hint line at the bottom of the `ColumnContextPanel` tells users about the gesture.
+
+**Files touched**: `web-ui/src/components/board-card.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/App.tsx`.
+
 ## Harden session state transition system (2026-04-11)
 
 Four structural fixes to the hook-based state transition pipeline, plus diagnostic logging to support root-cause investigation of todo #9 (permission prompts) and #21 (compact doesn't transition).
