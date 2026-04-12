@@ -1374,9 +1374,6 @@ export default function App(): ReactElement {
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={clearPendingCompareNavigation}
 							onOpenGitCompare={openGitCompare}
-							chatViewEnabled={
-								runtimeProjectConfig?.terminalChatViewEnabled ?? CONFIG_DEFAULTS.terminalChatViewEnabled
-							}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">

@@ -4,6 +4,27 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+<<<<<<< HEAD
+## Remove experimental HTML chat view (2026-04-12)
+
+Removed the "Experimental: HTML chat view" feature entirely. The feature attempted to render agent output as browser HTML instead of the xterm canvas by reading from xterm's processed buffer via `useChatOutput`, which took periodic snapshots of the terminal buffer lines. It was always labeled "Testing only" and defaulted to off. The approach was fundamentally limited — scraping the terminal buffer produced incomplete/noisy output for full-screen TUIs like Claude Code that use cursor positioning.
+
+**Config layer**: Removed `terminalChatViewEnabled` from `GLOBAL_CONFIG_FIELDS` (`global-config-fields.ts`), both Zod schemas in `api-contract.ts` (response + save request), and the `UseRuntimeConfigResult` interface.
+
+**Settings dialog**: Removed the `useState`, initial value derivation, dirty check, sync effect entry, save payload field, and the RadixSwitch toggle UI block from `runtime-settings-dialog.tsx`.
+
+**Component/hook deletion**: Deleted `web-ui/src/components/chat-output-view.tsx` (the HTML renderer with auto-scroll) and `web-ui/src/hooks/use-chat-output.ts` (the buffer snapshot hook).
+
+**Terminal panel cleanup**: Removed `chatViewEnabled` prop from `AgentTerminalPanelProps`, removed `ChatOutputView` conditional rendering and the height toggle (`chatViewEnabled ? "0px" : "100%"` → always `"100%"`), removed `chatLines`/`onClearChat` from the internal layout component, removed the `useChatOutput` call from the exported `AgentTerminalPanel`.
+
+**Prop threading**: Removed `chatViewEnabled` from `CardDetailView` (destructuring, type, and usage) and `App.tsx` (where it read from `runtimeProjectConfig`).
+
+**Tests**: Removed `terminalChatViewEnabled` from `runtime-config-factory.ts` default and all three test assertion blocks in `runtime-config.test.ts`.
+
+**Todo**: Added #24 to revisit the concept with a fundamentally different approach (parsing structured agent output rather than scraping the terminal buffer).
+
+**Files touched**: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/components/chat-output-view.tsx` (deleted), `web-ui/src/hooks/use-chat-output.ts` (deleted), `web-ui/src/components/detail-panels/agent-terminal-panel.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/App.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, `docs/todo.md`.
+
 ## Create branch from ref — branch context menu action (2026-04-12)
 
 Added "Create branch from here" to both the branch selector popover context menu and the git history refs panel context menu. This lets users create new branches from any ref without dropping to terminal.

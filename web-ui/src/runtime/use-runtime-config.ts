@@ -19,7 +19,6 @@ export interface UseRuntimeConfigResult {
 		shellAutoRestartEnabled?: boolean;
 		terminalFontWeight?: number;
 		terminalWebGLRenderer?: boolean;
-		terminalChatViewEnabled?: boolean;
 		showSummaryOnCards?: boolean;
 		autoGenerateSummary?: boolean;
 		summaryStaleAfterSeconds?: number;
