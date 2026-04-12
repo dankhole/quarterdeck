@@ -24,14 +24,12 @@ export function countTasksByColumn(board: BoardData): {
 	in_progress: number;
 	review: number;
 	trash: number;
-	needs_input: number;
 } {
 	const counts = {
 		backlog: 0,
 		in_progress: 0,
 		review: 0,
 		trash: 0,
-		needs_input: 0,
 	};
 	for (const column of board.columns) {
 		if (column.id === "backlog") {

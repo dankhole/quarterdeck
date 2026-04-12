@@ -558,13 +558,6 @@ function ProjectRow({
 			toneClassName: statusPillColors.review,
 			count: project.taskCounts.review,
 		},
-		{
-			id: "needs_input",
-			title: "Needs Input",
-			shortLabel: "NI",
-			toneClassName: statusPillColors.needs_input,
-			count: project.taskCounts.needs_input,
-		},
 	].filter((item) => item.count > 0);
 
 	return (

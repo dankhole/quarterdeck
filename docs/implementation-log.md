@@ -108,15 +108,15 @@ Settings UI adds two Radix Switch toggles in the "Git & Worktrees" section of th
 
 **Files touched**: `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-manager.ts`, `src/trpc/runtime-api.ts`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`.
 
-## Fix: project pills double-counting needs-input tasks as review (2026-04-11)
+## Fix: revert broken needs_input project pill feature (2026-04-11)
 
-The project navigation sidebar shows small status pills (R, NI, IP, B) with task counts. When a task's session was `awaiting_review` with `reviewReason: "attention"` (or a permission-request hook), `applyLiveSessionStateToProjectTaskCounts` counted it in **both** `review` and `needs_input`. Two separate `if` blocks fired independently: the first moved the count from `in_progress` → `review`, and the second added to `needs_input` — resulting in pills showing R:1 and NI:1 for a single task.
+The `needs_input` project pill feature (be56e048) was fundamentally flawed: it classified all `reviewReason === "attention"` sessions as "needs input", but `"attention"` is the standard review reason when an agent finishes work normally. Every completed task showed an orange "NI" pill instead of green "R" in the project navigation sidebar.
 
-**Root cause**: The `needs_input` increment (lines 182-189) was a standalone `if` block that never subtracted from `review`. It was additive on top of the earlier `in_progress → review` move (lines 173-176), with no coordination between them.
+**Root cause**: The feature assumed `reviewReason === "attention"` meant the agent was requesting user attention (permission prompt, tool approval). In reality, `"attention"` is the default completion reason — Claude Code emits it when it finishes a task and enters review. The `isPermissionRequestSession` helper tried to narrow this via hook metadata, but the primary `reviewReason === "attention"` check in `applyLiveSessionStateToProjectTaskCounts` was too broad to be useful.
 
-**Fix**: Merged both blocks into a single `if (summary.state === "awaiting_review")` block. A `const isNeedsInput` boolean is computed once, then used to route the count to either `needs_input` (with decrements from `in_progress` or `review` as appropriate) or `review` (for normal non-attention reviews). The `interrupted` handling is unchanged and remains a separate block.
+**Fix**: Full revert of the pill-level `needs_input` concept. Removed `needs_input` from `RuntimeProjectTaskCounts` Zod schema, `createEmptyProjectTaskCounts()`, `statusPillColors`, the `taskCountBadges` array in `ProjectRow`, the frontend `countTasksByColumn` return type, and the server merge in `useProjectUiState`. Deleted the `isPermissionRequestSession` helper and simplified `applyLiveSessionStateToProjectTaskCounts` back to the original two-case logic: awaiting_review in in_progress → move to review; interrupted not in trash → move to trash. Card-level review differentiation (`statusBadgeColors.needs_input` in `column-colors.ts` and `getSessionStatusBadgeStyle` in `session-status.ts`) is a separate feature and was left untouched.
 
-**Files touched**: `src/server/workspace-registry.ts` (lines 168-194, the `applyLiveSessionStateToProjectTaskCounts` loop body).
+**Files touched**: `src/core/api-contract.ts`, `src/server/workspace-registry.ts`, `web-ui/src/components/project-navigation-panel.tsx`, `web-ui/src/components/project-navigation-panel.test.tsx`, `web-ui/src/data/column-colors.ts`, `web-ui/src/hooks/app-utils.tsx`, `web-ui/src/hooks/use-project-ui-state.ts`, `web-ui/src/hooks/use-project-ui-state.test.tsx`.
 
 ## Fix: git index lock contention from workspace metadata polling (2026-04-11)
 

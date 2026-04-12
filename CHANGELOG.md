@@ -49,9 +49,9 @@
 - The workspace trust auto-confirm mechanism now handles multiple trust prompts per session. Previously, `--add-dir` directories triggered additional trust prompts that were never auto-confirmed — the first prompt consumed the one-shot confirm and subsequent prompts left the agent stuck. The fix re-arms the detector after each confirmation (capped at 5 to prevent infinite loops).
 - Added debug logging around the full task creation and agent launch flow (`agent-launch` and `session-mgr` tags). Traces `--add-dir` decisions, final command args, spawn success/failure, trust prompt detection, and process exit. Enable debug mode in the UI to see the new log entries.
 
-### Fix: project pills double-counting needs-input tasks as review
+### Fix: revert broken needs_input project pill feature
 
-- Project navigation pills no longer show an erroneous "R" (Review) badge alongside the "NI" (Needs Input) badge for the same task. When a task's session is `awaiting_review` with an `attention` or permission-request reason, it's now counted exclusively in `needs_input` — not also in `review`. Previously, two independent `if` blocks in `applyLiveSessionStateToProjectTaskCounts` both fired for the same session, inflating the review count.
+- Reverted the `needs_input` project navigation pill introduced in be56e048. The feature misclassified all `reviewReason === "attention"` tasks as "needs input", but "attention" is the standard completion reason when an agent finishes work — causing every completed review task to show an orange "NI" pill instead of green "R". Removed `needs_input` from the project task count schema, pill rendering, and live session overlay. Project pills now show exactly 4 statuses (B, IP, R, T) matching board columns 1:1. Card-level review differentiation (`statusBadgeColors.needs_input`, `session-status.ts`) is unchanged.
 
 ### Fix: git index lock contention from workspace metadata polling
 

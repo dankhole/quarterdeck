@@ -315,7 +315,6 @@ export const runtimeProjectTaskCountsSchema = z.object({
 	in_progress: z.number(),
 	review: z.number(),
 	trash: z.number(),
-	needs_input: z.number(),
 });
 export type RuntimeProjectTaskCounts = z.infer<typeof runtimeProjectTaskCountsSchema>;
 

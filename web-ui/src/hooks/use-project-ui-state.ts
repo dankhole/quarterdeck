@@ -52,9 +52,7 @@ export function useProjectUiState({
 			project.id === currentProjectId
 				? {
 						...project,
-						// Override column counts from local board state (UI is single writer),
-						// but preserve needs_input from the server (derived from live sessions).
-						taskCounts: { ...localCounts, needs_input: project.taskCounts.needs_input },
+						taskCounts: localCounts,
 					}
 				: project,
 		);
