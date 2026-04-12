@@ -350,12 +350,11 @@ export default function App(): ReactElement {
 
 	const topbarBranchLabel = useMemo(() => {
 		if (selectedCard) {
-			return (
-				selectedTaskWorkspaceInfo?.branch ??
-				selectedCard.card.branch ??
-				selectedTaskWorkspaceInfo?.headCommit?.substring(0, 7) ??
-				null
-			);
+			if (selectedTaskWorkspaceInfo?.branch) return selectedTaskWorkspaceInfo.branch;
+			// When workspace info reports detached HEAD, skip stale card.branch and show commit hash
+			if (selectedTaskWorkspaceInfo?.isDetached)
+				return selectedTaskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
+			return selectedCard.card.branch ?? selectedTaskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
 	}, [selectedCard, selectedTaskWorkspaceInfo, homeGitSummary]);

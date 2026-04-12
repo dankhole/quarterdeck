@@ -276,7 +276,8 @@ export function BoardCard({
 	const statusMarker =
 		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const effectiveBranch = reviewWorkspaceSnapshot?.branch ?? card.branch ?? null;
+	const effectiveBranch =
+		reviewWorkspaceSnapshot?.branch ?? (reviewWorkspaceSnapshot?.isDetached ? null : card.branch) ?? null;
 	const reviewBranchLabel = effectiveBranch
 		? shortenBranchName(effectiveBranch)
 		: (reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? null);

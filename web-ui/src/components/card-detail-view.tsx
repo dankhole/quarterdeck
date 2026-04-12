@@ -251,9 +251,10 @@ export function CardDetailView({
 		if (taskResolvedScope?.type === "branch_view") {
 			return taskResolvedScope.ref;
 		}
-		return (
-			taskWorkspaceInfo?.branch ?? selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null
-		);
+		if (taskWorkspaceInfo?.branch) return taskWorkspaceInfo.branch;
+		// When workspace info reports detached HEAD, skip stale card.branch and show commit hash
+		if (taskWorkspaceInfo?.isDetached) return taskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
+		return selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
 	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
 
 	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;

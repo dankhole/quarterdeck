@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: stale branch label shown for detached HEAD worktrees
+
+- Fixed branch pills (top bar, detail view, board cards) showing a stale branch name when the worktree is in detached HEAD state. The `??` fallback chain fell through to the persisted `card.branch` value instead of the short commit hash. Now checks `isDetached` from workspace metadata and skips the stale fallback, showing the commit hash instead. The `card.branch` fallback is still used during initial load when workspace info hasn't arrived yet.
+
 ### Todo consolidation
 
 - Consolidated 23 todo items down to 17 by merging related items: agent state tracking bugs (#9, #18, #19, #20 → #9), session persistence (#2, #11, #12 → #2), non-isolated worktree tasks (#8, #13 → #8), and removing completed sidebar widths item. Updated cross-references and refactor doc.

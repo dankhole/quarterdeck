@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: stale branch label for detached HEAD worktrees (2026-04-12)
+
+Three rendering sites (`App.tsx` top bar, `card-detail-view.tsx` detail pill, `board-card.tsx` card label) all used a `workspaceInfo?.branch ?? card.branch ?? headCommit` fallback chain to determine the displayed branch. When a worktree is in detached HEAD state, `workspaceInfo.branch` is `null`, so `??` fell through to the stale `card.branch` — whatever branch the card was last on, not the current state.
+
+**Root cause**: The `updateCardBranch` guard in `board-state.ts:570-579` intentionally refuses to erase a persisted branch when incoming value is null (to handle transient detachment during rebases). This is correct behavior for persistence, but the rendering logic shouldn't unconditionally prefer the stale persisted value over live metadata.
+
+**Fix**: At each rendering site, when `workspaceInfo.isDetached` is true, skip the `card.branch` fallback and show the short commit hash. The `card.branch` fallback is still used when workspace info is null/undefined (initial load). `board-card.tsx` uses an inline ternary in the `??` chain; `App.tsx` and `card-detail-view.tsx` use explicit `if` guards for readability.
+
+**Files touched**: `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/components/board-card.tsx`.
+
 ## Todo consolidation (2026-04-12)
 
 Consolidated the dev todo from 23 items to 17 by merging related items that were tracking different facets of the same underlying problem.
