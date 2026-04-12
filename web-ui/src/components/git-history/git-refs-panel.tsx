@@ -1,7 +1,22 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Fzf } from "fzf";
-import { AlertCircle, ArrowDown, ArrowUp, Cloud, FileText, GitBranch, Info, Locate, Search } from "lucide-react";
+import {
+	AlertCircle,
+	ArrowDown,
+	ArrowUp,
+	ClipboardCopy,
+	Cloud,
+	FileText,
+	GitBranch,
+	GitBranchPlus,
+	Info,
+	Locate,
+	LogIn,
+	Search,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -72,6 +87,7 @@ export function GitRefsPanel({
 	onSelectRef,
 	onSelectWorkingCopy,
 	onCheckoutRef,
+	onCreateBranch,
 }: {
 	refs: RuntimeGitRef[];
 	selectedRefName: string | null;
@@ -83,6 +99,7 @@ export function GitRefsPanel({
 	onSelectRef: (ref: RuntimeGitRef) => void;
 	onSelectWorkingCopy?: () => void;
 	onCheckoutRef?: (branchName: string) => void;
+	onCreateBranch?: (sourceRef: string) => void;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 
@@ -221,29 +238,35 @@ export function GitRefsPanel({
 						) : null}
 
 						{headBranch ? (
-							<RefRow isSelected={isHeadBranchSelected} onSelect={() => onSelectRef(headBranch)}>
-								<GitBranch size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-									{headBranch.name}
-								</span>
-								<AheadBehindIndicator
-									ahead={headBranch.ahead}
-									behind={headBranch.behind}
-									isSelected={isHeadBranchSelected}
-								/>
-								<span
-									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
-									style={{
-										fontSize: 10,
-										backgroundColor: isHeadBranchSelected
-											? HEAD_BADGE_BACKGROUND_SELECTED
-											: HEAD_BADGE_BACKGROUND,
-										color: isHeadBranchSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-status-blue)",
-									}}
-								>
-									HEAD
-								</span>
-							</RefRow>
+							<RefContextMenu
+								refName={headBranch.name}
+								onCheckoutRef={undefined}
+								onCreateBranch={onCreateBranch}
+							>
+								<RefRow isSelected={isHeadBranchSelected} onSelect={() => onSelectRef(headBranch)}>
+									<GitBranch size={12} />
+									<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+										{headBranch.name}
+									</span>
+									<AheadBehindIndicator
+										ahead={headBranch.ahead}
+										behind={headBranch.behind}
+										isSelected={isHeadBranchSelected}
+									/>
+									<span
+										className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
+										style={{
+											fontSize: 10,
+											backgroundColor: isHeadBranchSelected
+												? HEAD_BADGE_BACKGROUND_SELECTED
+												: HEAD_BADGE_BACKGROUND,
+											color: isHeadBranchSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-status-blue)",
+										}}
+									>
+										HEAD
+									</span>
+								</RefRow>
+							</RefContextMenu>
 						) : null}
 
 						{showSearch ? (
@@ -266,22 +289,28 @@ export function GitRefsPanel({
 						{filteredOtherBranches.map((ref) => {
 							const isSelected = !isWorkingCopySelected && selectedRefName === ref.name;
 							return (
-								<RefRow
+								<RefContextMenu
 									key={ref.name}
-									isSelected={isSelected}
-									onSelect={() => onSelectRef(ref)}
-									onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
+									refName={ref.name}
+									onCheckoutRef={onCheckoutRef}
+									onCreateBranch={onCreateBranch}
 								>
-									<GitBranch size={12} />
-									<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-										{renderFuzzyHighlightedText(
-											ref.name,
-											fuzzyBranchResultsByName.get(ref.name)?.positions,
-											isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
-										)}
-									</span>
-									<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} isSelected={isSelected} />
-								</RefRow>
+									<RefRow
+										isSelected={isSelected}
+										onSelect={() => onSelectRef(ref)}
+										onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
+									>
+										<GitBranch size={12} />
+										<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+											{renderFuzzyHighlightedText(
+												ref.name,
+												fuzzyBranchResultsByName.get(ref.name)?.positions,
+												isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
+											)}
+										</span>
+										<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} isSelected={isSelected} />
+									</RefRow>
+								</RefContextMenu>
 							);
 						})}
 
@@ -291,16 +320,23 @@ export function GitRefsPanel({
 								{filteredRemoteRefs.map((ref) => {
 									const isSelected = !isWorkingCopySelected && selectedRefName === ref.name;
 									return (
-										<RefRow key={ref.name} isSelected={isSelected} onSelect={() => onSelectRef(ref)}>
-											<Cloud size={12} />
-											<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-												{renderFuzzyHighlightedText(
-													ref.name,
-													fuzzyBranchResultsByName.get(ref.name)?.positions,
-													isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
-												)}
-											</span>
-										</RefRow>
+										<RefContextMenu
+											key={ref.name}
+											refName={ref.name}
+											onCheckoutRef={undefined}
+											onCreateBranch={onCreateBranch}
+										>
+											<RefRow isSelected={isSelected} onSelect={() => onSelectRef(ref)}>
+												<Cloud size={12} />
+												<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+													{renderFuzzyHighlightedText(
+														ref.name,
+														fuzzyBranchResultsByName.get(ref.name)?.positions,
+														isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
+													)}
+												</span>
+											</RefRow>
+										</RefContextMenu>
 									);
 								})}
 							</>
@@ -339,6 +375,52 @@ function SectionLabel({ children }: { children: React.ReactNode }): React.ReactE
 		>
 			{children}
 		</div>
+	);
+}
+
+function RefContextMenu({
+	refName,
+	onCheckoutRef,
+	onCreateBranch,
+	children,
+}: {
+	refName: string;
+	onCheckoutRef?: (branchName: string) => void;
+	onCreateBranch?: (sourceRef: string) => void;
+	children: React.ReactNode;
+}): React.ReactElement {
+	const hasActions = onCheckoutRef || onCreateBranch;
+	if (!hasActions) {
+		return <>{children}</>;
+	}
+	return (
+		<ContextMenu.Root>
+			<ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+			<ContextMenu.Portal>
+				<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+					{onCheckoutRef ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onCheckoutRef(refName)}>
+							<LogIn size={14} className="text-text-secondary" />
+							Checkout
+						</ContextMenu.Item>
+					) : null}
+					{onCreateBranch ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onCreateBranch(refName)}>
+							<GitBranchPlus size={14} className="text-text-secondary" />
+							Create branch from here
+						</ContextMenu.Item>
+					) : null}
+					{onCheckoutRef || onCreateBranch ? <ContextMenu.Separator className="my-1 h-px bg-border" /> : null}
+					<ContextMenu.Item
+						className={CONTEXT_MENU_ITEM_CLASS}
+						onSelect={() => copyToClipboard(refName, "Branch name")}
+					>
+						<ClipboardCopy size={14} className="text-text-secondary" />
+						Copy branch name
+					</ContextMenu.Item>
+				</ContextMenu.Content>
+			</ContextMenu.Portal>
+		</ContextMenu.Root>
 	);
 }
 

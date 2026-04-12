@@ -30,6 +30,7 @@ import {
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
+	createBranchFromRef,
 	discardGitChanges,
 	getGitSyncSummary,
 	runGitCheckoutAction,
@@ -360,6 +361,25 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return response;
 			} catch (error) {
 				return createEmptyGitDiscardErrorResponse(error);
+			}
+		},
+		createBranch: async (workspaceScope, input) => {
+			try {
+				const result = await createBranchFromRef({
+					cwd: workspaceScope.workspacePath,
+					branchName: input.branchName,
+					startRef: input.startRef,
+				});
+				if (result.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return result;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false as const, branchName: input.branchName, error: message };
 			}
 		},
 		loadChanges: async (workspaceScope, input) => {

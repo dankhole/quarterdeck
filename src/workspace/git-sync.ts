@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type {
 	RuntimeGitCheckoutResponse,
+	RuntimeGitCreateBranchResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeGitSyncAction,
@@ -422,6 +423,46 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		summary: nextSummary,
 		output: mergeResult.output,
 	};
+}
+
+export async function createBranchFromRef(options: {
+	cwd: string;
+	branchName: string;
+	startRef: string;
+}): Promise<RuntimeGitCreateBranchResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const branchName = options.branchName.trim();
+	const startRef = options.startRef.trim();
+
+	if (!branchName) {
+		return { ok: false, branchName, error: "Branch name cannot be empty." };
+	}
+	if (!startRef) {
+		return { ok: false, branchName, error: "Start ref cannot be empty." };
+	}
+
+	// Check the start ref actually exists
+	const verifyResult = await runGit(repoRoot, ["rev-parse", "--verify", startRef]);
+	if (!verifyResult.ok) {
+		return { ok: false, branchName, error: `Ref "${startRef}" does not exist.` };
+	}
+
+	// Check the branch doesn't already exist
+	const existsResult = await hasGitRef(repoRoot, `refs/heads/${branchName}`);
+	if (existsResult) {
+		return { ok: false, branchName, error: `Branch "${branchName}" already exists.` };
+	}
+
+	const createResult = await runGit(repoRoot, ["branch", "--", branchName, startRef]);
+	if (!createResult.ok) {
+		return {
+			ok: false,
+			branchName,
+			error: createResult.error ?? "Failed to create branch.",
+		};
+	}
+
+	return { ok: true, branchName };
 }
 
 export async function discardGitChanges(options: { cwd: string }): Promise<RuntimeGitDiscardResponse> {

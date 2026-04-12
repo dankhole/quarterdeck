@@ -4,6 +4,7 @@ import {
 	type CheckoutDialogState,
 	resolveCheckoutDialogState,
 } from "@/components/detail-panels/checkout-confirmation-dialog";
+import type { CreateBranchDialogState } from "@/components/detail-panels/create-branch-dialog";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
@@ -38,6 +39,10 @@ export interface UseBranchActionsResult {
 	worktreeBranches: Map<string, string>;
 	checkoutDialogState: CheckoutDialogState;
 	closeCheckoutDialog: () => void;
+	createBranchDialogState: CreateBranchDialogState;
+	handleCreateBranchFrom: (sourceRef: string) => void;
+	closeCreateBranchDialog: () => void;
+	handleBranchCreated: (branchName: string) => void;
 	handleSelectBranchView: (ref: string) => void;
 	handleCheckoutBranch: (branch: string) => void;
 	handleConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
@@ -213,6 +218,28 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		setCheckoutDialogState({ type: "closed" });
 	}, []);
 
+	// Create branch dialog
+	const [createBranchDialogState, setCreateBranchDialogState] = useState<CreateBranchDialogState>({ type: "closed" });
+
+	const handleCreateBranchFrom = useCallback((sourceRef: string) => {
+		setCreateBranchDialogState({ type: "open", sourceRef });
+	}, []);
+
+	const closeCreateBranchDialog = useCallback(() => {
+		setCreateBranchDialogState({ type: "closed" });
+	}, []);
+
+	const refetchRefs = refsQuery.refetch;
+	const handleBranchCreated = useCallback(
+		(branchName: string) => {
+			// Invalidate the refs query so the new branch appears in the list
+			void refetchRefs();
+			// Select the newly created branch in the view
+			selectBranchView(branchName);
+		},
+		[refetchRefs, selectBranchView],
+	);
+
 	return {
 		isBranchPopoverOpen,
 		setBranchPopoverOpen,
@@ -221,6 +248,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		worktreeBranches,
 		checkoutDialogState,
 		closeCheckoutDialog,
+		createBranchDialogState,
+		handleCreateBranchFrom,
+		closeCreateBranchDialog,
+		handleBranchCreated,
 		handleSelectBranchView,
 		handleCheckoutBranch,
 		handleConfirmCheckout,

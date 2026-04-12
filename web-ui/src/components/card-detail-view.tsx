@@ -6,6 +6,7 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
+import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
 import { GitView } from "@/components/git-view";
@@ -413,6 +414,7 @@ export function CardDetailView({
 														: undefined
 												}
 												onMergeBranch={taskBranchActions.handleMergeBranch}
+												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}
 											/>
 										) : undefined
@@ -507,6 +509,12 @@ export function CardDetailView({
 				onClose={taskBranchActions.closeCheckoutDialog}
 				onConfirmCheckout={taskBranchActions.handleConfirmCheckout}
 				onSkipTaskConfirmationChange={onSkipTaskCheckoutConfirmationChange}
+			/>
+			<CreateBranchDialog
+				state={taskBranchActions.createBranchDialogState}
+				workspaceId={currentProjectId}
+				onClose={taskBranchActions.closeCreateBranchDialog}
+				onBranchCreated={taskBranchActions.handleBranchCreated}
 			/>
 		</div>
 	);

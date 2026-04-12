@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Create branch from ref
+
+- Added "Create branch from here" to the right-click context menu in both the branch selector popover and the git history refs panel. Opens a dialog where you enter the new branch name — validates the ref exists and the name isn't taken, creates the branch via `git branch`, shows a success/error toast, and refreshes the refs list with the new branch selected. Available from all branch popover locations (top bar, home scope bar, task detail) and all ref types in the git history panel (HEAD, local branches, remote branches). Uses `--` argument separator and try/catch error handling for robustness.
+
 ### Merge branch into current
 
 - Added "Merge into current" action to the branch selector popover's right-click context menu. Attempts `git merge --no-edit` — if it's a clean fast-forward or auto-merge, shows a success toast. If there are conflicts, auto-runs `git merge --abort` to restore clean state and shows an error toast. Available from all three branch popover locations (top bar, home scope bar, task detail scope bar). Disabled on the current branch. Includes ref validation against flag injection and shared-checkout guard matching the existing checkout behavior.

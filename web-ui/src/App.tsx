@@ -14,6 +14,7 @@ import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
+import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
@@ -1225,6 +1226,7 @@ export default function App(): ReactElement {
 						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
 						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
 						onMergeBranch={topbarBranchActions.handleMergeBranch}
+						onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined
@@ -1335,7 +1337,11 @@ export default function App(): ReactElement {
 							}}
 							gitHistoryPanel={
 								isGitHistoryOpen ? (
-									<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
+									<GitHistoryView
+										workspaceId={currentProjectId}
+										gitHistory={gitHistory}
+										onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+									/>
 								) : undefined
 							}
 							isGitHistoryOpen={isGitHistoryOpen}
@@ -1437,6 +1443,7 @@ export default function App(): ReactElement {
 																onCheckoutBranch={(branch) => {
 																	void switchHomeBranch(branch);
 																}}
+																onCreateBranch={homeBranchActions.handleCreateBranchFrom}
 															/>
 														) : undefined
 													}
@@ -1471,6 +1478,7 @@ export default function App(): ReactElement {
 																		openGitCompare({ targetRef: branch })
 																	}
 																	onMergeBranch={homeBranchActions.handleMergeBranch}
+																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
 																	trigger={
 																		<BranchPillTrigger
 																			label={
@@ -1658,6 +1666,18 @@ export default function App(): ReactElement {
 						onClose={topbarBranchActions.closeCheckoutDialog}
 						onConfirmCheckout={topbarBranchActions.handleConfirmCheckout}
 						onSkipTaskConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
+					/>
+					<CreateBranchDialog
+						state={homeBranchActions.createBranchDialogState}
+						workspaceId={currentProjectId}
+						onClose={homeBranchActions.closeCreateBranchDialog}
+						onBranchCreated={homeBranchActions.handleBranchCreated}
+					/>
+					<CreateBranchDialog
+						state={topbarBranchActions.createBranchDialogState}
+						workspaceId={currentProjectId}
+						onClose={topbarBranchActions.closeCreateBranchDialog}
+						onBranchCreated={topbarBranchActions.handleBranchCreated}
 					/>
 					<MigrateWorkingDirectoryDialog
 						open={pendingMigrate !== null}

@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Create branch from ref — branch context menu action (2026-04-12)
+
+Added "Create branch from here" to both the branch selector popover context menu and the git history refs panel context menu. This lets users create new branches from any ref without dropping to terminal.
+
+**Backend**: New Zod schemas (`runtimeGitCreateBranchRequestSchema`/`runtimeGitCreateBranchResponseSchema`) in `api-contract.ts` — request takes `branchName` + `startRef`, response returns `ok`/`branchName`/`error`. New `createBranchFromRef()` in `git-sync.ts` — resolves repo root, validates both inputs aren't empty, verifies the start ref exists via `git rev-parse --verify`, checks the branch doesn't already exist via `hasGitRef`, then runs `git branch -- <name> <ref>` (the `--` separator prevents leading-dash argument injection). New `createBranch` method in `workspace-api.ts` wrapped in try/catch (matching the pattern of `checkoutGitBranch` and `discardGitChanges`) with workspace state broadcast on success. Exposed as `workspace.createBranch` tRPC mutation in `app-router.ts`.
+
+**Frontend**: New `CreateBranchDialog` component (`create-branch-dialog.tsx`) — shows source ref, branch name input with autoFocus, Create/Cancel buttons. Calls the tRPC mutation, shows success/error toasts via sonner, stays open on error for retry, closes and triggers `onBranchCreated` on success. New `createBranchDialogState`/`handleCreateBranchFrom`/`closeCreateBranchDialog`/`handleBranchCreated` in `use-branch-actions.ts` — the `handleBranchCreated` callback refetches the refs query and selects the new branch in the view. New `onCreateBranch` prop threaded through `BranchSelectorPopover` → `BranchItem` with `GitBranchPlus` icon. New `RefContextMenu` component in `git-refs-panel.tsx` wrapping all ref rows (HEAD, local, remote) with right-click context menus including Checkout, Create branch, and Copy branch name. New `onCreateBranch` prop threaded through `GitHistoryView` → `GitRefsPanel`. Dialog rendered at all three scope levels: `App.tsx` (home + topbar) and `card-detail-view.tsx` (task).
+
+**Review fixes**: Added `--` separator to `git branch` args to prevent flag injection from branch names starting with `-`. Wrapped `workspace-api.createBranch` in try/catch returning typed error response. Made `RefContextMenu` separator conditional (matches branch-selector-popover pattern). Removed unused `inputRef` from dialog (autoFocus handles focus).
+
+**Files touched**: `src/core/api-contract.ts`, `src/workspace/git-sync.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router.ts`, `web-ui/src/components/detail-panels/create-branch-dialog.tsx` (new), `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/components/git-history/git-refs-panel.tsx`, `web-ui/src/components/git-history-view.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## Merge branch into current — branch context menu action (2026-04-12)
 
 Added "Merge into current" to the branch selector popover's right-click context menu. The approach is deliberately simple: attempt the merge, and if anything goes wrong, abort and tell the user. No conflict resolution UI yet — that's a separate todo item.

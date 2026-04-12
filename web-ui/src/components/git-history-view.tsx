@@ -61,9 +61,15 @@ interface GitHistoryViewProps {
 	workspaceId: string | null;
 	gitHistory: UseGitHistoryDataResult;
 	onCheckoutBranch?: (branch: string) => void;
+	onCreateBranch?: (sourceRef: string) => void;
 }
 
-export function GitHistoryView({ workspaceId, gitHistory, onCheckoutBranch }: GitHistoryViewProps): React.ReactElement {
+export function GitHistoryView({
+	workspaceId,
+	gitHistory,
+	onCheckoutBranch,
+	onCreateBranch,
+}: GitHistoryViewProps): React.ReactElement {
 	const [historyLayoutWidth, setHistoryLayoutWidth] = useState<number | null>(null);
 	const historyLayoutRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startRefsPanelResize } = useResizeDrag();
@@ -175,6 +181,7 @@ export function GitHistoryView({ workspaceId, gitHistory, onCheckoutBranch }: Gi
 				onSelectRef={gitHistory.selectRef}
 				onSelectWorkingCopy={gitHistory.hasWorkingCopy ? gitHistory.selectWorkingCopy : undefined}
 				onCheckoutRef={onCheckoutBranch}
+				onCreateBranch={onCreateBranch}
 			/>
 			<ResizeHandle
 				orientation="vertical"
