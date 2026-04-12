@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feat: cherry-pick individual commits onto any branch
+
+- "Land on..." branch dropdown in the git history commit diff header — select a commit, pick a target branch, and cherry-pick it in one action. Merge commits are excluded (button hidden). Confirmation dialog shows the commit hash, message, and target branch with an explanation that conflicts will abort safely.
+- Two-path backend: if the target branch is checked out in a worktree, cherry-picks directly there (after verifying clean working tree); if not checked out, creates a temporary worktree, cherry-picks, and cleans up in a `finally` block. Pre-flight validates commit exists, rejects merge commits, and validates target branch.
+- `skipCherryPickConfirmation` config setting with toggle in Settings > Suppressed Dialogs. When enabled, clicking a branch in the dropdown executes immediately without the confirmation dialog.
+- New tRPC endpoint `cherryPickCommit` with task-scope support.
+
 ### Feat: merge/rebase conflict resolution
 
 - When a merge produces conflicts, the operation now pauses instead of auto-aborting. GitView shows a conflict resolution panel with a file list, ours-vs-theirs diff previews (via git index stages 2 and 3), and per-file actions: Accept Ours, Accept Theirs, or Resolve Manually (with terminal instructions). Progress tracking shows resolved/total files. "Complete" button creates the merge commit; "Abort" button restores pre-merge state. Rebase conflicts follow the same flow with multi-round support — continuing after resolving one commit may surface new conflicts from the next.

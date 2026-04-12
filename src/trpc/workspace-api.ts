@@ -35,6 +35,7 @@ import {
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
 	abortMergeOrRebase,
+	cherryPickCommit,
 	commitSelectedFiles,
 	continueMergeOrRebase,
 	createBranchFromRef,
@@ -597,6 +598,39 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return { ok: false as const, branchName: input.branchName, error: message };
+			}
+		},
+		cherryPickCommit: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
+				let pickCwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					pickCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				const result = await cherryPickCommit({
+					cwd: pickCwd,
+					commitHash: input.commitHash,
+					targetBranch: input.targetBranch,
+				});
+				if (result.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return result;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false as const,
+					commitHash: input.commitHash,
+					targetBranch: input.targetBranch,
+					output: "",
+					error: message,
+				};
 			}
 		},
 		loadChanges: async (workspaceScope, input) => {

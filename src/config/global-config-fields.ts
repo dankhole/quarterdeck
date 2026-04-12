@@ -91,6 +91,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	behindBaseIndicatorEnabled: boolField(true),
 	skipTaskCheckoutConfirmation: boolField(false),
 	skipHomeCheckoutConfirmation: boolField(false),
+	skipCherryPickConfirmation: boolField(false),
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),

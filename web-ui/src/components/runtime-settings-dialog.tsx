@@ -1020,6 +1020,17 @@ export function RuntimeSettingsDialog({
 						</RadixSwitch.Root>
 						<span className="text-[13px] text-text-primary">Show home checkout confirmation</span>
 					</div>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={!fields.skipCherryPickConfirmation}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setField("skipCherryPickConfirmation", !checked)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show cherry-pick landing confirmation</span>
+					</div>
 
 					{showResetDefaultShortcuts ? (
 						<>

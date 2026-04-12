@@ -4,6 +4,28 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: cherry-pick individual commits onto any branch (2026-04-12)
+
+Added the ability to cherry-pick individual commits from one branch onto another directly from the git history view. Previously, landing specific commits required a full branch merge (all-or-nothing) or the LLM-powered squash merge prompt.
+
+**Architecture — three layers:**
+
+1. **Git layer** (`src/workspace/git-sync.ts`, +169 lines): `cherryPickCommit` function with two execution paths. `findWorktreeForBranch` parses `git worktree list --porcelain` to detect where a branch is checked out. `cherryPickInDirectory` handles the case where the target branch is already checked out — validates clean working tree via `git status --porcelain`, runs `git cherry-pick --no-edit`, aborts on conflict. `cherryPickViaTempWorktree` handles the case where the target branch isn't checked out — creates a temp worktree at `os.tmpdir()/qd-cherry-pick-<uuid>`, cherry-picks there, always cleans up via `git worktree remove --force` in a `finally` block. Pre-flight validates commit exists (`rev-parse --verify`), rejects merge commits (checks parent count from `rev-list --parents`), and validates target branch exists (`hasGitRef`).
+
+2. **API layer** (`src/trpc/workspace-api.ts` +34, `src/trpc/app-router.ts` +14, `src/core/api-contract.ts` +19): New `cherryPickCommit` tRPC mutation with `RuntimeGitCherryPickRequest` (commitHash, targetBranch, optional taskScope) and `RuntimeGitCherryPickResponse` (ok, commitHash, targetBranch, optional newCommitHash, output, error). Workspace API resolves task CWD for task-scoped operations and broadcasts metadata update on success.
+
+3. **UI layer** (4 files, +335 lines): `CherryPickConfirmationDialog` component (`cherry-pick-confirmation-dialog.tsx`) with Radix AlertDialog, loading spinner, and `confirmFiredRef` guard for the Radix `onOpenChange` gotcha. `CommitDiffHeader` in `git-history-view.tsx` rebuilt with "Land on..." `BranchSelectDropdown` that filters out the active branch. Dialog state management, tRPC mutation call, success/error toasts, and background history refresh all in `GitHistoryView`. `skipCherryPickConfirmation` prop bypasses the dialog when the setting is enabled.
+
+**Config setting** (`skipCherryPickConfirmation`): Added via the new settings refactor pattern — 1 line in `global-config-fields.ts`, Zod schemas in `api-contract.ts`, `SettingsFormValues` + `resolveInitialValues` in `use-settings-form.ts`, RadixSwitch toggle in `runtime-settings-dialog.tsx` under "Suppressed Dialogs". Test fixtures updated in `runtime-config.test.ts` and `runtime-config-factory.ts`.
+
+**Key design decisions:**
+- Temp worktree approach chosen over always requiring the target branch to be checked out — works regardless of repo layout, consistent code path, no need to detect/manage other worktrees.
+- `execFile` (not shell) for all git commands — no command injection risk. `validateGitRef` on branch names prevents flag injection.
+- Branch dropdown excludes the active ref to prevent confusing no-op cherry-picks (comment already specified this intent).
+- Radix `onOpenChange` guard uses `useRef` flag (not React state) following the established `trashWarningConfirmedRef` pattern — prevents dialog from closing before loading spinner renders.
+
+**Files touched:** `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `src/trpc/app-router.ts`, `src/trpc/workspace-api.ts`, `src/workspace/git-sync.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/git-history-view.tsx`, `web-ui/src/components/git-history/cherry-pick-confirmation-dialog.tsx` (new), `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/hooks/use-git-actions.ts`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`.
+
 ## Feat: merge/rebase conflict resolution (2026-04-12)
 
 Added full merge and rebase conflict resolution to Quarterdeck. Previously, `runGitMergeAction` in `git-sync.ts` unconditionally ran `git merge --abort` on any merge failure. No rebase support existed.

@@ -21,6 +21,8 @@ import type {
 	RuntimeFileContentResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
+	RuntimeGitCherryPickRequest,
+	RuntimeGitCherryPickResponse,
 	RuntimeGitCommitDiffRequest,
 	RuntimeGitCommitDiffResponse,
 	RuntimeGitCommitRequest,
@@ -94,6 +96,8 @@ import {
 	runtimeFileContentResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
+	runtimeGitCherryPickRequestSchema,
+	runtimeGitCherryPickResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
 	runtimeGitCommitDiffResponseSchema,
 	runtimeGitCommitRequestSchema,
@@ -247,6 +251,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitDeleteBranchRequest,
 		) => Promise<RuntimeGitDeleteBranchResponse>;
+		cherryPickCommit: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitCherryPickRequest,
+		) => Promise<RuntimeGitCherryPickResponse>;
 		discardGitChanges: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskWorkspaceInfoRequest | null,
@@ -516,6 +524,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitDeleteBranchResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.deleteBranch(ctx.workspaceScope, input);
+			}),
+		cherryPickCommit: workspaceProcedure
+			.input(runtimeGitCherryPickRequestSchema)
+			.output(runtimeGitCherryPickResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.cherryPickCommit(ctx.workspaceScope, input);
 			}),
 		discardGitChanges: workspaceProcedure
 			.input(optionalTaskWorkspaceInfoRequestSchema)

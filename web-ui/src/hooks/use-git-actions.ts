@@ -57,6 +57,7 @@ export interface UseGitActionsResult {
 	gitActionErrorTitle: string;
 	clearGitActionError: () => void;
 	gitHistory: UseGitHistoryDataResult;
+	gitHistoryTaskScope: { taskId: string; baseRef: string } | null;
 	runGitAction: (action: RuntimeGitSyncAction) => Promise<void>;
 	switchHomeBranch: (branch: string) => Promise<void>;
 	discardHomeWorkingChanges: () => Promise<void>;
@@ -515,6 +516,7 @@ export function useGitActions({
 			setGitActionError(null);
 		},
 		gitHistory,
+		gitHistoryTaskScope,
 		runGitAction,
 		switchHomeBranch,
 		discardHomeWorkingChanges,

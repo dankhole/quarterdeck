@@ -310,6 +310,7 @@ export default function App(): ReactElement {
 
 	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
 	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
+	const skipCherryPickConfirmation = runtimeProjectConfig?.skipCherryPickConfirmation ?? false;
 
 	const handleSkipTaskCheckoutConfirmationChange = useCallback(
 		(skip: boolean) => {
@@ -602,6 +603,7 @@ export default function App(): ReactElement {
 		gitActionErrorTitle,
 		clearGitActionError,
 		gitHistory,
+		gitHistoryTaskScope,
 		runGitAction,
 		switchHomeBranch,
 		resetGitActionState,
@@ -1398,6 +1400,8 @@ export default function App(): ReactElement {
 										workspaceId={currentProjectId}
 										gitHistory={gitHistory}
 										onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+										taskScope={gitHistoryTaskScope}
+										skipCherryPickConfirmation={skipCherryPickConfirmation}
 									/>
 								) : undefined
 							}
@@ -1503,6 +1507,8 @@ export default function App(): ReactElement {
 																	void switchHomeBranch(branch);
 																}}
 																onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+																taskScope={gitHistoryTaskScope}
+																skipCherryPickConfirmation={skipCherryPickConfirmation}
 															/>
 														) : undefined
 													}

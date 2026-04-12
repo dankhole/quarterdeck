@@ -30,6 +30,7 @@ export interface SettingsFormValues {
 	behindBaseIndicatorEnabled: boolean;
 	skipTaskCheckoutConfirmation: boolean;
 	skipHomeCheckoutConfirmation: boolean;
+	skipCherryPickConfirmation: boolean;
 	showRunningTaskEmergencyActions: boolean;
 	eventLogEnabled: boolean;
 	audibleNotificationsEnabled: boolean;
@@ -76,6 +77,7 @@ export function resolveInitialValues(
 			config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation:
 			config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
+		skipCherryPickConfirmation: config?.skipCherryPickConfirmation ?? CONFIG_DEFAULTS.skipCherryPickConfirmation,
 		showRunningTaskEmergencyActions:
 			config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 		eventLogEnabled: config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled,

@@ -783,6 +783,7 @@ export const runtimeConfigResponseSchema = z.object({
 	behindBaseIndicatorEnabled: z.boolean(),
 	skipTaskCheckoutConfirmation: z.boolean(),
 	skipHomeCheckoutConfirmation: z.boolean(),
+	skipCherryPickConfirmation: z.boolean(),
 	audibleNotificationsEnabled: z.boolean(),
 	audibleNotificationVolume: z.number().min(0).max(1),
 	audibleNotificationEvents: z.object({
@@ -836,6 +837,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	behindBaseIndicatorEnabled: z.boolean().optional(),
 	skipTaskCheckoutConfirmation: z.boolean().optional(),
 	skipHomeCheckoutConfirmation: z.boolean().optional(),
+	skipCherryPickConfirmation: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
 	audibleNotificationsEnabled: z.boolean().optional(),
@@ -1165,6 +1167,23 @@ export const runtimeGitRefsResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeGitRefsResponse = z.infer<typeof runtimeGitRefsResponseSchema>;
+
+export const runtimeGitCherryPickRequestSchema = z.object({
+	commitHash: z.string().min(1),
+	targetBranch: z.string().min(1),
+	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+});
+export type RuntimeGitCherryPickRequest = z.infer<typeof runtimeGitCherryPickRequestSchema>;
+
+export const runtimeGitCherryPickResponseSchema = z.object({
+	ok: z.boolean(),
+	commitHash: z.string(),
+	targetBranch: z.string(),
+	newCommitHash: z.string().optional(),
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitCherryPickResponse = z.infer<typeof runtimeGitCherryPickResponseSchema>;
 
 export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress", "activity"]);
 export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;

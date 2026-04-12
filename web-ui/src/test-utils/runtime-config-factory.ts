@@ -41,6 +41,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	behindBaseIndicatorEnabled: CONFIG_DEFAULTS.behindBaseIndicatorEnabled,
 	skipTaskCheckoutConfirmation: CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
 	skipHomeCheckoutConfirmation: CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
+	skipCherryPickConfirmation: CONFIG_DEFAULTS.skipCherryPickConfirmation,
 	audibleNotificationsEnabled: CONFIG_DEFAULTS.audibleNotificationsEnabled,
 	audibleNotificationVolume: CONFIG_DEFAULTS.audibleNotificationVolume,
 	audibleNotificationEvents: { ...CONFIG_DEFAULTS.audibleNotificationEvents },
