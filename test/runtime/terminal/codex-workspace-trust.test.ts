@@ -1,37 +1,24 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
 	hasCodexWorkspaceTrustPrompt,
 	shouldAutoConfirmCodexWorkspaceTrust,
 } from "../../../src/terminal/codex-workspace-trust";
 
-const originalHome = process.env.HOME;
-let tempHome: string | null = null;
+describe("hasCodexWorkspaceTrustPrompt", () => {
+	it("returns true for plain 'Do you trust the contents of this directory?' text", () => {
+		const prompt =
+			"Do you trust the contents of this directory? Working with untrusted contents comes with higher risk.";
+		expect(hasCodexWorkspaceTrustPrompt(prompt)).toBe(true);
+	});
 
-function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-codex-workspace-trust-"));
-	process.env.HOME = tempHome;
-	return tempHome;
-}
+	it("returns true with ANSI codes interspersed", () => {
+		const ansiPrompt =
+			"Do you trust the \u001b[31mcontents\u001b[0m of this directory? Working with untrusted contents.";
+		expect(hasCodexWorkspaceTrustPrompt(ansiPrompt)).toBe(true);
+	});
 
-afterEach(() => {
-	if (originalHome === undefined) {
-		delete process.env.HOME;
-	} else {
-		process.env.HOME = originalHome;
-	}
-	if (tempHome) {
-		rmSync(tempHome, { recursive: true, force: true });
-		tempHome = null;
-	}
-});
-
-describe("codex workspace trust helpers", () => {
-	it("detects Codex trust prompt", () => {
+	it("returns true for realistic multi-line Codex trust prompt", () => {
 		const codexPrompt = `
 You are in /Users/saoud/.quarterdeck/worktrees/6df3a/mcp-swift-sdk
 
@@ -45,19 +32,35 @@ Press enter to continue`;
 		expect(hasCodexWorkspaceTrustPrompt(codexPrompt)).toBe(true);
 	});
 
-	it("detects Codex trust prompt with ANSI formatting", () => {
-		const ansiPrompt =
-			"Do you trust the \u001b[31mcontents\u001b[0m of this directory? Working with untrusted contents comes with higher risk of prompt injection.";
-		expect(hasCodexWorkspaceTrustPrompt(ansiPrompt)).toBe(true);
+	it("returns true with extra whitespace and newlines between tokens", () => {
+		const spaceyPrompt = "Do  you\n  trust   the\n\tcontents  of\n  this   directory";
+		expect(hasCodexWorkspaceTrustPrompt(spaceyPrompt)).toBe(true);
 	});
 
-	it("auto-confirms all codex sessions", () => {
-		const home = setupTempHome();
-		const taskWorktreePath = join(home, ".quarterdeck", "worktrees", "task-123", "context");
-		const externalPath = join(home, "projects", "repo");
+	it("returns false for 'Do you trust this directory?' (missing 'contents of')", () => {
+		expect(hasCodexWorkspaceTrustPrompt("Do you trust this directory?")).toBe(false);
+	});
 
-		expect(shouldAutoConfirmCodexWorkspaceTrust("codex", taskWorktreePath)).toBe(true);
-		expect(shouldAutoConfirmCodexWorkspaceTrust("codex", externalPath)).toBe(true);
-		expect(shouldAutoConfirmCodexWorkspaceTrust("claude", taskWorktreePath)).toBe(false);
+	it("returns false for empty string", () => {
+		expect(hasCodexWorkspaceTrustPrompt("")).toBe(false);
+	});
+
+	it("returns false for unrelated text", () => {
+		expect(hasCodexWorkspaceTrustPrompt("Running tests in /home/user/project")).toBe(false);
+	});
+});
+
+describe("shouldAutoConfirmCodexWorkspaceTrust", () => {
+	it("returns true for codex agent with any cwd", () => {
+		expect(shouldAutoConfirmCodexWorkspaceTrust("codex", "/any/path")).toBe(true);
+		expect(shouldAutoConfirmCodexWorkspaceTrust("codex", "/home/user/project")).toBe(true);
+	});
+
+	it("returns false for claude agent", () => {
+		expect(shouldAutoConfirmCodexWorkspaceTrust("claude", "/any/path")).toBe(false);
+	});
+
+	it("returns false for other agent ids", () => {
+		expect(shouldAutoConfirmCodexWorkspaceTrust("other" as any, "/any/path")).toBe(false);
 	});
 });

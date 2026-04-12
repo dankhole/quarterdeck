@@ -643,6 +643,51 @@ describe("createHooksApi", () => {
 			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
 		});
 	});
+
+	it("applies hook activity before checkpoint capture on to_review transition", async () => {
+		const callOrder: string[] = [];
+		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
+		const manager = createMockManager({
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			transitionToReview: vi.fn(() => transitionedSummary),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(() => {
+				callOrder.push("applyHookActivity");
+				return transitionedSummary;
+			}),
+			applyTurnCheckpoint: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+
+		const captureTaskTurnCheckpoint = vi.fn(async () => {
+			callOrder.push("captureTaskTurnCheckpoint");
+			return {
+				turn: 1,
+				ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
+				commit: "aaa",
+				createdAt: Date.now(),
+			};
+		});
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+			captureTaskTurnCheckpoint,
+			deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
+		});
+
+		await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "to_review",
+			metadata: { hookEventName: "Stop", activityText: "Done with work", source: "claude" },
+		});
+
+		expect(callOrder).toEqual(["applyHookActivity", "captureTaskTurnCheckpoint"]);
+	});
 });
 
 // ── isPermissionActivity with null-filled partial metadata ──────────────

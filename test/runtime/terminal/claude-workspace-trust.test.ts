@@ -1,70 +1,75 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 
-import { afterEach, describe, expect, it } from "vitest";
+vi.mock("../../../src/state/workspace-state.js", () => ({
+	getTaskWorktreesHomePath: () => "/home/user/.quarterdeck/worktrees",
+}));
 
-import { shouldAutoConfirmClaudeWorkspaceTrust } from "../../../src/terminal/claude-workspace-trust";
+import {
+	hasClaudeWorkspaceTrustPrompt,
+	shouldAutoConfirmClaudeWorkspaceTrust,
+} from "../../../src/terminal/claude-workspace-trust";
 
-const originalHome = process.env.HOME;
-let tempHome: string | null = null;
+describe("hasClaudeWorkspaceTrustPrompt", () => {
+	it("returns true for plain 'Yes, I trust this folder' text", () => {
+		expect(hasClaudeWorkspaceTrustPrompt("Yes, I trust this folder")).toBe(true);
+	});
 
-function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "quarterdeck-claude-workspace-trust-"));
-	process.env.HOME = tempHome;
-	// Create the worktrees root so isTaskWorktreePath can resolve it.
-	mkdirSync(join(tempHome, ".quarterdeck", "worktrees"), { recursive: true });
-	return tempHome;
-}
+	it("returns true for 'trust this folder' shorter variant", () => {
+		expect(hasClaudeWorkspaceTrustPrompt("Do you trust this folder?")).toBe(true);
+	});
 
-afterEach(() => {
-	if (originalHome === undefined) {
-		delete process.env.HOME;
-	} else {
-		process.env.HOME = originalHome;
-	}
-	if (tempHome) {
-		rmSync(tempHome, { recursive: true, force: true });
-		tempHome = null;
-	}
+	it("returns true when text has ANSI escape codes around the trust prompt", () => {
+		const ansiText = "\u001b[1m\u001b[33mYes, I trust this folder\u001b[0m";
+		expect(hasClaudeWorkspaceTrustPrompt(ansiText)).toBe(true);
+	});
+
+	it("returns true when trust prompt has extra whitespace", () => {
+		const spaceyText = "Yes,  I   trust\n\tthis   folder";
+		expect(hasClaudeWorkspaceTrustPrompt(spaceyText)).toBe(true);
+	});
+
+	it("returns false for normal agent output", () => {
+		expect(hasClaudeWorkspaceTrustPrompt("I'll fix the bug in the main module")).toBe(false);
+	});
+
+	it("returns false for partial match like 'I trust this'", () => {
+		expect(hasClaudeWorkspaceTrustPrompt("I trust this")).toBe(false);
+	});
+
+	it("returns false for empty string", () => {
+		expect(hasClaudeWorkspaceTrustPrompt("")).toBe(false);
+	});
 });
 
 describe("shouldAutoConfirmClaudeWorkspaceTrust", () => {
-	it("trusts worktree paths under ~/.quarterdeck/worktrees/", () => {
-		const home = setupTempHome();
-		const worktreePath = join(home, ".quarterdeck", "worktrees", "task-abc123", "my-repo");
+	it("returns true for claude agent with worktree path", () => {
+		const worktreePath = "/home/user/.quarterdeck/worktrees/task-abc123/my-repo";
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", worktreePath)).toBe(true);
 	});
 
-	it("rejects non-claude agents even for worktree paths", () => {
-		const home = setupTempHome();
-		const worktreePath = join(home, ".quarterdeck", "worktrees", "task-abc123", "my-repo");
-		expect(shouldAutoConfirmClaudeWorkspaceTrust("codex", worktreePath)).toBe(false);
-	});
-
-	it("trusts the main checkout when workspacePath matches cwd", () => {
-		setupTempHome();
+	it("returns true for claude agent when cwd matches workspacePath", () => {
 		const projectPath = "/tmp/my-project";
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", projectPath, projectPath)).toBe(true);
 	});
 
-	it("trusts the main checkout with path normalization", () => {
-		setupTempHome();
-		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", "/tmp/my-project/.", "/tmp/my-project")).toBe(true);
+	it("returns false for codex agent even with valid worktree path", () => {
+		const worktreePath = "/home/user/.quarterdeck/worktrees/task-abc123/my-repo";
+		expect(shouldAutoConfirmClaudeWorkspaceTrust("codex", worktreePath)).toBe(false);
 	});
 
-	it("rejects when cwd does not match workspacePath and is not a worktree", () => {
-		setupTempHome();
+	it("returns false for claude agent with non-worktree non-workspace path", () => {
+		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", "/tmp/random-dir")).toBe(false);
+	});
+
+	it("returns false for claude agent when cwd does not match workspacePath", () => {
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", "/tmp/other-dir", "/tmp/my-project")).toBe(false);
 	});
 
-	it("rejects when no workspacePath is provided and cwd is not a worktree", () => {
-		setupTempHome();
-		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", "/tmp/some-dir")).toBe(false);
+	it("trusts the main checkout with path normalization", () => {
+		expect(shouldAutoConfirmClaudeWorkspaceTrust("claude", "/tmp/my-project/.", "/tmp/my-project")).toBe(true);
 	});
 
 	it("rejects non-claude agents even when workspacePath matches", () => {
-		setupTempHome();
 		const projectPath = "/tmp/my-project";
 		expect(shouldAutoConfirmClaudeWorkspaceTrust("codex", projectPath, projectPath)).toBe(false);
 	});

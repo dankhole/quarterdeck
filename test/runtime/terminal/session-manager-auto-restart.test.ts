@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
@@ -195,5 +195,120 @@ describe("TerminalSessionManager auto-restart", () => {
 		session.triggerData(">_ OpenAI Codex (v0.117.0)\n");
 		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
 		expect(session.write).toHaveBeenCalledTimes(1);
+	});
+
+	describe("auto-restart error handling and rate limiting", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("broadcasts error output to listeners when auto-restart spawn fails", async () => {
+			let launchCount = 0;
+			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => {
+				launchCount++;
+				if (launchCount > 1) {
+					throw new Error("Agent binary not found");
+				}
+				return {
+					binary: input.binary,
+					args: [...input.args],
+					env: {},
+				};
+			});
+
+			const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+			ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+				const session = createMockPtySession(111, request);
+				spawnedSessions.push(session);
+				return session;
+			});
+
+			const onOutput = vi.fn();
+			const onState = vi.fn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			manager.attach("task-1", { onState, onOutput, onExit: vi.fn() });
+
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+
+			// Exit triggers auto-restart, which will fail on prepareAgentLaunch
+			spawnedSessions[0]?.triggerExit(130);
+
+			await vi.waitFor(() => {
+				const outputCalls = onOutput.mock.calls;
+				const errorOutput = outputCalls.find((call) => {
+					const buf = call[0] as Buffer;
+					return buf.toString().includes("[quarterdeck]");
+				});
+				expect(errorOutput).toBeDefined();
+			});
+
+			// Verify the error message content
+			const outputCalls = onOutput.mock.calls;
+			const errorOutput = outputCalls.find((call) => {
+				const buf = call[0] as Buffer;
+				return buf.toString().includes("Agent binary not found");
+			});
+			expect(errorOutput).toBeDefined();
+
+			// Verify store has warning message
+			const summary = manager.store.getSummary("task-1");
+			expect(summary?.warningMessage).toContain("Agent binary not found");
+
+			// Verify state was broadcast to listener
+			expect(onState).toHaveBeenCalledWith(
+				expect.objectContaining({
+					warningMessage: expect.stringContaining("Agent binary not found"),
+				}),
+			);
+		});
+
+		it("stops auto-restarting after 3 rapid exits within the rate window", async () => {
+			const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+			ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+				const session = createMockPtySession(100 + spawnedSessions.length, request);
+				spawnedSessions.push(session);
+				return session;
+			});
+
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+
+			// 1st exit -> auto-restart #1
+			spawnedSessions[0]?.triggerExit(1);
+			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(2));
+
+			// 2nd exit -> auto-restart #2
+			spawnedSessions[1]?.triggerExit(1);
+			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(3));
+
+			// 3rd exit -> auto-restart #3
+			spawnedSessions[2]?.triggerExit(1);
+			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(4));
+
+			// 4th exit -> rate limited, no more restarts
+			spawnedSessions[3]?.triggerExit(1);
+			await vi.advanceTimersByTimeAsync(100);
+			expect(spawnedSessions).toHaveLength(4); // No 5th spawn
+		});
 	});
 });
