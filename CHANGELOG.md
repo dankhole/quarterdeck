@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract inline components from App.tsx
+
+- Moved `HomeBranchStatus`, the git-init confirmation dialog, and the git-action error dialog from inline definitions in `App.tsx` into their own component files (`home-branch-status.tsx`, `git-init-dialog.tsx`, `git-action-error-dialog.tsx`). Follows the same pattern as existing extracted dialogs (`ClearTrashDialog`, `MigrateWorkingDirectoryDialog`). Net −161 lines from `App.tsx`, zero behavioral change.
+
 ### Fix: switching projects doesn't return to home view
 
 - Switching projects now always resets the main view to the kanban board (home + projects sidebar). Previously, if a task was selected and the user was on the files or git view, switching projects would clear the task but leave the main view on files/git — showing the new project's file tree or git history instead of its board. The layout hook now handles project-switch resets directly, alongside its existing task-deselection auto-coupling.

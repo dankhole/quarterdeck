@@ -3,7 +3,7 @@
 // push runtime-specific orchestration down into hooks and service modules.
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { ArrowDown, ArrowUp, CircleArrowDown, FolderOpen } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
@@ -17,8 +17,11 @@ import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
+import { GitActionErrorDialog } from "@/components/git-action-error-dialog";
 import { GitHistoryView } from "@/components/git-history-view";
+import { GitInitDialog } from "@/components/git-init-dialog";
 import { GitView } from "@/components/git-view";
+import { HomeBranchStatus } from "@/components/home-branch-status";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { PromptShortcutEditorDialog } from "@/components/prompt-shortcut-editor-dialog";
@@ -28,20 +31,9 @@ import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog"
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
-import { GitBranchStatusControl, TopBar } from "@/components/top-bar";
+import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogBody,
-	AlertDialogCancel,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip } from "@/components/ui/tooltip";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
@@ -84,7 +76,7 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
@@ -114,89 +106,6 @@ import { isApprovalState } from "@/utils/session-status";
 
 /** Noop for useBranchActions selectBranchView — the topbar pill uses checkout as its primary action. */
 const topbarBranchViewNoop = (_ref: string) => {};
-
-/** Branch status slot for the home context git view tab bar. */
-function HomeBranchStatus({
-	homeGitSummary,
-	isGitHistoryOpen,
-	onToggleGitHistory,
-	runningGitAction,
-	onGitFetch,
-	onGitPull,
-	onGitPush,
-}: {
-	homeGitSummary: RuntimeGitSyncSummary;
-	isGitHistoryOpen: boolean;
-	onToggleGitHistory: () => void;
-	runningGitAction: RuntimeGitSyncAction | null;
-	onGitFetch: () => void;
-	onGitPull: () => void;
-	onGitPush: () => void;
-}): ReactElement {
-	const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
-	const pullCount = homeGitSummary.behindCount ?? 0;
-	const pushCount = homeGitSummary.aheadCount ?? 0;
-	const pullTooltip =
-		pullCount > 0
-			? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
-			: "Pull from upstream. Branch is already up to date.";
-	const pushTooltip =
-		pushCount > 0
-			? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
-			: "Push local commits to upstream. No local commits are pending.";
-
-	return (
-		<div className="flex items-center gap-1">
-			<GitBranchStatusControl
-				branchLabel={branchLabel}
-				changedFiles={homeGitSummary.changedFiles ?? 0}
-				additions={homeGitSummary.additions ?? 0}
-				deletions={homeGitSummary.deletions ?? 0}
-				onToggleGitHistory={onToggleGitHistory}
-				isGitHistoryOpen={isGitHistoryOpen}
-			/>
-			<div className="flex gap-0">
-				<Tooltip
-					side="bottom"
-					content="Fetch latest refs from upstream without changing your local branch or files."
-				>
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={18} />}
-						onClick={onGitFetch}
-						disabled={runningGitAction === "fetch"}
-						aria-label="Fetch from upstream"
-					/>
-				</Tooltip>
-				<Tooltip side="bottom" content={pullTooltip}>
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
-						onClick={onGitPull}
-						disabled={runningGitAction === "pull"}
-						aria-label="Pull from upstream"
-					>
-						<span className="text-text-tertiary">{pullCount}</span>
-					</Button>
-				</Tooltip>
-				<Tooltip side="bottom" content={pushTooltip}>
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
-						onClick={onGitPush}
-						disabled={runningGitAction === "push"}
-						aria-label="Push to upstream"
-					>
-						<span className="text-text-tertiary">{pushCount}</span>
-					</Button>
-				</Tooltip>
-			</div>
-		</div>
-	);
-}
 
 /**
  * Bridge component that connects `useCardDetailLayout`'s reset callback to the
@@ -1765,91 +1674,22 @@ export default function App(): ReactElement {
 						onSelectAgent={handleSelectOnboardingAgent}
 					/>
 
-					<AlertDialog
+					<GitInitDialog
 						open={pendingGitInitializationPath !== null}
-						onOpenChange={(open) => {
-							if (!open) {
-								handleCancelInitializeGitProject();
-							}
+						path={pendingGitInitializationPath}
+						isInitializing={isInitializingGitProject}
+						onCancel={handleCancelInitializeGitProject}
+						onConfirm={() => {
+							void handleConfirmInitializeGitProject();
 						}}
-					>
-						<AlertDialogHeader>
-							<AlertDialogTitle>Initialize git repository?</AlertDialogTitle>
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							<AlertDialogDescription asChild>
-								<div className="flex flex-col gap-3">
-									<p>
-										Quarterdeck requires git to manage workspaces for tasks. This folder is not a git
-										repository yet.
-									</p>
-									{pendingGitInitializationPath ? (
-										<p className="font-mono text-xs text-text-secondary break-all">
-											{pendingGitInitializationPath}
-										</p>
-									) : null}
-									<p>If you cancel, the project will not be added.</p>
-								</div>
-							</AlertDialogDescription>
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<AlertDialogCancel asChild>
-								<Button
-									variant="default"
-									disabled={isInitializingGitProject}
-									onClick={handleCancelInitializeGitProject}
-								>
-									Cancel
-								</Button>
-							</AlertDialogCancel>
-							<AlertDialogAction asChild>
-								<Button
-									variant="primary"
-									disabled={isInitializingGitProject}
-									onClick={() => {
-										void handleConfirmInitializeGitProject();
-									}}
-								>
-									{isInitializingGitProject ? (
-										<>
-											<Spinner size={14} />
-											Initializing...
-										</>
-									) : (
-										"Initialize git"
-									)}
-								</Button>
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialog>
-
-					<AlertDialog
+					/>
+					<GitActionErrorDialog
 						open={gitActionError !== null}
-						onOpenChange={(open) => {
-							if (!open) {
-								clearGitActionError();
-							}
-						}}
-					>
-						<AlertDialogHeader>
-							<AlertDialogTitle>{gitActionErrorTitle}</AlertDialogTitle>
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							<p>{gitActionError?.message}</p>
-							{gitActionError?.output ? (
-								<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
-									{gitActionError.output}
-								</pre>
-							) : null}
-						</AlertDialogBody>
-						<AlertDialogFooter className="justify-end">
-							<AlertDialogAction asChild>
-								<Button variant="default" onClick={clearGitActionError}>
-									Close
-								</Button>
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialog>
+						title={gitActionErrorTitle}
+						message={gitActionError?.message ?? ""}
+						output={gitActionError?.output ?? null}
+						onClose={clearGitActionError}
+					/>
 				</div>
 			</LayoutCustomizationsProvider>
 		</CardActionsProvider>

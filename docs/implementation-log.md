@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Refactor: extract inline components from App.tsx (2026-04-11)
+
+`App.tsx` was 1857 lines. Three self-contained pieces were extracted into their own files following the existing dialog component pattern (`ClearTrashDialog`, `MigrateWorkingDirectoryDialog`, etc.):
+
+1. **`HomeBranchStatus`** → `web-ui/src/components/home-branch-status.tsx` (90 lines) — a standalone function component with zero closure over App state, pure props. Renders `GitBranchStatusControl` plus fetch/pull/push buttons with tooltips and spinners.
+
+2. **Git init confirmation dialog** → `web-ui/src/components/git-init-dialog.tsx` (72 lines) — the inline `AlertDialog` for "Initialize git repository?" that appeared when adding a non-git project.
+
+3. **Git action error dialog** → `web-ui/src/components/git-action-error-dialog.tsx` (54 lines) — the inline `AlertDialog` showing git action errors with optional command output.
+
+Stale imports removed from App.tsx: `ArrowDown`, `ArrowUp`, `CircleArrowDown` (lucide), `AlertDialog*` sub-imports, `Tooltip`, `GitBranchStatusControl`, `RuntimeGitSyncAction`, `RuntimeGitSyncSummary`. All moved to the new files. Import ordering adjusted to satisfy Biome's `organizeImports` rule.
+
+**Files touched**: `web-ui/src/App.tsx` (−179 lines), `web-ui/src/components/home-branch-status.tsx` (new), `web-ui/src/components/git-init-dialog.tsx` (new), `web-ui/src/components/git-action-error-dialog.tsx` (new).
+
 ## Fix: switching projects doesn't return to home view (2026-04-11)
 
 When switching projects while on the files or git main view with a task selected, the UI would land on the new project's files/git view instead of the kanban board. The task was correctly deselected (by `useDetailTaskNavigation` reacting to `currentProjectId` changing), but the auto-coupling in `useCardDetailLayout` only returns to home from the "terminal" view — files/git views are intentionally preserved on task deselect for same-project browsing.
