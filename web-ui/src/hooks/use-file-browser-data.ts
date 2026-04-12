@@ -5,6 +5,13 @@ import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 const FILE_LIST_POLL_INTERVAL_MS = 5_000;
 
+/** Module-level cache of the last viewed file per scope key (taskId or "home"). */
+const lastSelectedPathByScope = new Map<string, string>();
+
+function scopeKey(taskId: string | null): string {
+	return taskId ?? "__home__";
+}
+
 export interface UseFileBrowserDataResult {
 	files: string[] | null;
 	selectedPath: string | null;
@@ -31,6 +38,20 @@ export function useFileBrowserData(options: {
 	const { workspaceId, taskId, baseRef, ref: browseRef } = options;
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
+	// Wrap setSelectedPath to also persist in the module-level cache.
+	const setSelectedPathPersisted = useCallback(
+		(path: string | null) => {
+			setSelectedPath(path);
+			const key = scopeKey(taskId);
+			if (path) {
+				lastSelectedPathByScope.set(key, path);
+			} else {
+				lastSelectedPathByScope.delete(key);
+			}
+		},
+		[taskId],
+	);
+
 	const listFilesQueryFn = useCallback(async () => {
 		if (!workspaceId) {
 			throw new Error("Missing workspace.");
@@ -48,11 +69,19 @@ export function useFileBrowserData(options: {
 		queryFn: listFilesQueryFn,
 	});
 
-	// Clear selected file when the scope changes (different task, different ref, etc.)
-	// so the viewer doesn't show stale content from a previous scope.
+	// Restore last selected file when the scope changes, or clear if none was remembered.
 	useEffect(() => {
-		setSelectedPath(null);
-	}, [taskId, browseRef, workspaceId]);
+		const restored = lastSelectedPathByScope.get(scopeKey(taskId)) ?? null;
+		setSelectedPathPersisted(restored);
+	}, [taskId, browseRef, workspaceId, setSelectedPathPersisted]);
+
+	// Clear restored selection if the file no longer exists in the loaded file list.
+	const files = fileListQuery.data?.files;
+	useEffect(() => {
+		if (selectedPath && files && !files.includes(selectedPath)) {
+			setSelectedPathPersisted(null);
+		}
+	}, [selectedPath, files, setSelectedPathPersisted]);
 
 	// Poll for file list changes — but not in branch view mode (immutable tree)
 	const refetchRef = useRef(fileListQuery.refetch);
@@ -93,8 +122,8 @@ export function useFileBrowserData(options: {
 	}
 
 	const handleCloseFile = useCallback(() => {
-		setSelectedPath(null);
-	}, []);
+		setSelectedPathPersisted(null);
+	}, [setSelectedPathPersisted]);
 
 	const getFileContent = useCallback(
 		async (path: string): Promise<RuntimeFileContentResponse | null> => {
@@ -117,7 +146,7 @@ export function useFileBrowserData(options: {
 	return {
 		files: fileListQuery.data?.files ?? null,
 		selectedPath,
-		onSelectPath: setSelectedPath,
+		onSelectPath: setSelectedPathPersisted,
 		fileContent: fileContentQuery.data ?? null,
 		isContentLoading: fileContentQuery.isLoading,
 		isContentError: fileContentQuery.isError,

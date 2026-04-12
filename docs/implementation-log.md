@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## File browser UX — word wrap default + selection memory (2026-04-12)
+
+Two small UX improvements to the file browser:
+
+**Word wrap persistence**: The file content viewer's word wrap toggle was `useState(false)` — it defaulted to OFF and reset on every remount (switching views, switching tasks). Changed to use `useBooleanLocalStorageValue(LocalStorageKey.FileBrowserWordWrap, true)`, matching the existing pattern used by `use-task-editor.ts`, `project-navigation-panel.tsx`, and `use-startup-onboarding.ts`. Default is now ON, preference persists across sessions.
+
+**Per-task file selection memory**: Selecting a file in the file browser, switching to another task, and switching back previously cleared the selection (the scope-change effect called `setSelectedPath(null)`). Added a module-level `Map<string, string>` cache keyed by `scopeKey(taskId)` (or `"__home__"` for the home view). `setSelectedPathPersisted` wraps `setSelectedPath` to write to the cache on every selection. The scope-change effect now restores from the cache instead of clearing. A guard effect clears the selection if the file list loads and the cached path no longer exists (handles deleted/renamed files). All write paths to `selectedPath` go through `setSelectedPathPersisted` for consistency.
+
+**Files touched**: `web-ui/src/components/detail-panels/file-content-viewer.tsx`, `web-ui/src/hooks/use-file-browser-data.ts`, `web-ui/src/storage/local-storage-store.ts`.
+
 ## Terminal scrollback hardening — mirror scrollback elimination + cache fix (2026-04-12)
 
 The `scrollOnEraseInDisplay: false` fix stopped ED2-triggered scrollback pushes but duplication persisted in long-running agent sessions. Root cause: the server-side `TerminalStateMirror` still accumulated scrollback through normal terminal scrolling (output overflow during startup, content between session restarts), and `@xterm/addon-serialize` serialized all 10,000 lines by default — each browser reconnection received a snapshot bloated with stale content.

@@ -1,10 +1,12 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, FileText, WrapText, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { LocalStorageKey } from "@/storage/local-storage-store";
+import { useBooleanLocalStorageValue } from "@/utils/react-use";
 
 const LINE_HEIGHT = 20;
 
@@ -25,7 +27,9 @@ export function FileContentViewer({
 	filePath: string | null;
 	onClose?: () => void;
 }): React.ReactElement {
-	const [wordWrap, setWordWrap] = useState(false);
+	const [wordWrap, setWordWrap] = useBooleanLocalStorageValue(LocalStorageKey.FileBrowserWordWrap, true);
+	const toggleWordWrap = useCallback(() => setWordWrap((prev) => !prev), [setWordWrap]);
+
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
 	const lines = useMemo(() => {
@@ -129,7 +133,7 @@ export function FileContentViewer({
 				<Tooltip content={wordWrap ? "Disable word wrap" : "Enable word wrap"}>
 					<button
 						type="button"
-						onClick={() => setWordWrap((prev) => !prev)}
+						onClick={toggleWordWrap}
 						className={cn(
 							"shrink-0 p-0.5 rounded",
 							wordWrap ? "text-accent" : "text-text-tertiary hover:text-text-secondary",

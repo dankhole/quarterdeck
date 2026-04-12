@@ -24,6 +24,7 @@ export enum LocalStorageKey {
 	GitViewActiveTab = "quarterdeck.git-view-active-tab",
 	SidebarPinned = "quarterdeck.sidebar-pinned",
 	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
+	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

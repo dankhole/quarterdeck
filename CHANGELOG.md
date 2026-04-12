@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### File browser UX — word wrap default + selection memory
+
+- File content viewer now defaults to word wrap ON and persists the preference to localStorage via `useBooleanLocalStorageValue`. Previously reset to OFF on every remount.
+- File browser remembers the last selected file per task (and home view). Switching between tasks and back restores the previously viewed file instead of clearing the selection. Uses a module-level `Map` cache keyed by task ID. Stale entries are cleared automatically when the file no longer exists in the file list.
+
 ### Branch management — scoping, cleanup, and fixes
 
 - Expanded todo #5 (branch management in git view) with tiered operation breakdown: merge, create, delete, stash in tier 1; cherry-pick, rebase, rename, abort in tier 2; interactive rebase, tags, force push, revert in tier 3.
