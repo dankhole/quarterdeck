@@ -245,9 +245,11 @@ async function canReachQuarterdeckServer(workspaceId: string | null): Promise<bo
 async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
-		const { loadWorkspaceContext } = await import("./state/workspace-state.js");
-		const context = await loadWorkspaceContext(process.cwd());
-		workspaceId = context.workspaceId;
+		const { isUnderWorktreesHome, loadWorkspaceContext } = await import("./state/workspace-state.js");
+		if (!isUnderWorktreesHome(process.cwd())) {
+			const context = await loadWorkspaceContext(process.cwd());
+			workspaceId = context.workspaceId;
+		}
 	}
 	const running = await canReachQuarterdeckServer(workspaceId);
 	if (!running) {

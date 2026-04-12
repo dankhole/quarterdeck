@@ -176,6 +176,12 @@ export function getTaskWorktreesHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_DIR, RUNTIME_WORKTREES_DIR);
 }
 
+export function isUnderWorktreesHome(repoPath: string): boolean {
+	const worktreesHome = getTaskWorktreesHomePath();
+	const normalized = resolve(repoPath);
+	return normalized === worktreesHome || normalized.startsWith(`${worktreesHome}/`);
+}
+
 export function getWorkspacesRootPath(): string {
 	return join(getRuntimeHomePath(), WORKSPACES_DIR);
 }
@@ -386,6 +392,10 @@ function ensureWorkspaceEntry(
 	index: WorkspaceIndexFile,
 	repoPath: string,
 ): { index: WorkspaceIndexFile; entry: WorkspaceIndexEntry; changed: boolean } {
+	if (isUnderWorktreesHome(repoPath)) {
+		throw new Error(`Cannot add a Quarterdeck worktree as a project: ${repoPath}`);
+	}
+
 	const existingWorkspaceId = index.repoPathToId[repoPath];
 	if (existingWorkspaceId) {
 		const existingEntry = index.entries[existingWorkspaceId];

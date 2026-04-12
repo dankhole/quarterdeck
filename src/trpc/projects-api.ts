@@ -6,6 +6,7 @@ import type {
 } from "../core/api-contract";
 import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core/api-validation";
 import {
+	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
 	loadWorkspaceContextById,
@@ -71,6 +72,13 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			try {
 				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
 				await deps.assertPathIsDirectory(projectPath);
+				if (isUnderWorktreesHome(projectPath)) {
+					return {
+						ok: false,
+						project: null,
+						error: "This path is inside Quarterdeck's worktree directory and cannot be added as a project.",
+					} satisfies RuntimeProjectAddResponse;
+				}
 				if (!deps.hasGitRepository(projectPath)) {
 					if (!body.initializeGit) {
 						return {

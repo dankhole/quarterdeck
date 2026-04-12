@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: worktree incorrectly indexed as a project
+
+- Fixed a bug where a Quarterdeck-managed worktree (under `~/.quarterdeck/worktrees/`) could be registered as its own project in the project selector. This happened because worktrees are valid git repos, and the auto-registration paths (server startup, CLI commands) didn't distinguish them from real projects. Added `isUnderWorktreesHome` guard to prevent worktree paths from entering the workspace index, plus pruning logic to clean up any existing stale entries on the next client connection.
+
 ### Fix: stale branch label shown for detached HEAD worktrees
 
 - Fixed branch pills (top bar, detail view, board cards) showing a stale branch name when the worktree is in detached HEAD state. The `??` fallback chain fell through to the persisted `card.branch` value instead of the short commit hash. Now checks `isDetached` from workspace metadata and skips the stale fallback, showing the commit hash instead. The `card.branch` fallback is still used during initial load when workspace info hasn't arrived yet.

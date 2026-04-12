@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: worktree incorrectly indexed as a project (2026-04-12)
+
+A Quarterdeck-managed worktree showed up as its own project in the project tab after a reboot. Root cause: `createWorkspaceRegistry` calls `loadWorkspaceContext(deps.cwd)` on startup, which auto-creates a workspace index entry for any valid git repo. Worktrees under `~/.quarterdeck/worktrees/` are valid git repos (they have a `.git` pointer file), so they passed all existing checks.
+
+**Fix**: Added `isUnderWorktreesHome(repoPath)` helper that checks if a resolved path is under the worktrees home directory. Applied at four levels:
+1. `ensureWorkspaceEntry` — throws if a worktree path reaches the index write path (lowest-level guard)
+2. `createWorkspaceRegistry` — skips CWD auto-registration at startup if launched from a worktree
+3. `resolveWorkspaceForStream` — prunes any existing worktree entries from the index on client connect (self-healing)
+4. `addProject` — returns a user-friendly error if someone tries to add a worktree via the UI
+
+Also fixed an unguarded caller in `cli.ts` (`tryOpenExistingServer`) that would have thrown an unhandled error if Quarterdeck was launched from a worktree directory while a server was already running.
+
+**Files touched**: `src/state/workspace-state.ts`, `src/server/workspace-registry.ts`, `src/trpc/projects-api.ts`, `src/cli.ts`.
+
 ## Fix: stale branch label for detached HEAD worktrees (2026-04-12)
 
 Three rendering sites (`App.tsx` top bar, `card-detail-view.tsx` detail pill, `board-card.tsx` card label) all used a `workspaceInfo?.branch ?? card.branch ?? headCommit` fallback chain to determine the displayed branch. When a worktree is in detached HEAD state, `workspaceInfo.branch` is `null`, so `??` fell through to the stale `card.branch` — whatever branch the card was last on, not the current state.
