@@ -47,6 +47,7 @@ export interface AgentTerminalPanelProps {
 	onRestart?: () => void;
 	onExit?: (taskId: string, exitCode: number | null) => void;
 	chatViewEnabled?: boolean;
+	scrollOnEraseInDisplay?: boolean;
 }
 
 function AgentTerminalPanelLayout({
@@ -288,6 +289,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		sessionStartedAt: props.summary?.startedAt ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
+		scrollOnEraseInDisplay: props.scrollOnEraseInDisplay,
 	});
 
 	const chatViewEnabled = props.chatViewEnabled ?? false;

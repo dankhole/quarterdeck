@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: agent terminal scrollback filled with duplicate conversation copies (2026-04-11)
+
+Scrolling up in an agent terminal showed the same conversation repeated many times at different column widths. Three prior fixes (resize dedup in `c06983c0`, buffer-read switch in `044d3e1f`, viewport-only reads in `0f368f54`) targeted symptoms without addressing the root cause.
+
+**Root cause**: `scrollOnEraseInDisplay: true` in `terminal-options.ts` told xterm.js to push the viewport into scrollback every time an ED2 (erase-in-display) sequence arrived. Claude Code is a full-screen TUI that redraws constantly — status bar updates, tool call transitions, prompt redraws — each sending ED2. This accumulated hundreds of copies of the conversation in scrollback. Different-width copies appeared because the terminal has 5 resize trigger paths (mount, ResizeObserver, DPR change, state transition, restore), 3 of which reset the resize dedup, causing agent redraws at intermediate column widths.
+
+**Fix**: Made `scrollOnEraseInDisplay` configurable per-terminal via an optional boolean (default `true`) threaded through the existing options chain: `createQuarterdeckTerminalOptions` → `PersistentTerminal` constructor → `ensurePersistentTerminal` → `usePersistentTerminalSession` → `AgentTerminalPanel`. Agent terminal call sites (task detail view and home sidebar agent) pass `false`. Shell terminal call sites (home shell and detail shell) omit it, getting the default `true` which preserves the `clear`-pushes-to-scrollback behavior that interactive shells expect.
+
+The prior fixes remain in place and are still valid — resize dedup prevents unnecessary SIGWINCH, and viewport-only buffer reads are correct for the chat view — but they are no longer load-bearing for the duplicate scrollback problem.
+
+**Files touched**: `web-ui/src/terminal/terminal-options.ts` (parameterized option), `web-ui/src/terminal/persistent-terminal-manager.ts` (interface + constructor + factory), `web-ui/src/terminal/use-persistent-terminal-session.ts` (hook input + passthrough + dep array), `web-ui/src/components/detail-panels/agent-terminal-panel.tsx` (prop + passthrough), `web-ui/src/components/card-detail-view.tsx` (agent terminal passes `false`), `web-ui/src/hooks/use-home-sidebar-agent-panel.tsx` (home agent passes `false`).
+
 ## Debug log panel is resizable (2026-04-11)
 
 Added drag-to-resize to the debug log panel. The panel previously had a fixed `w-[420px]` Tailwind class. Now uses a dynamic `style={{ width: panelWidth }}` driven by `useResizeDrag` + `ResizeHandle` — the same infrastructure used by the git history and card detail panels.

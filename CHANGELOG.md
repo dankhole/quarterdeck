@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: agent terminal scrollback filled with duplicate conversation copies
+
+- Agent terminals (Claude Code) no longer accumulate hundreds of duplicate screen copies in scrollback. The root cause was `scrollOnEraseInDisplay: true` — an xterm.js setting inherited from upstream kanban that pushes the viewport into scrollback on every ED2 clear-screen sequence. Full-screen TUI agents redraw constantly, filling the 10,000-line scrollback with repeated copies at varying column widths. Now configurable per-terminal: agent terminals use `false` (erase in place), shell terminals keep `true` (preserving `clear` command behavior).
+
 ### Debug log panel is resizable
 
 - The debug log panel can now be drag-resized horizontally via a handle on its left edge. Width is clamped between 280px and 800px, persisted to localStorage, and included in the "Reset Layout" action. Uses the same `ResizeHandle` / `useResizeDrag` infrastructure as other resizable panels.

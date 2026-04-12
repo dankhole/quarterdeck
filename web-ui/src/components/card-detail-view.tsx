@@ -453,6 +453,7 @@ export function CardDetailView({
 									terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 									taskColumnId={selection.column.id}
 									chatViewEnabled={chatViewEnabled}
+									scrollOnEraseInDisplay={false}
 								/>
 							</div>
 						</div>

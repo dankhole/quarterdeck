@@ -55,6 +55,7 @@ interface MountPersistentTerminalOptions {
 interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	taskId: string;
 	workspaceId: string;
+	scrollOnEraseInDisplay?: boolean;
 }
 
 function generateTerminalClientId(): string {
@@ -180,6 +181,7 @@ class PersistentTerminal {
 		private readonly taskId: string,
 		private readonly workspaceId: string,
 		appearance: PersistentTerminalAppearance,
+		scrollOnEraseInDisplay = true,
 	) {
 		this.appearance = appearance;
 		this.parkingRoot = getParkingRoot();
@@ -196,6 +198,7 @@ class PersistentTerminal {
 				cursorColor: this.appearance.cursorColor,
 				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
+				scrollOnEraseInDisplay,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
 			}),
 			cols: initialGeometry.cols,
@@ -875,10 +878,12 @@ export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): 
 	const key = buildKey(input.workspaceId, input.taskId);
 	let terminal = terminals.get(key);
 	if (!terminal) {
-		terminal = new PersistentTerminal(input.taskId, input.workspaceId, {
-			cursorColor: input.cursorColor,
-			terminalBackgroundColor: input.terminalBackgroundColor,
-		});
+		terminal = new PersistentTerminal(
+			input.taskId,
+			input.workspaceId,
+			{ cursorColor: input.cursorColor, terminalBackgroundColor: input.terminalBackgroundColor },
+			input.scrollOnEraseInDisplay,
+		);
 		terminals.set(key, terminal);
 		return terminal;
 	}
