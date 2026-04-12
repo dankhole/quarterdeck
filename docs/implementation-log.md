@@ -4,6 +4,19 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Terminal scrollback hardening — mirror scrollback elimination + cache fix (2026-04-12)
+
+The `scrollOnEraseInDisplay: false` fix stopped ED2-triggered scrollback pushes but duplication persisted in long-running agent sessions. Root cause: the server-side `TerminalStateMirror` still accumulated scrollback through normal terminal scrolling (output overflow during startup, content between session restarts), and `@xterm/addon-serialize` serialized all 10,000 lines by default — each browser reconnection received a snapshot bloated with stale content.
+
+**Three-layer fix**:
+1. Set `scrollback: 0` on `TerminalStateMirror` for agent sessions — the mirror can't accumulate scrollback at all, and snapshots contain only the viewport.
+2. Pass `scrollback: 0` to `serializeAddon.serialize()` — belt-and-suspenders ensuring snapshots never include stale scrollback.
+3. Added `setScrollOnEraseInDisplay()` method on `PersistentTerminal`, applied on every `ensurePersistentTerminal` cache hit (not just at construction). Previously, if `useChatOutput` created the terminal first without passing the option, the cached instance kept the default `true` forever. Also threaded `scrollOnEraseInDisplay` through `useChatOutput` so both hooks in `AgentTerminalPanel` pass the same value.
+
+**Full pipeline audit** confirmed clean: alt screen handling, output filtering, session reconciliation, multiple viewers, home sidebar agent terminals, auto-restart mirror lifecycle, and IO/restore ordering all verified. Documentation updated with debugging guide.
+
+**Files touched**: `src/terminal/terminal-state-mirror.ts`, `src/terminal/session-manager.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/hooks/use-chat-output.ts`, `web-ui/src/components/detail-panels/agent-terminal-panel.tsx`, `docs/terminal-scrollback-investigation.md`.
+
 ## Branch management — scoping, cleanup, and fixes (2026-04-12)
 
 **Todo #5 expansion**: Replaced the vague "add merge operations and conflict handling" description with a tiered breakdown of all branch operations worth supporting. Tier 1 (merge, create, delete, stash), tier 2 (cherry-pick, rebase, rename, abort), tier 3 (interactive rebase, tags, force push, revert). Also documented done items and UI surface areas.

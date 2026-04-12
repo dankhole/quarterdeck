@@ -1,8 +1,7 @@
 # Terminal Scrollback Investigation
 
 **Date**: 2026-04-11
-**Status**: Fixed (pending browser verification)
-**Commits**: `2a6b9cc2`, `ad3da11f`
+**Status**: Fixed
 
 ## Problem
 
@@ -38,7 +37,7 @@ xterm.js supports alternate screen buffers too, but `scrollOnEraseInDisplay: tru
 
 ## Fix Applied
 
-### 1. Per-terminal `scrollOnEraseInDisplay` (commit `2a6b9cc2`)
+### 1. Per-terminal `scrollOnEraseInDisplay`
 
 Made the setting configurable per-terminal. Threaded as an optional boolean (default `true`) through:
 
@@ -52,13 +51,23 @@ ensurePersistentTerminal → usePersistentTerminalSession → AgentTerminalPanel
 
 Shell terminals keep `true` because the `clear` command uses ED2 and users expect it to preserve output in scrollback (same as Ghostty/iTerm2).
 
-### 2. Server-side mirror + epoch resize dedup (commit `ad3da11f`)
+### 2. Server-side mirror + epoch resize dedup
 
 - Added `scrollOnEraseInDisplay` option to `TerminalStateMirror`, set to `false` for agent sessions in `session-manager.ts`
 - Replaced 3 manual resize dedup resets (`lastSentCols = 0; lastSentRows = 0`) with epoch-based invalidation:
   - `resizeEpoch` counter bumped by `invalidateResize()` on lifecycle events
   - `requestResize()` sends unconditionally when epoch is unsatisfied
   - Added `invalidateResize()` at IO socket open (gap: reconnected socket lost server dimensions)
+
+### 3. Mirror scrollback elimination + cache hardening
+
+`scrollOnEraseInDisplay: false` prevented ED2-triggered scrollback pushes, but the mirror's headless terminal could still accumulate scrollback through normal scrolling (output overflow during startup, content between session restarts). The `@xterm/addon-serialize` default serializes ALL scrollback — so each browser reconnection received a snapshot bloated with accumulated content.
+
+Fixes:
+- Set `scrollback: 0` on `TerminalStateMirror` for agent sessions (prevents mirror accumulation at the source)
+- Pass `scrollback: 0` to `serializeAddon.serialize()` (belt-and-suspenders — snapshots never include stale scrollback)
+- Added `setScrollOnEraseInDisplay()` method on `PersistentTerminal` — applied on every `ensurePersistentTerminal` cache hit, not just at construction. Previously, if `useChatOutput` created the terminal first without passing the option, the cached instance kept the default `true` forever.
+- Threaded `scrollOnEraseInDisplay` through `useChatOutput` → `ensurePersistentTerminal` so both hooks pass the same value
 
 ## Prior Band-Aid Fixes (still in place, no longer load-bearing)
 
@@ -101,7 +110,8 @@ Shell terminals keep `true` because the `clear` command uses ED2 and users expec
 
 ## If the Problem Returns
 
-1. **Check restore snapshots first.** The server mirror is the most likely source of stale duplicate content. Verify `scrollOnEraseInDisplay: false` is being passed at the `new TerminalStateMirror()` call site for agent sessions.
+1. **Check restore snapshots first.** The server mirror is the most likely source of stale duplicate content. Verify `scrollOnEraseInDisplay: false` AND `scrollback: 0` are being passed at the `new TerminalStateMirror()` call site for agent sessions.
 2. **Check for new resize trigger paths.** If a new lifecycle event needs to send dimensions, it should call `invalidateResize()` (or `forceResize()`), not manually zero the tracking fields.
-3. **Check cached terminals.** `ensurePersistentTerminal` returns cached instances. `scrollOnEraseInDisplay` is set at construction time. If a terminal is somehow cached with the wrong value, it persists until the page is reloaded.
-4. **`scrollOnEraseInDisplay` is mutable post-construction** on xterm.js (`terminal.options.scrollOnEraseInDisplay = value`). If the cached terminal issue becomes a real problem, the option can be re-applied on cache hits like `setAppearance` does for theme colors.
+3. **Check cached terminals.** `ensurePersistentTerminal` now applies `scrollOnEraseInDisplay` on every call (not just creation). But any new `ensurePersistentTerminal` caller for agent terminals must pass `scrollOnEraseInDisplay: false` explicitly — the default is `true`.
+4. **Check the IO/restore ordering.** The server gates live output delivery until the browser acknowledges `restore_complete`. If a new code path bypasses this gate, the browser could receive overlapping snapshot + live data. The browser-side IO handler deliberately does NOT gate on `restoreCompleted` — see the comment in `connectIo()`.
+5. **Full pipeline audit completed.** Alt screen handling, output filtering, session reconciliation, multiple viewers, home sidebar agents, and auto-restart mirror lifecycle were all verified clean. If duplication returns, it's likely a new code path rather than a missed existing one.

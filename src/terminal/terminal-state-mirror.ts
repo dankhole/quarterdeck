@@ -15,6 +15,12 @@ export interface TerminalRestoreSnapshot {
 interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
 	scrollOnEraseInDisplay?: boolean;
+	/**
+	 * Set to 0 for TUI agent sessions. The mirror only needs the viewport —
+	 * TUI agents manage their own scrolling internally and any mirror-side
+	 * scrollback just bloats restore snapshots with duplicate content.
+	 */
+	scrollback?: number;
 }
 
 export class TerminalStateMirror {
@@ -23,12 +29,16 @@ export class TerminalStateMirror {
 	private operationQueue: Promise<void> = Promise.resolve();
 	private disposed = false;
 
+	private readonly snapshotScrollback: number;
+
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
+		const scrollback = options.scrollback ?? TERMINAL_SCROLLBACK;
+		this.snapshotScrollback = scrollback;
 		this.terminal = new Terminal({
 			allowProposedApi: true,
 			cols,
 			rows,
-			scrollback: TERMINAL_SCROLLBACK,
+			scrollback,
 			scrollOnEraseInDisplay: options.scrollOnEraseInDisplay ?? true,
 		});
 		this.terminal.loadAddon(this.serializeAddon);
@@ -66,7 +76,7 @@ export class TerminalStateMirror {
 			return null;
 		}
 		return {
-			snapshot: this.serializeAddon.serialize(),
+			snapshot: this.serializeAddon.serialize({ scrollback: this.snapshotScrollback }),
 			cols: this.terminal.cols,
 			rows: this.terminal.rows,
 		};

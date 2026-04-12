@@ -10,6 +10,7 @@ interface UseChatOutputInput {
 	enabled: boolean;
 	terminalBackgroundColor: string;
 	cursorColor: string;
+	scrollOnEraseInDisplay?: boolean;
 }
 
 export interface UseChatOutputResult {
@@ -33,6 +34,7 @@ export function useChatOutput({
 	enabled,
 	terminalBackgroundColor,
 	cursorColor,
+	scrollOnEraseInDisplay,
 }: UseChatOutputInput): UseChatOutputResult {
 	const [lines, setLines] = useState<string[]>([]);
 	const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,6 +66,7 @@ export function useChatOutput({
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
+			scrollOnEraseInDisplay,
 		});
 		terminalRef.current = terminal;
 
@@ -84,7 +87,7 @@ export function useChatOutput({
 				snapshotTimerRef.current = null;
 			}
 		};
-	}, [cursorColor, enabled, scheduleSnapshot, taskId, terminalBackgroundColor, workspaceId]);
+	}, [cursorColor, enabled, scheduleSnapshot, scrollOnEraseInDisplay, taskId, terminalBackgroundColor, workspaceId]);
 
 	const clear = useCallback(() => {
 		setLines([]);

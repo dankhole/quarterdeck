@@ -34,6 +34,8 @@
 
 - Agent terminals (Claude Code) no longer accumulate hundreds of duplicate screen copies in scrollback. The root cause was `scrollOnEraseInDisplay: true` — an xterm.js setting inherited from upstream kanban that pushes the viewport into scrollback on every ED2 clear-screen sequence. Full-screen TUI agents redraw constantly, filling the 10,000-line scrollback with repeated copies at varying column widths. Now configurable per-terminal: agent terminals use `false` (erase in place), shell terminals keep `true` (preserving `clear` command behavior). Applied on both the browser-side xterm.js terminal and the server-side `TerminalStateMirror` so restore snapshots don't reintroduce duplicate scrollback on connect/reconnect.
 - Terminal resize dedup replaced with epoch-based invalidation — lifecycle events bump a counter instead of manually zeroing `lastSentCols`/`lastSentRows` in 3 separate locations. Self-documenting, scales to new lifecycle edge cases without adding more manual resets.
+- Server-side mirror now uses `scrollback: 0` for agent sessions — the mirror only needs the viewport for TUI agents, and any accumulated scrollback bloated restore snapshots with stale content. Serialize calls also pass `scrollback: 0` as belt-and-suspenders.
+- `ensurePersistentTerminal` now applies `scrollOnEraseInDisplay` on every cache hit (not just terminal creation), preventing stale options when hook ordering changes. `useChatOutput` threads the option through to match `usePersistentTerminalSession`.
 
 ### Debug log panel is resizable
 

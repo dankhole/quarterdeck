@@ -467,6 +467,9 @@ class PersistentTerminal {
 		}
 		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		ioSocket.binaryType = "arraybuffer";
+		// No browser-side restoreCompleted gate needed here — the server buffers output
+		// in pendingOutputChunks until restore_complete is acknowledged, so IO data only
+		// arrives after the restore snapshot has been applied. See ws-server.ts onOutput.
 		ioSocket.addEventListener("message", (event) => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
@@ -638,6 +641,10 @@ class PersistentTerminal {
 		this.terminal.options.fontWeight = weight;
 	}
 
+	setScrollOnEraseInDisplay(value: boolean): void {
+		this.terminal.options.scrollOnEraseInDisplay = value;
+	}
+
 	setWebGLRenderer(enabled: boolean): void {
 		if (enabled && !this.webglAddon) {
 			this.attachWebglAddon();
@@ -651,10 +658,9 @@ class PersistentTerminal {
 	 * Read the current viewport content as an array of lines.
 	 *
 	 * Only reads the viewport (baseY → baseY + rows), not the scrollback
-	 * history. TUI agents like Claude Code clear and redraw the screen
-	 * frequently, and with scrollOnEraseInDisplay the old viewport gets
-	 * pushed into scrollback each time — reading the full buffer would
-	 * return many duplicate copies of the conversation.
+	 * history. TUI agents like Claude Code manage their own display within
+	 * the viewport — the scrollback is either empty or contains stale content
+	 * from session startup/restarts.
 	 */
 	readBufferLines(): string[] {
 		const buffer = this.terminal.buffer.active;
@@ -909,6 +915,9 @@ export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): 
 		cursorColor: input.cursorColor,
 		terminalBackgroundColor: input.terminalBackgroundColor,
 	});
+	if (input.scrollOnEraseInDisplay !== undefined) {
+		terminal.setScrollOnEraseInDisplay(input.scrollOnEraseInDisplay);
+	}
 	return terminal;
 }
 

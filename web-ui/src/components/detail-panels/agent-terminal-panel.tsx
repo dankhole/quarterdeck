@@ -299,6 +299,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		enabled: (props.terminalEnabled ?? true) && chatViewEnabled,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
+		scrollOnEraseInDisplay: props.scrollOnEraseInDisplay,
 	});
 
 	return (
