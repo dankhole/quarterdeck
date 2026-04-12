@@ -1,4 +1,9 @@
-import type { RuntimeBoardColumnId, RuntimeTaskAutoReviewMode, RuntimeTaskImage } from "@/runtime/types";
+import type {
+	RuntimeBoardColumnId,
+	RuntimeConflictState,
+	RuntimeTaskAutoReviewMode,
+	RuntimeTaskImage,
+} from "@/runtime/types";
 
 export type BoardColumnId = RuntimeBoardColumnId;
 
@@ -61,6 +66,7 @@ export interface ReviewTaskWorkspaceSnapshot {
 	deletions: number | null;
 	hasUnmergedChanges: boolean | null;
 	behindBaseCount: number | null;
+	conflictState: RuntimeConflictState | null;
 }
 
 export interface CardSelection {

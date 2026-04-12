@@ -59,6 +59,7 @@ function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
 	if (kind === "D") return "deleted";
 	if (kind === "R") return "renamed";
 	if (kind === "C") return "copied";
+	if (kind === "U") return "conflicted";
 	return "unknown";
 }
 

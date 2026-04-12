@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type {
+	RuntimeConflictState,
 	RuntimeGitSyncSummary,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeTaskWorkspaceMetadata,
@@ -29,12 +30,20 @@ const workspaceMetadataState: WorkspaceMetadataState = {
 	taskWorkspaceStateVersionByTaskId: {},
 };
 
+let homeConflictState: RuntimeConflictState | null = null;
 const homeGitSummaryListeners = new Set<StoreListener>();
+const homeConflictStateListeners = new Set<StoreListener>();
 const taskMetadataListenersByTaskId = new Map<string, Set<StoreListener>>();
 const anyTaskMetadataListeners = new Set<TaskMetadataListener>();
 
 function emitHomeGitSummary(): void {
 	for (const listener of homeGitSummaryListeners) {
+		listener();
+	}
+}
+
+function emitHomeConflictState(): void {
+	for (const listener of homeConflictStateListeners) {
 		listener();
 	}
 }
@@ -75,6 +84,7 @@ function toTaskWorkspaceSnapshot(metadata: RuntimeTaskWorkspaceMetadata): Review
 		deletions: metadata.deletions,
 		hasUnmergedChanges: metadata.hasUnmergedChanges,
 		behindBaseCount: metadata.behindBaseCount,
+		conflictState: metadata.conflictState ?? null,
 	};
 }
 
@@ -133,6 +143,23 @@ function areTaskWorkspaceInfosEqual(
 	);
 }
 
+function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConflictState | null): boolean {
+	if (a === b) {
+		return true;
+	}
+	if (!a || !b) {
+		return false;
+	}
+	return (
+		a.operation === b.operation &&
+		a.currentStep === b.currentStep &&
+		a.totalSteps === b.totalSteps &&
+		a.sourceBranch === b.sourceBranch &&
+		a.conflictedFiles.length === b.conflictedFiles.length &&
+		a.conflictedFiles.every((f, i) => f === b.conflictedFiles[i])
+	);
+}
+
 function areTaskWorkspaceSnapshotsEqual(
 	a: ReviewTaskWorkspaceSnapshot | null,
 	b: ReviewTaskWorkspaceSnapshot | null,
@@ -153,7 +180,8 @@ function areTaskWorkspaceSnapshotsEqual(
 		a.additions === b.additions &&
 		a.deletions === b.deletions &&
 		a.hasUnmergedChanges === b.hasUnmergedChanges &&
-		a.behindBaseCount === b.behindBaseCount
+		a.behindBaseCount === b.behindBaseCount &&
+		areConflictStatesEqual(a.conflictState, b.conflictState)
 	);
 }
 
@@ -314,7 +342,9 @@ export function resetWorkspaceMetadataStore(): void {
 	workspaceMetadataState.taskWorkspaceInfoByTaskId = {};
 	workspaceMetadataState.taskWorkspaceSnapshotByTaskId = {};
 	workspaceMetadataState.taskWorkspaceStateVersionByTaskId = {};
+	homeConflictState = null;
 	emitHomeGitSummary();
+	emitHomeConflictState();
 	for (const taskId of taskIds) {
 		emitTaskMetadata(taskId);
 	}
@@ -322,6 +352,12 @@ export function resetWorkspaceMetadataStore(): void {
 
 export function replaceWorkspaceMetadata(metadata: RuntimeWorkspaceMetadata | null): void {
 	setHomeGitMetadata(metadata?.homeGitSummary ?? null, metadata?.homeGitStateVersion ?? 0);
+
+	const nextHomeConflictState = metadata?.homeConflictState ?? null;
+	if (!areConflictStatesEqual(homeConflictState, nextHomeConflictState)) {
+		homeConflictState = nextHomeConflictState;
+		emitHomeConflictState();
+	}
 
 	const nextTaskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorkspaceInfoResponse | null> = {};
 	const nextTaskWorkspaceSnapshotByTaskId: Record<string, ReviewTaskWorkspaceSnapshot | null> = {};
@@ -443,5 +479,38 @@ export function useTaskWorkspaceStateVersionValue(taskId: string | null | undefi
 		},
 		() => workspaceMetadataState.taskWorkspaceStateVersionByTaskId[normalizedTaskId] ?? 0,
 		() => 0,
+	);
+}
+
+export function useConflictState(taskId: string | null): RuntimeConflictState | null {
+	const normalizedTaskId = taskId?.trim() ?? "";
+	return useSyncExternalStore(
+		(listener) => {
+			if (!normalizedTaskId) {
+				return () => {};
+			}
+			return subscribeToTaskId(normalizedTaskId, listener);
+		},
+		() => {
+			if (!normalizedTaskId) {
+				return null;
+			}
+			const snapshot = workspaceMetadataState.taskWorkspaceSnapshotByTaskId[normalizedTaskId];
+			return snapshot?.conflictState ?? null;
+		},
+		() => null,
+	);
+}
+
+export function useHomeConflictState(): RuntimeConflictState | null {
+	return useSyncExternalStore(
+		(listener) => {
+			homeConflictStateListeners.add(listener);
+			return () => {
+				homeConflictStateListeners.delete(listener);
+			};
+		},
+		() => homeConflictState,
+		() => null,
 	);
 }

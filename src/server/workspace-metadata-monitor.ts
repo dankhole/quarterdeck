@@ -2,11 +2,17 @@ import pLimit from "p-limit";
 
 import type {
 	RuntimeBoardData,
+	RuntimeConflictState,
 	RuntimeGitSyncSummary,
 	RuntimeTaskWorkspaceMetadata,
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
-import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
+import {
+	detectActiveConflict,
+	getConflictedFiles,
+	getGitSyncSummary,
+	probeGitWorkspaceState,
+} from "../workspace/git-sync";
 import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
@@ -26,6 +32,7 @@ interface TrackedTaskWorkspace {
 
 interface CachedHomeGitMetadata {
 	summary: RuntimeGitSyncSummary | null;
+	conflictState: RuntimeConflictState | null;
 	stateToken: string | null;
 	stateVersion: number;
 }
@@ -112,6 +119,19 @@ function areGitSummariesEqual(a: RuntimeGitSyncSummary | null, b: RuntimeGitSync
 	);
 }
 
+function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConflictState | null): boolean {
+	if (a === b) return true;
+	if (!a || !b) return false;
+	return (
+		a.operation === b.operation &&
+		a.sourceBranch === b.sourceBranch &&
+		a.currentStep === b.currentStep &&
+		a.totalSteps === b.totalSteps &&
+		a.conflictedFiles.length === b.conflictedFiles.length &&
+		a.conflictedFiles.every((file, i) => file === b.conflictedFiles[i])
+	);
+}
+
 function areTaskMetadataEqual(a: RuntimeTaskWorkspaceMetadata, b: RuntimeTaskWorkspaceMetadata): boolean {
 	return (
 		a.taskId === b.taskId &&
@@ -126,6 +146,7 @@ function areTaskMetadataEqual(a: RuntimeTaskWorkspaceMetadata, b: RuntimeTaskWor
 		a.deletions === b.deletions &&
 		a.hasUnmergedChanges === b.hasUnmergedChanges &&
 		a.behindBaseCount === b.behindBaseCount &&
+		areConflictStatesEqual(a.conflictState ?? null, b.conflictState ?? null) &&
 		a.stateVersion === b.stateVersion
 	);
 }
@@ -135,6 +156,9 @@ function areWorkspaceMetadataEqual(a: RuntimeWorkspaceMetadata, b: RuntimeWorksp
 		return false;
 	}
 	if (a.homeGitStateVersion !== b.homeGitStateVersion) {
+		return false;
+	}
+	if (!areConflictStatesEqual(a.homeConflictState ?? null, b.homeConflictState ?? null)) {
 		return false;
 	}
 	if (a.taskWorkspaces.length !== b.taskWorkspaces.length) {
@@ -154,6 +178,7 @@ function createEmptyWorkspaceMetadata(): RuntimeWorkspaceMetadata {
 	return {
 		homeGitSummary: null,
 		homeGitStateVersion: 0,
+		homeConflictState: null,
 		taskWorkspaces: [],
 	};
 }
@@ -170,6 +195,7 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 		refreshPromise: null,
 		homeGit: {
 			summary: null,
+			conflictState: null,
 			stateToken: null,
 			stateVersion: 0,
 		},
@@ -182,6 +208,7 @@ function buildWorkspaceMetadataSnapshot(entry: WorkspaceMetadataEntry): RuntimeW
 	return {
 		homeGitSummary: entry.homeGit.summary,
 		homeGitStateVersion: entry.homeGit.stateVersion,
+		homeConflictState: entry.homeGit.conflictState,
 		taskWorkspaces: entry.trackedTasks
 			.map((task) => entry.taskMetadataByTaskId.get(task.taskId)?.data ?? null)
 			.filter((task): task is RuntimeTaskWorkspaceMetadata => task !== null),
@@ -195,8 +222,21 @@ async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<Cache
 			return entry.homeGit;
 		}
 		const summary = await getGitSyncSummary(entry.workspacePath, { probe });
+		const detected = await detectActiveConflict(entry.workspacePath);
+		let conflictState: RuntimeConflictState | null = null;
+		if (detected) {
+			const conflictedFiles = await getConflictedFiles(entry.workspacePath);
+			conflictState = {
+				operation: detected.operation,
+				sourceBranch: detected.sourceBranch,
+				currentStep: detected.currentStep,
+				totalSteps: detected.totalSteps,
+				conflictedFiles,
+			};
+		}
 		return {
 			summary,
+			conflictState,
 			stateToken: probe.stateToken,
 			stateVersion: Date.now(),
 		};
@@ -252,6 +292,7 @@ async function loadTaskWorkspaceMetadata(
 				deletions: null,
 				hasUnmergedChanges: null,
 				behindBaseCount: null,
+				conflictState: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
@@ -285,6 +326,18 @@ async function loadTaskWorkspaceMetadata(
 			runGit(pathInfo.path, ["--no-optional-locks", "diff", "--quiet", pathInfo.baseRef, "HEAD"]),
 			getCommitsBehindBase(pathInfo.path, pathInfo.baseRef),
 		]);
+		const detected = await detectActiveConflict(pathInfo.path);
+		let conflictState: RuntimeConflictState | null = null;
+		if (detected) {
+			const conflictedFiles = await getConflictedFiles(pathInfo.path);
+			conflictState = {
+				operation: detected.operation,
+				sourceBranch: detected.sourceBranch,
+				currentStep: detected.currentStep,
+				totalSteps: detected.totalSteps,
+				conflictedFiles,
+			};
+		}
 		return {
 			data: {
 				taskId: task.taskId,
@@ -304,6 +357,7 @@ async function loadTaskWorkspaceMetadata(
 							? treeDiffResult.exitCode !== 0 // suppress when trees are identical (already landed)
 							: null,
 				behindBaseCount: behindBase?.behindCount ?? null,
+				conflictState,
 				stateVersion: Date.now(),
 			},
 			stateToken: probe.stateToken,
@@ -328,6 +382,7 @@ async function loadTaskWorkspaceMetadata(
 				deletions: null,
 				hasUnmergedChanges: null,
 				behindBaseCount: null,
+				conflictState: null,
 				stateVersion: Date.now(),
 			},
 			stateToken: null,

@@ -321,6 +321,10 @@ export default function App(): ReactElement {
 		[currentProjectId, refreshRuntimeProjectConfig],
 	);
 
+	// Ref-based callback: setMainView is declared later (useCardDetailLayout), but
+	// onConflictDetected fires asynchronously from a mutation, never during render.
+	const navigateToGitViewRef = useRef<(() => void) | null>(null);
+
 	const homeBranchActions = useBranchActions({
 		workspaceId: currentProjectId,
 		board,
@@ -329,6 +333,7 @@ export default function App(): ReactElement {
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
 		onCheckoutSuccess: homeReturnToContextual,
+		onConflictDetected: () => navigateToGitViewRef.current?.(),
 	});
 
 	// Top-bar branch pill — separate hook instance so its popover/dialog state is independent.
@@ -934,6 +939,9 @@ export default function App(): ReactElement {
 		selectedTaskId,
 		isProjectSwitching,
 	});
+
+	// Wire the conflict navigation ref now that setMainView is available.
+	navigateToGitViewRef.current = () => setMainView("git", { setSelectedTaskId });
 
 	const handleMainViewChange = useCallback(
 		(view: MainViewId) => {

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Feat: merge/rebase conflict resolution
+
+- When a merge produces conflicts, the operation now pauses instead of auto-aborting. GitView shows a conflict resolution panel with a file list, ours-vs-theirs diff previews (via git index stages 2 and 3), and per-file actions: Accept Ours, Accept Theirs, or Resolve Manually (with terminal instructions). Progress tracking shows resolved/total files. "Complete" button creates the merge commit; "Abort" button restores pre-merge state. Rebase conflicts follow the same flow with multi-round support — continuing after resolving one commit may surface new conflicts from the next.
+- Conflict detection integrated into metadata polling — reopening Quarterdeck while a merge/rebase is in progress immediately shows the conflict panel. Works for both home repo and task worktrees (uses `git rev-parse --git-dir` for worktree-safe directory resolution).
+- New tRPC endpoints: `getConflictFiles`, `resolveConflictFile`, `continueConflictResolution`, `abortConflictResolution`.
+- "Conflicted" file status badge (orange `!`) in file tree and commit panels.
+- On conflict detection, toast navigates user to the Git view.
+- 43 new tests: 16 unit (real git repos), 5 integration (end-to-end flows), 6 tRPC (mocked), 16 UI (hook + panel).
+
 ### Refactor: consolidate settings dialog form state into useSettingsForm hook
 
 - Replaced 26 individual `useState` hooks, a 140-line dirty-check `useMemo`, an 80-line reset `useEffect`, and a 27-field manual save payload in the settings dialog with a single `useSettingsForm` hook (175 lines). Adding a new config field now requires 2 lines in the hook + the JSX control — the dirty check, reset-on-open, save payload, and web-ui save types are handled automatically.

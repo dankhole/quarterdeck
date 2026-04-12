@@ -29,6 +29,8 @@ interface UseBranchActionsOptions {
 	baseRef?: string | null;
 	/** Called after a successful checkout (e.g. to return to contextual view). */
 	onCheckoutSuccess?: () => void;
+	/** Called when a merge results in conflicts (e.g. to switch to Git view). */
+	onConflictDetected?: () => void;
 }
 
 export type DeleteBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
@@ -68,6 +70,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		taskId,
 		baseRef,
 		onCheckoutSuccess,
+		onConflictDetected,
 	} = options;
 
 	const [isBranchPopoverOpen, setBranchPopoverOpen] = useState(false);
@@ -168,6 +171,9 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 						intent: "success",
 						message: `Merged ${branch} into ${currentBranch ?? "current branch"}`,
 					});
+				} else if (result.conflictState) {
+					showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 resolve in the Git view" });
+					onConflictDetected?.();
 				} else {
 					showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branch}` });
 				}
@@ -178,7 +184,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				});
 			}
 		},
-		[workspaceId, taskId, baseRef, currentBranch],
+		[workspaceId, taskId, baseRef, currentBranch, onConflictDetected],
 	);
 
 	const handleCheckoutBranch = useCallback(

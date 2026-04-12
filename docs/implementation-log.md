@@ -4,6 +4,33 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: merge/rebase conflict resolution (2026-04-12)
+
+Added full merge and rebase conflict resolution to Quarterdeck. Previously, `runGitMergeAction` in `git-sync.ts` unconditionally ran `git merge --abort` on any merge failure. No rebase support existed.
+
+**Architecture — four layers:**
+
+1. **Git layer** (`src/workspace/git-sync.ts`, +303 lines): `detectActiveConflict` checks `.git/MERGE_HEAD` (merge) or `.git/rebase-merge/` (rebase) using `git rev-parse --git-dir` for worktree-safe directory resolution. `getConflictedFiles` parses `git ls-files -u` output. `getConflictFileContent` retrieves ours/theirs via `git show :2:/:3:` (index stages). `resolveConflictFile` runs `git checkout --ours/--theirs` + `git add`. `continueMergeOrRebase` detects the operation type, runs `git commit --no-edit` (merge) or `git -c core.editor=true rebase --continue` (rebase), and checks for new conflicts afterward. `abortMergeOrRebase` runs the appropriate `--abort`. Modified `runGitMergeAction` to check `git ls-files -u` after merge failure — if unmerged files exist, returns `conflictState` instead of aborting.
+
+2. **Metadata layer** (`src/server/workspace-metadata-monitor.ts`, +57 lines): `loadHomeGitMetadata` and `loadTaskWorkspaceMetadata` now call `detectActiveConflict` + `getConflictedFiles` during polling. Added `areConflictStatesEqual` helper for broadcast suppression. `conflictState` field on task metadata, `homeConflictState` on workspace metadata.
+
+3. **API layer** (`src/trpc/workspace-api.ts` +115, `src/trpc/app-router.ts` +54): Four new `workspaceProcedure` mutations following the `mergeBranch` pattern. Each resolves cwd from `taskId` (task worktree) or falls back to workspace path (home). `mergeBranch` now broadcasts metadata update on conflict detection.
+
+4. **UI layer** (7 files, +800 lines): `useConflictResolution` hook manages conflict state subscription (via `useConflictState`/`useHomeConflictState`), file content loading, optimistic `resolvedFiles` tracking with rebase step reset, and tRPC mutation wrappers. `ConflictResolutionPanel` component renders banner (operation type + progress), file list with resolved/unresolved indicators, ours-vs-theirs diff via `DiffViewerPanel`, three action buttons (Accept Ours, Accept Theirs, Resolve Manually with toast instructions), and an action bar with Abort/Complete. `GitView` conditionally renders the panel when `conflictResolution.isActive`. `use-branch-actions.ts` detects `conflictState` in merge response and fires `onConflictDetected` callback (wired via ref in `App.tsx` to navigate to Git view).
+
+**Key design decisions:**
+- Conflict detection uses filesystem checks (`.git/MERGE_HEAD`, `.git/rebase-merge/`) rather than git commands for speed in the polling path. `git rev-parse --git-dir` resolves the actual git directory to handle worktrees where `.git` is a file.
+- `resolvedFiles` tracking is client-side — the server only knows currently-unresolved files (from `git ls-files -u`). When files disappear from the unresolved list between polls, the hook moves them to the resolved set. On rebase step advance (`currentStep` change), resolved files reset.
+- Path validation (`validateGitPath`) applied to `resolveConflictFile` and `getConflictFileContent` to prevent `..` traversal in user-provided paths.
+
+**Schema changes** (`src/core/api-contract.ts`, +75 lines): Added `"conflicted"` to `runtimeWorkspaceFileStatusSchema`. New schemas: `runtimeConflictFileSchema`, `runtimeConflictStateSchema`, request/response schemas for resolve/continue/abort/files endpoints. Extended `runtimeGitMergeResponseSchema` with optional `conflictState`. Extended `runtimeTaskWorkspaceMetadataSchema` with `conflictState` and `runtimeWorkspaceMetadataSchema` with `homeConflictState`.
+
+**File status mapping** (`src/workspace/get-workspace-changes.ts`): Added `if (kind === "U") return "conflicted"` to `mapNameStatus`.
+
+**Frontend metadata store** (`web-ui/src/stores/workspace-metadata-store.ts`, +71 lines): `conflictState` mapped in `toTaskWorkspaceSnapshot`, `areConflictStatesEqual` for snapshot equality, `useConflictState(taskId)` and `useHomeConflictState()` hooks via `useSyncExternalStore`.
+
+Files touched: `src/core/api-contract.ts`, `src/workspace/git-sync.ts`, `src/workspace/get-workspace-changes.ts`, `src/server/workspace-metadata-monitor.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router.ts`, `web-ui/src/App.tsx`, `web-ui/src/hooks/use-conflict-resolution.ts` (new), `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/components/detail-panels/conflict-resolution-panel.tsx` (new), `web-ui/src/components/git-view.tsx`, `web-ui/src/stores/workspace-metadata-store.ts`, `web-ui/src/types/board.ts`, `web-ui/src/components/detail-panels/file-tree-panel.tsx`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `test/runtime/git-conflict.test.ts` (new), `test/runtime/git-conflict-integration.test.ts` (new), `test/runtime/trpc/workspace-api-conflict.test.ts` (new), `web-ui/src/hooks/use-conflict-resolution.test.ts` (new), `web-ui/src/components/detail-panels/conflict-resolution-panel.test.tsx` (new)
+
 ## Refactor: consolidate settings dialog form state (2026-04-12)
 
 Adding a new boolean config toggle to the settings dialog required 12 wiring points across 7 files. The dialog component alone had 26 individual `useState` hooks, a 140-line `hasUnsavedChanges` useMemo, an 80-line reset `useEffect`, and a 27-field manual save payload object literal. Missing any one point (like the save payload) silently broke persistence. The web-ui save type was hand-duplicated in two files that had already diverged from the Zod schema.

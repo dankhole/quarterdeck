@@ -7,6 +7,7 @@ export const runtimeWorkspaceFileStatusSchema = z.enum([
 	"renamed",
 	"copied",
 	"untracked",
+	"conflicted",
 	"unknown",
 ]);
 export type RuntimeWorkspaceFileStatus = z.infer<typeof runtimeWorkspaceFileStatusSchema>;
@@ -225,14 +226,86 @@ export const runtimeGitMergeRequestSchema = z.object({
 });
 export type RuntimeGitMergeRequest = z.infer<typeof runtimeGitMergeRequestSchema>;
 
+// Conflict file info returned by content fetch
+export const runtimeConflictFileSchema = z.object({
+	path: z.string(),
+	oursContent: z.string(),
+	theirsContent: z.string(),
+});
+export type RuntimeConflictFile = z.infer<typeof runtimeConflictFileSchema>;
+
+// Active conflict state — part of metadata
+export const runtimeConflictStateSchema = z.object({
+	operation: z.enum(["merge", "rebase"]),
+	sourceBranch: z.string().nullable(),
+	currentStep: z.number().int().nullable(),
+	totalSteps: z.number().int().nullable(),
+	conflictedFiles: z.array(z.string()),
+});
+export type RuntimeConflictState = z.infer<typeof runtimeConflictStateSchema>;
+
 export const runtimeGitMergeResponseSchema = z.object({
 	ok: z.boolean(),
 	branch: z.string(),
 	summary: runtimeGitSyncSummarySchema,
 	output: z.string(),
+	conflictState: runtimeConflictStateSchema.optional(),
 	error: z.string().optional(),
 });
 export type RuntimeGitMergeResponse = z.infer<typeof runtimeGitMergeResponseSchema>;
+
+// Conflict resolution request
+export const runtimeConflictResolveRequestSchema = z.object({
+	taskId: z.string().optional(),
+	path: z.string(),
+	resolution: z.enum(["ours", "theirs"]),
+});
+export type RuntimeConflictResolveRequest = z.infer<typeof runtimeConflictResolveRequestSchema>;
+
+// Continue merge/rebase request
+export const runtimeConflictContinueRequestSchema = z.object({
+	taskId: z.string().optional(),
+});
+export type RuntimeConflictContinueRequest = z.infer<typeof runtimeConflictContinueRequestSchema>;
+
+// Continue response
+export const runtimeConflictContinueResponseSchema = z.object({
+	ok: z.boolean(),
+	completed: z.boolean(),
+	conflictState: runtimeConflictStateSchema.optional(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeConflictContinueResponse = z.infer<typeof runtimeConflictContinueResponseSchema>;
+
+// Abort request
+export const runtimeConflictAbortRequestSchema = z.object({
+	taskId: z.string().optional(),
+});
+export type RuntimeConflictAbortRequest = z.infer<typeof runtimeConflictAbortRequestSchema>;
+
+// Abort response
+export const runtimeConflictAbortResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeGitSyncSummarySchema,
+	error: z.string().optional(),
+});
+export type RuntimeConflictAbortResponse = z.infer<typeof runtimeConflictAbortResponseSchema>;
+
+// Get conflict files with content
+export const runtimeConflictFilesRequestSchema = z.object({
+	taskId: z.string().optional(),
+	paths: z.array(z.string()),
+});
+export type RuntimeConflictFilesRequest = z.infer<typeof runtimeConflictFilesRequestSchema>;
+
+export const runtimeConflictFilesResponseSchema = z.object({
+	ok: z.boolean(),
+	files: z.array(runtimeConflictFileSchema),
+	error: z.string().optional(),
+});
+export type RuntimeConflictFilesResponse = z.infer<typeof runtimeConflictFilesResponseSchema>;
 
 export const runtimeGitCreateBranchRequestSchema = z.object({
 	branchName: z.string().min(1),
@@ -380,6 +453,7 @@ export const runtimeTaskWorkspaceMetadataSchema = z.object({
 	deletions: z.number().nullable(),
 	hasUnmergedChanges: z.boolean().nullable(),
 	behindBaseCount: z.number().nullable(),
+	conflictState: runtimeConflictStateSchema.nullable().optional(),
 	stateVersion: z.number().int().nonnegative(),
 });
 export type RuntimeTaskWorkspaceMetadata = z.infer<typeof runtimeTaskWorkspaceMetadataSchema>;
@@ -387,6 +461,7 @@ export type RuntimeTaskWorkspaceMetadata = z.infer<typeof runtimeTaskWorkspaceMe
 export const runtimeWorkspaceMetadataSchema = z.object({
 	homeGitSummary: runtimeGitSyncSummarySchema.nullable(),
 	homeGitStateVersion: z.number().int().nonnegative(),
+	homeConflictState: runtimeConflictStateSchema.nullable().optional(),
 	taskWorkspaces: z.array(runtimeTaskWorkspaceMetadataSchema),
 });
 export type RuntimeWorkspaceMetadata = z.infer<typeof runtimeWorkspaceMetadataSchema>;

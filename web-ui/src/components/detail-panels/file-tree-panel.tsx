@@ -1,11 +1,23 @@
 import { FileText, Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkspaceFileChange, RuntimeWorkspaceFileStatus } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
+
+const STATUS_BADGE: Record<RuntimeWorkspaceFileStatus, { letter: string; className: string }> = {
+	modified: { letter: "M", className: "text-status-blue" },
+	added: { letter: "A", className: "text-status-green" },
+	deleted: { letter: "D", className: "text-status-red" },
+	renamed: { letter: "R", className: "text-status-orange" },
+	copied: { letter: "C", className: "text-status-blue" },
+	untracked: { letter: "U", className: "text-text-secondary" },
+	conflicted: { letter: "!", className: "text-status-orange" },
+	unknown: { letter: "?", className: "text-text-tertiary" },
+};
 
 interface FileDiffStats {
 	added: number;
 	removed: number;
+	status: RuntimeWorkspaceFileStatus;
 }
 
 function FileTreeRow({
@@ -43,7 +55,13 @@ function FileTreeRow({
 				{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
 				<span className="truncate">{node.name}</span>
 				{fileStats ? (
-					<span className="font-mono" style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4 }}>
+					<span
+						className="font-mono"
+						style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4, alignItems: "center" }}
+					>
+						<span className={isSelected ? "text-white" : STATUS_BADGE[fileStats.status].className}>
+							{STATUS_BADGE[fileStats.status].letter}
+						</span>
 						{fileStats.added > 0 ? <span className={addedStatClassName}>+{fileStats.added}</span> : null}
 						{fileStats.removed > 0 ? <span className={removedStatClassName}>-{fileStats.removed}</span> : null}
 					</span>
@@ -88,6 +106,7 @@ export function FileTreePanel({
 			stats[file.path] = {
 				added: file.additions,
 				removed: file.deletions,
+				status: file.status,
 			};
 		}
 		return stats;

@@ -46,6 +46,7 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 		deletions: 2,
 		hasUnmergedChanges: true,
 		behindBaseCount: null,
+		conflictState: null,
 	},
 };
 

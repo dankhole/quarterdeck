@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import type {
+	RuntimeConflictAbortResponse,
+	RuntimeConflictContinueResponse,
+	RuntimeConflictFilesResponse,
 	RuntimeFileContentResponse,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitResponse,
@@ -31,12 +34,16 @@ import {
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
+	abortMergeOrRebase,
 	commitSelectedFiles,
+	continueMergeOrRebase,
 	createBranchFromRef,
 	deleteBranch,
 	discardGitChanges,
 	discardSingleFile,
+	getConflictFileContent,
 	getGitSyncSummary,
+	resolveConflictFile as gitResolveConflictFile,
 	runGitCheckoutAction,
 	runGitMergeAction,
 	runGitSyncAction,
@@ -350,9 +357,117 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						workspaceScope.workspacePath,
 					);
 				}
+				if (!response.ok && response.conflictState) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
 				return response;
 			} catch (error) {
 				return createEmptyGitMergeErrorResponse(error);
+			}
+		},
+		getConflictFiles: async (workspaceScope, input) => {
+			try {
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: "",
+					});
+				}
+				const files = await Promise.all(input.paths.map((path) => getConflictFileContent(cwd, path)));
+				return { ok: true, files } satisfies RuntimeConflictFilesResponse;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, files: [], error: message } satisfies RuntimeConflictFilesResponse;
+			}
+		},
+		resolveConflictFile: async (workspaceScope, input) => {
+			try {
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: "",
+					});
+				}
+				const result = await gitResolveConflictFile(cwd, input.path, input.resolution);
+				if (result.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return result;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message };
+			}
+		},
+		continueConflictResolution: async (workspaceScope, input) => {
+			try {
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: "",
+					});
+				}
+				const response = await continueMergeOrRebase(cwd);
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					completed: false,
+					summary: {
+						currentBranch: null,
+						upstreamBranch: null,
+						changedFiles: 0,
+						additions: 0,
+						deletions: 0,
+						aheadCount: 0,
+						behindCount: 0,
+					},
+					output: "",
+					error: message,
+				} satisfies RuntimeConflictContinueResponse;
+			}
+		},
+		abortConflictResolution: async (workspaceScope, input) => {
+			try {
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: "",
+					});
+				}
+				const response = await abortMergeOrRebase(cwd);
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: {
+						currentBranch: null,
+						upstreamBranch: null,
+						changedFiles: 0,
+						additions: 0,
+						deletions: 0,
+						aheadCount: 0,
+						behindCount: 0,
+					},
+					error: message,
+				} satisfies RuntimeConflictAbortResponse;
 			}
 		},
 		discardGitChanges: async (workspaceScope, input) => {

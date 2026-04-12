@@ -44,6 +44,7 @@ const STATUS_BADGE: Record<string, { letter: string; className: string }> = {
 	renamed: { letter: "R", className: "text-status-orange" },
 	copied: { letter: "C", className: "text-status-blue" },
 	untracked: { letter: "U", className: "text-text-secondary" },
+	conflicted: { letter: "!", className: "text-status-orange" },
 	unknown: { letter: "?", className: "text-text-tertiary" },
 };
 

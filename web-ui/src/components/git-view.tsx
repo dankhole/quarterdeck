@@ -3,10 +3,12 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
+import { ConflictResolutionPanel } from "@/components/detail-panels/conflict-resolution-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useConflictResolution } from "@/hooks/use-conflict-resolution";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { type GitViewCompareNavigation, useGitViewCompare } from "@/hooks/use-git-view-compare";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -239,6 +241,14 @@ export function GitView({
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 	const isDocumentVisible = useDocumentVisibility();
 
+	// --- Conflict resolution ---
+
+	const taskId = selectedCard?.card.id ?? null;
+	const conflictResolution = useConflictResolution({
+		taskId,
+		workspaceId: currentProjectId,
+	});
+
 	// --- Resize ---
 
 	const setFileTreeRatio = useCallback((ratio: number) => {
@@ -273,7 +283,6 @@ export function GitView({
 
 	// --- Data fetching ---
 
-	const taskId = selectedCard?.card.id ?? null;
 	const baseRef = selectedCard?.card.baseRef ?? null;
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(taskId);
 
@@ -397,6 +406,22 @@ export function GitView({
 	}, [currentProjectId, setActiveTab, pendingCompareNavigation]);
 
 	// --- Render ---
+
+	if (conflictResolution.isActive && conflictResolution.conflictState) {
+		return (
+			<ConflictResolutionPanel
+				conflictState={conflictResolution.conflictState}
+				conflictFiles={conflictResolution.conflictFiles}
+				resolvedFiles={conflictResolution.resolvedFiles}
+				selectedPath={conflictResolution.selectedPath}
+				setSelectedPath={conflictResolution.setSelectedPath}
+				resolveFile={conflictResolution.resolveFile}
+				continueResolution={conflictResolution.continueResolution}
+				abortResolution={conflictResolution.abortResolution}
+				isLoading={conflictResolution.isLoading}
+			/>
+		);
+	}
 
 	const emptyTitle =
 		activeTab === "last_turn"

@@ -9,6 +9,13 @@ import type {
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeConflictAbortRequest,
+	RuntimeConflictAbortResponse,
+	RuntimeConflictContinueRequest,
+	RuntimeConflictContinueResponse,
+	RuntimeConflictFilesRequest,
+	RuntimeConflictFilesResponse,
+	RuntimeConflictResolveRequest,
 	RuntimeDebugResetAllStateResponse,
 	RuntimeFileContentRequest,
 	RuntimeFileContentResponse,
@@ -75,6 +82,13 @@ import {
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
+	runtimeConflictAbortRequestSchema,
+	runtimeConflictAbortResponseSchema,
+	runtimeConflictContinueRequestSchema,
+	runtimeConflictContinueResponseSchema,
+	runtimeConflictFilesRequestSchema,
+	runtimeConflictFilesResponseSchema,
+	runtimeConflictResolveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
 	runtimeFileContentRequestSchema,
 	runtimeFileContentResponseSchema,
@@ -209,6 +223,22 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitMergeRequest,
 		) => Promise<RuntimeGitMergeResponse>;
+		getConflictFiles: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeConflictFilesRequest,
+		) => Promise<RuntimeConflictFilesResponse>;
+		resolveConflictFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeConflictResolveRequest,
+		) => Promise<{ ok: boolean; error?: string }>;
+		continueConflictResolution: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeConflictContinueRequest,
+		) => Promise<RuntimeConflictContinueResponse>;
+		abortConflictResolution: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeConflictAbortRequest,
+		) => Promise<RuntimeConflictAbortResponse>;
 		createBranch: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCreateBranchRequest,
@@ -450,6 +480,30 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitMergeResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.mergeBranch(ctx.workspaceScope, input);
+			}),
+		getConflictFiles: workspaceProcedure
+			.input(runtimeConflictFilesRequestSchema)
+			.output(runtimeConflictFilesResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.getConflictFiles(ctx.workspaceScope, input);
+			}),
+		resolveConflictFile: workspaceProcedure
+			.input(runtimeConflictResolveRequestSchema)
+			.output(z.object({ ok: z.boolean(), error: z.string().optional() }))
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.resolveConflictFile(ctx.workspaceScope, input);
+			}),
+		continueConflictResolution: workspaceProcedure
+			.input(runtimeConflictContinueRequestSchema)
+			.output(runtimeConflictContinueResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.continueConflictResolution(ctx.workspaceScope, input);
+			}),
+		abortConflictResolution: workspaceProcedure
+			.input(runtimeConflictAbortRequestSchema)
+			.output(runtimeConflictAbortResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.abortConflictResolution(ctx.workspaceScope, input);
 			}),
 		createBranch: workspaceProcedure
 			.input(runtimeGitCreateBranchRequestSchema)

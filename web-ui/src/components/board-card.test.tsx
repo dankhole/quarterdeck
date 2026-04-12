@@ -454,6 +454,7 @@ describe("BoardCard", () => {
 				deletions: 0,
 				hasUnmergedChanges: false,
 				behindBaseCount: null,
+				conflictState: null,
 				...overrides,
 			};
 		}
