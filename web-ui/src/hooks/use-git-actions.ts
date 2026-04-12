@@ -58,7 +58,10 @@ export interface UseGitActionsResult {
 	clearGitActionError: () => void;
 	gitHistory: UseGitHistoryDataResult;
 	gitHistoryTaskScope: { taskId: string; baseRef: string } | null;
-	runGitAction: (action: RuntimeGitSyncAction) => Promise<void>;
+	runGitAction: (
+		action: RuntimeGitSyncAction,
+		taskScope?: { taskId: string; baseRef: string } | null,
+	) => Promise<void>;
 	switchHomeBranch: (branch: string) => Promise<void>;
 	discardHomeWorkingChanges: () => Promise<void>;
 	handleCommitTask: (taskId: string) => void;
@@ -343,19 +346,22 @@ export function useGitActions({
 	);
 
 	const runGitAction = useCallback(
-		async (action: RuntimeGitSyncAction) => {
+		async (action: RuntimeGitSyncAction, taskScope?: { taskId: string; baseRef: string } | null) => {
 			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 				return;
 			}
 			setRunningGitAction(action);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.runGitSyncAction.mutate({ action });
+				const payload = await trpcClient.workspace.runGitSyncAction.mutate({
+					action,
+					taskScope: taskScope ?? null,
+				});
 				if (!payload.ok || !payload.summary) {
 					const errorMessage = payload.error ?? `${action} failed.`;
 					const output = payload.output ?? "";
 					const fallbackSummary = payload.summary ?? null;
-					if (fallbackSummary) {
+					if (fallbackSummary && !taskScope) {
 						setHomeGitSummary(fallbackSummary);
 					}
 					setGitActionError({
@@ -365,7 +371,9 @@ export function useGitActions({
 					});
 					return;
 				}
-				setHomeGitSummary(payload.summary);
+				if (!taskScope) {
+					setHomeGitSummary(payload.summary);
+				}
 				refreshGitHistory();
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

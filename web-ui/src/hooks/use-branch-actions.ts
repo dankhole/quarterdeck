@@ -172,7 +172,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 						message: `Merged ${branch} into ${currentBranch ?? "current branch"}`,
 					});
 				} else if (result.conflictState) {
-					showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 resolve in the Git view" });
+					showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 opening resolver" });
 					onConflictDetected?.();
 				} else {
 					showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branch}` });

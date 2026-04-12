@@ -4,7 +4,12 @@ import { showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
-import { useHomeGitStateVersionValue, useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+import {
+	useHomeGitStateVersionValue,
+	useHomeGitSummaryValue,
+	useTaskWorkspaceSnapshotValue,
+	useTaskWorkspaceStateVersionValue,
+} from "@/stores/workspace-metadata-store";
 
 export interface UseCommitPanelResult {
 	files: RuntimeWorkspaceFileChange[] | null;
@@ -16,13 +21,16 @@ export interface UseCommitPanelResult {
 	message: string;
 	setMessage: (msg: string) => void;
 	canCommit: boolean;
+	canPush: boolean;
 	isLoading: boolean;
 	isCommitting: boolean;
+	isPushing: boolean;
 	isDiscarding: boolean;
 	isRollingBack: boolean;
 	lastError: string | null;
 	clearError: () => void;
 	commitFiles: () => Promise<void>;
+	commitAndPush: () => Promise<void>;
 	discardAll: () => Promise<void>;
 	rollbackFile: (path: string, fileStatus: string) => Promise<void>;
 }
@@ -37,8 +45,16 @@ export function useCommitPanel(
 	const homeStateVersion = useHomeGitStateVersionValue();
 	const stateVersion = taskId ? taskStateVersion : homeStateVersion;
 
+	// Branch awareness — determine if push is possible (requires a named branch, not detached HEAD).
+	const homeGitSummary = useHomeGitSummaryValue();
+	const taskSnapshot = useTaskWorkspaceSnapshotValue(taskId);
+	const isOnNamedBranch = taskId
+		? !!(taskSnapshot?.branch && !taskSnapshot.isDetached)
+		: !!homeGitSummary?.currentBranch;
+
 	// Mutation loading flags — suppress polling while any mutation is in flight.
 	const [isCommitting, setIsCommitting] = useState(false);
+	const [isPushing, setIsPushing] = useState(false);
 	const [isDiscarding, setIsDiscarding] = useState(false);
 	const [isRollingBack, setIsRollingBack] = useState(false);
 
@@ -133,39 +149,72 @@ export function useCommitPanel(
 
 	// Validation.
 	const canCommit = selectedPaths.length > 0 && message.trim().length > 0 && !isCommitting;
+	const canPush = canCommit && isOnNamedBranch;
 
-	// Commit action.
-	const commitFiles = useCallback(async () => {
-		if (!workspaceId || !canCommit) return;
-		setIsCommitting(true);
-		setLastError(null);
-		try {
-			const trpcClient = getRuntimeTrpcClient(workspaceId);
-			const result = await trpcClient.workspace.commitSelectedFiles.mutate({
-				taskScope,
-				paths: selectedPaths,
-				message: message.trim(),
-			});
-			if (result.ok) {
-				showAppToast({
-					intent: "success",
-					message: `Committed${result.commitHash ? ` (${result.commitHash.slice(0, 7)})` : ""}`,
-					timeout: 4000,
+	// Shared commit implementation — handles both commit-only and commit-and-push flows.
+	const doCommit = useCallback(
+		async (pushAfterCommit: boolean) => {
+			if (!workspaceId) return;
+			if (pushAfterCommit ? !canPush : !canCommit) return;
+
+			setIsCommitting(true);
+			if (pushAfterCommit) setIsPushing(true);
+			setLastError(null);
+			try {
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				const result = await trpcClient.workspace.commitSelectedFiles.mutate({
+					taskScope,
+					paths: selectedPaths,
+					message: message.trim(),
+					...(pushAfterCommit ? { pushAfterCommit: true } : {}),
 				});
+				if (!result.ok) {
+					const fullError = result.error ?? "Commit failed.";
+					setLastError(fullError);
+					showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+					return;
+				}
+				const hashLabel = result.commitHash ? ` (${result.commitHash.slice(0, 7)})` : "";
+				if (pushAfterCommit) {
+					if (result.pushOk) {
+						showAppToast({
+							intent: "success",
+							message: `Committed${hashLabel} and pushed`,
+							timeout: 4000,
+						});
+					} else {
+						showAppToast({
+							intent: "warning",
+							message: `Committed${hashLabel} but push failed: ${result.pushError ?? "unknown error"}`,
+							timeout: 7000,
+						});
+					}
+				} else {
+					showAppToast({
+						intent: "success",
+						message: `Committed${hashLabel}`,
+						timeout: 4000,
+					});
+				}
 				setMessage("");
-			} else {
-				const fullError = result.error ?? "Commit failed.";
+			} catch (error) {
+				const label = pushAfterCommit ? "Commit & push failed." : "Commit failed.";
+				const fullError = error instanceof Error ? error.message : label;
 				setLastError(fullError);
 				showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+			} finally {
+				setIsCommitting(false);
+				if (pushAfterCommit) setIsPushing(false);
 			}
-		} catch (error) {
-			const fullError = error instanceof Error ? error.message : "Commit failed.";
-			setLastError(fullError);
-			showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
-		} finally {
-			setIsCommitting(false);
-		}
-	}, [workspaceId, canCommit, taskScope, selectedPaths, message]);
+		},
+		[workspaceId, canCommit, canPush, taskScope, selectedPaths, message],
+	);
+
+	// Commit action.
+	const commitFiles = useCallback(() => doCommit(false), [doCommit]);
+
+	// Commit & push action.
+	const commitAndPush = useCallback(() => doCommit(true), [doCommit]);
 
 	// Discard all action.
 	const discardAll = useCallback(async () => {
@@ -249,13 +298,16 @@ export function useCommitPanel(
 		message,
 		setMessage,
 		canCommit,
+		canPush,
 		isLoading,
 		isCommitting,
+		isPushing,
 		isDiscarding,
 		isRollingBack,
 		lastError,
 		clearError,
 		commitFiles,
+		commitAndPush,
 		discardAll,
 		rollbackFile,
 	};

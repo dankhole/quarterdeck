@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import type {
+	RuntimeAutoMergedFilesResponse,
 	RuntimeConflictAbortResponse,
 	RuntimeConflictContinueResponse,
 	RuntimeConflictFilesResponse,
@@ -42,6 +43,7 @@ import {
 	deleteBranch,
 	discardGitChanges,
 	discardSingleFile,
+	getAutoMergedFileContent,
 	getConflictFileContent,
 	getGitSyncSummary,
 	resolveConflictFile as gitResolveConflictFile,
@@ -252,10 +254,15 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		runGitSyncAction: async (workspaceScope, input) => {
 			try {
-				return await runGitSyncAction({
-					cwd: workspaceScope.workspacePath,
-					action: input.action,
-				});
+				let cwd = workspaceScope.workspacePath;
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				return await runGitSyncAction({ cwd, action: input.action });
 			} catch (error) {
 				return createEmptyGitSyncErrorResponse(input.action, error);
 			}
@@ -384,6 +391,23 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return { ok: false, files: [], error: message } satisfies RuntimeConflictFilesResponse;
+			}
+		},
+		getAutoMergedFiles: async (workspaceScope, input) => {
+			try {
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: "",
+					});
+				}
+				const files = await Promise.all(input.paths.map((path) => getAutoMergedFileContent(cwd, path)));
+				return { ok: true, files } satisfies RuntimeAutoMergedFilesResponse;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, files: [], error: message } satisfies RuntimeAutoMergedFilesResponse;
 			}
 		},
 		resolveConflictFile: async (workspaceScope, input) => {
@@ -526,6 +550,18 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						workspaceScope.workspaceId,
 						workspaceScope.workspacePath,
 					);
+
+					// Push after successful commit if requested, reusing the existing git sync infrastructure.
+					if (input.pushAfterCommit) {
+						const pushResult = await runGitSyncAction({ cwd: commitCwd, action: "push" });
+						return {
+							...response,
+							pushOk: pushResult.ok,
+							...(!pushResult.ok && { pushError: pushResult.error ?? "Push failed." }),
+							// Update summary to reflect post-push state (ahead/behind counts change).
+							summary: pushResult.summary,
+						};
+					}
 				}
 				return response;
 			} catch (error) {

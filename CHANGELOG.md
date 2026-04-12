@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Feat: ahead/behind indicators + push to remote from branch selector
+
+- Branch pill in the top bar and home scope bar now shows ↑N/↓N arrows when the current branch is ahead of or behind the remote tracking branch. Counts are derived from `git status --porcelain=v2 --branch` during the existing git probe — no extra git commands.
+- Right-click the current branch in the branch selector popover to "Push to remote." Task-scoped push resolves the correct worktree directory via a new `taskScope` parameter on `runGitSyncAction`. Detached HEAD shows a disabled push item with a tooltip explaining why.
+
+### Feat: Commit & Push button in commit sidebar
+
+- "Commit & Push" button alongside the existing Commit button. Commits staged files and pushes in a single atomic operation. Disabled on detached HEAD with a tooltip. On push failure, the commit is preserved and a warning toast shows the error. Uses the existing `runGitSyncAction("push")` infrastructure via a new `pushAfterCommit` flag on the commit request schema.
+
+### Feat: merge conflict UX overhaul — auto-merged files, persistent banner, auto-open
+
+- Merge now uses `--no-commit` to detect auto-merged files (staged but non-conflicted) before the merge commit. Auto-merged files appear in a dedicated section of the conflict resolution panel with old-vs-new diffs, requiring explicit "Accept" before "Complete Merge" is enabled. If the auto-merged file content fetch fails, files are implicitly accepted to prevent deadlocking the merge.
+- Persistent orange conflict banner appears outside the git view when a merge/rebase is in progress — shows operation type, remaining conflict count, and a "Resolve" link that navigates to the git view. Renders in both the home layout and task detail view.
+- Merge conflicts now auto-open the resolver: the toast says "opening resolver" and navigates to the git view automatically. Previously it only showed a passive toast.
+- New tRPC endpoint `getAutoMergedFiles` for fetching auto-merged file content (old vs merged via `git show HEAD:<path>` and `git show :0:<path>`).
+
 ### Feat: stalled session detection — warning badge when agent goes silent
 
 - When a running agent session hasn't received a hook in over 60 seconds, the reconciliation sweep marks it as stalled. The UI swaps the blue "Running" badge for an orange "Stalled" badge with a tooltip: "No hook activity for over a minute — the agent may be stalled or could still be thinking." The indicator auto-clears when hooks resume and the card stays in the In Progress column — no state transition occurs. Addresses the case where Claude Code hits an API error (auth failure, rate limit) and stays alive but stops making progress, leaving the card green forever with no indication anything is wrong.

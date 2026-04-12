@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
+import { ConflictBanner } from "@/components/conflict-banner";
 import { DebugDialog } from "@/components/debug-dialog";
 import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
@@ -370,6 +371,7 @@ export default function App(): ReactElement {
 		baseRef: selectedCard?.card.baseRef ?? null,
 		skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation,
+		onConflictDetected: () => navigateToGitViewRef.current?.(),
 	});
 
 	const topbarBranchLabel = useMemo(() => {
@@ -1287,7 +1289,20 @@ export default function App(): ReactElement {
 						onDeleteBranch={topbarBranchActions.handleDeleteBranch}
 						pinnedBranches={pinnedBranches}
 						onTogglePinBranch={handleTogglePinBranch}
-						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
+						onPush={
+							!selectedCard
+								? () => {
+										void runGitAction("push");
+									}
+								: undefined
+						}
+						trigger={
+							<BranchPillTrigger
+								label={topbarBranchLabel}
+								aheadCount={!selectedCard ? homeGitSummary?.aheadCount : undefined}
+								behindCount={!selectedCard ? homeGitSummary?.behindCount : undefined}
+							/>
+						}
 					/>
 				) : undefined
 			}
@@ -1463,10 +1478,23 @@ export default function App(): ReactElement {
 							navigateToFile={navigateToFile}
 							pinnedBranches={pinnedBranches}
 							onTogglePinBranch={handleTogglePinBranch}
+							onConflictDetected={() => navigateToGitViewRef.current?.()}
+							onPushBranch={() => {
+								void runGitAction("push", {
+									taskId: selectedCard.card.id,
+									baseRef: selectedCard.card.baseRef,
+								});
+							}}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 							{topBar}
+							{mainView !== "git" && (
+								<ConflictBanner
+									taskId={selectedTaskId}
+									onNavigateToResolver={() => navigateToGitViewRef.current?.()}
+								/>
+							)}
 							<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
 								{shouldShowProjectLoadingState ? (
 									<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
@@ -1570,6 +1598,13 @@ export default function App(): ReactElement {
 																	onMergeBranch={homeBranchActions.handleMergeBranch}
 																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
 																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
+																	onPush={
+																		homeResolvedScope?.type !== "branch_view"
+																			? () => {
+																					void runGitAction("push");
+																				}
+																			: undefined
+																	}
 																	pinnedBranches={pinnedBranches}
 																	onTogglePinBranch={handleTogglePinBranch}
 																	trigger={
@@ -1578,6 +1613,16 @@ export default function App(): ReactElement {
 																				homeResolvedScope?.type === "branch_view"
 																					? homeResolvedScope.ref
 																					: (homeGitSummary?.currentBranch ?? "unknown")
+																			}
+																			aheadCount={
+																				homeResolvedScope?.type === "branch_view"
+																					? undefined
+																					: homeGitSummary?.aheadCount
+																			}
+																			behindCount={
+																				homeResolvedScope?.type === "branch_view"
+																					? undefined
+																					: homeGitSummary?.behindCount
 																			}
 																		/>
 																	}

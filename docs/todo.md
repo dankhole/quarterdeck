@@ -48,8 +48,10 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Merge branch into current — context menu action, attempts merge with auto-abort on conflict + toast feedback
 - Create branch from ref — right-click context menu action in both branch selector popover and git history refs panel, with dialog for branch name entry
 - Delete branch — context menu action with confirmation dialog, uses `git branch -d` (safe delete), disabled for current/worktree-locked branches, errors through centralized git error toast pipeline
-- Conflict handling — merge/rebase conflict resolution with pause-on-conflict, ours/theirs diff previews, per-file resolution actions, and multi-round rebase support
+- Conflict handling — merge/rebase conflict resolution with pause-on-conflict, ours/theirs diff previews, per-file resolution actions, multi-round rebase support, auto-merged file detection/review, persistent conflict banner, and auto-open resolver
 - Cherry-pick commit — "Land on..." dropdown in git history commit diff header, cherry-picks individual commits onto any local branch via temp worktree, with confirmation dialog and skip-confirmation setting
+- Push to remote — context menu action on current branch, task-scoped push with worktree directory resolution, ahead/behind indicators on branch pill
+- Commit & Push — combined commit-and-push button in commit sidebar with detached HEAD detection
 
 **Tier 1 — High value, users hit these constantly:**
 - **Stash / unstash** — "Save my spot" before switching context. Especially useful when checkout is blocked by uncommitted changes (pull already blocks on this). Show stash list, allow pop/apply/drop.
@@ -135,10 +137,6 @@ Git worktrees share the full object database with the parent repo, so agents can
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.
 
-## 17. Commit sidebar: Commit and Push button
-
-Add a "Commit and Push" button alongside the existing Commit button in the commit sidebar tab. The push infrastructure already exists (`runGitSyncAction("push")`). This is the combined flow — commit then push in one action. Should handle push failures gracefully (commit succeeds but push fails → toast with error, commit is preserved).
-
-## 18. Commit sidebar: Auto-generated commit messages
+## 17. Commit sidebar: Auto-generated commit messages
 
 Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.

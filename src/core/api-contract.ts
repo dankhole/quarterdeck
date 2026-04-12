@@ -241,8 +241,31 @@ export const runtimeConflictStateSchema = z.object({
 	currentStep: z.number().int().nullable(),
 	totalSteps: z.number().int().nullable(),
 	conflictedFiles: z.array(z.string()),
+	autoMergedFiles: z.array(z.string()).default([]),
 });
 export type RuntimeConflictState = z.infer<typeof runtimeConflictStateSchema>;
+
+// Auto-merged file content (non-conflicting changes git merged automatically)
+export const runtimeAutoMergedFileSchema = z.object({
+	path: z.string(),
+	oldContent: z.string(),
+	newContent: z.string(),
+});
+export type RuntimeAutoMergedFile = z.infer<typeof runtimeAutoMergedFileSchema>;
+
+// Request/response for fetching auto-merged file content
+export const runtimeAutoMergedFilesRequestSchema = z.object({
+	taskId: z.string().optional(),
+	paths: z.array(z.string()),
+});
+export type RuntimeAutoMergedFilesRequest = z.infer<typeof runtimeAutoMergedFilesRequestSchema>;
+
+export const runtimeAutoMergedFilesResponseSchema = z.object({
+	ok: z.boolean(),
+	files: z.array(runtimeAutoMergedFileSchema),
+	error: z.string().optional(),
+});
+export type RuntimeAutoMergedFilesResponse = z.infer<typeof runtimeAutoMergedFilesResponseSchema>;
 
 export const runtimeGitMergeResponseSchema = z.object({
 	ok: z.boolean(),
@@ -682,6 +705,7 @@ export const runtimeGitCommitRequestSchema = z.object({
 	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
 	paths: z.array(z.string()).min(1),
 	message: z.string().min(1),
+	pushAfterCommit: z.boolean().optional(),
 });
 export type RuntimeGitCommitRequest = z.infer<typeof runtimeGitCommitRequestSchema>;
 
@@ -691,6 +715,8 @@ export const runtimeGitCommitResponseSchema = z.object({
 	summary: runtimeGitSyncSummarySchema,
 	output: z.string(),
 	error: z.string().optional(),
+	pushOk: z.boolean().optional(),
+	pushError: z.string().optional(),
 });
 export type RuntimeGitCommitResponse = z.infer<typeof runtimeGitCommitResponseSchema>;
 

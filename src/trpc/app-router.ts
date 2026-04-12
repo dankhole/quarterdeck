@@ -5,6 +5,8 @@ import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type {
+	RuntimeAutoMergedFilesRequest,
+	RuntimeAutoMergedFilesResponse,
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
@@ -80,6 +82,8 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
 import {
+	runtimeAutoMergedFilesRequestSchema,
+	runtimeAutoMergedFilesResponseSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
@@ -217,7 +221,7 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeGitSummaryResponse>;
 		runGitSyncAction: (
 			scope: RuntimeTrpcWorkspaceScope,
-			input: { action: RuntimeGitSyncAction },
+			input: { action: RuntimeGitSyncAction; taskScope?: RuntimeTaskWorkspaceInfoRequest | null },
 		) => Promise<RuntimeGitSyncResponse>;
 		checkoutGitBranch: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -231,6 +235,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeConflictFilesRequest,
 		) => Promise<RuntimeConflictFilesResponse>;
+		getAutoMergedFiles: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeAutoMergedFilesRequest,
+		) => Promise<RuntimeAutoMergedFilesResponse>;
 		resolveConflictFile: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeConflictResolveRequest,
@@ -393,6 +401,7 @@ const workspaceProcedure = t.procedure.use(({ ctx, next }) => {
 const optionalTaskWorkspaceInfoRequestSchema = runtimeTaskWorkspaceInfoRequestSchema.nullable().optional();
 const gitSyncActionInputSchema = z.object({
 	action: runtimeGitSyncActionSchema,
+	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
 });
 
 export const runtimeAppRouter = t.router({
@@ -494,6 +503,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeConflictFilesResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.getConflictFiles(ctx.workspaceScope, input);
+			}),
+		getAutoMergedFiles: workspaceProcedure
+			.input(runtimeAutoMergedFilesRequestSchema)
+			.output(runtimeAutoMergedFilesResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.getAutoMergedFiles(ctx.workspaceScope, input);
 			}),
 		resolveConflictFile: workspaceProcedure
 			.input(runtimeConflictResolveRequestSchema)

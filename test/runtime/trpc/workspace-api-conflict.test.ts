@@ -242,6 +242,7 @@ describe("createWorkspaceApi conflict resolution", () => {
 				operation: "merge",
 				sourceBranch: "feature/other",
 				conflictedFiles: ["src/index.ts"],
+				autoMergedFiles: [],
 				currentStep: null,
 				totalSteps: null,
 			},

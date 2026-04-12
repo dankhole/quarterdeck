@@ -17,6 +17,10 @@ vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));
 
+vi.mock("@/components/conflict-banner", () => ({
+	ConflictBanner: () => null,
+}));
+
 vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
 	AgentTerminalPanel: mockAgentTerminalPanel,
 }));

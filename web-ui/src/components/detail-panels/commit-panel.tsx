@@ -27,6 +27,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCommitPanel } from "@/hooks/use-commit-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 
@@ -153,13 +154,16 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		message,
 		setMessage,
 		canCommit,
+		canPush,
 		isLoading,
 		isCommitting,
+		isPushing,
 		isDiscarding,
 		lastError,
 		clearError,
 		discardAll,
 		commitFiles,
+		commitAndPush,
 		rollbackFile,
 	} = useCommitPanel(taskId, workspaceId, baseRef);
 
@@ -266,8 +270,19 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 				/>
 				<div className="flex gap-2">
 					<Button variant="primary" size="sm" disabled={!canCommit} onClick={() => void commitFiles()}>
-						{isCommitting ? <Spinner size={14} /> : "Commit"}
+						{isCommitting && !isPushing ? <Spinner size={14} /> : "Commit"}
 					</Button>
+					<Tooltip
+						content={
+							canCommit && !canPush ? "Push unavailable on detached HEAD" : "Commit selected files and push"
+						}
+					>
+						<span className="inline-flex">
+							<Button variant="default" size="sm" disabled={!canPush} onClick={() => void commitAndPush()}>
+								{isPushing ? <Spinner size={14} /> : "Commit & Push"}
+							</Button>
+						</span>
+					</Tooltip>
 					{hasFiles ? (
 						<Button
 							variant="danger"

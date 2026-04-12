@@ -12,16 +12,6 @@ import type { RuntimeConflictFile, RuntimeConflictState } from "@/runtime/types"
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("@/components/detail-panels/diff-viewer-panel", () => ({
-	DiffViewerPanel: ({ workspaceFiles }: { workspaceFiles: Array<{ path: string }> }): React.ReactElement => (
-		<div data-testid="diff-viewer-panel" data-file-count={workspaceFiles.length}>
-			{workspaceFiles.map((f) => (
-				<span key={f.path}>{f.path}</span>
-			))}
-		</div>
-	),
-}));
-
 vi.mock("sonner", () => ({
 	toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
 }));
@@ -37,6 +27,7 @@ function createConflictState(overrides: Partial<RuntimeConflictState> = {}): Run
 		currentStep: null,
 		totalSteps: null,
 		conflictedFiles: ["src/foo.ts", "src/bar.ts"],
+		autoMergedFiles: [],
 		...overrides,
 	};
 }
@@ -54,6 +45,9 @@ function createDefaultProps(overrides: Partial<ConflictResolutionPanelProps> = {
 		conflictState: createConflictState(),
 		conflictFiles: [createConflictFile("src/foo.ts"), createConflictFile("src/bar.ts")],
 		resolvedFiles: new Set<string>(),
+		autoMergedFiles: [],
+		reviewedAutoMergedFiles: new Set<string>(),
+		acceptAutoMergedFile: vi.fn(),
 		selectedPath: null,
 		setSelectedPath: vi.fn(),
 		resolveFile: vi.fn(async () => ({ ok: true })),
@@ -148,7 +142,8 @@ describe("ConflictResolutionPanel", () => {
 				selectedPath: "src/foo.ts",
 			}),
 		);
-		const diffPanel = container.querySelector("[data-testid='diff-viewer-panel']");
+		// ReadOnlyUnifiedDiff renders with class kb-diff-readonly
+		const diffPanel = container.querySelector(".kb-diff-readonly");
 		expect(diffPanel).not.toBeNull();
 	});
 

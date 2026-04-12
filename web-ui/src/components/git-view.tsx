@@ -440,6 +440,9 @@ export function GitView({
 				conflictState={conflictResolution.conflictState}
 				conflictFiles={conflictResolution.conflictFiles}
 				resolvedFiles={conflictResolution.resolvedFiles}
+				autoMergedFiles={conflictResolution.autoMergedFiles}
+				reviewedAutoMergedFiles={conflictResolution.reviewedAutoMergedFiles}
+				acceptAutoMergedFile={conflictResolution.acceptAutoMergedFile}
 				selectedPath={conflictResolution.selectedPath}
 				setSelectedPath={conflictResolution.setSelectedPath}
 				resolveFile={conflictResolution.resolveFile}

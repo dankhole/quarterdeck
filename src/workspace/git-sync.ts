@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type {
+	RuntimeAutoMergedFile,
 	RuntimeConflictAbortResponse,
 	RuntimeConflictContinueResponse,
 	RuntimeConflictFile,
@@ -410,7 +411,7 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		};
 	}
 
-	const mergeResult = await runGit(repoRoot, ["merge", branchToMerge, "--no-edit"]);
+	const mergeResult = await runGit(repoRoot, ["merge", branchToMerge, "--no-commit", "--no-edit"]);
 
 	if (!mergeResult.ok) {
 		// Check if this is a conflict (unmerged files present) vs some other merge error
@@ -418,10 +419,14 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		const hasConflicts = lsUnmerged.ok && lsUnmerged.stdout.trim().length > 0;
 
 		if (hasConflicts) {
-			// Conflict detected — leave the merge in progress so the user can resolve
+			// Conflict detected — leave the merge in progress so the user can resolve.
+			// Compute auto-merged files (staged but not conflicted).
+			const conflictedFiles = await getConflictedFiles(repoRoot);
+			const autoMergedFiles = await computeAutoMergedFiles(repoRoot, conflictedFiles);
 			const conflictState = await getConflictState(repoRoot, {
 				operation: "merge",
 				sourceBranch: branchToMerge,
+				autoMergedFiles,
 			});
 			const conflictSummary = await getGitSyncSummary(repoRoot);
 			return {
@@ -436,13 +441,38 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		// Non-conflict merge failure — abort to restore clean state
 		await runGit(repoRoot, ["merge", "--abort"]);
 		const abortedSummary = await getGitSyncSummary(repoRoot);
+
+		const hasUncommittedChanges =
+			mergeResult.output.includes("Your local changes") || mergeResult.output.includes("overwritten by merge");
+		const error = hasUncommittedChanges
+			? "Merge failed — you have uncommitted changes that would be overwritten. Commit or stash your changes first."
+			: `Merge failed and was aborted. The branch may have conflicts with ${initialSummary.currentBranch ?? "the current branch"}.`;
+
 		return {
 			ok: false,
 			branch: branchToMerge,
 			summary: abortedSummary,
 			output: mergeResult.output,
-			error: `Merge failed and was aborted. The branch may have conflicts with ${initialSummary.currentBranch ?? "the current branch"}.`,
+			error,
 		};
+	}
+
+	// --no-commit succeeded (no conflicts) — auto-commit to finalize the merge.
+	// For fast-forward merges, git ignores --no-commit and commits directly,
+	// so only run commit if MERGE_HEAD exists (indicating a real merge in progress).
+	const detected = await detectActiveConflict(repoRoot);
+	if (detected) {
+		const commitResult = await runGit(repoRoot, ["commit", "--no-edit"]);
+		if (!commitResult.ok) {
+			const nextSummary = await getGitSyncSummary(repoRoot);
+			return {
+				ok: false,
+				branch: branchToMerge,
+				summary: nextSummary,
+				output: [mergeResult.output, commitResult.output].filter(Boolean).join("\n"),
+				error: commitResult.error ?? "Merge succeeded but commit failed.",
+			};
+		}
 	}
 
 	const nextSummary = await getGitSyncSummary(repoRoot);
@@ -594,6 +624,42 @@ export async function getConflictFileContent(cwd: string, path: string): Promise
 }
 
 /**
+ * Compute the list of auto-merged files (staged by git but not conflicted).
+ * These are files where git successfully merged changes from both sides.
+ */
+export async function computeAutoMergedFiles(cwd: string, conflictedFiles: string[]): Promise<string[]> {
+	const cachedResult = await runGit(cwd, ["diff", "--cached", "--name-only"]);
+	if (!cachedResult.ok || !cachedResult.stdout.trim()) {
+		return [];
+	}
+	const conflictedSet = new Set(conflictedFiles);
+	return cachedResult.stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0 && !conflictedSet.has(line))
+		.sort();
+}
+
+/**
+ * Get the before/after content of an auto-merged file.
+ * `HEAD:<path>` gives the content before merge, `:0:<path>` (stage 0) gives the merged result.
+ */
+export async function getAutoMergedFileContent(cwd: string, path: string): Promise<RuntimeAutoMergedFile> {
+	if (!validateGitPath(path)) {
+		return { path, oldContent: "", newContent: "" };
+	}
+	const [oldResult, newResult] = await Promise.all([
+		runGit(cwd, ["show", `HEAD:${path}`]),
+		runGit(cwd, ["show", `:0:${path}`]),
+	]);
+	return {
+		path,
+		oldContent: oldResult.ok ? oldResult.stdout : "",
+		newContent: newResult.ok ? newResult.stdout : "",
+	};
+}
+
+/**
  * Build a complete `RuntimeConflictState` for the given working directory.
  * When called from `runGitMergeAction`, overrides provide known operation/branch.
  * When called from metadata polling, auto-detect via filesystem checks.
@@ -601,7 +667,7 @@ export async function getConflictFileContent(cwd: string, path: string): Promise
  */
 export async function getConflictState(
 	cwd: string,
-	overrides?: { operation?: "merge" | "rebase"; sourceBranch?: string },
+	overrides?: { operation?: "merge" | "rebase"; sourceBranch?: string; autoMergedFiles?: string[] },
 ): Promise<RuntimeConflictState | null> {
 	const detected = await detectActiveConflict(cwd);
 
@@ -616,6 +682,7 @@ export async function getConflictState(
 	const totalSteps = detected?.totalSteps ?? null;
 
 	const conflictedFiles = await getConflictedFiles(cwd);
+	const autoMergedFiles = overrides?.autoMergedFiles ?? (await computeAutoMergedFiles(cwd, conflictedFiles));
 
 	return {
 		operation,
@@ -623,6 +690,7 @@ export async function getConflictState(
 		currentStep,
 		totalSteps,
 		conflictedFiles,
+		autoMergedFiles,
 	};
 }
 

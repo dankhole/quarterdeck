@@ -2,6 +2,8 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
 import {
+	ArrowDown,
+	ArrowUp,
 	Check,
 	ChevronDown,
 	ClipboardCopy,
@@ -50,6 +52,8 @@ interface BranchSelectorPopoverProps {
 	onCreateBranch?: (sourceRef: string) => void;
 	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
 	onDeleteBranch?: (branchName: string) => void;
+	/** When provided, shows "Push to remote" in the current branch's right-click menu. */
+	onPush?: () => void;
 	/** Branch names that should appear in a "Pinned" section at the top. */
 	pinnedBranches?: string[];
 	/** When provided, shows "Pin to top" / "Unpin" in the branch right-click menu. */
@@ -69,6 +73,7 @@ export function BranchSelectorPopover({
 	onMergeBranch,
 	onCreateBranch,
 	onDeleteBranch,
+	onPush,
 	pinnedBranches,
 	onTogglePinBranch,
 	trigger,
@@ -148,6 +153,12 @@ export function BranchSelectorPopover({
 		[onCreateBranch, onOpenChange],
 	);
 
+	const handlePush = useCallback(() => {
+		onPush?.();
+		onOpenChange(false);
+		setQuery("");
+	}, [onPush, onOpenChange]);
+
 	const closePopover = useCallback(() => {
 		onOpenChange(false);
 		setQuery("");
@@ -195,11 +206,38 @@ export function BranchSelectorPopover({
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
 									Working tree
 								</div>
-								<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
-									<Locate size={12} className="shrink-0 text-status-orange" />
-									<span className="truncate font-mono text-status-orange">HEAD ({detachedRef.name})</span>
-									<Check size={12} className="shrink-0 text-accent ml-auto" />
-								</div>
+								<ContextMenu.Root>
+									<ContextMenu.Trigger asChild>
+										<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
+											<Locate size={12} className="shrink-0 text-status-orange" />
+											<span className="truncate font-mono text-status-orange">
+												HEAD ({detachedRef.name})
+											</span>
+											<Check size={12} className="shrink-0 text-accent ml-auto" />
+										</div>
+									</ContextMenu.Trigger>
+									{onPush ? (
+										<ContextMenu.Portal>
+											<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+												<Tooltip
+													content="Cannot push from a detached HEAD — checkout a branch first"
+													side="right"
+												>
+													{/* Uses onSelect + preventDefault instead of Radix `disabled` prop because
+													   Radix disabled blocks pointer events, which prevents the wrapping Tooltip
+													   from showing. This is the only context menu item using this pattern. */}
+													<ContextMenu.Item
+														className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
+														onSelect={(e) => e.preventDefault()}
+													>
+														<ArrowUp size={14} className="text-text-secondary" />
+														Push to remote
+													</ContextMenu.Item>
+												</Tooltip>
+											</ContextMenu.Content>
+										</ContextMenu.Portal>
+									) : null}
+								</ContextMenu.Root>
 							</>
 						) : null}
 						{pinnedLocal.length > 0 ? (
@@ -221,6 +259,7 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
+										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -244,6 +283,7 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
+										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -284,8 +324,10 @@ export function BranchSelectorPopover({
 
 export const BranchPillTrigger = forwardRef<
 	HTMLButtonElement,
-	{ label: string } & React.ComponentPropsWithoutRef<"button">
->(function BranchPillTrigger({ label, className, ...rest }, ref) {
+	{ label: string; aheadCount?: number; behindCount?: number } & React.ComponentPropsWithoutRef<"button">
+>(function BranchPillTrigger({ label, aheadCount, behindCount, className, ...rest }, ref) {
+	const ahead = aheadCount ?? 0;
+	const behind = behindCount ?? 0;
 	return (
 		<button
 			ref={ref}
@@ -299,6 +341,18 @@ export const BranchPillTrigger = forwardRef<
 		>
 			<GitBranch size={11} className="shrink-0 text-text-tertiary" />
 			<span className="truncate">{label}</span>
+			{behind > 0 ? (
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-text-tertiary">
+					<ArrowDown size={10} />
+					{behind}
+				</span>
+			) : null}
+			{ahead > 0 ? (
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-text-tertiary">
+					<ArrowUp size={10} />
+					{ahead}
+				</span>
+			) : null}
 			<ChevronDown size={10} className="shrink-0 text-text-tertiary" />
 		</button>
 	);
@@ -316,6 +370,7 @@ function BranchItem({
 	onCreateBranch,
 	onDeleteBranch,
 	onTogglePin,
+	onPush,
 	onClose,
 }: {
 	gitRef: RuntimeGitRef;
@@ -329,6 +384,7 @@ function BranchItem({
 	onCreateBranch?: (sourceRef: string) => void;
 	onDeleteBranch?: (branchName: string) => void;
 	onTogglePin?: (branchName: string) => void;
+	onPush?: () => void;
 	onClose: () => void;
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
@@ -406,7 +462,13 @@ function BranchItem({
 							Create branch from here
 						</ContextMenu.Item>
 					) : null}
-					{onCheckout || onCompare || onMerge || onCreateBranch ? (
+					{onPush ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPush}>
+							<ArrowUp size={14} className="text-text-secondary" />
+							Push to remote
+						</ContextMenu.Item>
+					) : null}
+					{onCheckout || onCompare || onMerge || onCreateBranch || onPush ? (
 						<ContextMenu.Separator className="my-1 h-px bg-border" />
 					) : null}
 					<ContextMenu.Item

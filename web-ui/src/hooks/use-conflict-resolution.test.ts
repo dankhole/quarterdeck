@@ -78,6 +78,7 @@ function createConflictState(overrides: Partial<RuntimeConflictState> = {}): Run
 		currentStep: null,
 		totalSteps: null,
 		conflictedFiles: ["src/foo.ts", "src/bar.ts"],
+		autoMergedFiles: [],
 		...overrides,
 	};
 }

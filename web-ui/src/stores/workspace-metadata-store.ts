@@ -156,7 +156,9 @@ function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConfli
 		a.totalSteps === b.totalSteps &&
 		a.sourceBranch === b.sourceBranch &&
 		a.conflictedFiles.length === b.conflictedFiles.length &&
-		a.conflictedFiles.every((f, i) => f === b.conflictedFiles[i])
+		a.conflictedFiles.every((f, i) => f === b.conflictedFiles[i]) &&
+		a.autoMergedFiles.length === b.autoMergedFiles.length &&
+		a.autoMergedFiles.every((f, i) => f === b.autoMergedFiles[i])
 	);
 }
 

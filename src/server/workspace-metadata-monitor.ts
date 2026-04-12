@@ -8,6 +8,7 @@ import type {
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
 import {
+	computeAutoMergedFiles,
 	detectActiveConflict,
 	getConflictedFiles,
 	getGitSyncSummary,
@@ -226,12 +227,14 @@ async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<Cache
 		let conflictState: RuntimeConflictState | null = null;
 		if (detected) {
 			const conflictedFiles = await getConflictedFiles(entry.workspacePath);
+			const autoMergedFiles = await computeAutoMergedFiles(entry.workspacePath, conflictedFiles);
 			conflictState = {
 				operation: detected.operation,
 				sourceBranch: detected.sourceBranch,
 				currentStep: detected.currentStep,
 				totalSteps: detected.totalSteps,
 				conflictedFiles,
+				autoMergedFiles,
 			};
 		}
 		return {
@@ -330,12 +333,14 @@ async function loadTaskWorkspaceMetadata(
 		let conflictState: RuntimeConflictState | null = null;
 		if (detected) {
 			const conflictedFiles = await getConflictedFiles(pathInfo.path);
+			const autoMergedFiles = await computeAutoMergedFiles(pathInfo.path, conflictedFiles);
 			conflictState = {
 				operation: detected.operation,
 				sourceBranch: detected.sourceBranch,
 				currentStep: detected.currentStep,
 				totalSteps: detected.totalSteps,
 				conflictedFiles,
+				autoMergedFiles,
 			};
 		}
 		return {

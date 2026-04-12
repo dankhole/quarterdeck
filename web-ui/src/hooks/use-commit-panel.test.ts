@@ -28,12 +28,27 @@ vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
 	useRuntimeWorkspaceChanges: useRuntimeWorkspaceChangesMock,
 }));
 
+const useHomeGitSummaryValueMock = vi.hoisted(() =>
+	vi.fn(() => ({ currentBranch: "main" }) as { currentBranch: string | null } | null),
+);
+
+const useTaskWorkspaceSnapshotValueMock = vi.hoisted(() =>
+	vi.fn(() => null as { branch: string | null; isDetached: boolean } | null),
+);
+
 vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceStateVersionValue: () => 0,
 	useHomeGitStateVersionValue: () => 0,
+	useHomeGitSummaryValue: useHomeGitSummaryValueMock,
+	useTaskWorkspaceSnapshotValue: useTaskWorkspaceSnapshotValueMock,
 }));
 
-const commitMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
+const commitMutateMock = vi.hoisted(() =>
+	vi.fn(
+		async () =>
+			({ ok: true }) as { ok: boolean; pushOk?: boolean; commitHash?: string; error?: string; pushError?: string },
+	),
+);
 const discardGitChangesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const discardFileMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 
@@ -117,6 +132,10 @@ describe("useCommitPanel", () => {
 			changes: { files: mockFiles },
 			isLoading: false,
 		});
+
+		// Default: on a named branch.
+		useHomeGitSummaryValueMock.mockReturnValue({ currentBranch: "main" });
+		useTaskWorkspaceSnapshotValueMock.mockReturnValue(null);
 	});
 
 	afterEach(() => {
@@ -290,5 +309,55 @@ describe("useCommitPanel", () => {
 		// Original files that stayed should still be selected.
 		expect(latest.selectedPaths).toContain("src/foo.ts");
 		expect(latest.selectedPaths).toContain("src/bar.ts");
+	});
+
+	// -----------------------------------------------------------------------
+	// 9. canPush is true on named branch with valid commit conditions
+	// -----------------------------------------------------------------------
+	it("canPush is true on named branch with valid commit conditions", () => {
+		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		render();
+
+		act(() => {
+			latest.setMessage("feat: push me");
+		});
+
+		expect(latest.canCommit).toBe(true);
+		expect(latest.canPush).toBe(true);
+	});
+
+	// -----------------------------------------------------------------------
+	// 10. canPush is false when on detached HEAD
+	// -----------------------------------------------------------------------
+	it("canPush is false when on detached HEAD", () => {
+		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: null, isDetached: true });
+		render();
+
+		act(() => {
+			latest.setMessage("feat: detached");
+		});
+
+		expect(latest.canCommit).toBe(true);
+		expect(latest.canPush).toBe(false);
+	});
+
+	// -----------------------------------------------------------------------
+	// 11. commitAndPush sends pushAfterCommit: true in the mutation
+	// -----------------------------------------------------------------------
+	it("commitAndPush sends pushAfterCommit: true in the mutation", async () => {
+		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		commitMutateMock.mockResolvedValueOnce({ ok: true, pushOk: true, commitHash: "abc1234" });
+		render();
+
+		act(() => {
+			latest.setMessage("feat: push it");
+		});
+
+		await act(async () => {
+			await latest.commitAndPush();
+		});
+
+		expect(commitMutateMock).toHaveBeenCalledTimes(1);
+		expect(commitMutateMock).toHaveBeenCalledWith(expect.objectContaining({ pushAfterCommit: true }));
 	});
 });

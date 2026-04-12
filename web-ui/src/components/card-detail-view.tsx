@@ -2,6 +2,7 @@ import type { DropResult } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { ConflictBanner } from "@/components/conflict-banner";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
@@ -134,6 +135,8 @@ export function CardDetailView({
 	onCardDoubleClick,
 	pinnedBranches,
 	onTogglePinBranch,
+	onConflictDetected,
+	onPushBranch,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -186,6 +189,9 @@ export function CardDetailView({
 	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
+	onConflictDetected?: () => void;
+	/** Push current branch to remote. Called with the task scope for worktree-scoped push. */
+	onPushBranch?: () => void;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
@@ -243,6 +249,7 @@ export function CardDetailView({
 		taskId: selection.card.id,
 		baseRef: selection.card.baseRef,
 		onCheckoutSuccess: taskReturnToContextual,
+		onConflictDetected,
 	});
 
 	// Derive what the file browser should show based on scope
@@ -370,6 +377,9 @@ export function CardDetailView({
 				}}
 			>
 				{topBar}
+				{mainView !== "git" && (
+					<ConflictBanner taskId={selection.card.id} onNavigateToResolver={() => onConflictDetected?.()} />
+				)}
 				{mainView === "git" ? (
 					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 						<GitView
@@ -438,6 +448,7 @@ export function CardDetailView({
 												onMergeBranch={taskBranchActions.handleMergeBranch}
 												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
 												onDeleteBranch={taskBranchActions.handleDeleteBranch}
+												onPush={onPushBranch}
 												pinnedBranches={pinnedBranches}
 												onTogglePinBranch={onTogglePinBranch}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}

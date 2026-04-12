@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeAutoMergedFile,
 	RuntimeConflictAbortResponse,
 	RuntimeConflictContinueResponse,
 	RuntimeConflictFile,
@@ -25,6 +26,9 @@ export interface UseConflictResolutionResult {
 	conflictState: RuntimeConflictState | null;
 	conflictFiles: RuntimeConflictFile[];
 	resolvedFiles: ReadonlySet<string>;
+	autoMergedFiles: RuntimeAutoMergedFile[];
+	reviewedAutoMergedFiles: ReadonlySet<string>;
+	acceptAutoMergedFile: (path: string) => void;
 	selectedPath: string | null;
 	setSelectedPath: (path: string | null) => void;
 	resolveFile: (path: string, resolution: "ours" | "theirs") => Promise<{ ok: boolean; error?: string }>;
@@ -50,16 +54,19 @@ export function useConflictResolution(options: {
 	const [resolvedFiles, setResolvedFiles] = useState<Set<string>>(new Set());
 	const resolvedFilesRef = useRef<Set<string>>(resolvedFiles);
 	resolvedFilesRef.current = resolvedFiles;
+	const [autoMergedFiles, setAutoMergedFiles] = useState<RuntimeAutoMergedFile[]>([]);
+	const [reviewedAutoMergedFiles, setReviewedAutoMergedFiles] = useState<Set<string>>(new Set());
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const previousStepRef = useRef<number | null>(null);
 
-	// 4. Reset resolvedFiles when currentStep changes (rebase advancing to next commit).
+	// 4. Reset resolvedFiles and reviewedAutoMergedFiles when currentStep changes (rebase advancing to next commit).
 	useEffect(() => {
 		const currentStep = conflictState?.currentStep ?? null;
 		if (currentStep !== previousStepRef.current) {
 			if (previousStepRef.current !== null && currentStep !== null) {
 				setResolvedFiles(new Set());
+				setReviewedAutoMergedFiles(new Set());
 			}
 			previousStepRef.current = currentStep;
 		}
@@ -70,6 +77,8 @@ export function useConflictResolution(options: {
 		if (!isActive) {
 			setConflictFiles([]);
 			setResolvedFiles(new Set());
+			setAutoMergedFiles([]);
+			setReviewedAutoMergedFiles(new Set());
 			setSelectedPath(null);
 		}
 	}, [isActive]);
@@ -129,7 +138,47 @@ export function useConflictResolution(options: {
 		previousConflictedFilesRef.current = curr;
 	}, [conflictState?.conflictedFiles, conflictState]);
 
-	// 8. Mutation wrappers.
+	// 8. Fetch auto-merged file content when autoMergedFiles changes.
+	useEffect(() => {
+		if (!isActive || !conflictState || !options.workspaceId) return;
+		const paths = conflictState.autoMergedFiles;
+		if (paths.length === 0) {
+			setAutoMergedFiles([]);
+			return;
+		}
+
+		let cancelled = false;
+		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
+		trpcClient.workspace.getAutoMergedFiles
+			.mutate({
+				taskId: options.taskId ?? undefined,
+				paths,
+			})
+			.then((response) => {
+				if (!cancelled && response.ok) {
+					setAutoMergedFiles(response.files);
+				}
+			})
+			.catch(() => {
+				// If we can't fetch content, treat all auto-merged files as implicitly accepted
+				// rather than deadlocking the "Complete Merge" button.
+				if (!cancelled) {
+					setReviewedAutoMergedFiles(new Set(paths));
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on autoMergedFiles identity
+	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.workspaceId]);
+
+	// 9. Accept auto-merged file callback.
+	const acceptAutoMergedFile = useCallback((path: string) => {
+		setReviewedAutoMergedFiles((existing) => new Set([...existing, path]));
+	}, []);
+
+	// 10. Mutation wrappers.
 	const resolveFile = useCallback(
 		async (path: string, resolution: "ours" | "theirs"): Promise<{ ok: boolean; error?: string }> => {
 			if (!options.workspaceId) {
@@ -174,6 +223,9 @@ export function useConflictResolution(options: {
 		conflictState,
 		conflictFiles,
 		resolvedFiles,
+		autoMergedFiles,
+		reviewedAutoMergedFiles,
+		acceptAutoMergedFile,
 		selectedPath,
 		setSelectedPath,
 		resolveFile,
