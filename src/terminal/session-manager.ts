@@ -1,6 +1,6 @@
 // PTY-backed runtime for task sessions and the workspace shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
-// for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
+// for command-driven agents such as Claude Code, Codex, and shell sessions.
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
 import {
@@ -50,7 +50,7 @@ const SIGINT_BYTE = 0x03;
 const ESC_BYTE = 0x1b;
 // Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
 const MAX_SIGINT_DETECT_BUFFER_SIZE = 4;
-// TUI apps (Codex, OpenCode) can query OSC 10/11 before the browser terminal is attached
+// TUI apps (Codex) can query OSC 10/11 before the browser terminal is attached
 // and ready to answer. We intercept those startup probes during early PTY output, synthesize
 // foreground/background color replies, then disable the filter once a live terminal listener
 // has attached.

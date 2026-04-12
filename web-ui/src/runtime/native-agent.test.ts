@@ -48,19 +48,9 @@ describe("native-agent helpers", () => {
 		).toBeUndefined();
 	});
 
-	it("ignores non-launch agents when checking native CLI availability", () => {
+	it("returns false when no launch-supported agents are available", () => {
 		const config = createRuntimeConfigResponse("claude");
-		config.agents = [
-			{
-				id: "gemini",
-				label: "Gemini CLI",
-				binary: "gemini",
-				command: "gemini",
-				defaultArgs: [],
-				installed: true,
-				configured: false,
-			},
-		];
+		config.agents = [];
 		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
 	});
 });

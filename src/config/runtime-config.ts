@@ -189,10 +189,7 @@ export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly 
 }
 
 function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
-	if (
-		(agentId === "claude" || agentId === "codex" || agentId === "gemini" || agentId === "opencode") &&
-		isRuntimeAgentLaunchSupported(agentId)
-	) {
+	if ((agentId === "claude" || agentId === "codex") && isRuntimeAgentLaunchSupported(agentId)) {
 		return agentId;
 	}
 	return DEFAULT_AGENT_ID;

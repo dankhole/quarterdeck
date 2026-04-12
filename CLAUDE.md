@@ -1,6 +1,6 @@
 # Quarterdeck
 
-A CLI-based quarterdeck board for orchestrating multiple AI coding agents (Claude, Codex) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI. Backend adapters for Gemini and OpenCode exist but are disabled; Droid has been removed.
+A CLI-based quarterdeck board for orchestrating multiple AI coding agents (Claude, Codex) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
 
 This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. Much of the foundational work is from the upstream project.
 
@@ -34,7 +34,7 @@ Browser (React + Vite, port 4173)
 Runtime Server (Node.js, port 3500)
   │ Spawns PTY processes
   ▼
-Agent Processes (Claude, Codex, Gemini, etc.)
+Agent Processes (Claude, Codex, etc.)
   │ Each in isolated git worktree
   ▼
 Hook Events (quarterdeck hooks ingest --event <to_review|to_in_progress>)

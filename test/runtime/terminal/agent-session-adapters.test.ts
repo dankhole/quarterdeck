@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -147,105 +147,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
 	});
 
-	it("writes Gemini settings with AfterTool mapped to to_in_progress", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "gemini",
-			binary: "gemini",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "gemini", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
-		};
-		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
-		expect(afterToolCommand).toContain("hooks");
-		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".quarterdeck", "hooks", "gemini", "gemini-hook.mjs");
-		expect(existsSync(hookScriptPath)).toBe(false);
-	});
-
-	it("writes OpenCode plugin with root-session filtering and permission hooks", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const pluginPath = join(homedir(), ".quarterdeck", "hooks", "opencode", "quarterdeck.js");
-		const plugin = readFileSync(pluginPath, "utf8");
-		expect(plugin).toContain("parentID");
-		expect(plugin).toContain('"permission.ask"');
-		expect(plugin).toContain('"tool.execute.before"');
-		expect(plugin).toContain('"tool.execute.after"');
-		expect(plugin).toContain("session.status");
-		expect(plugin).toContain("message.part.updated");
-		expect(plugin).toContain("last_assistant_message");
-		expect(plugin).toContain("--metadata-base64");
-		expect(plugin).toContain('if (kind === "review")');
-		expect(plugin).toContain('currentState = "idle"');
-	});
-
-	it("loads OpenCode preferred model from LOCALAPPDATA state and auth paths", async () => {
-		const homePath = setupTempHome();
-		const localAppDataPath = join(homePath, "AppData", "Local");
-		process.env.LOCALAPPDATA = localAppDataPath;
-
-		const statePath = join(localAppDataPath, "opencode", "state");
-		mkdirSync(statePath, { recursive: true });
-		writeFileSync(
-			join(statePath, "model.json"),
-			JSON.stringify(
-				{
-					recent: [
-						{ providerID: "anthropic", modelID: "claude-3-7-sonnet" },
-						{ providerID: "openai", modelID: "gpt-4o" },
-					],
-				},
-				null,
-				2,
-			),
-			"utf8",
-		);
-
-		const authPath = join(localAppDataPath, "opencode");
-		mkdirSync(authPath, { recursive: true });
-		writeFileSync(
-			join(authPath, "auth.json"),
-			JSON.stringify(
-				{
-					openai: { key: "sk-test" },
-				},
-				null,
-				2,
-			),
-			"utf8",
-		);
-
-		const launch = await prepareAgentLaunch({
-			taskId: "task-opencode-model",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		const modelIndex = launch.args.indexOf("--model");
-		expect(modelIndex).toBeGreaterThan(-1);
-		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
-	});
-
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -335,28 +236,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 		});
 		expect(claudeLaunch.args).toContain("--continue");
-
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini",
-			agentId: "gemini",
-			binary: "gemini",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeConversation: true,
-		});
-		expect(geminiLaunch.args).toEqual(expect.arrayContaining(["--resume", "latest"]));
-
-		const opencodeLaunch = await prepareAgentLaunch({
-			taskId: "task-opencode",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeConversation: true,
-		});
-		expect(opencodeLaunch.args).toContain("--continue");
 	});
 
 	it("applies autonomous mode flags in adapters", async () => {
@@ -383,17 +262,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini-auto",
-			agentId: "gemini",
-			binary: "gemini",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(geminiLaunch.args).toContain("--yolo");
 	});
 
 	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
@@ -420,16 +288,5 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini-no-auto",
-			agentId: "gemini",
-			binary: "gemini",
-			args: ["--yolo"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(geminiLaunch.args).toContain("--yolo");
 	});
 });

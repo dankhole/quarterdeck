@@ -48,13 +48,13 @@ function selectiveBuildMinifyPlugin(): Plugin {
 }
 
 export default defineConfig({
-	// OpenCode broke in production because esbuild minification corrupted xterm's
-	// requestMode handling. We isolate all @xterm code into its own chunk and leave
-	// that chunk unminified, while still minifying the rest of the app here.
+	// esbuild minification corrupts xterm's requestMode handling, breaking
+	// full-screen TUI agents at runtime. We isolate all @xterm code into its own
+	// chunk and leave that chunk unminified, while still minifying the rest of the app.
 	// Compared with leaving the entire frontend unminified, this saves about
 	// 770 KB raw and 108.5 KB gzipped across emitted frontend assets.
 	// Compared with fully minifying everything, this costs about 545 KB raw and
-	// 58.5 KB gzipped, which is the current tradeoff for keeping OpenCode stable.
+	// 58.5 KB gzipped, which is the current tradeoff for keeping TUI agents stable.
 	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin()],
 	envPrefix: ["VITE_"],
 	define: {
@@ -62,7 +62,7 @@ export default defineConfig({
 	},
 	build: {
 		// esbuild minification corrupts xterm's DECRQM requestMode helper in the
-		// production bundle, which breaks full-screen TUIs like OpenCode at runtime.
+		// production bundle, which breaks full-screen TUI agents at runtime.
 		// Keep xterm unminified, but selectively minify the rest of the app below.
 		minify: false,
 		sourcemap: true,

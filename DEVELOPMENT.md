@@ -177,18 +177,6 @@ Current agent mappings:
     - `task_started` and `exec_command_begin` to `to_in_progress`
     - `*_approval_request` to `to_review`
   - Codex `notify` completion path also emits `to_review`
-- Gemini
-  - `BeforeAgent` and `AfterTool` emit `to_in_progress`
-  - `AfterAgent` emits `to_review`
-  - hook command writes `{}` to stdout immediately to satisfy Gemini hook contract, then notifies in background
-- OpenCode
-  - plugin maps busy activity to `to_in_progress`
-  - plugin maps idle/error and permission ask to `to_review`
-  - plugin filters child sessions to avoid false transitions from nested runs
-- Droid
-  - `PreToolUse` for active tools like `Read`, `Grep`, `Glob`, `FetchUrl`, `WebSearch`, `Execute`, `Task`, `Edit`, and `Create` emits `to_in_progress`
-  - `PreToolUse` for `AskUser` and `Stop` emit `to_review`
-  - `PostToolUse` for `AskUser` and `UserPromptSubmit` emit `to_in_progress`
 
 Important behavior details:
 

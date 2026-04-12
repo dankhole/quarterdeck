@@ -4,6 +4,23 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Remove disabled Gemini and OpenCode adapters (2026-04-12)
+
+Removed all Gemini CLI and OpenCode agent adapter code. These adapters were commented out in `RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS` and unreachable at runtime. Hundreds of lines of dead code shouldn't sit indefinitely — the commit history preserves them if ever needed again.
+
+**What was removed**:
+- `src/terminal/opencode-paths.ts` (deleted) — OpenCode config/auth/model-state path resolution for cross-platform support
+- `src/terminal/agent-session-adapters.ts` (~700 lines) — `geminiAdapter`, `opencodeAdapter`, `buildOpenCodePluginContent` (300-line inline JS plugin), and ~10 helper functions (`resolveOpenCodeBaseConfigPath`, `stripJsonComments`, `tryExtractOpenCodeModelFromConfig`, `resolveOpenCodePreferredModelArg`, `hasOpenCodeModelArg`, `hasOpenCodeAgentArg`, `normalizeOpenCodeModel`, `escapeForTemplateLiteral`, `buildHooksCommand`)
+- `src/commands/hooks.ts` — `mapGeminiHookEvent`, `runGeminiHookSubcommand`, and `gemini-hook` CLI subcommand registration
+- `src/core/api-contract.ts` — `runtimeAgentIdSchema` narrowed from `["claude", "codex", "gemini", "opencode"]` to `["claude", "codex"]`
+- `src/core/agent-catalog.ts` — OpenCode and Gemini catalog entries, commented-out launch support entries
+- `src/prompts/append-system-prompt.ts` — Gemini/OpenCode from `APPEND_PROMPT_AGENT_IDS` and Linear MCP setup switch cases
+- `src/config/runtime-config.ts` — Gemini/OpenCode from `normalizeAgentId` validation
+- Tests: deleted `opencode-paths.test.ts`, removed Gemini/OpenCode test cases from adapter tests, runtime-config tests, agent-registry tests, and native-agent tests
+- Docs: updated CLAUDE.md, DEVELOPMENT.md, architecture.md, windows-compatibility.md, man page, todo.md (removed item #22, renumbered), vite.config.ts comments
+
+**Files touched**: `src/core/api-contract.ts`, `src/core/agent-catalog.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/opencode-paths.ts` (deleted), `src/terminal/session-manager.ts`, `src/commands/hooks.ts`, `src/prompts/append-system-prompt.ts`, `src/config/runtime-config.ts`, `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/terminal/opencode-paths.test.ts` (deleted), `test/runtime/config/agent-registry.test.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/runtime/native-agent.test.ts`, `web-ui/vite.config.ts`, `CLAUDE.md`, `DEVELOPMENT.md`, `docs/architecture.md`, `docs/todo.md`, `docs/windows-compatibility.md`, `man/quarterdeck.1`.
+
 ## Preload project on hover for instant switching (2026-04-11)
 
 Project switching previously required a full WebSocket close/reconnect cycle — the UI showed a loading spinner while the server built a new snapshot. With preload-on-hover, hovering a project row for 150ms+ fires a background tRPC `workspace.getState` call that fetches the workspace state (board, sessions, git info) and caches it in a module-scoped Map with 15-second TTL. When the user clicks, the `useRuntimeStateStream` reducer consumes the cached data and immediately populates `workspaceState` and `currentProjectId`, bypassing the loading spinner. The WebSocket still reconnects in the background and overwrites with authoritative data when the snapshot arrives (usually identical). Falls back to the standard loading flow if the preload hasn't completed or the cache expired.

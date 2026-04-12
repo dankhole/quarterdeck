@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Remove disabled Gemini and OpenCode adapters
+
+- Removed all Gemini CLI and OpenCode agent adapter code — type definitions, adapter implementations, hook handlers, prompt injection, config path resolution, and associated tests (~1100 lines). These adapters were disabled in the agent catalog's launch-supported list and unreachable. The agent type system (`RuntimeAgentId`) now only accepts `claude` and `codex`. Stale references cleaned from docs, man page, and comments.
+
 ### Preload project on hover for instant switching
 
 - Hovering a project in the sidebar for 150ms+ prefetches its workspace state via tRPC in the background. When the user clicks, the board renders immediately from cached data instead of waiting for the WebSocket to reconnect and deliver a snapshot. Falls back to normal loading behavior if the preload hasn't completed. Cache entries expire after 15 seconds and are consumed on use to prevent stale data.

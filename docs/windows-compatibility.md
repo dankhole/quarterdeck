@@ -100,7 +100,6 @@ The codebase had substantial Windows groundwork before any fixes:
 | Windows directory picker (PowerShell) | `src/server/directory-picker.ts:135-159` |
 | PTY spawn with cmd wrapping | `src/terminal/pty-session.ts:90-92` |
 | Process tree kill via tree-kill | `src/server/process-termination.ts:20-32` |
-| OpenCode APPDATA/LOCALAPPDATA paths | `src/terminal/opencode-paths.ts:47-52` |
 | Path separator normalization (`/` and `\`) | `src/workspace/task-worktree-path.ts:17-20` |
 | Windows file blacklist (Thumbs.db, Desktop.ini) | `src/workspace/task-worktree.ts:23-31` |
 | TCP networking (no Unix domain sockets) | `src/server/runtime-server.ts` |

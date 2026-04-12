@@ -16,7 +16,7 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 - Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
 - Replace node-pty with Go PTY libraries (`creack/pty`)
 - Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
-- Port the agent adapter system (Claude, Codex) — these are mostly CLI argument builders. Gemini/OpenCode adapters exist but are disabled (see #22)
+- Port the agent adapter system (Claude, Codex) — these are mostly CLI argument builders
 - The research doc is organized module-by-module to support incremental porting
 
 ## 2. Resume card sessions after crash/closure
@@ -141,18 +141,10 @@ When an agent compacts its conversation context (e.g. Claude Code's auto-compact
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 22. Decide fate of disabled Gemini/OpenCode adapters
-
-Backend adapters for Gemini CLI and OpenCode still exist (`agent-session-adapters.ts`, `opencode-paths.ts`, hooks in `hooks.ts`, prompt injection in `append-system-prompt.ts`) but are disabled — commented out in the agent catalog's enabled list. Droid was fully removed. Decide whether to:
-- **Remove**: Delete the adapter code, hook handlers, config resolution, and simplify the agent catalog. Reduces maintenance surface and dead code.
-- **Re-enable**: Uncomment in the catalog, test that they still work, and expose in the frontend agent picker. Would require verifying hooks still fire correctly and adapters haven't drifted.
-
-Either way, hundreds of lines of unreachable code shouldn't sit indefinitely.
-
-## 23. Git view compare tab doesn't refresh as the worktree advances
+## 22. Git view compare tab doesn't refresh as the worktree advances
 
 The compare tab fetches the diff once when opened and doesn't refetch as the agent commits. For named branches, the query key is `compare:feature-xyz:main` — it stays the same across commits, so no refetch fires. The comment at `git-view.tsx:335` says `// No polling for compare — branch diffs are stable` but this isn't true when the agent is actively working. Headless worktrees get this for free (headCommit changes on each commit, which changes the query key), but named branches don't. Include a changing signal (e.g. workspace snapshot headCommit or a state version) in the compare query key so the diff stays current while the agent works.
 
-## 24. Archive stale docs (recurring)
+## 23. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
