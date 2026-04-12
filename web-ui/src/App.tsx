@@ -16,6 +16,7 @@ import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-pa
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
+import { DeleteBranchDialog } from "@/components/detail-panels/delete-branch-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
@@ -1252,6 +1253,7 @@ export default function App(): ReactElement {
 						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
 						onMergeBranch={topbarBranchActions.handleMergeBranch}
 						onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
+						onDeleteBranch={topbarBranchActions.handleDeleteBranch}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined
@@ -1528,6 +1530,7 @@ export default function App(): ReactElement {
 																	}
 																	onMergeBranch={homeBranchActions.handleMergeBranch}
 																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
 																	trigger={
 																		<BranchPillTrigger
 																			label={
@@ -1734,6 +1737,26 @@ export default function App(): ReactElement {
 						workspaceId={currentProjectId}
 						onClose={topbarBranchActions.closeCreateBranchDialog}
 						onBranchCreated={topbarBranchActions.handleBranchCreated}
+					/>
+					<DeleteBranchDialog
+						open={homeBranchActions.deleteBranchDialogState.type === "open"}
+						branchName={
+							homeBranchActions.deleteBranchDialogState.type === "open"
+								? homeBranchActions.deleteBranchDialogState.branchName
+								: ""
+						}
+						onCancel={homeBranchActions.closeDeleteBranchDialog}
+						onConfirm={homeBranchActions.handleConfirmDeleteBranch}
+					/>
+					<DeleteBranchDialog
+						open={topbarBranchActions.deleteBranchDialogState.type === "open"}
+						branchName={
+							topbarBranchActions.deleteBranchDialogState.type === "open"
+								? topbarBranchActions.deleteBranchDialogState.branchName
+								: ""
+						}
+						onCancel={topbarBranchActions.closeDeleteBranchDialog}
+						onConfirm={topbarBranchActions.handleConfirmDeleteBranch}
 					/>
 					<MigrateWorkingDirectoryDialog
 						open={pendingMigrate !== null}

@@ -5,6 +5,7 @@ import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitResponse,
 	RuntimeGitCreateBranchResponse,
+	RuntimeGitDeleteBranchResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeGitSyncAction,
@@ -460,6 +461,43 @@ export async function createBranchFromRef(options: {
 			ok: false,
 			branchName,
 			error: createResult.error ?? "Failed to create branch.",
+		};
+	}
+
+	return { ok: true, branchName };
+}
+
+export async function deleteBranch(options: {
+	cwd: string;
+	branchName: string;
+}): Promise<RuntimeGitDeleteBranchResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const branchName = options.branchName.trim();
+
+	if (!branchName || !validateGitRef(branchName)) {
+		return { ok: false, branchName, error: "Invalid branch name." };
+	}
+
+	// Verify the branch exists
+	const exists = await hasGitRef(repoRoot, `refs/heads/${branchName}`);
+	if (!exists) {
+		return { ok: false, branchName, error: `Branch "${branchName}" does not exist locally.` };
+	}
+
+	// Refuse to delete the currently checked-out branch
+	const headResult = await runGit(repoRoot, ["symbolic-ref", "--short", "HEAD"]);
+	if (headResult.ok && headResult.stdout === branchName) {
+		return { ok: false, branchName, error: `Cannot delete the currently checked-out branch "${branchName}".` };
+	}
+
+	// Use -d (safe delete — requires branch to be fully merged).
+	// If the branch is unmerged, git will error with a helpful message.
+	const deleteResult = await runGit(repoRoot, ["branch", "-d", "--", branchName]);
+	if (!deleteResult.ok) {
+		return {
+			ok: false,
+			branchName,
+			error: deleteResult.error ?? "Failed to delete branch.",
 		};
 	}
 

@@ -33,6 +33,7 @@ import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
 	commitSelectedFiles,
 	createBranchFromRef,
+	deleteBranch,
 	discardGitChanges,
 	discardSingleFile,
 	getGitSyncSummary,
@@ -452,6 +453,24 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					cwd: workspaceScope.workspacePath,
 					branchName: input.branchName,
 					startRef: input.startRef,
+				});
+				if (result.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return result;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false as const, branchName: input.branchName, error: message };
+			}
+		},
+		deleteBranch: async (workspaceScope, input) => {
+			try {
+				const result = await deleteBranch({
+					cwd: workspaceScope.workspacePath,
+					branchName: input.branchName,
 				});
 				if (result.ok) {
 					void deps.broadcastRuntimeWorkspaceStateUpdated(

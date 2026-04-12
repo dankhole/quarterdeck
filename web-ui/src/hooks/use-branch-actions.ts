@@ -31,6 +31,8 @@ interface UseBranchActionsOptions {
 	onCheckoutSuccess?: () => void;
 }
 
+export type DeleteBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
+
 export interface UseBranchActionsResult {
 	isBranchPopoverOpen: boolean;
 	setBranchPopoverOpen: (open: boolean) => void;
@@ -47,6 +49,10 @@ export interface UseBranchActionsResult {
 	handleCheckoutBranch: (branch: string) => void;
 	handleConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
 	handleMergeBranch: (branch: string) => void;
+	deleteBranchDialogState: DeleteBranchDialogState;
+	handleDeleteBranch: (branch: string) => void;
+	handleConfirmDeleteBranch: () => void;
+	closeDeleteBranchDialog: () => void;
 }
 
 export function useBranchActions(options: UseBranchActionsOptions): UseBranchActionsResult {
@@ -238,7 +244,42 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		setCreateBranchDialogState({ type: "closed" });
 	}, []);
 
+	// Delete branch dialog
+	const [deleteBranchDialogState, setDeleteBranchDialogState] = useState<DeleteBranchDialogState>({ type: "closed" });
+
+	const handleDeleteBranch = useCallback((branch: string) => {
+		setDeleteBranchDialogState({ type: "open", branchName: branch });
+	}, []);
+
+	const closeDeleteBranchDialog = useCallback(() => {
+		setDeleteBranchDialogState({ type: "closed" });
+	}, []);
+
 	const refetchRefs = refsQuery.refetch;
+
+	const handleConfirmDeleteBranch = useCallback(async () => {
+		if (!workspaceId || deleteBranchDialogState.type !== "open") {
+			return;
+		}
+		const { branchName } = deleteBranchDialogState;
+		setDeleteBranchDialogState({ type: "closed" });
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const result = await trpc.workspace.deleteBranch.mutate({ branchName });
+			if (result.ok) {
+				showAppToast({ intent: "success", message: `Deleted branch ${branchName}` });
+				void refetchRefs();
+			} else {
+				showAppToast({ intent: "danger", message: result.error ?? `Failed to delete ${branchName}` });
+			}
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: `Delete failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}, [workspaceId, deleteBranchDialogState, refetchRefs]);
+
 	const handleBranchCreated = useCallback(
 		(branchName: string) => {
 			// Invalidate the refs query so the new branch appears in the list
@@ -265,5 +306,9 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		handleCheckoutBranch,
 		handleConfirmCheckout,
 		handleMergeBranch,
+		deleteBranchDialogState,
+		handleDeleteBranch,
+		handleConfirmDeleteBranch,
+		closeDeleteBranchDialog,
 	};
 }

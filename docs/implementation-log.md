@@ -4,6 +4,25 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+<<<<<<< HEAD
+## Feat: delete branch from branch selector context menu (2026-04-12)
+
+Added a "Delete branch" action to the `BranchSelectorPopover` right-click context menu. This is a basic branch hygiene operation — branches pile up fast with per-task worktrees and there was no UI to clean them up after merging.
+
+**Backend:**
+- New `runtimeGitDeleteBranchRequest/ResponseSchema` Zod schemas in `api-contract.ts` following the same `{ ok, branchName, error? }` pattern as `createBranch`.
+- `deleteBranch()` function in `git-sync.ts`: validates input via `validateGitRef`, verifies the branch exists via `hasGitRef`, refuses to delete the currently checked-out branch via `symbolic-ref --short HEAD`, then runs `git branch -d --` (safe delete — git itself refuses unmerged branches). The `--` separator prevents flag injection.
+- `deleteBranch` method in `workspace-api.ts` with `broadcastRuntimeWorkspaceStateUpdated` on success.
+- `deleteBranch` mutation on the workspace tRPC router in `app-router.ts`.
+
+**Frontend:**
+- `DeleteBranchDialog` component — AlertDialog confirmation with branch name displayed in a `<code>` tag, Cancel/Delete (danger variant) buttons.
+- `DeleteBranchDialogState` type and `handleDeleteBranch`/`handleConfirmDeleteBranch`/`closeDeleteBranchDialog` handlers added to `useBranchActions` hook. On confirm: calls tRPC mutation, shows success toast, refetches refs. On failure: shows error via `showAppToast({ intent: "danger" })` which auto-routes through `parseGitErrorForDisplay`.
+- Context menu item in `BranchItem` — red `Trash2` icon, separated below "Copy branch name". Only shown for local branches (`gitRef.type === "branch"`), disabled when `isCurrent || isLocked`.
+- `onDeleteBranch` prop threaded through `BranchSelectorPopover` to all three usage sites: topbar (`App.tsx`), home scope bar (`App.tsx`), task detail (`card-detail-view.tsx`). `DeleteBranchDialog` rendered alongside existing `CreateBranchDialog` at each site.
+
+Files touched: `src/core/api-contract.ts`, `src/workspace/git-sync.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router.ts`, `web-ui/src/components/detail-panels/delete-branch-dialog.tsx` (new), `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`
+
 ## Feat: structured JSONL session lifecycle event log (2026-04-12)
 
 Added a persistent, structured event logging system for diagnosing stuck-session failure modes — the remaining bugs are all "agent did something, no hook fired, card is stuck" scenarios that need forensic data, not code changes.

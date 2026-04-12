@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: delete branch from context menu
+
+- Right-click a local branch in the branch selector popover to delete it. Shows a confirmation AlertDialog, then calls `git branch -d` (safe delete — refuses unmerged branches). Disabled for the currently checked-out branch and branches locked by active worktrees. Errors route through the centralized git error toast pipeline. Wired into all three branch selector sites (topbar, home scope bar, task detail).
+
 ### Feat: structured JSONL event log for session lifecycle observability
 
 - New `src/core/event-log.ts` module writes structured events to `~/.quarterdeck/logs/events.jsonl` (10 MB rotation). Gated behind `eventLogEnabled` config toggle (default off) — intended for developer debugging, not general users.

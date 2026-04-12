@@ -247,6 +247,18 @@ export const runtimeGitCreateBranchResponseSchema = z.object({
 });
 export type RuntimeGitCreateBranchResponse = z.infer<typeof runtimeGitCreateBranchResponseSchema>;
 
+export const runtimeGitDeleteBranchRequestSchema = z.object({
+	branchName: z.string().min(1),
+});
+export type RuntimeGitDeleteBranchRequest = z.infer<typeof runtimeGitDeleteBranchRequestSchema>;
+
+export const runtimeGitDeleteBranchResponseSchema = z.object({
+	ok: z.boolean(),
+	branchName: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitDeleteBranchResponse = z.infer<typeof runtimeGitDeleteBranchResponseSchema>;
+
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 

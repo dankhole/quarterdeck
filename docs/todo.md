@@ -53,9 +53,9 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Compare tab — diff any two refs with full file tree + diff viewer
 - Merge branch into current — context menu action, attempts merge with auto-abort on conflict + toast feedback
 - Create branch from ref — right-click context menu action in both branch selector popover and git history refs panel, with dialog for branch name entry
+- Delete branch — context menu action with confirmation dialog, uses `git branch -d` (safe delete), disabled for current/worktree-locked branches, errors through centralized git error toast pipeline
 
 **Tier 1 — High value, users hit these constantly:**
-- **Delete branch** — Cleanup after merge. Stale branches pile up fast with per-task worktrees. Guard against deleting the current branch or branches locked to active worktrees.
 - **Stash / unstash** — "Save my spot" before switching context. Especially useful when checkout is blocked by uncommitted changes (pull already blocks on this). Show stash list, allow pop/apply/drop.
 - **Conflict handling** — When a merge (or rebase, cherry-pick) produces conflicts, surface them clearly — show conflicted files, let the user abort. At minimum: conflict state indicator + abort action. Inline conflict resolution can come later.
 

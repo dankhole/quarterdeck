@@ -12,6 +12,7 @@ import {
 	Locate,
 	LogIn,
 	Search,
+	Trash2,
 } from "lucide-react";
 import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
@@ -45,6 +46,8 @@ interface BranchSelectorPopoverProps {
 	onMergeBranch?: (branchName: string) => void;
 	/** When provided, shows "Create branch from here" in the branch right-click menu. */
 	onCreateBranch?: (sourceRef: string) => void;
+	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
+	onDeleteBranch?: (branchName: string) => void;
 	trigger: React.ReactNode;
 }
 
@@ -59,6 +62,7 @@ export function BranchSelectorPopover({
 	onCompareWithBranch,
 	onMergeBranch,
 	onCreateBranch,
+	onDeleteBranch,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
 	const [query, setQuery] = useState("");
@@ -195,6 +199,7 @@ export function BranchSelectorPopover({
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
+										onDeleteBranch={onDeleteBranch}
 										onClose={closePopover}
 									/>
 								))}
@@ -264,6 +269,7 @@ function BranchItem({
 	onCompare,
 	onMerge,
 	onCreateBranch,
+	onDeleteBranch,
 	onClose,
 }: {
 	gitRef: RuntimeGitRef;
@@ -274,6 +280,7 @@ function BranchItem({
 	onCompare?: (name: string) => void;
 	onMerge?: (name: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
+	onDeleteBranch?: (branchName: string) => void;
 	onClose: () => void;
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
@@ -370,6 +377,23 @@ function BranchItem({
 						<ClipboardCopy size={14} className="text-text-secondary" />
 						Copy branch name
 					</ContextMenu.Item>
+					{onDeleteBranch && gitRef.type === "branch" ? (
+						<>
+							<ContextMenu.Separator className="my-1 h-px bg-border" />
+							<ContextMenu.Item
+								className={cn(
+									CONTEXT_MENU_ITEM_CLASS,
+									"text-status-red",
+									(isCurrent || isLocked) && "opacity-50 cursor-not-allowed",
+								)}
+								disabled={isCurrent || isLocked}
+								onSelect={() => onDeleteBranch(gitRef.name)}
+							>
+								<Trash2 size={14} />
+								Delete branch
+							</ContextMenu.Item>
+						</>
+					) : null}
 				</ContextMenu.Content>
 			</ContextMenu.Portal>
 		</ContextMenu.Root>

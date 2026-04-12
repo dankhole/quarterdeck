@@ -8,6 +8,7 @@ import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
+import { DeleteBranchDialog } from "@/components/detail-panels/delete-branch-dialog";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
 import { GitView } from "@/components/git-view";
@@ -432,6 +433,7 @@ export function CardDetailView({
 												}
 												onMergeBranch={taskBranchActions.handleMergeBranch}
 												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
+												onDeleteBranch={taskBranchActions.handleDeleteBranch}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}
 											/>
 										) : undefined
@@ -533,6 +535,16 @@ export function CardDetailView({
 				workspaceId={currentProjectId}
 				onClose={taskBranchActions.closeCreateBranchDialog}
 				onBranchCreated={taskBranchActions.handleBranchCreated}
+			/>
+			<DeleteBranchDialog
+				open={taskBranchActions.deleteBranchDialogState.type === "open"}
+				branchName={
+					taskBranchActions.deleteBranchDialogState.type === "open"
+						? taskBranchActions.deleteBranchDialogState.branchName
+						: ""
+				}
+				onCancel={taskBranchActions.closeDeleteBranchDialog}
+				onConfirm={taskBranchActions.handleConfirmDeleteBranch}
 			/>
 		</div>
 	);
