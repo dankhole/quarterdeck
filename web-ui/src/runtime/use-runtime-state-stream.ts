@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from "react";
+import { consumeProjectPreload } from "@/runtime/project-preload-cache";
 import { setRuntimeDisconnected } from "@/runtime/runtime-connection-state";
 import type {
 	RuntimeDebugLogEntry,
@@ -84,7 +85,11 @@ interface RuntimeStateStreamStore {
 }
 
 type RuntimeStateStreamAction =
-	| { type: "requested_workspace_changed" }
+	| {
+			type: "requested_workspace_changed";
+			preloadedWorkspaceState: RuntimeWorkspaceStateResponse | null;
+			requestedWorkspaceId: string | null;
+	  }
 	| { type: "stream_connected" }
 	| { type: "snapshot"; payload: RuntimeStateStreamSnapshotMessage }
 	| {
@@ -137,6 +142,28 @@ function runtimeStateStreamReducer(
 	action: RuntimeStateStreamAction,
 ): RuntimeStateStreamStore {
 	if (action.type === "requested_workspace_changed") {
+		if (action.preloadedWorkspaceState) {
+			// Advance currentProjectId immediately — we have preloaded data to render
+			// without waiting for the WebSocket snapshot. The non-preloaded path leaves
+			// currentProjectId unchanged; the snapshot action updates it.
+			const preloadedSessions = Object.values(action.preloadedWorkspaceState.sessions ?? {});
+			return {
+				...state,
+				currentProjectId: action.requestedWorkspaceId,
+				workspaceState: action.preloadedWorkspaceState,
+				workspaceMetadata: null,
+				notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, preloadedSessions),
+				notificationWorkspaceIds: action.requestedWorkspaceId
+					? {
+							...state.notificationWorkspaceIds,
+							...Object.fromEntries(preloadedSessions.map((s) => [s.taskId, action.requestedWorkspaceId!])),
+						}
+					: state.notificationWorkspaceIds,
+				streamError: null,
+				isRuntimeDisconnected: false,
+				hasReceivedSnapshot: true,
+			};
+		}
 		return {
 			...state,
 			workspaceState: null,
@@ -314,7 +341,8 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		let activeWorkspaceId = requestedWorkspaceId;
 		let requestedWorkspaceForConnection = requestedWorkspaceId;
 
-		dispatch({ type: "requested_workspace_changed" });
+		const preloadedWorkspaceState = requestedWorkspaceId ? consumeProjectPreload(requestedWorkspaceId) : null;
+		dispatch({ type: "requested_workspace_changed", preloadedWorkspaceState, requestedWorkspaceId });
 
 		const cleanupSocket = () => {
 			if (socket) {
@@ -385,7 +413,11 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						if (nextProjectId && nextProjectId !== previousWorkspaceId) {
 							requestedWorkspaceForConnection = nextProjectId;
-							dispatch({ type: "requested_workspace_changed" });
+							dispatch({
+								type: "requested_workspace_changed",
+								preloadedWorkspaceState: null,
+								requestedWorkspaceId: nextProjectId,
+							});
 							connect();
 						}
 						return;

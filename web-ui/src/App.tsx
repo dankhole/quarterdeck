@@ -161,6 +161,7 @@ export default function App(): ReactElement {
 		hasNoProjects,
 		isProjectSwitching,
 		handleSelectProject,
+		handlePreloadProject,
 		handleAddProject,
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
@@ -1293,6 +1294,7 @@ export default function App(): ReactElement {
 										onSelectProject={(projectId) => {
 											void handleSelectProject(projectId);
 										}}
+										onPreloadProject={handlePreloadProject}
 										onRemoveProject={handleRemoveProject}
 										onReorderProjects={handleReorderProjects}
 										onAddProject={() => {

@@ -76,10 +76,9 @@ A task can appear as running/in-progress on the board when the agent is actually
 
 ## 10. Client-side project switch optimizations
 
-Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Remaining client-side strategies to make switching feel instant:
+Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Preload-on-hover is done. Remaining client-side strategy to make switching feel instant:
 
 - **Stale-while-revalidate**: Cache board state per project in memory. On switch, show the cached version immediately while fresh data loads. Requires careful gating of `canPersistWorkspaceState` and `workspaceRevision` to prevent stale data from being persisted back to disk.
-- **Preload on hover**: When hovering a project in the sidebar, background-load its board state via `fetchWorkspaceState`. Needs debounce/throttle and must not trigger `ensureTerminalManagerForWorkspace`.
 
 ## 11. Un-trash doesn't always auto-resume the agent session
 

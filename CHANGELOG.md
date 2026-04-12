@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Preload project on hover for instant switching
+
+- Hovering a project in the sidebar for 150ms+ prefetches its workspace state via tRPC in the background. When the user clicks, the board renders immediately from cached data instead of waiting for the WebSocket to reconnect and deliver a snapshot. Falls back to normal loading behavior if the preload hasn't completed. Cache entries expire after 15 seconds and are consumed on use to prevent stale data.
+
 ### Fix: project sidebar missing notification dot and NI pill
 
 - Restored per-project approval indicators (orange dot + "NI" pill) in the project navigation sidebar. These were lost during the `b6595ebd` refactor which replaced the working client-side approach with a server-side `needs_input` task count, then `271efe00` reverted the broken server-side approach without restoring the original client-side logic. Now uses the same `isApprovalState` filter on `notificationSessions` that already drives the toolbar icon badge — counts all projects including current, since the project list should show each project's state regardless of which is active.

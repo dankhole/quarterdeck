@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
+import { preloadProjectWorkspaceState } from "@/runtime/project-preload-cache";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { useWindowEvent } from "@/utils/react-use";
@@ -72,6 +73,7 @@ export interface UseProjectNavigationResult {
 	hasNoProjects: boolean;
 	isProjectSwitching: boolean;
 	handleSelectProject: (projectId: string) => void;
+	handlePreloadProject: (projectId: string) => void;
 	handleAddProject: () => Promise<void>;
 	handleConfirmInitializeGitProject: () => Promise<void>;
 	handleCancelInitializeGitProject: () => void;
@@ -121,6 +123,16 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			setRequestedProjectId(projectId);
 		},
 		[currentProjectId, onProjectSwitchStart],
+	);
+
+	const handlePreloadProject = useCallback(
+		(projectId: string) => {
+			if (!projectId || projectId === currentProjectId) {
+				return;
+			}
+			preloadProjectWorkspaceState(projectId);
+		},
+		[currentProjectId],
 	);
 
 	const addProjectByPath = useCallback(
@@ -345,6 +357,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		hasNoProjects,
 		isProjectSwitching,
 		handleSelectProject,
+		handlePreloadProject,
 		handleAddProject,
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,

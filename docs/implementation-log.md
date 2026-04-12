@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Preload project on hover for instant switching (2026-04-11)
+
+Project switching previously required a full WebSocket close/reconnect cycle — the UI showed a loading spinner while the server built a new snapshot. With preload-on-hover, hovering a project row for 150ms+ fires a background tRPC `workspace.getState` call that fetches the workspace state (board, sessions, git info) and caches it in a module-scoped Map with 15-second TTL. When the user clicks, the `useRuntimeStateStream` reducer consumes the cached data and immediately populates `workspaceState` and `currentProjectId`, bypassing the loading spinner. The WebSocket still reconnects in the background and overwrites with authoritative data when the snapshot arrives (usually identical). Falls back to the standard loading flow if the preload hasn't completed or the cache expired.
+
+The reducer's preloaded path also seeds `notificationSessions` and `notificationWorkspaceIds` from the preloaded sessions to match the snapshot handler's behavior, preventing a brief window of stale notification state.
+
+**Files touched**: `web-ui/src/runtime/project-preload-cache.ts` (new — cache module), `web-ui/src/runtime/use-runtime-state-stream.ts` (reducer + effect consume preloaded data), `web-ui/src/hooks/use-project-navigation.ts` (handlePreloadProject callback), `web-ui/src/components/project-navigation-panel.tsx` (hover handlers on ProjectRow with 150ms debounce), `web-ui/src/App.tsx` (wiring).
+
 ## Fix: top bar branch pill missing explicit checkout affordance (2026-04-12)
 
 The top bar's `BranchSelectorPopover` was wired with `onSelectBranchView` mapped to checkout but didn't pass `onCheckoutBranch`, so the inline LogIn icon and right-click "Checkout" context menu item never appeared. The file browser's branch dropdown already had both because `card-detail-view.tsx` passes both props. One-line fix: pass `onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}` to the top bar's `BranchSelectorPopover` in `App.tsx`.

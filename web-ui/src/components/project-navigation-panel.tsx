@@ -8,7 +8,7 @@ import {
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, GripVertical, Lightbulb, Plus, X } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -50,6 +50,7 @@ export function ProjectNavigationPanel({
 	canShowAgentSection,
 	agentSectionContent,
 	onSelectProject,
+	onPreloadProject,
 	onRemoveProject,
 	onReorderProjects,
 	onAddProject,
@@ -65,6 +66,7 @@ export function ProjectNavigationPanel({
 	canShowAgentSection: boolean;
 	agentSectionContent?: ReactNode;
 	onSelectProject: (projectId: string) => void;
+	onPreloadProject?: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
@@ -232,6 +234,7 @@ export function ProjectNavigationPanel({
 																dragHandleProps={draggableProvided.dragHandleProps}
 																isDragging={draggableSnapshot.isDragging}
 																onSelect={onSelectProject}
+																onPreload={onPreloadProject}
 																onRemove={(projectId) => {
 																	const found = displayedProjects.find(
 																		(item) => item.id === projectId,
@@ -532,6 +535,8 @@ function ProjectRowSkeleton(): React.ReactElement {
 	);
 }
 
+const PRELOAD_HOVER_DELAY_MS = 150;
+
 function ProjectRow({
 	project,
 	isCurrent,
@@ -541,6 +546,7 @@ function ProjectRow({
 	dragHandleProps,
 	isDragging = false,
 	onSelect,
+	onPreload,
 	onRemove,
 }: {
 	project: RuntimeProjectSummary;
@@ -551,9 +557,18 @@ function ProjectRow({
 	dragHandleProps?: DraggableProvidedDragHandleProps | null;
 	isDragging?: boolean;
 	onSelect: (id: string) => void;
+	onPreload?: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
 	const displayPath = formatPathForDisplay(project.path);
+	const hoverTimerRef = useRef<number | null>(null);
+	useEffect(() => {
+		return () => {
+			if (hoverTimerRef.current !== null) {
+				window.clearTimeout(hoverTimerRef.current);
+			}
+		};
+	}, []);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -597,6 +612,19 @@ function ProjectRow({
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
 					onSelect(project.id);
+				}
+			}}
+			onMouseEnter={() => {
+				if (isCurrent || !onPreload) return;
+				hoverTimerRef.current = window.setTimeout(() => {
+					hoverTimerRef.current = null;
+					onPreload(project.id);
+				}, PRELOAD_HOVER_DELAY_MS);
+			}}
+			onMouseLeave={() => {
+				if (hoverTimerRef.current !== null) {
+					window.clearTimeout(hoverTimerRef.current);
+					hoverTimerRef.current = null;
 				}
 			}}
 			className={cn(
