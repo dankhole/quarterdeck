@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { createGitProcessEnv } from "../core/git-process-env";
 
@@ -205,6 +206,15 @@ export async function getFileContentAtRef(
 		}
 	}
 	return { content: result.stdout, binary: false };
+}
+
+/**
+ * Resolve the git common directory for a repository or worktree.
+ * For normal repos this is `.git/`; for worktrees it's the shared parent `.git` directory.
+ */
+export async function getGitCommonDir(repoPath: string): Promise<string> {
+	const gitCommonDir = await getGitStdout(["rev-parse", "--git-common-dir"], repoPath);
+	return isAbsolute(gitCommonDir) ? gitCommonDir : join(repoPath, gitCommonDir);
 }
 
 export function getGitCommandErrorMessage(error: unknown): string {

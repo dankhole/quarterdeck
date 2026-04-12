@@ -24,7 +24,7 @@
 
 ### Fix: clean up stale lock files on server startup
 
-- Quarterdeck now automatically cleans up orphaned `.lock` directories and `.tmp.*` files left by previous process crashes (force-kill, double Ctrl+C, shutdown timeout) when the server starts. Uses mtime-based staleness detection matching `proper-lockfile`'s own 10-second threshold, so active locks held by live processes are never removed. Scans `~/.quarterdeck/`, `~/.quarterdeck/workspaces/`, and per-workspace subdirectories. Removed artifacts are logged with `[quarterdeck]` prefix for diagnostics.
+- Quarterdeck now automatically cleans up orphaned `.lock` directories and `.tmp.*` files left by previous process crashes (force-kill, double Ctrl+C, shutdown timeout) when the server starts. Two-phase cleanup: phase 1 sweeps `~/.quarterdeck/` hierarchy before registry load, phase 2 reads the workspace index and cleans per-project directories (`.quarterdeck/config.json.lock`, `quarterdeck-task-worktree-setup.lock` in `.git/`). Uses mtime-based staleness detection matching `proper-lockfile`'s 10-second threshold, so active locks held by live processes are never removed. Shared directories like `.git/` use targeted removal (only Quarterdeck-named artifacts) to avoid touching git's own lock files.
 
 ### Markdown renderer in file browser
 

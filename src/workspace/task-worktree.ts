@@ -15,7 +15,7 @@ import {
 	loadWorkspaceContext,
 	loadWorkspaceState,
 } from "../state/workspace-state";
-import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
+import { getGitCommandErrorMessage, getGitCommonDir, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
 import { getWorkspaceFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 
@@ -98,11 +98,6 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
 	const result = await runGit(cwd, args);
 	return result.ok ? result.stdout : null;
-}
-
-async function getGitCommonDir(repoPath: string): Promise<string> {
-	const gitCommonDir = await getGitStdout(["rev-parse", "--git-common-dir"], repoPath);
-	return isAbsolute(gitCommonDir) ? gitCommonDir : join(repoPath, gitCommonDir);
 }
 
 async function getTaskWorktreeSetupLock(repoPath: string): Promise<LockRequest> {

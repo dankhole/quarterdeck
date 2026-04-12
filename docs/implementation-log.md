@@ -46,13 +46,21 @@ Non-isolated tasks (`useWorktree === false`) run in the shared home repo without
 
 ## Fix: clean up stale lock files on server startup (2026-04-12)
 
-`proper-lockfile` creates `.lock` directories when acquiring file locks, and `writeTextFileAtomic` creates `.tmp.*` temp files during atomic writes. Both are cleaned up normally (`.lock` dirs by `release()` in `finally` blocks, `.tmp.*` by `rename()`), but when the process is force-killed or the shutdown timeout fires, these artifacts remain on disk. They don't block future operations (proper-lockfile's stale detection overrides old locks after 10 seconds), but they accumulate and require manual cleanup.
+`proper-lockfile` creates `.lock` directories when acquiring file locks, and `writeTextFileAtomic` creates `.tmp.*` temp files during atomic writes. Both are cleaned up normally, but when the process is force-killed or the shutdown timeout fires, these artifacts remain on disk. They don't block future operations (proper-lockfile's stale detection overrides old locks after 10 seconds), but they accumulate and confuse users — especially `quarterdeck-task-worktree-setup.lock` in project `.git/` directories.
 
-**Solution**: Added `cleanupStaleLockAndTempFiles()` to `src/fs/locked-file-system.ts`. It scans a list of directories, `stat`s each `.lock` or `.tmp.*` entry, and removes only entries whose mtime is older than the stale threshold (10 seconds by default, matching `DEFAULT_LOCK_STALE_MS`). This mtime check makes the function safe to call at any time — active locks held by live processes have a continuously refreshed mtime and are skipped. An optional `warn` callback logs each removal.
+**Architecture**: Created `src/fs/lock-cleanup.ts` as the single source of truth for the lock topology. It declares every directory that may contain Quarterdeck lock artifacts and distinguishes between two match modes:
+- **Broad scan** — for Quarterdeck-owned directories (`~/.quarterdeck/*`, `{project}/.quarterdeck/`), removes any `.lock`/`.tmp.*` entry
+- **Named targets** — for shared directories like `.git/`, removes only specific Quarterdeck-named artifacts (`quarterdeck-task-worktree-setup.lock`), leaving git's own lock files untouched
 
-**Startup wiring**: In `src/cli.ts`, `startServer()` discovers workspace subdirectories under `~/.quarterdeck/workspaces/` (filtering out `.lock`/`.tmp.` artifacts from the directory list) and passes `[runtimeHome, workspacesRoot, ...workspaceSubdirs]` to the cleanup function before `createWorkspaceRegistry()` — ensuring all stale artifacts are removed before any lock acquisition.
+**Two-phase startup**:
+- Phase 1 (`cleanupGlobalStaleLockArtifacts`): Sweeps `~/.quarterdeck/` hierarchy before the workspace registry loads
+- Phase 2 (`cleanupProjectStaleLockArtifacts`): Reads the workspace index to get project repo paths, resolves each project's git common dir via `getGitCommonDir`, and cleans per-project lock artifacts
 
-**Files touched**: `src/fs/locked-file-system.ts` (new function + `readdir`, `stat` imports), `src/cli.ts` (startup wiring with subdirectory discovery and warn callback), `test/runtime/locked-file-system.test.ts` (8 new test cases).
+Both phases use mtime-based staleness detection (10-second threshold matching `proper-lockfile`'s `DEFAULT_LOCK_STALE_MS`) — active locks held by live processes have a continuously refreshed mtime and are skipped.
+
+**Other changes**: Moved `getGitCommonDir` from `task-worktree.ts` to `git-utils.ts` so the cleanup module can resolve `.git/` common dirs without depending on the workspace layer. Exported `DEFAULT_LOCK_STALE_MS` from `locked-file-system.ts`.
+
+**Files touched**: `src/fs/lock-cleanup.ts` (new — cleanup coordinator), `src/fs/locked-file-system.ts` (exported constant, utility function), `src/workspace/git-utils.ts` (`getGitCommonDir` moved here), `src/workspace/task-worktree.ts` (imports `getGitCommonDir`), `src/cli.ts` (two-phase startup wiring), `test/runtime/lock-cleanup.test.ts` (new — 12 tests), `test/runtime/locked-file-system.test.ts` (8 tests for utility function).
 
 ## Markdown renderer in file browser (2026-04-12, closes todo #13)
 
