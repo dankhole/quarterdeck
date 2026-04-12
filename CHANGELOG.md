@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Statusline: fix token throughput glyph and color
+
+- Replace unrenderable `nf-mdi-function` (U+F0865) glyph for the token throughput segment with `nf-md-file-document` (U+F0219) — a document icon that better represents token I/O.
+- Change token throughput color from `brightYellow` to `dimWhite` so it's visually distinct from the adjacent duration (brightYellow) and cost (yellow) segments.
+
 ### Default prompt shortcuts with merge system
 
 - Added "Squash Merge" as a second default prompt shortcut alongside "Commit". The prompt asks the user for the target branch and explains the operation before proceeding, then uses `commit-tree` + `update-ref` to land — the standard worktree-safe squash merge flow.

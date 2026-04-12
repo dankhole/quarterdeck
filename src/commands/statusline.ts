@@ -70,7 +70,7 @@ const GLYPH = {
 	context: "\uDB80\uDD5B", // nf-md-circle-medium (U+F035B)
 	cost: "\uF155", //
 	clock: "\uF017", //
-	tokens: "\uDB81\uDA65", // nf-mdi-function (U+F0865)
+	tokens: "\uDB80\uDE19", // nf-md-file-document (U+F0219)
 	linesAdded: "\uEADC", // nf-dev-git
 	linesRemoved: "\uEADF", // nf-dev-git
 	arrowDown: "\u2193", // ↓
@@ -359,7 +359,7 @@ function renderMetricsLine(data: StatuslineInput): string {
 	const totalIn = data.context_window.total_input_tokens ?? 0;
 	const totalOut = data.context_window.total_output_tokens ?? 0;
 	parts.push(
-		ansi.brightYellow(
+		ansi.dimWhite(
 			`${GLYPH.tokens} ${formatTokens(totalIn)}${GLYPH.arrowDown} ${formatTokens(totalOut)}${GLYPH.arrowUp}`,
 		),
 	);

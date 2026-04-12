@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Statusline: fix token throughput glyph and color (2026-04-11)
+
+The token throughput segment in the Claude Code statusline (`549↓ 1.7k↑`) used `nf-mdi-function` (U+F0865) — a supplementary-plane MDI glyph that rendered as `??` in terminal fonts missing that codepoint. Replaced with `nf-md-file-document` (U+F0219), which is in the same Nerd Font set as other working glyphs in the statusline. Also changed the segment's color from `brightYellow` to `dimWhite` — it was identical to the adjacent duration segment, making three different metrics (cost/duration/tokens) visually indistinguishable.
+
+**Files touched**: `src/commands/statusline.ts` (GLYPH.tokens codepoint, `renderMetricsLine` color).
+
 ## Default prompt shortcuts with merge system (2026-04-11)
 
 Added "Squash Merge" as a second default prompt shortcut and built a merge system so defaults persist across user customizations.
