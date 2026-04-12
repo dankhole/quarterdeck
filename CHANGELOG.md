@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Move --add-dir settings to Developer/Experimental section with safety warnings
+
+- Moved the `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` toggles out of "Git & Worktrees" into a new "Developer / Experimental" section in Settings. Added a section-level warning explaining that both settings break worktree isolation — agents can escape their assigned worktree, causing the status bar, branch pills, and "shared" indicators to desync. Updated individual tooltips with specific risks (directory drift, state corruption, cross-worktree navigation).
+
+### New todo items for worktree isolation issues
+
+- Added four new todo items: UI branch/status desync when agents leave worktree (#16), "shared" indicator not updating on directory drift (#17), clarification for shared detached HEAD hashes (#18), and testing git object sharing as a read-only `--add-dir` alternative (#19).
+
 ### Fix: non-isolated task trash/untrash/start lifecycle
 
 - Fixed non-isolated tasks (`useWorktree === false`) creating orphan worktrees on start and restore. `ensureTaskWorkspace` is now skipped for tasks running in the shared home repo — prevents unnecessary worktree creation on disk.

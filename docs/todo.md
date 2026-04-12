@@ -136,6 +136,22 @@ The compare tab fetches the diff once when opened and doesn't refetch as the age
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 16. Revisit HTML chat view concept
+## 16. UI branch/status indicators desync when agent leaves worktree
+
+When `worktreeAddParentRepoDir` or `worktreeAddQuarterdeckDir` are enabled, agents can `cd` out of their assigned worktree into the home repo or other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the home repo's branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
+
+## 17. "Shared" indicator on task cards should update when agent moves to shared directory
+
+Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddParentRepoDir` is enabled, an agent that was started in an isolated worktree can `cd` into the home repo — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config. Both `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` can cause this — they let the agent escape the worktree sandbox, so any indicator that assumes worktree isolation needs to account for directory drift.
+
+## 18. Add clarification when multiple worktrees share the same detached HEAD hash
+
+When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
+
+## 19. Test git object sharing as a read-only alternative to --add-dir
+
+Git worktrees share the full object database with the parent repo, so agents can already read any file from any branch via `git show main:path/to/file` without filesystem access to the parent directory. Test whether this is a viable alternative to `worktreeAddParentRepoDir` — if agents can reliably read reference files (CLAUDE.md, docs, configs) through git commands, the `--add-dir` flags may be unnecessary for most use cases. Would avoid the worktree isolation breakage entirely. May need a system prompt hint so agents know to use `git show` instead of trying to navigate to the parent repo.
+
+## 20. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.

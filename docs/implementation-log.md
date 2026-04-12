@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Move --add-dir settings to Developer/Experimental + worktree isolation todos (2026-04-12)
+
+Investigated user report that all worktree tasks showed the same branch hash in the status bar, task cards, and branch dropdown. Root cause: worktrees created without a feature branch are detached HEAD at the same base commit, and the `worktreeAddParentRepoDir`/`worktreeAddQuarterdeckDir` settings (which were enabled) let agents `cd` out of their worktree into the home repo, causing the status bar to reflect the home repo's branch state instead of the worktree's.
+
+**Settings UI changes**: Moved both `--add-dir` toggles from the "Git & Worktrees" section into a new "Developer / Experimental" section with a prominent warning explaining that both settings break worktree isolation. Updated per-toggle descriptions to explain specific risks: parent repo access causes directory drift and UI desync; quarterdeck dir access enables cross-worktree navigation and state corruption.
+
+**New todo items** (16-19): UI branch/status indicator desync when agent leaves worktree, "shared" badge not updating when agent navigates to shared directory, clarification for multiple worktrees sharing the same detached HEAD hash, testing `git show` as a read-only alternative to `--add-dir`. Existing #16 (HTML chat view) renumbered to #20.
+
+**Files touched**: `web-ui/src/components/runtime-settings-dialog.tsx` (new section header, warning text, updated tooltips), `docs/todo.md` (4 new items, renumbered #16→#20), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: non-isolated task trash/untrash/start lifecycle (2026-04-12)
 
 Non-isolated tasks (`useWorktree === false`) run in the shared home repo without a dedicated git worktree. Several client-side flows incorrectly called `ensureTaskWorkspace` for these tasks, which either created orphan worktrees on disk (task start) or caused restore-from-trash to fail entirely (untrash).

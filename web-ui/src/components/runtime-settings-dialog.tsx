@@ -1133,7 +1133,14 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
 					</p>
-					<div className="flex items-center gap-2 mt-3">
+					<h6 className="font-semibold text-text-primary mt-4 mb-1">Developer / Experimental</h6>
+					<p className="text-text-secondary text-[13px] mt-1 mb-3">
+						These settings let agents escape their worktree sandbox. Enabling either one means the agent can{" "}
+						<code className="text-xs bg-surface-3 px-1 rounded">cd</code> out of the task worktree into shared
+						directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators
+						may desync because they assume the agent stays in its assigned worktree.
+					</p>
+					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
 							checked={worktreeAddParentRepoDir}
 							disabled={controlsDisabled}
@@ -1149,7 +1156,9 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						Passes the parent repository path via{" "}
 						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
-						read files from the original repo. Claude Code only.
+						read and write files in the original repo. The agent can navigate to the home repo, which means its
+						working directory may drift — UI elements that track the agent's location (status bar branch, card
+						branch pill) will show the home repo state instead of the worktree. Claude Code only.
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
@@ -1167,8 +1176,8 @@ export function RuntimeSettingsDialog({
 					</div>
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						Gives agents read/write access to Quarterdeck state files (board data, session state, other
-						worktrees). Use with caution — rogue writes can corrupt workspace state and cause revision conflicts.
-						Claude Code only.
+						worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also
+						navigate into other task worktrees, breaking isolation. Claude Code only.
 					</p>
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
