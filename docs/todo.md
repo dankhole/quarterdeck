@@ -16,7 +16,7 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 - Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
 - Replace node-pty with Go PTY libraries (`creack/pty`)
 - Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
-- Port the agent adapter system (Claude, Codex, Gemini, OpenCode, Droid) — these are mostly CLI argument builders
+- Port the agent adapter system (Claude, Codex) — these are mostly CLI argument builders. Gemini/OpenCode adapters exist but are disabled (see #22)
 - The research doc is organized module-by-module to support incremental porting
 
 ## 2. Resume card sessions after crash/closure
