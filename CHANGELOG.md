@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: prevent xterm headless lineFeed crash
+
+- Fixed a crash where the server-side headless xterm terminal (TerminalStateMirror) could throw `Cannot set properties of undefined (setting 'isWrapped')` inside xterm's internal setTimeout-based write loop, killing the process. The root cause is an xterm.js 6.x buffer-overflow bug triggered when `scrollback: 0` leaves the circular buffer with zero margin. Decoupled the terminal's internal scrollback from snapshot serialization — the terminal now always gets at least 100 lines of buffer headroom while snapshots remain viewport-only for agent sessions.
+
 ### Feat: delete branch from context menu
 
 - Right-click a local branch in the branch selector popover to delete it. Shows a confirmation AlertDialog, then calls `git branch -d` (safe delete — refuses unmerged branches). Disabled for the currently checked-out branch and branches locked by active worktrees. Errors route through the centralized git error toast pipeline. Wired into all three branch selector sites (topbar, home scope bar, task detail).

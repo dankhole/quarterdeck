@@ -6,6 +6,21 @@ const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
 
 const TERMINAL_SCROLLBACK = 10_000;
 
+/**
+ * Minimum scrollback for the headless xterm terminal, even when snapshot
+ * serialization uses scrollback: 0.  xterm.js 6.x has a buffer-overflow bug
+ * in its lineFeed handler: with scrollback 0 the circular buffer has exactly
+ * `rows` entries, and certain cursor-positioning sequences can push
+ * `ybase + y` past that limit, causing a fatal "Cannot set properties of
+ * undefined (setting 'isWrapped')" inside an internal setTimeout — which
+ * escapes all Promise / try-catch handling and crashes the process.
+ *
+ * Giving the terminal a small scrollback cushion keeps the buffer large
+ * enough for xterm's internal bookkeeping while snapshot serialization
+ * remains at the caller-requested level.
+ */
+const MINIMUM_TERMINAL_SCROLLBACK = 100;
+
 export interface TerminalRestoreSnapshot {
 	snapshot: string;
 	cols: number;
@@ -38,7 +53,7 @@ export class TerminalStateMirror {
 			allowProposedApi: true,
 			cols,
 			rows,
-			scrollback,
+			scrollback: Math.max(scrollback, MINIMUM_TERMINAL_SCROLLBACK),
 			scrollOnEraseInDisplay: options.scrollOnEraseInDisplay ?? true,
 		});
 		this.terminal.loadAddon(this.serializeAddon);

@@ -4,7 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
-<<<<<<< HEAD
+## Fix: prevent xterm headless lineFeed crash (2026-04-12)
+
+The Quarterdeck server crashed after ~1h50m of runtime with `TypeError: Cannot set properties of undefined (setting 'isWrapped')` originating from xterm.js 6.0.0's `lineFeed` handler inside its internal `setTimeout`-based `_innerWrite` loop.
+
+**Root cause**: Agent sessions set `scrollback: 0` on the `TerminalStateMirror` (server-side headless xterm) to prevent bloated restore snapshots. This gives xterm's circular buffer exactly `rows` entries — zero margin. xterm's `lineFeed` method accesses `lines.get(ybase + y)` without bounds-checking; under certain escape-code sequences, `ybase + y` can exceed the buffer length, returning `undefined` and crashing. The error fires inside xterm's internal `setTimeout`, escaping all Promise/try-catch handling as an uncaught exception with no process-level handler.
+
+**Why the exact trigger is unknown**: Extensive stress testing (2000+ trials with random escape sequences, concurrent write+resize, reflow, scroll regions, extreme dimensions) could not reproduce the crash deterministically. The xterm `CircularList.get()` method does not bounds-check against `_length` — it directly accesses `_array[(startIndex + index) % maxLength]`. The crash requires a very specific sequence of terminal operations that drifts the buffer indices past the allocated size.
+
+**Fix**: Decoupled the terminal's internal scrollback from snapshot serialization scrollback. The `TerminalStateMirror` constructor now uses `Math.max(scrollback, MINIMUM_TERMINAL_SCROLLBACK)` (100) for the xterm terminal while preserving the caller-specified value in `snapshotScrollback` for `serialize()` calls. Agent sessions still serialize viewport-only snapshots (`scrollback: 0`), but the terminal's circular buffer has 100 extra lines of headroom — far beyond any plausible index drift.
+
+**Considered and rejected**: A process-level `uncaughtException` handler was prototyped to absorb known xterm errors as a second safety layer. Removed after review — it installed as a module-level side effect on import, contaminated 9 test files via transitive imports, and `process.exit(1)` in the else branch is not equivalent to Node's default uncaught exception behavior (different stack trace formatting, listener-count semantics). The scrollback cushion alone is the correct fix.
+
+Files touched: `src/terminal/terminal-state-mirror.ts`
+
 ## Feat: delete branch from branch selector context menu (2026-04-12)
 
 Added a "Delete branch" action to the `BranchSelectorPopover` right-click context menu. This is a basic branch hygiene operation — branches pile up fast with per-task worktrees and there was no UI to clean them up after merging.
@@ -41,7 +54,6 @@ General-purpose JSONL event bus writing to `~/.quarterdeck/logs/events.jsonl`. F
 **Config toggle:** `eventLogEnabled` boolean in global config (default false). Settings toggle in Developer / Experimental section. Synced on startup and config save.
 
 Files touched: `src/core/event-log.ts` (new), `src/terminal/session-manager.ts`, `src/trpc/hooks-api.ts`, `src/trpc/app-router.ts`, `src/trpc/runtime-api.ts`, `src/cli.ts`, `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `AGENTS.md`, `web-ui/src/App.tsx`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/board-column.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, `test/runtime/trpc/hooks-api.test.ts`
-
 ## Fix: commit panel UX and centralized git error parsing (2026-04-12)
 
 Three commit panel UX improvements plus a systemic fix for unreadable git error toasts.
