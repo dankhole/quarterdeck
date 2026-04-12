@@ -16,6 +16,18 @@ Added an "are you sure" confirmation dialog when clicking the individual "Delete
 
 **Files touched**: `web-ui/src/components/hard-delete-task-dialog.tsx` (new), `web-ui/src/hooks/use-board-interactions.ts`, `web-ui/src/App.tsx`
 
+## Fix: localStorage toggle buttons broken after first click (2026-04-12)
+
+The markdown preview toggle and word wrap toggle in `FileContentViewer` were broken — the first click worked but subsequent clicks got stuck. Root cause: `react-use` v17's `useLocalStorage` hook has a stale closure in its setter function. The `set` callback uses `state` from the closure to resolve functional updaters (`set(prev => !prev)`), but `state` is not included in the `useCallback` dependency array (`[key, setState]`). Since `setState` is stable and `key` doesn't change, `set` is created once and permanently captures the initial `state` value.
+
+The wrapper hooks `useBooleanLocalStorageValue` and `useRawLocalStorageValue` both passed functional updaters to the buggy setter, propagating the stale closure to all callers that used `(prev) => !prev`. In practice, only two call sites used functional updaters (both toggles in `file-content-viewer.tsx`); all other callers pass plain values and were unaffected.
+
+Fix: both wrapper hooks now track the current value in a `useRef` (synced on every render), resolve functional updaters against the ref, and pass the resolved plain value to `setStoredValue` — bypassing the stale closure entirely. This is an established pattern in the codebase (see `boardRef` in `App.tsx`, `optionsRef` in `use-shell-auto-restart.ts`).
+
+The upstream bug has 5 open issues (2019–2025) with unmerged fix PRs. All `react-use` imports are already isolated behind `web-ui/src/utils/react-use.ts`, so no direct imports bypass the fix.
+
+**Files touched**: `web-ui/src/utils/react-use.ts`
+
 ## Fix: restore terminal scrollback so history survives reconnect (2026-04-12)
 
 Removed `scrollback: 0` from agent session `TerminalStateMirror` creation in `session-manager.ts`. This value (introduced in `5bafce54`) made restore snapshots viewport-only, which meant every tab refresh or WebSocket reconnect wiped all conversation history. The primary duplication fix (`scrollOnEraseInDisplay: false` from `2a6b9cc2`) remains in place — it prevents ED2-triggered duplication from TUI screen redraws. The `scrollback: 0` was a secondary hardening measure that turned out to be too aggressive.

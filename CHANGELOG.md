@@ -6,6 +6,10 @@
 
 - Clicking "Delete permanently" on a trash card now shows a confirmation AlertDialog before deleting — matches the existing "Clear trash" confirmation pattern. Dialog shows the task title, "This action cannot be undone", with Cancel and "Delete Permanently" buttons. Uses the Radix `onOpenChange` ref guard to prevent the cancel handler from firing after confirm.
 
+### Fix: localStorage toggle buttons broken after first click
+
+- Fixed stale closure bug in `useBooleanLocalStorageValue` and `useRawLocalStorageValue` — `react-use`'s `useLocalStorage` setter captures `state` in a `useCallback` but omits it from the dependency array, so functional updaters like `(prev) => !prev` always receive the initial value. Markdown preview toggle and word wrap toggle in the file viewer were stuck after the first click. Workaround tracks the current value in a `useRef` and resolves updates before passing a plain value to the setter.
+
 ### Fix: restore terminal scrollback so history survives reconnect
 
 - Removed `scrollback: 0` from the server-side `TerminalStateMirror` for agent sessions — restore snapshots now include conversation history instead of just the viewport. Tab refresh and WebSocket reconnects no longer wipe scroll history. `scrollOnEraseInDisplay: false` remains in place to prevent ED2 duplicate content. Alternate screen transition dupes are an accepted trade-off pending a future interception fix.

@@ -1,5 +1,5 @@
 import type { DependencyList, Dispatch, SetStateAction } from "react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
 	useDebounce as useReactUseDebounce,
 	useEvent as useReactUseEvent,
@@ -65,14 +65,17 @@ export function useBooleanLocalStorageValue(key: string, initialValue: boolean):
 		deserializer: (value) => value === "true",
 	});
 	const value = storedValue ?? initialValue;
+	// react-use's useLocalStorage setter has a stale closure bug: its functional updater
+	// form always receives the initial state because `state` isn't in useCallback's deps.
+	// Work around by tracking the current value in a ref and resolving updates ourselves.
+	const valueRef = useRef(value);
+	valueRef.current = value;
 	const setValue: StateSetter<boolean> = useCallback(
 		(nextValue) => {
-			setStoredValue((currentValue) => {
-				const resolvedCurrent = currentValue ?? initialValue;
-				return resolveNextValue(nextValue, resolvedCurrent);
-			});
+			const resolved = resolveNextValue(nextValue, valueRef.current);
+			setStoredValue(resolved);
 		},
-		[initialValue, setStoredValue],
+		[setStoredValue],
 	);
 	return [value, setValue];
 }
@@ -86,14 +89,15 @@ export function useRawLocalStorageValue<T extends string>(
 		raw: true,
 	});
 	const value = storedValue ? (normalize(storedValue) ?? initialValue) : initialValue;
+	// Same stale closure workaround as useBooleanLocalStorageValue above.
+	const valueRef = useRef(value);
+	valueRef.current = value;
 	const setValue: StateSetter<T> = useCallback(
 		(nextValue) => {
-			setStoredValue((currentValue) => {
-				const resolvedCurrent = currentValue ? (normalize(currentValue) ?? initialValue) : initialValue;
-				return resolveNextValue(nextValue, resolvedCurrent);
-			});
+			const resolved = resolveNextValue(nextValue, valueRef.current);
+			setStoredValue(resolved);
 		},
-		[initialValue, normalize, setStoredValue],
+		[setStoredValue],
 	);
 	return [value, setValue];
 }
