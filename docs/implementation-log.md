@@ -4,6 +4,25 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: structured JSONL session lifecycle event log (2026-04-12)
+
+Added a persistent, structured event logging system for diagnosing stuck-session failure modes — the remaining bugs are all "agent did something, no hook fired, card is stuck" scenarios that need forensic data, not code changes.
+
+**Core module (`src/core/event-log.ts`):**
+General-purpose JSONL event bus writing to `~/.quarterdeck/logs/events.jsonl`. Fire-and-forget `emitSessionEvent(taskId, event, data)` for session-scoped events and `emitEvent(event, data)` for system events. Module-level `enabled` flag gated by `eventLogEnabled` config (default off). 10 MB file rotation. Lazy directory init on server startup. Header comment documents how to emit, add, and analyze events.
+
+**Instrumentation (21 event types):**
+- `hooks-api.ts`: hook.received (with canTransition), hook.blocked.cant_transition, hook.blocked.permission_guard, hook.blocked.transition_guard, hook.transitioned
+- `session-manager.ts`: session.started, session.started.shell, session.exited, session.spawn_failed, state.transition, state.transition.noop, state.transition.optimistic, writeInput.interrupt, writeInput.codex_flag, trust.detected, trust.confirmed, trust.cap_reached, autorestart.triggered, autorestart.rate_limited, autorestart.failed, interrupt_recovery.scheduled, interrupt_recovery.fired, reconciliation.action, reconciliation.sweep, health.snapshot
+
+**Health snapshots:** Every 10s reconciliation sweep emits per-session diagnostics: state, reviewReason, pid, processAlive, msSinceStart, msSinceLastOutput, msSinceLastHook, msSinceLastStateChange, hookCount, listenerCount, autoRestartCount.
+
+**Debug flag button:** Bug icon on in-progress/review task cards → `runtime.flagTaskForDebug` tRPC endpoint → emits `user.flagged` with full session state snapshot. Hidden when event logging is off.
+
+**Config toggle:** `eventLogEnabled` boolean in global config (default false). Settings toggle in Developer / Experimental section. Synced on startup and config save.
+
+Files touched: `src/core/event-log.ts` (new), `src/terminal/session-manager.ts`, `src/trpc/hooks-api.ts`, `src/trpc/app-router.ts`, `src/trpc/runtime-api.ts`, `src/cli.ts`, `src/config/global-config-fields.ts`, `src/core/api-contract.ts`, `AGENTS.md`, `web-ui/src/App.tsx`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/board-column.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, `test/runtime/trpc/hooks-api.test.ts`
+
 ## Fix: commit panel UX and centralized git error parsing (2026-04-12)
 
 Three commit panel UX improvements plus a systemic fix for unreadable git error toasts.

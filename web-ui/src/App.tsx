@@ -1112,6 +1112,23 @@ export default function App(): ReactElement {
 		/>
 	) : undefined;
 
+	const handleFlagForDebug = useCallback(
+		(taskId: string) => {
+			if (!currentProjectId) return;
+			getRuntimeTrpcClient(currentProjectId)
+				.runtime.flagTaskForDebug.mutate({ taskId })
+				.then((result) => {
+					if (result.ok) {
+						showAppToast({ message: "Flagged in event log", intent: "success", timeout: 2000 });
+					}
+				})
+				.catch(() => {
+					// Best effort — the button is a convenience, not critical.
+				});
+		},
+		[currentProjectId],
+	);
+
 	const stableCardActions = useMemo<StableCardActions>(
 		() => ({
 			onStartTask: handleStartTaskFromBoard,
@@ -1125,6 +1142,7 @@ export default function App(): ReactElement {
 			onTogglePinTask: handleToggleTaskPinned,
 			onMigrateWorkingDirectory: handleMigrateWorkingDirectory,
 			onRequestDisplaySummary: handleRequestDisplaySummary,
+			onFlagForDebug: runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
 		}),
 		[
 			handleStartTaskFromBoard,
@@ -1138,6 +1156,8 @@ export default function App(): ReactElement {
 			handleToggleTaskPinned,
 			handleMigrateWorkingDirectory,
 			handleRequestDisplaySummary,
+			handleFlagForDebug,
+			runtimeProjectConfig?.eventLogEnabled,
 		],
 	);
 

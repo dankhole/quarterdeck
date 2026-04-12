@@ -7,7 +7,7 @@ import type { SessionSummaryStore } from "../../../src/terminal/session-summary-
 import { createHooksApi } from "../../../src/trpc/hooks-api";
 
 function createMockManager(storeMethods: Partial<SessionSummaryStore>): TerminalSessionManager {
-	return { store: storeMethods } as unknown as TerminalSessionManager;
+	return { store: storeMethods, recordHookReceived: vi.fn() } as unknown as TerminalSessionManager;
 }
 
 /** Access the mock store's methods for assertions. */

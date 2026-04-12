@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Feat: structured JSONL event log for session lifecycle observability
+
+- New `src/core/event-log.ts` module writes structured events to `~/.quarterdeck/logs/events.jsonl` (10 MB rotation). Gated behind `eventLogEnabled` config toggle (default off) — intended for developer debugging, not general users.
+- 21 event types instrumented across hooks-api.ts and session-manager.ts: hook lifecycle (received, blocked, transitioned), session lifecycle (started, exited, spawn_failed), state transitions (transition, noop, optimistic), user input (interrupt, codex_flag), trust prompts (detected, confirmed, cap_reached), auto-restart (triggered, rate_limited, failed), interrupt recovery (scheduled, fired), and reconciliation (action, sweep, health.snapshot).
+- Health snapshots emitted every 10s per active session with timing diagnostics (msSinceLastOutput, msSinceLastHook, msSinceLastStateChange, processAlive, hookCount).
+- Debug flag button (Bug icon) on in-progress and review task cards — click to emit a `user.flagged` event with full state snapshot as an anchor point for log analysis.
+- Settings toggle in Developer / Experimental section with clear "leave this off" guidance.
+
 ### Fix: commit panel UX — discard confirmation, resizable textarea, readable error display
 
 - Discard All now shows an AlertDialog confirmation before running `git restore` + `git clean` — previously fired immediately with no safety net.

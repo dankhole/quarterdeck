@@ -183,6 +183,10 @@ export interface RuntimeTrpcContext {
 			input: RuntimeMigrateTaskWorkingDirectoryRequest,
 		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
 		setDebugLogging: (enabled: boolean) => { ok: boolean; enabled: boolean };
+		flagTaskForDebug: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskId: string; note?: string },
+		) => Promise<{ ok: boolean }>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -394,6 +398,12 @@ export const runtimeAppRouter = t.router({
 			.output(z.object({ ok: z.boolean(), enabled: z.boolean() }))
 			.mutation(({ ctx, input }) => {
 				return ctx.runtimeApi.setDebugLogging(input.enabled);
+			}),
+		flagTaskForDebug: workspaceProcedure
+			.input(z.object({ taskId: z.string(), note: z.string().optional() }))
+			.output(z.object({ ok: z.boolean() }))
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.flagTaskForDebug(ctx.workspaceScope, input);
 			}),
 		openFile: t.procedure
 			.input(runtimeOpenFileRequestSchema)

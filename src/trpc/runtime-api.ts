@@ -20,6 +20,7 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { createTaggedLogger, isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
+import { emitSessionEvent, setEventLogEnabled } from "../core/event-log";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
 import { loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
@@ -105,6 +106,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
 				});
 			}
+			setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
 			return buildConfigResponse(nextRuntimeConfig);
 		},
 		startTaskSession: async (workspaceScope, input) => {
@@ -313,6 +315,27 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			setDebugLoggingEnabled(enabled);
 			deps.broadcastDebugLoggingState?.(enabled);
 			return { ok: true, enabled: isDebugLoggingEnabled() };
+		},
+		flagTaskForDebug: async (workspaceScope, input) => {
+			const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+			const summary = terminalManager.store.getSummary(input.taskId);
+			if (!summary) {
+				return { ok: false };
+			}
+			emitSessionEvent(input.taskId, "user.flagged", {
+				note: input.note ?? null,
+				state: summary.state,
+				reviewReason: summary.reviewReason,
+				pid: summary.pid,
+				agentId: summary.agentId,
+				lastOutputAt: summary.lastOutputAt,
+				lastHookAt: summary.lastHookAt,
+				updatedAt: summary.updatedAt,
+				startedAt: summary.startedAt,
+				exitCode: summary.exitCode,
+				latestHookEvent: summary.latestHookActivity?.hookEventName ?? null,
+			});
+			return { ok: true };
 		},
 		resetAllState: async (_workspaceScope) => {
 			await deps.prepareForStateReset?.();

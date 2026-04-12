@@ -6,10 +6,21 @@
 //   1. Add it to GLOBAL_CONFIG_FIELDS below (1 line)
 //   2. Add z.boolean() to runtimeConfigResponseSchema in api-contract.ts
 //   3. Add z.boolean().optional() to runtimeConfigSaveRequestSchema in api-contract.ts
-//   4. Add the UI toggle in runtime-settings-dialog.tsx
-//   5. Consume in App.tsx or wherever needed
+//   4. Add the field to the save config type in TWO web-ui files:
+//      a. web-ui/src/runtime/runtime-config-query.ts (saveRuntimeConfig param)
+//      b. web-ui/src/runtime/use-runtime-config.ts (UseRuntimeConfigResult.save param)
+//      These are hand-written duplicates of the Zod schema — the build will
+//      fail if you miss either one.
+//   5. Add the UI toggle in runtime-settings-dialog.tsx — 5 wiring points:
+//      a. useState (state declaration)
+//      b. initialXxx (initial value from config)
+//      c. hasUnsavedChanges check
+//      d. handleSave payload (the save() call — EASY TO MISS)
+//      e. useEffect reset (sync state when config changes)
+//   6. Consume in App.tsx or wherever needed
+//   7. Add to test fixtures (runtime-config.test.ts, runtime-config-factory.ts)
 //
-// Steps 1-3 are mechanical. Steps 4-5 are presentation/business logic.
+// Steps 1-3 are mechanical. Steps 4-6 are presentation/business logic.
 
 const MIN_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 60_000;
@@ -97,6 +108,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	worktreeAddParentRepoDir: boolField(false),
 	worktreeAddQuarterdeckDir: boolField(false),
 	showRunningTaskEmergencyActions: boolField(false),
+	eventLogEnabled: boolField(false),
 } as const;
 
 // --- Derived types ---

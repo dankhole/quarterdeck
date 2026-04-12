@@ -338,6 +338,7 @@ export function RuntimeSettingsDialog({
 	const [showRunningTaskEmergencyActions, setShowRunningTaskEmergencyActions] = useState(
 		CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 	);
+	const [eventLogEnabled, setEventLogEnabled] = useState(CONFIG_DEFAULTS.eventLogEnabled);
 	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(
 		CONFIG_DEFAULTS.audibleNotificationsEnabled,
 	);
@@ -459,6 +460,7 @@ export function RuntimeSettingsDialog({
 		config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation;
 	const initialShowRunningTaskEmergencyActions =
 		config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions;
+	const initialEventLogEnabled = config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled;
 	const initialAudibleNotificationsEnabled =
 		config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
 	const initialAudibleNotificationVolume =
@@ -521,6 +523,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (showRunningTaskEmergencyActions !== initialShowRunningTaskEmergencyActions) {
+			return true;
+		}
+		if (eventLogEnabled !== initialEventLogEnabled) {
 			return true;
 		}
 		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
@@ -602,6 +607,7 @@ export function RuntimeSettingsDialog({
 		worktreeAddQuarterdeckDir,
 		shortcuts,
 		showRunningTaskEmergencyActions,
+		eventLogEnabled,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
 		showSummaryOnCards,
@@ -639,6 +645,7 @@ export function RuntimeSettingsDialog({
 		setShowRunningTaskEmergencyActions(
 			config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 		);
+		setEventLogEnabled(config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled);
 		setAudibleNotificationsEnabled(
 			config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		);
@@ -673,6 +680,7 @@ export function RuntimeSettingsDialog({
 		config?.skipTaskCheckoutConfirmation,
 		config?.skipHomeCheckoutConfirmation,
 		config?.showRunningTaskEmergencyActions,
+		config?.eventLogEnabled,
 		config?.selectedAgentId,
 		config?.shellAutoRestartEnabled,
 		config?.terminalFontWeight,
@@ -743,6 +751,7 @@ export function RuntimeSettingsDialog({
 			skipTaskCheckoutConfirmation,
 			skipHomeCheckoutConfirmation,
 			showRunningTaskEmergencyActions,
+			eventLogEnabled,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -1178,6 +1187,23 @@ export function RuntimeSettingsDialog({
 						Gives agents read/write access to Quarterdeck state files (board data, session state, other
 						worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also
 						navigate into other task worktrees, breaking isolation. Claude Code only.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={eventLogEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setEventLogEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Session event log</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Writes session lifecycle events to a JSONL file on disk (
+						<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>). Intended
+						for developer debugging — helps diagnose stuck sessions and state tracking issues. The file grows up
+						to 10 MB before rotating. Leave this off unless you are actively investigating a problem.
 					</p>
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>

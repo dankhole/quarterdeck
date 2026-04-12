@@ -53,6 +53,7 @@ function ColumnSection({
 		onTogglePinTask,
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
+		onFlagForDebug,
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
@@ -211,6 +212,7 @@ function ColumnSection({
 												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 												showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 												onRequestDisplaySummary={onRequestDisplaySummary}
+												onFlagForDebug={onFlagForDebug}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);

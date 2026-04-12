@@ -60,6 +60,7 @@ export function BoardColumn({
 		onTogglePinTask,
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
+		onFlagForDebug,
 	} = useStableCardActions();
 	const {
 		moveToTrashLoadingById,
@@ -194,6 +195,7 @@ export function BoardColumn({
 											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 											showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 											onRequestDisplaySummary={onRequestDisplaySummary}
+											onFlagForDebug={onFlagForDebug}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

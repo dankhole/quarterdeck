@@ -22,6 +22,7 @@ export interface StableCardActions {
 	onHardDeleteTrashTask?: (taskId: string) => void;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
+	onFlagForDebug?: (taskId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,7 @@ export function CardActionsProvider({
 			stable.onHardDeleteTrashTask,
 			stable.onMigrateWorkingDirectory,
 			stable.onRequestDisplaySummary,
+			stable.onFlagForDebug,
 		],
 	);
 

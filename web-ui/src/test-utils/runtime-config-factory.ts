@@ -66,6 +66,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	worktreeAddParentRepoDir: CONFIG_DEFAULTS.worktreeAddParentRepoDir,
 	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	showRunningTaskEmergencyActions: CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
+	eventLogEnabled: CONFIG_DEFAULTS.eventLogEnabled,
 	llmConfigured: false,
 };
 

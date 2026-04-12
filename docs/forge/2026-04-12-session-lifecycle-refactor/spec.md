@@ -13,6 +13,10 @@ Use the existing refactor plan at docs/refactor-session-lifecycle.md as a basis,
 
 Decompose `TerminalSessionManager` (1,186 lines, 7 responsibilities) into focused modules without changing any external behavior. Each extracted module is independently testable. The refactor reduces the risk surface for future bug fixes by giving each responsibility clear boundaries and a smaller blast radius.
 
+## Agent Priority
+
+**Claude is the primary agent. Codex is secondary.** If preserving a Codex-specific behavior (deferred startup input, prompt detection, `awaitingCodexPromptAfterEnter` flag) adds complexity or blocks progress on the refactor, it is acceptable to break Codex functionality and come back to restore it in a follow-up pass. The Codex adapter is a workaround layer for an agent that lacks native hooks — it should not drive architectural decisions. Claude must remain at 100% functionality throughout.
+
 ## Behavioral Change Statement
 
 > **BEFORE**: `session-manager.ts` is a 1,186-line class that mixes PTY process management (~530 lines), workspace trust detection (~70 lines), Codex-specific quirks (~55 lines), state machine side-effects (~24 lines), timer management (~80 lines), listener notifications (~35 lines), reconciliation dispatch (~80 lines), and hydration/recovery (~50 lines). Side effects are scattered across closures. The `onData` callback alone is ~115 lines of interleaved concerns. Bug fixes require understanding the entire file.
@@ -28,25 +32,28 @@ Decompose `TerminalSessionManager` (1,186 lines, 7 responsibilities) into focuse
 
 ## Hard Behavioral Constraints
 
-### !1 — All existing tests pass without modification
+### !1 — All Claude-path tests pass without modification
 
 Every test in `test/runtime/terminal/session-manager*.test.ts`, `test/runtime/terminal/session-reconciliation.test.ts`, and `test/runtime/trpc/hooks-api.test.ts` must pass without changes throughout all phases. The `entries` Map stays on `TerminalSessionManager` because 4 tests in `session-manager.test.ts` access it via `as unknown as { entries: Map<...> }` casts at lines 231, 434, 468, 496.
+
+Codex-specific tests (deferred startup input, Codex prompt detection, `awaitingCodexPromptAfterEnter` flag ordering) may be skipped (`it.skip`) if Codex behavior breaks during the refactor. They must be tracked for the follow-up Codex restoration pass.
 
 ### !2 — No external API changes
 
 The `TerminalSessionService` interface (`terminal-session-service.ts`) and `TerminalSessionManager`'s public method signatures are unchanged. No consumer file (`hooks-api.ts`, `runtime-api.ts`, `workspace-registry.ts`, `shutdown-coordinator.ts`, `ws-server.ts`, `runtime-state-hub.ts`, `workspace-api.ts`, `projects-api.ts`, `runtime-server.ts`, `cli.ts`) needs to change its imports or call sites.
 
-### !3 — onData synchronous ordering preserved
+### !3 — onData synchronous ordering preserved (Claude paths)
 
 The onData callback's execution order is load-bearing. After extraction, these orderings MUST hold within a single synchronous tick:
 - Protocol filtering before terminal mirror update
-- UTF-8 decode before trust buffer accumulation, Codex input, and transition detection
-- Trust buffer accumulation before Codex deferred input check (trust buffer is fallback input)
+- UTF-8 decode before trust buffer accumulation and transition detection
 - State machine transition before listener broadcast (listeners see post-transition state)
 
-### !4 — writeInput synchronous ordering preserved
+Codex-specific ordering (trust buffer before deferred input check, Codex prompt detection) is best-effort. If preserving it adds complexity, it can break — see "Agent Priority" above.
 
-In `writeInput`, flag-setting (Codex prompt flag, state transition, interrupt detection) must all complete synchronously before the PTY write. Any async boundary between flag-setting and `session.write(data)` breaks Codex prompt suppression and interrupt detection.
+### !4 — writeInput synchronous ordering preserved (Claude paths)
+
+In `writeInput`, state transition and interrupt detection must complete synchronously before the PTY write. The Codex `awaitingCodexPromptAfterEnter` flag ordering is best-effort — acceptable to break if it simplifies the refactor.
 
 ### !5 — Auto-restart scheduling semantics preserved
 
@@ -590,6 +597,7 @@ Final pass to ensure the coordinator is clean, well-organized, and easy to navig
 - **`clearInterruptRecoveryTimer` helper function**: Currently a module-level function at line 187. After Phase 2, it moves to the timer manager. Remove it from session-manager.
 - **`hasLiveOutputListener` method**: Used by `TerminalStateMirror.onInputResponse` callback to decide whether to forward input. It reads `entry.listeners`. The `listeners` Map lives on `ProcessEntry` (coordinator's bookkeeping), so it is passed as a callback in `PtyProcessManagerDeps.hasLiveOutputListener`.
 - **Shell sessions have simpler onData/onExit**: Don't over-abstract. The shell onData is ~25 lines (protocol filter, mirror, trust buffer, output update, listener broadcast). It doesn't have transition detection, Codex quirks, or most of the complexity. A shared base with task-specific extensions would be wrong — keep them as separate methods.
+- **API errors leave session stuck in "running"**: When Claude Code hits a fatal API error (e.g. `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR`), it prints the error and sits at its prompt — process alive, no hooks, card stuck in "running." Out of scope for this structural refactor. The right fix layer is reconciliation (process alive but idle with no hooks for extended period), not `detectOutputTransition` (Codex-only). See todo.md #8.
 
 ## References
 

@@ -7,6 +7,7 @@ import type {
 } from "../core/api-contract";
 import { parseHookIngestRequest } from "../core/api-validation";
 import { createTaggedLogger } from "../core/debug-logger";
+import { emitSessionEvent } from "../core/event-log";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { isPermissionActivity } from "../terminal/session-reconciliation";
@@ -76,8 +77,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
 				const event = body.event;
-				log.info("Hook ingest received", {
-					taskId,
+				const hookReceivedData = {
 					event,
 					hookEventName: body.metadata?.hookEventName ?? null,
 					notificationType: body.metadata?.notificationType ?? null,
@@ -86,7 +86,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					source: body.metadata?.source ?? null,
 					hasSummaryText: !!body.metadata?.conversationSummaryText,
 					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
-				});
+				};
+				log.info("Hook ingest received", { taskId, ...hookReceivedData });
 				const knownWorkspacePath = deps.getWorkspacePathById(workspaceId);
 				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
 				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
@@ -107,9 +108,23 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				if (!canTransitionTaskForHookEvent(summary, event)) {
+				manager.recordHookReceived(taskId);
+				const canTransition = canTransitionTaskForHookEvent(summary, event);
+				emitSessionEvent(taskId, "hook.received", {
+					...hookReceivedData,
+					canTransition,
+					currentState: summary.state,
+					currentReviewReason: summary.reviewReason,
+				});
+				if (!canTransition) {
 					log.debug("Hook blocked — can't transition", {
 						taskId,
+						event,
+						currentState: summary.state,
+						currentReviewReason: summary.reviewReason,
+						hookEventName: body.metadata?.hookEventName ?? null,
+					});
+					emitSessionEvent(taskId, "hook.blocked.cant_transition", {
 						event,
 						currentState: summary.state,
 						currentReviewReason: summary.reviewReason,
@@ -147,6 +162,11 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 										currentPermissionActivity: currentActivity.hookEventName,
 									},
 								);
+								emitSessionEvent(taskId, "hook.blocked.permission_guard", {
+									event,
+									incomingHookEvent: body.metadata.hookEventName ?? null,
+									currentPermissionActivity: currentActivity.hookEventName ?? null,
+								});
 								// Skip applyHookActivity — the incoming event is not permission-related
 								// and would clobber the existing permission metadata.
 								applyConversationSummaryFromMetadata(store, taskId, body.metadata);
@@ -188,19 +208,26 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 								currentPermissionActivity: currentActivity.hookEventName,
 							},
 						);
+						emitSessionEvent(taskId, "hook.blocked.transition_guard", {
+							event,
+							currentState: summary.state,
+							incomingHookEvent,
+							currentPermissionActivity: currentActivity.hookEventName ?? null,
+						});
 						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 						return { ok: true } satisfies RuntimeHookIngestResponse;
 					}
 				}
 
-				log.info("Hook transitioning", {
-					taskId,
+				const transitionData = {
 					event,
 					fromState: summary.state,
 					fromReviewReason: summary.reviewReason,
 					toState: event === "to_review" ? "awaiting_review" : "running",
 					hookEventName: body.metadata?.hookEventName ?? null,
-				});
+				};
+				log.info("Hook transitioning", { taskId, ...transitionData });
+				emitSessionEvent(taskId, "hook.transitioned", transitionData);
 
 				const transitionedSummary =
 					event === "to_review" ? store.transitionToReview(taskId, "hook") : store.transitionToRunning(taskId);

@@ -360,6 +360,7 @@ async function startServer(): Promise<{
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
 		{ listWorkspaceIndexEntries },
+		{ initEventLog, setEventLogEnabled },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -370,11 +371,15 @@ async function startServer(): Promise<{
 		import("./server/workspace-registry.js"),
 		import("./fs/lock-cleanup.js"),
 		import("./state/workspace-state.js"),
+		import("./core/event-log.js"),
 	]);
 
 	const cleanupWarn = (message: string): void => {
 		console.warn(`[quarterdeck] ${message}`);
 	};
+
+	// Phase 0: Ensure the event log directory exists before any sessions emit events.
+	await initEventLog();
 
 	// Phase 1: Clean stale lock artifacts from ~/.quarterdeck/ (before registry load).
 	await cleanupGlobalStaleLockArtifacts(cleanupWarn);
@@ -403,6 +408,7 @@ async function startServer(): Promise<{
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 		},
 	});
+	setEventLogEnabled(workspaceRegistry.getActiveRuntimeConfig().eventLogEnabled);
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
 		getActivePollIntervals: () => {

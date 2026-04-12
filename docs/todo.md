@@ -94,6 +94,7 @@ Multiple related bugs where the UI shows the wrong task state. A comprehensive a
 **Remaining issues:**
 - **Non-hook operations stick in wrong state** (medium): Auto-compact, plugin reload, and `/resume` produce no hook events. Compact and plugin reload get stuck in "running"; `/resume` after review doesn't transition back to running.
 - **Notification beep count wrong for rapid transitions** (low): When a task goes to review then quickly to needs-input, wrong beep count plays. Debounce/settle window issues cause double-beeps for single events or single beeps for multiple events.
+- **API errors leave session stuck in "running"** (medium): When Claude Code hits a fatal API error (e.g. `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR`, auth failures, rate limits), it prints the error and then sits at its prompt waiting for user input. The process stays alive, no hook fires, and the card never moves to review/error. The agent doesn't consider itself "done" — it's just stuck. The hook system can't help here because the agent has no hook for "I hit an unrecoverable error." Reconciliation is the right layer — the process is alive but idle with no hooks for an extended period. `detectOutputTransition` is wrong (Codex-only workaround, not a general error detector).
 
 ## 9. Client-side project switch optimizations
 

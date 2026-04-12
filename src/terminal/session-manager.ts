@@ -3,6 +3,7 @@
 // for command-driven agents such as Claude Code, Codex, and shell sessions.
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
+import { emitSessionEvent } from "../core/event-log";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -18,7 +19,7 @@ import {
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
-import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
+import { isProcessAlive, type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
 import { canReturnToRunning } from "./session-state-machine";
 import {
 	cloneSummary,
@@ -89,6 +90,7 @@ interface ProcessEntry {
 	autoRestartTimestamps: number[];
 	pendingAutoRestart: Promise<void> | null;
 	pendingExitResolvers: Array<() => void>;
+	hookCount: number;
 }
 
 export interface StartTaskSessionRequest {
@@ -352,8 +354,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
 			shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
 			hasCodexLaunchSignature;
-		sessionLog.info("spawning task session", {
-			taskId: request.taskId,
+		const spawnData = {
 			agentId: request.agentId,
 			binary: commandBinary,
 			cwd: request.cwd,
@@ -362,7 +363,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			willAutoTrust,
 			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir ?? false,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
-		});
+		};
+		sessionLog.info("spawning task session", { taskId: request.taskId, ...spawnData });
 
 		let session: PtySession;
 		try {
@@ -415,6 +417,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 									isClaudePrompt: hasClaudePrompt,
 									isCodexPrompt: hasCodexPrompt,
 								});
+								emitSessionEvent(request.taskId, "trust.detected", {
+									isClaudePrompt: hasClaudePrompt,
+									isCodexPrompt: hasCodexPrompt,
+									confirmCount: entry.active.workspaceTrustConfirmCount,
+								});
 								const trustConfirmDelayMs = WORKSPACE_TRUST_CONFIRM_DELAY_MS;
 								entry.active.workspaceTrustConfirmTimer = setTimeout(() => {
 									const activeEntry = this.entries.get(request.taskId)?.active;
@@ -422,6 +429,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 										return;
 									}
 									activeEntry.session.write("\r");
+									emitSessionEvent(request.taskId, "trust.confirmed", {
+										confirmCount: activeEntry.workspaceTrustConfirmCount,
+									});
 									// Trust text can remain in the rolling buffer after we auto-confirm.
 									// Clear it so later startup/prompt checks do not match stale trust output.
 									if (activeEntry.workspaceTrustBuffer !== null) {
@@ -437,6 +447,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 										// Cap reached — disable the buffer entirely to avoid
 										// accumulating output that will never be checked.
 										activeEntry.workspaceTrustBuffer = null;
+										emitSessionEvent(request.taskId, "trust.cap_reached", {
+											confirmCount: activeEntry.workspaceTrustConfirmCount,
+										});
 										sessionLog.warn("workspace trust auto-confirm cap reached", {
 											taskId: request.taskId,
 											confirmCount: activeEntry.workspaceTrustConfirmCount,
@@ -491,11 +504,22 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 				},
 				onExit: (event) => {
+					const currentSummaryAtExit = this.store.getSummary(request.taskId);
+					const exitEventData = {
+						exitCode: event.exitCode,
+						wasInterrupted: this.entries.get(request.taskId)?.active?.session.wasInterrupted() ?? false,
+						trustConfirmCount: this.entries.get(request.taskId)?.active?.workspaceTrustConfirmCount ?? 0,
+						timeInState: currentSummaryAtExit?.updatedAt ? Date.now() - currentSummaryAtExit.updatedAt : null,
+						timeSinceLastHook: currentSummaryAtExit?.lastHookAt
+							? Date.now() - currentSummaryAtExit.lastHookAt
+							: null,
+					};
 					sessionLog.info("task session process exited", {
 						taskId: request.taskId,
 						exitCode: event.exitCode,
-						trustConfirmCount: this.entries.get(request.taskId)?.active?.workspaceTrustConfirmCount ?? 0,
+						trustConfirmCount: exitEventData.trustConfirmCount,
 					});
+					emitSessionEvent(request.taskId, "session.exited", exitEventData);
 					const currentEntry = this.entries.get(request.taskId);
 					if (!currentEntry) {
 						return;
@@ -540,11 +564,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 				},
 			});
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
 			sessionLog.error("failed to spawn task session", {
 				taskId: request.taskId,
 				agentId: request.agentId,
 				binary: commandBinary,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage,
+			});
+			emitSessionEvent(request.taskId, "session.spawn_failed", {
+				agentId: request.agentId,
+				binary: commandBinary,
+				error: errorMessage,
 			});
 			if (launch.cleanup) {
 				void launch.cleanup().catch(() => {
@@ -573,6 +603,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			taskId: request.taskId,
 			pid: session.pid,
 			willAutoTrust,
+		});
+		emitSessionEvent(request.taskId, "session.started", {
+			...spawnData,
+			pid: session.pid,
 		});
 
 		const active: ActiveProcessState = {
@@ -753,6 +787,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
 
+		emitSessionEvent(request.taskId, "session.started.shell", {
+			binary: request.binary,
+			cwd: request.cwd,
+			pid: session.pid,
+		});
+
 		const summary = this.store.update(request.taskId, {
 			state: "running",
 			agentId: null,
@@ -829,6 +869,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
+			emitSessionEvent(taskId, "writeInput.codex_flag", {
+				currentState: summary.state,
+				reviewReason: summary.reviewReason,
+			});
 		}
 
 		// Immediately transition to "running" when the user submits input (CR/LF) while
@@ -843,6 +887,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 			canReturnToRunning(summary.reviewReason) &&
 			(data.includes(13) || data.includes(10))
 		) {
+			emitSessionEvent(taskId, "state.transition.optimistic", {
+				fromState: summary.state,
+				toState: "running",
+				reviewReason: summary.reviewReason,
+			});
 			this.store.transitionToRunning(taskId);
 		}
 
@@ -853,12 +902,24 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const isCtrlC = data.length <= MAX_SIGINT_DETECT_BUFFER_SIZE && data.includes(SIGINT_BYTE);
 		const isBareEscape = data.length === 1 && data[0] === ESC_BYTE;
 		if (summary?.state === "running" && (isCtrlC || isBareEscape)) {
+			emitSessionEvent(taskId, "writeInput.interrupt", {
+				isCtrlC,
+				isBareEscape,
+				currentState: summary.state,
+			});
 			entry.suppressAutoRestartOnExit = true;
 			this.scheduleInterruptRecovery(entry);
 		}
 
 		entry.active.session.write(data);
 		return this.store.getSummary(taskId);
+	}
+
+	recordHookReceived(taskId: string): void {
+		const entry = this.entries.get(taskId);
+		if (entry) {
+			entry.hookCount += 1;
+		}
 	}
 
 	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean {
@@ -977,10 +1038,25 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry: ProcessEntry,
 		event: SessionTransitionEvent,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
+		const beforeSummary = this.store.getSummary(entry.taskId);
 		const result = this.store.applySessionEvent(entry.taskId, event);
 		if (!result?.changed) {
+			if (beforeSummary) {
+				emitSessionEvent(entry.taskId, "state.transition.noop", {
+					eventType: event.type,
+					currentState: beforeSummary.state,
+					currentReviewReason: beforeSummary.reviewReason,
+				});
+			}
 			return result;
 		}
+		emitSessionEvent(entry.taskId, "state.transition", {
+			eventType: event.type,
+			fromState: beforeSummary?.state ?? null,
+			toState: result.patch.state ?? beforeSummary?.state ?? null,
+			fromReviewReason: beforeSummary?.reviewReason ?? null,
+			toReviewReason: result.patch.reviewReason ?? null,
+		});
 		if (result.clearAttentionBuffer && entry.active) {
 			if (entry.active.workspaceTrustBuffer !== null) {
 				entry.active.workspaceTrustBuffer = "";
@@ -1011,6 +1087,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			autoRestartTimestamps: [],
 			pendingAutoRestart: null,
 			pendingExitResolvers: [],
+			hookCount: 0,
 		};
 	}
 
@@ -1039,6 +1116,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			(timestamp) => currentTime - timestamp < AUTO_RESTART_WINDOW_MS,
 		);
 		if (entry.autoRestartTimestamps.length >= MAX_AUTO_RESTARTS_PER_WINDOW) {
+			emitSessionEvent(entry.taskId, "autorestart.rate_limited", {
+				timestamps: entry.autoRestartTimestamps,
+			});
 			return false;
 		}
 		entry.autoRestartTimestamps.push(currentTime);
@@ -1053,6 +1133,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!restartRequest || restartRequest.kind !== "task") {
 			return;
 		}
+		emitSessionEvent(entry.taskId, "autorestart.triggered", {
+			restartCount: entry.autoRestartTimestamps.length,
+		});
 		let pendingAutoRestart: Promise<void> | null = null;
 		pendingAutoRestart = (async () => {
 			try {
@@ -1065,6 +1148,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 				await this.startTaskSession(request);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
+				emitSessionEvent(entry.taskId, "autorestart.failed", {
+					error: message,
+				});
 				const summary = this.store.update(entry.taskId, {
 					warningMessage: message,
 				});
@@ -1086,12 +1172,32 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	private reconcileSessionStates(): void {
 		const nowMs = Date.now();
+		let sessionsChecked = 0;
+		let actionsApplied = 0;
 		for (const entry of this.entries.values()) {
 			try {
 				const summary = this.store.getSummary(entry.taskId);
 				if (!summary || (summary.state !== "running" && summary.state !== "awaiting_review")) {
 					continue;
 				}
+				sessionsChecked += 1;
+
+				// Emit health snapshot for every active session.
+				const pid = summary.pid;
+				emitSessionEvent(entry.taskId, "health.snapshot", {
+					state: summary.state,
+					reviewReason: summary.reviewReason,
+					pid,
+					processAlive: pid != null ? isProcessAlive(pid) : false,
+					msSinceStart: summary.startedAt != null ? nowMs - summary.startedAt : null,
+					msSinceLastOutput: summary.lastOutputAt != null ? nowMs - summary.lastOutputAt : null,
+					msSinceLastHook: summary.lastHookAt != null ? nowMs - summary.lastHookAt : null,
+					msSinceLastStateChange: nowMs - summary.updatedAt,
+					hookCount: entry.hookCount,
+					listenerCount: entry.listeners.size,
+					autoRestartCount: entry.autoRestartTimestamps.length,
+				});
+
 				for (const check of reconciliationChecks) {
 					const action = check(
 						{
@@ -1103,7 +1209,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 						nowMs,
 					);
 					if (action) {
+						emitSessionEvent(entry.taskId, "reconciliation.action", {
+							actionType: action.type,
+							currentState: summary.state,
+							pid: summary.pid,
+						});
 						this.applyReconciliationAction(entry, action);
+						actionsApplied += 1;
 						break;
 					}
 				}
@@ -1112,6 +1224,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 					error: err instanceof Error ? err.message : String(err),
 				});
 			}
+		}
+		if (sessionsChecked > 0) {
+			emitSessionEvent("_system", "reconciliation.sweep", {
+				sessionsChecked,
+				actionsApplied,
+			});
 		}
 	}
 
@@ -1169,6 +1287,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		clearInterruptRecoveryTimer(entry.active);
 		const taskId = entry.taskId;
+		emitSessionEvent(taskId, "interrupt_recovery.scheduled", {});
 		entry.active.interruptRecoveryTimer = setTimeout(() => {
 			const current = this.entries.get(taskId);
 			if (!current?.active) {
@@ -1179,6 +1298,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			if (summary?.state !== "running") {
 				return;
 			}
+			emitSessionEvent(taskId, "interrupt_recovery.fired", {
+				currentState: summary.state,
+			});
 			// Always transition — even if the agent produced output after the interrupt
 			// (e.g. Claude redraws its prompt after Escape). If the agent is genuinely
 			// still working, its next hook will move the card back to running.

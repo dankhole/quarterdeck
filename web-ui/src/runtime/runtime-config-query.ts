@@ -52,6 +52,7 @@ export async function saveRuntimeConfig(
 		worktreeAddParentRepoDir?: boolean;
 		worktreeAddQuarterdeckDir?: boolean;
 		showRunningTaskEmergencyActions?: boolean;
+		eventLogEnabled?: boolean;
 	},
 ): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);

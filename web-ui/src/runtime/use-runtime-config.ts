@@ -29,6 +29,7 @@ export interface UseRuntimeConfigResult {
 		skipTaskCheckoutConfirmation?: boolean;
 		skipHomeCheckoutConfirmation?: boolean;
 		showRunningTaskEmergencyActions?: boolean;
+		eventLogEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		audibleNotificationsEnabled?: boolean;

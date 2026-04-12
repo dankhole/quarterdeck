@@ -1,5 +1,5 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { AlertCircle, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { AlertCircle, Bug, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -168,6 +168,7 @@ export function BoardCard({
 	isMoveToTrashLoading = false,
 	onMigrateWorkingDirectory,
 	isMigrateLoading = false,
+	onFlagForDebug,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	onRequestDisplaySummary,
@@ -198,6 +199,7 @@ export function BoardCard({
 	isMoveToTrashLoading?: boolean;
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	isMigrateLoading?: boolean;
+	onFlagForDebug?: (taskId: string) => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
@@ -518,6 +520,22 @@ export function BoardCard({
 									!isSessionDead &&
 									isHovered ? (
 										<>
+											{onFlagForDebug ? (
+												<Tooltip content="Flag for debug log">
+													<Button
+														icon={<Bug size={12} />}
+														variant="ghost"
+														size="sm"
+														className="text-text-tertiary hover:text-status-purple"
+														aria-label="Flag task state for debug log"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															onFlagForDebug(card.id);
+														}}
+													/>
+												</Tooltip>
+											) : null}
 											{onRestartSession ? (
 												<Tooltip content="Force restart session">
 													<Button
@@ -564,6 +582,22 @@ export function BoardCard({
 										/>
 									) : columnId === "review" ? (
 										<>
+											{onFlagForDebug ? (
+												<Tooltip content="Flag for debug log">
+													<Button
+														icon={<Bug size={12} />}
+														variant="ghost"
+														size="sm"
+														className="text-text-tertiary hover:text-status-purple"
+														aria-label="Flag task state for debug log"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															onFlagForDebug(card.id);
+														}}
+													/>
+												</Tooltip>
+											) : null}
 											{isSessionRestartable && onRestartSession ? (
 												<Tooltip content="Restart session">
 													<Button
