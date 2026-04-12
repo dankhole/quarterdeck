@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: worktree-locked branches no longer fully disabled in branch picker
+
+- Branches checked out by a worktree task were previously greyed out and unclickable in the `BranchSelectorPopover` dropdown. Now only the Checkout and Delete context menu items are disabled — the branch row itself is clickable for browsing, merging, creating branches from, and comparing. The "in use" badge still appears as a visual indicator.
+
 ### Feat: compare tab — include uncommitted work + live refresh
 
 - "Include uncommitted work" checkbox in the compare bar (default on). When checked, the compare diff includes staged, unstaged, and untracked changes on top of committed work — shows the full working tree state against the target branch. When unchecked, shows only committed diffs between the two refs.

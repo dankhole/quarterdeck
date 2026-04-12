@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: worktree-locked branches no longer fully disabled in branch picker (2026-04-12)
+
+Branches checked out by a worktree task were fully greyed out (`opacity-50`, `cursor-not-allowed`) and had `disabled` on the button element in `BranchSelectorPopover`, making them completely unclickable. This prevented legitimate operations like browsing the branch, merging it, creating a new branch from it, or comparing with it.
+
+Removed `disabled={isLocked}` and the conditional greyed-out styling from the `BranchItem` button. The row now renders identically to unlocked branches. The "in use" badge and tooltip still appear for locked branches. The context menu Checkout and Delete items already had their own `disabled={isLocked}` props, so those remain correctly gated. For call sites where `onSelectBranchView` maps to checkout (the topbar), `resolveCheckoutDialogState` in `checkout-confirmation-dialog.tsx` intercepts locked branches and shows a "blocked" dialog.
+
+**Files touched**: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`
+
 ## Feat: compare tab — include uncommitted work + live refresh (2026-04-12)
 
 Added an "Include uncommitted work" checkbox to the compare tab's CompareBar and fixed the stale-diff problem (TODO #11) where committed diffs never refreshed for named branches.

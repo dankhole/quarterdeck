@@ -292,13 +292,7 @@ function BranchItem({
 				<button
 					type="button"
 					onClick={() => onSelect(gitRef.name)}
-					disabled={isLocked}
-					className={cn(
-						"flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left",
-						isLocked
-							? "text-text-tertiary opacity-50 cursor-not-allowed"
-							: "text-text-secondary hover:bg-surface-2 cursor-pointer",
-					)}
+					className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
 				>
 					<GitBranch size={12} className="shrink-0" />
 					<span className="flex-1 truncate">{shortName}</span>
