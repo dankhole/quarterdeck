@@ -1,0 +1,426 @@
+# Agent State Tracking — Issues, Architecture, and Refactor Plan
+
+**Status:** Planned
+**Date:** 2026-04-11
+**Related:** todo #9 (permission prompts), todo #20 (compact), todo #21 (merge workflow)
+**Supersedes:** `docs/handoff-stuck-running-fix.md` (can be deleted once this is adopted)
+
+---
+
+## The Problem
+
+Quarterdeck needs to know what each agent is doing so the UI shows the correct state. It currently gets this wrong in several scenarios — tasks show "running" when the agent is waiting for input, stay in "review" when the agent has resumed, or get permanently stuck with no recovery.
+
+The root cause is architectural: Quarterdeck relies on a single channel for agent state — **fire-and-forget hooks** (spawned CLI processes making HTTP calls). This channel is lossy, unordered, and incomplete.
+
+---
+
+## How Agent State Tracking Works Today
+
+### The Hook Delivery Pipeline
+
+```
+Agent process fires hook event (configured via settings.json)
+  → spawns new OS process: quarterdeck hooks ingest --event <to_review|to_in_progress|activity>
+    → [hooks:cli] stderr diagnostic line (always on)
+    → tRPC HTTP POST to server (3s timeout, 1 retry after 1s)
+      → hooks-api.ts ingest handler
+        → canTransitionTaskForHookEvent() guard
+        → store.transitionToReview() or store.transitionToRunning()
+        → WebSocket broadcast to UI
+```
+
+Each hook is a **separate OS process**. There is no ordering guarantee, no persistent queue, no acknowledgment loop, and no heartbeat. The agent does not check whether its hooks were received.
+
+### State Machine
+
+File: `src/terminal/session-state-machine.ts` (97 lines, pure reducer)
+
+Five states: `idle`, `running`, `awaiting_review`, `failed`, `interrupted`
+
+| Current State | Event | New State | Review Reason |
+|---|---|---|---|
+| `running` | `hook.to_review` | `awaiting_review` | `hook` |
+| `running` | `interrupt.recovery` | `awaiting_review` | `attention` |
+| `running` | `process.exit` (code 0) | `awaiting_review` | `exit` |
+| `running` | `process.exit` (code != 0) | `awaiting_review` | `error` |
+| `running` | `process.exit` (interrupted) | `interrupted` | `interrupted` |
+| `awaiting_review` | `hook.to_in_progress` | `running` | null |
+| `awaiting_review` | `agent.prompt-ready` | `running` | null |
+| `awaiting_review` | `process.exit` | `awaiting_review` (updated) | exit/error |
+
+`canReturnToRunning(reviewReason)` gates `to_in_progress` transitions. Accepts: `attention`, `hook`, `error`, `exit`. Terminal states (`idle`, `failed`, `interrupted`) have no exit via hooks — require user restart.
+
+### Claude Adapter Hook Mappings
+
+File: `src/terminal/agent-session-adapters.ts:516-565`
+
+| Claude Code Event | Quarterdeck Event | Notes |
+|---|---|---|
+| `Stop` | `to_review` | Agent completed a turn |
+| `PermissionRequest` | `to_review` | Agent needs permission approval |
+| `Notification` (`permission_prompt`) | `to_review` | Alternate permission signal |
+| `Notification` (`*`) | `activity` | No state transition |
+| `PostToolUse` | `to_in_progress` | Agent resumed after tool use |
+| `PostToolUseFailure` | `to_in_progress` | Agent resumed after failed tool |
+| `UserPromptSubmit` | `to_in_progress` | User sent input |
+| `SubagentStop` | `activity` | No state transition |
+| `PreToolUse` | `activity` | No state transition |
+
+### Comparison: How Other Adapters Handle This
+
+**Codex** has **dual-channel detection**:
+1. A session log watcher (`codex-hook-events.ts`) polling every 200ms
+2. A PTY output detector (`codexPromptDetector`) matching the `>` prompt character
+
+If the session log watcher misses an event, the prompt detector catches it when the Codex TUI renders its prompt. This makes Codex significantly more reliable for state tracking.
+
+**OpenCode** has **session-level busy/idle signals** via a plugin model (`session.busy`, `session.idle`, `session.error`). This gives explicit "I'm working" / "I'm done" transitions rather than inferring state from tool-level events.
+
+**Claude** has only the hook channel. Output-based detection was tried (2026-04-08, `checkOutputAfterReview`) and removed same day — Claude Code produces constant incidental terminal output (spinners, status bars, ANSI redraws) even while idle. There is no unique prompt marker like Codex's `>`. AGENTS.md explicitly says: "Do not use `lastOutputAt` timestamps or output presence/volume as a heuristic for whether an agent has resumed working."
+
+### Key Files
+
+| File | Role |
+|---|---|
+| `src/terminal/session-state-machine.ts` | Pure state machine reducer (97 lines) |
+| `src/terminal/session-manager.ts` | Side effects, PTY, auto-restart, reconciliation (~1,350 lines) |
+| `src/terminal/session-summary-store.ts` | Session summary CRUD, state transitions, event subscriptions |
+| `src/terminal/session-reconciliation.ts` | Periodic health checks (10s sweep) |
+| `src/terminal/agent-session-adapters.ts` | Per-agent CLI args, hook config, output detectors |
+| `src/commands/hooks.ts` | CLI `hooks ingest` — how agents report transitions |
+| `src/trpc/hooks-api.ts` | Server-side hook processing, permission guard, checkpoint capture |
+| `web-ui/src/utils/session-status.ts` | Frontend permission detection |
+| `src/config/global-config-fields.ts` | Config fields (e.g., `showRunningTaskEmergencyActions`) |
+
+---
+
+## Known Bugs
+
+### Bug 1: Permission Race Condition (todo #9) — HIGH severity
+
+**Symptom**: Task shows "running" when agent is blocked on a permission prompt.
+
+**Root cause (confirmed by architecture analysis)**: `PostToolUse` from a just-completed tool arrives at the server AFTER `PermissionRequest` for the next tool, bouncing state from `awaiting_review` back to `running`.
+
+Each hook spawns as a separate OS process. The `PermissionRequest` process may be slower (transcript enrichment via `enrichClaudeStopMetadata`) while `PostToolUse` has no enrichment overhead. The arrival order at the server is non-deterministic.
+
+**Why the existing permission guard doesn't help**: The guard at `hooks-api.ts:119-157` only fires on the **non-transition path** — when `canTransitionTaskForHookEvent()` returns `false`. But when `to_in_progress` arrives while in `awaiting_review` with `reviewReason: "hook"`, `canReturnToRunning("hook")` returns `true`, the transition **succeeds**, and the guard is never reached. The guard protects metadata from being clobbered; it doesn't protect the state transition itself.
+
+**Concrete timeline**:
+```
+T0  Claude: Tool X completes      → fires PostToolUse (to_in_progress)
+T1  Claude: Permission prompt     → fires PermissionRequest (to_review)
+T2  Server: PermissionRequest     → running → awaiting_review (reviewReason: "hook") ✓
+T3  Server: PostToolUse (STALE)   → canReturnToRunning("hook") = true
+                                  → awaiting_review → running ← BUG
+```
+
+### Bug 2: Operations That Don't Fire Hooks — MEDIUM severity
+
+**Symptom**: Task stuck in "running" during agent internal operations (auto-compact, plugin reload, `/resume`), or stuck in "review" after agent auto-resumes.
+
+**Root cause**: Claude Code does not fire hook events for these operations. They are internal operations that don't map to `Stop`, `PermissionRequest`, `PostToolUse`, or any other configured hook event. The `Notification` wildcard catches some as `activity`, but `activity` events never trigger state transitions (`canTransitionTaskForHookEvent` returns `false` for `activity`).
+
+**Known non-hook operations**:
+- Auto-compact (context window compaction)
+- Plugin reload
+- `/resume` (resume previous conversation)
+- Possibly some `Notification` types like `user_attention` (falls through to `*` wildcard → `activity`, not `to_review`)
+
+### Bug 3: Hook Delivery Failures — LOW severity (mitigated)
+
+**Symptom**: Any transient failure (server busy, timeout, process spawn failure) causes a permanently stuck task.
+
+**Current mitigation**: Single retry after 1s (`hooks.ts:394-436`). Total wall time before giving up: 3s timeout + 1s delay + 3s retry = 7s max.
+
+**Contributing factor**: Checkpoint capture (`hooks-api.ts:202`) is `await`ed before the tRPC response is sent. Git checkpoint operations routinely exceed the 3s timeout under load, causing the CLI to timeout even when the state transition succeeded.
+
+---
+
+## Existing Recovery Layers
+
+Seven distinct mechanisms exist. Understanding which are genuine fixes vs. compensating for the architecture is critical before adding more.
+
+| # | Mechanism | Location | Classification | What It Covers |
+|---|-----------|----------|----------------|----------------|
+| 1 | `canReturnToRunning("exit")` | `session-state-machine.ts:21` | **ROOT FIX** | Clean-exit tasks were permanently stuck (fixed in `4ad5f0ff`) |
+| 2 | Hook delivery retry (1x after 1s) | `hooks.ts:394-436` | **BANDAID** | Transient delivery failures; 1 retry is insufficient for persistent slowness |
+| 3 | Permission metadata guard | `hooks-api.ts:119-157` | **SAFETY NET** | Prevents non-permission hooks from clobbering "Waiting for approval" metadata; does NOT prevent the race condition in Bug 1 |
+| 4 | Interrupt recovery timer (5s) | `session-manager.ts:1152-1173` | **CRUTCH** | No hook fires when agent catches SIGINT; 5s heuristic is the only detection path |
+| 5a | Reconciliation: dead process | `session-reconciliation.ts:66-81` | **SAFETY NET** | PTY `onExit` callback missed; checks `kill(pid, 0)` every 10s |
+| 5b | Reconciliation: processless session | `session-reconciliation.ts:120-147` | **CRUTCH** | Process exited while no browser tab was open; updates stale state |
+| 5c | Reconciliation: stale hook activity | `session-reconciliation.ts:87-107` | **SAFETY NET** | Clears permission badges that no longer match the session state |
+| 6 | Auto-restart on reconnect | `session-manager.ts:763-803` | **CRUTCH** | Viewer reconnects to a crashed task; schedules restart |
+| 7 | Emergency restart/trash buttons | `board-card.tsx:515-549` | **BANDAID** | Manual escape hatch; disabled by default (`showRunningTaskEmergencyActions`) |
+
+**Legend**: ROOT FIX = addresses why the problem occurs. SAFETY NET = catches rare edge cases. CRUTCH = system depends on this for normal operations. BANDAID = covers a known gap that should be fixed.
+
+The crutches (4, 5b, 6) are significant — they handle **normal operations** (interrupting agents, closing browser tabs), not edge cases. Without them the system would be broken for interactive use.
+
+---
+
+## Targeted Patches (Before Refactor)
+
+These can be applied to the current code structure. The refactor (below) makes them cleaner but is not a prerequisite.
+
+### Patch A: Permission-Aware Transition Guard
+
+**Goal**: Prevent stale `to_in_progress` hooks from bouncing a permission-waiting task back to running.
+
+**Approach**: When `to_in_progress` arrives and the task is `awaiting_review` with permission-related `latestHookActivity`, block the transition.
+
+**Where**: `hooks-api.ts`, before the `store.transitionToRunning()` call at line 177. Or in `canTransitionTaskForHookEvent()` to keep it centralized.
+
+**Risk — false positive blocking**: When the user legitimately approves a permission:
+1. `PermissionRequest` → `to_review` → `awaiting_review` (activity = permission)
+2. User types approval in terminal → `writeInput` detects CR/LF → `store.transitionToRunning()` → clears `latestHookActivity` (line 196-198 of `session-summary-store.ts`)
+3. `PostToolUse` → `to_in_progress` → no-op (already running, activity already cleared)
+
+This works because `writeInput` (`session-manager.ts:822-835`) fires synchronously on keypress, transitioning to running and clearing permission activity BEFORE any hook arrives. The legitimate `PostToolUse` from the now-approved tool arrives later as a no-op.
+
+**Edge case**: If the user approves via a keystroke that doesn't include CR/LF (unlikely for Claude Code permissions, which require typed input + Enter). If this happens, `writeInput` doesn't transition, and the hook guard would block the legitimate `PostToolUse`. The `UserPromptSubmit` hook would also map to `to_in_progress` and be blocked. **Mitigation**: `UserPromptSubmit` implies the user actively sent input — if we see a `to_in_progress` with `hookEventName: "UserPromptSubmit"`, always allow it through the guard regardless of permission state.
+
+**Estimated change**: ~15-20 lines in `hooks-api.ts`.
+
+### Patch B: Decouple Checkpoint Capture from Hook Response
+
+**Goal**: Eliminate the primary cause of hook CLI timeouts.
+
+**Approach**: Fire-and-forget the `await checkpointCapture()` at `hooks-api.ts:202` so the tRPC response returns immediately after the state transition.
+
+**Risk — UI checkpoint race**: The UI receives the `to_review` broadcast before checkpoint data is applied. If the user immediately clicks "Revert to previous turn," the checkpoint might not exist yet. Mitigation: this is a brief window (<1s typically) and the revert feature is not latency-sensitive.
+
+**Risk — concurrent git operations**: Without the `await` serializing checkpoint captures, two `to_review` hooks for different tasks in the same workspace could run `git stash create` concurrently, hitting index lock contention. This was already a known problem (commit `8f6d8d9b` added `--no-optional-locks` to polling git commands). Making checkpoint fire-and-forget doesn't make it worse in theory — concurrent hooks from different tasks already execute in parallel at the HTTP handler level — but it removes the incidental serialization the `await` provided.
+
+**Estimated change**: ~10 lines in `hooks-api.ts` (wrap checkpoint in a `void (async () => { ... })()` with the broadcast moved before it).
+
+### Patch C: Staleness Check in Reconciliation Sweep
+
+**Goal**: Detect alive-but-stuck agents (compact, plugin reload, `/resume`, undetected permission prompts).
+
+**Approach**: In the 10s reconciliation sweep, check: if a task has been `running` for >30s with zero hook activity (`lastHookAt` vs now), flag it as potentially stuck. Transition to `awaiting_review` with a new reason like `"stale"` or surface a UI indicator.
+
+**Where**: New check function in `session-reconciliation.ts`, added to the `reconciliationChecks` array.
+
+**Risk — false positives**: Some legitimate operations produce no hooks for extended periods (large file writes, long compiles). A 30s threshold would incorrectly flag these. Tuning the threshold is a judgment call — too short = false positives, too long = delayed detection.
+
+**Risk — this is another crutch**: It doesn't fix WHY the hooks are missing. It compensates for the gap by adding a timeout-based heuristic. If the threshold is wrong, it creates new UX problems (cards flipping to review while the agent is legitimately working).
+
+**Estimated change**: ~30 lines in `session-reconciliation.ts` + adding `lastHookAt` tracking (already exists on the summary).
+
+---
+
+## Structural Refactor Plan
+
+`TerminalSessionManager` (`src/terminal/session-manager.ts`) has grown to ~1,350 lines and conflates seven responsibilities. Every bug fix adds another special case to the one giant file. The refactor decomposes it into focused modules.
+
+The refactor does NOT fix the bugs above — it makes the code structure cleaner so that fixes are safer, easier to test, and less likely to introduce side effects. Sequence: targeted patches first, then refactor.
+
+### Current Structure Problems
+
+- **`ActiveProcessState`** mixes PTY concerns (session, cols, rows), workspace trust concerns (buffers, timers, auto-confirm), Codex-specific concerns (deferred input, prompt state), protocol filtering, output transition detection, and interrupt recovery — all in one interface.
+- **`applySessionEventWithSideEffects`** is a wrapper coordinating side effects the reducer can't express. Side effects are scattered across the manager rather than declared alongside transitions.
+- **`hooks-api.ts`** duplicates permission-guard logic from `session-reconciliation.ts`. `canTransitionTaskForHookEvent` re-implements guard conditions that live in the reducer.
+- **Both** the manager and reconciliation can trigger recovery paths for processless sessions.
+- **Diagnostic logging** was retrofitted tactically (tags `[hooks]`, `[hooks:cli]`, `[session-mgr]`) rather than designed in.
+
+### Band-aid History (all from 2026-04-11)
+
+| Commit | Fix | Root cause |
+|--------|-----|------------|
+| `4ad5f0ff` | Dead state, timer leak, hook retry, diagnostic logging | 4 separate bugs in one commit |
+| `f5e8c972` | Recover stale review sessions instead of dropping to idle | Processless recovery logic incomplete |
+| `03f08f81` | Transition to running immediately on prompt submit | UI latency workaround |
+| `d339a99a` | Emergency restart/trash for stuck tasks | Escape hatch bypassing state machine |
+| `2a8732c5` | Suppress failure beep when trashing running task | Side-effect not cleaned up on transition |
+| `e4222f3e` | Extract SessionSummaryStore | Partial decomposition |
+
+### Target Architecture
+
+```
+TerminalSessionManager (coordinator, ~250-300 lines)
+  |-- SessionStateMachine (enriched reducer + side-effect declarations)
+  |-- PtyProcessManager (spawn, exit, data routing, workspace trust)
+  |-- SessionSummaryManager (hook activity, summaries, checkpoints, notify/emit)
+  |-- SessionTimerManager (interrupt recovery, auto-restart, rate limiting)
+  |-- SessionReconciler (unchanged, already extracted)
+```
+
+### Phase 1: Enrich the State Machine
+
+**Risk:** Low
+**Files:** `session-state-machine.ts`, `session-manager.ts`, `hooks-api.ts`
+
+Make the state machine the single source of truth for what happens on each transition, including declarative side-effect tags.
+
+```typescript
+export interface SessionTransitionResult {
+   changed: boolean;
+   patch: Partial<RuntimeTaskSessionSummary>;
+   sideEffects: {
+      clearAttentionBuffer: boolean;
+      clearHookActivity: boolean;
+      resetCodexPromptState: boolean;
+   };
+}
+```
+
+Move `canTransitionTaskForHookEvent` into `session-state-machine.ts` as an exported function. `hooks-api.ts` imports it instead of re-implementing the guard conditions.
+
+### Phase 2: Extract PTY Process Management
+
+**Risk:** Medium
+**Files:** New `pty-process-manager.ts` (~400-500 lines), `session-manager.ts`
+
+Extract all PTY spawn/exit/data handling into a focused class:
+- `ActiveProcessState` interface and construction
+- PTY spawn logic (`startTaskSession`, `startShellSession`)
+- `onData` callback pipeline: terminal protocol filtering, workspace trust detection, Codex deferred input, output transition detection, listener fan-out
+- `onExit` callback: timer cleanup, side-effect application, auto-restart check
+- `writeInput` with interrupt detection
+- `resize`, `pauseOutput`, `resumeOutput` pass-through
+
+**Critical invariant**: The `onData` callback does workspace trust detection, state transitions, and listener notification in a specific synchronous order within one tick. `applySessionEvent` must run before listener `onOutput` callbacks so state is updated before the UI sees new terminal output.
+
+### Phase 3: Extract Session Summary Management
+
+**Risk:** Low (can run in parallel with Phase 4)
+**Files:** New `session-summary-manager.ts` (~250-300 lines), `session-manager.ts`
+
+Move all summary CRUD: `applyHookActivity`, `appendConversationSummary`, `setDisplaySummary`, `applyTurnCheckpoint`. Dedup the notify+emit pattern that appears ~10 times.
+
+### Phase 4: Extract Timer Management
+
+**Risk:** Low (can run in parallel with Phase 3)
+**Files:** New `session-timer-manager.ts` (~100-150 lines), `session-manager.ts`
+
+Consolidate interrupt recovery and auto-restart: `scheduleInterruptRecovery`, `shouldAutoRestart`, `scheduleAutoRestart`, rate limiting. Key invariant: timers must be cleared on every state transition.
+
+### Phase 5: Refactor the Coordinator
+
+**Risk:** Medium
+**Files:** `session-manager.ts` (rewrite from ~1,350 to ~250-300 lines)
+
+Reduce `TerminalSessionManager` to a thin coordinator. The `entries` map and `TerminalSessionService` interface stay exactly as-is to preserve test fixtures and consumers.
+
+### Phase 6: Consolidate Permission Guards
+
+**Risk:** Low
+**Files:** `hooks-api.ts`, `session-summary-manager.ts`
+
+Unify `canTransitionTaskForHookEvent` (moved to state machine in Phase 1) and the permission-guard metadata protection into a single `shouldGuardPermissionActivity()` function.
+
+### Phase Dependency Order
+
+```
+Phase 1 (state machine enrichment)
+   |
+   v
+Phase 3 (summary manager) ----+---- Phase 4 (timer manager)
+   |                           |
+   v                           v
+Phase 2 (PTY process manager)
+   |
+   v
+Phase 5 (coordinator refactor)
+   |
+   v
+Phase 6 (permission guard cleanup)
+```
+
+### Risk Areas
+
+1. **Event ordering in `onData` (Phase 2)**: Extraction must preserve the synchronous ordering of workspace trust detection → state transitions → listener notification within one tick.
+
+2. **Same-tick invariant for `transitionToReview` (Phase 5)**: `transitionToReview` must NOT clear `latestHookActivity` because `hooks-api.ts` calls `applyHookActivity` in the same synchronous tick after the transition. Guarded by test at line 135 of `session-manager.test.ts`.
+
+3. **Auto-restart async scheduling (Phase 4)**: `scheduleAutoRestart` creates a Promise (async microtask). The timer manager must preserve this exact scheduling — no additional await points.
+
+4. **`writeInput` interrupt detection (Phase 2 + 5)**: The coordinator calls `ptyManager.writeInput()` then `timerManager.scheduleInterruptRecovery()` — must remain synchronous within the same call.
+
+5. **Test fixture coupling (all phases)**: Existing tests reach into `TerminalSessionManager` internals via `as unknown as { entries: Map<...> }`. The `entries` map stays on the coordinator to avoid rewriting test fixtures.
+
+### Test Strategy
+
+- All existing tests in `test/runtime/terminal/session-manager*.test.ts` and `test/runtime/terminal/session-reconciliation.test.ts` must pass unchanged throughout all phases.
+- New unit tests for each extracted module: `session-state-machine.test.ts` (enriched `sideEffects`), `session-summary-manager.test.ts`, `session-timer-manager.test.ts`.
+- PTY process manager uses existing integration-style tests that mock `PtySession.spawn`.
+
+### Files Summary
+
+**New files:**
+
+| File | Lines | Content |
+|------|-------|---------|
+| `src/terminal/pty-process-manager.ts` | ~400-500 | Spawn, exit, data routing, workspace trust, Codex quirks |
+| `src/terminal/session-summary-manager.ts` | ~250-300 | Hook activity, summaries, checkpoints, notify/emit pattern |
+| `src/terminal/session-timer-manager.ts` | ~100-150 | Interrupt recovery, auto-restart, rate limiting |
+
+**Modified files:**
+
+| File | Change |
+|------|--------|
+| `src/terminal/session-state-machine.ts` | Enrich with side-effect declarations, add `canTransitionTaskForHookEvent` |
+| `src/terminal/session-manager.ts` | Reduce from ~1,350 to ~250-300 lines (thin coordinator) |
+| `src/trpc/hooks-api.ts` | Import from state machine, delegate permission guard |
+
+**Unchanged (verified compatible):**
+`session-reconciliation.ts`, `terminal-session-service.ts`, `pty-session.ts`, `ws-server.ts`, `workspace-registry.ts`, `runtime-state-hub.ts`, `shutdown-coordinator.ts`
+
+---
+
+## Diagnostic Logging (Already Landed)
+
+Two layers of logging exist for debugging state tracking issues (added in `4ad5f0ff`):
+
+### CLI-side (agent terminal, always on)
+
+```
+[hooks:cli] event=to_review hookEvent=Stop tool=- notifType=- activity=-
+[hooks:cli] event=to_in_progress hookEvent=PostToolUse tool=Bash notifType=- activity=Completed Bash
+[hooks:cli] event=to_review hookEvent=PermissionRequest tool=- notifType=- activity=Waiting for approval
+```
+
+### Server-side (enable "Debug logging" in UI Settings)
+
+```
+[hooks] Hook ingest received { taskId, event, hookEventName, ... }
+[hooks] Hook blocked — can't transition { taskId, event, currentState, currentReviewReason, ... }
+[hooks] Hook blocked — permission guard (...) { taskId, event, incomingHookEvent, currentPermissionActivity }
+[hooks] Hook transitioning { taskId, event, fromState, fromReviewReason, toState, hookEventName }
+```
+
+### What to look for
+
+- **Bug 1 (race)**: When permission prompt shows, does `event=to_review hookEvent=PermissionRequest` appear? Is it immediately followed by `event=to_in_progress hookEvent=PostToolUse`? If so, the race is confirmed.
+- **Bug 2 (no hooks)**: During compact/resume/reload, do ANY `[hooks:cli]` lines appear? If not, the operation fires no hooks at all.
+- **"Hook blocked" with `currentState: "running"` and `event: "to_in_progress"`**: Normal — hook arrived while already running (no-op).
+- **"Hook transitioning" with `to_in_progress` immediately after `to_review`**: Race condition (Bug 1).
+
+---
+
+## What Was Tried and Failed
+
+- **Output-based detection for Claude** (2026-04-08, `checkOutputAfterReview`): Removed same day. Claude Code produces constant incidental terminal output even while idle. Codex works because it has a unique `>` prompt marker; Claude has no equivalent.
+- **`needs_input` project pill** (commit `be56e048`, reverted in `271efe00`): Tried to show a separate "NI" pill for permission-waiting tasks, but `"attention"` is the standard completion reason. Every finished review task showed NI instead of R.
+
+---
+
+## Long-Term Considerations
+
+The fundamental weakness is that the hook channel is the **only** source of truth for agent state, and it is architecturally inadequate:
+
+1. **Lossy** — spawned processes can fail to start, timeout, or crash (1 retry isn't enough for persistent slowness)
+2. **Unordered** — concurrent hooks arrive in arbitrary order (causes Bug 1)
+3. **Incomplete** — many agent operations don't fire hooks (causes Bug 2)
+4. **Unidirectional** — Quarterdeck cannot query the agent's current state
+
+Options that would fundamentally improve reliability (all require significant effort):
+
+- **A second detection channel** for Claude: Something that doesn't depend on hooks. Not output-based (ruled out), but possibly a file-based signal, IPC pipe, or periodic status query.
+- **Upstream Claude Code changes**: Additional hook events for compact, resume, plugin reload. Session-level busy/idle signals like OpenCode has.
+- **Heartbeat mechanism**: Agent sends periodic `activity` hooks (e.g., every 5-10s while working). Absence of heartbeat = agent is stuck. Requires Claude Code hook config changes.
+- **Process introspection**: Query the agent process directly for its state (e.g., read a status file the agent maintains). Requires agent-side support.
+
+These are not on the immediate roadmap but inform the design direction — any short-term fix should avoid making these harder to adopt later.
