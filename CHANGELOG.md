@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Debug log panel is resizable
+
+- The debug log panel can now be drag-resized horizontally via a handle on its left edge. Width is clamped between 280px and 800px, persisted to localStorage, and included in the "Reset Layout" action. Uses the same `ResizeHandle` / `useResizeDrag` infrastructure as other resizable panels.
+
 ### Fix: squash merge prompt uses shell variable expansion
 
 - The squash merge prompt template's divergence-check commands used `MERGE_BASE=$(git merge-base ...)` with `$MERGE_BASE` expansion, which triggered Claude Code's `simple_expansion` permission prompt on every run. Replaced with git's three-dot diff syntax (`git diff --name-only <target>...HEAD`) which is semantically equivalent and doesn't require shell variable assignment.

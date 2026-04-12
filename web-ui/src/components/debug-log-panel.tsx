@@ -1,10 +1,29 @@
 import { Bug, Power, Trash2, X } from "lucide-react";
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DebugLogLevelFilter, DebugLogSourceFilter } from "@/hooks/use-debug-logging";
+import { ResizeHandle } from "@/resize/resize-handle";
+import { clampBetween } from "@/resize/resize-persistence";
+import {
+	loadResizePreference,
+	persistResizePreference,
+	type ResizeNumberPreference,
+} from "@/resize/resize-preferences";
+import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
+import { LocalStorageKey } from "@/storage/local-storage-store";
+
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 800;
+const DEFAULT_WIDTH = 420;
+
+const DEBUG_LOG_WIDTH_PREFERENCE: ResizeNumberPreference = {
+	key: LocalStorageKey.DebugLogPanelWidth,
+	defaultValue: DEFAULT_WIDTH,
+	normalize: (value) => clampBetween(value, MIN_WIDTH, MAX_WIDTH, true),
+};
 
 const LEVEL_COLORS: Record<string, string> = {
 	debug: "text-text-tertiary",
@@ -74,6 +93,31 @@ export function DebugLogPanel({
 }): ReactElement {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const isAtBottomRef = useRef(true);
+	const [panelWidth, setPanelWidth] = useState(() => loadResizePreference(DEBUG_LOG_WIDTH_PREFERENCE));
+	const { startDrag } = useResizeDrag();
+
+	const handleResizeMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const startX = event.clientX;
+			const startWidth = panelWidth;
+			startDrag(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					// Dragging left increases width (panel is on the right edge)
+					const delta = startX - pointerX;
+					const nextWidth = clampBetween(startWidth + delta, MIN_WIDTH, MAX_WIDTH, true);
+					setPanelWidth(nextWidth);
+				},
+				onEnd: (pointerX) => {
+					const delta = startX - pointerX;
+					const nextWidth = clampBetween(startWidth + delta, MIN_WIDTH, MAX_WIDTH, true);
+					setPanelWidth(persistResizePreference(DEBUG_LOG_WIDTH_PREFERENCE, nextWidth));
+				},
+			});
+		},
+		[panelWidth, startDrag],
+	);
 
 	useEffect(() => {
 		const el = scrollRef.current;
@@ -92,98 +136,101 @@ export function DebugLogPanel({
 	}, [entries]);
 
 	return (
-		<div className="flex flex-col border-l border-border bg-surface-0 shrink-0 h-full overflow-hidden w-[420px]">
-			{/* Header */}
-			<div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-surface-1 shrink-0">
-				<Bug size={14} className="text-text-secondary" />
-				<span className="text-xs font-medium text-text-primary whitespace-nowrap">Debug Log</span>
-				<span className="text-xs text-text-tertiary">({entryCount})</span>
+		<div className="flex shrink-0 h-full overflow-hidden">
+			<ResizeHandle orientation="vertical" ariaLabel="Resize debug log panel" onMouseDown={handleResizeMouseDown} />
+			<div className="flex flex-col bg-surface-0 h-full overflow-hidden" style={{ width: panelWidth }}>
+				{/* Header */}
+				<div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-surface-1 shrink-0">
+					<Bug size={14} className="text-text-secondary" />
+					<span className="text-xs font-medium text-text-primary whitespace-nowrap">Debug Log</span>
+					<span className="text-xs text-text-tertiary">({entryCount})</span>
 
-				<div className="flex-1" />
+					<div className="flex-1" />
 
-				<Tooltip content="Clear logs">
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={<Trash2 size={14} />}
-						onClick={onClear}
-						aria-label="Clear logs"
-					/>
-				</Tooltip>
-				<Tooltip content="Stop logging and close">
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={<Power size={14} />}
-						onClick={onStopLogging}
-						aria-label="Stop logging"
-					/>
-				</Tooltip>
-				<Tooltip content="Close panel">
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={<X size={14} />}
-						onClick={onClose}
-						aria-label="Close debug panel"
-					/>
-				</Tooltip>
-			</div>
-
-			{/* Filters */}
-			<div className="flex items-center gap-1.5 px-2 py-1 border-b border-border bg-surface-1/50 shrink-0">
-				<select
-					value={levelFilter}
-					onChange={(e) => onSetLevelFilter(e.target.value as DebugLogLevelFilter)}
-					className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
-				>
-					<option value="all">All levels</option>
-					<option value="debug">Debug+</option>
-					<option value="info">Info+</option>
-					<option value="warn">Warn+</option>
-					<option value="error">Error</option>
-				</select>
-
-				<select
-					value={sourceFilter}
-					onChange={(e) => onSetSourceFilter(e.target.value as DebugLogSourceFilter)}
-					className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
-				>
-					<option value="all">All sources</option>
-					<option value="server">Server</option>
-					<option value="client">Client</option>
-				</select>
-
-				<input
-					type="text"
-					placeholder="Filter..."
-					value={searchText}
-					onChange={(e) => onSetSearchText(e.target.value)}
-					className="flex-1 text-xs bg-surface-2 border border-border rounded px-1.5 py-0.5 text-text-primary placeholder:text-text-tertiary min-w-0"
-				/>
-
-				<Tooltip content="Show intercepted console.warn/error from libraries and React">
-					<label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer whitespace-nowrap select-none">
-						<input
-							type="checkbox"
-							checked={showConsoleCapture}
-							onChange={(e) => onSetShowConsoleCapture(e.target.checked)}
-							className="accent-accent"
+					<Tooltip content="Clear logs">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Trash2 size={14} />}
+							onClick={onClear}
+							aria-label="Clear logs"
 						/>
-						Console
-					</label>
-				</Tooltip>
-			</div>
+					</Tooltip>
+					<Tooltip content="Stop logging and close">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Power size={14} />}
+							onClick={onStopLogging}
+							aria-label="Stop logging"
+						/>
+					</Tooltip>
+					<Tooltip content="Close panel">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<X size={14} />}
+							onClick={onClose}
+							aria-label="Close debug panel"
+						/>
+					</Tooltip>
+				</div>
 
-			{/* Log entries */}
-			<div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-				{entries.length === 0 ? (
-					<div className="flex items-center justify-center h-full text-xs text-text-tertiary">
-						No log entries. Debug logging is active — entries will appear here.
-					</div>
-				) : (
-					entries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
-				)}
+				{/* Filters */}
+				<div className="flex items-center gap-1.5 px-2 py-1 border-b border-border bg-surface-1/50 shrink-0">
+					<select
+						value={levelFilter}
+						onChange={(e) => onSetLevelFilter(e.target.value as DebugLogLevelFilter)}
+						className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
+					>
+						<option value="all">All levels</option>
+						<option value="debug">Debug+</option>
+						<option value="info">Info+</option>
+						<option value="warn">Warn+</option>
+						<option value="error">Error</option>
+					</select>
+
+					<select
+						value={sourceFilter}
+						onChange={(e) => onSetSourceFilter(e.target.value as DebugLogSourceFilter)}
+						className="text-xs bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
+					>
+						<option value="all">All sources</option>
+						<option value="server">Server</option>
+						<option value="client">Client</option>
+					</select>
+
+					<input
+						type="text"
+						placeholder="Filter..."
+						value={searchText}
+						onChange={(e) => onSetSearchText(e.target.value)}
+						className="flex-1 text-xs bg-surface-2 border border-border rounded px-1.5 py-0.5 text-text-primary placeholder:text-text-tertiary min-w-0"
+					/>
+
+					<Tooltip content="Show intercepted console.warn/error from libraries and React">
+						<label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer whitespace-nowrap select-none">
+							<input
+								type="checkbox"
+								checked={showConsoleCapture}
+								onChange={(e) => onSetShowConsoleCapture(e.target.checked)}
+								className="accent-accent"
+							/>
+							Console
+						</label>
+					</Tooltip>
+				</div>
+
+				{/* Log entries */}
+				<div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+					{entries.length === 0 ? (
+						<div className="flex items-center justify-center h-full text-xs text-text-tertiary">
+							No log entries. Debug logging is active — entries will appear here.
+						</div>
+					) : (
+						entries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
+					)}
+				</div>
 			</div>
 		</div>
 	);

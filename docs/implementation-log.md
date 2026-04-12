@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Debug log panel is resizable (2026-04-11)
+
+Added drag-to-resize to the debug log panel. The panel previously had a fixed `w-[420px]` Tailwind class. Now uses a dynamic `style={{ width: panelWidth }}` driven by `useResizeDrag` + `ResizeHandle` — the same infrastructure used by the git history and card detail panels.
+
+The outer div was restructured from a single flex-col container into a flex wrapper holding a `ResizeHandle` (left edge) + an inner content div. The `ResizeHandle`'s `bg-border` baseline visually replaces the old `border-l` class. Drag math: `delta = startX - pointerX` so dragging left widens and dragging right narrows (correct for a right-edge panel).
+
+Width state is initialized from localStorage via `loadResizePreference` and persisted on drag end via `persistResizePreference`. A `ResizeNumberPreference` config clamps between 280px–800px with `clampBetween(..., true)` for integer rounding. The new `DebugLogPanelWidth` key is included in `LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS` so "Reset Layout" clears it.
+
+**Files touched**: `web-ui/src/components/debug-log-panel.tsx` (resize handle, drag logic, dynamic width), `web-ui/src/storage/local-storage-store.ts` (new LocalStorageKey + layout reset array entry).
+
 ## Fix: squash merge prompt uses shell variable expansion (2026-04-11)
 
 The squash merge prompt template in `prompt-templates.ts` instructed agents to run `MERGE_BASE=$(git merge-base <target> HEAD)` and then reference `$MERGE_BASE` in subsequent `git diff` commands. This shell variable expansion (`simple_expansion`) triggered Claude Code's permission prompt every time, even though `Bash(git *)` was already auto-approved in the user's settings.

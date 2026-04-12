@@ -23,6 +23,7 @@ export enum LocalStorageKey {
 	GitViewFileTreeRatio = "quarterdeck.git-view-file-tree-ratio",
 	GitViewActiveTab = "quarterdeck.git-view-active-tab",
 	SidebarPinned = "quarterdeck.sidebar-pinned",
+	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
@@ -35,6 +36,7 @@ export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [
 	LocalStorageKey.GitDiffFileTreePanelRatio,
 	LocalStorageKey.DetailFileBrowserTreePanelRatio,
 	LocalStorageKey.GitViewFileTreeRatio,
+	LocalStorageKey.DebugLogPanelWidth,
 ] as const;
 
 function getLocalStorage(): Storage | null {
