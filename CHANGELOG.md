@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: trashing a running task plays error triple beep
+
+- Suppress the audible failure notification (3×740Hz beep) when a running task is moved to trash. The process exit from SIGTERM was being interpreted as a failure by the notification system. Tasks in the trash column are now excluded from sound scheduling via a `suppressedTaskIds` set derived from board state.
+- Also cancel any already-pending sound timers for tasks that enter the trash during a hook-based settle window (500ms race).
+
 ### Fix: terminal renders at wrong width after untrashing a task
 
 - When untrashing a task, the agent terminal could render text at roughly 1/3 of the correct width until the browser window was manually resized. Root cause: the PersistentTerminal's WebSocket connected and sent a resize before the server-side PTY existed (silently dropped), then the PTY was created with estimated geometry. The client's dedup tracking prevented re-sending the correct dimensions. The terminal now re-sends its dimensions when it receives a session state transition to `running` or `awaiting_review`, and also resets dedup tracking whenever the terminal is mounted to a new container (e.g., switching views).

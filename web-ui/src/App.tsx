@@ -519,12 +519,18 @@ export default function App(): ReactElement {
 	const audibleNotificationsOnlyWhenHidden =
 		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
 
+	const trashTaskIdSet = useMemo(() => {
+		const trashColumn = board.columns.find((col) => col.id === "trash");
+		return trashColumn ? new Set(trashColumn.cards.map((c) => c.id)) : new Set<string>();
+	}, [board.columns]);
+
 	useAudibleNotifications({
 		notificationSessions,
 		audibleNotificationsEnabled,
 		audibleNotificationVolume,
 		audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden,
+		suppressedTaskIds: trashTaskIdSet,
 	});
 
 	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;

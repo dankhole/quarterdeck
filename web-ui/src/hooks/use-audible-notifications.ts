@@ -14,6 +14,8 @@ interface UseAudibleNotificationsOptions {
 		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
+	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
+	suppressedTaskIds?: ReadonlySet<string>;
 }
 
 /**
@@ -99,6 +101,7 @@ export function useAudibleNotifications({
 	audibleNotificationVolume,
 	audibleNotificationEvents,
 	audibleNotificationsOnlyWhenHidden,
+	suppressedTaskIds,
 }: UseAudibleNotificationsOptions): void {
 	const previousColumnsRef = useRef<Map<string, TaskColumn>>(new Map());
 	const isInitialLoadRef = useRef(true);
@@ -138,7 +141,12 @@ export function useAudibleNotifications({
 			const previousColumn = previousColumns.get(taskId);
 			previousColumns.set(taskId, currentColumn);
 
-			if (soundsSuppressed) {
+			if (soundsSuppressed || suppressedTaskIds?.has(taskId)) {
+				const existing = pendingSoundsRef.current.get(taskId);
+				if (existing) {
+					clearTimeout(existing.timer);
+					pendingSoundsRef.current.delete(taskId);
+				}
 				continue;
 			}
 
@@ -192,7 +200,7 @@ export function useAudibleNotifications({
 				}
 			}
 		}
-	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationSessions]);
+	}, [audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationSessions, suppressedTaskIds]);
 
 	// Clean up pending timers on unmount.
 	useEffect(() => {

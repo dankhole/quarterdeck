@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: trashing a running task plays error triple beep (2026-04-11)
+
+When a running task is moved to trash, `stopTaskSession` kills the agent process with SIGTERM. The process exits with a non-zero code, the session transitions to `awaiting_review` with `reviewReason: "exit"` and `exitCode !== 0`, and `resolveSessionSoundEvent` maps that to `"failure"` — triggering the 3×740Hz error beep.
+
+**Fix**: Added `suppressedTaskIds?: ReadonlySet<string>` to `UseAudibleNotificationsOptions`. In `App.tsx`, a `useMemo` derives a `Set<string>` of task IDs from the board's trash column (dependency: `board.columns`). The notification effect skips sound scheduling for any task in the set. Additionally, any already-pending sound timer for a newly-suppressed task is cancelled — this covers the edge case where a hook-based `to_review` transition starts a 500ms settle timer, and the task is trashed before the timer fires.
+
+**Why the timing is safe**: The board state moves the card to the trash column synchronously (`setBoard`) before `stopTaskSession` is called. The session exit event arrives via WebSocket after at least two network round-trips, so `trashTaskIdSet` is always populated before the notification effect sees the stopped session.
+
+**Column tracking preserved**: The `previousColumns.set(taskId, currentColumn)` update at line 142 runs unconditionally before the suppression check, so column state tracking remains correct for suppressed tasks. If a task is restored from trash and later exits, the sound fires normally.
+
+**Files touched**: `web-ui/src/hooks/use-audible-notifications.ts` (suppression param, cancel pending timers, deps), `web-ui/src/App.tsx` (trashTaskIdSet useMemo, pass to hook).
+
 ## Fix: terminal renders at wrong width after untrashing a task (2026-04-11)
 
 Race condition between the PersistentTerminal's WebSocket connection and `startTaskSession` PTY creation during untrash. The sequence: (1) task moves from trash to review, `terminalEnabled` becomes true; (2) React effect creates PersistentTerminal — constructor starts WebSocket connections; (3) control socket connects, server sends empty restore (no PTY yet); (4) post-restore `requestResize()` sends correct cols/rows to server, but server silently drops it (`session-manager.ts:resize()` returns false when `!entry?.active`); (5) `lastSentCols`/`lastSentRows` dedup tracking is updated to the correct values even though the message was dropped; (6) `startTaskSession` creates PTY with estimated geometry (1/3 viewport via `estimateTaskSessionGeometry`); (7) server sends `"state"` message to client; (8) client only called `notifySummary()` — no resize re-sent; (9) dedup blocked any future resize because `lastSentCols` already matched.
