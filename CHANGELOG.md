@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Markdown renderer in file browser
+
+- Markdown files (`.md`, `.markdown`, `.mdx`) now render as formatted HTML in the file browser instead of showing raw text. A toolbar toggle switches between rendered preview and source view — similar to JetBrains' split editor. Defaults to rendered, preference persisted in localStorage. Supports GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks) via `react-markdown` + `remark-gfm`. Dark theme styling uses existing design tokens.
+
 ### Fix: worktree incorrectly indexed as a project
 
 - Fixed a bug where a Quarterdeck-managed worktree (under `~/.quarterdeck/worktrees/`) could be registered as its own project in the project selector. This happened because worktrees are valid git repos, and the auto-registration paths (server startup, CLI commands) didn't distinguish them from real projects. Added `isUnderWorktreesHome` guard to prevent worktree paths from entering the workspace index, plus pruning logic to clean up any existing stale entries on the next client connection.

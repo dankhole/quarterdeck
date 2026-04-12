@@ -25,6 +25,7 @@ export enum LocalStorageKey {
 	SidebarPinned = "quarterdeck.sidebar-pinned",
 	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
 	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
+	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

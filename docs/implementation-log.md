@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Markdown renderer in file browser (2026-04-12, closes todo #13)
+
+Added a rendered markdown preview to `FileContentViewer` for `.md`, `.markdown`, and `.mdx` files. When a markdown file is selected in the file browser, it defaults to a rendered preview using `react-markdown` with `remark-gfm` for GFM support (tables, task lists, strikethrough, autolinks). A toolbar toggle switches between rendered and source views — `BookOpen` icon to enter preview, `Code` icon to show source — matching the JetBrains split-editor UX. The word wrap toggle hides in preview mode (not applicable to rendered content).
+
+**Dependencies added**: `react-markdown` (v10.1.0), `remark-gfm` (v4.0.1).
+
+**Styling**: Added `.kb-markdown-rendered` CSS block in `globals.css` (~150 lines) covering headings (h1-h6 with bottom borders on h1/h2 like GitHub), code blocks (inline and fenced), blockquotes, tables, lists (with explicit `list-style-type` restoration since Tailwind v4 preflight strips it), links, images, horizontal rules, and task list checkboxes. All colors reference existing design tokens (`surface-0` through `surface-3`, `text-primary`/`secondary`, `border`/`border-bright`, `accent`).
+
+**State**: Preview preference stored in localStorage via `FileBrowserMarkdownPreview` key using the existing `useBooleanLocalStorageValue` hook pattern.
+
+**Files touched**: `web-ui/src/components/detail-panels/file-content-viewer.tsx`, `web-ui/src/storage/local-storage-store.ts`, `web-ui/src/styles/globals.css`, `web-ui/package.json`.
+
 ## Fix: worktree incorrectly indexed as a project (2026-04-12)
 
 A Quarterdeck-managed worktree showed up as its own project in the project tab after a reboot. Root cause: `createWorkspaceRegistry` calls `loadWorkspaceContext(deps.cwd)` on startup, which auto-creates a workspace index entry for any valid git repo. Worktrees under `~/.quarterdeck/worktrees/` are valid git repos (they have a `.git` pointer file), so they passed all existing checks.

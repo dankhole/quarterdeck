@@ -1,6 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Clipboard, FileText, WrapText, X } from "lucide-react";
+import { BookOpen, Clipboard, Code, FileText, WrapText, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -9,6 +11,12 @@ import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
 
 const LINE_HEIGHT = 20;
+const REMARK_PLUGINS = [remarkGfm];
+
+function isMarkdownFile(filePath: string): boolean {
+	const lower = filePath.toLowerCase();
+	return lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".mdx");
+}
 
 export function FileContentViewer({
 	content,
@@ -29,6 +37,15 @@ export function FileContentViewer({
 }): React.ReactElement {
 	const [wordWrap, setWordWrap] = useBooleanLocalStorageValue(LocalStorageKey.FileBrowserWordWrap, true);
 	const toggleWordWrap = useCallback(() => setWordWrap((prev) => !prev), [setWordWrap]);
+
+	const [markdownPreview, setMarkdownPreview] = useBooleanLocalStorageValue(
+		LocalStorageKey.FileBrowserMarkdownPreview,
+		true,
+	);
+	const toggleMarkdownPreview = useCallback(() => setMarkdownPreview((prev) => !prev), [setMarkdownPreview]);
+
+	const isMarkdown = filePath ? isMarkdownFile(filePath) : false;
+	const showRendered = isMarkdown && markdownPreview;
 
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +138,20 @@ export function FileContentViewer({
 				<span className="truncate flex-1 font-mono" title={filePath}>
 					{filePath}
 				</span>
+				{isMarkdown ? (
+					<Tooltip content={markdownPreview ? "Show source" : "Preview markdown"}>
+						<button
+							type="button"
+							onClick={toggleMarkdownPreview}
+							className={cn(
+								"shrink-0 p-0.5 rounded",
+								markdownPreview ? "text-accent" : "text-text-tertiary hover:text-text-secondary",
+							)}
+						>
+							{markdownPreview ? <Code size={13} /> : <BookOpen size={13} />}
+						</button>
+					</Tooltip>
+				) : null}
 				<Tooltip content="Copy path">
 					<button
 						type="button"
@@ -130,18 +161,20 @@ export function FileContentViewer({
 						<Clipboard size={13} />
 					</button>
 				</Tooltip>
-				<Tooltip content={wordWrap ? "Disable word wrap" : "Enable word wrap"}>
-					<button
-						type="button"
-						onClick={toggleWordWrap}
-						className={cn(
-							"shrink-0 p-0.5 rounded",
-							wordWrap ? "text-accent" : "text-text-tertiary hover:text-text-secondary",
-						)}
-					>
-						<WrapText size={13} />
-					</button>
-				</Tooltip>
+				{!showRendered ? (
+					<Tooltip content={wordWrap ? "Disable word wrap" : "Enable word wrap"}>
+						<button
+							type="button"
+							onClick={toggleWordWrap}
+							className={cn(
+								"shrink-0 p-0.5 rounded",
+								wordWrap ? "text-accent" : "text-text-tertiary hover:text-text-secondary",
+							)}
+						>
+							<WrapText size={13} />
+						</button>
+					</Tooltip>
+				) : null}
 				{onClose ? (
 					<Tooltip content="Close file">
 						<button
@@ -159,42 +192,50 @@ export function FileContentViewer({
 					File truncated — showing first 1MB
 				</div>
 			) : null}
-			<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
-				<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-					{virtualizer.getVirtualItems().map((virtualItem) => {
-						const lineNumber = virtualItem.index + 1;
-						const line = lines[virtualItem.index] ?? "";
-						return (
-							<div
-								key={virtualItem.key}
-								data-index={virtualItem.index}
-								ref={wordWrap ? virtualizer.measureElement : undefined}
-								className="absolute top-0 left-0 w-full flex font-mono text-xs"
-								style={{
-									...(wordWrap ? { minHeight: LINE_HEIGHT } : { height: LINE_HEIGHT }),
-									transform: `translateY(${virtualItem.start}px)`,
-									lineHeight: `${LINE_HEIGHT}px`,
-								}}
-							>
-								<span
-									className="select-none text-right text-text-tertiary shrink-0 pr-3 pl-2"
-									style={{ width: gutterWidth }}
-								>
-									{lineNumber}
-								</span>
-								<span
-									className={cn(
-										"text-text-primary pr-4",
-										wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
-									)}
-								>
-									{line || " "}
-								</span>
-							</div>
-						);
-					})}
+			{showRendered ? (
+				<div className="flex-1 min-h-0 overflow-auto overscroll-contain">
+					<div className="kb-markdown-rendered px-6 py-4">
+						<Markdown remarkPlugins={REMARK_PLUGINS}>{content ?? ""}</Markdown>
+					</div>
 				</div>
-			</div>
+			) : (
+				<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto overscroll-contain">
+					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+						{virtualizer.getVirtualItems().map((virtualItem) => {
+							const lineNumber = virtualItem.index + 1;
+							const line = lines[virtualItem.index] ?? "";
+							return (
+								<div
+									key={virtualItem.key}
+									data-index={virtualItem.index}
+									ref={wordWrap ? virtualizer.measureElement : undefined}
+									className="absolute top-0 left-0 w-full flex font-mono text-xs"
+									style={{
+										...(wordWrap ? { minHeight: LINE_HEIGHT } : { height: LINE_HEIGHT }),
+										transform: `translateY(${virtualItem.start}px)`,
+										lineHeight: `${LINE_HEIGHT}px`,
+									}}
+								>
+									<span
+										className="select-none text-right text-text-tertiary shrink-0 pr-3 pl-2"
+										style={{ width: gutterWidth }}
+									>
+										{lineNumber}
+									</span>
+									<span
+										className={cn(
+											"text-text-primary pr-4",
+											wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+										)}
+									>
+										{line || " "}
+									</span>
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
