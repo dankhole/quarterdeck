@@ -658,6 +658,29 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return await getWorkspaceChangesBetweenRefs({ cwd, fromRef: input.fromRef, toRef: input.toRef });
 			}
 
+			// Path A2: Ref-to-working-tree (Compare with uncommitted)
+			if (input.fromRef && !input.toRef) {
+				validateRef(input.fromRef, "fromRef");
+				let cwd: string;
+				if (input.taskId) {
+					try {
+						cwd = await resolveTaskWorkingDirectory({
+							workspacePath: workspaceScope.workspacePath,
+							taskId: input.taskId,
+							baseRef: input.baseRef ?? "",
+						});
+					} catch (error) {
+						if (isMissingTaskWorktreeError(error)) {
+							return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+						}
+						throw error;
+					}
+				} else {
+					cwd = workspaceScope.workspacePath;
+				}
+				return await getWorkspaceChangesFromRef({ cwd, fromRef: input.fromRef });
+			}
+
 			// Path B: Home repo uncommitted (no task)
 			if (!input.taskId) {
 				return await getWorkspaceChanges(workspaceScope.workspacePath);

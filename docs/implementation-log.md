@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: compare tab — include uncommitted work + live refresh (2026-04-12)
+
+Added an "Include uncommitted work" checkbox to the compare tab's CompareBar and fixed the stale-diff problem (TODO #11) where committed diffs never refreshed for named branches.
+
+**Two-part staleness fix:**
+
+1. **Reactive refresh (both modes)**: Changed `stateVersion` from `0` to `taskWorkspaceStateVersion` in the compare tab's `useRuntimeWorkspaceChanges` call. This makes committed diffs refetch automatically whenever the agent commits — no polling needed for ref-to-ref diffs. Previously, named branches never triggered a refetch because the query key (`compare:feature-xyz:main`) stayed constant across commits.
+
+2. **Polling (working-tree mode only)**: When the checkbox is ON, the compare tab polls at 1s (matching the Uncommitted and Last Turn tabs) because working tree changes can appear at any time without a version bump. When OFF, no polling — the reactive `stateVersion` alone is sufficient.
+
+**Backend path**: Added "Path A2" in `workspace-api.ts` `loadChanges` — when `fromRef` is provided without `toRef`, routes to the existing `getWorkspaceChangesFromRef` function (diffs `fromRef` against the working tree). No new git logic needed. Same task/home resolution and missing-worktree fallback as Path A.
+
+**UI**: Radix Checkbox in CompareBar, right-aligned with `ml-auto`. Label "Include uncommitted work". Toggle state persisted to localStorage (`CompareIncludeUncommitted` key), default true. The `viewKey` includes a `:wt`/`:refs` suffix so toggling invalidates the cached diff. When checked, `toRef` is omitted (triggers Path A2); when unchecked, `toRef` is passed (existing Path A).
+
+**Files touched**: `web-ui/src/storage/local-storage-store.ts`, `web-ui/src/hooks/use-git-view-compare.ts`, `web-ui/src/components/git-view.tsx`, `src/trpc/workspace-api.ts`, `test/runtime/trpc/workspace-api.test.ts`, `docs/todo.md`
+
 ## Feat: confirmation dialog for individual permanent delete in trash (2026-04-12)
 
 Added an "are you sure" confirmation dialog when clicking the individual "Delete permanently" button on trash cards. Previously, clicking the button immediately deleted the task with no confirmation — inconsistent with the "Clear trash" (delete all) flow which already had a confirmation dialog.

@@ -27,6 +27,7 @@ export enum LocalStorageKey {
 	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
 	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",
 	DebugLogDisabledTags = "quarterdeck.debug-log-disabled-tags",
+	CompareIncludeUncommitted = "quarterdeck.compare-include-uncommitted",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

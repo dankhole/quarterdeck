@@ -55,12 +55,16 @@ vi.mock("../../../src/workspace/git-sync.js", () => ({
 	runGitSyncAction: gitSyncMocks.runGitSyncAction,
 }));
 
-vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
-	createEmptyWorkspaceChangesResponse: workspaceChangesMocks.createEmptyWorkspaceChangesResponse,
-	getWorkspaceChanges: workspaceChangesMocks.getWorkspaceChanges,
-	getWorkspaceChangesBetweenRefs: workspaceChangesMocks.getWorkspaceChangesBetweenRefs,
-	getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
-}));
+vi.mock("../../../src/workspace/get-workspace-changes.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../src/workspace/get-workspace-changes")>();
+	return {
+		...actual,
+		createEmptyWorkspaceChangesResponse: workspaceChangesMocks.createEmptyWorkspaceChangesResponse,
+		getWorkspaceChanges: workspaceChangesMocks.getWorkspaceChanges,
+		getWorkspaceChangesBetweenRefs: workspaceChangesMocks.getWorkspaceChangesBetweenRefs,
+		getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
+	};
+});
 
 vi.mock("../../../src/state/workspace-state.js", () => ({
 	loadWorkspaceState: workspaceStateMocks.loadWorkspaceState,
@@ -275,6 +279,75 @@ describe("createWorkspaceApi loadChanges", () => {
 		expect(response).toBe(emptyResponse);
 		expect(workspaceChangesMocks.createEmptyWorkspaceChangesResponse).toHaveBeenCalledWith("/tmp/repo");
 		expect(workspaceChangesMocks.getWorkspaceChanges).not.toHaveBeenCalled();
+	});
+
+	it("diffs fromRef against working tree when toRef is omitted (task-scoped)", async () => {
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
+		});
+
+		await api.loadChanges(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", baseRef: "main", fromRef: "main", mode: "working_copy" },
+		);
+
+		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).toHaveBeenCalledWith({
+			cwd: "/tmp/worktree",
+			fromRef: "main",
+		});
+		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).not.toHaveBeenCalled();
+	});
+
+	it("diffs fromRef against working tree when toRef is omitted (home repo)", async () => {
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
+		});
+
+		await api.loadChanges(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: null, fromRef: "main", mode: "working_copy" },
+		);
+
+		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			fromRef: "main",
+		});
+		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).not.toHaveBeenCalled();
+	});
+
+	it("returns empty diff for fromRef-only when task worktree is missing", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
+			new Error('Task worktree not found for task "task-1".'),
+		);
+		const emptyResponse = createChangesResponse();
+		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(emptyResponse);
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+			setFocusedTask: vi.fn(),
+		});
+
+		const response = await api.loadChanges(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", baseRef: "main", fromRef: "main", mode: "working_copy" },
+		);
+
+		expect(response).toBe(emptyResponse);
+		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).not.toHaveBeenCalled();
 	});
 });
 

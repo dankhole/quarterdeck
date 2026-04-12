@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feat: compare tab — include uncommitted work + live refresh
+
+- "Include uncommitted work" checkbox in the compare bar (default on). When checked, the compare diff includes staged, unstaged, and untracked changes on top of committed work — shows the full working tree state against the target branch. When unchecked, shows only committed diffs between the two refs.
+- Compare tab now stays current as the agent works. Committed-only mode uses reactive `taskWorkspaceStateVersion` (zero-cost refetch only on new commits). Working-tree mode adds 1-second polling (same as the Uncommitted and Last Turn tabs) since working tree changes can appear without a commit.
+- Fixes TODO #11 — compare tab no longer shows stale diffs for named branches.
+
 ### Feat: confirmation dialog for individual permanent delete in trash
 
 - Clicking "Delete permanently" on a trash card now shows a confirmation AlertDialog before deleting — matches the existing "Clear trash" confirmation pattern. Dialog shows the task title, "This action cannot be undone", with Cancel and "Delete Permanently" buttons. Uses the Radix `onOpenChange` ref guard to prevent the cancel handler from firing after confirm.

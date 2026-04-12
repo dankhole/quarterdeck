@@ -1,4 +1,5 @@
-import { ArrowRight, CornerDownLeft, GitCompareArrows, PanelLeft } from "lucide-react";
+import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import { ArrowRight, Check, CornerDownLeft, GitCompareArrows, PanelLeft } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -134,9 +135,11 @@ function CompareBar({
 	hasOverride,
 	branches,
 	worktreeBranches,
+	includeUncommitted,
 	onSourceRefChange,
 	onTargetRefChange,
 	onResetToDefaults,
+	onIncludeUncommittedChange,
 }: {
 	sourceRef: string | null;
 	targetRef: string | null;
@@ -144,9 +147,11 @@ function CompareBar({
 	hasOverride: boolean;
 	branches: RuntimeGitRef[] | null;
 	worktreeBranches: Map<string, string>;
+	includeUncommitted: boolean;
 	onSourceRefChange: (ref: string) => void;
 	onTargetRefChange: (ref: string) => void;
 	onResetToDefaults: () => void;
+	onIncludeUncommittedChange: (value: boolean) => void;
 }): React.ReactElement {
 	const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
 	const [targetPopoverOpen, setTargetPopoverOpen] = useState(false);
@@ -194,6 +199,23 @@ function CompareBar({
 					</button>
 				</Tooltip>
 			)}
+
+			<label
+				htmlFor="compare-include-uncommitted"
+				className="flex items-center gap-1.5 ml-auto text-[12px] text-text-secondary cursor-pointer select-none"
+			>
+				<RadixCheckbox.Root
+					id="compare-include-uncommitted"
+					checked={includeUncommitted}
+					onCheckedChange={(checked) => onIncludeUncommittedChange(checked === true)}
+					className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+				>
+					<RadixCheckbox.Indicator>
+						<Check size={10} className="text-white" />
+					</RadixCheckbox.Indicator>
+				</RadixCheckbox.Root>
+				Include uncommitted work
+			</label>
 		</div>
 	);
 }
@@ -348,17 +370,22 @@ export function GitView({
 	});
 
 	const hasCompareRefs = !!compare.sourceRef && !!compare.targetRef;
+	const compareIncludeUncommitted = compare.includeUncommitted;
+	const comparePollInterval =
+		isCompareActive && compareIncludeUncommitted && isDocumentVisible ? POLL_INTERVAL_MS : null;
 	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeWorkspaceChanges(
 		isCompareActive && hasCompareRefs ? (taskId ?? null) : null,
 		isCompareActive && hasCompareRefs ? currentProjectId : null,
 		isCompareActive ? baseRef : null,
 		"working_copy",
-		0,
-		null, // No polling for compare — branch diffs are stable
-		isCompareActive ? `compare:${compare.sourceRef}:${compare.targetRef}` : null,
+		taskWorkspaceStateVersion,
+		comparePollInterval,
+		isCompareActive
+			? `compare:${compare.sourceRef}:${compare.targetRef}:${compareIncludeUncommitted ? "wt" : "refs"}`
+			: null,
 		true,
 		compare.targetRef, // fromRef: what we're comparing against
-		compare.sourceRef, // toRef: what we're looking at
+		compareIncludeUncommitted ? undefined : compare.sourceRef, // toRef: omit to include working tree
 	);
 
 	// Derive active file list for file tree
@@ -429,7 +456,9 @@ export function GitView({
 			: activeTab === "uncommitted"
 				? "No uncommitted changes"
 				: activeTab === "compare" && hasCompareRefs
-					? `No differences between ${compare.sourceRef} and ${compare.targetRef}.`
+					? compareIncludeUncommitted
+						? `No differences between working tree and ${compare.targetRef}.`
+						: `No differences between ${compare.sourceRef} and ${compare.targetRef}.`
 					: "No changes";
 
 	return (
@@ -479,9 +508,11 @@ export function GitView({
 					hasOverride={compare.hasOverride}
 					branches={compare.branches}
 					worktreeBranches={compare.worktreeBranches}
+					includeUncommitted={compare.includeUncommitted}
 					onSourceRefChange={compare.setSourceRef}
 					onTargetRefChange={compare.setTargetRef}
 					onResetToDefaults={compare.resetToDefaults}
+					onIncludeUncommittedChange={compare.setIncludeUncommitted}
 				/>
 			)}
 

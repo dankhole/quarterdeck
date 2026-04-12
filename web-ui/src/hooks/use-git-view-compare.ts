@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { useTaskWorkspaceInfoValue } from "@/stores/workspace-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
 
@@ -33,6 +34,8 @@ export interface UseGitViewCompareResult {
 	hasOverride: boolean;
 	branches: RuntimeGitRef[] | null;
 	worktreeBranches: Map<string, string>;
+	includeUncommitted: boolean;
+	setIncludeUncommitted: (value: boolean) => void;
 }
 
 export function useGitViewCompare({
@@ -65,6 +68,15 @@ export function useGitViewCompare({
 
 	const [sourceRef, setSourceRefState] = useState<string | null>(defaultSourceRef);
 	const [targetRef, setTargetRefState] = useState<string | null>(defaultTargetRef);
+
+	// "Include uncommitted work" toggle — persisted to localStorage, default true
+	const [includeUncommitted, setIncludeUncommittedState] = useState(
+		() => readLocalStorageItem(LocalStorageKey.CompareIncludeUncommitted) !== "false",
+	);
+	const setIncludeUncommitted = useCallback((value: boolean) => {
+		setIncludeUncommittedState(value);
+		writeLocalStorageItem(LocalStorageKey.CompareIncludeUncommitted, String(value));
+	}, []);
 
 	// Reset on task/project change
 	useEffect(() => {
@@ -141,5 +153,7 @@ export function useGitViewCompare({
 		hasOverride,
 		branches,
 		worktreeBranches,
+		includeUncommitted,
+		setIncludeUncommitted,
 	};
 }

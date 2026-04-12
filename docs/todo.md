@@ -111,38 +111,34 @@ Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 11. Git view compare tab doesn't refresh as the worktree advances
-
-The compare tab fetches the diff once when opened and doesn't refetch as the agent commits. For named branches, the query key is `compare:feature-xyz:main` — it stays the same across commits, so no refetch fires. The comment at `git-view.tsx:335` says `// No polling for compare — branch diffs are stable` but this isn't true when the agent is actively working. Headless worktrees get this for free (headCommit changes on each commit, which changes the query key), but named branches don't. Include a changing signal (e.g. workspace snapshot headCommit or a state version) in the compare query key so the diff stays current while the agent works.
-
-## 12. Archive stale docs (recurring)
+## 11. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 13. UI branch/status indicators desync when agent leaves worktree
+## 12. UI branch/status indicators desync when agent leaves worktree
 
 When `worktreeAddParentRepoDir` or `worktreeAddQuarterdeckDir` are enabled, agents can `cd` out of their assigned worktree into the home repo or other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the home repo's branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
 
-## 14. "Shared" indicator on task cards should update when agent moves to shared directory
+## 13. "Shared" indicator on task cards should update when agent moves to shared directory
 
 Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddParentRepoDir` is enabled, an agent that was started in an isolated worktree can `cd` into the home repo — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config. Both `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` can cause this — they let the agent escape the worktree sandbox, so any indicator that assumes worktree isolation needs to account for directory drift.
 
-## 15. Add clarification when multiple worktrees share the same detached HEAD hash
+## 14. Add clarification when multiple worktrees share the same detached HEAD hash
 
 When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
 
-## 16. Test git object sharing as a read-only alternative to --add-dir
+## 15. Test git object sharing as a read-only alternative to --add-dir
 
 Git worktrees share the full object database with the parent repo, so agents can already read any file from any branch via `git show main:path/to/file` without filesystem access to the parent directory. Test whether this is a viable alternative to `worktreeAddParentRepoDir` — if agents can reliably read reference files (CLAUDE.md, docs, configs) through git commands, the `--add-dir` flags may be unnecessary for most use cases. Would avoid the worktree isolation breakage entirely. May need a system prompt hint so agents know to use `git show` instead of trying to navigate to the parent repo.
 
-## 17. Revisit HTML chat view concept
+## 16. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.
 
-## 18. Commit sidebar: Commit and Push button
+## 17. Commit sidebar: Commit and Push button
 
 Add a "Commit and Push" button alongside the existing Commit button in the commit sidebar tab. The push infrastructure already exists (`runGitSyncAction("push")`). This is the combined flow — commit then push in one action. Should handle push failures gracefully (commit succeeds but push fails → toast with error, commit is preserved).
 
-## 19. Commit sidebar: Auto-generated commit messages
+## 18. Commit sidebar: Auto-generated commit messages
 
 Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.
