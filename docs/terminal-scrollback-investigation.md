@@ -1,92 +1,96 @@
 # Terminal Scrollback Investigation
 
-**Date**: 2026-04-11
-**Status**: Fixed
+**Date**: 2026-04-11 → 2026-04-12
+**Status**: Partially fixed — ED2 duplication resolved, alternate screen transition duplication remains
 
-## Problem
+## #1 Hard Behavioral Constraint
 
-Scrolling up in an agent terminal shows the same conversation repeated many times. Some copies are the correct width, others are half-screen or mismatched widths. The HTML chat view also showed duplicates before a separate viewport-only fix.
+The user must be able to scroll up through **one single copy** of the full agent conversation history. That's the only acceptable end state. Any fix must preserve this — no duplicates, no missing history, no broken scrolling. Specifically:
 
-## Root Cause
+- Scrolling up shows one continuous conversation (prompts, responses, tool calls) in chronological order
+- No duplicate copies of the conversation at any width
+- Scroll works normally (mouse wheel / trackpad scrolls the terminal, not intercepted by other UI)
+- History is not truncated or lost
 
-`scrollOnEraseInDisplay: true` in xterm.js. This setting was inherited from upstream kanban (commit `5b61cd99` by Saoud Rizwan, 2026-03-11) as part of a terminal infrastructure refactor for full-screen TUI support. Before that commit, the setting wasn't set — xterm.js default is `false`.
+Every proposed fix must be validated against this constraint.
 
-### How it causes duplicates
+## Root Causes (two distinct mechanisms)
 
-Claude Code is a full-screen TUI. It redraws its entire screen constantly — status bar updates, tool call transitions, prompt redraws, response chunks. Each redraw sends an ED2 (erase-in-display) escape sequence to clear the screen before repainting.
+### 1. ED2 duplication (FIXED — `scrollOnEraseInDisplay: false`)
 
-With `scrollOnEraseInDisplay: true`, xterm.js doesn't actually erase — it pushes the current viewport into the scrollback buffer, then gives the TUI a fresh screen. After hundreds of redraws, the 10,000-line scrollback buffer is full of copies of the conversation at various points in time.
+Claude Code is a full-screen TUI that redraws constantly. Each redraw sends ED2 (erase-in-display) to clear the screen. With `scrollOnEraseInDisplay: true` (inherited from upstream kanban, commit `5b61cd99`), xterm.js pushed the viewport into scrollback instead of erasing. After hundreds of redraws, 10,000 lines of duplicate frames.
 
-### Why different widths
+**Fix**: Set `scrollOnEraseInDisplay: false` for agent terminals on both browser and server. ED2 now clears in place without touching scrollback.
 
-The terminal has multiple resize trigger paths (mount, ResizeObserver, DPR change, state transition, restore). Each resize sends SIGWINCH to the PTY, causing Claude Code to redraw at the new column width. That redraw's ED2 pushes the old (different-width) content into scrollback.
+### 2. Alternate screen transition duplication (OPEN — the remaining problem)
 
-### Why the problem exists on both browser and server
+Claude Code uses the alternate screen buffer (`\e[?1049h`). When it exits and re-enters alternate screen — which happens on **resize**, **state transitions**, and **TUI redraws** — content leaks into the primary buffer's scrollback:
 
-There are **two xterm.js terminals** per session:
-1. **Browser** (`PersistentTerminal` in `persistent-terminal-manager.ts`) — renders to canvas, user scrolls through its buffer
-2. **Server** (`TerminalStateMirror` in `terminal-state-mirror.ts`) — headless, builds restore snapshots for new/reconnecting browser tabs
+1. Resize fires → agent gets SIGWINCH
+2. Agent exits alternate screen (`\e[?1049l`) → primary buffer becomes active
+3. Agent dumps full TUI redraw to primary buffer (normal output, NOT ED2)
+4. Output overflows viewport → goes into primary buffer scrollback as duplicate frames
+5. Agent re-enters alternate screen (`\e[?1049h`)
 
-Both were using `scrollOnEraseInDisplay: true`. Fixing only the browser side was insufficient — the server mirror accumulated duplicate scrollback and serialized it into restore snapshots. On connect/reconnect, the browser received a snapshot full of junk that was written into the terminal buffer.
+`scrollOnEraseInDisplay: false` does NOT help here — this is plain output overflow on the primary buffer, not ED2. This is the mechanism that still produces duplicate copies in the scrollback.
 
-## How Real Terminals Handle This
+### Why scrollback behavior is intermittent at runtime
 
-Ghostty, iTerm2, Kitty, etc. use the **alternate screen buffer** (DECSET 1049). When a full-screen TUI starts, the terminal saves the current scrollback and gives the app a blank canvas. ED2 clears on the alternate buffer don't touch scrollback. When the app exits, the terminal restores the original buffer.
+The user sees different behavior depending on which buffer is active:
 
-xterm.js supports alternate screen buffers too, but `scrollOnEraseInDisplay: true` overrides the behavior — it pushes content to scrollback even on the alternate buffer. Setting it to `false` lets xterm.js handle alternate screen buffers the way real terminals do.
+- **Alternate screen active** (agent TUI running): No scrollback — alternate buffer is hard-capped to viewport size. Mouse wheel events may be forwarded to the TUI app instead of scrolling xterm. You can only scroll "a little" or not at all.
+- **Primary buffer active** (between TUI redraws, after agent exit): Full scrollback visible — you can suddenly scroll through the whole conversation. But it includes duplicate frames from alternate screen transitions.
+- **After resize**: Alternate screen toggle dumps TUI content to primary buffer, briefly making history visible but also adding dupes.
 
-## Fix Applied
+This is normal terminal behavior — not a bug in Quarterdeck. The intermittent appearance/disappearance of scrollback is the alternate screen buffer toggling.
 
-### 1. Per-terminal `scrollOnEraseInDisplay`
+## Current State of Fixes
 
-Made the setting configurable per-terminal. Threaded as an optional boolean (default `true`) through:
+### What's in place and working
 
-```
-createQuarterdeckTerminalOptions → PersistentTerminal constructor →
-ensurePersistentTerminal → usePersistentTerminalSession → AgentTerminalPanel
-```
+| Fix | Commit | What it does |
+|-----|--------|-------------|
+| `scrollOnEraseInDisplay: false` (browser) | `2a6b9cc2` | Prevents ED2 from pushing viewport to scrollback |
+| `scrollOnEraseInDisplay: false` (server mirror) | `2a6b9cc2` | Same fix on server-side headless terminal |
+| Epoch-based resize dedup | `2a6b9cc2` | Prevents redundant resize messages |
+| Minimum scrollback headroom | `be74a9c8` | Prevents xterm.js 6.x lineFeed crash if scrollback is ever set near 0 |
 
-- **Agent terminals** (task detail + home sidebar agent) pass `false`
-- **Shell terminals** (home shell + detail shell) omit it, getting default `true`
+### What was removed: `scrollback: 0` on server mirror
 
-Shell terminals keep `true` because the `clear` command uses ED2 and users expect it to preserve output in scrollback (same as Ghostty/iTerm2).
+`scrollback: 0` on the server mirror (commit `5bafce54`) was added as belt-and-suspenders after `scrollOnEraseInDisplay: false`. It killed ALL scrollback in restore snapshots, which meant:
 
-### 2. Server-side mirror + epoch resize dedup
+- **Tab refresh** → browser gets viewport-only snapshot → all conversation history lost
+- **WebSocket reconnection** → `applyRestore()` calls `terminal.reset()` (wipes browser scrollback) then writes server snapshot (viewport only) → history gone
 
-- Added `scrollOnEraseInDisplay` option to `TerminalStateMirror`, set to `false` for agent sessions in `session-manager.ts`
-- Replaced 3 manual resize dedup resets (`lastSentCols = 0; lastSentRows = 0`) with epoch-based invalidation:
-  - `resizeEpoch` counter bumped by `invalidateResize()` on lifecycle events
-  - `requestResize()` sends unconditionally when epoch is unsatisfied
-  - Added `invalidateResize()` at IO socket open (gap: reconnected socket lost server dimensions)
+With `scrollOnEraseInDisplay: false` still in place, the mirror only accumulates real conversation overflow — not duplicate TUI frames from ED2. Removing `scrollback: 0` restores history preservation in snapshots.
 
-### 3. Mirror scrollback elimination + cache hardening
+**Trade-off**: Alternate screen transition dupes will appear in restore snapshots too. This is acceptable — dupes with history is better than no dupes with no history.
 
-`scrollOnEraseInDisplay: false` prevented ED2-triggered scrollback pushes, but the mirror's headless terminal could still accumulate scrollback through normal scrolling (output overflow during startup, content between session restarts). The `@xterm/addon-serialize` default serializes ALL scrollback — so each browser reconnection received a snapshot bloated with accumulated content.
+### What was tried and reverted: browser-side `scrollback: 0`
 
-Fixes:
-- Set `scrollback: 0` on `TerminalStateMirror` for agent sessions (prevents mirror accumulation at the source)
-- Pass `scrollback: 0` to `serializeAddon.serialize()` (belt-and-suspenders — snapshots never include stale scrollback)
-- Added `setScrollOnEraseInDisplay()` method on `PersistentTerminal` — applied on every `ensurePersistentTerminal` cache hit, not just at construction. Previously, if `useChatOutput` created the terminal first without passing the option, the cached instance kept the default `true` forever.
-- Threaded `scrollOnEraseInDisplay` through `useChatOutput` → `ensurePersistentTerminal` so both hooks pass the same value
+Attempted on branch `fix/agent-terminal-scrollback-zero` (commit `24ed06cb`). Set `scrollback: 0` on the browser `PersistentTerminal` for agent sessions. **Completely broke scrolling** — mouse wheel events weren't consumed by xterm and bubbled to other UI elements. Reverted.
 
-## Prior Band-Aid Fixes (still in place, no longer load-bearing)
+## Future Fix: Alternate Screen Transition Interception
 
-| Commit | What it did | Still needed? |
-|--------|------------|---------------|
-| `c06983c0` | Resize dedup: `lastSentCols`/`lastSentRows` tracking, synchronous fit on mount | Superseded by epoch-based dedup. Dimension tracking kept as within-epoch dedup. |
-| `044d3e1f` | Switched chat view from ANSI parsing to xterm buffer reads | Yes — correct approach regardless of scrollback behavior |
-| `0f368f54` | `readBufferLines()` reads only viewport, not full scrollback | Still works, no longer load-bearing. With `false`, scrollback doesn't accumulate junk anyway. |
+The correct long-term fix is to intercept alternate screen transitions (`\e[?1049h` / `\e[?1049l`) and prevent TUI redraw output from landing in primary buffer scrollback. Approaches to explore:
+
+1. **Buffer snapshot/restore around transitions**: When the agent exits alternate screen, snapshot the primary buffer state. When redraw completes and agent re-enters alternate screen, restore the snapshot. TUI output during the transition never persists in scrollback.
+
+2. **Output filtering during transitions**: Detect the exit-alternate-screen sequence in the output stream and suppress output until the re-enter sequence arrives. Risk: if the agent doesn't re-enter, output is lost.
+
+3. **Separate scrollback management**: Maintain a separate clean conversation log (parsed from structured agent output) and render it as the scroll history instead of relying on xterm's raw scrollback buffer.
+
+None of these are trivial. For now, normal scrollback with dupes is the better trade-off over no scrollback at all.
 
 ## Terminal Architecture Notes
 
-### Key types to know
+### Key types
 
-- **`PersistentTerminal`** (`web-ui/src/terminal/persistent-terminal-manager.ts`): Singleton per `(workspaceId, taskId)`. Cached in a module-level `Map`. Survives mount/unmount cycles via a parking root (off-screen hidden div). One `visibleContainer` at a time.
-- **`TerminalStateMirror`** (`src/terminal/terminal-state-mirror.ts`): Server-side headless xterm that processes the same PTY output. Serializes via `@xterm/addon-serialize` for restore snapshots.
-- **`usePersistentTerminalSession`** (`web-ui/src/terminal/use-persistent-terminal-session.ts`): React hook that mounts/unmounts a `PersistentTerminal` to a container div.
-- **`useChatOutput`** (`web-ui/src/hooks/use-chat-output.ts`): Reads `readBufferLines()` every 100ms for the HTML chat view. Gets the same cached terminal instance — never creates its own.
+- **`PersistentTerminal`** (`web-ui/src/terminal/persistent-terminal-manager.ts`): Singleton per `(workspaceId, taskId)`. Cached in module-level `Map`. Survives mount/unmount via parking root.
+- **`TerminalStateMirror`** (`src/terminal/terminal-state-mirror.ts`): Server-side headless xterm. Processes same PTY output. Serializes via `@xterm/addon-serialize` for restore snapshots. Minimum scrollback of 100 enforced to prevent xterm.js 6.x circular-buffer crash.
+- **`usePersistentTerminalSession`** (`web-ui/src/terminal/use-persistent-terminal-session.ts`): React hook that mounts/unmounts a `PersistentTerminal`.
 
-### Terminal types (by task ID pattern)
+### Terminal types
 
 | Type | Task ID | `scrollOnEraseInDisplay` |
 |------|---------|--------------------------|
@@ -94,23 +98,36 @@ Fixes:
 | Home shell | `__home_terminal__` | `true` |
 | Detail shell | `__detail_terminal__:{cardId}` | `true` |
 
-### Resize trigger paths (6)
+### Restore flow (the history-wiping path)
 
-1. **`mount()`** — `requestResize()` when visible
-2. **ResizeObserver** — debounced 50ms on container
-3. **DPR media query** — device pixel ratio change
-4. **State transition** — session → running/awaiting_review
-5. **IO socket open** — reconnection
-6. **`applyRestore()`** — fresh connection after snapshot
+1. Control WebSocket connects/reconnects
+2. Server sends `restore` message with snapshot from `TerminalStateMirror`
+3. Browser `applyRestore()` calls `terminal.reset()` — **wipes all browser scrollback**
+4. Writes snapshot into terminal
+5. Snapshot now includes scrollback (10,000 lines), so history survives restore
 
-### The `readBufferLines()` viewport-only design
+### xterm.js buffer mechanics
 
-`readBufferLines()` reads only `baseY` to `baseY + rows` (the viewport), not the full scrollback. This was originally to hide duplicates from the chat view. With `scrollOnEraseInDisplay: false`, the viewport is still the correct read target — TUI agents manage their own display within it. Scrollback would just be empty rather than full of junk.
+- **Primary buffer**: `scrollback` option controls max lines (default 10,000). Lines that overflow viewport go to scrollback. ED2 with `scrollOnEraseInDisplay: true` also pushes.
+- **Alternate buffer**: Hard-capped to viewport size (`Buffer._hasScrollback = false`, `BufferSet.ts` line 42-44). No scrollback possible. Per xterm spec.
+- **`scrollback` is runtime-changeable**: xterm.js listens for option changes and triggers buffer resize.
+- **`scrollback: 0` breaks scroll interaction**: Mouse wheel events not consumed by xterm, bubble to other UI. Terminal unscrollable.
 
-## If the Problem Returns
+## Debugging
 
-1. **Check restore snapshots first.** The server mirror is the most likely source of stale duplicate content. Verify `scrollOnEraseInDisplay: false` AND `scrollback: 0` are being passed at the `new TerminalStateMirror()` call site for agent sessions.
-2. **Check for new resize trigger paths.** If a new lifecycle event needs to send dimensions, it should call `invalidateResize()` (or `forceResize()`), not manually zero the tracking fields.
-3. **Check cached terminals.** `ensurePersistentTerminal` now applies `scrollOnEraseInDisplay` on every call (not just creation). But any new `ensurePersistentTerminal` caller for agent terminals must pass `scrollOnEraseInDisplay: false` explicitly — the default is `true`.
-4. **Check the IO/restore ordering.** The server gates live output delivery until the browser acknowledges `restore_complete`. If a new code path bypasses this gate, the browser could receive overlapping snapshot + live data. The browser-side IO handler deliberately does NOT gate on `restoreCompleted` — see the comment in `connectIo()`.
-5. **Full pipeline audit completed.** Alt screen handling, output filtering, session reconciliation, multiple viewers, home sidebar agents, and auto-restart mirror lifecycle were all verified clean. If duplication returns, it's likely a new code path rather than a missed existing one.
+The debug log panel (Cmd+Shift+D) has a **Dump terminal state** button (monitor icon) that logs buffer state for all active terminals via the `[terminal]` tag. For each terminal it shows:
+
+- Active buffer type (ALTERNATE vs NORMAL)
+- Normal buffer length, baseY, scrollback line count
+- Alternate buffer length
+- `scrollback` option value
+- `scrollOnEraseInDisplay` value
+- Session state
+
+### How to interpret
+
+- **`buffer: ALTERNATE`** + can't scroll much → normal, TUI is active on alternate screen
+- **`buffer: NORMAL`** + can scroll → TUI exited alternate screen, primary buffer visible
+- **scrollback lines growing** → content accumulating (could be legit history or dupes from transitions)
+- **`scrollback option: 0`** → scrollback disabled, mouse wheel won't work
+- **`scrollOnEraseInDisplay: false`** → ED2 duplication prevented (correct for agent terminals)

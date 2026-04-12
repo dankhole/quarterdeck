@@ -23,6 +23,7 @@ import {
 	hasInterruptAcknowledgement,
 	hasLikelyShellPrompt,
 } from "@/terminal/terminal-prompt-heuristics";
+import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
@@ -818,6 +819,32 @@ class PersistentTerminal {
 		);
 	}
 
+	getBufferDebugInfo(): {
+		activeBuffer: "ALTERNATE" | "NORMAL";
+		normalLength: number;
+		normalBaseY: number;
+		normalScrollbackLines: number;
+		alternateLength: number;
+		viewportRows: number;
+		scrollbackOption: number;
+		scrollOnEraseInDisplay: boolean;
+		sessionState: string | null;
+	} {
+		const buf = this.terminal.buffer;
+		const isAlt = buf.active.type === "alternate";
+		return {
+			activeBuffer: isAlt ? "ALTERNATE" : "NORMAL",
+			normalLength: buf.normal.length,
+			normalBaseY: buf.normal.baseY,
+			normalScrollbackLines: buf.normal.length - this.terminal.rows,
+			alternateLength: buf.alternate.length,
+			viewportRows: this.terminal.rows,
+			scrollbackOption: this.terminal.options.scrollback ?? 0,
+			scrollOnEraseInDisplay: this.terminal.options.scrollOnEraseInDisplay ?? true,
+			sessionState: this.latestSummary?.state ?? null,
+		};
+	}
+
 	waitForLikelyPrompt(timeoutMs: number): Promise<boolean> {
 		if (timeoutMs <= 0) {
 			return Promise.resolve(false);
@@ -979,5 +1006,27 @@ export function setTerminalWebGLRenderer(enabled: boolean): void {
 	currentTerminalWebGLRenderer = enabled;
 	for (const terminal of terminals.values()) {
 		terminal.setWebGLRenderer(enabled);
+	}
+}
+
+const terminalDebugLog = createClientLogger("terminal");
+
+export function dumpTerminalDebugInfo(): void {
+	if (terminals.size === 0) {
+		terminalDebugLog.info("No active terminals");
+		return;
+	}
+	for (const [key, pt] of terminals.entries()) {
+		const info = pt.getBufferDebugInfo();
+		const taskId = key.split(":").slice(1).join(":");
+		terminalDebugLog.info(`${taskId}`, {
+			buffer: info.activeBuffer,
+			scrollback: `${info.normalScrollbackLines} lines (max ${info.scrollbackOption})`,
+			normal: `len=${info.normalLength} baseY=${info.normalBaseY}`,
+			alternate: `len=${info.alternateLength}`,
+			viewport: info.viewportRows,
+			scrollOnEraseInDisplay: info.scrollOnEraseInDisplay,
+			session: info.sessionState,
+		});
 	}
 }

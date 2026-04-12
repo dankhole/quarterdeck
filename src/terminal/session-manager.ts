@@ -318,7 +318,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				entry.active.session.write(data);
 			},
 			scrollOnEraseInDisplay: false,
-			scrollback: 0,
 		});
 
 		const launch = await prepareAgentLaunch({

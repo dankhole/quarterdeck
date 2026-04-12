@@ -1,4 +1,4 @@
-import { Bug, Power, Trash2, X } from "lucide-react";
+import { Bug, Monitor, Power, Trash2, X } from "lucide-react";
 import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+import { dumpTerminalDebugInfo } from "@/terminal/persistent-terminal-manager";
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 800;
@@ -185,6 +186,15 @@ export function DebugLogPanel({
 
 					<div className="flex-1" />
 
+					<Tooltip content="Dump terminal buffer state">
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Monitor size={14} />}
+							onClick={dumpTerminalDebugInfo}
+							aria-label="Dump terminal buffer state"
+						/>
+					</Tooltip>
 					<Tooltip content="Clear logs">
 						<Button
 							variant="ghost"

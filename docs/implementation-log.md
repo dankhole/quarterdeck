@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: restore terminal scrollback so history survives reconnect (2026-04-12)
+
+Removed `scrollback: 0` from agent session `TerminalStateMirror` creation in `session-manager.ts`. This value (introduced in `5bafce54`) made restore snapshots viewport-only, which meant every tab refresh or WebSocket reconnect wiped all conversation history. The primary duplication fix (`scrollOnEraseInDisplay: false` from `2a6b9cc2`) remains in place — it prevents ED2-triggered duplication from TUI screen redraws. The `scrollback: 0` was a secondary hardening measure that turned out to be too aggressive.
+
+Updated JSDoc on the `scrollback` option in `terminal-state-mirror.ts` to reflect the new behavior. The `MINIMUM_TERMINAL_SCROLLBACK = 100` guard (from `be74a9c8` on main) is kept as defensive protection against the xterm.js 6.x `lineFeed` circular-buffer crash.
+
+Added a terminal buffer debug dump feature: `getBufferDebugInfo()` method on `PersistentTerminal` and exported `dumpTerminalDebugInfo()` function in `persistent-terminal-manager.ts`. Logs active buffer type (ALTERNATE/NORMAL), scrollback stats, viewport rows, and session state for all terminals via `createClientLogger("terminal")`. Wired to a Monitor icon button in `debug-log-panel.tsx` header — click dumps to the debug log panel with no browser dev tools needed.
+
+Rewrote `docs/terminal-scrollback-investigation.md` with consolidated findings from the full investigation: two distinct duplication mechanisms documented (ED2 fixed, alternate screen transitions open), failed approaches (browser-side `scrollback: 0`, server-side `scrollback: 0`), runtime behavior explanation (alternate screen buffer toggling), and future fix direction (alternate screen transition interception).
+
+**Known remaining issue**: Alternate screen transition duplication. When Claude Code exits/re-enters the alternate screen buffer (on resize, state transitions), TUI redraw output leaks into primary buffer scrollback as duplicate frames. This is a different mechanism than ED2 and requires alternate screen interception to fix properly.
+
+**Files touched**: `src/terminal/session-manager.ts`, `src/terminal/terminal-state-mirror.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/components/debug-log-panel.tsx`, `docs/terminal-scrollback-investigation.md`
+
 ## Feat: cherry-pick individual commits onto any branch (2026-04-12)
 
 Added the ability to cherry-pick individual commits from one branch onto another directly from the git history view. Previously, landing specific commits required a full branch merge (all-or-nothing) or the LLM-powered squash merge prompt.

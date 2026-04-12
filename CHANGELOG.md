@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: restore terminal scrollback so history survives reconnect
+
+- Removed `scrollback: 0` from the server-side `TerminalStateMirror` for agent sessions — restore snapshots now include conversation history instead of just the viewport. Tab refresh and WebSocket reconnects no longer wipe scroll history. `scrollOnEraseInDisplay: false` remains in place to prevent ED2 duplicate content. Alternate screen transition dupes are an accepted trade-off pending a future interception fix.
+- Added "Dump terminal state" button (monitor icon) to the debug log panel — logs buffer state (active buffer, scrollback lines, viewport, session state) for all active terminals via the `[terminal]` tag. Triggered from Cmd+Shift+D debug panel, no browser dev tools needed.
+- Rewrote `docs/terminal-scrollback-investigation.md` with consolidated findings: two distinct duplication mechanisms (ED2 fixed, alternate screen transitions open), failed approaches, and future fix direction.
+
 ### Feat: cherry-pick individual commits onto any branch
 
 - "Land on..." branch dropdown in the git history commit diff header — select a commit, pick a target branch, and cherry-pick it in one action. Merge commits are excluded (button hidden). Confirmation dialog shows the commit hash, message, and target branch with an explanation that conflicts will abort safely.

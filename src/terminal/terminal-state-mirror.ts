@@ -31,9 +31,10 @@ interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
 	scrollOnEraseInDisplay?: boolean;
 	/**
-	 * Set to 0 for TUI agent sessions. The mirror only needs the viewport —
-	 * TUI agents manage their own scrolling internally and any mirror-side
-	 * scrollback just bloats restore snapshots with duplicate content.
+	 * Scrollback line count for the mirror terminal and snapshot serialization.
+	 * Defaults to {@link TERMINAL_SCROLLBACK} (10,000). The terminal itself
+	 * always gets at least {@link MINIMUM_TERMINAL_SCROLLBACK} lines to avoid
+	 * an xterm.js 6.x circular-buffer crash.
 	 */
 	scrollback?: number;
 }
