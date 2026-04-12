@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: terminal renders at wrong width after untrashing a task (2026-04-11)
+
+Race condition between the PersistentTerminal's WebSocket connection and `startTaskSession` PTY creation during untrash. The sequence: (1) task moves from trash to review, `terminalEnabled` becomes true; (2) React effect creates PersistentTerminal — constructor starts WebSocket connections; (3) control socket connects, server sends empty restore (no PTY yet); (4) post-restore `requestResize()` sends correct cols/rows to server, but server silently drops it (`session-manager.ts:resize()` returns false when `!entry?.active`); (5) `lastSentCols`/`lastSentRows` dedup tracking is updated to the correct values even though the message was dropped; (6) `startTaskSession` creates PTY with estimated geometry (1/3 viewport via `estimateTaskSessionGeometry`); (7) server sends `"state"` message to client; (8) client only called `notifySummary()` — no resize re-sent; (9) dedup blocked any future resize because `lastSentCols` already matched.
+
+Fix: when the `"state"` control message indicates a session transition to `"running"` or `"awaiting_review"` (compared against `latestSummary?.state` captured before `notifySummary` updates it), reset `lastSentCols`/`lastSentRows` to 0 and call `requestResize()`. This follows the same pattern as `applyRestore()` (lines 380-381). The `state !== previousState` guard ensures frequent `lastOutputAt` updates (which also fire `"state"` messages) don't trigger redundant resizes.
+
+**Files touched**: `web-ui/src/terminal/persistent-terminal-manager.ts` (control socket `"state"` handler, ~15 lines added).
+
 ## Statusline: fix token throughput glyph and color (2026-04-11)
 
 The token throughput segment in the Claude Code statusline (`549↓ 1.7k↑`) used `nf-mdi-function` (U+F0865) — a supplementary-plane MDI glyph that rendered as `??` in terminal fonts missing that codepoint. Replaced with `nf-md-file-document` (U+F0219), which is in the same Nerd Font set as other working glyphs in the statusline. Also changed the segment's color from `brightYellow` to `dimWhite` — it was identical to the adjacent duration segment, making three different metrics (cost/duration/tokens) visually indistinguishable.

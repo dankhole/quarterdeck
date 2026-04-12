@@ -535,7 +535,22 @@ class PersistentTerminal {
 				return;
 			}
 			if (payload.type === "state") {
+				const previousState = this.latestSummary?.state;
 				this.notifySummary(payload.summary);
+				// When a session newly starts, the server PTY may not have had our
+				// terminal dimensions — the resize sent during the earlier restore
+				// may have been silently dropped because the PTY didn't exist yet.
+				// Reset dedup tracking and re-send so the PTY picks up the correct
+				// cols/rows.
+				if (
+					this.visibleContainer &&
+					payload.summary.state !== previousState &&
+					(payload.summary.state === "running" || payload.summary.state === "awaiting_review")
+				) {
+					this.lastSentCols = 0;
+					this.lastSentRows = 0;
+					this.requestResize();
+				}
 				return;
 			}
 			if (payload.type === "exit") {

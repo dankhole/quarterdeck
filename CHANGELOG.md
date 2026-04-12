@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: terminal renders at wrong width after untrashing a task
+
+- When untrashing a task, the agent terminal could render text at roughly 1/3 of the correct width until the browser window was manually resized. Root cause: the PersistentTerminal's WebSocket connected and sent a resize before the server-side PTY existed (silently dropped), then the PTY was created with estimated geometry. The client's dedup tracking prevented re-sending the correct dimensions. The terminal now re-sends its dimensions when it receives a session state transition to `running` or `awaiting_review`.
+
 ### Statusline: fix token throughput glyph and color
 
 - Replace unrenderable `nf-mdi-function` (U+F0865) glyph for the token throughput segment with `nf-md-file-document` (U+F0219) — a document icon that better represents token I/O.
