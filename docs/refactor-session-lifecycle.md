@@ -1,8 +1,8 @@
 # Agent State Tracking — Issues, Architecture, and Refactor Plan
 
-**Status:** Planned
-**Date:** 2026-04-11
-**Related:** todo #9 (consolidated — permission race, non-hook operations, notification beeps, hook timeouts)
+**Status:** Patches A & B implemented, stalled-session detection added, structural refactor pending
+**Date:** 2026-04-11 (patches landed 2026-04-12)
+**Related:** todo #6 (consolidated — permission race, non-hook operations, notification beeps, hook timeouts)
 **Supersedes:** `docs/handoff-stuck-running-fix.md` (can be deleted once this is adopted)
 
 ---
@@ -205,19 +205,12 @@ This works because `writeInput` (`session-manager.ts:822-835`) fires synchronous
 
 **Actual change**: ~10 lines in `hooks-api.ts` (reordered broadcast before checkpoint, wrapped checkpoint in fire-and-forget IIFE).
 
-### Patch C: Staleness Check in Reconciliation Sweep
+### Patch C: Staleness Check in Reconciliation Sweep — ✅ Implemented
 
-**Goal**: Detect alive-but-stuck agents (compact, plugin reload, `/resume`, undetected permission prompts).
+**Implemented**: 2026-04-12 (commit `9b482422`)
+**Fixes**: Alive-but-stuck agents (compact, plugin reload, `/resume`, undetected permission prompts)
 
-**Approach**: In the 10s reconciliation sweep, check: if a task has been `running` for >30s with zero hook activity (`lastHookAt` vs now), flag it as potentially stuck. Transition to `awaiting_review` with a new reason like `"stale"` or surface a UI indicator.
-
-**Where**: New check function in `session-reconciliation.ts`, added to the `reconciliationChecks` array.
-
-**Risk — false positives**: Some legitimate operations produce no hooks for extended periods (large file writes, long compiles). A 30s threshold would incorrectly flag these. Tuning the threshold is a judgment call — too short = false positives, too long = delayed detection.
-
-**Risk — this is another crutch**: It doesn't fix WHY the hooks are missing. It compensates for the gap by adding a timeout-based heuristic. If the threshold is wrong, it creates new UX problems (cards flipping to review while the agent is legitimately working).
-
-**Estimated change**: ~30 lines in `session-reconciliation.ts` + adding `lastHookAt` tracking (already exists on the summary).
+**What shipped**: Reconciliation sweep detects running sessions that haven't received a hook in over 60 seconds and marks them as "stalled". UI shows an orange "Stalled" badge with explanatory tooltip. Auto-clears when hooks resume. Implemented as a UI indicator rather than a forced state transition (avoids the false-positive risk of flipping cards to review while an agent is legitimately working).
 
 ---
 

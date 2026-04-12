@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-12
+
 ### Feat: git stash support — stash button, stash list, stash-and-retry for checkout/pull
 
 - Stash button in the commit sidebar alongside Commit and Discard — stashes selected files (or all when none selected), always includes untracked files, with optional stash message. Uses existing file selection checkboxes for partial stash.

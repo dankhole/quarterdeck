@@ -1,7 +1,7 @@
 # Terminal Rendering Investigation
 
 **Date**: 2026-04-11
-**Status**: In progress — V1 on main, needs manual testing
+**Status**: WebGL toggle landed and active. HTML chat view experiment removed (see todo #16).
 **Branch**: `feat/terminal-hybrid-rendering` (working branch), landed on local `main`
 
 ## Problem Statement
@@ -46,14 +46,14 @@ Lets users switch between xterm.js's WebGL renderer and its built-in canvas 2D r
 
 **Status**: Landed, untested by user. Needs A/B comparison.
 
-### Option 2: HTML Chat View (Experimental)
+### Option 2: HTML Chat View (Experimental) — REMOVED
 
-**Config**: `terminalChatViewEnabled` (boolean, default `false`)
-**Location**: Settings > Terminal > "Experimental: HTML chat view"
+**Config**: `terminalChatViewEnabled` — removed from codebase
+**Location**: Was in Settings > Terminal > "Experimental: HTML chat view"
 
-Replaces the xterm.js canvas entirely for the main agent terminal panel with browser-rendered HTML text. The browser's native text engine renders the output — same pipeline that makes the status bar look crisp.
+This experiment was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. See todo #16 for the concept revisit note. The history below is preserved for context.
 
-**Status**: Landed, but went through two iterations.
+**Status**: Removed. Went through two iterations before removal.
 
 #### Iteration 1: Streaming ANSI Accumulator (FAILED)
 
