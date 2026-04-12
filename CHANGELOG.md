@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Branch selector: show detached HEAD as "Working tree" indicator
+
+- When on a detached HEAD, the branch selector popover now shows a non-interactive "Working tree" section at the top with the current commit hash — previously the popover showed no selected branch, making it look like nothing was checked out. Hidden during search since it's not a switchable target.
+
 ### Fix: permission race condition in agent state tracking
 
 - Fixed a high-severity bug where a stale `PostToolUse` hook arriving after a `PermissionRequest` would bounce the task from "awaiting review" back to "running," hiding the permission prompt from the user. Added a permission-aware transition guard in `hooks-api.ts` that blocks `to_in_progress` transitions while permission-related activity is present. `UserPromptSubmit` is exempted since it indicates deliberate user input. The normal approval flow is unaffected — `writeInput` transitions synchronously on Enter, clearing permission activity before any hook arrives.

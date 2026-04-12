@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Branch selector: show detached HEAD as "Working tree" indicator (2026-04-12)
+
+Small UX polish for detached HEAD worktrees. When `branches` includes a ref with `type: "detached"`, the `BranchSelectorPopover` now renders a "Working tree" section at the top showing `HEAD ({shortHash})` in orange with a check mark, matching the git refs panel's visual language. The section is non-interactive (no click handler, no context menu) and hidden when the search field has input. Previously, the popover showed no indication of the current state when detached — `currentBranch` is `null` so nothing was highlighted.
+
+Files touched: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`
+
 ## Fix: permission race condition and hook delivery timeouts (2026-04-12)
 
 Two targeted patches from the agent state tracking refactor plan (`docs/refactor-session-lifecycle.md`), addressing Bug 1 (permission race) and Bug 3 (hook delivery timeouts) from todo #9.

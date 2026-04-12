@@ -9,6 +9,7 @@ import {
 	GitBranchPlus,
 	GitCompareArrows,
 	GitMerge,
+	Locate,
 	LogIn,
 	Search,
 } from "lucide-react";
@@ -63,6 +64,7 @@ export function BranchSelectorPopover({
 	const [query, setQuery] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 
+	const detachedRef = useMemo(() => (branches ?? []).find((ref) => ref.type === "detached"), [branches]);
 	const localBranches = useMemo(() => (branches ?? []).filter((ref) => ref.type === "branch"), [branches]);
 	const remoteBranches = useMemo(() => (branches ?? []).filter((ref) => ref.type === "remote"), [branches]);
 
@@ -165,6 +167,18 @@ export function BranchSelectorPopover({
 						/>
 					</div>
 					<div className="max-h-64 overflow-y-auto overscroll-contain py-1">
+						{detachedRef && !query.trim() ? (
+							<>
+								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
+									Working tree
+								</div>
+								<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
+									<Locate size={12} className="shrink-0 text-status-orange" />
+									<span className="truncate font-mono text-status-orange">HEAD ({detachedRef.name})</span>
+									<Check size={12} className="shrink-0 text-accent ml-auto" />
+								</div>
+							</>
+						) : null}
 						{filteredLocal.length > 0 ? (
 							<>
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
