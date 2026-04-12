@@ -164,13 +164,16 @@ The crutches (4, 5b, 6) are significant — they handle **normal operations** (i
 
 These can be applied to the current code structure. The refactor (below) makes them cleaner but is not a prerequisite.
 
-### Patch A: Permission-Aware Transition Guard
+### Patch A: Permission-Aware Transition Guard — ✅ Implemented
+
+**Implemented**: 2026-04-12
+**Fixes**: Bug 1 (permission race condition)
 
 **Goal**: Prevent stale `to_in_progress` hooks from bouncing a permission-waiting task back to running.
 
 **Approach**: When `to_in_progress` arrives and the task is `awaiting_review` with permission-related `latestHookActivity`, block the transition.
 
-**Where**: `hooks-api.ts`, before the `store.transitionToRunning()` call at line 177. Or in `canTransitionTaskForHookEvent()` to keep it centralized.
+**Where**: `hooks-api.ts`, before the `store.transitionToRunning()` call. Guard inserted between `canTransitionTaskForHookEvent` (which allows the transition at the state machine level) and the actual `transitionToRunning` call.
 
 **Risk — false positive blocking**: When the user legitimately approves a permission:
 1. `PermissionRequest` → `to_review` → `awaiting_review` (activity = permission)
@@ -181,19 +184,26 @@ This works because `writeInput` (`session-manager.ts:822-835`) fires synchronous
 
 **Edge case**: If the user approves via a keystroke that doesn't include CR/LF (unlikely for Claude Code permissions, which require typed input + Enter). If this happens, `writeInput` doesn't transition, and the hook guard would block the legitimate `PostToolUse`. The `UserPromptSubmit` hook would also map to `to_in_progress` and be blocked. **Mitigation**: `UserPromptSubmit` implies the user actively sent input — if we see a `to_in_progress` with `hookEventName: "UserPromptSubmit"`, always allow it through the guard regardless of permission state.
 
-**Estimated change**: ~15-20 lines in `hooks-api.ts`.
+**Actual change**: ~18 lines in `hooks-api.ts` + 3 new test cases in `hooks-api.test.ts`. Updated existing happy-path test to reflect the corrected flow (PostToolUse during permission is now blocked, normal approval goes through `writeInput`).
 
-### Patch B: Decouple Checkpoint Capture from Hook Response
+### Patch B: Decouple Checkpoint Capture from Hook Response — ✅ Implemented
+
+**Implemented**: 2026-04-12
+**Fixes**: Bug 3 (hook delivery timeouts)
 
 **Goal**: Eliminate the primary cause of hook CLI timeouts.
 
-**Approach**: Fire-and-forget the `await checkpointCapture()` at `hooks-api.ts:202` so the tRPC response returns immediately after the state transition.
+**Approach**: Fire-and-forget the checkpoint capture via `void (async () => { ... })()` so the tRPC response returns immediately after the state transition and broadcast.
+
+**Where**: `hooks-api.ts`. Moved `broadcastRuntimeWorkspaceStateUpdated` and `broadcastTaskReadyForReview` before the checkpoint section. Wrapped checkpoint capture in a fire-and-forget IIFE.
 
 **Risk — UI checkpoint race**: The UI receives the `to_review` broadcast before checkpoint data is applied. If the user immediately clicks "Revert to previous turn," the checkpoint might not exist yet. Mitigation: this is a brief window (<1s typically) and the revert feature is not latency-sensitive.
 
-**Risk — concurrent git operations**: Without the `await` serializing checkpoint captures, two `to_review` hooks for different tasks in the same workspace could run `git stash create` concurrently, hitting index lock contention. This was already a known problem (commit `8f6d8d9b` added `--no-optional-locks` to polling git commands). Making checkpoint fire-and-forget doesn't make it worse in theory — concurrent hooks from different tasks already execute in parallel at the HTTP handler level — but it removes the incidental serialization the `await` provided.
+**Risk — concurrent git operations**: Without the `await` serializing checkpoint captures, two `to_review` hooks for different tasks in the same workspace could run `git stash create` concurrently, hitting index lock contention. This was already a known problem (commit `8f6d8d9b` added `--no-optional-locks` to polling git commands). Making checkpoint fire-and-forget doesn't make it worse in theory — concurrent hooks from different tasks already execute in parallel at the HTTP handler level — but it removes the incidental serialization the `await` provided. Actually improves the situation: fewer timeout-triggered retries means fewer duplicate checkpoint operations.
 
-**Estimated change**: ~10 lines in `hooks-api.ts` (wrap checkpoint in a `void (async () => { ... })()` with the broadcast moved before it).
+**Note on beep timing**: The original hypothesis that checkpoint blocking delays `latestHookActivity` past the 500ms settle window is incorrect. `applyHookActivity` was already called before checkpoint capture. The beep timing is correct regardless of this patch. Patch B's value is strictly in preventing hook CLI timeouts.
+
+**Actual change**: ~10 lines in `hooks-api.ts` (reordered broadcast before checkpoint, wrapped checkpoint in fire-and-forget IIFE).
 
 ### Patch C: Staleness Check in Reconciliation Sweep
 

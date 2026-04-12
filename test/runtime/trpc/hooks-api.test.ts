@@ -523,22 +523,23 @@ describe("createHooksApi", () => {
 	});
 
 	it("permission request followed by approval transitions card correctly (happy path)", async () => {
-		// Step 1: PermissionRequest → to_review → awaiting_review
+		// Real flow: PermissionRequest → to_review → awaiting_review, then the user
+		// types Enter → writeInput transitions to running (clearing permission activity).
+		// The subsequent PostToolUse arrives when the task is already running → no-op.
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-		const runningSummary = createSummary({ state: "running" });
 		const manager = createMockManager({
 			getSummary: vi
 				.fn<() => RuntimeTaskSessionSummary>()
 				.mockReturnValueOnce(createSummary({ state: "running" })) // first call: running
 				.mockReturnValueOnce(
 					createSummary({
-						state: "awaiting_review",
-						reviewReason: "hook",
-						latestHookActivity: permissionActivity(),
+						// After writeInput: state is running, permission activity cleared
+						state: "running",
+						latestHookActivity: null,
 					}),
-				), // second call: awaiting_review
+				),
 			transitionToReview: vi.fn(() => transitionedSummary),
-			transitionToRunning: vi.fn(() => runningSummary),
+			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
 			appendConversationSummary: vi.fn(),
@@ -571,14 +572,140 @@ describe("createHooksApi", () => {
 		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
 		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("workspace-1", "task-1");
 
-		// Step 2: PostToolUse → to_in_progress → running
+		// PostToolUse arrives after writeInput already transitioned to running — no-op
 		const r2 = await api.ingest({
 			taskId: "task-1",
 			workspaceId: "workspace-1",
 			event: "to_in_progress",
-			metadata: { source: "claude" },
+			metadata: { hookEventName: "PostToolUse", source: "claude" },
 		});
 		expect(r2).toEqual({ ok: true });
+		// Already running → canTransitionTaskForHookEvent returns false → no transition
+		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+	});
+
+	// ── Permission-aware transition guard (Patch A) ─────────────────────────
+
+	it("blocks stale PostToolUse from bouncing permission state back to running", async () => {
+		// Simulates Bug 1: PermissionRequest arrived first (task is awaiting_review
+		// with permission activity), then a stale PostToolUse arrives as to_in_progress.
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: permissionActivity(),
+				}),
+			),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "to_in_progress",
+			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
+		});
+
+		expect(response).toEqual({ ok: true });
+		// The stale PostToolUse must NOT trigger transitionToRunning
+		expect(mockStore(manager).transitionToRunning).not.toHaveBeenCalled();
+	});
+
+	it("allows UserPromptSubmit through the permission guard", async () => {
+		// UserPromptSubmit means the user actively sent input — must not be blocked
+		// even if permission activity is present.
+		const runningSummary = createSummary({ state: "running" });
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: permissionActivity(),
+				}),
+			),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(() => runningSummary),
+			applyHookActivity: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+
+		const broadcastRuntimeWorkspaceStateUpdated = vi.fn();
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated,
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "to_in_progress",
+			metadata: { hookEventName: "UserPromptSubmit", source: "claude" },
+		});
+
+		expect(response).toEqual({ ok: true });
+		// UserPromptSubmit must be allowed through
+		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
+		expect(broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalled();
+	});
+
+	it("allows to_in_progress through when activity is not permission-related", async () => {
+		// Normal flow: Stop-based review, then PostToolUse to resume
+		const runningSummary = createSummary({ state: "running" });
+		const manager = createMockManager({
+			getSummary: vi.fn(() =>
+				createSummary({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					latestHookActivity: {
+						hookEventName: "Stop",
+						notificationType: null,
+						activityText: "Final: done",
+						toolName: null,
+						toolInputSummary: null,
+						finalMessage: null,
+						source: "claude",
+						conversationSummaryText: null,
+					},
+				}),
+			),
+			transitionToReview: vi.fn(),
+			transitionToRunning: vi.fn(() => runningSummary),
+			applyHookActivity: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "to_in_progress",
+			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
+		});
+
+		expect(response).toEqual({ ok: true });
+		// Non-permission activity → guard does not fire → transition proceeds
 		expect(mockStore(manager).transitionToRunning).toHaveBeenCalledWith("task-1");
 	});
 
@@ -632,6 +759,9 @@ describe("createHooksApi", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
+		// Checkpoint capture is fire-and-forget (void IIFE). Flush the microtask
+		// so the IIFE's resolved-promise continuations run before our assertions.
+		await new Promise((r) => setTimeout(r, 0));
 		expect(captureTaskTurnCheckpoint).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			taskId: "task-1",

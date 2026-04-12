@@ -87,11 +87,13 @@ The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `e
 
 Multiple related bugs where the UI shows the wrong task state. A comprehensive analysis and refactor plan exists at [docs/refactor-session-lifecycle.md](refactor-session-lifecycle.md) — it covers root causes, targeted patches, and a structural decomposition of `session-manager.ts`.
 
-**Known issues:**
-- **Permission race condition** (high): Task shows "running" when agent is blocked on a permission prompt. Stale `PostToolUse` hook arrives after `PermissionRequest`, bouncing state back to running.
+**Fixed:**
+- ~~**Permission race condition** (high)~~: Stale `PostToolUse` after `PermissionRequest` no longer bounces state back to running. Permission-aware transition guard in `hooks-api.ts` blocks `to_in_progress` during permission state (exempts `UserPromptSubmit`).
+- ~~**Hook delivery timeouts** (low)~~: Checkpoint capture is now fire-and-forget — tRPC response returns immediately after state transition, preventing CLI timeouts.
+
+**Remaining issues:**
 - **Non-hook operations stick in wrong state** (medium): Auto-compact, plugin reload, and `/resume` produce no hook events. Compact and plugin reload get stuck in "running"; `/resume` after review doesn't transition back to running.
 - **Notification beep count wrong for rapid transitions** (low): When a task goes to review then quickly to needs-input, wrong beep count plays. Debounce/settle window issues cause double-beeps for single events or single beeps for multiple events.
-- **Hook delivery timeouts** (low, mitigated): Checkpoint capture blocks the hook response, causing CLI timeouts under load even when the transition succeeded.
 
 ## 9. Client-side project switch optimizations
 

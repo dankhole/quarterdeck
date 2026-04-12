@@ -4,6 +4,32 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: permission race condition and hook delivery timeouts (2026-04-12)
+
+Two targeted patches from the agent state tracking refactor plan (`docs/refactor-session-lifecycle.md`), addressing Bug 1 (permission race) and Bug 3 (hook delivery timeouts) from todo #9.
+
+**Patch A — Permission-aware transition guard (Bug 1):**
+
+Root cause: `PostToolUse` and `PermissionRequest` hooks spawn as separate OS processes with no ordering guarantee. When `PermissionRequest` arrives first (task transitions to `awaiting_review` with permission activity), a stale `PostToolUse` from a just-completed tool can arrive second. `canReturnToRunning("hook")` returns `true`, so the transition succeeds — bouncing the task back to `running` while the agent is actually blocked on a permission prompt.
+
+The existing permission guard at `hooks-api.ts:119-157` only protects metadata on the **non-transition** path (when `canTransitionTaskForHookEvent` returns `false`). When the stale `PostToolUse` arrives during `awaiting_review` with `reviewReason: "hook"`, the transition path is taken and the guard is never reached.
+
+Fix: Added a permission-aware guard on the **transition path**, between `canTransitionTaskForHookEvent` (which allows the transition at the state machine level) and the actual `store.transitionToRunning()` call. When `to_in_progress` arrives and `latestHookActivity` is permission-related, the transition is blocked. `UserPromptSubmit` is exempted because it means the user actively sent input (covers the edge case where `writeInput`'s synchronous CR/LF transition didn't fire).
+
+The normal approval flow is unaffected: `writeInput` (`session-manager.ts:840-847`) fires synchronously on Enter, calling `store.transitionToRunning()` which clears `latestHookActivity`. By the time the legitimate `PostToolUse` arrives, the state is already `running` and `canTransitionTaskForHookEvent` returns `false`.
+
+**Patch B — Fire-and-forget checkpoint capture (Bug 3):**
+
+Root cause: `await checkpointCapture()` in the `to_review` handler blocked the tRPC response. Git stash operations routinely take 500ms-3s+ under load. The hook CLI has a 3s timeout with 1 retry — when checkpoint exceeded this, the CLI timed out even though the state transition had already succeeded. The retry created a second hook delivery for the same event.
+
+Fix: Wrapped checkpoint capture in a `void (async () => { ... })()` IIFE. Moved `broadcastRuntimeWorkspaceStateUpdated` and `broadcastTaskReadyForReview` before the checkpoint section. The tRPC response now returns immediately after state transition + activity + broadcast.
+
+Note: The initial hypothesis that checkpoint blocking delayed `latestHookActivity` past the 500ms settle window in `use-audible-notifications.ts` was investigated and found incorrect. `applyHookActivity` was already called before checkpoint in the existing code (the comment at the call site was specifically about this). The beep timing is correct regardless of this patch. Patch B's value is strictly in preventing hook CLI timeouts.
+
+Trade-off: Brief window (<1s) where checkpoint data isn't available in the UI after `to_review`. If the user clicks "Revert to previous turn" during this window, the checkpoint ref may not exist yet. Acceptable because revert is not latency-sensitive and `store.applyTurnCheckpoint` fires its own onChange notification when it completes.
+
+**Files touched:** `src/trpc/hooks-api.ts` (both patches), `test/runtime/trpc/hooks-api.test.ts` (3 new test cases, 1 updated test).
+
 ## Commit sidebar tab — JetBrains-style quick-commit workflow (2026-04-12)
 
 Added a new "Commit" tab to the detail sidebar, providing a JetBrains-style quick-commit workflow directly within the UI. The tab shows uncommitted files as a checkbox list with git status badges (M/A/D/R/?), a commit message text input, and Commit / Discard All action buttons. This enables committing without leaving the current main view or opening an external tool — the common case for landing small changes or agent output.

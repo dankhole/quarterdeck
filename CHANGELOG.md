@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: permission race condition in agent state tracking
+
+- Fixed a high-severity bug where a stale `PostToolUse` hook arriving after a `PermissionRequest` would bounce the task from "awaiting review" back to "running," hiding the permission prompt from the user. Added a permission-aware transition guard in `hooks-api.ts` that blocks `to_in_progress` transitions while permission-related activity is present. `UserPromptSubmit` is exempted since it indicates deliberate user input. The normal approval flow is unaffected — `writeInput` transitions synchronously on Enter, clearing permission activity before any hook arrives.
+
+### Fix: hook delivery timeouts from checkpoint capture
+
+- Checkpoint capture (git stash create) is now fire-and-forget during `to_review` hook processing. Previously, the tRPC response waited for checkpoint completion, routinely exceeding the hook CLI's 3-second timeout and triggering spurious retries. The state transition, activity data, and WebSocket broadcast now complete before checkpoint starts. Checkpoint data arrives asynchronously via store onChange listeners.
+
 ### Commit sidebar tab — JetBrains-style quick-commit workflow
 
 - New "Commit" tab in the detail sidebar — file list with checkboxes, status badges (M/A/D/R/?), commit message input, and Commit / Discard All buttons. Enables quick-commit without leaving the current main view or using an external tool. Works in both task worktree and home repo contexts.

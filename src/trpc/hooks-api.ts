@@ -164,6 +164,35 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
+				// Patch A: Permission-aware transition guard.
+				// When to_in_progress arrives while the task is awaiting review with
+				// permission-related activity, block the transition — this is almost
+				// certainly a stale PostToolUse from a tool that completed before the
+				// permission prompt appeared. UserPromptSubmit is exempted because it
+				// means the user actively sent input (covers the edge case where
+				// writeInput's synchronous transition didn't fire).
+				if (event === "to_in_progress") {
+					const currentActivity = summary.latestHookActivity;
+					const incomingHookEvent = body.metadata?.hookEventName ?? null;
+					if (
+						currentActivity != null &&
+						isPermissionActivity(currentActivity) &&
+						incomingHookEvent !== "UserPromptSubmit"
+					) {
+						log.debug(
+							"Hook blocked — permission-aware transition guard (stale to_in_progress during permission)",
+							{
+								taskId,
+								event,
+								incomingHookEvent,
+								currentPermissionActivity: currentActivity.hookEventName,
+							},
+						);
+						applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+						return { ok: true } satisfies RuntimeHookIngestResponse;
+					}
+				}
+
 				log.debug("Hook transitioning", {
 					taskId,
 					event,
@@ -182,45 +211,45 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				// Apply hook activity and conversation summary BEFORE the async
-				// checkpoint capture. The browser uses a 500ms settle window to
-				// upgrade "review" → "permission" sounds based on activity data.
-				// Checkpoint capture runs multiple git operations that routinely
-				// exceed 500ms, so deferring activity would cause the settle
-				// window to expire and the wrong (review) sound to play.
 				if (body.metadata) {
 					store.applyHookActivity(taskId, body.metadata);
 				}
 
 				applyConversationSummaryFromMetadata(store, taskId, body.metadata);
 
-				if (event === "to_review") {
-					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;
-					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
-					try {
-						const checkpoint = await checkpointCapture({
-							cwd: checkpointCwd,
-							taskId,
-							turn: nextTurn,
-						});
-						store.applyTurnCheckpoint(taskId, checkpoint);
-						if (staleRef) {
-							void checkpointRefDelete({
-								cwd: checkpointCwd,
-								ref: staleRef,
-							}).catch(() => {
-								// Best effort cleanup only.
-							});
-						}
-					} catch {
-						// Best effort checkpointing only.
-					}
-				}
-
+				// Patch B: Broadcast and return BEFORE checkpoint capture.
+				// Checkpoint capture runs git operations (stash create) that routinely
+				// exceed the hook CLI's 3s timeout. Returning early prevents timeout-
+				// triggered retries while the state transition has already succeeded.
+				// The checkpoint fires in the background and applies via store.update
+				// which triggers onChange listeners for downstream consumers.
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				if (event === "to_review") {
 					deps.broadcastTaskReadyForReview(workspaceId, taskId);
+
+					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
+					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;
+					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
+					void (async () => {
+						try {
+							const checkpoint = await checkpointCapture({
+								cwd: checkpointCwd,
+								taskId,
+								turn: nextTurn,
+							});
+							store.applyTurnCheckpoint(taskId, checkpoint);
+							if (staleRef) {
+								void checkpointRefDelete({
+									cwd: checkpointCwd,
+									ref: staleRef,
+								}).catch(() => {
+									// Best effort cleanup only.
+								});
+							}
+						} catch {
+							// Best effort checkpointing only.
+						}
+					})();
 				}
 
 				return { ok: true } satisfies RuntimeHookIngestResponse;
