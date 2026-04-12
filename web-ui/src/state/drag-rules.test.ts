@@ -6,7 +6,7 @@ import {
 	isCardDropDisabled,
 	type ProgrammaticCardMoveInFlight,
 } from "@/state/drag-rules";
-import type { BoardColumn } from "@/types";
+import type { BoardCard, BoardColumn } from "@/types";
 
 describe("isAllowedCrossColumnCardMove", () => {
 	it("allows backlog -> in_progress", () => {
@@ -117,11 +117,21 @@ describe("isAllowedCrossColumnCardMove", () => {
 });
 
 describe("findCardColumnId", () => {
+	const card = (id: string, title: string): BoardCard => ({
+		id,
+		title,
+		prompt: "",
+		startInPlanMode: false,
+		baseRef: "main",
+		createdAt: 0,
+		updatedAt: 0,
+	});
+
 	const columns: BoardColumn[] = [
-		{ id: "backlog", title: "Backlog", cards: [{ id: "task-1", title: "A", description: "" }] },
-		{ id: "in_progress", title: "In Progress", cards: [{ id: "task-2", title: "B", description: "" }] },
+		{ id: "backlog", title: "Backlog", cards: [card("task-1", "A")] },
+		{ id: "in_progress", title: "In Progress", cards: [card("task-2", "B")] },
 		{ id: "review", title: "Review", cards: [] },
-		{ id: "trash", title: "Trash", cards: [{ id: "task-3", title: "C", description: "" }] },
+		{ id: "trash", title: "Trash", cards: [card("task-3", "C")] },
 	];
 
 	it("finds task in backlog", () => {

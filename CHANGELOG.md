@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: web-ui test type errors blocking build
+
+- Updated `drag-rules.test.ts` to match `BoardCard` type (removed stale `description` field, added required fields via helper factory). Updated `session-status.test.ts` to include the 5 new `RuntimeTaskHookActivity` fields (`toolName`, `toolInputSummary`, `finalMessage`, `source`, `conversationSummaryText`) in all `latestHookActivity` literals.
+
 ### Fix: needs-input tasks double-counted in sidebar pills
 
 - Fixed a bug where a task awaiting permission approval showed both an "R" (Review) and "NI" (Needs Input) pill in the project sidebar. The server counts all `awaiting_review` sessions as review; the client refines a subset as needs-input. The R pill now subtracts the needs-input count to prevent overlap.
