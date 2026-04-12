@@ -150,6 +150,10 @@ Backend adapters for Gemini CLI and OpenCode still exist (`agent-session-adapter
 
 Either way, hundreds of lines of unreachable code shouldn't sit indefinitely.
 
-## 23. Archive stale docs (recurring)
+## 23. Git view compare tab doesn't refresh as the worktree advances
+
+The compare tab fetches the diff once when opened and doesn't refetch as the agent commits. For named branches, the query key is `compare:feature-xyz:main` — it stays the same across commits, so no refetch fires. The comment at `git-view.tsx:335` says `// No polling for compare — branch diffs are stable` but this isn't true when the agent is actively working. Headless worktrees get this for free (headCommit changes on each commit, which changes the query key), but named branches don't. Include a changing signal (e.g. workspace snapshot headCommit or a state version) in the compare query key so the diff stays current while the agent works.
+
+## 24. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.

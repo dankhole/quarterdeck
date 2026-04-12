@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Git view compare — headless worktree support (2026-04-11)
+
+The compare tab's `defaultSourceRef` used `taskWorkspaceInfo?.branch ?? selectedCard.card.branch` which returned null for headless (detached HEAD) worktrees, leaving the source ref blank. Added `taskWorkspaceInfo?.headCommit` as a fallback between `branch` and card-level branch, so the compare view auto-populates with the HEAD commit SHA.
+
+Also added todo #23 for a related gap: the compare tab doesn't refetch as the agent commits for named branches. Headless worktrees get this for free (headCommit changes per commit → query key changes → refetch), but named branches keep a stable query key. Decided not to fix `use-git-actions.ts:125` (git history `currentBranch`) because headCommit changes on every commit, which would reset the user's scroll position in git history — the cost outweighs the benefit since history already loads via `taskScope`.
+
+**Files touched**: `web-ui/src/hooks/use-git-view-compare.ts` (headCommit fallback in `defaultSourceRef`), `docs/todo.md` (#23 added, #23→#24 renumbered).
+
 ## Fix: trashing a running task plays error triple beep (2026-04-11)
 
 When a running task is moved to trash, `stopTaskSession` kills the agent process with SIGTERM. The process exits with a non-zero code, the session transitions to `awaiting_review` with `reviewReason: "exit"` and `exitCode !== 0`, and `resolveSessionSoundEvent` maps that to `"failure"` — triggering the 3×740Hz error beep.

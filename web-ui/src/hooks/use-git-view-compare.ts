@@ -49,7 +49,9 @@ export function useGitViewCompare({
 	// Default refs based on context
 	const defaultSourceRef = useMemo(() => {
 		if (selectedCard) {
-			return taskWorkspaceInfo?.branch ?? selectedCard.card.branch ?? null;
+			// Task context: the task's worktree branch, falling back to headCommit for
+			// headless (detached HEAD) worktrees, then to the card-level branch.
+			return taskWorkspaceInfo?.branch ?? taskWorkspaceInfo?.headCommit ?? selectedCard.card.branch ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
 	}, [selectedCard, taskWorkspaceInfo, homeGitSummary]);

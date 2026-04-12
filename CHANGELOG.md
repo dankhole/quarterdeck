@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Git view compare — headless worktree support
+
+- The compare tab's default source ref now falls back to `headCommit` for headless (detached HEAD) worktrees, so the compare view populates automatically instead of showing "select branch."
+
 ### Fix: trashing a running task plays error triple beep
 
 - Suppress the audible failure notification (3×740Hz beep) when a running task is moved to trash. The process exit from SIGTERM was being interpreted as a failure by the notification system. Tasks in the trash column are now excluded from sound scheduling via a `suppressedTaskIds` set derived from board state.
