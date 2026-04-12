@@ -142,6 +142,14 @@ When an agent compacts its conversation context (e.g. Claude Code's auto-compact
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 22. Archive stale docs (recurring)
+## 22. Decide fate of disabled Gemini/OpenCode adapters
+
+Backend adapters for Gemini CLI and OpenCode still exist (`agent-session-adapters.ts`, `opencode-paths.ts`, hooks in `hooks.ts`, prompt injection in `append-system-prompt.ts`) but are disabled — commented out in the agent catalog's enabled list. Droid was fully removed. Decide whether to:
+- **Remove**: Delete the adapter code, hook handlers, config resolution, and simplify the agent catalog. Reduces maintenance surface and dead code.
+- **Re-enable**: Uncomment in the catalog, test that they still work, and expose in the frontend agent picker. Would require verifying hooks still fire correctly and adapters haven't drifted.
+
+Either way, hundreds of lines of unreachable code shouldn't sit indefinitely.
+
+## 23. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.

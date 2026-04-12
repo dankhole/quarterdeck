@@ -1,8 +1,8 @@
 # Quarterdeck
 
-A CLI-based quarterdeck board for orchestrating multiple AI coding agents (Claude, Codex, Gemini, OpenCode, Droid) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI.
+A CLI-based quarterdeck board for orchestrating multiple AI coding agents (Claude, Codex) in parallel with isolated git worktrees, real-time terminal streaming, and a browser-based UI. Backend adapters for Gemini and OpenCode exist but are disabled; Droid has been removed.
 
-This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. Much of the foundational work is from the upstream project. A rename/rebrand is planned (see `docs/todo.md` #12).
+This is a personal fork of [kanban-org/kanban](https://github.com/kanban-org/kanban) that has been progressively diverging with significant new features and architectural changes. Much of the foundational work is from the upstream project.
 
 ## Quick reference
 
