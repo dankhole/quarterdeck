@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: non-isolated task trash/untrash/start lifecycle
+
+- Fixed non-isolated tasks (`useWorktree === false`) creating orphan worktrees on start and restore. `ensureTaskWorkspace` is now skipped for tasks running in the shared home repo — prevents unnecessary worktree creation on disk.
+- Fixed restore-from-trash failing for non-isolated tasks. The restore flow no longer calls `ensureWorktree`, which would either error or create an unwanted worktree. Restore now goes directly to session start with `resumeConversation: true`.
+- Trash warning dialog now shows appropriate messaging for non-isolated tasks — "session will be stopped, home repo changes unaffected" instead of "worktree deleted, patch captured."
+- Added session reliability warning toast when resuming or restarting non-isolated tasks — `--continue` picks the most recent session by CWD, which is unreliable when multiple agents share the home repo.
+- Suppressed the "worktree deleted / patch captured" info toast and the `cleanupTaskWorkspace` server call for non-isolated tasks (no worktree to delete, avoids unnecessarily deleting patch files).
+
 ### Fix: clean up stale lock files on server startup
 
 - Quarterdeck now automatically cleans up orphaned `.lock` directories and `.tmp.*` files left by previous process crashes (force-kill, double Ctrl+C, shutdown timeout) when the server starts. Uses mtime-based staleness detection matching `proper-lockfile`'s own 10-second threshold, so active locks held by live processes are never removed. Scans `~/.quarterdeck/`, `~/.quarterdeck/workspaces/`, and per-workspace subdirectories. Removed artifacts are logged with `[quarterdeck]` prefix for diagnostics.

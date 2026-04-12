@@ -135,6 +135,16 @@ export function useBoardInteractions({
 	taskGitActionLoadingByTaskId: _taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction: _runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
+	const showNonIsolatedResumeWarning = () => {
+		showAppToast({
+			intent: "warning",
+			icon: "info-sign",
+			message:
+				"Non-isolated tasks resume the most recent agent session in this repo. If other agents have run here, this may not be the original conversation.",
+			timeout: 9000,
+		});
+	};
+
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const moveToTrashLoadingByIdRef = useRef<Record<string, true>>({});
 	const pendingProgrammaticStartMoveCompletionByTaskIdRef = useRef<
@@ -297,46 +307,53 @@ export function useBoardInteractions({
 			options?: { optimisticMove?: boolean },
 		): Promise<boolean> => {
 			const optimisticMove = options?.optimisticMove ?? true;
-			const ensured = await ensureTaskWorkspace(task);
-			if (!ensured.ok) {
-				notifyError(ensured.message ?? "Could not set up task workspace.");
-				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
+			const isNonIsolated = task.useWorktree === false;
+
+			// Non-isolated tasks run in the home repo — no worktree to ensure.
+			// Calling ensureTaskWorkspace would create an orphan worktree on disk.
+			if (!isNonIsolated) {
+				const ensured = await ensureTaskWorkspace(task);
+				if (!ensured.ok) {
+					notifyError(ensured.message ?? "Could not set up task workspace.");
+					if (optimisticMove) {
+						setBoard((currentBoard) => {
+							const currentColumnId = getTaskColumnId(currentBoard, taskId);
+							if (currentColumnId !== "in_progress") {
+								return currentBoard;
+							}
+							const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+							return reverted.moved ? reverted.board : currentBoard;
+						});
+					}
+					return false;
+				}
+				if (ensured.response?.warning) {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: ensured.response.warning,
+						timeout: 7000,
 					});
 				}
-				return false;
-			}
-			if (ensured.response?.warning) {
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message: ensured.response.warning,
-					timeout: 7000,
-				});
-			}
-			if (selectedTaskId === taskId) {
-				if (ensured.response) {
-					setTaskWorkspaceInfo({
-						taskId,
-						path: ensured.response.path,
-						exists: true,
-						baseRef: ensured.response.baseRef,
-						branch: ensured.response.branch ?? null,
-						isDetached: !ensured.response.branch,
-						headCommit: ensured.response.baseCommit,
-					});
-				}
-				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
-				if (infoAfterEnsure) {
-					setTaskWorkspaceInfo(infoAfterEnsure);
+				if (selectedTaskId === taskId) {
+					if (ensured.response) {
+						setTaskWorkspaceInfo({
+							taskId,
+							path: ensured.response.path,
+							exists: true,
+							baseRef: ensured.response.baseRef,
+							branch: ensured.response.branch ?? null,
+							isDetached: !ensured.response.branch,
+							headCommit: ensured.response.baseCommit,
+						});
+					}
+					const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
+					if (infoAfterEnsure) {
+						setTaskWorkspaceInfo(infoAfterEnsure);
+					}
 				}
 			}
+
 			const started = await startTaskSession(task);
 			if (!started.ok) {
 				notifyError(started.message ?? "Could not start task session.");
@@ -549,9 +566,9 @@ export function useBoardInteractions({
 
 	const resumeTaskFromTrash = useCallback(
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
-			const ensured = await ensureTaskWorkspace(task);
-			if (!ensured.ok) {
-				notifyError(ensured.message ?? "Could not set up task workspace.");
+			const isNonIsolated = task.useWorktree === false;
+
+			const revertToTrash = () => {
 				if (!options?.optimisticMoveApplied) {
 					return;
 				}
@@ -565,18 +582,32 @@ export function useBoardInteractions({
 					});
 					return reverted.moved ? reverted.board : currentBoard;
 				});
-				return;
+			};
+
+			// Non-isolated tasks run in the home repo — no worktree to ensure.
+			// Calling ensureTaskWorkspace would create an unwanted worktree.
+			if (!isNonIsolated) {
+				const ensured = await ensureTaskWorkspace(task);
+				if (!ensured.ok) {
+					notifyError(ensured.message ?? "Could not set up task workspace.");
+					revertToTrash();
+					return;
+				}
+				if (ensured.response?.warning) {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: ensured.response.warning,
+						timeout: 7000,
+					});
+				}
 			}
-			if (ensured.response?.warning) {
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message: ensured.response.warning,
-					timeout: 7000,
-				});
-			}
+
 			const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
 			if (resumed.ok) {
+				if (isNonIsolated) {
+					showNonIsolatedResumeWarning();
+				}
 				setBoard((currentBoard) => {
 					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
 					return disabledAutoReview.updated ? disabledAutoReview.board : currentBoard;
@@ -585,19 +616,7 @@ export function useBoardInteractions({
 			}
 
 			notifyError(resumed.message ?? "Could not resume task session.");
-			if (!options?.optimisticMoveApplied) {
-				return;
-			}
-			setBoard((currentBoard) => {
-				const currentColumnId = getTaskColumnId(currentBoard, taskId);
-				if (currentColumnId !== "review") {
-					return currentBoard;
-				}
-				const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-					insertAtTop: true,
-				});
-				return reverted.moved ? reverted.board : currentBoard;
-			});
+			revertToTrash();
 		},
 		[ensureTaskWorkspace, setBoard, startTaskSession],
 	);
@@ -823,6 +842,8 @@ export function useBoardInteractions({
 				const started = await startTaskSession(selection.card, { resumeConversation: true, awaitReview });
 				if (!started.ok) {
 					notifyError(started.message ?? "Could not restart task session.");
+				} else if (selection.card.useWorktree === false) {
+					showNonIsolatedResumeWarning();
 				}
 			})();
 		},

@@ -90,14 +90,12 @@ New sidebar tab showing uncommitted changes as a file list with checkboxes for s
 
 The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
 
-## 8. Fix un-trash and restart for non-isolated worktree tasks
+## 8. Per-task session identity for non-isolated tasks
 
-The trash → un-trash → resume cycle is broken for tasks that share the main repo (no isolated worktree). Two overlapping problems:
+The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorkspace` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
 
-- **Session clobbering**: Un-trashing multiple shared-workspace tasks steals each other's sessions. The restore logic reattaches to the most recent agent chat session rather than the original one. Each subsequent un-trash takes the session from the previously restored task, and any external agent session in the same workspace replaces it too. Root issue: shared-workspace tasks all compete for a single "current session" with no per-task session scoping.
-- **Branch and git state**: How does branch resume work when there's no dedicated worktree to switch back to? Does un-trashing correctly restore the branch context, or leave the task broken? Does the restart/reset session button assume a worktree exists? What git state is cleaned up on trash for non-worktree tasks, and can it be reversed on un-trash?
-
-Needs a way to associate and restore the correct session per task even when they share a workspace, and ensure the full lifecycle works for both execution modes.
+- **Session clobbering**: `--continue` picks the most recent conversation by CWD. Non-isolated tasks sharing the home repo all compete for the same "most recent" session. A warning toast now discloses this limitation on restore and restart, but there's no per-task session targeting.
+- **Possible fix**: If Claude Code adds a `--session-id` or `--resume <id>` flag in the future, Quarterdeck could store the session ID per task and resume the correct conversation. Until then, this is a known limitation for non-isolated tasks.
 
 ## 9. Fix agent state tracking bugs
 

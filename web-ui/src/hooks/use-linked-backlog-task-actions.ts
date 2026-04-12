@@ -134,7 +134,11 @@ export function useLinkedBacklogTaskActions({
 					stopTaskSession(task.id, { waitForExit: true }),
 					stopTaskSession(getDetailTerminalTaskId(task.id)),
 				]);
-				await cleanupTaskWorkspace(task.id);
+				// Non-isolated tasks have no worktree to clean up. Calling deleteWorktree
+				// would unnecessarily delete any existing patch files for the task.
+				if (task.useWorktree !== false) {
+					await cleanupTaskWorkspace(task.id);
+				}
 				console.debug("[trash] cleanup complete (already-in-trash path)", { taskId: task.id });
 				return;
 			}
@@ -188,7 +192,9 @@ export function useLinkedBacklogTaskActions({
 				stopTaskSession(task.id, { waitForExit: true }),
 				stopTaskSession(getDetailTerminalTaskId(task.id)),
 			]);
-			await cleanupTaskWorkspace(task.id);
+			if (task.useWorktree !== false) {
+				await cleanupTaskWorkspace(task.id);
+			}
 		},
 		[
 			cleanupTaskWorkspace,
@@ -234,6 +240,7 @@ export function useLinkedBacklogTaskActions({
 			}
 
 			// Check for uncommitted changes and show confirmation dialog if needed
+			const isNonIsolated = selection.card.useWorktree === false;
 			const snapshot = getTaskWorkspaceSnapshot(taskId);
 			if (
 				snapshot != null &&
@@ -246,6 +253,7 @@ export function useLinkedBacklogTaskActions({
 					taskTitle: selection.card.title ?? "Untitled task",
 					fileCount: snapshot.changedFiles,
 					workspaceInfo,
+					isNonIsolated,
 				};
 				onRequestTrashConfirmation(viewModel, selection.card, fromColumnId, !!options?.optimisticMoveApplied);
 				return;
@@ -254,8 +262,13 @@ export function useLinkedBacklogTaskActions({
 			moveSelectionIfOptimisticMoveIsConfirmed();
 			await performMoveTaskToTrash(selection.card, boardSnapshot);
 
-			// Show informational notice toast for manual trash from in_progress or review columns
-			if (showTrashWorktreeNotice && (fromColumnId === "in_progress" || fromColumnId === "review")) {
+			// Show informational notice toast for manual trash from in_progress or review columns.
+			// Non-isolated tasks have no worktree to delete and no patch to capture — skip the toast.
+			if (
+				!isNonIsolated &&
+				showTrashWorktreeNotice &&
+				(fromColumnId === "in_progress" || fromColumnId === "review")
+			) {
 				toast("Task workspace removed", {
 					description: "The worktree was deleted. Uncommitted work was captured in a patch file.",
 					duration: 7000,

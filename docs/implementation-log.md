@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: non-isolated task trash/untrash/start lifecycle (2026-04-12)
+
+Non-isolated tasks (`useWorktree === false`) run in the shared home repo without a dedicated git worktree. Several client-side flows incorrectly called `ensureTaskWorkspace` for these tasks, which either created orphan worktrees on disk (task start) or caused restore-from-trash to fail entirely (untrash).
+
+**Root causes**: (1) `kickoffTaskInProgress` and `resumeTaskFromTrash` both called `ensureTaskWorkspace` unconditionally — for non-isolated tasks this creates a worktree via `ensureTaskWorktreeIfDoesntExist` that's never used, since `startTaskSession` handles `useWorktree === false` by falling back to `workspacePath`. (2) Trash dialog and toast messaging assumed all tasks have worktrees with patch capture. (3) `cleanupTaskWorkspace` was called for non-isolated tasks, which hits `deleteTaskWorktree` — a no-op for the worktree itself but unnecessarily deletes any existing patch files via `deleteTaskPatchFiles`.
+
+**Approach**: Added `task.useWorktree === false` guards at every call site. Non-isolated tasks skip `ensureTaskWorkspace` entirely — the home repo already exists and the server-side `startTaskSession` handles it correctly via the `taskCwd = workspaceScope.workspacePath` fallback at `runtime-api.ts:145`. The session reliability limitation (`--continue` picks the most recent session by CWD, unreliable with multiple agents) is disclosed via a warning toast on resume and restart. The trash dialog was split into isolated vs non-isolated variants.
+
+**Files touched**: `web-ui/src/hooks/use-board-interactions.ts` (guard `ensureTaskWorkspace` in `kickoffTaskInProgress` + `resumeTaskFromTrash`, warning toast in `resumeTaskFromTrash` + `handleRestartTaskSession`, extracted `showNonIsolatedResumeWarning` helper), `web-ui/src/components/task-trash-warning-dialog.tsx` (added `isNonIsolated` to view model, branched dialog title/body/button text), `web-ui/src/hooks/use-linked-backlog-task-actions.ts` (set `isNonIsolated` in view model, gated info toast and `cleanupTaskWorkspace` on isolation status).
+
+**Known limitation**: Session resume for non-isolated tasks is inherently unreliable — Claude Code's `--continue` flag resolves the most recent conversation by CWD, not by task ID. If another agent ran in the same home repo since the task was trashed, restore will pick up the wrong conversation. This is a Claude Code limitation, not something Quarterdeck can fix client-side. The warning toast discloses this.
+
 ## Fix: clean up stale lock files on server startup (2026-04-12)
 
 `proper-lockfile` creates `.lock` directories when acquiring file locks, and `writeTextFileAtomic` creates `.tmp.*` temp files during atomic writes. Both are cleaned up normally (`.lock` dirs by `release()` in `finally` blocks, `.tmp.*` by `rename()`), but when the process is force-killed or the shutdown timeout fires, these artifacts remain on disk. They don't block future operations (proper-lockfile's stale detection overrides old locks after 10 seconds), but they accumulate and require manual cleanup.
