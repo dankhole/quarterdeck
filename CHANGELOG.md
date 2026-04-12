@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Commit sidebar tab — JetBrains-style quick-commit workflow
+
+- New "Commit" tab in the detail sidebar — file list with checkboxes, status badges (M/A/D/R/?), commit message input, and Commit / Discard All buttons. Enables quick-commit without leaving the current main view or using an external tool. Works in both task worktree and home repo contexts.
+- Per-file rollback via right-click context menu on individual files.
+- Cross-view navigation from the commit panel — "Open in Diff Viewer" switches to the git view with the file selected, "Open in File Browser" switches to the files view.
+- Backend: new `commitSelectedFiles` and `discardSingleFile` tRPC mutations with path validation and rollback-on-failure. `commitSelectedFiles` stages only the selected files and commits; `discardSingleFile` restores a single file to HEAD.
+- Added future work items: Commit and Push (#17), auto-generated commit messages (#18).
+
 ### Remove home agent chat sidebar feature
 
 - Removed the "Quarterdeck Agent" tab from the project navigation sidebar. The feature — a live terminal panel for a Quarterdeck-managed Claude/Codex session — overlapped with task agents and had no clear UI home. The sidebar now shows only the project list. The home shell terminal (bottom panel) and home repo polling are unaffected.
@@ -62,7 +70,7 @@
 ### Branch management — scoping, cleanup, and fixes
 
 - Expanded todo #5 (branch management in git view) with tiered operation breakdown: merge, create, delete, stash in tier 1; cherry-pick, rebase, rename, abort in tier 2; interactive rebase, tags, force push, revert in tier 3.
-- Removed "discard all changes" UI from `GitHistoryView` — it was buried in the git history panel header where nobody could find it. Noted in todo #6 (commit sidebar) as the proper home for this action. Backend (`discardGitChanges` endpoint, `useGitActions` hook) left intact for reuse.
+- Removed "discard all changes" UI from `GitHistoryView` — it was buried in the git history panel header where nobody could find it. The commit sidebar tab is now the proper home for this action. Backend (`discardGitChanges` endpoint, `useGitActions` hook) left intact for reuse.
 - Wired `onCompareWithBranch` to the top bar branch pill — right-click "Compare with local tree" now works from the top bar, not just the Files tab scope bar and task detail pill.
 - Fixed compare tab not activating when navigated to externally — the `currentProjectId` reset effect was overriding the pending compare navigation on mount, forcing the tab back to "uncommitted."
 - Added JSDoc guidance to `BranchSelectorPopover` reminding future call sites to wire up `onCheckoutBranch` and `onCompareWithBranch`. Added JSDoc to `ScopeBar` clarifying it lives in the Files tab.
@@ -148,7 +156,7 @@
 - Fix interrupt recovery timer leak: when a session transitions back to running (via `hook.to_in_progress` or `agent.prompt-ready`), any pending interrupt recovery timer from a prior Escape/Ctrl+C is now cleared. Previously a stale 5s timer could bounce a resumed session back to `awaiting_review/attention`.
 - Hook delivery retry: `hooks ingest` CLI now retries once after 1s if the initial 3s-timeout attempt fails. Lost hooks were the primary cause of tasks stuck in the wrong state with no automatic recovery.
 - Route `mark_processless_error` reconciliation action through the state machine reducer instead of directly mutating the store, ensuring all state transitions are validated.
-- Add diagnostic logging for hook events — CLI-side `[hooks:cli]` stderr lines show what the agent fired, server-side debug logs (enable in UI) show what the server received, whether it blocked or transitioned, and why. Supports investigation of todo #9 (permissions) and #21 (compact).
+- Add diagnostic logging for hook events — CLI-side `[hooks:cli]` stderr lines show what the agent fired, server-side debug logs (enable in UI) show what the server received, whether it blocked or transitioned, and why. Supports investigation of todo #8 (permissions) and #19 (compact).
 
 ### Agent directory access from worktrees
 
@@ -170,7 +178,7 @@
 
 ### Emergency stop/restart actions for stuck running tasks
 
-- New settings toggle (Settings > Session Recovery > "Show stop & trash buttons on running tasks") adds force-restart and force-trash buttons to in-progress task cards when hovered. Disabled by default to keep the UI clean. When a task is stuck in "running" state (e.g. failed resume, permission prompt, agent hang), enabling this provides an escape hatch without needing to drag the card or restart the server. Related to todo #9 and #20.
+- New settings toggle (Settings > Session Recovery > "Show stop & trash buttons on running tasks") adds force-restart and force-trash buttons to in-progress task cards when hovered. Disabled by default to keep the UI clean. When a task is stuck in "running" state (e.g. failed resume, permission prompt, agent hang), enabling this provides an escape hatch without needing to drag the card or restart the server. Related to todo #8 and #19.
 
 ### AGENTS.md: session reconciliation guidance
 

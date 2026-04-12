@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type {
 	RuntimeGitCheckoutResponse,
+	RuntimeGitCommitResponse,
 	RuntimeGitCreateBranchResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
@@ -10,7 +11,7 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../core/api-contract";
-import { runGit, validateGitRef } from "./git-utils";
+import { runGit, validateGitPath, validateGitRef } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -504,5 +505,128 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		ok: true,
 		summary: nextSummary,
 		output,
+	};
+}
+
+function createEmptySummary(): RuntimeGitSyncSummary {
+	return {
+		currentBranch: null,
+		upstreamBranch: null,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		aheadCount: 0,
+		behindCount: 0,
+	};
+}
+
+export async function commitSelectedFiles(options: {
+	cwd: string;
+	paths: string[];
+	message: string;
+}): Promise<RuntimeGitCommitResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+
+	// Validate all paths before any git operations.
+	for (const p of options.paths) {
+		if (!validateGitPath(p)) {
+			return {
+				ok: false,
+				summary: createEmptySummary(),
+				output: "",
+				error: `Invalid file path: ${p}`,
+			};
+		}
+	}
+
+	// Stage the specified files.
+	const addResult = await runGit(repoRoot, ["add", "--", ...options.paths]);
+	if (!addResult.ok) {
+		return {
+			ok: false,
+			summary: await getGitSyncSummary(repoRoot),
+			output: addResult.output,
+			error: addResult.error ?? "Failed to stage files.",
+		};
+	}
+
+	// Commit only the staged paths (avoids committing pre-staged files the user didn't select).
+	const commitResult = await runGit(repoRoot, ["commit", "-m", options.message, "--", ...options.paths]);
+	if (!commitResult.ok) {
+		// Rollback staging if commit failed.
+		await runGit(repoRoot, ["reset", "HEAD", "--", ...options.paths]);
+		return {
+			ok: false,
+			summary: await getGitSyncSummary(repoRoot),
+			output: commitResult.output,
+			error: commitResult.error ?? "Commit failed.",
+		};
+	}
+
+	// Extract commit hash from output (format: "[branch hash] message").
+	const hashMatch = commitResult.stdout.match(/\[[\w/.-]+ ([0-9a-f]+)\]/);
+	const commitHash = hashMatch?.[1];
+
+	const nextSummary = await getGitSyncSummary(repoRoot);
+
+	return {
+		ok: true,
+		commitHash,
+		summary: nextSummary,
+		output: commitResult.output,
+	};
+}
+
+export async function discardSingleFile(options: {
+	cwd: string;
+	path: string;
+	fileStatus: string;
+}): Promise<RuntimeGitDiscardResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+
+	if (!validateGitPath(options.path)) {
+		return {
+			ok: false,
+			summary: createEmptySummary(),
+			output: "",
+			error: "Invalid file path.",
+		};
+	}
+
+	// Renamed/copied files cannot be rolled back individually.
+	if (options.fileStatus === "renamed" || options.fileStatus === "copied") {
+		return {
+			ok: false,
+			summary: await getGitSyncSummary(repoRoot),
+			output: "",
+			error: "Cannot rollback renamed/copied files individually. Use Discard All instead.",
+		};
+	}
+
+	// New staged files ("added") don't exist at HEAD — unstage before cleaning.
+	if (options.fileStatus === "added") {
+		await runGit(repoRoot, ["rm", "--cached", "--force", "--", options.path]);
+	}
+
+	const result =
+		options.fileStatus === "untracked" || options.fileStatus === "added"
+			? await runGit(repoRoot, ["clean", "-f", "--", options.path])
+			: await runGit(repoRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", options.path]);
+
+	const nextSummary = await getGitSyncSummary(repoRoot);
+
+	if (!result.ok) {
+		return {
+			ok: false,
+			summary: nextSummary,
+			output: result.output,
+			error: result.error ?? "Failed to discard file changes.",
+		};
+	}
+
+	return {
+		ok: true,
+		summary: nextSummary,
+		output: result.output,
 	};
 }

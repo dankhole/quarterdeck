@@ -2,7 +2,7 @@
 
 Source of truth for how the browser UI is structurally composed. Read this before adding a new main view, sidebar panel, or internal tab.
 
-**Last updated**: 2026-04-11 (after git view rework, dual-selection sidebar, scope bar + file browser, project switcher sidebar)
+**Last updated**: 2026-04-12 (after commit sidebar panel, git view rework, dual-selection sidebar, scope bar + file browser, project switcher sidebar)
 
 ---
 
@@ -19,6 +19,7 @@ The UI has two independent selection dimensions, rendered as two groups of butto
 │──────────────│  ← divider
 │  Projects    │  ← sidebar (filled bg when active)
 │  Board       │
+│  Commit      │
 └──────────────┘
 ```
 
@@ -35,7 +36,7 @@ All defined in `web-ui/src/resize/use-card-detail-layout.ts`:
 
 ```typescript
 type MainViewId = "home" | "terminal" | "files" | "git";
-type SidebarId  = "projects" | "task_column";
+type SidebarId  = "projects" | "task_column" | "commit";
 ```
 
 The `"git"` main view has its own internal sub-tabs, defined in `web-ui/src/components/git-view.tsx`:
@@ -52,16 +53,18 @@ type GitViewTab = "uncommitted" | "last_turn" | "compare";
 App.tsx
 ├── DetailToolbar                          # Vertical icon bar (always rendered)
 │   ├── MainViewButton × 4                 # Home, Terminal, Files, Git
-│   └── SidebarButton × 2                  # Projects, Board
+│   └── SidebarButton × 3                  # Projects, Board, Commit
 │
 ├── [Sidebar panel]                        # Conditional — rendered at App.tsx level OR inside CardDetailView
 │   ├── (home + projects sidebar) → ProjectNavigationPanel
+│   ├── (home + sidebar=commit) → CommitPanel (home/repo context)
 │   └── (task selected + sidebar=task_column) → ColumnContextPanel (inside CardDetailView)
 │
 ├── [Main content]                         # Conditional on selection state
 │   ├── (task selected) → CardDetailView   # Owns task-context layout
-│   │   ├── [Left panel]                   # Task-scoped sidebar (only when sidebar=task_column)
-│   │   │   └── ColumnContextPanel
+│   │   ├── [Left panel]                   # Task-scoped sidebar (sidebar=task_column or sidebar=commit)
+│   │   │   ├── ColumnContextPanel
+│   │   │   └── CommitPanel (task/worktree context)
 │   │   │
 │   │   └── [Right panel]                  # Task-scoped main content
 │   │       ├── (mainView=git) → GitView (internal file tree)
@@ -116,10 +119,13 @@ These fire automatically when state changes. They are defaults, not locks — th
 | Trigger | Main view | Sidebar | Other |
 |---------|-----------|---------|-------|
 | `setMainView("home")` | home | projects | Deselects task via callback |
+| `setMainView("files")` or `setMainView("git")` | (set) | auto-collapse | Unless `sidebar === "commit"` or sidebar is pinned |
 | Task selected (was on `home`) | terminal | task_column | — |
 | Task selected (was on `terminal`/`files`/`git`) | (unchanged) | (unchanged) | All work with task context |
 | Task deselected (was on `terminal`) | home | projects | Terminal needs a task |
 | Task deselected (was on `files`/`git`/`home`) | (unchanged) | (unchanged) | These work without a task |
+| Task deselected (sidebar was `commit`) | (unchanged) | commit | Stays open, switches to home/repo context |
+| Task deselected (sidebar was `task_column`) | (per above) | projects | Falls back to projects |
 
 ### Visual highlight logic
 
@@ -222,6 +228,16 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 - Requires a task — disabled in toolbar when no task is selected
 - Persisted as `lastSidebarTab` so it re-opens correctly after sidebar collapse
 
+### Commit (`sidebar === "commit"`)
+
+- Renders `CommitPanel` — a JetBrains-style quick-commit panel with file list, per-file checkboxes, status badges (M/A/D/R), commit message textarea, and Commit / Discard All buttons
+- Works in both task (worktree) and home (repo) contexts — unlike `task_column`, it does not require a task
+- On task deselection, stays open and switches to home/repo context (does not fall back to `projects`)
+- Exempt from the auto-collapse rule that collapses the sidebar when switching to `files` or `git` main views, because users may want to view diffs while staging files. The condition in `use-card-detail-layout.ts` is: `if ((view === "files" || view === "git") && sidebarRef.current !== "commit" && !sidebarPinnedRef.current)`
+- Right-click context menu on files: Rollback, Open in Diff Viewer, Open in File Browser, Copy Name, Copy Path
+- Component: `CommitPanel` in `web-ui/src/components/detail-panels/commit-panel.tsx`
+- Hook: `useCommitPanel` in `web-ui/src/hooks/use-commit-panel.ts`
+
 ---
 
 ## How to Add a New Main View
@@ -286,7 +302,7 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 
 1. **Add the ID** to `SidebarId` in `use-card-detail-layout.ts`:
    ```typescript
-   type SidebarId = "projects" | "task_column" | "your_panel";
+   type SidebarId = "projects" | "task_column" | "commit" | "your_panel";
    ```
 
 2. **Add localStorage migration** in `loadSidebar()` and `loadLastSidebarTab()` if needed.
@@ -332,6 +348,8 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 | `web-ui/src/components/detail-panels/file-tree-panel.tsx` | Simple file tree for Git view changed files |
 | `web-ui/src/components/detail-panels/branch-selector-popover.tsx` | Branch picker with FZF search, used by scope bar + compare tab |
 | `web-ui/src/components/detail-panels/column-context-panel.tsx` | Board sidebar: task column with cards |
+| `web-ui/src/components/detail-panels/commit-panel.tsx` | Commit sidebar: file list, staging, commit message, discard |
+| `web-ui/src/hooks/use-commit-panel.ts` | Commit panel state: file selection, staging, commit/discard actions |
 | `web-ui/src/components/project-navigation-panel.tsx` | Projects sidebar: project list |
 | `web-ui/src/storage/local-storage-store.ts` | localStorage key definitions and read/write helpers |
 
@@ -346,5 +364,6 @@ This architecture is the result of several incremental reworks:
 3. **File browser + scope bar rework** (2026-04-09): Files became scope-aware (home/task/branch-view). Scope bar + branch selector added.
 4. **Git view rework** (2026-04-11): Diff viewer promoted from sidebar ("Changes") to main view ("Git"). Internal tabs added (Uncommitted, Last Turn, Compare). `"changes"` removed from `SidebarId`.
 5. **Project switcher sidebar** (2026-04-10): Projects panel added as a sidebar tab.
+6. **Commit sidebar panel** (2026-04-12): JetBrains-style quick-commit panel added as a third sidebar tab. Works in both task and home contexts. Exempt from files/git auto-collapse rule.
 
 Spec docs for these reworks live in `docs/specs/` — they document the *design intent* but may be partially outdated relative to what actually shipped. This document reflects the *as-built* state.

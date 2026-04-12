@@ -42,7 +42,7 @@ Audit and address performance bottlenecks that emerge when running many agents s
 
 Add a UI action to land individual task commits (or a squashed commit) from a task worktree onto main without doing a full branch merge. This is the "ship this one thing" flow — you're reviewing a task's changes, you want to land them on main right now.
 
-This is distinct from #6 (committing *within* the task worktree). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
+This is distinct from the commit sidebar tab (committing *within* the task worktree). This is a targeted "cherry-pick to main" action, likely surfaced as a button in the diff viewer or on the task card during review.
 
 ## 5. Branch management in git view
 
@@ -76,17 +76,7 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Branch context menu in `GitRefsPanel` (git history view) — extend with the same actions
 - Git view tab bar or toolbar — stash controls, conflict state indicator, abort button
 
-## 6. Commit sidebar tab with server-side commit
-
-New sidebar tab showing uncommitted changes as a file list with checkboxes for staging, a commit message input, and commit/push buttons at the bottom — similar to the JetBrains "Commit" tool window. Commits are executed server-side via `runGit()`, no agent session required. This is the quick-commit flow for the common case — commit without leaving your current main view.
-
-- **File selection**: Checkboxes or select-all toggle to choose which files to stage. The file list mirrors what the diff viewer's file tree shows but in a compact sidebar format.
-- **Commit message**: Inline text input. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
-- **Discard changes**: Move the "discard all working changes" action here (previously lived in the git history panel header, removed). The backend (`discardGitChanges` tRPC endpoint, `discardHomeWorkingChanges` in `useGitActions`) already exists — just needs to be wired into this new UI.
-- **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
-- **Git view integration**: The git main view's Uncommitted tab shows full diffs — clicking a file in the commit sidebar could open the diff in the git view for review before committing. More complex git operations (merge, branch management) live in the git view (#5).
-
-## 7. Per-task session identity for non-isolated tasks
+## 6. Per-task session identity for non-isolated tasks
 
 The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorkspace` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
 
@@ -151,3 +141,11 @@ Git worktrees share the full object database with the parent repo, so agents can
 ## 19. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.
+
+## 17. Commit sidebar: Commit and Push button
+
+Add a "Commit and Push" button alongside the existing Commit button in the commit sidebar tab. The push infrastructure already exists (`runGitSyncAction("push")`). This is the combined flow — commit then push in one action. Should handle push failures gracefully (commit succeeds but push fails → toast with error, commit is preserved).
+
+## 18. Commit sidebar: Auto-generated commit messages
+
+Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.

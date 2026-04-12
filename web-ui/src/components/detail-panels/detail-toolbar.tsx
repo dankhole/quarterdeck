@@ -1,6 +1,7 @@
 import {
 	FolderKanban,
 	FolderOpen,
+	GitCommitHorizontal,
 	GitCompareArrows,
 	House,
 	LayoutGrid,
@@ -202,6 +203,13 @@ export function DetailToolbar({
 				icon={<LayoutGrid size={18} />}
 				label="Board"
 				disabled={!hasSelectedTask}
+			/>
+			<SidebarButton
+				sidebarId="commit"
+				activeSidebar={activeSidebar}
+				onSidebarChange={onSidebarChange}
+				icon={<GitCommitHorizontal size={18} />}
+				label="Commit"
 			/>
 
 			{/* Pin toggle — prevents sidebar from auto-switching when selecting/deselecting tasks */}

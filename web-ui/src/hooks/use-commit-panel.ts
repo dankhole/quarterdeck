@@ -1,0 +1,257 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { showAppToast } from "@/components/app-toaster";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
+import { useHomeGitStateVersionValue, useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+
+export interface UseCommitPanelResult {
+	files: RuntimeWorkspaceFileChange[] | null;
+	selectedPaths: string[];
+	isAllSelected: boolean;
+	isIndeterminate: boolean;
+	toggleFile: (path: string) => void;
+	toggleAll: () => void;
+	message: string;
+	setMessage: (msg: string) => void;
+	canCommit: boolean;
+	isLoading: boolean;
+	isCommitting: boolean;
+	isDiscarding: boolean;
+	isRollingBack: boolean;
+	commitFiles: () => Promise<void>;
+	discardAll: () => Promise<void>;
+	rollbackFile: (path: string, fileStatus: string) => Promise<void>;
+}
+
+export function useCommitPanel(
+	taskId: string | null,
+	workspaceId: string | null,
+	baseRef: string | null,
+): UseCommitPanelResult {
+	// State version — call both hooks unconditionally (React rules of hooks).
+	const taskStateVersion = useTaskWorkspaceStateVersionValue(taskId);
+	const homeStateVersion = useHomeGitStateVersionValue();
+	const stateVersion = taskId ? taskStateVersion : homeStateVersion;
+
+	// Mutation loading flags — suppress polling while any mutation is in flight.
+	const [isCommitting, setIsCommitting] = useState(false);
+	const [isDiscarding, setIsDiscarding] = useState(false);
+	const [isRollingBack, setIsRollingBack] = useState(false);
+	const isMutating = isCommitting || isDiscarding || isRollingBack;
+	const pollIntervalMs = isMutating ? null : 1000;
+
+	// File list data via shared hook.
+	const { changes, isLoading } = useRuntimeWorkspaceChanges(
+		taskId,
+		workspaceId,
+		baseRef,
+		"working_copy",
+		stateVersion,
+		pollIntervalMs,
+	);
+	const files = changes?.files ?? null;
+
+	// Selection state — Map<path, checked>.
+	const [selection, setSelection] = useState<Map<string, boolean>>(() => new Map());
+
+	// Sync selection when file list changes: add new files as checked, remove departed files.
+	const prevPathsRef = useRef<Set<string>>(new Set());
+	useEffect(() => {
+		if (!files) return;
+		const currentPaths = new Set(files.map((f) => f.path));
+		const prevPaths = prevPathsRef.current;
+
+		// Detect actual changes to avoid unnecessary re-renders.
+		const added = files.filter((f) => !prevPaths.has(f.path));
+		const removed = [...prevPaths].filter((p) => !currentPaths.has(p));
+
+		if (added.length > 0 || removed.length > 0) {
+			setSelection((prev) => {
+				const next = new Map(prev);
+				for (const f of added) {
+					next.set(f.path, true);
+				}
+				for (const p of removed) {
+					next.delete(p);
+				}
+				return next;
+			});
+		}
+
+		// Initialize selection for first load (all checked).
+		if (prevPaths.size === 0 && files.length > 0) {
+			setSelection(new Map(files.map((f) => [f.path, true])));
+		}
+
+		prevPathsRef.current = currentPaths;
+	}, [files]);
+
+	// Derived selection state.
+	const selectedPaths = useMemo(() => {
+		if (!files) return [];
+		return files.filter((f) => selection.get(f.path)).map((f) => f.path);
+	}, [files, selection]);
+
+	const isAllSelected = files !== null && files.length > 0 && selectedPaths.length === files.length;
+	const isIndeterminate = selectedPaths.length > 0 && !isAllSelected;
+
+	// Toggle individual file.
+	const toggleFile = useCallback((path: string) => {
+		setSelection((prev) => {
+			const next = new Map(prev);
+			next.set(path, !prev.get(path));
+			return next;
+		});
+	}, []);
+
+	// Toggle all files.
+	const toggleAll = useCallback(() => {
+		if (!files) return;
+		setSelection((prev) => {
+			const allChecked = files.every((f) => prev.get(f.path));
+			const next = new Map(prev);
+			for (const f of files) {
+				next.set(f.path, !allChecked);
+			}
+			return next;
+		});
+	}, [files]);
+
+	// Commit message.
+	const [message, setMessage] = useState("");
+
+	// Task scope helper — memoized to avoid recreating callbacks that depend on it.
+	const taskScope = useMemo(() => (taskId && baseRef ? { taskId, baseRef } : null), [taskId, baseRef]);
+
+	// Validation.
+	const canCommit = selectedPaths.length > 0 && message.trim().length > 0 && !isCommitting;
+
+	// Commit action.
+	const commitFiles = useCallback(async () => {
+		if (!workspaceId || !canCommit) return;
+		setIsCommitting(true);
+		try {
+			const trpcClient = getRuntimeTrpcClient(workspaceId);
+			const result = await trpcClient.workspace.commitSelectedFiles.mutate({
+				taskScope,
+				paths: selectedPaths,
+				message: message.trim(),
+			});
+			if (result.ok) {
+				showAppToast({
+					intent: "success",
+					message: `Committed${result.commitHash ? ` (${result.commitHash.slice(0, 7)})` : ""}`,
+					timeout: 4000,
+				});
+				setMessage("");
+			} else {
+				showAppToast({
+					intent: "danger",
+					message: result.error ?? "Commit failed.",
+					timeout: 7000,
+				});
+			}
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: error instanceof Error ? error.message : "Commit failed.",
+				timeout: 7000,
+			});
+		} finally {
+			setIsCommitting(false);
+		}
+	}, [workspaceId, canCommit, taskScope, selectedPaths, message]);
+
+	// Discard all action.
+	const discardAll = useCallback(async () => {
+		if (!workspaceId || isDiscarding) return;
+		setIsDiscarding(true);
+		try {
+			const trpcClient = getRuntimeTrpcClient(workspaceId);
+			const result = await trpcClient.workspace.discardGitChanges.mutate(taskScope);
+			if (result.ok) {
+				showAppToast({ intent: "success", message: "All changes discarded.", timeout: 4000 });
+			} else {
+				showAppToast({
+					intent: "danger",
+					message: result.error ?? "Discard failed.",
+					timeout: 7000,
+				});
+			}
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: error instanceof Error ? error.message : "Discard failed.",
+				timeout: 7000,
+			});
+		} finally {
+			setIsDiscarding(false);
+		}
+	}, [workspaceId, isDiscarding, taskScope]);
+
+	// Per-file rollback action.
+	const rollbackFile = useCallback(
+		async (path: string, fileStatus: string) => {
+			if (!workspaceId || isRollingBack) return;
+			setIsRollingBack(true);
+			try {
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				const result = await trpcClient.workspace.discardFile.mutate({
+					taskScope,
+					path,
+					fileStatus: fileStatus as
+						| "modified"
+						| "added"
+						| "deleted"
+						| "renamed"
+						| "copied"
+						| "untracked"
+						| "unknown",
+				});
+				if (result.ok) {
+					showAppToast({
+						intent: "success",
+						message: `Discarded changes to ${path.split("/").pop()}`,
+						timeout: 4000,
+					});
+				} else {
+					showAppToast({
+						intent: "danger",
+						message: result.error ?? "Rollback failed.",
+						timeout: 7000,
+					});
+				}
+			} catch (error) {
+				showAppToast({
+					intent: "danger",
+					message: error instanceof Error ? error.message : "Rollback failed.",
+					timeout: 7000,
+				});
+			} finally {
+				setIsRollingBack(false);
+			}
+		},
+		[workspaceId, isRollingBack, taskScope],
+	);
+
+	return {
+		files,
+		selectedPaths,
+		isAllSelected,
+		isIndeterminate,
+		toggleFile,
+		toggleAll,
+		message,
+		setMessage,
+		canCommit,
+		isLoading,
+		isCommitting,
+		isDiscarding,
+		isRollingBack,
+		commitFiles,
+		discardAll,
+		rollbackFile,
+	};
+}

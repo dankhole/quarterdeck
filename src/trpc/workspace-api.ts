@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type {
 	RuntimeFileContentResponse,
 	RuntimeGitCheckoutResponse,
+	RuntimeGitCommitResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeGitSummaryResponse,
@@ -30,8 +31,10 @@ import {
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
+	commitSelectedFiles,
 	createBranchFromRef,
 	discardGitChanges,
+	discardSingleFile,
 	getGitSyncSummary,
 	runGitCheckoutAction,
 	runGitMergeAction,
@@ -182,6 +185,24 @@ function createEmptyGitMergeErrorResponse(error: unknown): RuntimeGitMergeRespon
 }
 
 function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardResponse {
+	const message = error instanceof Error ? error.message : String(error);
+	return {
+		ok: false,
+		summary: {
+			currentBranch: null,
+			upstreamBranch: null,
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+			aheadCount: 0,
+			behindCount: 0,
+		},
+		output: "",
+		error: message,
+	};
+}
+
+function createEmptyGitCommitErrorResponse(error: unknown): RuntimeGitCommitResponse {
 	const message = error instanceof Error ? error.message : String(error);
 	return {
 		ok: false,
@@ -351,6 +372,68 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				}
 				const response = await discardGitChanges({
 					cwd: discardCwd,
+				});
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				return createEmptyGitDiscardErrorResponse(error);
+			}
+		},
+		commitSelectedFiles: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let commitCwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					commitCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+					if (resolve(commitCwd) === resolve(workspaceScope.workspacePath)) {
+						return createEmptyGitCommitErrorResponse(
+							new Error("Cannot commit in the shared checkout. Isolate the task to a worktree first."),
+						);
+					}
+				}
+				const response = await commitSelectedFiles({
+					cwd: commitCwd,
+					paths: input.paths,
+					message: input.message,
+				});
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				return createEmptyGitCommitErrorResponse(error);
+			}
+		},
+		discardFile: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let discardCwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					discardCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+					if (resolve(discardCwd) === resolve(workspaceScope.workspacePath)) {
+						return createEmptyGitDiscardErrorResponse(
+							new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
+						);
+					}
+				}
+				const response = await discardSingleFile({
+					cwd: discardCwd,
+					path: input.path,
+					fileStatus: input.fileStatus,
 				});
 				if (response.ok) {
 					void deps.broadcastRuntimeWorkspaceStateUpdated(

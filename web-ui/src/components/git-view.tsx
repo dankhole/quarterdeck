@@ -206,6 +206,8 @@ export interface GitViewProps {
 	board?: BoardData;
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
+	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
+	onFileNavigationConsumed?: () => void;
 	/** Slot for the branch pill + git status controls rendered in the tab bar. */
 	branchStatusSlot?: React.ReactNode;
 	/** When provided, renders the git history panel instead of the normal diff content. */
@@ -220,6 +222,8 @@ export function GitView({
 	board = { columns: [], dependencies: [] },
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
+	pendingFileNavigation,
+	onFileNavigationConsumed,
 	branchStatusSlot,
 	gitHistoryPanel,
 }: GitViewProps): React.ReactElement {
@@ -312,6 +316,15 @@ export function GitView({
 			setActiveTab("compare");
 		}
 	}, [pendingCompareNavigation, setActiveTab]);
+
+	// Navigate to a specific file when external file navigation arrives (from commit panel)
+	useEffect(() => {
+		if (pendingFileNavigation?.targetView === "git") {
+			setActiveTab("uncommitted");
+			setSelectedPath(pendingFileNavigation.filePath);
+			onFileNavigationConsumed?.();
+		}
+	}, [pendingFileNavigation, onFileNavigationConsumed, setActiveTab]);
 
 	// Compare tab state
 	const isCompareActive = activeTab === "compare";

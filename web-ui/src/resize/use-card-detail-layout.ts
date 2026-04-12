@@ -12,7 +12,7 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 // --- New dual-selection types ---
 
 export type MainViewId = "home" | "terminal" | "files" | "git";
-export type SidebarId = "projects" | "task_column";
+export type SidebarId = "projects" | "task_column" | "commit";
 
 const SIDE_PANEL_RATIO_PREFERENCE: ResizeNumberPreference = {
 	key: LocalStorageKey.DetailSidePanelRatio,
@@ -51,7 +51,7 @@ function persistMainView(view: MainViewId): MainViewId {
  */
 export function loadSidebar(): SidebarId | null {
 	const stored = readLocalStorageItem(LocalStorageKey.DetailSidebar);
-	if (stored === "projects" || stored === "task_column") return stored;
+	if (stored === "projects" || stored === "task_column" || stored === "commit") return stored;
 	if (stored === "changes") return "task_column"; // Old "changes" sidebar → task_column
 	if (stored === "") return null; // sidebar was collapsed
 
@@ -149,7 +149,11 @@ export function useCardDetailLayout({
 			if (view === "home") {
 				setSidebarPersist("projects");
 				callbacks?.setSelectedTaskId?.(null);
-			} else if ((view === "files" || view === "git") && !sidebarPinnedRef.current) {
+			} else if (
+				(view === "files" || view === "git") &&
+				sidebarRef.current !== "commit" &&
+				!sidebarPinnedRef.current
+			) {
 				setSidebarPersist(null);
 			}
 		},

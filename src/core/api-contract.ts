@@ -590,6 +590,29 @@ export const runtimeTaskWorkspaceInfoRequestSchema = z.object({
 });
 export type RuntimeTaskWorkspaceInfoRequest = z.infer<typeof runtimeTaskWorkspaceInfoRequestSchema>;
 
+export const runtimeGitCommitRequestSchema = z.object({
+	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	paths: z.array(z.string()).min(1),
+	message: z.string().min(1),
+});
+export type RuntimeGitCommitRequest = z.infer<typeof runtimeGitCommitRequestSchema>;
+
+export const runtimeGitCommitResponseSchema = z.object({
+	ok: z.boolean(),
+	commitHash: z.string().optional(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitCommitResponse = z.infer<typeof runtimeGitCommitResponseSchema>;
+
+export const runtimeGitDiscardFileRequestSchema = z.object({
+	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	path: z.string().min(1),
+	fileStatus: runtimeWorkspaceFileStatusSchema,
+});
+export type RuntimeGitDiscardFileRequest = z.infer<typeof runtimeGitDiscardFileRequestSchema>;
+
 export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 	taskId: z.string(),
 	path: z.string(),

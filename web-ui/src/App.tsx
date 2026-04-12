@@ -14,6 +14,7 @@ import { DebugLogPanel } from "@/components/debug-log-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
+import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
@@ -959,6 +960,20 @@ export default function App(): ReactElement {
 	);
 	const clearPendingCompareNavigation = useCallback(() => setPendingCompareNavigation(null), []);
 
+	/** Navigate to a specific file in the git diff viewer or file browser from the commit panel. */
+	const [pendingFileNavigation, setPendingFileNavigation] = useState<{
+		targetView: "git" | "files";
+		filePath: string;
+	} | null>(null);
+	const navigateToFile = useCallback(
+		(nav: { targetView: "git" | "files"; filePath: string }) => {
+			setPendingFileNavigation(nav);
+			setMainView(nav.targetView, { setSelectedTaskId });
+		},
+		[setMainView, setSelectedTaskId],
+	);
+	const clearPendingFileNavigation = useCallback(() => setPendingFileNavigation(null), []);
+
 	// Auto-switch to git main view when git history is toggled on (e.g. via Cmd+G)
 	useEffect(() => {
 		if (isGitHistoryOpen) {
@@ -1262,7 +1277,33 @@ export default function App(): ReactElement {
 						/>
 
 						{/* Sidebar panel content — depends on sidebar state */}
-						{sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
+						{sidebar === "commit" && !selectedCard ? (
+							<>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										flex: `0 0 ${homeSidePanelPercent}`,
+										minWidth: 0,
+										minHeight: 0,
+										overflow: "hidden",
+									}}
+								>
+									<CommitPanel
+										workspaceId={currentProjectId ?? ""}
+										taskId={null}
+										baseRef={null}
+										navigateToFile={navigateToFile}
+									/>
+								</div>
+								<ResizeHandle
+									orientation="vertical"
+									ariaLabel="Resize home side panel"
+									onMouseDown={handleHomeSidePanelSeparatorMouseDown}
+									className="z-10"
+								/>
+							</>
+						) : sidebar === "projects" || (sidebar !== null && !selectedCard) ? (
 							<>
 								<div
 									style={{
@@ -1360,6 +1401,9 @@ export default function App(): ReactElement {
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={clearPendingCompareNavigation}
 							onOpenGitCompare={openGitCompare}
+							pendingFileNavigation={pendingFileNavigation}
+							onFileNavigationConsumed={clearPendingFileNavigation}
+							navigateToFile={navigateToFile}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1399,6 +1443,8 @@ export default function App(): ReactElement {
 													board={board}
 													pendingCompareNavigation={pendingCompareNavigation}
 													onCompareNavigationConsumed={clearPendingCompareNavigation}
+													pendingFileNavigation={pendingFileNavigation}
+													onFileNavigationConsumed={clearPendingFileNavigation}
 													branchStatusSlot={
 														homeGitSummary ? (
 															<HomeBranchStatus
@@ -1482,6 +1528,8 @@ export default function App(): ReactElement {
 													}
 													fileBrowserData={homeFileBrowserData}
 													rootPath={workspacePath}
+													pendingFileNavigation={pendingFileNavigation}
+													onFileNavigationConsumed={clearPendingFileNavigation}
 												/>
 											) : (
 												<QuarterdeckBoard

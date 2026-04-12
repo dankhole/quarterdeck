@@ -4,6 +4,28 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Commit sidebar tab — JetBrains-style quick-commit workflow (2026-04-12)
+
+Added a new "Commit" tab to the detail sidebar, providing a JetBrains-style quick-commit workflow directly within the UI. The tab shows uncommitted files as a checkbox list with git status badges (M/A/D/R/?), a commit message text input, and Commit / Discard All action buttons. This enables committing without leaving the current main view or opening an external tool — the common case for landing small changes or agent output.
+
+**Why**: The "discard all changes" action was removed from the git history panel header (buried, undiscoverable) with the expectation that the commit sidebar would be its proper home. Committing previously required either using the agent's prompt shortcuts or dropping to a terminal. This closes that gap with a dedicated, always-accessible UI surface.
+
+**Feature breakdown**:
+- **File list with checkboxes**: Each uncommitted file shows a checkbox, status badge, and filename. Select-all toggle in the header. Files are grouped by status.
+- **Commit message input**: Free-form text area. The Commit button is disabled when no files are selected or the message is empty.
+- **Discard All**: Discards all working changes (wired to the existing `discardGitChanges` backend).
+- **Per-file rollback**: Right-click context menu on any file offers "Discard Changes" to restore that single file to HEAD via the new `discardSingleFile` backend operation.
+- **Cross-view navigation**: Right-click context menu also offers "Open in Diff Viewer" (switches to git view with the file selected) and "Open in File Browser" (switches to files view). These reuse the existing `openGitUncommitted` and main view switching infrastructure.
+- **Backend**: Two new tRPC mutations — `commitSelectedFiles` stages only the user-selected files and commits with the provided message; `discardSingleFile` restores a single file to HEAD. Both validate paths against the worktree root to prevent path traversal attacks and implement rollback-on-failure (if the commit fails after staging, the staged files are unstaged).
+- **Context awareness**: Works in both task worktree and home repo contexts. The panel reads the resolved working directory from the existing workspace metadata infrastructure.
+- **Layout integration**: "Commit" added as a new tab in `DetailToolbar` alongside Terminal, Changes, Files. The tab is always enabled (doesn't require a task selection). The layout hook (`useCardDetailLayout`) updated with the new sidebar option.
+
+**Future work added to todo.md**: #17 (Commit and Push button) and #18 (auto-generated commit messages).
+
+**Files touched**: `web-ui/src/components/detail-panels/commit-panel.tsx` (new — 350+ line commit panel component with file list, context menu, commit/discard actions), `web-ui/src/hooks/use-commit-panel.ts` (new — hook encapsulating commit panel state, file selection, commit/discard orchestration, cross-view navigation), `src/core/api-contract.ts` (added `commitSelectedFiles` and `discardSingleFile` input/output schemas), `src/workspace/git-sync.ts` (implemented `commitSelectedFiles` and `discardSingleFile` git operations), `src/trpc/workspace-api.ts` (new tRPC mutation endpoints), `src/trpc/app-router.ts` (registered new mutations on the router), `web-ui/src/resize/use-card-detail-layout.ts` (added "commit" sidebar option), `web-ui/src/components/detail-panels/detail-toolbar.tsx` (added Commit tab button), `web-ui/src/App.tsx` (wired CommitPanel into sidebar rendering), `web-ui/src/components/card-detail-view.tsx` (passed commit panel props through detail view), `web-ui/src/components/git-view.tsx` (exposed navigation callback for cross-view file opening), `web-ui/src/components/files-view.tsx` (exposed navigation callback for cross-view file opening).
+
+**Commit**: TBD
+
 ## Remove home agent chat sidebar feature (2026-04-12)
 
 Removed the "Quarterdeck Agent" tab from the project navigation sidebar and all supporting infrastructure. The feature was a live terminal panel for a synthetic "home agent session" (Claude/Codex managed by Quarterdeck) embedded in the sidebar. It overlapped with the task agent workflow, was awkward in its current location, and had no clear migration path.

@@ -16,8 +16,11 @@ import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
 	RuntimeGitCommitDiffResponse,
+	RuntimeGitCommitRequest,
+	RuntimeGitCommitResponse,
 	RuntimeGitCreateBranchRequest,
 	RuntimeGitCreateBranchResponse,
+	RuntimeGitDiscardFileRequest,
 	RuntimeGitDiscardResponse,
 	RuntimeGitLogRequest,
 	RuntimeGitLogResponse,
@@ -77,8 +80,11 @@ import {
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
 	runtimeGitCommitDiffResponseSchema,
+	runtimeGitCommitRequestSchema,
+	runtimeGitCommitResponseSchema,
 	runtimeGitCreateBranchRequestSchema,
 	runtimeGitCreateBranchResponseSchema,
+	runtimeGitDiscardFileRequestSchema,
 	runtimeGitDiscardResponseSchema,
 	runtimeGitLogRequestSchema,
 	runtimeGitLogResponseSchema,
@@ -202,6 +208,14 @@ export interface RuntimeTrpcContext {
 		discardGitChanges: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskWorkspaceInfoRequest | null,
+		) => Promise<RuntimeGitDiscardResponse>;
+		commitSelectedFiles: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitCommitRequest,
+		) => Promise<RuntimeGitCommitResponse>;
+		discardFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitDiscardFileRequest,
 		) => Promise<RuntimeGitDiscardResponse>;
 		loadChanges: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -430,6 +444,18 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeGitDiscardResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.discardGitChanges(ctx.workspaceScope, input ?? null);
+			}),
+		commitSelectedFiles: workspaceProcedure
+			.input(runtimeGitCommitRequestSchema)
+			.output(runtimeGitCommitResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.commitSelectedFiles(ctx.workspaceScope, input);
+			}),
+		discardFile: workspaceProcedure
+			.input(runtimeGitDiscardFileRequestSchema)
+			.output(runtimeGitDiscardResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.discardFile(ctx.workspaceScope, input);
 			}),
 		getChanges: workspaceProcedure
 			.input(runtimeWorkspaceChangesRequestSchema)

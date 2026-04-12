@@ -1,6 +1,6 @@
 import { FolderOpen, PanelLeft } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FileBrowserTreePanel } from "@/components/detail-panels/file-browser-tree-panel";
 import { FileContentViewer } from "@/components/detail-panels/file-content-viewer";
@@ -34,9 +34,19 @@ export interface FilesViewProps {
 	fileBrowserData: UseFileBrowserDataResult;
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
+	/** External file navigation from commit panel — selects a file when arriving from another view. */
+	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
+	/** Called after consuming pendingFileNavigation. */
+	onFileNavigationConsumed?: () => void;
 }
 
-export function FilesView({ scopeBar, fileBrowserData, rootPath }: FilesViewProps): React.ReactElement {
+export function FilesView({
+	scopeBar,
+	fileBrowserData,
+	rootPath,
+	pendingFileNavigation,
+	onFileNavigationConsumed,
+}: FilesViewProps): React.ReactElement {
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE),
@@ -46,6 +56,14 @@ export function FilesView({ scopeBar, fileBrowserData, rootPath }: FilesViewProp
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startFileTreeResize } = useResizeDrag();
+
+	// Navigate to a specific file when external file navigation arrives (from commit panel)
+	useEffect(() => {
+		if (pendingFileNavigation?.targetView === "files") {
+			fileBrowserData.onSelectPath(pendingFileNavigation.filePath);
+			onFileNavigationConsumed?.();
+		}
+	}, [pendingFileNavigation, onFileNavigationConsumed, fileBrowserData]);
 
 	// --- Resize ---
 

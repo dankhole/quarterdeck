@@ -6,6 +6,7 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-confirmation-dialog";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
+import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
@@ -126,6 +127,9 @@ export function CardDetailView({
 	pendingCompareNavigation,
 	onCompareNavigationConsumed,
 	onOpenGitCompare,
+	pendingFileNavigation,
+	onFileNavigationConsumed,
+	navigateToFile,
 	onCardDoubleClick,
 }: {
 	selection: CardSelection;
@@ -174,6 +178,9 @@ export function CardDetailView({
 	pendingCompareNavigation?: GitViewCompareNavigation | null;
 	onCompareNavigationConsumed?: () => void;
 	onOpenGitCompare?: (navigation: GitViewCompareNavigation) => void;
+	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
+	onFileNavigationConsumed?: () => void;
+	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
@@ -258,7 +265,7 @@ export function CardDetailView({
 	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
 
 	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
-	const isTaskSidePanelOpen = sidebar === "task_column";
+	const isTaskSidePanelOpen = sidebar === "task_column" || sidebar === "commit";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 
 	const handleSelectAdjacentCard = useCallback(
@@ -313,20 +320,29 @@ export function CardDetailView({
 							overflow: "hidden",
 						}}
 					>
-						<ColumnContextPanel
-							selection={selection}
-							onCardSelect={onCardSelect}
-							onCardDoubleClick={onCardDoubleClick}
-							taskSessions={taskSessions}
-							onTaskDragEnd={onTaskDragEnd}
-							onCreateTask={onCreateTask}
-							onStartAllTasks={onStartAllTasks}
-							onClearTrash={onClearTrash}
-							editingTaskId={editingTaskId}
-							inlineTaskEditor={inlineTaskEditor}
-							onEditTask={onEditTask}
-							panelWidth="100%"
-						/>
+						{sidebar === "commit" ? (
+							<CommitPanel
+								workspaceId={currentProjectId ?? ""}
+								taskId={selection.card.id}
+								baseRef={selection.card.baseRef}
+								navigateToFile={navigateToFile}
+							/>
+						) : (
+							<ColumnContextPanel
+								selection={selection}
+								onCardSelect={onCardSelect}
+								onCardDoubleClick={onCardDoubleClick}
+								taskSessions={taskSessions}
+								onTaskDragEnd={onTaskDragEnd}
+								onCreateTask={onCreateTask}
+								onStartAllTasks={onStartAllTasks}
+								onClearTrash={onClearTrash}
+								editingTaskId={editingTaskId}
+								inlineTaskEditor={inlineTaskEditor}
+								onEditTask={onEditTask}
+								panelWidth="100%"
+							/>
+						)}
 					</div>
 					<ResizeHandle
 						orientation="vertical"
@@ -359,6 +375,8 @@ export function CardDetailView({
 							board={board}
 							pendingCompareNavigation={pendingCompareNavigation}
 							onCompareNavigationConsumed={onCompareNavigationConsumed}
+							pendingFileNavigation={pendingFileNavigation}
+							onFileNavigationConsumed={onFileNavigationConsumed}
 							branchStatusSlot={
 								taskWorkspaceInfo || taskWorkspaceSnapshot ? (
 									<TaskBranchStatus
@@ -427,6 +445,8 @@ export function CardDetailView({
 							}
 							fileBrowserData={fileBrowserData}
 							rootPath={taskWorkspaceInfo?.path ?? selection.card.workingDirectory}
+							pendingFileNavigation={pendingFileNavigation}
+							onFileNavigationConsumed={onFileNavigationConsumed}
 						/>
 					</div>
 				) : (

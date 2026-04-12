@@ -27,7 +27,9 @@ const workspaceStateMocks = vi.hoisted(() => ({
 }));
 
 const gitSyncMocks = vi.hoisted(() => ({
+	commitSelectedFiles: vi.fn(),
 	discardGitChanges: vi.fn(),
+	discardSingleFile: vi.fn(),
 	getGitSyncSummary: vi.fn(),
 	runGitCheckoutAction: vi.fn(),
 	runGitSyncAction: vi.fn(),
@@ -45,7 +47,9 @@ vi.mock("../../../src/workspace/task-worktree.js", () => ({
 }));
 
 vi.mock("../../../src/workspace/git-sync.js", () => ({
+	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
 	discardGitChanges: gitSyncMocks.discardGitChanges,
+	discardSingleFile: gitSyncMocks.discardSingleFile,
 	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
 	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
 	runGitSyncAction: gitSyncMocks.runGitSyncAction,
@@ -529,5 +533,206 @@ describe("createWorkspaceApi deleteWorktree", () => {
 
 		expect(result.ok).toBe(false);
 		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
+	});
+});
+
+describe("createWorkspaceApi commitSelectedFiles", () => {
+	const defaultSummary = {
+		currentBranch: "feature/test",
+		upstreamBranch: null,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		aheadCount: 1,
+		behindCount: 0,
+	};
+
+	beforeEach(() => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		gitSyncMocks.commitSelectedFiles.mockReset();
+	});
+
+	it("resolves home cwd when no taskId", async () => {
+		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
+			ok: true,
+			commitHash: "abc1234",
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		await api.commitSelectedFiles(defaultScope, {
+			taskScope: null,
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+
+		expect(gitSyncMocks.commitSelectedFiles).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
+	});
+
+	it("resolves task worktree cwd", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
+			ok: true,
+			commitHash: "abc1234",
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		await api.commitSelectedFiles(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+
+		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
+			workspacePath: "/tmp/repo",
+			taskId: "task-1",
+			baseRef: "main",
+		});
+		expect(gitSyncMocks.commitSelectedFiles).toHaveBeenCalledWith({
+			cwd: "/tmp/worktree",
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+	});
+
+	it("blocks shared-checkout tasks", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+
+		const api = createWorkspaceApi(createWorkspaceDeps());
+
+		const result = await api.commitSelectedFiles(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/shared checkout/);
+		expect(gitSyncMocks.commitSelectedFiles).not.toHaveBeenCalled();
+	});
+
+	it("broadcasts state update on success", async () => {
+		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
+			ok: true,
+			commitHash: "abc1234",
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		await api.commitSelectedFiles(defaultScope, {
+			taskScope: null,
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+	});
+
+	it("returns error on git failure", async () => {
+		gitSyncMocks.commitSelectedFiles.mockRejectedValue(new Error("git commit failed"));
+
+		const api = createWorkspaceApi(createWorkspaceDeps());
+
+		const result = await api.commitSelectedFiles(defaultScope, {
+			taskScope: null,
+			paths: ["src/file.ts"],
+			message: "test commit",
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toBe("git commit failed");
+	});
+});
+
+describe("createWorkspaceApi discardFile", () => {
+	const defaultSummary = {
+		currentBranch: "feature/test",
+		upstreamBranch: null,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		aheadCount: 0,
+		behindCount: 0,
+	};
+
+	beforeEach(() => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		gitSyncMocks.discardSingleFile.mockReset();
+	});
+
+	it("resolves cwd and calls discardSingleFile", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		gitSyncMocks.discardSingleFile.mockResolvedValue({
+			ok: true,
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		const result = await api.discardFile(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			path: "src/file.ts",
+			fileStatus: "modified",
+		});
+
+		expect(result.ok).toBe(true);
+		expect(gitSyncMocks.discardSingleFile).toHaveBeenCalledWith({
+			cwd: "/tmp/worktree",
+			path: "src/file.ts",
+			fileStatus: "modified",
+		});
+	});
+
+	it("blocks shared-checkout tasks", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+
+		const api = createWorkspaceApi(createWorkspaceDeps());
+
+		const result = await api.discardFile(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			path: "src/file.ts",
+			fileStatus: "modified",
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/shared checkout/);
+		expect(gitSyncMocks.discardSingleFile).not.toHaveBeenCalled();
+	});
+
+	it("broadcasts state update on success", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		gitSyncMocks.discardSingleFile.mockResolvedValue({
+			ok: true,
+			summary: defaultSummary,
+			output: "",
+		});
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		await api.discardFile(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			path: "src/file.ts",
+			fileStatus: "modified",
+		});
+
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
 	});
 });
