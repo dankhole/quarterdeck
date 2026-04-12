@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: project sidebar missing notification dot and NI pill
+
+- Restored per-project approval indicators (orange dot + "NI" pill) in the project navigation sidebar. These were lost during the `b6595ebd` refactor which replaced the working client-side approach with a server-side `needs_input` task count, then `271efe00` reverted the broken server-side approach without restoring the original client-side logic. Now uses the same `isApprovalState` filter on `notificationSessions` that already drives the toolbar icon badge — counts all projects including current, since the project list should show each project's state regardless of which is active.
+
 ### Refactor: extract inline components from App.tsx
 
 - Moved `HomeBranchStatus`, the git-init confirmation dialog, and the git-action error dialog from inline definitions in `App.tsx` into their own component files (`home-branch-status.tsx`, `git-init-dialog.tsx`, `git-action-error-dialog.tsx`). Follows the same pattern as existing extracted dialogs (`ClearTrashDialog`, `MigrateWorkingDirectoryDialog`). Net −161 lines from `App.tsx`, zero behavioral change.

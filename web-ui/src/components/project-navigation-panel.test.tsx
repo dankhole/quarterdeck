@@ -73,6 +73,8 @@ describe("ProjectNavigationPanel", () => {
 					onSelectProject={() => {}}
 					onRemoveProject={async () => true}
 					onAddProject={() => {}}
+					notificationSessions={{}}
+					notificationWorkspaceIds={{}}
 					{...overrides}
 				/>,
 			);

@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: project sidebar missing notification dot and NI pill (2026-04-11)
+
+The project navigation sidebar showed no per-project notification indicators — the toolbar icon got an orange badge but individual project rows had no dot or NI pill.
+
+**History**: Commit `c9a8bcd8` originally added a working `projectIdsWithApprovals` Set computed in App.tsx using `isApprovalState` on client-side `notificationSessions`, passed to `ProjectNavigationPanel` as a prop, rendering an orange dot on each project row. Commit `b6595ebd` ("centralize status colors") replaced this with a server-side `needs_input` count in `RuntimeProjectTaskCounts` and removed both the `projectIdsWithApprovals` prop and the dot. Commit `be56e048` tried to fix double-counting in the server-side approach, but `271efe00` reverted it because the server-side classification was too broad (all `reviewReason === "attention"` counted as needs-input, but attention is the standard completion reason). The revert removed the broken NI pill but never restored the original client-side dot.
+
+**Fix**: Pass `notificationSessions` and `notificationWorkspaceIds` directly to `ProjectNavigationPanel` instead of pre-computing a Set in App.tsx. The panel computes `needsInputByProject` (a `Record<string, number>`) using the same `isApprovalState` filter that drives the toolbar icon badge. Each `ProjectRow` receives its `needsInputCount` and renders: (1) an orange dot next to the project name, and (2) an orange "NI" pill alongside the existing B/IP/R pills. Unlike the toolbar badge which excludes the current project (it signals "attention elsewhere"), the project row shows state for all projects including current.
+
+Added `needs_input` to `statusPillColors` in `column-colors.ts` for the orange pill styling.
+
+**Files touched**: `web-ui/src/App.tsx` (pass notification props), `web-ui/src/components/project-navigation-panel.tsx` (accept props, compute per-project counts, render dot + NI pill), `web-ui/src/data/column-colors.ts` (add `needs_input` pill color), `web-ui/src/components/project-navigation-panel.test.tsx` (add required props to test helper).
+
 ## Refactor: extract inline components from App.tsx (2026-04-11)
 
 `App.tsx` was 1857 lines. Three self-contained pieces were extracted into their own files following the existing dialog component pattern (`ClearTrashDialog`, `MigrateWorkingDirectoryDialog`, etc.):

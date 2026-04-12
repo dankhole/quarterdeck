@@ -25,11 +25,12 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import { statusPillColors } from "@/data/column-colors";
-import type { RuntimeProjectSummary } from "@/runtime/types";
+import type { RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
+import { isApprovalState } from "@/utils/session-status";
 
 interface TaskCountBadge {
 	id: string;
@@ -52,6 +53,8 @@ export function ProjectNavigationPanel({
 	onRemoveProject,
 	onReorderProjects,
 	onAddProject,
+	notificationSessions,
+	notificationWorkspaceIds,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -65,8 +68,23 @@ export function ProjectNavigationPanel({
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
+	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationWorkspaceIds: Record<string, string>;
 }): React.ReactElement {
 	const canReorder = projects.length > 1 && onReorderProjects !== undefined;
+
+	const needsInputByProject = useMemo(() => {
+		const counts: Record<string, number> = {};
+		for (const [taskId, session] of Object.entries(notificationSessions)) {
+			if (isApprovalState(session)) {
+				const projectId = notificationWorkspaceIds[taskId];
+				if (projectId) {
+					counts[projectId] = (counts[projectId] ?? 0) + 1;
+				}
+			}
+		}
+		return counts;
+	}, [notificationSessions, notificationWorkspaceIds]);
 
 	const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 	const prevProjectIdsRef = useRef<string>("");
@@ -209,6 +227,7 @@ export function ProjectNavigationPanel({
 																project={project}
 																isCurrent={currentProjectId === project.id}
 																removingProjectId={removingProjectId}
+																needsInputCount={needsInputByProject[project.id] ?? 0}
 																showDragHandle={canReorder}
 																dragHandleProps={draggableProvided.dragHandleProps}
 																isDragging={draggableSnapshot.isDragging}
@@ -517,6 +536,7 @@ function ProjectRow({
 	project,
 	isCurrent,
 	removingProjectId,
+	needsInputCount = 0,
 	showDragHandle = false,
 	dragHandleProps,
 	isDragging = false,
@@ -526,6 +546,7 @@ function ProjectRow({
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
 	removingProjectId: string | null;
+	needsInputCount?: number;
 	showDragHandle?: boolean;
 	dragHandleProps?: DraggableProvidedDragHandleProps | null;
 	isDragging?: boolean;
@@ -557,6 +578,13 @@ function ProjectRow({
 			shortLabel: "R",
 			toneClassName: statusPillColors.review,
 			count: project.taskCounts.review,
+		},
+		{
+			id: "needs_input",
+			title: "Needs Input",
+			shortLabel: "NI",
+			toneClassName: statusPillColors.needs_input,
+			count: needsInputCount,
 		},
 	].filter((item) => item.count > 0);
 
@@ -599,6 +627,12 @@ function ProjectRow({
 			) : null}
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1.5">
+					{needsInputCount > 0 ? (
+						<span
+							className="shrink-0 w-2 h-2 rounded-full bg-status-orange"
+							title={`${needsInputCount} task${needsInputCount > 1 ? "s" : ""} need${needsInputCount === 1 ? "s" : ""} input`}
+						/>
+					) : null}
 					<span
 						className={cn(
 							"font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm",

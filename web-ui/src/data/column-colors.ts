@@ -29,6 +29,7 @@ export const statusPillColors = {
 	backlog: "bg-text-primary/15 text-text-primary",
 	in_progress: "bg-accent/20 text-accent",
 	review: "bg-status-green/20 text-status-green",
+	needs_input: "bg-status-orange/20 text-status-orange",
 } as const;
 
 // ---------------------------------------------------------------------------

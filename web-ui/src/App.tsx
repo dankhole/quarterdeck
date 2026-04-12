@@ -1297,6 +1297,8 @@ export default function App(): ReactElement {
 										onAddProject={() => {
 											void handleAddProject();
 										}}
+										notificationSessions={notificationSessions}
+										notificationWorkspaceIds={notificationWorkspaceIds}
 									/>
 								</div>
 								<ResizeHandle
