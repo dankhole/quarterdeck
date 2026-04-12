@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: workspace trust auto-confirm for --add-dir directories (2026-04-11)
+
+The workspace trust auto-confirm in `session-manager.ts` only handled one trust prompt per session. After confirming the first prompt (for the worktree cwd), it set `autoConfirmedWorkspaceTrust = true` permanently — subsequent trust prompts from `--add-dir` directories were never auto-confirmed. With `worktreeAddParentRepoDir` enabled, the agent got stuck at the second trust prompt (task created but prompt not processed). With `worktreeAddQuarterdeckDir` also enabled, the compounded trust prompts caused complete failure.
+
+**Fix**: Added `workspaceTrustConfirmCount` to `ActiveProcessState` and `MAX_AUTO_TRUST_CONFIRMS = 5` constant. After each trust confirmation timer fires, if the count is below the cap, `autoConfirmedWorkspaceTrust` resets to `false` — re-arming the detector for the next prompt. The trust buffer is cleared between confirmations so each prompt is detected fresh. When the cap is reached, `workspaceTrustBuffer` is set to `null` to disable the mechanism entirely and stop accumulating output into a buffer that will never be checked.
+
+Also extracted the `willAutoTrust` expression (previously duplicated inline) into a named variable for both the `ActiveProcessState` initialization and the new debug logging.
+
+**Default change**: `worktreeAddParentRepoDir` default changed from `true` to `false` so both `--add-dir` settings are off by default while the trust handling is validated.
+
+**Debug logging**: Added `createTaggedLogger("agent-launch")` in `agent-session-adapters.ts` and `createTaggedLogger("session-mgr")` in `session-manager.ts`. Log points cover: `prepareAgentLaunch` input parameters, `--add-dir` decision (isWorktree check, paths added), final prepared command args (truncated at 200 chars per arg), session spawn details (binary, cwd, willAutoTrust), spawn success (pid) or failure (error), trust prompt detection (confirm count, pattern matched), and process exit (exit code, total trust confirms). All logging is zero-overhead when debug mode is off.
+
+**Files touched**: `src/terminal/session-manager.ts` (trust fix + logging), `src/terminal/agent-session-adapters.ts` (logging), `src/config/global-config-fields.ts` (default change), `test/runtime/config/runtime-config.test.ts` (fixture update), `docs/implementation-log.md` (stale default reference).
+
 ## Git view compare — headless worktree support (2026-04-11)
 
 The compare tab's `defaultSourceRef` used `taskWorkspaceInfo?.branch ?? selectedCard.card.branch` which returned null for headless (detached HEAD) worktrees, leaving the source ref blank. Added `taskWorkspaceInfo?.headCommit` as a fallback between `branch` and card-level branch, so the compare view auto-populates with the HEAD commit SHA.
@@ -84,7 +98,7 @@ Four structural fixes to the hook-based state transition pipeline, plus diagnost
 
 ## Agent directory access from worktrees (2026-04-11)
 
-Two new global config fields — `worktreeAddParentRepoDir` (default true) and `worktreeAddQuarterdeckDir` (default false) — control whether Claude Code agents in task worktrees receive `--add-dir` flags for the parent repository and the `~/.quarterdeck` state directory respectively.
+Two new global config fields — `worktreeAddParentRepoDir` (default false) and `worktreeAddQuarterdeckDir` (default false) — control whether Claude Code agents in task worktrees receive `--add-dir` flags for the parent repository and the `~/.quarterdeck` state directory respectively.
 
 The core logic lives in `claudeAdapter.prepare()` in `agent-session-adapters.ts`. It compares `resolve(input.cwd)` against `resolve(input.workspacePath)` — when they differ (agent is in a worktree), it conditionally pushes `--add-dir <path>` args. When the agent runs directly in the parent repo, the block is skipped entirely. The `workspacePath` field was already available on `StartTaskSessionRequest` but wasn't forwarded to `AgentAdapterLaunchInput` — this change threads it through.
 

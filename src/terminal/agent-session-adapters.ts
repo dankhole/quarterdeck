@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
+import { createTaggedLogger } from "../core/debug-logger";
 import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
@@ -480,6 +481,8 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 	};
 }
 
+const log = createTaggedLogger("agent-launch");
+
 function toBracketedPasteSubmission(command: string): string {
 	return `\u001b[200~${command}\u001b[201~\r`;
 }
@@ -580,12 +583,23 @@ const claudeAdapter: AgentSessionAdapter = {
 
 		// When running in a worktree, optionally give the agent access to the
 		// parent repo directory and/or the ~/.quarterdeck state directory via --add-dir.
-		if (input.workspacePath && resolve(input.cwd) !== resolve(input.workspacePath)) {
+		const isWorktree = input.workspacePath && resolve(input.cwd) !== resolve(input.workspacePath);
+		log.debug("claude adapter --add-dir check", {
+			cwd: input.cwd,
+			workspacePath: input.workspacePath ?? null,
+			isWorktree,
+			worktreeAddParentRepoDir: input.worktreeAddParentRepoDir ?? false,
+			worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
+		});
+		if (isWorktree) {
 			if (input.worktreeAddParentRepoDir) {
-				args.push("--add-dir", input.workspacePath);
+				log.debug("adding --add-dir for parent repo", { path: input.workspacePath });
+				args.push("--add-dir", input.workspacePath!);
 			}
 			if (input.worktreeAddQuarterdeckDir) {
-				args.push("--add-dir", getRuntimeHomePath());
+				const quarterdeckPath = getRuntimeHomePath();
+				log.debug("adding --add-dir for quarterdeck dir", { path: quarterdeckPath });
+				args.push("--add-dir", quarterdeckPath);
 			}
 		}
 
@@ -598,6 +612,12 @@ const claudeAdapter: AgentSessionAdapter = {
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		log.debug("claude adapter prepared launch", {
+			taskId: input.taskId,
+			argCount: withPromptLaunch.args.length,
+			promptLength: input.prompt.trim().length,
+			args: withPromptLaunch.args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…(${a.length})` : a)),
+		});
 		return {
 			...withPromptLaunch,
 			env: {
@@ -1084,6 +1104,19 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
+	log.debug("prepareAgentLaunch called", {
+		taskId: input.taskId,
+		agentId: input.agentId,
+		cwd: input.cwd,
+		workspacePath: input.workspacePath ?? null,
+		worktreeAddParentRepoDir: input.worktreeAddParentRepoDir ?? false,
+		worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
+		hasPrompt: input.prompt.trim().length > 0,
+		imageCount: input.images?.length ?? 0,
+		resumeConversation: input.resumeConversation ?? false,
+		startInPlanMode: input.startInPlanMode ?? false,
+		autonomousMode: input.autonomousModeEnabled ?? false,
+	});
 	const preparedPrompt = await prepareTaskPromptWithImages({
 		prompt: input.prompt,
 		images: input.images,

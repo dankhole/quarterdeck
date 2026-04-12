@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
+import { createTaggedLogger } from "../core/debug-logger";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -34,7 +35,13 @@ import {
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
+const sessionLog = createTaggedLogger("session-mgr");
+
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
+// Maximum number of trust prompts to auto-confirm per session. Covers the CWD
+// trust plus any --add-dir directories. Capped to prevent infinite loops if
+// the trust prompt pattern matches non-trust output.
+const MAX_AUTO_TRUST_CONFIRMS = 5;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 const INTERRUPT_RECOVERY_DELAY_MS = 5_000;
@@ -66,6 +73,7 @@ interface ActiveProcessState {
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
+	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
 }
@@ -337,6 +345,23 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) =>
 			part.toLowerCase().includes("codex"),
 		);
+
+		const willAutoTrust =
+			shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
+			shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
+			hasCodexLaunchSignature;
+		sessionLog.debug("spawning task session", {
+			taskId: request.taskId,
+			agentId: request.agentId,
+			binary: commandBinary,
+			cwd: request.cwd,
+			workspacePath: request.workspacePath ?? null,
+			argCount: commandArgs.length,
+			willAutoTrust,
+			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir ?? false,
+			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
+		});
+
 		let session: PtySession;
 		try {
 			session = PtySession.spawn({
@@ -380,6 +405,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 							const hasCodexPrompt = hasCodexWorkspaceTrustPrompt(entry.active.workspaceTrustBuffer);
 							if (hasClaudePrompt || hasCodexPrompt) {
 								entry.active.autoConfirmedWorkspaceTrust = true;
+								entry.active.workspaceTrustConfirmCount += 1;
+								sessionLog.debug("workspace trust prompt detected, scheduling auto-confirm", {
+									taskId: request.taskId,
+									confirmCount: entry.active.workspaceTrustConfirmCount,
+									maxConfirms: MAX_AUTO_TRUST_CONFIRMS,
+									isClaudePrompt: hasClaudePrompt,
+									isCodexPrompt: hasCodexPrompt,
+								});
 								const trustConfirmDelayMs = WORKSPACE_TRUST_CONFIRM_DELAY_MS;
 								entry.active.workspaceTrustConfirmTimer = setTimeout(() => {
 									const activeEntry = this.entries.get(request.taskId)?.active;
@@ -393,6 +426,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 										activeEntry.workspaceTrustBuffer = "";
 									}
 									activeEntry.workspaceTrustConfirmTimer = null;
+									// Allow subsequent trust prompts (e.g. from --add-dir directories)
+									// to be auto-confirmed. Cap at MAX_AUTO_TRUST_CONFIRMS to prevent
+									// infinite confirm loops if the pattern matches non-trust output.
+									if (activeEntry.workspaceTrustConfirmCount < MAX_AUTO_TRUST_CONFIRMS) {
+										activeEntry.autoConfirmedWorkspaceTrust = false;
+									} else {
+										// Cap reached — disable the buffer entirely to avoid
+										// accumulating output that will never be checked.
+										activeEntry.workspaceTrustBuffer = null;
+									}
 								}, trustConfirmDelayMs);
 							}
 						}
@@ -436,6 +479,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 				},
 				onExit: (event) => {
+					sessionLog.debug("task session process exited", {
+						taskId: request.taskId,
+						exitCode: event.exitCode,
+						trustConfirmCount: this.entries.get(request.taskId)?.active?.workspaceTrustConfirmCount ?? 0,
+					});
 					const currentEntry = this.entries.get(request.taskId);
 					if (!currentEntry) {
 						return;
@@ -480,6 +528,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 				},
 			});
 		} catch (error) {
+			sessionLog.error("failed to spawn task session", {
+				taskId: request.taskId,
+				agentId: request.agentId,
+				binary: commandBinary,
+				error: error instanceof Error ? error.message : String(error),
+			});
 			if (launch.cleanup) {
 				void launch.cleanup().catch(() => {
 					// Best effort: cleanup failure is non-critical.
@@ -503,14 +557,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 			throw new Error(formatSpawnFailure(commandBinary, error));
 		}
 
+		sessionLog.debug("task session spawned successfully", {
+			taskId: request.taskId,
+			pid: session.pid,
+			willAutoTrust,
+		});
+
 		const active: ActiveProcessState = {
 			session,
-			workspaceTrustBuffer:
-				shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
-				shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
-				hasCodexLaunchSignature
-					? ""
-					: null,
+			workspaceTrustBuffer: willAutoTrust ? "" : null,
 			cols,
 			rows,
 			terminalProtocolFilter: createTerminalProtocolFilterState({
@@ -523,6 +578,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
+			workspaceTrustConfirmCount: 0,
 			workspaceTrustConfirmTimer: null,
 			interruptRecoveryTimer: null,
 		};
@@ -678,6 +734,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			shouldInspectOutputForTransition: null,
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
+			workspaceTrustConfirmCount: 0,
 			workspaceTrustConfirmTimer: null,
 			interruptRecoveryTimer: null,
 		};
