@@ -532,7 +532,9 @@ function ProjectRow({
 			title: "Review",
 			shortLabel: "R",
 			toneClassName: statusPillColors.review,
-			count: project.taskCounts.review,
+			// Server counts all awaiting_review sessions as "review" — subtract the
+			// needs-input subset so tasks aren't double-counted across R and NI pills.
+			count: Math.max(0, project.taskCounts.review - needsInputCount),
 		},
 		{
 			id: "needs_input",

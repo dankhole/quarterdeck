@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: needs-input tasks double-counted in sidebar pills (2026-04-12)
+
+A task in the "needs input" state (awaiting permission approval) was showing both an "R" and "NI" pill in the project sidebar.
+
+**Root cause**: The server's `applyLiveSessionStateToProjectTaskCounts` moves all `awaiting_review` sessions from the `in_progress` count to the `review` count — it doesn't distinguish permission requests from genuine reviews. The client independently computes `needsInputCount` from notification sessions via `isApprovalState()`, which correctly identifies permission-request tasks. Since these tasks are a subset of the server's review count, they were counted in both pills.
+
+**Prior attempts**: A server-side approach (adding `needs_input` to `RuntimeProjectTaskCounts` and classifying in `applyLiveSessionStateToProjectTaskCounts`) was tried and reverted — it misclassified `reviewReason === "attention"` (the default completion reason) as needs-input, inflating counts.
+
+**Fix**: In `ProjectRow`, the R pill count is now `Math.max(0, project.taskCounts.review - needsInputCount)`. This is correct because needs-input tasks are always a strict subset of the server's review count: `isApprovalState` requires `state === "awaiting_review"`, and any such task in `in_progress` is moved to review by the server; any in the `review` column is already counted. The `Math.max(0, ...)` guards against edge-case timing differences between `projects_updated` and `task_notification` WebSocket messages.
+
+Files touched: `web-ui/src/components/project-navigation-panel.tsx`
+
 ## Test: unit coverage for pure utility modules (2026-04-12)
 
 Added 189 test cases across 10 modules that had 0–75% coverage, targeting pure functions with no server/PTY/filesystem dependencies.

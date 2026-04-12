@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: needs-input tasks double-counted in sidebar pills
+
+- Fixed a bug where a task awaiting permission approval showed both an "R" (Review) and "NI" (Needs Input) pill in the project sidebar. The server counts all `awaiting_review` sessions as review; the client refines a subset as needs-input. The R pill now subtracts the needs-input count to prevent overlap.
+
 ### Test: unit coverage for pure utility modules
 
 - Added 189 new test cases across 10 previously untested or undertested pure-logic modules, covering runtime utilities (project-path, output-utils, shell, shortcut-utils, debug-logger) and web-ui utilities (path-display, session-status, open-targets, drag-rules, resize-preferences). All target deterministic, side-effect-free functions that require no server, PTY, or filesystem mocking.
