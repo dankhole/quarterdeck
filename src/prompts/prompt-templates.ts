@@ -95,11 +95,10 @@ Exit code 0 means the target is an ancestor of HEAD (up to date) — skip to Ste
 If the target has diverged, first identify what each side changed independently:
 
 \`\`\`bash
-MERGE_BASE=$(git merge-base <target> HEAD)
-# Files this worktree changed
-git diff --name-only $MERGE_BASE HEAD
+# Files this worktree changed since the branch point
+git diff --name-only <target>...HEAD
 # Files the target changed since we branched
-git diff --name-only $MERGE_BASE <target>
+git diff --name-only HEAD...<target>
 \`\`\`
 
 Save both file lists. Files that appear in **both** lists were modified by both sides — these are the risky ones that need careful review even if git merges them cleanly.

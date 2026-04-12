@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: squash merge prompt uses shell variable expansion (2026-04-11)
+
+The squash merge prompt template in `prompt-templates.ts` instructed agents to run `MERGE_BASE=$(git merge-base <target> HEAD)` and then reference `$MERGE_BASE` in subsequent `git diff` commands. This shell variable expansion (`simple_expansion`) triggered Claude Code's permission prompt every time, even though `Bash(git *)` was already auto-approved in the user's settings.
+
+**Fix**: Replaced with git's native three-dot diff syntax: `git diff --name-only <target>...HEAD` and `git diff --name-only HEAD...<target>`. The three-dot syntax computes the merge base internally (`git diff A...B` ≡ `git diff $(git merge-base A B) B`), producing identical output without any shell variable assignment or expansion.
+
+**Files touched**: `src/prompts/prompt-templates.ts` (squash merge prompt template).
+
 ## Fix: summary regeneration ignores user-configured stale window (2026-04-11)
 
 The `generateDisplaySummary` tRPC endpoint had a staleness check that prioritized newer conversation data over the user's `summaryStaleAfterSeconds` setting. The old logic: if newer conversation data existed since the last generation, skip the time-based check entirely and regenerate. This meant a user who set a 5-minute window could still see regeneration on every hover if the agent was actively producing conversation summaries.

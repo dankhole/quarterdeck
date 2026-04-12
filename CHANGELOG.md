@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: squash merge prompt uses shell variable expansion
+
+- The squash merge prompt template's divergence-check commands used `MERGE_BASE=$(git merge-base ...)` with `$MERGE_BASE` expansion, which triggered Claude Code's `simple_expansion` permission prompt on every run. Replaced with git's three-dot diff syntax (`git diff --name-only <target>...HEAD`) which is semantically equivalent and doesn't require shell variable assignment.
+
 ### Fix: summary regeneration ignores user-configured stale window
 
 - The `generateDisplaySummary` endpoint now always respects the `summaryStaleAfterSeconds` window before checking for newer conversation data. Previously, new conversation data arriving within the stale window would bypass the user's configured interval and trigger an early LLM regeneration on the next card hover.
