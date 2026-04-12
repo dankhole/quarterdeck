@@ -4,6 +4,24 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Test: unit coverage for pure utility modules (2026-04-12)
+
+Added 189 test cases across 10 modules that had 0–75% coverage, targeting pure functions with no server/PTY/filesystem dependencies.
+
+**Runtime (5 new test files, 61 tests):**
+- `test/runtime/project-path.test.ts` — tilde expansion, relative/absolute path resolution, edge cases (bare `~`, `..` traversal, tilde mid-path)
+- `test/runtime/output-utils.test.ts` — ANSI strip FSM covering CSI color codes, OSC title sequences (BEL + ST terminators), bare ESC, mixed sequences, empty input
+- `test/runtime/shell.test.ts` — platform-branched shell resolution (SHELL/COMSPEC env, whitespace trimming, fallbacks), single-quote escaping on Unix, double-quote escaping on Win32, `buildShellCommandLine` joining
+- `test/runtime/shortcut-utils.test.ts` — `areRuntimeProjectShortcutsEqual` for length mismatch, field differences, icon nullability (`undefined` vs `""`), order sensitivity
+- `test/runtime/debug-logger.test.ts` — enable/disable toggle, no-op when disabled, ring buffer overflow at capacity 200, sequential IDs, all four log levels, console output format, listener registration/unsubscribe, listener error isolation, `safeSerializeData` for null/circular/oversized data, defensive copy from `getRecentDebugLogEntries`
+
+**Web UI (3 new + 2 expanded test files, 128 tests):**
+- `web-ui/src/utils/path-display.test.ts` (new) — `formatPathForDisplay` home dir replacement for `/Users/<user>`, `/home/<user>`, `C:/Users/<user>`, bare home = `~`, backslash normalization, no-match passthrough
+- `web-ui/src/utils/session-status.test.ts` (new) — `describeSessionState` for all 5 session states × review reasons, `getSessionStatusBadgeStyle` for all state/reason combos, `isApprovalState` for all 4 permission detection paths (hookEventName, notificationType variants, activityText)
+- `web-ui/src/resize/resize-preferences.test.ts` (new) — load/persist for number and boolean preferences, function vs static defaults, mock delegation to `resize-persistence` and `local-storage-store`
+- `web-ui/src/utils/open-targets.test.ts` (expanded) — added `normalizeOpenTargetId` (aliases `ghostie`→`ghostty`, `intellij_idea`→`intellijidea`, null/unknown), `resolveOpenTargetPlatform` (no navigator), platform-specific labels (File Explorer/File Manager/Finder), all mac targets (iterm2/ghostty fallback chains, intellij CE fallback), all linux targets, all windows targets, shell quoting edge cases (embedded quotes)
+- `web-ui/src/state/drag-rules.test.ts` (expanded) — added `isAllowedCrossColumnCardMove` (all column pairs, programmatic move matching with null/mismatched taskId), `findCardColumnId` (found/not-found/empty), expanded `isCardDropDisabled` (backlog reorder, trash-to-trash disabled, all source→target combos)
+
 ## Branch selector: show detached HEAD as "Working tree" indicator (2026-04-12)
 
 Small UX polish for detached HEAD worktrees. When `branches` includes a ref with `type: "detached"`, the `BranchSelectorPopover` now renders a "Working tree" section at the top showing `HEAD ({shortHash})` in orange with a check mark, matching the git refs panel's visual language. The section is non-interactive (no click handler, no context menu) and hidden when the search field has input. Previously, the popover showed no indication of the current state when detached — `currentBranch` is `null` so nothing was highlighted.

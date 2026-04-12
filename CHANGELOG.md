@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Test: unit coverage for pure utility modules
+
+- Added 189 new test cases across 10 previously untested or undertested pure-logic modules, covering runtime utilities (project-path, output-utils, shell, shortcut-utils, debug-logger) and web-ui utilities (path-display, session-status, open-targets, drag-rules, resize-preferences). All target deterministic, side-effect-free functions that require no server, PTY, or filesystem mocking.
+
 ### Branch selector: show detached HEAD as "Working tree" indicator
 
 - When on a detached HEAD, the branch selector popover now shows a non-interactive "Working tree" section at the top with the current commit hash — previously the popover showed no selected branch, making it look like nothing was checked out. Hidden during search since it's not a switchable target.
