@@ -2,7 +2,7 @@
 
 **Status:** Planned
 **Date:** 2026-04-11
-**Related:** todo #9 (permission prompts), todo #20 (compact), todo #21 (merge workflow)
+**Related:** todo #9 (consolidated — permission race, non-hook operations, notification beeps, hook timeouts)
 **Supersedes:** `docs/handoff-stuck-running-fix.md` (can be deleted once this is adopted)
 
 ---

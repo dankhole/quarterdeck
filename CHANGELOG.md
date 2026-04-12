@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Todo consolidation
+
+- Consolidated 23 todo items down to 17 by merging related items: agent state tracking bugs (#9, #18, #19, #20 → #9), session persistence (#2, #11, #12 → #2), non-isolated worktree tasks (#8, #13 → #8), and removing completed sidebar widths item. Updated cross-references and refactor doc.
+
 ### Remove experimental HTML chat view
 
 - Removed the "Experimental: HTML chat view" feature and its `terminalChatViewEnabled` setting. The feature replaced the terminal canvas with browser-rendered HTML text but was incomplete and noisy — output was unreliable for full-screen TUIs like Claude Code. Deleted `ChatOutputView` component and `useChatOutput` hook, removed the config field from the API contract and global config, removed the settings toggle, and cleaned up prop threading through `App` → `CardDetailView` → `AgentTerminalPanel`. Added todo #24 to revisit the concept with a better approach.

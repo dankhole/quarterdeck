@@ -4,7 +4,21 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
-<<<<<<< HEAD
+## Todo consolidation (2026-04-12)
+
+Consolidated the dev todo from 23 items to 17 by merging related items that were tracking different facets of the same underlying problem.
+
+**Consolidations:**
+- **Agent state tracking** (old #9, #18, #19, #20 → new #9): Permission race condition, non-hook operations (compact/reload/`/resume`) stuck in wrong state, notification beep count issues, and hook delivery timeouts — all stem from the same hook delivery architecture. References `docs/refactor-session-lifecycle.md` which has the full analysis and refactor plan.
+- **Session persistence** (old #2, #11, #12 → new #2): Sessions breaking after crash/closure, auto-trashing on restart, and un-trash not auto-resuming — all part of the same session continuity problem.
+- **Non-isolated worktree tasks** (old #8, #13 → new #8): Session clobbering on un-trash and branch/git state resume issues for shared-workspace tasks.
+- **Removed**: Independent sidebar widths per panel (old #16) — sidebars have diverged enough that this is effectively already addressed.
+- **Added from main**: #17 "Revisit HTML chat view concept" (was #24 on main, renumbered to fit).
+
+Updated `docs/refactor-session-lifecycle.md` Related line to reference consolidated #9.
+
+**Files touched**: `docs/todo.md`, `docs/refactor-session-lifecycle.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Remove experimental HTML chat view (2026-04-12)
 
 Removed the "Experimental: HTML chat view" feature entirely. The feature attempted to render agent output as browser HTML instead of the xterm canvas by reading from xterm's processed buffer via `useChatOutput`, which took periodic snapshots of the terminal buffer lines. It was always labeled "Testing only" and defaulted to off. The approach was fundamentally limited — scraping the terminal buffer produced incomplete/noisy output for full-screen TUIs like Claude Code that use cursor positioning.
