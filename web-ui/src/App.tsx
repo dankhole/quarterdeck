@@ -1604,10 +1604,15 @@ export default function App(): ReactElement {
 							sourceFilter={debugLogging.sourceFilter}
 							searchText={debugLogging.searchText}
 							showConsoleCapture={debugLogging.showConsoleCapture}
+							availableTags={debugLogging.availableTags}
+							disabledTags={debugLogging.disabledTags}
 							onSetLevelFilter={debugLogging.setLevelFilter}
 							onSetSourceFilter={debugLogging.setSourceFilter}
 							onSetSearchText={debugLogging.setSearchText}
 							onSetShowConsoleCapture={debugLogging.setShowConsoleCapture}
+							onToggleTag={debugLogging.toggleTag}
+							onEnableAllTags={debugLogging.enableAllTags}
+							onDisableAllTags={debugLogging.disableAllTags}
 							onClear={debugLogging.clearLogEntries}
 							onClose={debugLogging.closeDebugLogPanel}
 							onStopLogging={debugLogging.stopLogging}

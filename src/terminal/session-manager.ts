@@ -352,7 +352,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
 			shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
 			hasCodexLaunchSignature;
-		sessionLog.debug("spawning task session", {
+		sessionLog.info("spawning task session", {
 			taskId: request.taskId,
 			agentId: request.agentId,
 			binary: commandBinary,
@@ -491,7 +491,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 				},
 				onExit: (event) => {
-					sessionLog.debug("task session process exited", {
+					sessionLog.info("task session process exited", {
 						taskId: request.taskId,
 						exitCode: event.exitCode,
 						trustConfirmCount: this.entries.get(request.taskId)?.active?.workspaceTrustConfirmCount ?? 0,
@@ -569,7 +569,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			throw new Error(formatSpawnFailure(commandBinary, error));
 		}
 
-		sessionLog.debug("task session spawned successfully", {
+		sessionLog.info("task session spawned successfully", {
 			taskId: request.taskId,
 			pid: session.pid,
 			willAutoTrust,
@@ -1108,7 +1108,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 				}
 			} catch (err) {
-				console.error(`[reconciliation] Error processing ${entry.taskId}:`, err);
+				sessionLog.error(`Reconciliation error for ${entry.taskId}`, {
+					error: err instanceof Error ? err.message : String(err),
+				});
 			}
 		}
 	}

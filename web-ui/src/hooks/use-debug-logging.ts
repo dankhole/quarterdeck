@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { setDebugLogging } from "@/runtime/runtime-config-query";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { registerClientLogCallback, setClientLoggingEnabled } from "@/utils/client-logger";
 import { setGlobalErrorCallback } from "@/utils/global-error-capture";
 
@@ -18,6 +19,10 @@ export interface UseDebugLoggingResult {
 	searchText: string;
 	showConsoleCapture: boolean;
 	isToggling: boolean;
+	/** All unique tags seen in the current log entries. */
+	availableTags: string[];
+	/** Tags currently disabled (filtered out). */
+	disabledTags: Set<string>;
 	toggleDebugLogging: () => void;
 	openDebugLogPanel: () => void;
 	closeDebugLogPanel: () => void;
@@ -28,12 +33,31 @@ export interface UseDebugLoggingResult {
 	setSourceFilter: (source: DebugLogSourceFilter) => void;
 	setSearchText: (text: string) => void;
 	setShowConsoleCapture: (show: boolean) => void;
+	toggleTag: (tag: string) => void;
+	enableAllTags: () => void;
+	disableAllTags: () => void;
 	addClientLogEntry: (level: RuntimeDebugLogEntry["level"], tag: string, message: string, data?: unknown) => void;
 }
 
 const LEVEL_ORDER: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 let clientEntryId = 0;
+
+function loadDisabledTags(): Set<string> {
+	const raw = readLocalStorageItem(LocalStorageKey.DebugLogDisabledTags);
+	if (!raw) return new Set();
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (Array.isArray(parsed)) return new Set(parsed.filter((t): t is string => typeof t === "string"));
+	} catch {
+		// Ignore malformed data.
+	}
+	return new Set();
+}
+
+function persistDisabledTags(tags: Set<string>): void {
+	writeLocalStorageItem(LocalStorageKey.DebugLogDisabledTags, JSON.stringify([...tags]));
+}
 
 export function useDebugLogging({
 	currentProjectId,
@@ -54,6 +78,7 @@ export function useDebugLogging({
 	const [isToggling, setIsToggling] = useState(false);
 	const [clientEntries, setClientEntries] = useState<RuntimeDebugLogEntry[]>([]);
 	const [clearedAt, setClearedAt] = useState(0);
+	const [disabledTags, setDisabledTags] = useState<Set<string>>(loadDisabledTags);
 
 	const allEntries = useMemo(() => {
 		const serverEntries = clearedAt > 0 ? debugLogEntries.filter((e) => e.timestamp > clearedAt) : debugLogEntries;
@@ -62,10 +87,21 @@ export function useDebugLogging({
 		return [...serverEntries, ...clientVisible].sort((a, b) => a.timestamp - b.timestamp);
 	}, [debugLogEntries, clientEntries, clearedAt]);
 
+	const availableTags = useMemo(() => {
+		const tags = new Set<string>();
+		for (const entry of allEntries) {
+			tags.add(entry.tag);
+		}
+		return [...tags].sort();
+	}, [allEntries]);
+
 	const filteredEntries = useMemo(() => {
 		let entries = allEntries;
 		if (!showConsoleCapture) {
 			entries = entries.filter((e) => e.tag !== "console");
+		}
+		if (disabledTags.size > 0) {
+			entries = entries.filter((e) => !disabledTags.has(e.tag));
 		}
 		if (levelFilter !== "all") {
 			const minOrder = LEVEL_ORDER[levelFilter] ?? 0;
@@ -84,7 +120,34 @@ export function useDebugLogging({
 			);
 		}
 		return entries;
-	}, [allEntries, showConsoleCapture, levelFilter, sourceFilter, searchText]);
+	}, [allEntries, showConsoleCapture, disabledTags, levelFilter, sourceFilter, searchText]);
+
+	const toggleTag = useCallback((tag: string) => {
+		setDisabledTags((prev) => {
+			const next = new Set(prev);
+			if (next.has(tag)) {
+				next.delete(tag);
+			} else {
+				next.add(tag);
+			}
+			persistDisabledTags(next);
+			return next;
+		});
+	}, []);
+
+	const enableAllTags = useCallback(() => {
+		setDisabledTags(new Set());
+		persistDisabledTags(new Set());
+	}, []);
+
+	const disableAllTags = useCallback(() => {
+		const all = new Set<string>();
+		for (const entry of allEntries) {
+			all.add(entry.tag);
+		}
+		persistDisabledTags(all);
+		setDisabledTags(all);
+	}, [allEntries]);
 
 	const toggleDebugLogging = useCallback(() => {
 		if (isToggling) return;
@@ -185,6 +248,8 @@ export function useDebugLogging({
 		searchText,
 		showConsoleCapture,
 		isToggling,
+		availableTags,
+		disabledTags,
 		toggleDebugLogging,
 		openDebugLogPanel,
 		closeDebugLogPanel,
@@ -195,6 +260,9 @@ export function useDebugLogging({
 		setSourceFilter,
 		setSearchText,
 		setShowConsoleCapture,
+		toggleTag,
+		enableAllTags,
+		disableAllTags,
 		addClientLogEntry,
 	};
 }

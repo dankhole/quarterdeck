@@ -76,7 +76,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
 				const event = body.event;
-				log.debug("Hook ingest received", {
+				log.info("Hook ingest received", {
 					taskId,
 					event,
 					hookEventName: body.metadata?.hookEventName ?? null,
@@ -193,7 +193,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					}
 				}
 
-				log.debug("Hook transitioning", {
+				log.info("Hook transitioning", {
 					taskId,
 					event,
 					fromState: summary.state,

@@ -26,6 +26,7 @@ export enum LocalStorageKey {
 	DebugLogPanelWidth = "quarterdeck.debug-log-panel-width",
 	FileBrowserWordWrap = "quarterdeck.file-browser-word-wrap",
 	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",
+	DebugLogDisabledTags = "quarterdeck.debug-log-disabled-tags",
 }
 
 export const LAYOUT_CUSTOMIZATION_LOCAL_STORAGE_KEYS = [

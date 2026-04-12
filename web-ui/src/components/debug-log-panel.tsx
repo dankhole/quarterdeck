@@ -2,6 +2,7 @@ import { Bug, Power, Trash2, X } from "lucide-react";
 import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DebugLogLevelFilter, DebugLogSourceFilter } from "@/hooks/use-debug-logging";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -62,6 +63,31 @@ function LogEntry({ entry }: { entry: RuntimeDebugLogEntry }): ReactElement {
 	);
 }
 
+function TagFilterChip({
+	tag,
+	disabled,
+	onToggle,
+}: {
+	tag: string;
+	disabled: boolean;
+	onToggle: (tag: string) => void;
+}): ReactElement {
+	return (
+		<button
+			type="button"
+			onClick={() => onToggle(tag)}
+			className={cn(
+				"px-1.5 py-0 rounded text-[10px] font-mono leading-relaxed border transition-colors shrink-0",
+				disabled
+					? "bg-surface-1 text-text-tertiary border-border line-through opacity-50"
+					: "bg-surface-2 text-accent border-border-bright hover:bg-surface-3",
+			)}
+		>
+			{tag}
+		</button>
+	);
+}
+
 export function DebugLogPanel({
 	entries,
 	entryCount,
@@ -69,10 +95,15 @@ export function DebugLogPanel({
 	sourceFilter,
 	searchText,
 	showConsoleCapture,
+	availableTags,
+	disabledTags,
 	onSetLevelFilter,
 	onSetSourceFilter,
 	onSetSearchText,
 	onSetShowConsoleCapture,
+	onToggleTag,
+	onEnableAllTags,
+	onDisableAllTags,
 	onClear,
 	onClose,
 	onStopLogging,
@@ -83,10 +114,15 @@ export function DebugLogPanel({
 	sourceFilter: DebugLogSourceFilter;
 	searchText: string;
 	showConsoleCapture: boolean;
+	availableTags: string[];
+	disabledTags: Set<string>;
 	onSetLevelFilter: (level: DebugLogLevelFilter) => void;
 	onSetSourceFilter: (source: DebugLogSourceFilter) => void;
 	onSetSearchText: (text: string) => void;
 	onSetShowConsoleCapture: (show: boolean) => void;
+	onToggleTag: (tag: string) => void;
+	onEnableAllTags: () => void;
+	onDisableAllTags: () => void;
 	onClear: () => void;
 	onClose: () => void;
 	onStopLogging: () => void;
@@ -134,6 +170,8 @@ export function DebugLogPanel({
 			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 		}
 	}, [entries]);
+
+	const hasAnyDisabled = disabledTags.size > 0;
 
 	return (
 		<div className="flex shrink-0 h-full overflow-hidden">
@@ -220,6 +258,33 @@ export function DebugLogPanel({
 						</label>
 					</Tooltip>
 				</div>
+
+				{/* Tag filter chips */}
+				{availableTags.length > 0 ? (
+					<div className="flex items-center gap-1 px-2 py-1 border-b border-border bg-surface-1/30 shrink-0 flex-wrap">
+						<span className="text-[10px] text-text-tertiary mr-0.5 shrink-0">Tags:</span>
+						{availableTags.map((tag) => (
+							<TagFilterChip key={tag} tag={tag} disabled={disabledTags.has(tag)} onToggle={onToggleTag} />
+						))}
+						{hasAnyDisabled ? (
+							<button
+								type="button"
+								onClick={onEnableAllTags}
+								className="text-[10px] text-accent hover:text-accent-hover ml-1 shrink-0"
+							>
+								show all
+							</button>
+						) : (
+							<button
+								type="button"
+								onClick={onDisableAllTags}
+								className="text-[10px] text-text-tertiary hover:text-text-secondary ml-1 shrink-0"
+							>
+								hide all
+							</button>
+						)}
+					</div>
+				) : null}
 
 				{/* Log entries */}
 				<div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">

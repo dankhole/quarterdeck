@@ -75,7 +75,9 @@ export function createTaggedLogger(tag: string): TaggedLogger {
 // ── Internals ─────────────────────────────────────────────────────────────
 
 function emit(level: DebugLogLevel, tag: string, message: string, data: unknown): void {
-	if (!debugLoggingEnabled) {
+	// warn and error always log — they represent problems worth capturing.
+	// debug and info are gated behind the debug toggle to avoid noise.
+	if (!debugLoggingEnabled && (level === "debug" || level === "info")) {
 		return;
 	}
 

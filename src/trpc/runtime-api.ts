@@ -19,7 +19,7 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
-import { isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
+import { createTaggedLogger, isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
 import { loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
@@ -342,7 +342,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		// benign (duplicate session start, not data loss) and the terminal manager
 		// replaces existing sessions, so this is an accepted trade-off.
 		migrateTaskWorkingDirectory: async (workspaceScope, input) => {
-			const log = (...args: unknown[]) => console.info(`[migrate ${input.taskId} ${input.direction}]`, ...args);
+			const migrateLog = createTaggedLogger("migrate");
+			const log = (message: string, data?: unknown) =>
+				migrateLog.info(`[${input.taskId} ${input.direction}] ${message}`, data);
 
 			try {
 				const state = await loadWorkspaceState(workspaceScope.workspacePath);
@@ -373,7 +375,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					} else {
 						currentWorkingDirectory = workspaceScope.workspacePath;
 					}
-					log("resolved currentWorkingDirectory:", currentWorkingDirectory);
+					log("resolved currentWorkingDirectory", currentWorkingDirectory);
 				}
 
 				// If the task is already in the requested state, bail early to avoid
@@ -390,7 +392,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = terminalManager.store.getSummary(input.taskId);
 				const wasRunning = summary && (summary.state === "running" || summary.state === "awaiting_review");
-				log("wasRunning:", wasRunning, "state:", summary?.state ?? "no session");
+				log("session state check", { wasRunning, state: summary?.state ?? "no session" });
 
 				// Resolve agent command and runtime config only when we need to
 				// restart a session. Idle tasks (no running session) don't need an
@@ -453,7 +455,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					// task's. This means the patch may include other tasks' uncommitted
 					// work. Isolating from a shared checkout is inherently imprecise
 					// because git has no per-task change tracking.
-					log("capturing patch from", currentWorkingDirectory);
+					log("capturing patch", currentWorkingDirectory);
 					await captureTaskPatch({
 						repoPath: workspaceScope.workspacePath,
 						taskId: input.taskId,
@@ -466,7 +468,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						baseRef: card.baseRef,
 					});
 					if (!ensured.ok || !ensured.path) {
-						log("worktree creation failed:", ensured.error);
+						log("worktree creation failed", ensured.error);
 						// Worktree creation failed — restart the session at the old CWD
 						// so the user isn't left with a dead task.
 						if (wasRunning) {
@@ -476,7 +478,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						return { ok: false, error: ensured.error ?? "Failed to create worktree." };
 					}
 					newWorkingDirectory = ensured.path;
-					log("worktree created at", newWorkingDirectory);
+					log("worktree created", newWorkingDirectory);
 					// Apply patch in worktree.
 					const patch = await findTaskPatch(input.taskId);
 					if (patch) {
@@ -485,7 +487,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							await applyTaskPatch(patch.path, newWorkingDirectory);
 							log("patch applied");
 						} catch (patchError) {
-							log("patch apply failed:", patchError instanceof Error ? patchError.message : patchError);
+							log("patch apply failed", patchError instanceof Error ? patchError.message : patchError);
 						} finally {
 							// TODO: Consider keeping the patch file on apply failure so the
 							// user can recover manually (e.g. `git apply <path>`).
@@ -498,12 +500,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					// Worktree -> main checkout (de-isolate).
 					// Uncommitted changes stay in the worktree as a safety net.
 					newWorkingDirectory = workspaceScope.workspacePath;
-					log("de-isolating to", newWorkingDirectory);
+					log("de-isolating", newWorkingDirectory);
 				}
 
 				// Update the card's workingDirectory.
 				try {
-					log("persisting workingDirectory:", newWorkingDirectory);
+					log("persisting workingDirectory", newWorkingDirectory);
 					await mutateWorkspaceState(workspaceScope.workspacePath, (currentState) => {
 						const board = structuredClone(currentState.board);
 						const target = findCardInBoard(board, input.taskId);
@@ -531,7 +533,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						// project and --continue won't find the old conversation. Use
 						// resumeConversation only when the CWD hasn't changed (error recovery).
 						const cwdChanged = resolve(currentWorkingDirectory) !== resolve(newWorkingDirectory);
-						log("restarting session at", newWorkingDirectory, cwdChanged ? "(fresh — cwd changed)" : "(resume)");
+						log("restarting session", { cwd: newWorkingDirectory, mode: cwdChanged ? "fresh" : "resume" });
 						const restartedSummary = await terminalManager.startTaskSession(
 							buildRestartRequest(newWorkingDirectory, !cwdChanged),
 						);
@@ -540,7 +542,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						// last turn" works correctly after migration.
 						try {
 							const nextTurn = (restartedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-							log("capturing turn checkpoint, turn:", nextTurn);
+							log("capturing turn checkpoint", { turn: nextTurn });
 							await captureTaskTurnCheckpoint({
 								cwd: newWorkingDirectory,
 								taskId: input.taskId,
@@ -551,7 +553,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						}
 					}
 
-					log("migration complete:", currentWorkingDirectory, "->", newWorkingDirectory);
+					log("migration complete", { from: currentWorkingDirectory, to: newWorkingDirectory });
 					return { ok: true, newWorkingDirectory };
 				} catch (postStopError) {
 					// If the post-stop operations fail (state persistence, session
@@ -559,12 +561,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					// the user isn't left with a dead task — mirrors the isolate
 					// branch's error recovery for worktree creation failure.
 					if (wasRunning) {
-						log("post-stop failed, restarting session at old cwd:", currentWorkingDirectory);
+						log("post-stop failed, restarting session at old cwd", currentWorkingDirectory);
 						try {
 							await terminalManager.startTaskSession(buildRestartRequest(currentWorkingDirectory, true));
 						} catch (restartError) {
 							log(
-								"session restart also failed:",
+								"session restart also failed",
 								restartError instanceof Error ? restartError.message : restartError,
 							);
 						}
@@ -573,7 +575,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				log("migration failed:", message);
+				log("migration failed", message);
 				return { ok: false, error: message };
 			}
 		},
