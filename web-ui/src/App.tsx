@@ -1223,6 +1223,7 @@ export default function App(): ReactElement {
 						currentBranch={topbarBranchActions.currentBranch}
 						worktreeBranches={topbarBranchActions.worktreeBranches}
 						onSelectBranchView={topbarBranchActions.handleCheckoutBranch}
+						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined

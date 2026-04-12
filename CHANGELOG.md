@@ -35,6 +35,7 @@
 
 - Added a branch pill to the top navigation bar that shows the current branch and allows quick checkout of any branch. In task context, checkouts target the task worktree; in home context, they target the home repository. Uses the same `BranchSelectorPopover` component as the file browser and git view.
 - Confirmation dialogs match the existing checkout flow: task checkouts show a "Don't show again" checkbox (re-enable via Settings), home checkouts always confirm (suppressible only through Settings). Dirty working tree and worktree-locked branch warnings work as before.
+- The branch dropdown now shows an inline checkout icon and right-click "Checkout" context menu item on each branch row, matching the file browser's branch dropdown.
 
 ### Git view compare — headless worktree support
 

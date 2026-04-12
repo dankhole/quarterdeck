@@ -4,6 +4,12 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: top bar branch pill missing explicit checkout affordance (2026-04-12)
+
+The top bar's `BranchSelectorPopover` was wired with `onSelectBranchView` mapped to checkout but didn't pass `onCheckoutBranch`, so the inline LogIn icon and right-click "Checkout" context menu item never appeared. The file browser's branch dropdown already had both because `card-detail-view.tsx` passes both props. One-line fix: pass `onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}` to the top bar's `BranchSelectorPopover` in `App.tsx`.
+
+**Files touched**: `web-ui/src/App.tsx` (added `onCheckoutBranch` prop to topbar branch pill slot).
+
 ## Fix: project sidebar missing notification dot and NI pill (2026-04-11)
 
 The project navigation sidebar showed no per-project notification indicators — the toolbar icon got an orange badge but individual project rows had no dot or NI pill.
