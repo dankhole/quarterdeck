@@ -24,6 +24,7 @@ import { GitActionErrorDialog } from "@/components/git-action-error-dialog";
 import { GitHistoryView } from "@/components/git-history-view";
 import { GitInitDialog } from "@/components/git-init-dialog";
 import { GitView } from "@/components/git-view";
+import { HardDeleteTaskDialog } from "@/components/hard-delete-task-dialog";
 import { HomeBranchStatus } from "@/components/home-branch-status";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
@@ -811,6 +812,9 @@ export default function App(): ReactElement {
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleHardDeleteTrashTask,
+		hardDeleteDialogState,
+		handleCancelHardDelete,
+		handleConfirmHardDelete,
 		handleRestartTaskSession,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
@@ -1722,6 +1726,12 @@ export default function App(): ReactElement {
 						taskCount={trashTaskCount}
 						onCancel={() => setIsClearTrashDialogOpen(false)}
 						onConfirm={handleConfirmClearTrash}
+					/>
+					<HardDeleteTaskDialog
+						open={hardDeleteDialogState.open}
+						taskTitle={hardDeleteDialogState.taskTitle}
+						onCancel={handleCancelHardDelete}
+						onConfirm={handleConfirmHardDelete}
 					/>
 					<TaskTrashWarningDialog
 						open={trashWarningState.open}

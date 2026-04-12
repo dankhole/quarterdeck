@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: confirmation dialog for individual permanent delete in trash (2026-04-12)
+
+Added an "are you sure" confirmation dialog when clicking the individual "Delete permanently" button on trash cards. Previously, clicking the button immediately deleted the task with no confirmation — inconsistent with the "Clear trash" (delete all) flow which already had a confirmation dialog.
+
+**New component**: `HardDeleteTaskDialog` (`web-ui/src/components/hard-delete-task-dialog.tsx`) — mirrors the `ClearTrashDialog` pattern exactly. AlertDialog with task title in the body, "This action cannot be undone" warning, Cancel and "Delete Permanently" (danger variant) buttons.
+
+**Hook changes** (`web-ui/src/hooks/use-board-interactions.ts`): `handleHardDeleteTrashTask` now opens the confirmation dialog instead of executing the delete directly. The actual deletion logic moved to a private `executeHardDelete` callback. Added `handleCancelHardDelete` and `handleConfirmHardDelete` handlers with the Radix `onOpenChange` ref guard (`hardDeleteConfirmedRef`) to prevent the cancel handler from firing after confirm — same pattern as `trashWarningConfirmedRef`. `HardDeleteDialogState` interface tracks `open`, `taskId`, and `taskTitle`. Dialog state reset added to `resetBoardInteractionsState` for project switch cleanup.
+
+**App.tsx wiring**: Import, destructure new handlers from `useBoardInteractions`, render `HardDeleteTaskDialog` alongside the existing `ClearTrashDialog`.
+
+**Files touched**: `web-ui/src/components/hard-delete-task-dialog.tsx` (new), `web-ui/src/hooks/use-board-interactions.ts`, `web-ui/src/App.tsx`
+
 ## Fix: restore terminal scrollback so history survives reconnect (2026-04-12)
 
 Removed `scrollback: 0` from agent session `TerminalStateMirror` creation in `session-manager.ts`. This value (introduced in `5bafce54`) made restore snapshots viewport-only, which meant every tab refresh or WebSocket reconnect wiped all conversation history. The primary duplication fix (`scrollOnEraseInDisplay: false` from `2a6b9cc2`) remains in place — it prevents ED2-triggered duplication from TUI screen redraws. The `scrollback: 0` was a secondary hardening measure that turned out to be too aggressive.

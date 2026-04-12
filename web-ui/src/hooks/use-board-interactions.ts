@@ -54,6 +54,18 @@ const INITIAL_TRASH_WARNING_STATE: TrashWarningState = {
 	optimisticMoveApplied: false,
 };
 
+interface HardDeleteDialogState {
+	open: boolean;
+	taskId: string | null;
+	taskTitle: string | null;
+}
+
+const INITIAL_HARD_DELETE_DIALOG_STATE: HardDeleteDialogState = {
+	open: false,
+	taskId: null,
+	taskTitle: null,
+};
+
 interface PendingProgrammaticStartMoveCompletion {
 	resolve: (started: boolean) => void;
 	timeoutId: number;
@@ -100,6 +112,9 @@ export interface UseBoardInteractionsResult {
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleHardDeleteTrashTask: (taskId: string) => void;
+	hardDeleteDialogState: HardDeleteDialogState;
+	handleCancelHardDelete: () => void;
+	handleConfirmHardDelete: () => void;
 	handleRestartTaskSession: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
@@ -153,6 +168,10 @@ export function useBoardInteractions({
 	const [moveToTrashLoadingById, setMoveToTrashLoadingById] = useState<Record<string, boolean>>({});
 	const [trashWarningState, setTrashWarningState] = useState<TrashWarningState>(INITIAL_TRASH_WARNING_STATE);
 	const trashWarningConfirmedRef = useRef(false);
+	const [hardDeleteDialogState, setHardDeleteDialogState] = useState<HardDeleteDialogState>(
+		INITIAL_HARD_DELETE_DIALOG_STATE,
+	);
+	const hardDeleteConfirmedRef = useRef(false);
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -919,6 +938,18 @@ export function useBoardInteractions({
 
 	const handleHardDeleteTrashTask = useCallback(
 		(taskId: string) => {
+			const card = board.columns.flatMap((col) => col.cards).find((c) => c.id === taskId);
+			setHardDeleteDialogState({
+				open: true,
+				taskId,
+				taskTitle: card?.title ?? null,
+			});
+		},
+		[board.columns],
+	);
+
+	const executeHardDelete = useCallback(
+		(taskId: string) => {
 			let didRemove = false;
 			setBoard((currentBoard) => {
 				const selection = findCardSelection(currentBoard, taskId);
@@ -956,6 +987,26 @@ export function useBoardInteractions({
 		},
 		[cleanupTaskWorkspace, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
 	);
+
+	const handleCancelHardDelete = useCallback(() => {
+		// Radix AlertDialog fires onOpenChange(false) after confirm — the ref guard
+		// prevents the cancel handler from resetting state after confirm already ran.
+		if (hardDeleteConfirmedRef.current) {
+			hardDeleteConfirmedRef.current = false;
+			return;
+		}
+		setHardDeleteDialogState(INITIAL_HARD_DELETE_DIALOG_STATE);
+	}, []);
+
+	const handleConfirmHardDelete = useCallback(() => {
+		if (!hardDeleteDialogState.open || !hardDeleteDialogState.taskId) {
+			return;
+		}
+		hardDeleteConfirmedRef.current = true;
+		const { taskId } = hardDeleteDialogState;
+		setHardDeleteDialogState(INITIAL_HARD_DELETE_DIALOG_STATE);
+		executeHardDelete(taskId);
+	}, [executeHardDelete, hardDeleteDialogState]);
 
 	const handleCancelTrashWarning = useCallback(() => {
 		// When the user clicks confirm, Radix AlertDialog fires onOpenChange(false) which triggers
@@ -1008,6 +1059,7 @@ export function useBoardInteractions({
 		resetProgrammaticCardMoves();
 		setIsClearTrashDialogOpen(false);
 		setTrashWarningState(INITIAL_TRASH_WARNING_STATE);
+		setHardDeleteDialogState(INITIAL_HARD_DELETE_DIALOG_STATE);
 	}, [resetProgrammaticCardMoves, resolvePendingProgrammaticStartMove, setIsClearTrashDialogOpen]);
 
 	useEffect(() => {
@@ -1028,6 +1080,9 @@ export function useBoardInteractions({
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleHardDeleteTrashTask,
+		hardDeleteDialogState,
+		handleCancelHardDelete,
+		handleConfirmHardDelete,
 		handleRestartTaskSession,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,

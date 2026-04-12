@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: confirmation dialog for individual permanent delete in trash
+
+- Clicking "Delete permanently" on a trash card now shows a confirmation AlertDialog before deleting — matches the existing "Clear trash" confirmation pattern. Dialog shows the task title, "This action cannot be undone", with Cancel and "Delete Permanently" buttons. Uses the Radix `onOpenChange` ref guard to prevent the cancel handler from firing after confirm.
+
 ### Fix: restore terminal scrollback so history survives reconnect
 
 - Removed `scrollback: 0` from the server-side `TerminalStateMirror` for agent sessions — restore snapshots now include conversation history instead of just the viewport. Tab refresh and WebSocket reconnects no longer wipe scroll history. `scrollOnEraseInDisplay: false` remains in place to prevent ED2 duplicate content. Alternate screen transition dupes are an accepted trade-off pending a future interception fix.
