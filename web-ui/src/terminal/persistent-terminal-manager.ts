@@ -173,6 +173,11 @@ class PersistentTerminal {
 	private restoreCompleted = false;
 	private outputTextDecoder = new TextDecoder();
 	private terminalWriteQueue: Promise<void> = Promise.resolve();
+	/** Bumped on any lifecycle event where the server may not know our dimensions. */
+	private resizeEpoch = 0;
+	/** The epoch that was current when we last successfully sent a resize message. */
+	private lastSatisfiedResizeEpoch = -1;
+	/** Cols/rows we last sent — for within-epoch dedup when dimensions change. */
 	private lastSentCols = 0;
 	private lastSentRows = 0;
 	private disposed = false;
@@ -377,11 +382,8 @@ class PersistentTerminal {
 		cols: number | null | undefined,
 		rows: number | null | undefined,
 	): Promise<void> {
-		// Reset tracked dimensions so the post-restore requestResize() always
-		// sends the resize message — the server connection is fresh/reconnected
-		// and doesn't know the current terminal size.
-		this.lastSentCols = 0;
-		this.lastSentRows = 0;
+		// Server connection is fresh/reconnected and doesn't know our dimensions.
+		this.invalidateResize();
 		await this.terminalWriteQueue.catch(() => undefined);
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
@@ -393,17 +395,37 @@ class PersistentTerminal {
 		await this.enqueueTerminalWrite(snapshot);
 	}
 
+	/**
+	 * Mark the current resize state as stale. The next requestResize() will
+	 * unconditionally send dimensions to the server, even if cols/rows
+	 * haven't changed since the last send.
+	 */
+	private invalidateResize(): void {
+		this.resizeEpoch += 1;
+	}
+
+	/**
+	 * Invalidate and immediately re-send terminal dimensions.
+	 * Convenience for lifecycle events that need both steps.
+	 */
+	private forceResize(): void {
+		this.invalidateResize();
+		this.requestResize();
+	}
+
 	private requestResize(): void {
 		if (!this.visibleContainer) {
 			return;
 		}
 		this.fitAddon.fit();
 		const { cols, rows } = this.terminal;
-		if (cols === this.lastSentCols && rows === this.lastSentRows) {
+		const epochSatisfied = this.lastSatisfiedResizeEpoch === this.resizeEpoch;
+		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows) {
 			return;
 		}
 		this.lastSentCols = cols;
 		this.lastSentRows = rows;
+		this.lastSatisfiedResizeEpoch = this.resizeEpoch;
 		const bounds = this.visibleContainer.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
@@ -466,6 +488,8 @@ class PersistentTerminal {
 			}
 			this.lastError = null;
 			this.notifyLastError();
+			// Socket reconnected — server may have lost our dimensions.
+			this.invalidateResize();
 			if (this.restoreCompleted && this.visibleContainer) {
 				this.requestResize();
 			}
@@ -543,16 +567,12 @@ class PersistentTerminal {
 				// When a session newly starts, the server PTY may not have had our
 				// terminal dimensions — the resize sent during the earlier restore
 				// may have been silently dropped because the PTY didn't exist yet.
-				// Reset dedup tracking and re-send so the PTY picks up the correct
-				// cols/rows.
 				if (
 					this.visibleContainer &&
 					payload.summary.state !== previousState &&
 					(payload.summary.state === "running" || payload.summary.state === "awaiting_review")
 				) {
-					this.lastSentCols = 0;
-					this.lastSentRows = 0;
-					this.requestResize();
+					this.forceResize();
 				}
 				return;
 			}
@@ -680,10 +700,8 @@ class PersistentTerminal {
 			this.visibleContainer = container;
 			container.appendChild(this.hostElement);
 			// New container — previous resize may have targeted a different
-			// (or parked) container, or been silently dropped.  Reset dedup
-			// so requestResize() always sends fresh dimensions.
-			this.lastSentCols = 0;
-			this.lastSentRows = 0;
+			// (or parked) container, or been silently dropped.
+			this.invalidateResize();
 		}
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();

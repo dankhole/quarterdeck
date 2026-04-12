@@ -14,6 +14,7 @@ export interface TerminalRestoreSnapshot {
 
 interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
+	scrollOnEraseInDisplay?: boolean;
 }
 
 export class TerminalStateMirror {
@@ -28,6 +29,7 @@ export class TerminalStateMirror {
 			cols,
 			rows,
 			scrollback: TERMINAL_SCROLLBACK,
+			scrollOnEraseInDisplay: options.scrollOnEraseInDisplay ?? true,
 		});
 		this.terminal.loadAddon(this.serializeAddon);
 		this.terminal.onData((data) => {
