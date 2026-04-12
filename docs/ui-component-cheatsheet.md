@@ -61,7 +61,7 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 
 | Tab | ID | Icon | Tied to task? | Side panel content | Main view content |
 |---|---|---|---|---|---|
-| Home | `home` | Home icon | No | Project nav (project list + agent) | Board / Git History |
+| Home | `home` | Home icon | No | Project nav (project list) | Board / Git History |
 | Task Column | `task_column` | Grid icon | Yes | Stacked columns, selected task highlighted | Agent Terminal |
 | Changes | `changes` | Git compare icon | Yes | Diff viewer + file tree | Agent Terminal |
 | Files | `files` | Folder icon | Yes | File browser | Agent Terminal |
@@ -82,7 +82,6 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 | What you see | Name | Component | File |
 |---|---|---|---|
 | Project list with task count badges, add button, keyboard shortcuts | **Project nav** | `ProjectNavigationPanel` | `components/project-navigation-panel.tsx` |
-| "Projects" / "Quarterdeck Agent" toggle inside project nav | **Section tabs** | (inline in `ProjectNavigationPanel`) | `components/project-navigation-panel.tsx` |
 | Individual project row with name, path, B/IP/R/T badges | **Project row** | `ProjectRow` | `components/project-navigation-panel.tsx` (private) |
 
 ### Home Tab (Main View)

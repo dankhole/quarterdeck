@@ -20,7 +20,6 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
-import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
 import { loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
@@ -113,37 +112,32 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const body = parseTaskSessionStartRequest(input);
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
 				const useWorktree = body.useWorktree !== false;
-				const isHomeSession = isHomeAgentSessionId(body.taskId);
-				let taskCwd: string;
-				if (isHomeSession) {
-					taskCwd = workspaceScope.workspacePath;
-				} else {
-					// Prefer the persisted working directory if it still exists on disk.
-					const state = await loadWorkspaceState(workspaceScope.workspacePath);
-					const existingCard = findCardInBoard(state.board, body.taskId);
-					const persisted = existingCard?.workingDirectory ?? null;
-					// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
-					// The other path to ensureTaskWorktreeIfDoesntExist is workspace-api.ts:ensureWorktree,
-					// which receives branch from the client request instead.
-					const savedBranch = existingCard?.branch ?? null;
-					const persistedExists = persisted !== null && (await pathExists(persisted));
+				// Prefer the persisted working directory if it still exists on disk.
+				const state = await loadWorkspaceState(workspaceScope.workspacePath);
+				const existingCard = findCardInBoard(state.board, body.taskId);
+				const persisted = existingCard?.workingDirectory ?? null;
+				// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
+				// The other path to ensureTaskWorktreeIfDoesntExist is workspace-api.ts:ensureWorktree,
+				// which receives branch from the client request instead.
+				const savedBranch = existingCard?.branch ?? null;
+				const persistedExists = persisted !== null && (await pathExists(persisted));
 
-					// The persisted workingDirectory is the source of truth. It's kept
-					// in sync with useWorktree by migrateTaskWorkingDirectory. We only
-					// fall back to useWorktree for legacy or first-run cards.
-					if (persistedExists) {
-						taskCwd = persisted;
-					} else if (useWorktree) {
-						taskCwd = await resolveTaskCwd({
-							cwd: workspaceScope.workspacePath,
-							taskId: body.taskId,
-							baseRef: body.baseRef,
-							ensure: true,
-							branch: savedBranch,
-						});
-					} else {
-						taskCwd = workspaceScope.workspacePath;
-					}
+				// The persisted workingDirectory is the source of truth. It's kept
+				// in sync with useWorktree by migrateTaskWorkingDirectory. We only
+				// fall back to useWorktree for legacy or first-run cards.
+				let taskCwd: string;
+				if (persistedExists) {
+					taskCwd = persisted;
+				} else if (useWorktree) {
+					taskCwd = await resolveTaskCwd({
+						cwd: workspaceScope.workspacePath,
+						taskId: body.taskId,
+						baseRef: body.baseRef,
+						ensure: true,
+						branch: savedBranch,
+					});
+				} else {
+					taskCwd = workspaceScope.workspacePath;
 				}
 
 				// workingDirectory is persisted by the client after the response
@@ -151,7 +145,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				// race where the server bumps the revision while the client's
 				// persist debounce is in flight.
 
-				const shouldCaptureTurnCheckpoint = !body.resumeConversation && !isHomeSession;
+				const shouldCaptureTurnCheckpoint = !body.resumeConversation;
 
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const previousTerminalAgentId = body.resumeConversation

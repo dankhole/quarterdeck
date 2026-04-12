@@ -51,7 +51,6 @@ import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
 import { useGitActions } from "@/hooks/use-git-actions";
 import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
-import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
@@ -124,7 +123,6 @@ export default function App(): ReactElement {
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
-	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingCompareNavigation, setPendingCompareNavigation] = useState<GitViewCompareNavigation | null>(null);
@@ -653,13 +651,6 @@ export default function App(): ReactElement {
 		sendTaskSessionInput,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
-	const homeSidebarAgentPanel = useHomeSidebarAgentPanel({
-		currentProjectId,
-		hasNoProjects,
-		runtimeProjectConfig,
-		taskSessions: sessions,
-		workspaceGit,
-	});
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
 			currentProjectId,
@@ -1288,10 +1279,6 @@ export default function App(): ReactElement {
 										isLoadingProjects={isProjectListLoading}
 										currentProjectId={navigationCurrentProjectId}
 										removingProjectId={removingProjectId}
-										activeSection={homeSidebarSection}
-										onActiveSectionChange={setHomeSidebarSection}
-										canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-										agentSectionContent={homeSidebarAgentPanel}
 										onSelectProject={(projectId) => {
 											void handleSelectProject(projectId);
 										}}

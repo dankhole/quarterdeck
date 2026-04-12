@@ -8,7 +8,7 @@ import {
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, GripVertical, Lightbulb, Plus, X } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -45,10 +45,6 @@ export function ProjectNavigationPanel({
 	isLoadingProjects = false,
 	currentProjectId,
 	removingProjectId,
-	activeSection,
-	onActiveSectionChange,
-	canShowAgentSection,
-	agentSectionContent,
 	onSelectProject,
 	onPreloadProject,
 	onRemoveProject,
@@ -61,10 +57,6 @@ export function ProjectNavigationPanel({
 	isLoadingProjects?: boolean;
 	currentProjectId: string | null;
 	removingProjectId: string | null;
-	activeSection: "projects" | "agent";
-	onActiveSectionChange: (section: "projects" | "agent") => void;
-	canShowAgentSection: boolean;
-	agentSectionContent?: ReactNode;
 	onSelectProject: (projectId: string) => void;
 	onPreloadProject?: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
@@ -152,142 +144,90 @@ export function ProjectNavigationPanel({
 						Quarterdeck <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
 				</div>
-				<div className="mt-2 rounded-md bg-surface-2 p-1">
-					<div className="grid grid-cols-2 gap-1">
-						<button
-							type="button"
-							onClick={() => onActiveSectionChange("projects")}
-							className={cn(
-								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
-								activeSection === "projects"
-									? "bg-surface-4 text-text-primary"
-									: "text-text-secondary hover:text-text-primary",
-							)}
-						>
-							Projects
-						</button>
-						<button
-							type="button"
-							onClick={() => onActiveSectionChange("agent")}
-							disabled={!canShowAgentSection}
-							className={cn(
-								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
-								activeSection === "agent"
-									? "bg-surface-4 text-text-primary"
-									: "text-text-secondary hover:text-text-primary",
-								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
-							)}
-						>
-							Quarterdeck Agent
-						</button>
-					</div>
-				</div>
-				{activeSection === "agent" ? (
-					<p className="text-text-tertiary text-xs" style={{ padding: "8px 4px 0" }}>
-						Add tasks, link dependencies, break work down, and manage your board. Try asking to create and link
-						some tasks to get started.
-					</p>
-				) : null}
 			</div>
 
-			{activeSection === "projects" ? (
-				<>
-					<div
-						className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
-						style={{ padding: "4px 12px" }}
-					>
-						{projects.length === 0 && isLoadingProjects ? (
-							<div style={{ padding: "4px 0" }}>
-								{Array.from({ length: 3 }).map((_, index) => (
-									<ProjectRowSkeleton key={`project-skeleton-${index}`} />
-								))}
-							</div>
-						) : null}
-
-						<DragDropContext onDragEnd={handleDragEnd}>
-							<Droppable droppableId="project-list">
-								{(droppableProvided) => (
-									<div ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-										{displayedProjects.map((project, index) => (
-											<Draggable
-												key={project.id}
-												draggableId={project.id}
-												index={index}
-												isDragDisabled={!canReorder}
-											>
-												{(draggableProvided, draggableSnapshot) => {
-													const row = (
-														<div
-															ref={draggableProvided.innerRef}
-															{...draggableProvided.draggableProps}
-															style={{
-																...draggableProvided.draggableProps.style,
-																marginBottom: 4,
-															}}
-														>
-															<ProjectRow
-																project={project}
-																isCurrent={currentProjectId === project.id}
-																removingProjectId={removingProjectId}
-																needsInputCount={needsInputByProject[project.id] ?? 0}
-																showDragHandle={canReorder}
-																dragHandleProps={draggableProvided.dragHandleProps}
-																isDragging={draggableSnapshot.isDragging}
-																onSelect={onSelectProject}
-																onPreload={onPreloadProject}
-																onRemove={(projectId) => {
-																	const found = displayedProjects.find(
-																		(item) => item.id === projectId,
-																	);
-																	if (!found) {
-																		return;
-																	}
-																	setPendingProjectRemoval(found);
-																}}
-															/>
-														</div>
-													);
-													if (draggableSnapshot.isDragging && typeof document !== "undefined") {
-														return createPortal(row, document.body);
-													}
-													return row;
-												}}
-											</Draggable>
-										))}
-										{droppableProvided.placeholder}
-									</div>
-								)}
-							</Droppable>
-						</DragDropContext>
-
-						{!isLoadingProjects ? (
-							<button
-								type="button"
-								className="kb-project-row flex cursor-pointer items-center gap-1.5 rounded-md text-text-secondary hover:text-text-primary"
-								style={{ padding: "6px 8px" }}
-								onClick={onAddProject}
-								disabled={removingProjectId !== null}
-							>
-								<Plus size={14} className="shrink-0" />
-								<span className="text-sm">Add Project</span>
-							</button>
-						) : null}
+			<div
+				className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
+				style={{ padding: "4px 12px" }}
+			>
+				{projects.length === 0 && isLoadingProjects ? (
+					<div style={{ padding: "4px 0" }}>
+						{Array.from({ length: 3 }).map((_, index) => (
+							<ProjectRowSkeleton key={`project-skeleton-${index}`} />
+						))}
 					</div>
-					<OnboardingTips />
-					<ShortcutsCard />
-					<BetaNotice />
-				</>
-			) : (
-				<div className="flex flex-1 min-h-0 flex-col">
-					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">
-						{agentSectionContent ?? (
-							<div className="flex w-full items-center justify-center rounded-md border border-border bg-surface-2 px-3 text-center text-sm text-text-secondary">
-								Select a project to use the agent.
+				) : null}
+
+				<DragDropContext onDragEnd={handleDragEnd}>
+					<Droppable droppableId="project-list">
+						{(droppableProvided) => (
+							<div ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+								{displayedProjects.map((project, index) => (
+									<Draggable
+										key={project.id}
+										draggableId={project.id}
+										index={index}
+										isDragDisabled={!canReorder}
+									>
+										{(draggableProvided, draggableSnapshot) => {
+											const row = (
+												<div
+													ref={draggableProvided.innerRef}
+													{...draggableProvided.draggableProps}
+													style={{
+														...draggableProvided.draggableProps.style,
+														marginBottom: 4,
+													}}
+												>
+													<ProjectRow
+														project={project}
+														isCurrent={currentProjectId === project.id}
+														removingProjectId={removingProjectId}
+														needsInputCount={needsInputByProject[project.id] ?? 0}
+														showDragHandle={canReorder}
+														dragHandleProps={draggableProvided.dragHandleProps}
+														isDragging={draggableSnapshot.isDragging}
+														onSelect={onSelectProject}
+														onPreload={onPreloadProject}
+														onRemove={(projectId) => {
+															const found = displayedProjects.find((item) => item.id === projectId);
+															if (!found) {
+																return;
+															}
+															setPendingProjectRemoval(found);
+														}}
+													/>
+												</div>
+											);
+											if (draggableSnapshot.isDragging && typeof document !== "undefined") {
+												return createPortal(row, document.body);
+											}
+											return row;
+										}}
+									</Draggable>
+								))}
+								{droppableProvided.placeholder}
 							</div>
 						)}
-					</div>
-				</div>
-			)}
+					</Droppable>
+				</DragDropContext>
+
+				{!isLoadingProjects ? (
+					<button
+						type="button"
+						className="kb-project-row flex cursor-pointer items-center gap-1.5 rounded-md text-text-secondary hover:text-text-primary"
+						style={{ padding: "6px 8px" }}
+						onClick={onAddProject}
+						disabled={removingProjectId !== null}
+					>
+						<Plus size={14} className="shrink-0" />
+						<span className="text-sm">Add Project</span>
+					</button>
+				) : null}
+			</div>
+			<OnboardingTips />
+			<ShortcutsCard />
+			<BetaNotice />
 			<AlertDialog
 				open={pendingProjectRemoval !== null}
 				onOpenChange={(open) => {

@@ -4,6 +4,24 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Remove home agent chat sidebar feature (2026-04-12)
+
+Removed the "Quarterdeck Agent" tab from the project navigation sidebar and all supporting infrastructure. The feature was a live terminal panel for a synthetic "home agent session" (Claude/Codex managed by Quarterdeck) embedded in the sidebar. It overlapped with the task agent workflow, was awkward in its current location, and had no clear migration path.
+
+**Deleted files (8)**: `src/core/home-agent-session.ts` (synthetic session ID utilities), `src/prompts/append-system-prompt.ts` (234-line CLI reference system prompt for the sidebar agent), `test/runtime/append-system-prompt.test.ts`, `web-ui/src/hooks/use-home-agent-session.ts` (session lifecycle management, 299 lines), `web-ui/src/hooks/use-home-agent-session.test.tsx` (656 lines), `web-ui/src/hooks/use-home-sidebar-agent-panel.tsx` (sidebar panel compositor), `web-ui/src/hooks/use-home-sidebar-agent-panel.test.tsx`, `web-ui/src/hooks/home-sidebar-agent-panel-session-summary.ts` (relocated, see below).
+
+**Backend changes**: Removed `isHomeAgentSessionId` import and home-session CWD shortcut from `runtime-api.ts` — all task sessions now go through the standard worktree resolution path. Removed `resolveHomeAgentAppendSystemPrompt` from both Claude and Codex adapters in `agent-session-adapters.ts` (no more system prompt injection for home sessions). Removed dead `hasCodexConfigOverride` helper. Deleted the entire `append-system-prompt.ts` module (only existed for the home agent).
+
+**Frontend changes**: Removed the tab switcher and "Quarterdeck Agent" section from `project-navigation-panel.tsx` — the component now always shows the project list. Removed `useHomeSidebarAgentPanel` hook call, `homeSidebarSection` state, and 4 agent-tab props from `App.tsx`.
+
+**Relocated utility**: `selectNewestTaskSessionSummary` moved from the deleted `home-sidebar-agent-panel-session-summary.ts` to a new `session-summary-utils.ts` — it's a general session comparison utility used by `use-task-sessions.ts` and `use-workspace-sync.ts`.
+
+**Preserved**: Home shell terminal (bottom panel), `homeRepoPollMs` config, home repo git polling — these are general infrastructure unrelated to the agent chat.
+
+**Stale reference cleanup**: Removed dead `@runtime-home-agent-session` alias from `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`. Updated `DEVELOPMENT.md`, `docs/architecture.md`, `docs/ui-layout-architecture.md`, `docs/ui-component-cheatsheet.md`, `docs/terminal-scrollback-investigation.md`, `docs/windows-compatibility.md` to remove references to the deleted feature.
+
+**Files touched**: `src/core/home-agent-session.ts` (deleted), `src/prompts/append-system-prompt.ts` (deleted), `src/terminal/agent-session-adapters.ts`, `src/trpc/runtime-api.ts`, `test/runtime/append-system-prompt.test.ts` (deleted), `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/trpc/runtime-api.test.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/project-navigation-panel.tsx`, `web-ui/src/components/project-navigation-panel.test.tsx`, `web-ui/src/hooks/use-home-agent-session.ts` (deleted), `web-ui/src/hooks/use-home-agent-session.test.tsx` (deleted), `web-ui/src/hooks/use-home-sidebar-agent-panel.tsx` (deleted), `web-ui/src/hooks/use-home-sidebar-agent-panel.test.tsx` (deleted), `web-ui/src/hooks/home-sidebar-agent-panel-session-summary.ts` (renamed to `session-summary-utils.ts`), `web-ui/src/hooks/use-task-sessions.ts`, `web-ui/src/hooks/use-workspace-sync.ts`, `web-ui/tsconfig.json`, `web-ui/vite.config.ts`, `web-ui/vitest.config.ts`, `DEVELOPMENT.md`, `docs/architecture.md`, `docs/terminal-scrollback-investigation.md`, `docs/ui-component-cheatsheet.md`, `docs/ui-layout-architecture.md`, `docs/windows-compatibility.md`, `CHANGELOG.md`, `docs/todo.md`, `docs/implementation-log.md`.
+
 ## Move --add-dir settings to Developer/Experimental + worktree isolation todos (2026-04-12)
 
 Investigated user report that all worktree tasks showed the same branch hash in the status bar, task cards, and branch dropdown. Root cause: worktrees created without a feature branch are detached HEAD at the same base commit, and the `worktreeAddParentRepoDir`/`worktreeAddQuarterdeckDir` settings (which were enabled) let agents `cd` out of their worktree into the home repo, causing the status bar to reflect the home repo's branch state instead of the worktree's.

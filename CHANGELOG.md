@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Remove home agent chat sidebar feature
+
+- Removed the "Quarterdeck Agent" tab from the project navigation sidebar. The feature — a live terminal panel for a Quarterdeck-managed Claude/Codex session — overlapped with task agents and had no clear UI home. The sidebar now shows only the project list. The home shell terminal (bottom panel) and home repo polling are unaffected.
+
 ### Move --add-dir settings to Developer/Experimental section with safety warnings
 
 - Moved the `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` toggles out of "Git & Worktrees" into a new "Developer / Experimental" section in Settings. Added a section-level warning explaining that both settings break worktree isolation — agents can escape their assigned worktree, causing the status bar, branch pills, and "shared" indicators to desync. Updated individual tooltips with specific risks (directory drift, state corruption, cross-worktree navigation).

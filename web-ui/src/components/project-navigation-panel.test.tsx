@@ -67,9 +67,6 @@ describe("ProjectNavigationPanel", () => {
 					projects={PROJECTS}
 					currentProjectId="project-1"
 					removingProjectId={null}
-					activeSection="projects"
-					onActiveSectionChange={() => {}}
-					canShowAgentSection
 					onSelectProject={() => {}}
 					onRemoveProject={async () => true}
 					onAddProject={() => {}}

@@ -213,9 +213,8 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 
 ### Projects (`sidebar === "projects"`)
 
-- Renders `ProjectNavigationPanel` (project list, add button, internal "Quarterdeck Agent" tab)
+- Renders `ProjectNavigationPanel` (project list, add button)
 - Always available (no task required)
-- Has its own internal tab toggle between "Projects" and "Quarterdeck Agent" sections
 
 ### Board (`sidebar === "task_column"`)
 
@@ -333,7 +332,7 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 | `web-ui/src/components/detail-panels/file-tree-panel.tsx` | Simple file tree for Git view changed files |
 | `web-ui/src/components/detail-panels/branch-selector-popover.tsx` | Branch picker with FZF search, used by scope bar + compare tab |
 | `web-ui/src/components/detail-panels/column-context-panel.tsx` | Board sidebar: task column with cards |
-| `web-ui/src/components/project-navigation-panel.tsx` | Projects sidebar: project list + agent tab |
+| `web-ui/src/components/project-navigation-panel.tsx` | Projects sidebar: project list |
 | `web-ui/src/storage/local-storage-store.ts` | localStorage key definitions and read/write helpers |
 
 ---

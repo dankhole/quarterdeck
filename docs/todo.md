@@ -86,18 +86,14 @@ New sidebar tab showing uncommitted changes as a file list with checkboxes for s
 - **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
 - **Git view integration**: The git main view's Uncommitted tab shows full diffs — clicking a file in the commit sidebar could open the diff in the git view for review before committing. More complex git operations (merge, branch management) live in the git view (#5).
 
-## 7. Move agent chat out of the project switcher sidebar
-
-The agent chat UI currently lives inside the project switcher sidebar tab. It doesn't belong there — the project switcher should be focused on project selection and status. Extract the agent chat into its own location. The right destination is TBD — could be its own sidebar tab, a main view, a panel, or something else. Investigate where it fits best in the existing layout before committing to a placement.
-
-## 8. Per-task session identity for non-isolated tasks
+## 7. Per-task session identity for non-isolated tasks
 
 The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorkspace` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
 
 - **Session clobbering**: `--continue` picks the most recent conversation by CWD. Non-isolated tasks sharing the home repo all compete for the same "most recent" session. A warning toast now discloses this limitation on restore and restart, but there's no per-task session targeting.
 - **Possible fix**: If Claude Code adds a `--session-id` or `--resume <id>` flag in the future, Quarterdeck could store the session ID per task and resume the correct conversation. Until then, this is a known limitation for non-isolated tasks.
 
-## 9. Fix agent state tracking bugs
+## 8. Fix agent state tracking bugs
 
 Multiple related bugs where the UI shows the wrong task state. A comprehensive analysis and refactor plan exists at [docs/refactor-session-lifecycle.md](refactor-session-lifecycle.md) — it covers root causes, targeted patches, and a structural decomposition of `session-manager.ts`.
 
@@ -107,51 +103,51 @@ Multiple related bugs where the UI shows the wrong task state. A comprehensive a
 - **Notification beep count wrong for rapid transitions** (low): When a task goes to review then quickly to needs-input, wrong beep count plays. Debounce/settle window issues cause double-beeps for single events or single beeps for multiple events.
 - **Hook delivery timeouts** (low, mitigated): Checkpoint capture blocks the hook response, causing CLI timeouts under load even when the transition succeeded.
 
-## 10. Client-side project switch optimizations
+## 9. Client-side project switch optimizations
 
 Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Preload-on-hover is done. Remaining client-side strategy to make switching feel instant:
 
 - **Stale-while-revalidate**: Cache board state per project in memory. On switch, show the cached version immediately while fresh data loads. Requires careful gating of `canPersistWorkspaceState` and `workspaceRevision` to prevent stale data from being persisted back to disk.
 
-## 11. Upstream sync: periodic review of cline/kanban (recurring)
+## 10. Upstream sync: periodic review of cline/kanban (recurring)
 
 Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
 
 **Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
 **Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
 
-## 12. Audit CI/CD and deployment infrastructure
+## 11. Audit CI/CD and deployment infrastructure
 
 Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
-## 13. Publish to npm
+## 12. Publish to npm
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 14. Git view compare tab doesn't refresh as the worktree advances
+## 13. Git view compare tab doesn't refresh as the worktree advances
 
 The compare tab fetches the diff once when opened and doesn't refetch as the agent commits. For named branches, the query key is `compare:feature-xyz:main` — it stays the same across commits, so no refetch fires. The comment at `git-view.tsx:335` says `// No polling for compare — branch diffs are stable` but this isn't true when the agent is actively working. Headless worktrees get this for free (headCommit changes on each commit, which changes the query key), but named branches don't. Include a changing signal (e.g. workspace snapshot headCommit or a state version) in the compare query key so the diff stays current while the agent works.
 
-## 15. Archive stale docs (recurring)
+## 14. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 16. UI branch/status indicators desync when agent leaves worktree
+## 15. UI branch/status indicators desync when agent leaves worktree
 
 When `worktreeAddParentRepoDir` or `worktreeAddQuarterdeckDir` are enabled, agents can `cd` out of their assigned worktree into the home repo or other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the home repo's branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
 
-## 17. "Shared" indicator on task cards should update when agent moves to shared directory
+## 16. "Shared" indicator on task cards should update when agent moves to shared directory
 
 Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddParentRepoDir` is enabled, an agent that was started in an isolated worktree can `cd` into the home repo — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config. Both `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` can cause this — they let the agent escape the worktree sandbox, so any indicator that assumes worktree isolation needs to account for directory drift.
 
-## 18. Add clarification when multiple worktrees share the same detached HEAD hash
+## 17. Add clarification when multiple worktrees share the same detached HEAD hash
 
 When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
 
-## 19. Test git object sharing as a read-only alternative to --add-dir
+## 18. Test git object sharing as a read-only alternative to --add-dir
 
 Git worktrees share the full object database with the parent repo, so agents can already read any file from any branch via `git show main:path/to/file` without filesystem access to the parent directory. Test whether this is a viable alternative to `worktreeAddParentRepoDir` — if agents can reliably read reference files (CLAUDE.md, docs, configs) through git commands, the `--add-dir` flags may be unnecessary for most use cases. Would avoid the worktree isolation breakage entirely. May need a system prompt hint so agents know to use `git show` instead of trying to navigate to the parent repo.
 
-## 20. Revisit HTML chat view concept
+## 19. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.

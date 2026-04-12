@@ -183,23 +183,6 @@ Components in `web-ui/src/components/` are mostly rendering and composition. Goo
 
 `web-ui/src/runtime/` holds client-side query helpers and persistence glue. One of the guardrails we now enforce is that raw workspace TRPC client creation should stay concentrated in the runtime query helpers rather than spread through arbitrary components.
 
-## The Home Sidebar Agent Surface
-
-The home sidebar agent surface is one of the less obvious parts of the architecture.
-
-It looks like a task panel, but it is not backed by a real task card and it does not create a task worktree. Instead, the system creates a synthetic home agent session id and runs a project-scoped session behind that identity.
-
-That design is a deliberate compromise.
-
-It lets the sidebar reuse the same runtime primitives that already exist for task-scoped terminal panels, but without pretending the sidebar is a normal task with a prompt card and a worktree-backed lifecycle.
-
-The current behavior is:
-
-- the sidebar renders a terminal panel for the selected agent
-- the home session is keyed to the current workspace and relevant agent descriptor
-- switching between Projects and Agent in the sidebar should not restart the session
-- switching to a different project or materially different agent configuration should rotate the session
-
 ## Main Flows
 
 ### Starting a task session

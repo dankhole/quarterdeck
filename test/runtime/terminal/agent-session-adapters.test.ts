@@ -20,15 +20,6 @@ function setupTempHome(): string {
 	return tempHome;
 }
 
-function setQuarterdeckProcessContext(): void {
-	process.argv = ["node", "/Users/example/repo/dist/cli.js"];
-	process.execArgv = [];
-	Object.defineProperty(process, "execPath", {
-		configurable: true,
-		value: "/usr/local/bin/node",
-	});
-}
-
 afterEach(() => {
 	if (originalHome === undefined) {
 		delete process.env.HOME;
@@ -82,47 +73,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const wrapperPath = join(homedir(), ".quarterdeck", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
-	});
-
-	it("appends Quarterdeck sidebar instructions for home Claude sessions", async () => {
-		setupTempHome();
-		setQuarterdeckProcessContext();
-		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:claude",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
-		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[appendPromptIndex + 1]).toContain("Quarterdeck sidebar agent");
-		expect(launch.args[appendPromptIndex + 1]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
-	});
-
-	it("appends Quarterdeck sidebar instructions for home Codex sessions", async () => {
-		setupTempHome();
-		setQuarterdeckProcessContext();
-		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:codex",
-			agentId: "codex",
-			binary: "codex",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		const configArgIndex = launch.args.indexOf("-c");
-		expect(configArgIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
-		expect(launch.args[configArgIndex + 1]).toContain("Quarterdeck sidebar agent");
-		expect(launch.args[configArgIndex + 1]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {

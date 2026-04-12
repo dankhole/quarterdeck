@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
-import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
+import { selectNewestTaskSessionSummary } from "@/hooks/session-summary-utils";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeTaskSessionSummary,

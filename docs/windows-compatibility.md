@@ -69,7 +69,6 @@ Only Linux Biome/Rolldown binaries listed. Missing `@biomejs/cli-win32-x64` and 
 
 Multiple test files hardcode `/tmp/`, `/Users/`, `/usr/local/bin/`. Key files:
 - `test/utilities/runtime-config-factory.ts:6-7`
-- `test/runtime/append-system-prompt.test.ts:12-16`
 - Various integration tests
 
 These need `os.tmpdir()`, `os.homedir()`, or a shared test helper.

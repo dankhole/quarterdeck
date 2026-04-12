@@ -14,7 +14,6 @@ export default defineConfig({
 		alias: {
 			"@": resolve(__dirname, "src"),
 			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
-			"@runtime-home-agent-session": resolve(__dirname, "../src/core/home-agent-session.ts"),
 			"@runtime-config-defaults": resolve(__dirname, "../src/config/config-defaults.ts"),
 			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),

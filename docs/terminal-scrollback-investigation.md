@@ -91,7 +91,6 @@ Fixes:
 | Type | Task ID | `scrollOnEraseInDisplay` |
 |------|---------|--------------------------|
 | Agent task | `card.id` (UUID) | `false` |
-| Home sidebar agent | `__home_agent__:{workspaceId}:{agentId}` | `false` |
 | Home shell | `__home_terminal__` | `true` |
 | Detail shell | `__detail_terminal__:{cardId}` | `true` |
 

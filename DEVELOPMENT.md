@@ -117,7 +117,7 @@ quarterdeck
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`. For sidebar agent automation guidance, inspect `src/prompts/append-system-prompt.ts`.
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`.
 
 Remove the global link:
 

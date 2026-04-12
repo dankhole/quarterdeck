@@ -372,31 +372,6 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 	});
 
-	it("starts home agent sessions in the workspace root without resolving a task worktree", async () => {
-		const homeTaskId = "__home_agent__:workspace-1:codex";
-		const terminalManager = {
-			startTaskSession: vi.fn(async () => createSummary({ taskId: homeTaskId })),
-			applyTurnCheckpoint: vi.fn(),
-		};
-		const api = createRuntimeApi(createDeps(terminalManager));
-
-		const response = await api.startTaskSession(defaultScope, {
-			taskId: homeTaskId,
-			baseRef: "main",
-			prompt: "",
-		});
-
-		expect(response.ok).toBe(true);
-		expect(taskWorktreeMocks.resolveTaskCwd).not.toHaveBeenCalled();
-		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
-			expect.objectContaining({
-				taskId: homeTaskId,
-				cwd: "/tmp/repo",
-			}),
-		);
-		expect(turnCheckpointMocks.captureTaskTurnCheckpoint).not.toHaveBeenCalled();
-	});
-
 	it("forwards task images to CLI task sessions", async () => {
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
