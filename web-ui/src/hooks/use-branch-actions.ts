@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { showAppToast } from "@/components/app-toaster";
 import {
 	type CheckoutDialogState,
 	resolveCheckoutDialogState,
@@ -130,13 +130,16 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(checkoutBaseRef ? { baseRef: checkoutBaseRef } : {}),
 				});
 				if (result.ok) {
-					toast.success(`Switched to ${branch}`);
+					showAppToast({ intent: "success", message: `Switched to ${branch}` });
 					onCheckoutSuccess?.();
 				} else {
-					toast.error(result.error ?? `Failed to switch to ${branch}`);
+					showAppToast({ intent: "danger", message: result.error ?? `Failed to switch to ${branch}` });
 				}
 			} catch (error) {
-				toast.error(`Checkout failed: ${error instanceof Error ? error.message : String(error)}`);
+				showAppToast({
+					intent: "danger",
+					message: `Checkout failed: ${error instanceof Error ? error.message : String(error)}`,
+				});
 			}
 		},
 		[workspaceId, onCheckoutSuccess],
@@ -155,12 +158,18 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(baseRef ? { baseRef } : {}),
 				});
 				if (result.ok) {
-					toast.success(`Merged ${branch} into ${currentBranch ?? "current branch"}`);
+					showAppToast({
+						intent: "success",
+						message: `Merged ${branch} into ${currentBranch ?? "current branch"}`,
+					});
 				} else {
-					toast.error(result.error ?? `Failed to merge ${branch}`);
+					showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branch}` });
 				}
 			} catch (error) {
-				toast.error(`Merge failed: ${error instanceof Error ? error.message : String(error)}`);
+				showAppToast({
+					intent: "danger",
+					message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
+				});
 			}
 		},
 		[workspaceId, taskId, baseRef, currentBranch],
@@ -234,10 +243,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		(branchName: string) => {
 			// Invalidate the refs query so the new branch appears in the list
 			void refetchRefs();
-			// Select the newly created branch in the view
-			selectBranchView(branchName);
+			// Offer to check out the newly created branch
+			handleCheckoutBranch(branchName);
 		},
-		[refetchRefs, selectBranchView],
+		[refetchRefs, handleCheckoutBranch],
 	);
 
 	return {

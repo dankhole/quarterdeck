@@ -20,6 +20,8 @@ export interface UseCommitPanelResult {
 	isCommitting: boolean;
 	isDiscarding: boolean;
 	isRollingBack: boolean;
+	lastError: string | null;
+	clearError: () => void;
 	commitFiles: () => Promise<void>;
 	discardAll: () => Promise<void>;
 	rollbackFile: (path: string, fileStatus: string) => Promise<void>;
@@ -39,6 +41,10 @@ export function useCommitPanel(
 	const [isCommitting, setIsCommitting] = useState(false);
 	const [isDiscarding, setIsDiscarding] = useState(false);
 	const [isRollingBack, setIsRollingBack] = useState(false);
+
+	// Last error — shown inline in the commit panel so large hook output is readable.
+	const [lastError, setLastError] = useState<string | null>(null);
+	const clearError = useCallback(() => setLastError(null), []);
 	const isMutating = isCommitting || isDiscarding || isRollingBack;
 	const pollIntervalMs = isMutating ? null : 1000;
 
@@ -132,6 +138,7 @@ export function useCommitPanel(
 	const commitFiles = useCallback(async () => {
 		if (!workspaceId || !canCommit) return;
 		setIsCommitting(true);
+		setLastError(null);
 		try {
 			const trpcClient = getRuntimeTrpcClient(workspaceId);
 			const result = await trpcClient.workspace.commitSelectedFiles.mutate({
@@ -147,18 +154,14 @@ export function useCommitPanel(
 				});
 				setMessage("");
 			} else {
-				showAppToast({
-					intent: "danger",
-					message: result.error ?? "Commit failed.",
-					timeout: 7000,
-				});
+				const fullError = result.error ?? "Commit failed.";
+				setLastError(fullError);
+				showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
 			}
 		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: error instanceof Error ? error.message : "Commit failed.",
-				timeout: 7000,
-			});
+			const fullError = error instanceof Error ? error.message : "Commit failed.";
+			setLastError(fullError);
+			showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
 		} finally {
 			setIsCommitting(false);
 		}
@@ -250,6 +253,8 @@ export function useCommitPanel(
 		isCommitting,
 		isDiscarding,
 		isRollingBack,
+		lastError,
+		clearError,
 		commitFiles,
 		discardAll,
 		rollbackFile,

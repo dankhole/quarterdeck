@@ -1,6 +1,6 @@
 import { GitBranch } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -50,14 +50,17 @@ export function CreateBranchDialog({
 				startRef: state.sourceRef,
 			});
 			if (result.ok) {
-				toast.success(`Branch "${trimmedName}" created from ${state.sourceRef}`);
+				showAppToast({ intent: "success", message: `Branch "${trimmedName}" created from ${state.sourceRef}` });
 				onBranchCreated?.(trimmedName);
 				onClose();
 			} else {
-				toast.error(result.error ?? "Failed to create branch.");
+				showAppToast({ intent: "danger", message: result.error ?? "Failed to create branch." });
 			}
 		} catch (error) {
-			toast.error(`Failed to create branch: ${error instanceof Error ? error.message : String(error)}`);
+			showAppToast({
+				intent: "danger",
+				message: `Failed to create branch: ${error instanceof Error ? error.message : String(error)}`,
+			});
 		} finally {
 			setIsCreating(false);
 		}

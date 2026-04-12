@@ -3,7 +3,7 @@ import { BookOpen, Clipboard, Code, FileText, WrapText, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { toast } from "sonner";
+import { showAppToast } from "@/components/app-toaster";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -85,8 +85,8 @@ export function FileContentViewer({
 			return;
 		}
 		void navigator.clipboard.writeText(filePath).then(
-			() => toast.success("Path copied to clipboard"),
-			() => toast.error("Failed to copy path"),
+			() => showAppToast({ intent: "success", message: "Path copied to clipboard" }),
+			() => showAppToast({ intent: "danger", message: "Failed to copy path" }),
 		);
 	}, [filePath]);
 

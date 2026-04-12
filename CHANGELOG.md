@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Fix: commit panel UX — discard confirmation, resizable textarea, readable error display
+
+- Discard All now shows an AlertDialog confirmation before running `git restore` + `git clean` — previously fired immediately with no safety net.
+- Commit message textarea is vertically resizable (`resize-y`) instead of fixed-height.
+- Commit failures show a collapsible inline error panel above the textarea instead of dumping full pre-commit hook stderr into an unreadable toast.
+
+### Fix: centralized git error parsing and toast truncation
+
+- New two-stage pipeline in `app-toaster.ts` (`sanitizeErrorForToast`): strips the verbose `runGit` prefix ("Failed to run Git Command: ...") via `parseGitErrorForDisplay`, then truncates to the first meaningful line (150 char cap) as a safety net.
+- Auto-applied to all `showAppToast({ intent: "danger" })` and `notifyError()` calls — no call site needs manual wrapping.
+- Migrated all direct `toast` from "sonner" imports to `showAppToast` across 7 files (branch actions, create-branch dialog, checkout confirmation, context-menu utils, file browser, file content viewer) so every error toast gets parsing for free.
+- Module doc comment on `app-toaster.ts` directs new features to use `showAppToast`/`notifyError` instead of importing toast directly.
+
+### Feat: offer checkout after branch creation
+
+- After creating a branch, `handleBranchCreated` now calls `handleCheckoutBranch` (showing the checkout confirmation dialog) instead of `selectBranchView` (which only switched to a read-only browse mode with no visible feedback).
+
 ### Fix: web-ui test type errors blocking build
 
 - Updated `drag-rules.test.ts` to match `BoardCard` type (removed stale `description` field, added required fields via helper factory). Updated `session-status.test.ts` to include the 5 new `RuntimeTaskHookActivity` fields (`toolName`, `toolInputSummary`, `finalMessage`, `source`, `conversationSummaryText`) in all `latestHookActivity` literals.

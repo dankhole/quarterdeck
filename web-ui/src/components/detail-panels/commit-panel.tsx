@@ -1,9 +1,31 @@
 import * as Checkbox from "@radix-ui/react-checkbox";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Check, ClipboardCopy, FileSearch, FileText, GitCompare, Minus, Undo2 } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	ChevronRight,
+	ClipboardCopy,
+	FileSearch,
+	FileText,
+	GitCompare,
+	Minus,
+	Undo2,
+	X,
+} from "lucide-react";
+import { useState } from "react";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogBody,
+	AlertDialogCancel,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useCommitPanel } from "@/hooks/use-commit-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
@@ -133,10 +155,15 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		isLoading,
 		isCommitting,
 		isDiscarding,
+		lastError,
+		clearError,
 		discardAll,
 		commitFiles,
 		rollbackFile,
 	} = useCommitPanel(taskId, workspaceId, baseRef);
+
+	const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
+	const [errorExpanded, setErrorExpanded] = useState(false);
 
 	const fileCount = files?.length ?? 0;
 	const hasFiles = fileCount > 0;
@@ -201,14 +228,40 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 				)}
 			</div>
 
-			{/* Bottom section — commit message + buttons */}
+			{/* Bottom section — commit message + buttons + inline error */}
 			<div className="shrink-0 border-t border-border p-3 flex flex-col gap-2">
+				{lastError ? (
+					<div className="rounded-md border border-status-red/40 bg-status-red/10 text-[12px]">
+						<div className="flex items-center gap-1 px-2 py-1.5">
+							<button
+								type="button"
+								className="flex items-center gap-1 flex-1 min-w-0 text-left text-status-red cursor-pointer"
+								onClick={() => setErrorExpanded((v) => !v)}
+							>
+								{errorExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+								<span className="font-medium">Commit failed</span>
+							</button>
+							<button
+								type="button"
+								className="p-0.5 rounded text-text-tertiary hover:text-text-primary cursor-pointer"
+								onClick={clearError}
+							>
+								<X size={12} />
+							</button>
+						</div>
+						{errorExpanded ? (
+							<pre className="px-2 pb-2 text-text-secondary whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto font-mono text-[11px] leading-relaxed">
+								{lastError}
+							</pre>
+						) : null}
+					</div>
+				) : null}
 				<textarea
 					value={message}
 					onChange={(e) => setMessage(e.target.value)}
 					placeholder="Commit message"
 					rows={3}
-					className="bg-surface-2 border border-border rounded-md p-2 text-[13px] text-text-primary placeholder:text-text-tertiary resize-none focus:outline-none focus:border-border-focus"
+					className="bg-surface-2 border border-border rounded-md p-2 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y min-h-[4.5rem] focus:outline-none focus:border-border-focus"
 				/>
 				<div className="flex gap-2">
 					<Button variant="primary" size="sm" disabled={!canCommit} onClick={() => void commitFiles()}>
@@ -219,13 +272,45 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 							variant="danger"
 							size="sm"
 							disabled={isDiscarding || !hasFiles}
-							onClick={() => void discardAll()}
+							onClick={() => setDiscardDialogOpen(true)}
 						>
 							{isDiscarding ? <Spinner size={14} /> : "Discard All"}
 						</Button>
 					) : null}
 				</div>
 			</div>
+
+			{/* Discard All confirmation */}
+			<AlertDialog open={discardDialogOpen} onOpenChange={(open) => !open && setDiscardDialogOpen(false)}>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Discard all changes?</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<AlertDialogDescription>
+						This will revert all {fileCount} {fileCount === 1 ? "file" : "files"} to HEAD and remove untracked
+						files.
+					</AlertDialogDescription>
+					<p className="text-text-primary">This action cannot be undone.</p>
+				</AlertDialogBody>
+				<AlertDialogFooter>
+					<AlertDialogCancel asChild>
+						<Button variant="default" onClick={() => setDiscardDialogOpen(false)}>
+							Cancel
+						</Button>
+					</AlertDialogCancel>
+					<AlertDialogAction asChild>
+						<Button
+							variant="danger"
+							onClick={() => {
+								setDiscardDialogOpen(false);
+								void discardAll();
+							}}
+						>
+							Discard All
+						</Button>
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialog>
 		</div>
 	);
 }

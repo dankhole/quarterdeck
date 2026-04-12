@@ -2,7 +2,7 @@ import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { AlertTriangle, Check, GitBranch, Info } from "lucide-react";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
+import { showAppToast } from "@/components/app-toaster";
 import { cn } from "@/components/ui/cn";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
 
@@ -229,7 +229,7 @@ export function resolveCheckoutDialogState(options: {
 
 	// Already on this branch
 	if (currentBranch === branch) {
-		toast.info(`Already on ${branch}`);
+		showAppToast({ message: `Already on ${branch}` });
 		return "skip";
 	}
 

@@ -4,6 +4,25 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: commit panel UX and centralized git error parsing (2026-04-12)
+
+Three commit panel UX improvements plus a systemic fix for unreadable git error toasts.
+
+**Commit panel UX:**
+- Added AlertDialog confirmation before Discard All (`commit-panel.tsx`) — the button previously called `discardAll()` directly, which runs `git restore --source=HEAD --staged --worktree -- .` + `git clean -fd -- .` with no undo. Now matches the `ClearTrashDialog` pattern.
+- Changed textarea from `resize-none` to `resize-y` with `min-h-[4.5rem]` so the commit message box can be dragged taller.
+- Added `lastError`/`clearError` state to `useCommitPanel`. On commit failure, the full error is stored and rendered as a collapsible panel (chevron toggle + X dismiss) above the textarea, with the full output in a scrollable `<pre>` block. The toast shows only a short summary.
+
+**Git error parsing pipeline (`app-toaster.ts`):**
+- `parseGitErrorForDisplay()` in `utils/git-error.ts` — regex-strips the `runGit` prefix (`"Failed to run Git Command: \n Command: \n git ... failed \n"`) to extract the actual git stderr.
+- `sanitizeErrorForToast()` in `app-toaster.ts` — calls `parseGitErrorForDisplay` first, then truncates to first non-empty line capped at 150 chars. Applied automatically inside `showAppToast` for all `intent: "danger"` toasts and in `notifyError` for dedup keys.
+- Every site that previously used `toast.error()` / `toast.success()` directly from sonner was migrated to `showAppToast`: `use-branch-actions.ts`, `create-branch-dialog.tsx`, `checkout-confirmation-dialog.tsx`, `context-menu-utils.ts`, `file-browser-tree-panel.tsx`, `file-content-viewer.tsx`. Only one justified exception remains (`use-linked-backlog-task-actions.ts` — uses sonner's `description` + `cancel` action features).
+
+**Branch creation UX:**
+- `handleBranchCreated` in `use-branch-actions.ts` now calls `handleCheckoutBranch(branchName)` instead of `selectBranchView(branchName)`, so creating a branch pops the checkout confirmation dialog instead of silently switching to a read-only view.
+
+Files touched: `web-ui/src/components/app-toaster.ts`, `web-ui/src/components/app-toaster.test.ts`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `web-ui/src/components/detail-panels/checkout-confirmation-dialog.tsx`, `web-ui/src/components/detail-panels/context-menu-utils.ts`, `web-ui/src/components/detail-panels/create-branch-dialog.tsx`, `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx`, `web-ui/src/components/detail-panels/file-content-viewer.tsx`, `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/hooks/use-commit-panel.ts`, `web-ui/src/utils/git-error.ts`, `web-ui/src/utils/git-error.test.ts`
+
 ## Fix: needs-input tasks double-counted in sidebar pills (2026-04-12)
 
 A task in the "needs input" state (awaiting permission approval) was showing both an "R" and "NI" pill in the project sidebar.

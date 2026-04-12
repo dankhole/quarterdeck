@@ -12,7 +12,7 @@ import {
 	X,
 } from "lucide-react";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { showAppToast } from "@/components/app-toaster";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -90,17 +90,17 @@ export function FileBrowserTreePanel({
 			try {
 				const result = await getFileContent(path);
 				if (!result) {
-					toast.error("Failed to copy file contents");
+					showAppToast({ intent: "danger", message: "Failed to copy file contents" });
 					return;
 				}
 				if (result.binary) {
-					toast.error("Cannot copy binary file contents");
+					showAppToast({ intent: "danger", message: "Cannot copy binary file contents" });
 					return;
 				}
 				await navigator.clipboard.writeText(result.content);
-				toast.success("File contents copied to clipboard");
+				showAppToast({ intent: "success", message: "File contents copied to clipboard" });
 			} catch {
-				toast.error("Failed to copy file contents");
+				showAppToast({ intent: "danger", message: "Failed to copy file contents" });
 			}
 		},
 		[getFileContent],
