@@ -307,6 +307,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					eventLogEnabled: false,
 					shortcuts: [],
+					pinnedBranches: [],
 					promptShortcuts: [],
 					hiddenDefaultPromptShortcuts: [],
 				});
@@ -371,6 +372,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					eventLogEnabled: false,
 					shortcuts: [],
+					pinnedBranches: [],
 					promptShortcuts: [],
 					hiddenDefaultPromptShortcuts: [],
 				});
@@ -423,6 +425,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					eventLogEnabled: false,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
+					pinnedBranches: [],
 					promptShortcuts: [],
 					hiddenDefaultPromptShortcuts: [],
 				});

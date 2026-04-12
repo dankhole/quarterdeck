@@ -11,6 +11,8 @@ import {
 	GitMerge,
 	Locate,
 	LogIn,
+	Pin,
+	PinOff,
 	Search,
 	Trash2,
 } from "lucide-react";
@@ -48,6 +50,10 @@ interface BranchSelectorPopoverProps {
 	onCreateBranch?: (sourceRef: string) => void;
 	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
 	onDeleteBranch?: (branchName: string) => void;
+	/** Branch names that should appear in a "Pinned" section at the top. */
+	pinnedBranches?: string[];
+	/** When provided, shows "Pin to top" / "Unpin" in the branch right-click menu. */
+	onTogglePinBranch?: (branchName: string) => void;
 	trigger: React.ReactNode;
 }
 
@@ -63,10 +69,13 @@ export function BranchSelectorPopover({
 	onMergeBranch,
 	onCreateBranch,
 	onDeleteBranch,
+	pinnedBranches,
+	onTogglePinBranch,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
 	const [query, setQuery] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
+	const pinnedSet = useMemo(() => new Set(pinnedBranches ?? []), [pinnedBranches]);
 
 	const detachedRef = useMemo(() => (branches ?? []).find((ref) => ref.type === "detached"), [branches]);
 	const localBranches = useMemo(() => (branches ?? []).filter((ref) => ref.type === "branch"), [branches]);
@@ -82,6 +91,16 @@ export function BranchSelectorPopover({
 	const filteredRemote = useMemo(
 		() => (query.trim() ? fzfRemote.find(query).map((r) => r.item) : remoteBranches),
 		[query, fzfRemote, remoteBranches],
+	);
+
+	// Split local branches into pinned (shown first) and unpinned
+	const pinnedLocal = useMemo(
+		() => (pinnedSet.size > 0 ? filteredLocal.filter((ref) => pinnedSet.has(ref.name)) : []),
+		[filteredLocal, pinnedSet],
+	);
+	const unpinnedLocal = useMemo(
+		() => (pinnedSet.size > 0 ? filteredLocal.filter((ref) => !pinnedSet.has(ref.name)) : filteredLocal),
+		[filteredLocal, pinnedSet],
 	);
 
 	const handleSelectBranch = useCallback(
@@ -183,12 +202,36 @@ export function BranchSelectorPopover({
 								</div>
 							</>
 						) : null}
-						{filteredLocal.length > 0 ? (
+						{pinnedLocal.length > 0 ? (
+							<>
+								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
+									Pinned
+								</div>
+								{pinnedLocal.map((gitRef) => (
+									<BranchItem
+										key={gitRef.name}
+										gitRef={gitRef}
+										isCurrent={gitRef.name === currentBranch}
+										worktreeTaskTitle={worktreeBranches.get(gitRef.name)}
+										isPinned
+										onSelect={handleSelectBranch}
+										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
+										onCompare={onCompareWithBranch ? handleCompare : undefined}
+										onMerge={onMergeBranch ? handleMerge : undefined}
+										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
+										onDeleteBranch={onDeleteBranch}
+										onTogglePin={onTogglePinBranch}
+										onClose={closePopover}
+									/>
+								))}
+							</>
+						) : null}
+						{unpinnedLocal.length > 0 ? (
 							<>
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
 									Local
 								</div>
-								{filteredLocal.map((gitRef) => (
+								{unpinnedLocal.map((gitRef) => (
 									<BranchItem
 										key={gitRef.name}
 										gitRef={gitRef}
@@ -200,6 +243,7 @@ export function BranchSelectorPopover({
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
+										onTogglePin={onTogglePinBranch}
 										onClose={closePopover}
 									/>
 								))}
@@ -226,7 +270,7 @@ export function BranchSelectorPopover({
 								))}
 							</>
 						) : null}
-						{filteredLocal.length === 0 && filteredRemote.length === 0 ? (
+						{pinnedLocal.length === 0 && unpinnedLocal.length === 0 && filteredRemote.length === 0 ? (
 							<div className="px-2 py-3 text-xs text-text-tertiary text-center">
 								{branches === null ? "Loading branches..." : "No matching branches"}
 							</div>
@@ -264,23 +308,27 @@ function BranchItem({
 	gitRef,
 	isCurrent,
 	worktreeTaskTitle,
+	isPinned,
 	onSelect,
 	onCheckout,
 	onCompare,
 	onMerge,
 	onCreateBranch,
 	onDeleteBranch,
+	onTogglePin,
 	onClose,
 }: {
 	gitRef: RuntimeGitRef;
 	isCurrent: boolean;
 	worktreeTaskTitle: string | undefined;
+	isPinned?: boolean;
 	onSelect: (name: string) => void;
 	onCheckout?: (name: string) => void;
 	onCompare?: (name: string) => void;
 	onMerge?: (name: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
 	onDeleteBranch?: (branchName: string) => void;
+	onTogglePin?: (branchName: string) => void;
 	onClose: () => void;
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
@@ -371,6 +419,21 @@ function BranchItem({
 						<ClipboardCopy size={14} className="text-text-secondary" />
 						Copy branch name
 					</ContextMenu.Item>
+					{onTogglePin && gitRef.type === "branch" ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onTogglePin(gitRef.name)}>
+							{isPinned ? (
+								<>
+									<PinOff size={14} className="text-text-secondary" />
+									Unpin
+								</>
+							) : (
+								<>
+									<Pin size={14} className="text-text-secondary" />
+									Pin to top
+								</>
+							)}
+						</ContextMenu.Item>
+					) : null}
 					{onDeleteBranch && gitRef.type === "branch" ? (
 						<>
 							<ContextMenu.Separator className="my-1 h-px bg-border" />

@@ -120,6 +120,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,
+		pinnedBranches: runtimeConfig.pinnedBranches,
 		promptShortcuts: runtimeConfig.promptShortcuts,
 		hiddenDefaultPromptShortcuts: runtimeConfig.hiddenDefaultPromptShortcuts,
 	};

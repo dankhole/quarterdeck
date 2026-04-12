@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: pin branches to top of branch selector dropdown
+
+- Right-click any local branch in the branch selector popover to "Pin to top" — pinned branches appear in a dedicated "Pinned" section above "Local". Unpin via the same context menu. Works in all three popover sites (topbar, home scope bar, task detail). Pinned branches are stored per-workspace in the project config file and persist across sessions. Fuzzy search still filters pinned branches normally.
+
 ### Fix: worktree-locked branches no longer fully disabled in branch picker
 
 - Branches checked out by a worktree task were previously greyed out and unclickable in the `BranchSelectorPopover` dropdown. Now only the Checkout and Delete context menu items are disabled — the branch row itself is clickable for browsing, merging, creating branches from, and comparing. The "in use" badge still appears as a visual indicator.

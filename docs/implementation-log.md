@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: pin branches to top of branch selector dropdown (2026-04-12)
+
+Added per-workspace branch pinning to the branch selector popover. Users right-click a local branch and choose "Pin to top" — pinned branches appear in a separate "Pinned" section at the top of the dropdown. "Unpin" removes them. The feature works in all three popover instances (topbar, home scope bar, task detail view).
+
+**Backend — config pipeline**: `pinnedBranches: string[]` added to `RuntimeProjectConfigFileShape` (stored in `<workspace>/.quarterdeck/config.json` alongside project shortcuts), `RuntimeConfigState`, `RuntimeConfigUpdateInput`, and both API schemas (`runtimeConfigResponseSchema`, `runtimeConfigSaveRequestSchema`). Full normalize/merge/serialize/change-detect support follows the established `shortcuts` pattern. `normalizePinnedBranches` validates types, trims whitespace, and deduplicates entries. Defensive guard added in `writeRuntimeProjectConfigFile` to throw when saving pinned branches without a project (matching the shortcuts guard).
+
+**Frontend — popover UI**: `BranchSelectorPopover` accepts optional `pinnedBranches` and `onTogglePinBranch` props. Local branches are split into `pinnedLocal` and `unpinnedLocal` via `useMemo` filtering against a `pinnedSet`. The "Pinned" section header appears only when matching pinned branches exist. Fuzzy search (fzf) runs first — pinned filtering happens on the search-filtered results, so pinned branches are properly hidden when they don't match the query. "Pin to top" / "Unpin" context menu items use `Pin` and `PinOff` lucide icons, shown only for local branches (`gitRef.type === "branch"`).
+
+**Frontend — wiring**: `App.tsx` derives `pinnedBranches` from `runtimeProjectConfig` and provides `handleTogglePinBranch` (toggle + save via `saveRuntimeConfig` + refresh + error toast on failure). Props passed to all three `BranchSelectorPopover` instances and through `CardDetailView` for the task context.
+
+**Files touched**: `src/config/runtime-config.ts`, `src/config/agent-registry.ts`, `src/core/api-contract.ts`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
+
 ## Fix: worktree-locked branches no longer fully disabled in branch picker (2026-04-12)
 
 Branches checked out by a worktree task were fully greyed out (`opacity-50`, `cursor-not-allowed`) and had `disabled` on the button element in `BranchSelectorPopover`, making them completely unclickable. This prevented legitimate operations like browsing the branch, merging it, creating a new branch from it, or comparing with it.

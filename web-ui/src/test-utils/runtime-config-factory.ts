@@ -55,6 +55,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	detectedCommands: ["claude"],
 	agents: [createTestAgentDef("claude"), createTestAgentDef("codex")],
 	shortcuts: [],
+	pinnedBranches: [],
 	showSummaryOnCards: CONFIG_DEFAULTS.showSummaryOnCards,
 	autoGenerateSummary: CONFIG_DEFAULTS.autoGenerateSummary,
 	summaryStaleAfterSeconds: CONFIG_DEFAULTS.summaryStaleAfterSeconds,

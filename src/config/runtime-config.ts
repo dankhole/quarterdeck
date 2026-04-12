@@ -37,6 +37,7 @@ interface AudibleNotificationEventsShape {
 
 interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
+	pinnedBranches?: string[];
 }
 
 export interface AudibleNotificationEvents {
@@ -65,6 +66,7 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	selectedShortcutLabel: string | null;
 	audibleNotificationEvents: AudibleNotificationEvents;
 	shortcuts: RuntimeProjectShortcut[];
+	pinnedBranches: string[];
 	promptShortcuts: PromptShortcut[];
 	hiddenDefaultPromptShortcuts: string[];
 	commitPromptTemplate: string;
@@ -79,6 +81,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	selectedShortcutLabel?: string | null;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	shortcuts?: RuntimeProjectShortcut[];
+	pinnedBranches?: string[];
 	promptShortcuts?: PromptShortcut[];
 	hiddenDefaultPromptShortcuts?: string[];
 	commitPromptTemplate?: string;
@@ -99,6 +102,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	selectedShortcutLabel: null,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
 	shortcuts: [],
+	pinnedBranches: [],
 	promptShortcuts: [],
 	hiddenDefaultPromptShortcuts: [],
 	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -233,6 +237,22 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 	return normalized;
 }
 
+function normalizePinnedBranches(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const result: string[] = [];
+	for (const item of value) {
+		if (typeof item === "string") {
+			const trimmed = item.trim();
+			if (trimmed) {
+				result.push(trimmed);
+			}
+		}
+	}
+	return [...new Set(result)];
+}
+
 function normalizePromptTemplate(value: unknown, fallback: string): string {
 	if (typeof value !== "string") {
 		return fallback;
@@ -349,6 +369,7 @@ function toRuntimeConfigState({
 		selectedShortcutLabel: normalizeShortcutLabel(globalConfig?.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(globalConfig?.audibleNotificationEvents),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
+		pinnedBranches: normalizePinnedBranches(projectConfig?.pinnedBranches),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(globalConfig?.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(
 			globalConfig?.promptShortcuts,
@@ -488,16 +509,20 @@ async function writeRuntimeGlobalConfigFile(
 
 async function writeRuntimeProjectConfigFile(
 	configPath: string | null,
-	config: { shortcuts: RuntimeProjectShortcut[] },
+	config: { shortcuts: RuntimeProjectShortcut[]; pinnedBranches: string[] },
 ): Promise<void> {
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
+	const normalizedPinnedBranches = normalizePinnedBranches(config.pinnedBranches);
 	if (!configPath) {
 		if (normalizedShortcuts.length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
+		if (normalizedPinnedBranches.length > 0) {
+			throw new Error("Cannot save pinned branches without a selected project.");
+		}
 		return;
 	}
-	if (normalizedShortcuts.length === 0) {
+	if (normalizedShortcuts.length === 0 && normalizedPinnedBranches.length === 0) {
 		await rm(configPath, { force: true });
 		try {
 			await rm(dirname(configPath));
@@ -506,15 +531,16 @@ async function writeRuntimeProjectConfigFile(
 		}
 		return;
 	}
-	await lockedFileSystem.writeJsonFileAtomic(
-		configPath,
-		{
-			shortcuts: normalizedShortcuts,
-		} satisfies RuntimeProjectConfigFileShape,
-		{
-			lock: null,
-		},
-	);
+	const payload: RuntimeProjectConfigFileShape = {};
+	if (normalizedShortcuts.length > 0) {
+		payload.shortcuts = normalizedShortcuts;
+	}
+	if (normalizedPinnedBranches.length > 0) {
+		payload.pinnedBranches = normalizedPinnedBranches;
+	}
+	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
+		lock: null,
+	});
 }
 
 interface RuntimeConfigFiles {
@@ -561,6 +587,7 @@ function createRuntimeConfigStateFromValues(
 		selectedShortcutLabel: string | null;
 		audibleNotificationEvents: AudibleNotificationEvents;
 		shortcuts: RuntimeProjectShortcut[];
+		pinnedBranches: string[];
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
 	},
@@ -574,6 +601,7 @@ function createRuntimeConfigStateFromValues(
 		selectedShortcutLabel: normalizeShortcutLabel(input.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(input.audibleNotificationEvents),
 		shortcuts: normalizeShortcuts(input.shortcuts),
+		pinnedBranches: normalizePinnedBranches(input.pinnedBranches),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -592,6 +620,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		audibleNotificationEvents: current.audibleNotificationEvents,
 		shortcuts: [],
+		pinnedBranches: [],
 		promptShortcuts: current.promptShortcuts,
 		hiddenDefaultPromptShortcuts: current.hiddenDefaultPromptShortcuts,
 	});
@@ -626,15 +655,16 @@ export async function saveRuntimeConfig(
 		selectedShortcutLabel: string | null;
 		audibleNotificationEvents: AudibleNotificationEvents;
 		shortcuts: RuntimeProjectShortcut[];
+		pinnedBranches: string[];
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd), async () => {
-		const { shortcuts, ...globalFields } = config;
+		const { shortcuts, pinnedBranches, ...globalFields } = config;
 		await writeRuntimeGlobalConfigFile(globalConfigPath, globalFields);
-		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts });
+		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts, pinnedBranches });
 		return createRuntimeConfigStateFromValues({
 			...config,
 			globalConfigPath,
@@ -671,6 +701,9 @@ async function applyConfigUpdates({
 			})
 		: current.audibleNotificationEvents;
 	const nextShortcuts = projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts;
+	const nextPinnedBranches = projectConfigPath
+		? (updates.pinnedBranches ?? current.pinnedBranches)
+		: current.pinnedBranches;
 	const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
 	const nextHiddenDefaults = updates.hiddenDefaultPromptShortcuts ?? current.hiddenDefaultPromptShortcuts;
 
@@ -687,7 +720,8 @@ async function applyConfigUpdates({
 		nextAudibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
 		nextAudibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
 		nextAudibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
-		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts));
+		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts)) ||
+		(projectConfigPath !== null && JSON.stringify(nextPinnedBranches) !== JSON.stringify(current.pinnedBranches));
 
 	if (!hasChanges) {
 		return current;
@@ -706,6 +740,7 @@ async function applyConfigUpdates({
 	if (projectConfigPath !== null) {
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
 			shortcuts: nextShortcuts,
+			pinnedBranches: nextPinnedBranches,
 		});
 	}
 	return createRuntimeConfigStateFromValues({
@@ -716,6 +751,7 @@ async function applyConfigUpdates({
 		selectedShortcutLabel: nextSelectedShortcutLabel,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
 		shortcuts: nextShortcuts,
+		pinnedBranches: nextPinnedBranches,
 		promptShortcuts: nextPromptShortcuts,
 		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
 	});

@@ -132,6 +132,8 @@ export function CardDetailView({
 	onFileNavigationConsumed,
 	navigateToFile,
 	onCardDoubleClick,
+	pinnedBranches,
+	onTogglePinBranch,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -182,6 +184,8 @@ export function CardDetailView({
 	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
 	onFileNavigationConsumed?: () => void;
 	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
+	pinnedBranches?: string[];
+	onTogglePinBranch?: (branchName: string) => void;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
@@ -434,6 +438,8 @@ export function CardDetailView({
 												onMergeBranch={taskBranchActions.handleMergeBranch}
 												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
 												onDeleteBranch={taskBranchActions.handleDeleteBranch}
+												pinnedBranches={pinnedBranches}
+												onTogglePinBranch={onTogglePinBranch}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}
 											/>
 										) : undefined

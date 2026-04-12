@@ -312,6 +312,23 @@ export default function App(): ReactElement {
 	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
 	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
 	const skipCherryPickConfirmation = runtimeProjectConfig?.skipCherryPickConfirmation ?? false;
+	const pinnedBranches = runtimeProjectConfig?.pinnedBranches ?? [];
+
+	const handleTogglePinBranch = useCallback(
+		(branchName: string) => {
+			if (!currentProjectId) return;
+			const current = runtimeProjectConfig?.pinnedBranches ?? [];
+			const next = current.includes(branchName) ? current.filter((b) => b !== branchName) : [...current, branchName];
+			void saveRuntimeConfig(currentProjectId, { pinnedBranches: next })
+				.then(() => {
+					refreshRuntimeProjectConfig();
+				})
+				.catch(() => {
+					showAppToast({ intent: "danger", message: "Failed to update pinned branches" });
+				});
+		},
+		[currentProjectId, runtimeProjectConfig?.pinnedBranches, refreshRuntimeProjectConfig],
+	);
 
 	const handleSkipTaskCheckoutConfirmationChange = useCallback(
 		(skip: boolean) => {
@@ -1268,6 +1285,8 @@ export default function App(): ReactElement {
 						onMergeBranch={topbarBranchActions.handleMergeBranch}
 						onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
 						onDeleteBranch={topbarBranchActions.handleDeleteBranch}
+						pinnedBranches={pinnedBranches}
+						onTogglePinBranch={handleTogglePinBranch}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined
@@ -1442,6 +1461,8 @@ export default function App(): ReactElement {
 							pendingFileNavigation={pendingFileNavigation}
 							onFileNavigationConsumed={clearPendingFileNavigation}
 							navigateToFile={navigateToFile}
+							pinnedBranches={pinnedBranches}
+							onTogglePinBranch={handleTogglePinBranch}
 						/>
 					) : (
 						<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1549,6 +1570,8 @@ export default function App(): ReactElement {
 																	onMergeBranch={homeBranchActions.handleMergeBranch}
 																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
 																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
+																	pinnedBranches={pinnedBranches}
+																	onTogglePinBranch={handleTogglePinBranch}
 																	trigger={
 																		<BranchPillTrigger
 																			label={
