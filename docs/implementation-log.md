@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Branch management — scoping, cleanup, and fixes (2026-04-12)
+
+**Todo #5 expansion**: Replaced the vague "add merge operations and conflict handling" description with a tiered breakdown of all branch operations worth supporting. Tier 1 (merge, create, delete, stash), tier 2 (cherry-pick, rebase, rename, abort), tier 3 (interactive rebase, tags, force push, revert). Also documented done items and UI surface areas.
+
+**Discard changes removal**: The "discard all changes" button + AlertDialog was in `GitHistoryView`, only rendered when `onDiscardWorkingChanges` was passed — which only happened from the home git view's git history panel. Users couldn't find it. Removed the UI (button, dialog, `Trash2`/`Button`/`AlertDialog*`/`Spinner` imports, `onDiscardWorkingChanges`/`isDiscardWorkingChangesPending` props). Removed the destructured `discardHomeWorkingChanges`/`isDiscardingHomeWorkingChanges` from `App.tsx`. Left the backend (`discardGitChanges` tRPC endpoint in `workspace-api.ts`, `discardHomeWorkingChanges` in `use-git-actions.ts`) intact — todo #6 (commit sidebar) will reuse it.
+
+**Top bar branch pill compare**: The `BranchSelectorPopover` in the top bar (`App.tsx:1217`) was missing `onCompareWithBranch`. Added it, wired to `openGitCompare({ targetRef: branch })`. All 5 render sites now accounted for: top bar (checkout+compare), home Files scope bar (checkout+compare), task detail Files scope bar (checkout+compare), Compare bar source picker (neither — intentionally pure ref selector), Compare bar target picker (neither — same reason).
+
+**Compare tab activation fix**: Right-clicking "Compare with local tree" on any branch pill opened the git view but landed on the Uncommitted tab instead of Compare. Root cause: `git-view.tsx` has a `useEffect` that resets `activeTab` to "uncommitted" when `currentProjectId` changes. On a fresh mount (switching `mainView` to "git"), both this reset effect and the `pendingCompareNavigation` effect ran in the same cycle — the reset won. Fix: the `currentProjectId` effect now skips the reset when `pendingCompareNavigation` is set.
+
+**JSDoc comments**: Added guidance to `BranchSelectorPopover` JSDoc reminding call sites to wire up `onCheckoutBranch` and `onCompareWithBranch` unless the context specifically doesn't support them. Added JSDoc to `ScopeBar` clarifying it's the breadcrumb bar in the Files tab (this was confusing twice in conversation — easy to think it's in the git view or on the board card).
+
+**Files touched**: `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`, `web-ui/src/App.tsx`, `web-ui/src/components/git-history-view.tsx`, `web-ui/src/components/git-view.tsx`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/components/detail-panels/scope-bar.tsx`.
+
 ## Remove disabled Gemini and OpenCode adapters (2026-04-12)
 
 Removed all Gemini CLI and OpenCode agent adapter code. These adapters were commented out in `RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS` and unreachable at runtime. Hundreds of lines of dead code shouldn't sit indefinitely — the commit history preserves them if ever needed again.

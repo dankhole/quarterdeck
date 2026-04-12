@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Branch management — scoping, cleanup, and fixes
+
+- Expanded todo #5 (branch management in git view) with tiered operation breakdown: merge, create, delete, stash in tier 1; cherry-pick, rebase, rename, abort in tier 2; interactive rebase, tags, force push, revert in tier 3.
+- Removed "discard all changes" UI from `GitHistoryView` — it was buried in the git history panel header where nobody could find it. Noted in todo #6 (commit sidebar) as the proper home for this action. Backend (`discardGitChanges` endpoint, `useGitActions` hook) left intact for reuse.
+- Wired `onCompareWithBranch` to the top bar branch pill — right-click "Compare with local tree" now works from the top bar, not just the Files tab scope bar and task detail pill.
+- Fixed compare tab not activating when navigated to externally — the `currentProjectId` reset effect was overriding the pending compare navigation on mount, forcing the tab back to "uncommitted."
+- Added JSDoc guidance to `BranchSelectorPopover` reminding future call sites to wire up `onCheckoutBranch` and `onCompareWithBranch`. Added JSDoc to `ScopeBar` clarifying it lives in the Files tab.
+
 ### Remove disabled Gemini and OpenCode adapters
 
 - Removed all Gemini CLI and OpenCode agent adapter code — type definitions, adapter implementations, hook handlers, prompt injection, config path resolution, and associated tests (~1100 lines). These adapters were disabled in the agent catalog's launch-supported list and unreachable. The agent type system (`RuntimeAgentId`) now only accepts `claude` and `codex`. Stale references cleaned from docs, man page, and comments.

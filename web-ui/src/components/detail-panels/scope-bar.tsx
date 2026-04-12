@@ -5,6 +5,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { ResolvedScope, ScopeMode } from "@/hooks/use-scope-context";
 import type { RuntimeGitSyncSummary } from "@/runtime/types";
 
+/**
+ * Breadcrumb bar at the top of the **Files tab** (both home and task detail views).
+ * Shows the current scope (task branch, browsing another branch, etc.) with an
+ * optional clickable branch pill for checkout/compare actions.
+ */
 interface ScopeBarProps {
 	resolvedScope: ResolvedScope | null;
 	scopeMode: ScopeMode;

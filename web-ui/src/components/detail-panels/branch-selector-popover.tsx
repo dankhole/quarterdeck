@@ -13,6 +13,10 @@ import type { RuntimeGitRef } from "@/runtime/types";
  * detail) and the git view's source/target ref selectors. Shows local/remote
  * grouping with fuzzy search, checkout actions, and worktree-locked indicators.
  *
+ * When adding this component to a new site, wire up `onCheckoutBranch` and
+ * `onCompareWithBranch` unless the context specifically doesn't support those
+ * actions (e.g. the Compare bar ref selectors, which are pure ref pickers).
+ *
  * For simple branch selection (e.g. task creation), use BranchSelectDropdown instead.
  */
 interface BranchSelectorPopoverProps {

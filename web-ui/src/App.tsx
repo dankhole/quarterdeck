@@ -593,14 +593,12 @@ export default function App(): ReactElement {
 
 	const {
 		runningGitAction,
-		isDiscardingHomeWorkingChanges,
 		gitActionError,
 		gitActionErrorTitle,
 		clearGitActionError,
 		gitHistory,
 		runGitAction,
 		switchHomeBranch,
-		discardHomeWorkingChanges,
 		resetGitActionState,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
@@ -1225,6 +1223,7 @@ export default function App(): ReactElement {
 						worktreeBranches={topbarBranchActions.worktreeBranches}
 						onSelectBranchView={topbarBranchActions.handleCheckoutBranch}
 						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
+						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
 						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
 					/>
 				) : undefined
@@ -1437,10 +1436,6 @@ export default function App(): ReactElement {
 																onCheckoutBranch={(branch) => {
 																	void switchHomeBranch(branch);
 																}}
-																onDiscardWorkingChanges={() => {
-																	void discardHomeWorkingChanges();
-																}}
-																isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
 															/>
 														) : undefined
 													}

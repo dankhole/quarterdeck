@@ -376,9 +376,12 @@ export function GitView({
 
 	useEffect(() => {
 		setSelectedPath(null);
-		setActiveTab("uncommitted");
+		// Don't reset to uncommitted if we're navigating to compare via external request
+		if (!pendingCompareNavigation) {
+			setActiveTab("uncommitted");
+		}
 		setDiffComments(new Map());
-	}, [currentProjectId, setActiveTab]);
+	}, [currentProjectId, setActiveTab, pendingCompareNavigation]);
 
 	// --- Render ---
 

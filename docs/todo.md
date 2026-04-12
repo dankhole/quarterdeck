@@ -46,10 +46,35 @@ This is distinct from #6 (committing *within* the task worktree). This is a targ
 
 ## 5. Branch management in git view
 
-Add branch switching and merging operations within the git view. The branch pill, git stats, and fetch/pull/push buttons already live in the git view tab bar — this is about adding the interactive operations on top.
+Add branch operations within the git view. The branch pill, git stats, fetch/pull/push, and right-click context menus already exist — this is about adding the interactive git operations on top.
 
-- **Right-click context menu on branch pills**: ~~Add a right-click context menu to branches in the pill dropdowns~~ ✓ Done for the `BranchSelectorPopover` — checkout, compare with local tree, and copy branch name. Remaining: add "merge into current branch" action, and extend the context menu to the git history refs panel.
-- **Conflict handling**: When a merge produces conflicts, surface them clearly — show conflicted files, let the user resolve or abort the merge. At minimum, show the conflict state and allow aborting; inline conflict resolution can come later.
+**Done:**
+- Right-click context menu on `BranchSelectorPopover` — checkout, compare with local tree, copy branch name
+- Compare tab — diff any two refs with full file tree + diff viewer
+
+**Tier 1 — High value, users hit these constantly:**
+- **Merge branch into current** — Core workflow for landing agent work. Add to branch context menu. Requires conflict handling (see below).
+- **Create branch from ref** — Start new work from a ref without dropping to terminal. Useful from both the branch selector and git history refs panel.
+- **Delete branch** — Cleanup after merge. Stale branches pile up fast with per-task worktrees. Guard against deleting the current branch or branches locked to active worktrees.
+- **Stash / unstash** — "Save my spot" before switching context. Especially useful when checkout is blocked by uncommitted changes (pull already blocks on this). Show stash list, allow pop/apply/drop.
+- **Conflict handling** — When a merge (or rebase, cherry-pick) produces conflicts, surface them clearly — show conflicted files, let the user abort. At minimum: conflict state indicator + abort action. Inline conflict resolution can come later.
+
+**Tier 2 — Valuable but less frequent:**
+- **Cherry-pick commit** — Pull specific commits from an agent's branch without merging everything. Relates to #4 (land individual commits to main).
+- **Rebase onto** — Rebase a task branch onto latest main before merging. Keeps history linear.
+- **Rename branch** — Minor convenience but nice for fixing typos.
+- **Abort merge/rebase** — Escape hatch when conflict resolution goes sideways. Should be prominent when repo is in a conflicted state.
+
+**Tier 3 — Nice-to-have, power user:**
+- **Interactive rebase** (reorder/squash commits) — Hard to do well in UI, questionable ROI.
+- **Tag management** — Less relevant for the agent-worktree workflow.
+- **Force push** — Dangerous, but sometimes needed after rebase. Requires confirmation dialog.
+- **Revert commit** — Undo a specific commit without rewriting history.
+
+**UI surface areas:**
+- Branch context menu in `BranchSelectorPopover` — add merge, delete, rename, create branch actions
+- Branch context menu in `GitRefsPanel` (git history view) — extend with the same actions
+- Git view tab bar or toolbar — stash controls, conflict state indicator, abort button
 
 ## 6. Commit sidebar tab with server-side commit
 
@@ -57,6 +82,7 @@ New sidebar tab showing uncommitted changes as a file list with checkboxes for s
 
 - **File selection**: Checkboxes or select-all toggle to choose which files to stage. The file list mirrors what the diff viewer's file tree shows but in a compact sidebar format.
 - **Commit message**: Inline text input. Auto-generate a default message from the task title and diff summary (changed file names, additions/deletions). Editable before committing.
+- **Discard changes**: Move the "discard all working changes" action here (previously lived in the git history panel header, removed). The backend (`discardGitChanges` tRPC endpoint, `discardHomeWorkingChanges` in `useGitActions`) already exists — just needs to be wired into this new UI.
 - **Backend**: New tRPC mutation (e.g. `runtime.commitTaskChanges`) that stages selected files and commits in the task worktree using `runGit()`.
 - **Git view integration**: The git main view's Uncommitted tab shows full diffs — clicking a file in the commit sidebar could open the diff in the git view for review before committing. More complex git operations (merge, branch management) live in the git view (#5).
 

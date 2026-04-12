@@ -1,22 +1,10 @@
-import { GitBranch, Trash2 } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { GitCommitDiffPanel } from "@/components/git-history/git-commit-diff-panel";
 import { GitCommitListPanel } from "@/components/git-history/git-commit-list-panel";
 import { GitRefsPanel } from "@/components/git-history/git-refs-panel";
 import type { UseGitHistoryDataResult } from "@/components/git-history/use-git-history-data";
-import { Button } from "@/components/ui/button";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogBody,
-	AlertDialogCancel,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { ResizeHandle } from "@/resize/resize-handle";
 import {
 	clampGitCommitsPanelWidth,
@@ -73,18 +61,9 @@ interface GitHistoryViewProps {
 	workspaceId: string | null;
 	gitHistory: UseGitHistoryDataResult;
 	onCheckoutBranch?: (branch: string) => void;
-	onDiscardWorkingChanges?: () => void;
-	isDiscardWorkingChangesPending?: boolean;
 }
 
-export function GitHistoryView({
-	workspaceId,
-	gitHistory,
-	onCheckoutBranch,
-	onDiscardWorkingChanges,
-	isDiscardWorkingChangesPending = false,
-}: GitHistoryViewProps): React.ReactElement {
-	const [isDiscardAlertOpen, setIsDiscardAlertOpen] = useState(false);
+export function GitHistoryView({ workspaceId, gitHistory, onCheckoutBranch }: GitHistoryViewProps): React.ReactElement {
 	const [historyLayoutWidth, setHistoryLayoutWidth] = useState<number | null>(null);
 	const historyLayoutRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startRefsPanelResize } = useResizeDrag();
@@ -244,61 +223,10 @@ export function GitHistoryView({
 							}}
 						>
 							<span style={{ flex: 1 }}>Working Copy Changes</span>
-							{onDiscardWorkingChanges ? (
-								<Button
-									variant="danger"
-									size="sm"
-									icon={<Trash2 size={14} />}
-									aria-label="Discard all changes"
-									disabled={isDiscardWorkingChangesPending}
-									onClick={() => setIsDiscardAlertOpen(true)}
-								>
-									{isDiscardWorkingChangesPending ? <Spinner size={14} /> : null}
-								</Button>
-							) : null}
 						</div>
 					) : null
 				}
 			/>
-			<AlertDialog
-				open={isDiscardAlertOpen}
-				onOpenChange={(open) => {
-					if (!open) setIsDiscardAlertOpen(false);
-				}}
-			>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Discard all changes?</AlertDialogTitle>
-				</AlertDialogHeader>
-				<AlertDialogBody>
-					<AlertDialogDescription>
-						Are you sure you want to discard all working copy changes? This cannot be undone.
-					</AlertDialogDescription>
-				</AlertDialogBody>
-				<AlertDialogFooter>
-					<AlertDialogCancel asChild>
-						<Button
-							variant="default"
-							onClick={() => setIsDiscardAlertOpen(false)}
-							disabled={isDiscardWorkingChangesPending}
-						>
-							Cancel
-						</Button>
-					</AlertDialogCancel>
-					<AlertDialogAction asChild>
-						<Button
-							variant="danger"
-							disabled={isDiscardWorkingChangesPending}
-							onClick={() => {
-								setIsDiscardAlertOpen(false);
-								onDiscardWorkingChanges?.();
-							}}
-						>
-							{isDiscardWorkingChangesPending ? <Spinner size={14} /> : null}
-							Discard All
-						</Button>
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialog>
 		</div>
 	);
 }
