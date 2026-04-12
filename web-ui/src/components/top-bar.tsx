@@ -187,6 +187,7 @@ export function TopBar({
 	isOpeningWorkspace,
 	selectedTaskId,
 	hideProjectDependentActions = false,
+	branchPillSlot,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -219,6 +220,7 @@ export function TopBar({
 	isOpeningWorkspace: boolean;
 	selectedTaskId?: string | null;
 	hideProjectDependentActions?: boolean;
+	branchPillSlot?: React.ReactNode;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -348,6 +350,7 @@ export function TopBar({
 							</span>
 						)
 					) : null}
+					{!hideProjectDependentActions && branchPillSlot ? branchPillSlot : null}
 				</div>
 				<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">
 					{!hideProjectDependentActions && onRunShortcut ? (

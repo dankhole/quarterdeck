@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Branch pill dropdown on the topbar (2026-04-11)
+
+Added a `BranchSelectorPopover` with `BranchPillTrigger` to the topbar, rendered via a new `branchPillSlot` prop on `TopBar`. The pill shows the current branch and allows checkout — clicking any branch in the dropdown triggers the checkout confirmation flow (no separate "browse" action from the topbar context).
+
+A dedicated `useBranchActions` hook instance (`topbarBranchActions`) in `App.tsx` provides independent popover and dialog state from the file browser's existing branch pill. The hook adapts its scope automatically: when `selectedCard` is set, it passes `taskId`/`baseRef` so checkouts target the task worktree; when null, it operates in home scope. A `topbarBranchLabel` memo derives the display label from `selectedTaskWorkspaceInfo?.branch` (task context) or `homeGitSummary?.currentBranch` (home context), with fallbacks to `card.branch` and short commit hash for headless worktrees.
+
+The topbar's `CheckoutConfirmationDialog` receives `onSkipTaskConfirmationChange` so the "Don't show again" checkbox works for task-scope checkouts. The home-scope dialog has no checkbox by design — the `skipHomeCheckoutConfirmation` setting can only be toggled through Settings. The `selectBranchView` parameter to `useBranchActions` is a module-level noop since the topbar doesn't navigate a file browser.
+
+The pill is hidden when `hideProjectDependentActions` is true (project switching/loading) or when `topbarBranchLabel` is null (no project or no git info).
+
+**Files touched**: `web-ui/src/App.tsx` (topbarBranchActions hook, topbarBranchLabel memo, branchPillSlot prop, CheckoutConfirmationDialog), `web-ui/src/components/top-bar.tsx` (branchPillSlot prop + render).
+
 ## Fix: workspace trust auto-confirm for --add-dir directories (2026-04-11)
 
 The workspace trust auto-confirm in `session-manager.ts` only handled one trust prompt per session. After confirming the first prompt (for the worktree cwd), it set `autoConfirmedWorkspaceTrust = true` permanently — subsequent trust prompts from `--add-dir` directories were never auto-confirmed. With `worktreeAddParentRepoDir` enabled, the agent got stuck at the second trust prompt (task created but prompt not processed). With `worktreeAddQuarterdeckDir` also enabled, the compounded trust prompts caused complete failure.

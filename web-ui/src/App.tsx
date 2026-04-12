@@ -112,6 +112,9 @@ import type { BoardData } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 import { isApprovalState } from "@/utils/session-status";
 
+/** Noop for useBranchActions selectBranchView — the topbar pill uses checkout as its primary action. */
+const topbarBranchViewNoop = (_ref: string) => {};
+
 /** Branch status slot for the home context git view tab bar. */
 function HomeBranchStatus({
 	homeGitSummary,
@@ -416,6 +419,35 @@ export default function App(): ReactElement {
 		skipTaskCheckoutConfirmation,
 		onCheckoutSuccess: homeReturnToContextual,
 	});
+
+	// Top-bar branch pill — separate hook instance so its popover/dialog state is independent.
+	// Uses checkout as the primary click action (no separate browse), adapting scope based on
+	// whether a task is selected. No onCheckoutSuccess — the topbar is context-free, there's
+	// no view-mode to reset after checkout.
+	const topbarBranchActions = useBranchActions({
+		workspaceId: currentProjectId,
+		board,
+		selectBranchView: topbarBranchViewNoop,
+		homeGitSummary,
+		taskBranch: selectedCard ? (selectedTaskWorkspaceInfo?.branch ?? selectedCard.card.branch ?? null) : undefined,
+		taskChangedFiles: selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) : undefined,
+		taskId: selectedCard?.card.id ?? null,
+		baseRef: selectedCard?.card.baseRef ?? null,
+		skipTaskCheckoutConfirmation,
+		skipHomeCheckoutConfirmation,
+	});
+
+	const topbarBranchLabel = useMemo(() => {
+		if (selectedCard) {
+			return (
+				selectedTaskWorkspaceInfo?.branch ??
+				selectedCard.card.branch ??
+				selectedTaskWorkspaceInfo?.headCommit?.substring(0, 7) ??
+				null
+			);
+		}
+		return homeGitSummary?.currentBranch ?? null;
+	}, [selectedCard, selectedTaskWorkspaceInfo, homeGitSummary]);
 
 	// Home-scope file browser data + tree state
 	const homeFileBrowserData = useFileBrowserData({
@@ -1272,6 +1304,19 @@ export default function App(): ReactElement {
 			canOpenWorkspace={canOpenWorkspace}
 			isOpeningWorkspace={isOpeningWorkspace}
 			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
+			branchPillSlot={
+				topbarBranchLabel ? (
+					<BranchSelectorPopover
+						isOpen={topbarBranchActions.isBranchPopoverOpen}
+						onOpenChange={topbarBranchActions.setBranchPopoverOpen}
+						branches={topbarBranchActions.branches}
+						currentBranch={topbarBranchActions.currentBranch}
+						worktreeBranches={topbarBranchActions.worktreeBranches}
+						onSelectBranchView={topbarBranchActions.handleCheckoutBranch}
+						trigger={<BranchPillTrigger label={topbarBranchLabel} />}
+					/>
+				) : undefined
+			}
 		/>
 	);
 
@@ -1695,6 +1740,12 @@ export default function App(): ReactElement {
 						state={homeBranchActions.checkoutDialogState}
 						onClose={homeBranchActions.closeCheckoutDialog}
 						onConfirmCheckout={homeBranchActions.handleConfirmCheckout}
+					/>
+					<CheckoutConfirmationDialog
+						state={topbarBranchActions.checkoutDialogState}
+						onClose={topbarBranchActions.closeCheckoutDialog}
+						onConfirmCheckout={topbarBranchActions.handleConfirmCheckout}
+						onSkipTaskConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
 					/>
 					<MigrateWorkingDirectoryDialog
 						open={pendingMigrate !== null}
