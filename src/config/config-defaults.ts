@@ -6,44 +6,17 @@
 // This file re-exports those defaults and adds complex constants (prompt templates,
 // shortcut arrays) that don't fit the field registry pattern.
 import type { PromptShortcut, RuntimeAgentId } from "../core/api-contract";
+import {
+	DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+	DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE,
+} from "../prompts/prompt-templates";
 import { getGlobalConfigDefaults } from "./global-config-fields";
 import type { AudibleNotificationEvents } from "./runtime-config";
 
+export { DEFAULT_COMMIT_PROMPT_TEMPLATE, DEFAULT_OPEN_PR_PROMPT_TEMPLATE, DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE };
+
 export const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
-
-export const DEFAULT_COMMIT_PROMPT_TEMPLATE = `When you are finished with the task, commit your working changes.
-
-First, check your current git state: run \`git status\` and \`git branch --show-current\`.
-
-- If you are on a branch, stage and commit your changes directly on that branch. Write a clear, descriptive commit message that summarizes the changes and their purpose.
-- If you are on a detached HEAD, create a new branch from the current commit first (e.g. \`git checkout -b <descriptive-branch-name>\`), then stage and commit. Report that a new branch was created.
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not cherry-pick, rebase, or push to other branches. Just commit to your current branch.
-
-Report:
-- Branch name
-- Final commit hash
-- Final commit message
-- Whether a new branch was created (detached HEAD case)`;
-
-export const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `When you are finished with the task, open a pull request against {{base_ref}}.
-
-- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
-- Do not modify the base worktree.
-- Keep all PR preparation in the current worktree.
-
-Steps:
-1. Ensure all intended changes are committed.
-2. If currently on detached HEAD, create a branch at the current commit.
-3. Push the branch to origin and set upstream.
-4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
-5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
-6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
-7. Report:
-   - PR title: PR URL
-   - Base branch
-   - Head branch
-   - Any follow-up needed`;
 
 export const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 	permission: true,
@@ -56,6 +29,10 @@ export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
 	{
 		label: "Commit",
 		prompt: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	},
+	{
+		label: "Squash Merge",
+		prompt: DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE,
 	},
 ];
 

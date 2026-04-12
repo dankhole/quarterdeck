@@ -121,5 +121,6 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		agents,
 		shortcuts: runtimeConfig.shortcuts,
 		promptShortcuts: runtimeConfig.promptShortcuts,
+		hiddenDefaultPromptShortcuts: runtimeConfig.hiddenDefaultPromptShortcuts,
 	};
 }

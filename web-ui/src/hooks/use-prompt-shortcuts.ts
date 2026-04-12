@@ -24,7 +24,7 @@ export interface UsePromptShortcutsResult {
 	isRunning: boolean;
 	runPromptShortcut: (taskId: string, shortcutLabel: string) => Promise<void>;
 	selectShortcutLabel: (label: string) => void;
-	savePromptShortcuts: (shortcuts: PromptShortcut[]) => Promise<boolean>;
+	savePromptShortcuts: (shortcuts: PromptShortcut[], hiddenDefaults: string[]) => Promise<boolean>;
 }
 
 const normalizeLabel = (value: string): string | null => {
@@ -103,12 +103,15 @@ export function usePromptShortcuts({
 	);
 
 	const savePromptShortcuts = useCallback(
-		async (shortcuts: PromptShortcut[]): Promise<boolean> => {
+		async (shortcuts: PromptShortcut[], hiddenDefaults: string[]): Promise<boolean> => {
 			if (currentProjectId === null) {
 				return false;
 			}
 			try {
-				await saveRuntimeConfig(currentProjectId, { promptShortcuts: shortcuts });
+				await saveRuntimeConfig(currentProjectId, {
+					promptShortcuts: shortcuts,
+					hiddenDefaultPromptShortcuts: hiddenDefaults,
+				});
 				refreshRuntimeConfig();
 				return true;
 			} catch (error) {

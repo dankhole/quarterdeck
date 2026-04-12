@@ -312,6 +312,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					shortcuts: [],
 					promptShortcuts: [],
+					hiddenDefaultPromptShortcuts: [],
 				});
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
@@ -374,6 +375,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					shortcuts: [],
 					promptShortcuts: [],
+					hiddenDefaultPromptShortcuts: [],
 				});
 
 				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
@@ -424,6 +426,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					showRunningTaskEmergencyActions: false,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
 					promptShortcuts: [],
+					hiddenDefaultPromptShortcuts: [],
 				});
 				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(true);
 
@@ -704,9 +707,11 @@ describe.sequential("prompt shortcuts config persistence", () => {
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				const state = await loadRuntimeConfig(tempProject);
-				expect(state.promptShortcuts).toHaveLength(1);
+				expect(state.promptShortcuts).toHaveLength(2);
 				expect(state.promptShortcuts[0]?.label).toBe("Commit");
 				expect(state.promptShortcuts[0]?.prompt).toContain("commit your working changes");
+				expect(state.promptShortcuts[1]?.label).toBe("Squash Merge");
+				expect(state.promptShortcuts[1]?.prompt).toContain("commit-tree");
 			});
 		} finally {
 			cleanupProject();
@@ -730,12 +735,16 @@ describe.sequential("prompt shortcuts config persistence", () => {
 				await updateRuntimeConfig(tempProject, { promptShortcuts: customShortcuts });
 
 				const reloaded = await loadRuntimeConfig(tempProject);
-				expect(reloaded.promptShortcuts).toHaveLength(2);
+				// User's 2 shortcuts + 2 defaults (Commit, Squash Merge) merged in
+				expect(reloaded.promptShortcuts).toHaveLength(4);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Ship");
 				expect(reloaded.promptShortcuts[0]?.prompt).toBe("push to main");
 				expect(reloaded.promptShortcuts[1]?.label).toBe("Fix");
 				expect(reloaded.promptShortcuts[1]?.prompt).toBe("fix the bug");
+				expect(reloaded.promptShortcuts[2]?.label).toBe("Commit");
+				expect(reloaded.promptShortcuts[3]?.label).toBe("Squash Merge");
 
+				// On-disk config only has the user's shortcuts
 				const globalConfigRaw = readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8");
 				const globalConfig = JSON.parse(globalConfigRaw) as { promptShortcuts?: unknown[] };
 				expect(globalConfig.promptShortcuts).toHaveLength(2);
@@ -769,8 +778,11 @@ describe.sequential("prompt shortcuts config persistence", () => {
 				);
 
 				const reloaded = await loadRuntimeConfig(tempProject);
-				expect(reloaded.promptShortcuts).toHaveLength(1);
+				// 1 valid user shortcut + 2 defaults merged in
+				expect(reloaded.promptShortcuts).toHaveLength(3);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Good");
+				expect(reloaded.promptShortcuts[1]?.label).toBe("Commit");
+				expect(reloaded.promptShortcuts[2]?.label).toBe("Squash Merge");
 			});
 		} finally {
 			cleanupProject();
@@ -791,7 +803,7 @@ describe.sequential("prompt shortcuts config persistence", () => {
 				writeFileSync(configPath, JSON.stringify({ promptShortcuts: [{ label: "", prompt: "" }] }));
 
 				const reloaded = await loadRuntimeConfig(tempProject);
-				expect(reloaded.promptShortcuts).toHaveLength(1);
+				expect(reloaded.promptShortcuts).toHaveLength(2);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Commit");
 			});
 		} finally {

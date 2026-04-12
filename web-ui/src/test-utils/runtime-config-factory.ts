@@ -50,6 +50,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	commitPromptTemplateDefault: "",
 	openPrPromptTemplateDefault: "",
 	promptShortcuts: [],
+	hiddenDefaultPromptShortcuts: [],
 	detectedCommands: ["claude"],
 	agents: [createTestAgentDef("claude"), createTestAgentDef("codex")],
 	shortcuts: [],

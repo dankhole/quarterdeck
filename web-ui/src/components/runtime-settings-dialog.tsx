@@ -3,7 +3,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
-import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
+import { CONFIG_DEFAULTS, DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import {
 	Check,
@@ -28,9 +28,19 @@ import {
 } from "@/components/shared/runtime-shortcut-icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogDescription,
+	AlertDialogTitle,
+	Dialog,
+	DialogBody,
+	DialogFooter,
+	DialogHeader,
+} from "@/components/ui/dialog";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
-import { openFileOnHost } from "@/runtime/runtime-config-query";
+import { openFileOnHost, saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
@@ -351,6 +361,51 @@ export function RuntimeSettingsDialog({
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
+	const [resetDefaultShortcutsDialogOpen, setResetDefaultShortcutsDialogOpen] = useState(false);
+	const [isResettingDefaultShortcuts, setIsResettingDefaultShortcuts] = useState(false);
+
+	const hasHiddenDefaults = (config?.hiddenDefaultPromptShortcuts ?? []).length > 0;
+	const hasOverriddenDefaults = useMemo(() => {
+		const shortcuts = config?.promptShortcuts ?? [];
+		return DEFAULT_PROMPT_SHORTCUTS.some((def) => {
+			const match = shortcuts.find((s) => s.label.trim().toLowerCase() === def.label.trim().toLowerCase());
+			return match !== undefined && match.prompt !== def.prompt;
+		});
+	}, [config?.promptShortcuts]);
+	const showResetDefaultShortcuts = hasHiddenDefaults || hasOverriddenDefaults;
+
+	const handleResetDefaultShortcuts = useCallback(async () => {
+		if (!workspaceId) return;
+		setIsResettingDefaultShortcuts(true);
+		try {
+			const defaultLabelSet = new Set(DEFAULT_PROMPT_SHORTCUTS.map((d) => d.label.trim().toLowerCase()));
+			const userOnlyShortcuts = (config?.promptShortcuts ?? []).filter(
+				(s) => !defaultLabelSet.has(s.label.trim().toLowerCase()),
+			);
+			await saveRuntimeConfig(workspaceId, {
+				promptShortcuts: userOnlyShortcuts,
+				hiddenDefaultPromptShortcuts: [],
+			});
+			onSaved?.();
+			setResetDefaultShortcutsDialogOpen(false);
+			showAppToast({
+				intent: "success",
+				icon: "tick",
+				message: "Default prompt shortcuts restored.",
+				timeout: 3000,
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showAppToast({
+				intent: "danger",
+				icon: "error",
+				message: `Failed to reset default shortcuts: ${message}`,
+				timeout: 7000,
+			});
+		} finally {
+			setIsResettingDefaultShortcuts(false);
+		}
+	}, [workspaceId, config?.promptShortcuts, onSaved]);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
@@ -728,664 +783,708 @@ export function RuntimeSettingsDialog({
 	);
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "600px" }}>
-			<DialogHeader title="Settings" icon={<Settings size={16} />} />
-			<DialogBody>
-				<h5 className="font-semibold text-text-primary m-0">Global</h5>
-				<p
-					className="text-text-secondary font-mono text-xs m-0 break-all"
-					style={{ cursor: config?.globalConfigPath ? "pointer" : undefined }}
-					onClick={() => {
-						if (config?.globalConfigPath) {
-							handleOpenFilePath(config.globalConfigPath);
-						}
-					}}
-				>
-					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.quarterdeck/config.json"}
-					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent</h6>
-				{supportedAgents.map((agent) => (
-					<AgentRow
-						key={agent.id}
-						agent={agent}
-						isSelected={agent.id === selectedAgentId}
-						onSelect={() => setSelectedAgentId(agent.id)}
-						disabled={controlsDisabled}
-					/>
-				))}
-				{config === null ? (
-					<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
-				) : null}
-				<label
-					htmlFor={bypassPermissionsCheckboxId}
-					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
-				>
-					<RadixCheckbox.Root
-						id={bypassPermissionsCheckboxId}
-						aria-label="Enable bypass permissions flag"
-						checked={agentAutonomousModeEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
-						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "600px" }}>
+				<DialogHeader title="Settings" icon={<Settings size={16} />} />
+				<DialogBody>
+					<h5 className="font-semibold text-text-primary m-0">Global</h5>
+					<p
+						className="text-text-secondary font-mono text-xs m-0 break-all"
+						style={{ cursor: config?.globalConfigPath ? "pointer" : undefined }}
+						onClick={() => {
+							if (config?.globalConfigPath) {
+								handleOpenFilePath(config.globalConfigPath);
+							}
+						}}
 					>
-						<RadixCheckbox.Indicator>
-							<Check size={12} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<span>Enable bypass permissions flag</span>
-				</label>
-				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					Allows agents to use tools without stopping for permission. Use at your own risk.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
-					<Sparkles size={14} />
-					LLM Generation
-				</h6>
-				{!llmConfigured ? (
-					<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
-						LLM features are unavailable. Set <code className="text-[12px]">ANTHROPIC_BEDROCK_BASE_URL</code> and{" "}
-						<code className="text-[12px]">ANTHROPIC_AUTH_TOKEN</code> in the shell that launches Quarterdeck to
-						enable auto-generated titles, branch names, and summaries.
-					</div>
-				) : (
-					<p className="text-text-secondary text-[13px] mt-0 mb-2">
-						Titles, branch names, and summaries are generated via a lightweight LLM call.
+						{config?.globalConfigPath
+							? formatPathForDisplay(config.globalConfigPath)
+							: "~/.quarterdeck/config.json"}
+						{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
-				)}
 
-				<label
-					htmlFor="runtime-settings-show-summary-on-cards"
-					className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
-				>
-					<RadixCheckbox.Root
-						id="runtime-settings-show-summary-on-cards"
-						aria-label="Show conversation summary on cards"
-						checked={showSummaryOnCards}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setShowSummaryOnCards(checked === true)}
-						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-					>
-						<RadixCheckbox.Indicator>
-							<Check size={12} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<span>Show conversation summary on cards</span>
-				</label>
-				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					Display a truncated preview of the agent's latest summary below the title.
-				</p>
-
-				<label
-					htmlFor="runtime-settings-auto-generate-summary"
-					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
-				>
-					<RadixCheckbox.Root
-						id="runtime-settings-auto-generate-summary"
-						aria-label="Auto-generate summary with LLM"
-						checked={autoGenerateSummary}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setAutoGenerateSummary(checked === true)}
-						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-					>
-						<RadixCheckbox.Indicator>
-							<Check size={12} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<span>Auto-generate summary with LLM</span>
-				</label>
-				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
-				</p>
-				{autoGenerateSummary ? (
-					<div className="flex items-center gap-2 ml-6 mt-1.5">
-						<label htmlFor="runtime-settings-summary-stale-seconds" className="text-[13px] text-text-secondary">
-							Regenerate after
-						</label>
-						<input
-							id="runtime-settings-summary-stale-seconds"
-							type="text"
-							inputMode="numeric"
-							pattern="[0-9]*"
-							value={summaryStaleAfterSeconds}
+					<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent</h6>
+					{supportedAgents.map((agent) => (
+						<AgentRow
+							key={agent.id}
+							agent={agent}
+							isSelected={agent.id === selectedAgentId}
+							onSelect={() => setSelectedAgentId(agent.id)}
 							disabled={controlsDisabled}
-							onChange={(event) => {
-								const raw = event.target.value.replace(/\D/g, "");
-								if (raw === "") {
-									return;
-								}
-								const value = Number.parseInt(raw, 10);
-								if (Number.isFinite(value)) {
-									setSummaryStaleAfterSeconds(Math.max(5, Math.min(3600, value)));
-								}
-							}}
-							className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
 						/>
-						<span className="text-[13px] text-text-secondary">seconds</span>
-					</div>
-				) : null}
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={audibleNotificationsEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setAudibleNotificationsEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					))}
+					{config === null ? (
+						<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
+					) : null}
+					<label
+						htmlFor={bypassPermissionsCheckboxId}
+						className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
 					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Play sounds when tasks need attention</span>
-				</div>
-				<div
-					className={cn(
-						"flex items-center gap-2 mt-2 text-[13px]",
-						(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
-					)}
-				>
-					<RadixCheckbox.Root
-						id="audible-notification-only-when-hidden"
-						checked={audibleNotificationsOnlyWhenHidden}
-						disabled={!audibleNotificationsEnabled || controlsDisabled}
-						onCheckedChange={(checked) => setAudibleNotificationsOnlyWhenHidden(checked === true)}
-						className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
-					>
-						<RadixCheckbox.Indicator>
-							<Check size={12} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
-						<span className="text-text-primary">Only when tab is hidden</span>
-						<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
+						<RadixCheckbox.Root
+							id={bypassPermissionsCheckboxId}
+							aria-label="Enable bypass permissions flag"
+							checked={agentAutonomousModeEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
+							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={12} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						<span>Enable bypass permissions flag</span>
 					</label>
-				</div>
-				<div className="flex items-center gap-3 mt-3">
-					<Volume2
-						size={14}
+					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+						Allows agents to use tools without stopping for permission. Use at your own risk.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
+						<Sparkles size={14} />
+						LLM Generation
+					</h6>
+					{!llmConfigured ? (
+						<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
+							LLM features are unavailable. Set <code className="text-[12px]">ANTHROPIC_BEDROCK_BASE_URL</code>{" "}
+							and <code className="text-[12px]">ANTHROPIC_AUTH_TOKEN</code> in the shell that launches
+							Quarterdeck to enable auto-generated titles, branch names, and summaries.
+						</div>
+					) : (
+						<p className="text-text-secondary text-[13px] mt-0 mb-2">
+							Titles, branch names, and summaries are generated via a lightweight LLM call.
+						</p>
+					)}
+
+					<label
+						htmlFor="runtime-settings-show-summary-on-cards"
+						className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
+					>
+						<RadixCheckbox.Root
+							id="runtime-settings-show-summary-on-cards"
+							aria-label="Show conversation summary on cards"
+							checked={showSummaryOnCards}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setShowSummaryOnCards(checked === true)}
+							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={12} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						<span>Show conversation summary on cards</span>
+					</label>
+					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+						Display a truncated preview of the agent's latest summary below the title.
+					</p>
+
+					<label
+						htmlFor="runtime-settings-auto-generate-summary"
+						className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+					>
+						<RadixCheckbox.Root
+							id="runtime-settings-auto-generate-summary"
+							aria-label="Auto-generate summary with LLM"
+							checked={autoGenerateSummary}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setAutoGenerateSummary(checked === true)}
+							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={12} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						<span>Auto-generate summary with LLM</span>
+					</label>
+					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+						Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
+					</p>
+					{autoGenerateSummary ? (
+						<div className="flex items-center gap-2 ml-6 mt-1.5">
+							<label
+								htmlFor="runtime-settings-summary-stale-seconds"
+								className="text-[13px] text-text-secondary"
+							>
+								Regenerate after
+							</label>
+							<input
+								id="runtime-settings-summary-stale-seconds"
+								type="text"
+								inputMode="numeric"
+								pattern="[0-9]*"
+								value={summaryStaleAfterSeconds}
+								disabled={controlsDisabled}
+								onChange={(event) => {
+									const raw = event.target.value.replace(/\D/g, "");
+									if (raw === "") {
+										return;
+									}
+									const value = Number.parseInt(raw, 10);
+									if (Number.isFinite(value)) {
+										setSummaryStaleAfterSeconds(Math.max(5, Math.min(3600, value)));
+									}
+								}}
+								className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
+							/>
+							<span className="text-[13px] text-text-secondary">seconds</span>
+						</div>
+					) : null}
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={audibleNotificationsEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setAudibleNotificationsEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Play sounds when tasks need attention</span>
+					</div>
+					<div
 						className={cn(
-							"text-text-secondary",
-							(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
-						)}
-					/>
-					<input
-						type="range"
-						min={0}
-						max={100}
-						step={1}
-						value={Math.round(audibleNotificationVolume * 100)}
-						onChange={(e) => setAudibleNotificationVolume(Number(e.target.value) / 100)}
-						disabled={!audibleNotificationsEnabled || controlsDisabled}
-						className="flex-1 h-1.5 accent-accent disabled:opacity-40"
-					/>
-					<span
-						className={cn(
-							"text-[13px] text-text-secondary w-8 text-right tabular-nums",
+							"flex items-center gap-2 mt-2 text-[13px]",
 							(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 						)}
 					>
-						{Math.round(audibleNotificationVolume * 100)}%
-					</span>
-				</div>
-				<div className="flex flex-col gap-2 mt-3">
-					{(
-						[
-							["permission", "Permissions", "Task is waiting for approval"],
-							["review", "Review", "Task is ready for review"],
-							["failure", "Failure", "Agent session failed or errored"],
-							["completion", "Completion", "Task completed successfully"],
-						] as const
-					).map(([key, label, description]) => (
-						<div
-							key={key}
+						<RadixCheckbox.Root
+							id="audible-notification-only-when-hidden"
+							checked={audibleNotificationsOnlyWhenHidden}
+							disabled={!audibleNotificationsEnabled || controlsDisabled}
+							onCheckedChange={(checked) => setAudibleNotificationsOnlyWhenHidden(checked === true)}
+							className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={12} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
+							<span className="text-text-primary">Only when tab is hidden</span>
+							<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
+						</label>
+					</div>
+					<div className="flex items-center gap-3 mt-3">
+						<Volume2
+							size={14}
 							className={cn(
-								"flex items-center gap-2 text-[13px]",
+								"text-text-secondary",
+								(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+							)}
+						/>
+						<input
+							type="range"
+							min={0}
+							max={100}
+							step={1}
+							value={Math.round(audibleNotificationVolume * 100)}
+							onChange={(e) => setAudibleNotificationVolume(Number(e.target.value) / 100)}
+							disabled={!audibleNotificationsEnabled || controlsDisabled}
+							className="flex-1 h-1.5 accent-accent disabled:opacity-40"
+						/>
+						<span
+							className={cn(
+								"text-[13px] text-text-secondary w-8 text-right tabular-nums",
 								(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 							)}
 						>
-							<RadixCheckbox.Root
-								id={`audible-notification-${key}`}
-								checked={audibleNotificationEvents[key]}
-								disabled={!audibleNotificationsEnabled || controlsDisabled}
-								onCheckedChange={(checked) =>
-									setAudibleNotificationEvents((prev) => ({ ...prev, [key]: checked === true }))
-								}
-								className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+							{Math.round(audibleNotificationVolume * 100)}%
+						</span>
+					</div>
+					<div className="flex flex-col gap-2 mt-3">
+						{(
+							[
+								["permission", "Permissions", "Task is waiting for approval"],
+								["review", "Review", "Task is ready for review"],
+								["failure", "Failure", "Agent session failed or errored"],
+								["completion", "Completion", "Task completed successfully"],
+							] as const
+						).map(([key, label, description]) => (
+							<div
+								key={key}
+								className={cn(
+									"flex items-center gap-2 text-[13px]",
+									(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+								)}
 							>
-								<RadixCheckbox.Indicator>
-									<Check size={12} className="text-white" />
-								</RadixCheckbox.Indicator>
-							</RadixCheckbox.Root>
-							<label htmlFor={`audible-notification-${key}`} className="flex items-center gap-1 cursor-pointer">
-								<span className="text-text-primary">{label}</span>
-								<span className="text-text-tertiary">— {description}</span>
-							</label>
-						</div>
-					))}
-				</div>
-				<div className="mt-3">
+								<RadixCheckbox.Root
+									id={`audible-notification-${key}`}
+									checked={audibleNotificationEvents[key]}
+									disabled={!audibleNotificationsEnabled || controlsDisabled}
+									onCheckedChange={(checked) =>
+										setAudibleNotificationEvents((prev) => ({ ...prev, [key]: checked === true }))
+									}
+									className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+								>
+									<RadixCheckbox.Indicator>
+										<Check size={12} className="text-white" />
+									</RadixCheckbox.Indicator>
+								</RadixCheckbox.Root>
+								<label
+									htmlFor={`audible-notification-${key}`}
+									className="flex items-center gap-1 cursor-pointer"
+								>
+									<span className="text-text-primary">{label}</span>
+									<span className="text-text-tertiary">— {description}</span>
+								</label>
+							</div>
+						))}
+					</div>
+					<div className="mt-3">
+						<Button
+							size="sm"
+							disabled={!audibleNotificationsEnabled || controlsDisabled}
+							onClick={() => {
+								notificationAudioPlayer.ensureContext();
+								notificationAudioPlayer.play("permission", audibleNotificationVolume);
+							}}
+						>
+							Test sound
+						</Button>
+					</div>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={shellAutoRestartEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setShellAutoRestartEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
+					</p>
+					<FontWeightInput
+						value={terminalFontWeight}
+						onChange={setTerminalFontWeight}
+						disabled={controlsDisabled}
+					/>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={terminalWebGLRenderer}
+							disabled={controlsDisabled}
+							onCheckedChange={setTerminalWebGLRenderer}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Use WebGL renderer</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native
+						canvas 2D renderer.
+					</p>
 					<Button
 						size="sm"
-						disabled={!audibleNotificationsEnabled || controlsDisabled}
+						className="mt-3"
 						onClick={() => {
-							notificationAudioPlayer.ensureContext();
-							notificationAudioPlayer.play("permission", audibleNotificationVolume);
-						}}
-					>
-						Test sound
-					</Button>
-				</div>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={shellAutoRestartEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setShellAutoRestartEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
-				</p>
-				<FontWeightInput value={terminalFontWeight} onChange={setTerminalFontWeight} disabled={controlsDisabled} />
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={terminalWebGLRenderer}
-						disabled={controlsDisabled}
-						onCheckedChange={setTerminalWebGLRenderer}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Use WebGL renderer</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native
-					canvas 2D renderer.
-				</p>
-				<Button
-					size="sm"
-					className="mt-3"
-					onClick={() => {
-						const count = resetAllTerminalRenderers();
-						showAppToast({
-							intent: "success",
-							message: `Reset rendering for ${count} terminal${count === 1 ? "" : "s"}`,
-							timeout: 3000,
-						});
-					}}
-				>
-					Reset terminal rendering
-				</Button>
-				<p className="text-text-secondary text-[13px] mt-2 mb-0">
-					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
-					distorted after moving between monitors.
-				</p>
-
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={terminalChatViewEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setTerminalChatViewEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Experimental: HTML chat view</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Replaces the terminal canvas with browser-rendered HTML text for agent output. Strips ANSI formatting and
-					status bar noise. Testing only — output may be incomplete or noisy.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={uncommittedChangesOnCardsEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setUncommittedChangesOnCardsEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show uncommitted changes dot on cards</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show a red dot on task cards when the worktree has uncommitted file changes.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={unmergedChangesIndicatorEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setUnmergedChangesIndicatorEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base
-					branch.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={behindBaseIndicatorEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={setBehindBaseIndicatorEnabled}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={worktreeAddParentRepoDir}
-						disabled={controlsDisabled}
-						onCheckedChange={setWorktreeAddParentRepoDir}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">
-						Allow agents to access the parent repo from worktrees
-					</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Passes the parent repository path via{" "}
-					<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can read
-					files from the original repo. Claude Code only.
-				</p>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={worktreeAddQuarterdeckDir}
-						disabled={controlsDisabled}
-						onCheckedChange={setWorktreeAddQuarterdeckDir}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">
-						Allow agents to access the <code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code>{" "}
-						directory
-					</span>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees).
-					Use with caution — rogue writes can corrupt workspace state and cause revision conflicts. Claude Code
-					only.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
-				<p className="text-text-secondary text-[13px] mt-1 mb-3">
-					How often to check for git changes in task worktrees. Lower values show changes faster but use more
-					resources when many tasks are active.
-				</p>
-				<div className="flex flex-col gap-2">
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
-							Selected task
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="focused-task-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={focusedTaskPollMs}
-								onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
-							Background tasks
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="background-task-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={backgroundTaskPollMs}
-								onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-					<div className="flex items-center justify-between gap-3">
-						<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
-							Home repository
-						</label>
-						<div className="flex items-center gap-1.5">
-							<input
-								id="home-repo-poll"
-								type="number"
-								min={500}
-								max={60000}
-								step={500}
-								value={homeRepoPollMs}
-								onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
-								disabled={controlsDisabled}
-								className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-							/>
-							<span className="text-text-secondary text-[11px]">ms</span>
-						</div>
-					</div>
-				</div>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Session Recovery</h6>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={showRunningTaskEmergencyActions}
-						disabled={controlsDisabled}
-						onCheckedChange={setShowRunningTaskEmergencyActions}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
-				</div>
-				<p className="text-text-secondary text-[12px] mt-1 mb-0">
-					Adds emergency stop and trash actions to in-progress cards when a task is stuck.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout & Debug</h6>
-				<Button size="sm" onClick={resetLayoutCustomizations}>
-					Reset layout
-				</Button>
-				<p className="text-text-secondary text-[13px] mt-2 mb-0">
-					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
-				</p>
-				<p className="text-text-secondary text-[13px] mt-3 mb-0">
-					Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the debug
-					log panel. Debug logging activates automatically when the panel is opened.
-				</p>
-
-				<h6 className="font-semibold text-text-primary mt-4 mb-2">Suppressed Dialogs</h6>
-				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					Re-enable dialogs and confirmations you've previously dismissed.
-				</p>
-				<div className="flex items-center gap-2">
-					<RadixSwitch.Root
-						checked={showTrashWorktreeNotice}
-						disabled={controlsDisabled}
-						onCheckedChange={setShowTrashWorktreeNotice}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
-				</div>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={!skipTaskCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setSkipTaskCheckoutConfirmation(!checked)}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show task worktree checkout confirmation</span>
-				</div>
-				<div className="flex items-center gap-2 mt-3">
-					<RadixSwitch.Root
-						checked={!skipHomeCheckoutConfirmation}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setSkipHomeCheckoutConfirmation(!checked)}
-						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-					>
-						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-					</RadixSwitch.Root>
-					<span className="text-[13px] text-text-primary">Show home checkout confirmation</span>
-				</div>
-
-				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
-				<p
-					className="text-text-secondary font-mono text-xs m-0 break-all"
-					style={{ cursor: config?.projectConfigPath ? "pointer" : undefined }}
-					onClick={() => {
-						if (config?.projectConfigPath) {
-							handleOpenFilePath(config.projectConfigPath);
-						}
-					}}
-				>
-					{config?.projectConfigPath
-						? formatPathForDisplay(config.projectConfigPath)
-						: "<project>/.quarterdeck/config.json"}
-					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
-				</p>
-
-				<div className="flex items-center justify-between mt-3 mb-2">
-					<h6 ref={shortcutsSectionRef} className="font-semibold text-text-primary m-0">
-						Script shortcuts
-					</h6>
-					<Button
-						variant="ghost"
-						size="sm"
-						icon={<Plus size={14} />}
-						onClick={() => {
-							setShortcuts((current) => {
-								const nextLabel = getNextShortcutLabel(current, "Run");
-								setPendingShortcutScrollIndex(current.length);
-								return [
-									...current,
-									{
-										label: nextLabel,
-										command: "",
-										icon: "play",
-									},
-								];
+							const count = resetAllTerminalRenderers();
+							showAppToast({
+								intent: "success",
+								message: `Reset rendering for ${count} terminal${count === 1 ? "" : "s"}`,
+								timeout: 3000,
 							});
 						}}
-						disabled={controlsDisabled}
 					>
-						Add
+						Reset terminal rendering
 					</Button>
-				</div>
+					<p className="text-text-secondary text-[13px] mt-2 mb-0">
+						Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
+						distorted after moving between monitors.
+					</p>
 
-				{shortcuts.map((shortcut, shortcutIndex) => (
-					<div
-						key={shortcutIndex}
-						ref={(node) => {
-							shortcutRowRefs.current[shortcutIndex] = node;
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={terminalChatViewEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setTerminalChatViewEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Experimental: HTML chat view</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Replaces the terminal canvas with browser-rendered HTML text for agent output. Strips ANSI formatting
+						and status bar noise. Testing only — output may be incomplete or noisy.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={uncommittedChangesOnCardsEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setUncommittedChangesOnCardsEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show uncommitted changes dot on cards</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Show a red dot on task cards when the worktree has uncommitted file changes.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={unmergedChangesIndicatorEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setUnmergedChangesIndicatorEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the
+						base branch.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={behindBaseIndicatorEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setBehindBaseIndicatorEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={worktreeAddParentRepoDir}
+							disabled={controlsDisabled}
+							onCheckedChange={setWorktreeAddParentRepoDir}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">
+							Allow agents to access the parent repo from worktrees
+						</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Passes the parent repository path via{" "}
+						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
+						read files from the original repo. Claude Code only.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={worktreeAddQuarterdeckDir}
+							disabled={controlsDisabled}
+							onCheckedChange={setWorktreeAddQuarterdeckDir}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">
+							Allow agents to access the{" "}
+							<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code> directory
+						</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Gives agents read/write access to Quarterdeck state files (board data, session state, other
+						worktrees). Use with caution — rogue writes can corrupt workspace state and cause revision conflicts.
+						Claude Code only.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
+					<p className="text-text-secondary text-[13px] mt-1 mb-3">
+						How often to check for git changes in task worktrees. Lower values show changes faster but use more
+						resources when many tasks are active.
+					</p>
+					<div className="flex flex-col gap-2">
+						<div className="flex items-center justify-between gap-3">
+							<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
+								Selected task
+							</label>
+							<div className="flex items-center gap-1.5">
+								<input
+									id="focused-task-poll"
+									type="number"
+									min={500}
+									max={60000}
+									step={500}
+									value={focusedTaskPollMs}
+									onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
+									disabled={controlsDisabled}
+									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+								/>
+								<span className="text-text-secondary text-[11px]">ms</span>
+							</div>
+						</div>
+						<div className="flex items-center justify-between gap-3">
+							<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
+								Background tasks
+							</label>
+							<div className="flex items-center gap-1.5">
+								<input
+									id="background-task-poll"
+									type="number"
+									min={500}
+									max={60000}
+									step={500}
+									value={backgroundTaskPollMs}
+									onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
+									disabled={controlsDisabled}
+									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+								/>
+								<span className="text-text-secondary text-[11px]">ms</span>
+							</div>
+						</div>
+						<div className="flex items-center justify-between gap-3">
+							<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
+								Home repository
+							</label>
+							<div className="flex items-center gap-1.5">
+								<input
+									id="home-repo-poll"
+									type="number"
+									min={500}
+									max={60000}
+									step={500}
+									value={homeRepoPollMs}
+									onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
+									disabled={controlsDisabled}
+									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+								/>
+								<span className="text-text-secondary text-[11px]">ms</span>
+							</div>
+						</div>
+					</div>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Session Recovery</h6>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={showRunningTaskEmergencyActions}
+							disabled={controlsDisabled}
+							onCheckedChange={setShowRunningTaskEmergencyActions}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
+					</div>
+					<p className="text-text-secondary text-[12px] mt-1 mb-0">
+						Adds emergency stop and trash actions to in-progress cards when a task is stuck.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout & Debug</h6>
+					<Button size="sm" onClick={resetLayoutCustomizations}>
+						Reset layout
+					</Button>
+					<p className="text-text-secondary text-[13px] mt-2 mb-0">
+						Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+					</p>
+					<p className="text-text-secondary text-[13px] mt-3 mb-0">
+						Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the
+						debug log panel. Debug logging activates automatically when the panel is opened.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Suppressed Dialogs</h6>
+					<p className="text-text-secondary text-[13px] mt-0 mb-2">
+						Re-enable dialogs and confirmations you've previously dismissed.
+					</p>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={showTrashWorktreeNotice}
+							disabled={controlsDisabled}
+							onCheckedChange={setShowTrashWorktreeNotice}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
+					</div>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={!skipTaskCheckoutConfirmation}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setSkipTaskCheckoutConfirmation(!checked)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show task worktree checkout confirmation</span>
+					</div>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={!skipHomeCheckoutConfirmation}
+							disabled={controlsDisabled}
+							onCheckedChange={(checked) => setSkipHomeCheckoutConfirmation(!checked)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show home checkout confirmation</span>
+					</div>
+
+					{showResetDefaultShortcuts ? (
+						<>
+							<h6 className="font-semibold text-text-primary mt-4 mb-2">Default Prompt Shortcuts</h6>
+							<p className="text-text-secondary text-[13px] mt-0 mb-2">
+								Restore the built-in default prompt shortcuts (Commit and Squash Merge), replacing any
+								customizations.
+							</p>
+							<Button
+								variant="default"
+								size="sm"
+								disabled={controlsDisabled || isResettingDefaultShortcuts}
+								onClick={() => setResetDefaultShortcutsDialogOpen(true)}
+							>
+								{isResettingDefaultShortcuts ? "Restoring..." : "Restore defaults"}
+							</Button>
+						</>
+					) : null}
+
+					<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
+					<p
+						className="text-text-secondary font-mono text-xs m-0 break-all"
+						style={{ cursor: config?.projectConfigPath ? "pointer" : undefined }}
+						onClick={() => {
+							if (config?.projectConfigPath) {
+								handleOpenFilePath(config.projectConfigPath);
+							}
 						}}
-						className="grid gap-2 mb-1"
-						style={{ gridTemplateColumns: "max-content 1fr 2fr auto" }}
 					>
-						<ShortcutIconPicker
-							value={shortcut.icon}
-							onSelect={(icon) =>
-								setShortcuts((current) =>
-									current.map((item, itemIndex) => (itemIndex === shortcutIndex ? { ...item, icon } : item)),
-								)
-							}
-						/>
-						<input
-							value={shortcut.label}
-							onChange={(event) =>
-								setShortcuts((current) =>
-									current.map((item, itemIndex) =>
-										itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
-									),
-								)
-							}
-							placeholder="Label"
-							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-						/>
-						<input
-							value={shortcut.command}
-							onChange={(event) =>
-								setShortcuts((current) =>
-									current.map((item, itemIndex) =>
-										itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
-									),
-								)
-							}
-							placeholder="Command"
-							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-						/>
+						{config?.projectConfigPath
+							? formatPathForDisplay(config.projectConfigPath)
+							: "<project>/.quarterdeck/config.json"}
+						{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
+					</p>
+
+					<div className="flex items-center justify-between mt-3 mb-2">
+						<h6 ref={shortcutsSectionRef} className="font-semibold text-text-primary m-0">
+							Script shortcuts
+						</h6>
 						<Button
 							variant="ghost"
 							size="sm"
-							icon={<X size={14} />}
-							aria-label={`Remove shortcut ${shortcut.label}`}
-							onClick={() =>
-								setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
-							}
-						/>
+							icon={<Plus size={14} />}
+							onClick={() => {
+								setShortcuts((current) => {
+									const nextLabel = getNextShortcutLabel(current, "Run");
+									setPendingShortcutScrollIndex(current.length);
+									return [
+										...current,
+										{
+											label: nextLabel,
+											command: "",
+											icon: "play",
+										},
+									];
+								});
+							}}
+							disabled={controlsDisabled}
+						>
+							Add
+						</Button>
 					</div>
-				))}
-				{shortcuts.length === 0 ? (
-					<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
-				) : null}
 
-				{saveError ? (
-					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
-						<span className="text-text-primary">{saveError}</span>
-					</div>
-				) : null}
-			</DialogBody>
-			<DialogFooter>
-				<Button
-					size="sm"
-					variant="ghost"
-					className="mr-auto mt-[3px]"
-					icon={<ExternalLink size={14} />}
-					onClick={() => window.open("https://github.com/dankhole/quarterdeck", "_blank")}
-				>
-					Read the docs
-				</Button>
-				<Button onClick={() => onOpenChange(false)} disabled={controlsDisabled}>
-					Cancel
-				</Button>
-				<Button
-					variant="primary"
-					onClick={() => void handleSave()}
-					disabled={controlsDisabled || !hasUnsavedChanges}
-				>
-					Save
-				</Button>
-			</DialogFooter>
-		</Dialog>
+					{shortcuts.map((shortcut, shortcutIndex) => (
+						<div
+							key={shortcutIndex}
+							ref={(node) => {
+								shortcutRowRefs.current[shortcutIndex] = node;
+							}}
+							className="grid gap-2 mb-1"
+							style={{ gridTemplateColumns: "max-content 1fr 2fr auto" }}
+						>
+							<ShortcutIconPicker
+								value={shortcut.icon}
+								onSelect={(icon) =>
+									setShortcuts((current) =>
+										current.map((item, itemIndex) =>
+											itemIndex === shortcutIndex ? { ...item, icon } : item,
+										),
+									)
+								}
+							/>
+							<input
+								value={shortcut.label}
+								onChange={(event) =>
+									setShortcuts((current) =>
+										current.map((item, itemIndex) =>
+											itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
+										),
+									)
+								}
+								placeholder="Label"
+								className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+							<input
+								value={shortcut.command}
+								onChange={(event) =>
+									setShortcuts((current) =>
+										current.map((item, itemIndex) =>
+											itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
+										),
+									)
+								}
+								placeholder="Command"
+								className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<X size={14} />}
+								aria-label={`Remove shortcut ${shortcut.label}`}
+								onClick={() =>
+									setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
+								}
+							/>
+						</div>
+					))}
+					{shortcuts.length === 0 ? (
+						<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
+					) : null}
+
+					{saveError ? (
+						<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
+							<span className="text-text-primary">{saveError}</span>
+						</div>
+					) : null}
+				</DialogBody>
+				<DialogFooter>
+					<Button
+						size="sm"
+						variant="ghost"
+						className="mr-auto mt-[3px]"
+						icon={<ExternalLink size={14} />}
+						onClick={() => window.open("https://github.com/dankhole/quarterdeck", "_blank")}
+					>
+						Read the docs
+					</Button>
+					<Button onClick={() => onOpenChange(false)} disabled={controlsDisabled}>
+						Cancel
+					</Button>
+					<Button
+						variant="primary"
+						onClick={() => void handleSave()}
+						disabled={controlsDisabled || !hasUnsavedChanges}
+					>
+						Save
+					</Button>
+				</DialogFooter>
+			</Dialog>
+
+			<AlertDialog open={resetDefaultShortcutsDialogOpen} onOpenChange={setResetDefaultShortcutsDialogOpen}>
+				<AlertDialogTitle>Restore default prompt shortcuts?</AlertDialogTitle>
+				<AlertDialogDescription>
+					This will restore the built-in defaults (Commit and Squash Merge), overwriting any customizations you've
+					made to those shortcuts. Your other custom prompt shortcuts will not be affected.
+				</AlertDialogDescription>
+				<AlertDialogCancel onClick={() => setResetDefaultShortcutsDialogOpen(false)}>Cancel</AlertDialogCancel>
+				<AlertDialogAction onClick={() => void handleResetDefaultShortcuts()}>Restore defaults</AlertDialogAction>
+			</AlertDialog>
+		</>
 	);
 }

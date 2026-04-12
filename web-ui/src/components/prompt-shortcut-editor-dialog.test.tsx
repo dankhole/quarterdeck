@@ -61,6 +61,7 @@ describe("PromptShortcutEditorDialog", () => {
 					open={true}
 					onOpenChange={() => {}}
 					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
 					onSave={async () => true}
 				/>,
 			);
@@ -88,6 +89,7 @@ describe("PromptShortcutEditorDialog", () => {
 					open={true}
 					onOpenChange={() => {}}
 					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
 					onSave={async () => true}
 				/>,
 			);
@@ -125,6 +127,7 @@ describe("PromptShortcutEditorDialog", () => {
 					open={true}
 					onOpenChange={() => {}}
 					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
 					onSave={async () => true}
 				/>,
 			);
@@ -158,7 +161,13 @@ describe("PromptShortcutEditorDialog", () => {
 
 		await act(async () => {
 			root.render(
-				<PromptShortcutEditorDialog open={true} onOpenChange={() => {}} shortcuts={shortcuts} onSave={onSave} />,
+				<PromptShortcutEditorDialog
+					open={true}
+					onOpenChange={() => {}}
+					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
+					onSave={onSave}
+				/>,
 			);
 		});
 
@@ -181,7 +190,7 @@ describe("PromptShortcutEditorDialog", () => {
 		});
 
 		expect(onSave).toHaveBeenCalledTimes(1);
-		expect(onSave).toHaveBeenCalledWith([{ label: "Edited", prompt: "Edited prompt" }]);
+		expect(onSave).toHaveBeenCalledWith([{ label: "Edited", prompt: "Edited prompt" }], []);
 	});
 
 	it("disables save when label is empty", async () => {
@@ -193,6 +202,7 @@ describe("PromptShortcutEditorDialog", () => {
 					open={true}
 					onOpenChange={() => {}}
 					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
 					onSave={async () => true}
 				/>,
 			);
@@ -223,6 +233,7 @@ describe("PromptShortcutEditorDialog", () => {
 					open={true}
 					onOpenChange={() => {}}
 					shortcuts={shortcuts}
+					hiddenDefaultPromptShortcuts={[]}
 					onSave={async () => true}
 				/>,
 			);
@@ -248,7 +259,13 @@ describe("PromptShortcutEditorDialog", () => {
 	it("shows reminder text about skills", async () => {
 		await act(async () => {
 			root.render(
-				<PromptShortcutEditorDialog open={true} onOpenChange={() => {}} shortcuts={[]} onSave={async () => true} />,
+				<PromptShortcutEditorDialog
+					open={true}
+					onOpenChange={() => {}}
+					shortcuts={[]}
+					hiddenDefaultPromptShortcuts={[]}
+					onSave={async () => true}
+				/>,
 			);
 		});
 

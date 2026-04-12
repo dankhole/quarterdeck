@@ -240,11 +240,12 @@ describe("usePromptShortcuts", () => {
 		];
 
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).savePromptShortcuts(newShortcuts);
+			await requireSnapshot(latestSnapshot).savePromptShortcuts(newShortcuts, []);
 		});
 
 		expect(saveRuntimeConfigMock).toHaveBeenCalledWith("project-1", {
 			promptShortcuts: newShortcuts,
+			hiddenDefaultPromptShortcuts: [],
 		});
 	});
 
@@ -313,7 +314,7 @@ describe("usePromptShortcuts", () => {
 		});
 
 		const result = await act(async () => {
-			return requireSnapshot(latestSnapshot).savePromptShortcuts([{ label: "Test", prompt: "/test" }]);
+			return requireSnapshot(latestSnapshot).savePromptShortcuts([{ label: "Test", prompt: "/test" }], []);
 		});
 
 		expect(result).toBe(false);
@@ -342,7 +343,7 @@ describe("usePromptShortcuts", () => {
 		});
 
 		const result = await act(async () => {
-			return requireSnapshot(latestSnapshot).savePromptShortcuts([{ label: "Test", prompt: "/test" }]);
+			return requireSnapshot(latestSnapshot).savePromptShortcuts([{ label: "Test", prompt: "/test" }], []);
 		});
 
 		expect(result).toBe(false);

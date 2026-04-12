@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Default prompt shortcuts with merge system
+
+- Added "Squash Merge" as a second default prompt shortcut alongside "Commit". The prompt asks the user for the target branch and explains the operation before proceeding, then uses `commit-tree` + `update-ref` to land — the standard worktree-safe squash merge flow.
+- Default shortcuts are now merged into user shortcuts on config load instead of being replaceable. Users who've never customized see both defaults; users with custom shortcuts get missing defaults appended automatically. Case-insensitive label matching — a user shortcut named "commit" overrides the default "Commit".
+- Editing a default's prompt text creates a user override — the template source is never mutated. Deleting a default offers "Revert to default" (if overridden) or "Hide default" via confirmation dialog. Hidden defaults are tracked in a new `hiddenDefaultPromptShortcuts` config field.
+- The editor dialog shows "Default" / "Modified" badges and a revert button on overridden defaults. A "Restore defaults" button in Settings (visible only when defaults are hidden or overridden) clears all customizations with a confirmation warning.
+- Prompt template strings extracted from `config-defaults.ts` into `src/prompts/prompt-templates.ts` for maintainability.
+
 ### Double-click task in sidebar to open agent chat
 
 - Double-clicking a task card in the sidebar column context panel now selects the task and switches the main view to the agent terminal/chat. A hint ("Double-click a task to open agent chat") is shown at the bottom of the sidebar. Backlog tasks are excluded (they use single-click-to-edit).

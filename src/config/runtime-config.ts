@@ -51,6 +51,7 @@ type RuntimeGlobalConfigFileShape = Partial<GlobalConfigFieldValues> & {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutLabel?: string;
 	promptShortcuts?: Array<{ label: string; prompt: string }>;
+	hiddenDefaultPromptShortcuts?: string[];
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
@@ -65,6 +66,7 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	audibleNotificationEvents: AudibleNotificationEvents;
 	shortcuts: RuntimeProjectShortcut[];
 	promptShortcuts: PromptShortcut[];
+	hiddenDefaultPromptShortcuts: string[];
 	commitPromptTemplate: string;
 	openPrPromptTemplate: string;
 	commitPromptTemplateDefault: string;
@@ -78,6 +80,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	shortcuts?: RuntimeProjectShortcut[];
 	promptShortcuts?: PromptShortcut[];
+	hiddenDefaultPromptShortcuts?: string[];
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 }
@@ -97,6 +100,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
 	shortcuts: [],
 	promptShortcuts: [],
+	hiddenDefaultPromptShortcuts: [],
 	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -105,13 +109,47 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 
 export { DEFAULT_PROMPT_SHORTCUTS } from "./config-defaults";
 
+/**
+ * Normalize a raw string array into a set of hidden-default labels (trimmed, lowercased).
+ */
+export function normalizeHiddenDefaultPromptShortcuts(raw: unknown): string[] {
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+	const result: string[] = [];
+	for (const item of raw) {
+		if (typeof item === "string") {
+			const trimmed = item.trim().toLowerCase();
+			if (trimmed) {
+				result.push(trimmed);
+			}
+		}
+	}
+	return result;
+}
+
+/**
+ * Merge default prompt shortcuts with user-configured shortcuts.
+ *
+ * - Defaults whose label appears in `hiddenDefaults` (case-insensitive) are excluded.
+ * - If the user has a shortcut whose label matches a default (case-insensitive, trimmed),
+ *   the user's version wins and stays in the user's position.
+ * - Defaults the user hasn't overridden or hidden are appended at the end.
+ * - If the user has no saved shortcuts and no hidden defaults, returns a copy of the defaults.
+ */
 export function normalizePromptShortcuts(
 	shortcuts: Array<{ label: string; prompt: string }> | null | undefined,
+	hiddenDefaults?: string[] | null,
 ): PromptShortcut[] {
+	const hidden = new Set(hiddenDefaults?.map((h) => h.trim().toLowerCase()) ?? []);
+
+	// No saved shortcuts at all → return all non-hidden defaults.
 	if (!Array.isArray(shortcuts)) {
-		return [...DEFAULT_PROMPT_SHORTCUTS];
+		return DEFAULT_PROMPT_SHORTCUTS.filter((d) => !hidden.has(d.label.trim().toLowerCase())).map((d) => ({ ...d }));
 	}
-	const normalized: PromptShortcut[] = [];
+
+	// Parse user shortcuts.
+	const userShortcuts: PromptShortcut[] = [];
 	for (const shortcut of shortcuts) {
 		if (!shortcut || typeof shortcut !== "object") {
 			continue;
@@ -119,10 +157,25 @@ export function normalizePromptShortcuts(
 		const label = typeof shortcut.label === "string" ? shortcut.label.trim() : "";
 		const prompt = typeof shortcut.prompt === "string" ? shortcut.prompt.trim() : "";
 		if (label && prompt) {
-			normalized.push({ label, prompt });
+			userShortcuts.push({ label, prompt });
 		}
 	}
-	return normalized.length > 0 ? normalized : [...DEFAULT_PROMPT_SHORTCUTS];
+
+	// Track which defaults the user already has (by label match).
+	const userLabelSet = new Set(userShortcuts.map((s) => s.label.trim().toLowerCase()));
+
+	// Defaults that are neither hidden nor already present in the user's list.
+	const missingDefaults = DEFAULT_PROMPT_SHORTCUTS.filter((d) => {
+		const key = d.label.trim().toLowerCase();
+		return !hidden.has(key) && !userLabelSet.has(key);
+	});
+
+	// User shortcuts first (preserving order), then new defaults appended.
+	const merged = [...userShortcuts, ...missingDefaults.map((d) => ({ ...d }))];
+	if (merged.length > 0) return merged;
+	// Only fall back to all defaults when nothing was explicitly hidden —
+	// otherwise the user hid everything and we should respect that.
+	return hidden.size > 0 ? [] : [...DEFAULT_PROMPT_SHORTCUTS];
 }
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
@@ -299,7 +352,11 @@ function toRuntimeConfigState({
 		selectedShortcutLabel: normalizeShortcutLabel(globalConfig?.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(globalConfig?.audibleNotificationEvents),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
-		promptShortcuts: normalizePromptShortcuts(globalConfig?.promptShortcuts),
+		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(globalConfig?.hiddenDefaultPromptShortcuts),
+		promptShortcuts: normalizePromptShortcuts(
+			globalConfig?.promptShortcuts,
+			globalConfig?.hiddenDefaultPromptShortcuts,
+		),
 		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
 		openPrPromptTemplate: normalizePromptTemplate(
 			globalConfig?.openPrPromptTemplate,
@@ -326,6 +383,7 @@ async function writeRuntimeGlobalConfigFile(
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutLabel?: string | null;
 		promptShortcuts?: PromptShortcut[];
+		hiddenDefaultPromptShortcuts?: string[];
 		audibleNotificationEvents?: AudibleNotificationEventsShape;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
@@ -376,6 +434,16 @@ async function writeRuntimeGlobalConfigFile(
 		payload.promptShortcuts = config.promptShortcuts;
 	} else if (existing !== null && Object.hasOwn(existing, "promptShortcuts")) {
 		payload.promptShortcuts = (existing as RuntimeGlobalConfigFileShape).promptShortcuts;
+	}
+
+	// hiddenDefaultPromptShortcuts — only persisted when non-empty or already on disk.
+	const hiddenDefaults = config.hiddenDefaultPromptShortcuts ?? null;
+	if (hiddenDefaults !== null && hiddenDefaults.length > 0) {
+		payload.hiddenDefaultPromptShortcuts = hiddenDefaults;
+	} else if (hiddenDefaults !== null && hiddenDefaults.length === 0) {
+		// Explicitly empty → remove from disk (don't persist an empty array).
+	} else if (existing !== null && Object.hasOwn(existing, "hiddenDefaultPromptShortcuts")) {
+		payload.hiddenDefaultPromptShortcuts = (existing as RuntimeGlobalConfigFileShape).hiddenDefaultPromptShortcuts;
 	}
 
 	// commitPromptTemplate
@@ -497,6 +565,7 @@ function createRuntimeConfigStateFromValues(
 		audibleNotificationEvents: AudibleNotificationEvents;
 		shortcuts: RuntimeProjectShortcut[];
 		promptShortcuts: PromptShortcut[];
+		hiddenDefaultPromptShortcuts: string[];
 	},
 ): RuntimeConfigState {
 	const fields = normalizeGlobalConfigFields(input as Record<string, unknown>);
@@ -508,7 +577,8 @@ function createRuntimeConfigStateFromValues(
 		selectedShortcutLabel: normalizeShortcutLabel(input.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(input.audibleNotificationEvents),
 		shortcuts: normalizeShortcuts(input.shortcuts),
-		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts),
+		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
+		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -526,6 +596,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		audibleNotificationEvents: current.audibleNotificationEvents,
 		shortcuts: [],
 		promptShortcuts: current.promptShortcuts,
+		hiddenDefaultPromptShortcuts: current.hiddenDefaultPromptShortcuts,
 	});
 }
 
@@ -559,6 +630,7 @@ export async function saveRuntimeConfig(
 		audibleNotificationEvents: AudibleNotificationEvents;
 		shortcuts: RuntimeProjectShortcut[];
 		promptShortcuts: PromptShortcut[];
+		hiddenDefaultPromptShortcuts: string[];
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
@@ -603,6 +675,7 @@ async function applyConfigUpdates({
 		: current.audibleNotificationEvents;
 	const nextShortcuts = projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts;
 	const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
+	const nextHiddenDefaults = updates.hiddenDefaultPromptShortcuts ?? current.hiddenDefaultPromptShortcuts;
 
 	// Check for any changes
 	const hasChanges =
@@ -612,6 +685,7 @@ async function applyConfigUpdates({
 		nextCommitPromptTemplate !== current.commitPromptTemplate ||
 		nextOpenPrPromptTemplate !== current.openPrPromptTemplate ||
 		JSON.stringify(nextPromptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
+		JSON.stringify(nextHiddenDefaults) !== JSON.stringify(current.hiddenDefaultPromptShortcuts) ||
 		nextAudibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
 		nextAudibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
 		nextAudibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
@@ -627,6 +701,7 @@ async function applyConfigUpdates({
 		selectedAgentId: nextSelectedAgentId,
 		selectedShortcutLabel: nextSelectedShortcutLabel,
 		promptShortcuts: nextPromptShortcuts,
+		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
 		commitPromptTemplate: nextCommitPromptTemplate,
 		openPrPromptTemplate: nextOpenPrPromptTemplate,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
@@ -645,6 +720,7 @@ async function applyConfigUpdates({
 		audibleNotificationEvents: nextAudibleNotificationEvents,
 		shortcuts: nextShortcuts,
 		promptShortcuts: nextPromptShortcuts,
+		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
 	});
 }
 

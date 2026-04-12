@@ -23,6 +23,7 @@ export async function saveRuntimeConfig(
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		promptShortcuts?: PromptShortcut[];
+		hiddenDefaultPromptShortcuts?: string[];
 		readyForReviewNotificationsEnabled?: boolean;
 		shellAutoRestartEnabled?: boolean;
 		showSummaryOnCards?: boolean;

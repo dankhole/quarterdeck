@@ -4,6 +4,26 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Default prompt shortcuts with merge system (2026-04-11)
+
+Added "Squash Merge" as a second default prompt shortcut and built a merge system so defaults persist across user customizations.
+
+**Problem**: Previously, `DEFAULT_PROMPT_SHORTCUTS` was only used when the user had zero saved shortcuts. The moment a user customized anything, all defaults disappeared and new defaults added in code would never reach existing users.
+
+**Solution**: `normalizePromptShortcuts` now merges defaults into user shortcuts on every config load. A new `hiddenDefaultPromptShortcuts: string[]` field tracks defaults the user explicitly removed. The merge logic: user shortcuts first (preserving order), then any non-hidden defaults the user doesn't already have (by case-insensitive trimmed label match) are appended. When the user has no shortcuts and all defaults are hidden, an empty list is returned (not the fallback defaults).
+
+**Squash merge prompt**: Extracted from the squash-merge Claude skill with project-specific release hygiene removed. Step 0 asks the user for the target branch (default: `main`) with an explanation of what `commit-tree` + `update-ref` does, so the user can bail out if it's not what they want. The prompt doesn't auto-detect — it asks first.
+
+**Editor dialog rewrite**: The prompt shortcut editor now knows about defaults. Each shortcut shows a badge ("Default" for unmodified, "Modified" for overrides). Delete on a default shows an AlertDialog: "Revert to default" / "Delete entirely" for overrides, or "Hide default" for unmodified defaults. A RotateCcw button on overridden defaults reverts to the original text inline. `onSave` now takes two args: `(shortcuts, hiddenDefaults)`.
+
+**Settings restore**: A "Restore defaults" section appears in Settings > Suppressed Dialogs only when defaults are hidden or overridden. Clicking "Restore defaults" opens an AlertDialog, then clears `hiddenDefaultPromptShortcuts` and strips default-label entries from the user's saved list, letting the merge logic restore originals.
+
+**Template extraction**: All three prompt templates (`DEFAULT_COMMIT_PROMPT_TEMPLATE`, `DEFAULT_OPEN_PR_PROMPT_TEMPLATE`, `DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE`) moved from inline string constants in `config-defaults.ts` to `src/prompts/prompt-templates.ts`. `config-defaults.ts` imports and re-exports them.
+
+**Config pipeline**: `hiddenDefaultPromptShortcuts` threaded through `RuntimeGlobalConfigFileShape`, `RuntimeConfigState`, `RuntimeConfigUpdateInput`, `runtimeConfigResponseSchema`, `runtimeConfigSaveRequestSchema`, `writeRuntimeGlobalConfigFile`, `buildRuntimeConfigResponse`, `toRuntimeConfigState`, `createRuntimeConfigStateFromValues`, `applyConfigUpdates`, `saveRuntimeConfig`, and `toGlobalRuntimeConfigState`. On-disk persistence uses sparse serialization (empty array not written).
+
+**Files touched**: `src/prompts/prompt-templates.ts` (new), `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/core/api-contract.ts`, `src/config/agent-registry.ts`, `web-ui/src/components/prompt-shortcut-editor-dialog.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/hooks/use-prompt-shortcuts.ts`, `web-ui/src/App.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/components/prompt-shortcut-editor-dialog.test.tsx`, `web-ui/src/hooks/use-prompt-shortcuts.test.tsx`.
+
 ## Double-click task in sidebar to open agent chat (2026-04-11)
 
 Added `onDoubleClick` support to the task sidebar so double-clicking a task card selects it and switches the main view to the agent terminal. The change threads an `onDoubleClick` prop through four layers: `BoardCard` (event handler on the card div, guarded against non-interactive/drag/modifier states) → `ColumnSection` → `ColumnContextPanel` → `CardDetailView`. `App.tsx` provides the handler via `handleCardDoubleClick`, which calls `handleCardSelect` then `setMainView("terminal")`. Backlog cards are excluded since they use single-click to open the inline editor. A hint line at the bottom of the `ColumnContextPanel` tells users about the gesture.

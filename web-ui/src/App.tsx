@@ -1631,6 +1631,7 @@ export default function App(): ReactElement {
 						open={promptShortcutEditorOpen}
 						onOpenChange={setPromptShortcutEditorOpen}
 						shortcuts={runtimeProjectConfig?.promptShortcuts ?? []}
+						hiddenDefaultPromptShortcuts={runtimeProjectConfig?.hiddenDefaultPromptShortcuts ?? []}
 						onSave={savePromptShortcuts}
 					/>
 					<DebugDialog
