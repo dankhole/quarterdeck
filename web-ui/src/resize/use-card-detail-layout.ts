@@ -85,7 +85,13 @@ function persistLastSidebarTab(tab: SidebarId): SidebarId {
 	return tab;
 }
 
-export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string | null }): {
+export function useCardDetailLayout({
+	selectedTaskId,
+	isProjectSwitching,
+}: {
+	selectedTaskId: string | null;
+	isProjectSwitching: boolean;
+}): {
 	mainView: MainViewId;
 	sidebar: SidebarId | null;
 	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
@@ -214,6 +220,15 @@ export function useCardDetailLayout({ selectedTaskId }: { selectedTaskId: string
 			}
 		}
 	}, [selectedTaskId, setMainViewPersist, setSidebarPersist, setLastSidebarTab]);
+
+	// Reset to home + projects when switching projects. The task-deselection auto-coupling
+	// above only returns to home from "terminal" — files/git views are preserved on purpose
+	// for same-project browsing. But a full project switch should always land on the board.
+	useEffect(() => {
+		if (!isProjectSwitching) return;
+		setMainViewPersist("home");
+		setSidebarPersist("projects");
+	}, [isProjectSwitching, setMainViewPersist, setSidebarPersist]);
 
 	const setSidePanelRatio = useCallback((ratio: number) => {
 		setSidePanelRatioState(persistResizePreference(SIDE_PANEL_RATIO_PREFERENCE, ratio));

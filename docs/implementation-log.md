@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: switching projects doesn't return to home view (2026-04-11)
+
+When switching projects while on the files or git main view with a task selected, the UI would land on the new project's files/git view instead of the kanban board. The task was correctly deselected (by `useDetailTaskNavigation` reacting to `currentProjectId` changing), but the auto-coupling in `useCardDetailLayout` only returns to home from the "terminal" view — files/git views are intentionally preserved on task deselect for same-project browsing.
+
+**Fix**: Added `isProjectSwitching` as an input to `useCardDetailLayout`. A new effect resets `mainView` to `"home"` and `sidebar` to `"projects"` when `isProjectSwitching` becomes true. This keeps view-state management self-contained in the layout hook rather than adding another scattered effect in App.tsx. Task deselection is not duplicated here — `useDetailTaskNavigation` handles that independently via its own `currentProjectId` watcher.
+
+**Files touched**: `web-ui/src/resize/use-card-detail-layout.ts` (new `isProjectSwitching` input + reset effect), `web-ui/src/App.tsx` (pass `isProjectSwitching` to hook).
+
 ## Fix: agent terminal scrollback filled with duplicate conversation copies (2026-04-11)
 
 Scrolling up in an agent terminal showed the same conversation repeated many times at different column widths. Three prior fixes (resize dedup in `c06983c0`, buffer-read switch in `044d3e1f`, viewport-only reads in `0f368f54`) targeted symptoms without addressing the root cause.

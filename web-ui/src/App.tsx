@@ -1031,6 +1031,7 @@ export default function App(): ReactElement {
 		resetToDefaults: resetCardDetailLayoutToDefaults,
 	} = useCardDetailLayout({
 		selectedTaskId,
+		isProjectSwitching,
 	});
 
 	const handleMainViewChange = useCallback(
