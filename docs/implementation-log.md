@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: summary regeneration ignores user-configured stale window (2026-04-11)
+
+The `generateDisplaySummary` tRPC endpoint had a staleness check that prioritized newer conversation data over the user's `summaryStaleAfterSeconds` setting. The old logic: if newer conversation data existed since the last generation, skip the time-based check entirely and regenerate. This meant a user who set a 5-minute window could still see regeneration on every hover if the agent was actively producing conversation summaries.
+
+**Fix**: Reordered the staleness check in `app-router.ts` to always enforce the time window first. The summary is now returned from cache if it's younger than `staleAfterSeconds`, regardless of whether newer conversation data has arrived. Only after the window expires does it check for newer data — and if there's none, the existing summary is still returned.
+
+**Files touched**: `src/trpc/app-router.ts` (generateDisplaySummary procedure staleness check).
+
 ## Branch pill dropdown on the topbar (2026-04-11)
 
 Added a `BranchSelectorPopover` with `BranchPillTrigger` to the topbar, rendered via a new `branchPillSlot` prop on `TopBar`. The pill shows the current branch and allows checkout — clicking any branch in the dropdown triggers the checkout confirmation flow (no separate "browse" action from the topbar context).

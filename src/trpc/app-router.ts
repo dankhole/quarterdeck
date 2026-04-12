@@ -551,18 +551,19 @@ export const runtimeAppRouter = t.router({
 
 				const summaries = session.conversationSummaries ?? [];
 
-				// Server-side staleness check — skip if recently generated AND no newer
-				// conversation data has arrived since. appendConversationSummary preserves
-				// displaySummaryGeneratedAt as a sentinel, so we detect staleness by
-				// comparing the generation timestamp against conversationSummaries capturedAt.
+				// Server-side staleness check — always respect the user-configured
+				// staleAfterSeconds window. Only regenerate after the window expires
+				// AND newer conversation data has arrived since the last generation.
 				if (session.displaySummaryGeneratedAt) {
+					const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
+					if (ageSeconds < input.staleAfterSeconds) {
+						return { ok: true, summary: session.displaySummary };
+					}
+					// Window expired — only regenerate if there's newer conversation data.
 					const latestCapturedAt = summaries.length > 0 ? Math.max(...summaries.map((s) => s.capturedAt)) : 0;
 					const hasNewerData = latestCapturedAt > session.displaySummaryGeneratedAt;
 					if (!hasNewerData) {
-						const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
-						if (ageSeconds < input.staleAfterSeconds) {
-							return { ok: true, summary: session.displaySummary };
-						}
+						return { ok: true, summary: session.displaySummary };
 					}
 				}
 				const conversationText = summaries.length > 0 ? summaries.map((s) => s.text).join("\n") : null;

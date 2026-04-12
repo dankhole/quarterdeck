@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: summary regeneration ignores user-configured stale window
+
+- The `generateDisplaySummary` endpoint now always respects the `summaryStaleAfterSeconds` window before checking for newer conversation data. Previously, new conversation data arriving within the stale window would bypass the user's configured interval and trigger an early LLM regeneration on the next card hover.
+
 ### Branch pill dropdown on the topbar
 
 - Added a branch pill to the top navigation bar that shows the current branch and allows quick checkout of any branch. In task context, checkouts target the task worktree; in home context, they target the home repository. Uses the same `BranchSelectorPopover` component as the file browser and git view.
