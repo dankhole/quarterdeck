@@ -7,14 +7,15 @@
 //   - Dead processes (PID no longer exists)
 //   - Processless active sessions (state says running, no PTY)
 //   - Stale hook activity metadata
-// Future candidates: alive-but-stuck detection, auto-restart loop breaking,
-// frontend panel state reconciliation.
+//   - Stalled sessions (running but no hook activity for over a minute)
+// Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
 	| { type: "recover_dead_process" }
-	| { type: "mark_processless_error" };
+	| { type: "mark_processless_error" }
+	| { type: "mark_stalled" };
 
 /** Minimal shape of a session entry needed by the check functions. */
 export interface ReconciliationEntry {
@@ -146,9 +147,36 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	return { type: "mark_processless_error" };
 }
 
-/** Ordered by priority: dead process > processless recovery > clear activity. */
+/** How long (ms) a running session can go without a hook before being marked stalled. */
+export const STALLED_HOOK_THRESHOLD_MS = 60_000;
+
+/**
+ * Detects running sessions that haven't received a hook in over a minute.
+ * Only fires after at least one hook has been received (lastHookAt is set),
+ * so fresh sessions in their initial thinking phase aren't flagged.
+ * Sets stalledSince once; subsequent sweeps skip already-stalled sessions.
+ */
+export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "running") {
+		return null;
+	}
+	if (summary.lastHookAt == null) {
+		return null;
+	}
+	if (summary.stalledSince != null) {
+		return null;
+	}
+	if (nowMs - summary.lastHookAt > STALLED_HOOK_THRESHOLD_MS) {
+		return { type: "mark_stalled" };
+	}
+	return null;
+}
+
+/** Ordered by priority: dead process > processless recovery > clear activity > stalled. */
 export const reconciliationChecks: ReconciliationCheck[] = [
 	checkDeadProcess,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
+	checkStalledSession,
 ];

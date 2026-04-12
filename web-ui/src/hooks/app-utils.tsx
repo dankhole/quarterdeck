@@ -102,6 +102,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		warningMessage: null,
 		conversationSummaries: [],
 		displaySummary: null,

@@ -17,6 +17,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
@@ -103,7 +104,7 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null });
+			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -112,7 +113,7 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null });
+			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -121,7 +122,7 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null });
+			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -130,7 +131,7 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "hook.to_in_progress" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null });
+			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 
@@ -159,7 +160,7 @@ describe("reduceSessionTransition", () => {
 			const result = reduceSessionTransition(summary, { type: "agent.prompt-ready" });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch).toEqual({ state: "running", reviewReason: null });
+			expect(result.patch).toEqual({ state: "running", reviewReason: null, stalledSince: null });
 			expect(result.clearAttentionBuffer).toBe(true);
 		});
 

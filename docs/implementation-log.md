@@ -4,6 +4,18 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: stalled session detection — warning badge when agent goes silent (2026-04-12)
+
+Added reconciliation-based detection for running sessions that stop receiving hooks. When a session is in "running" state, has received at least one hook (`lastHookAt` is set), and hasn't received a hook in over 60 seconds, the reconciliation sweep sets a `stalledSince` timestamp. The UI swaps the blue "Running" badge for an orange "Stalled" badge with a tooltip explaining the agent may be stalled or could still be thinking. The indicator auto-clears when hooks resume (via `applyHookActivity`) and on session start/restart. The card stays in the In Progress column — this is a metadata overlay, not a state machine transition.
+
+**Design decisions:**
+- `stalledSince` is a stored field (not derived from `lastHookAt + now`) to avoid UI polling and to enable the reconciliation sweep to fire the action exactly once (idempotent — skips already-stalled sessions).
+- Requires `lastHookAt != null` before flagging, so fresh sessions in their initial thinking phase (before the first tool call) aren't falsely flagged. Trade-off: an immediate startup auth failure before any hook fires will not be detected by this mechanism.
+- Uses the existing `needs_input` badge style (orange) rather than introducing a new color — semantically appropriate for "this may need your attention."
+- `stalledSince: null` is cleared in the state machine's `hook.to_in_progress` / `agent.prompt-ready` patch to prevent stale values from persisting across state transitions (caught in code review — the interrupt.recovery → writeInput path could resurface a stale value).
+
+**Files touched**: `src/core/api-contract.ts`, `src/terminal/session-reconciliation.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-state-machine.ts`, `src/terminal/session-summary-store.ts`, `web-ui/src/utils/session-status.ts`, `web-ui/src/components/board-card.tsx`, `web-ui/src/hooks/app-utils.tsx`, `test/runtime/terminal/session-reconciliation.test.ts`, `web-ui/src/utils/session-status.test.ts`, plus `stalledSince: null` added to 16 test fixture files.
+
 ## Feat: pin branches to top of branch selector dropdown (2026-04-12)
 
 Added per-workspace branch pinning to the branch selector popover. Users right-click a local branch and choose "Pin to top" — pinned branches appear in a separate "Pinned" section at the top of the dropdown. "Unpin" removes them. The feature works in all three popover instances (topbar, home scope bar, task detail view).

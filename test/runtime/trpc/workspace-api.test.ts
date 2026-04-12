@@ -107,6 +107,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		conversationSummaries: [],

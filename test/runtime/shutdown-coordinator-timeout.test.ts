@@ -60,6 +60,7 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,

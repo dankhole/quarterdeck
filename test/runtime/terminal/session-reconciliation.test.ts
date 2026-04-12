@@ -5,9 +5,11 @@ import {
 	checkDeadProcess,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
+	checkStalledSession,
 	isPermissionActivity,
 	type ReconciliationEntry,
 	reconciliationChecks,
+	STALLED_HOOK_THRESHOLD_MS,
 } from "../../../src/terminal/session-reconciliation";
 import { reduceSessionTransition } from "../../../src/terminal/session-state-machine";
 
@@ -25,6 +27,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
@@ -316,14 +319,60 @@ describe("checkProcesslessActiveSession", () => {
 	});
 });
 
+// ── checkStalledSession ──────────────────────────────────────────────────
+
+describe("checkStalledSession", () => {
+	it("returns mark_stalled when hook gap exceeds threshold", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const entry = createEntry({ state: "running", lastHookAt, stalledSince: null });
+		expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
+	});
+
+	it("returns null when hook gap is within threshold", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS + 1;
+		const entry = createEntry({ state: "running", lastHookAt, stalledSince: null });
+		expect(checkStalledSession(entry, nowMs)).toBeNull();
+	});
+
+	it("returns null when lastHookAt is null (no hooks received yet)", () => {
+		const entry = createEntry({ state: "running", lastHookAt: null, stalledSince: null });
+		expect(checkStalledSession(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when already marked as stalled", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const entry = createEntry({ state: "running", lastHookAt, stalledSince: nowMs - 30_000 });
+		expect(checkStalledSession(entry, nowMs)).toBeNull();
+	});
+
+	it("returns null for non-running states", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const awaitingReview = createEntry({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			lastHookAt,
+			stalledSince: null,
+		});
+		expect(checkStalledSession(awaitingReview, nowMs)).toBeNull();
+
+		const idle = createEntry({ state: "idle", lastHookAt, stalledSince: null });
+		expect(checkStalledSession(idle, nowMs)).toBeNull();
+	});
+});
+
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > processless recovery > clear activity (24)", () => {
+	it("are ordered by priority: dead process > processless recovery > clear activity > stalled (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
 		expect(reconciliationChecks[1]).toBe(checkProcesslessActiveSession);
 		expect(reconciliationChecks[2]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks).toHaveLength(3);
+		expect(reconciliationChecks[3]).toBe(checkStalledSession);
+		expect(reconciliationChecks).toHaveLength(4);
 	});
 });
 

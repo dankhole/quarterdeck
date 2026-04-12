@@ -80,6 +80,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
@@ -273,6 +274,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		return this.update(taskId, {
 			lastHookAt: now(),
 			latestHookActivity: next,
+			stalledSince: null,
 		});
 	}
 
@@ -406,6 +408,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			stalledSince: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});

@@ -58,6 +58,7 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: stalled session detection — warning badge when agent goes silent
+
+- When a running agent session hasn't received a hook in over 60 seconds, the reconciliation sweep marks it as stalled. The UI swaps the blue "Running" badge for an orange "Stalled" badge with a tooltip: "No hook activity for over a minute — the agent may be stalled or could still be thinking." The indicator auto-clears when hooks resume and the card stays in the In Progress column — no state transition occurs. Addresses the case where Claude Code hits an API error (auth failure, rate limit) and stays alive but stops making progress, leaving the card green forever with no indication anything is wrong.
+
 ### Feat: pin branches to top of branch selector dropdown
 
 - Right-click any local branch in the branch selector popover to "Pin to top" — pinned branches appear in a dedicated "Pinned" section above "Local". Unpin via the same context menu. Works in all three popover sites (topbar, home scope bar, task detail). Pinned branches are stored per-workspace in the project config file and persist across sessions. Fuzzy search still filters pinned branches normally.

@@ -26,7 +26,7 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 		return "No session yet";
 	}
 	if (summary.state === "running") {
-		return "Running";
+		return summary.stalledSince != null ? "Stalled" : "Running";
 	}
 	if (summary.state === "awaiting_review") {
 		switch (summary.reviewReason) {
@@ -53,12 +53,20 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 	return "Idle";
 }
 
+export function getSessionStatusTooltip(summary: RuntimeTaskSessionSummary | null): string | null {
+	if (!summary) return null;
+	if (summary.state === "running" && summary.stalledSince != null) {
+		return "No hook activity for over a minute \u2014 the agent may be stalled or could still be thinking";
+	}
+	return null;
+}
+
 export function getSessionStatusBadgeStyle(summary: RuntimeTaskSessionSummary | null): StatusBadgeStyle {
 	if (!summary) {
 		return "neutral";
 	}
 	if (summary.state === "running") {
-		return "running";
+		return summary.stalledSince != null ? "needs_input" : "running";
 	}
 	if (summary.state === "awaiting_review") {
 		switch (summary.reviewReason) {

@@ -592,6 +592,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				stalledSince: null,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
@@ -641,6 +642,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			stalledSince: null,
 			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
@@ -759,6 +761,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				stalledSince: null,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
@@ -803,6 +806,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			stalledSince: null,
 			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
@@ -1275,6 +1279,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}
 			case "clear_hook_activity": {
 				this.store.update(entry.taskId, { latestHookActivity: null });
+				break;
+			}
+			case "mark_stalled": {
+				this.store.update(entry.taskId, { stalledSince: now() });
 				break;
 			}
 		}

@@ -84,6 +84,7 @@ function createSessionSummary(
 					source: "hook",
 				}
 			: null,
+		stalledSince: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		conversationSummaries: [],

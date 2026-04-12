@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { describeSessionState, getSessionStatusBadgeStyle, isApprovalState } from "./session-status";
+import {
+	describeSessionState,
+	getSessionStatusBadgeStyle,
+	getSessionStatusTooltip,
+	isApprovalState,
+} from "./session-status";
 
 function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -16,6 +21,7 @@ function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runtim
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
@@ -30,6 +36,12 @@ describe("describeSessionState", () => {
 
 	it("returns 'Running' for running state", () => {
 		expect(describeSessionState(makeSummary({ state: "running" }))).toBe("Running");
+	});
+
+	it("returns 'Stalled' for running state with stalledSince set", () => {
+		expect(describeSessionState(makeSummary({ state: "running", stalledSince: Date.now() - 30_000 }))).toBe(
+			"Stalled",
+		);
 	});
 
 	it("returns 'Completed' for awaiting_review with exit reason", () => {
@@ -107,6 +119,12 @@ describe("getSessionStatusBadgeStyle", () => {
 		expect(getSessionStatusBadgeStyle(makeSummary({ state: "running" }))).toBe("running");
 	});
 
+	it("returns needs_input for stalled running state", () => {
+		expect(getSessionStatusBadgeStyle(makeSummary({ state: "running", stalledSince: Date.now() }))).toBe(
+			"needs_input",
+		);
+	});
+
 	it("returns review for awaiting_review with exit reason", () => {
 		expect(getSessionStatusBadgeStyle(makeSummary({ state: "awaiting_review", reviewReason: "exit" }))).toBe(
 			"review",
@@ -162,6 +180,26 @@ describe("getSessionStatusBadgeStyle", () => {
 
 	it("returns neutral for idle state", () => {
 		expect(getSessionStatusBadgeStyle(makeSummary({ state: "idle" }))).toBe("neutral");
+	});
+});
+
+describe("getSessionStatusTooltip", () => {
+	it("returns null for null summary", () => {
+		expect(getSessionStatusTooltip(null)).toBeNull();
+	});
+
+	it("returns null for normal running state", () => {
+		expect(getSessionStatusTooltip(makeSummary({ state: "running" }))).toBeNull();
+	});
+
+	it("returns explanatory text for stalled running state", () => {
+		const tooltip = getSessionStatusTooltip(makeSummary({ state: "running", stalledSince: Date.now() }));
+		expect(tooltip).toContain("stalled");
+		expect(tooltip).toContain("thinking");
+	});
+
+	it("returns null for non-running states even with stalledSince", () => {
+		expect(getSessionStatusTooltip(makeSummary({ state: "idle", stalledSince: Date.now() }))).toBeNull();
 	});
 });
 

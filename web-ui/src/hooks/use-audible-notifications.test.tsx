@@ -33,6 +33,7 @@ function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> = {}): 
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		stalledSince: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		conversationSummaries: [],
