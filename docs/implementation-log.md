@@ -54,6 +54,18 @@ The pill is hidden when `hideProjectDependentActions` is true (project switching
 
 **Files touched**: `web-ui/src/App.tsx` (topbarBranchActions hook, topbarBranchLabel memo, branchPillSlot prop, CheckoutConfirmationDialog), `web-ui/src/components/top-bar.tsx` (branchPillSlot prop + render).
 
+## Fix: `--add-dir` consuming task prompt as a directory path (2026-04-11)
+
+Claude Code's `--add-dir` flag is variadic (`--add-dir <directories...>`), meaning the CLI parser consumes all subsequent non-option arguments as directory paths. When `worktreeAddParentRepoDir` was enabled, the adapter built args like `claude --settings ... --add-dir /path/to/repo "task prompt"` — the parser consumed both the path and the prompt as directories. The agent started but sat idle with no prompt delivered.
+
+**Fix**: Insert `"--"` (POSIX end-of-options separator) before the prompt positional arg in `claudeAdapter.prepare()`. Guarded by `input.prompt.trim()` so `--` is only added when a prompt exists (resume sessions have no prompt). The separator is harmless even without `--add-dir` — it's valid POSIX and defends against any future variadic flags.
+
+Also moved the `showAppToast` call in `use-task-sessions.ts` out of the `setSessions` state updater callback — side effects inside React state updaters violate the purity contract and can fire twice under StrictMode. Added a task-scoped dedup key (`warning:${summary.taskId}`) to prevent duplicate toasts.
+
+Updated the handoff doc (`docs/handoff-add-dir-prompt-bug.md`) status from "fix not yet applied" to "Fixed".
+
+**Files touched**: `src/terminal/agent-session-adapters.ts` (`--` insertion before prompt), `src/terminal/session-manager.ts` (trust cap `warningMessage` on session summary), `web-ui/src/hooks/use-task-sessions.ts` (toast purity fix + dedup key), `docs/handoff-add-dir-prompt-bug.md` (status update).
+
 ## Fix: workspace trust auto-confirm for --add-dir directories (2026-04-11)
 
 The workspace trust auto-confirm in `session-manager.ts` only handled one trust prompt per session. After confirming the first prompt (for the worktree cwd), it set `autoConfirmedWorkspaceTrust = true` permanently — subsequent trust prompts from `--add-dir` directories were never auto-confirmed. With `worktreeAddParentRepoDir` enabled, the agent got stuck at the second trust prompt (task created but prompt not processed). With `worktreeAddQuarterdeckDir` also enabled, the compounded trust prompts caused complete failure.

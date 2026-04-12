@@ -435,6 +435,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 										// Cap reached — disable the buffer entirely to avoid
 										// accumulating output that will never be checked.
 										activeEntry.workspaceTrustBuffer = null;
+										sessionLog.warn("workspace trust auto-confirm cap reached", {
+											taskId: request.taskId,
+											confirmCount: activeEntry.workspaceTrustConfirmCount,
+										});
+										this.store.update(request.taskId, {
+											warningMessage:
+												`Auto-confirmed ${MAX_AUTO_TRUST_CONFIRMS} workspace trust prompts ` +
+												"but the agent may still be waiting for trust confirmation. " +
+												"Try confirming manually in the terminal.",
+										});
 									}
 								}, trustConfirmDelayMs);
 							}

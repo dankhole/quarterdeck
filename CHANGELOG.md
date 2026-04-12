@@ -65,10 +65,11 @@
 
 - Claude Code agents running in task worktrees can optionally access the parent repository directory and the `~/.quarterdeck` state directory via `--add-dir`. Both settings are off by default and configurable in Settings > Git & Worktrees. Only affects Claude Code; other agents are unchanged.
 
-### Fix: workspace trust auto-confirm for --add-dir directories
+### Fix: `--add-dir` consuming task prompt as a directory path
 
-- The workspace trust auto-confirm mechanism now handles multiple trust prompts per session. Previously, `--add-dir` directories triggered additional trust prompts that were never auto-confirmed — the first prompt consumed the one-shot confirm and subsequent prompts left the agent stuck. The fix re-arms the detector after each confirmation (capped at 5 to prevent infinite loops).
-- Added debug logging around the full task creation and agent launch flow (`agent-launch` and `session-mgr` tags). Traces `--add-dir` decisions, final command args, spawn success/failure, trust prompt detection, and process exit. Enable debug mode in the UI to see the new log entries.
+- Claude Code's `--add-dir` flag is variadic (`<directories...>`), so the CLI parser greedily consumed the task prompt as a directory path when `--add-dir` was present — the agent started but never received its prompt. Fixed by inserting a POSIX `--` end-of-options separator before the prompt positional arg in the Claude adapter.
+- The workspace trust auto-confirm mechanism now handles multiple trust prompts per session (capped at 5). When the cap is reached, a warning toast is surfaced in the UI via the `warningMessage` field on session summaries.
+- Added debug logging around the full task creation and agent launch flow (`agent-launch` and `session-mgr` tags). Traces `--add-dir` decisions, final command args, spawn success/failure, trust prompt detection, and process exit.
 
 ### Fix: revert broken needs_input project pill feature
 

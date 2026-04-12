@@ -611,6 +611,11 @@ const claudeAdapter: AgentSessionAdapter = {
 			args.push("--append-system-prompt", appendedSystemPrompt);
 		}
 
+		// "--" terminates option parsing so the prompt positional arg can't be
+		// consumed by variadic flags like --add-dir.
+		if (input.prompt.trim()) {
+			args.push("--");
+		}
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
 		log.debug("claude adapter prepared launch", {
 			taskId: input.taskId,
