@@ -108,9 +108,7 @@ Completing a feature or fix (release hygiene)
 - When bumping the version number, always keep a `## [Unreleased]` section at the top of `CHANGELOG.md` above the new version heading. This is where subsequent changes land before the next release.
 
 Adding a new config field
-- The full checklist is in `src/config/global-config-fields.ts` (top-of-file comment). Two common traps:
-  1. **Missing save payload**: The `handleSave` call in `runtime-settings-dialog.tsx` is a plain object literal separate from the state/dirty-check/reset logic. If you wire all four other points but forget the save payload, the toggle appears to work but never persists.
-  2. **Missing web-ui type**: The save config type is hand-duplicated in `web-ui/src/runtime/runtime-config-query.ts` and `web-ui/src/runtime/use-runtime-config.ts`. These won't auto-update from the Zod schema — the build will fail if you miss either one.
+- The full checklist is in `src/config/global-config-fields.ts` (top-of-file comment). The key file for the settings dialog form is `web-ui/src/hooks/use-settings-form.ts` — add to `SettingsFormValues` (type) and `resolveInitialValues` (mapping), then add the JSX control. The dirty check, reset-on-open, save payload, and web-ui save types are handled automatically (no manual wiring).
 
 Test fixtures and merge conflicts
 - Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.

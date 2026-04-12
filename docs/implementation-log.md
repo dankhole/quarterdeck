@@ -4,6 +4,21 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Refactor: consolidate settings dialog form state (2026-04-12)
+
+Adding a new boolean config toggle to the settings dialog required 12 wiring points across 7 files. The dialog component alone had 26 individual `useState` hooks, a 140-line `hasUnsavedChanges` useMemo, an 80-line reset `useEffect`, and a 27-field manual save payload object literal. Missing any one point (like the save payload) silently broke persistence. The web-ui save type was hand-duplicated in two files that had already diverged from the Zod schema.
+
+**What changed:**
+- Extracted `useSettingsForm` hook (`web-ui/src/hooks/use-settings-form.ts`, 175 lines) with `SettingsFormValues` type, `resolveInitialValues()` mapping, `areFormValuesEqual()` dirty check, and fingerprint-based reset. The hook returns `{ fields, setField, hasUnsavedChanges }`.
+- Refactored `runtime-settings-dialog.tsx` (-432 lines): replaced all config `useState`s with the hook, save payload reduced to `save(fields)`, JSX changed from `fieldName`/`setFieldName(v)` to `fields.fieldName`/`setField("fieldName", v)`.
+- Split `supportedAgents` memo into `orderedAgents` (no form dependency, computes `fallbackAgentId`) and `supportedAgents` (adds command display using form state). This avoids a circular dependency between agent ordering and form initialization.
+- Replaced inline save types in `runtime-config-query.ts` and `use-runtime-config.ts` with `RuntimeConfigSaveRequest` import from the Zod schema.
+- Updated documentation checklists in `global-config-fields.ts` and `AGENTS.md`.
+
+**Review fix:** Added `useEffect` to clear `saveError` on dialog open — the old reset effect handled this, but the refactor moved reset logic into the hook while `saveError` remained in the parent. Without the fix, a stale error banner would persist across dialog close/reopen cycles.
+
+Files touched: `web-ui/src/hooks/use-settings-form.ts` (new), `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/runtime/use-runtime-config.ts`, `src/config/global-config-fields.ts`, `AGENTS.md`
+
 ## Fix: prevent xterm headless lineFeed crash (2026-04-12)
 
 The Quarterdeck server crashed after ~1h50m of runtime with `TypeError: Cannot set properties of undefined (setting 'isWrapped')` originating from xterm.js 6.0.0's `lineFeed` handler inside its internal `setTimeout`-based `_innerWrite` loop.

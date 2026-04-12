@@ -6,21 +6,16 @@
 //   1. Add it to GLOBAL_CONFIG_FIELDS below (1 line)
 //   2. Add z.boolean() to runtimeConfigResponseSchema in api-contract.ts
 //   3. Add z.boolean().optional() to runtimeConfigSaveRequestSchema in api-contract.ts
-//   4. Add the field to the save config type in TWO web-ui files:
-//      a. web-ui/src/runtime/runtime-config-query.ts (saveRuntimeConfig param)
-//      b. web-ui/src/runtime/use-runtime-config.ts (UseRuntimeConfigResult.save param)
-//      These are hand-written duplicates of the Zod schema — the build will
-//      fail if you miss either one.
-//   5. Add the UI toggle in runtime-settings-dialog.tsx — 5 wiring points:
-//      a. useState (state declaration)
-//      b. initialXxx (initial value from config)
-//      c. hasUnsavedChanges check
-//      d. handleSave payload (the save() call — EASY TO MISS)
-//      e. useEffect reset (sync state when config changes)
+//   4. Add to SettingsFormValues type and resolveInitialValues() in
+//      web-ui/src/hooks/use-settings-form.ts (the single mapping point)
+//   5. Add the JSX control in runtime-settings-dialog.tsx
 //   6. Consume in App.tsx or wherever needed
 //   7. Add to test fixtures (runtime-config.test.ts, runtime-config-factory.ts)
 //
-// Steps 1-3 are mechanical. Steps 4-6 are presentation/business logic.
+// Steps 1-3 are mechanical. Steps 4-7 are presentation/business logic.
+// The web-ui save types (runtime-config-query.ts, use-runtime-config.ts)
+// import RuntimeConfigSaveRequest from the Zod schema — no manual sync needed.
+// The dirty check, reset, and save payload are handled by useSettingsForm.
 
 const MIN_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 60_000;

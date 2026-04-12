@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Refactor: consolidate settings dialog form state into useSettingsForm hook
+
+- Replaced 26 individual `useState` hooks, a 140-line dirty-check `useMemo`, an 80-line reset `useEffect`, and a 27-field manual save payload in the settings dialog with a single `useSettingsForm` hook (175 lines). Adding a new config field now requires 2 lines in the hook + the JSX control — the dirty check, reset-on-open, save payload, and web-ui save types are handled automatically.
+- Eliminated hand-duplicated save request types in `runtime-config-query.ts` and `use-runtime-config.ts` — both now import `RuntimeConfigSaveRequest` from the Zod schema.
+
 ### Fix: prevent xterm headless lineFeed crash
 
 - Fixed a crash where the server-side headless xterm terminal (TerminalStateMirror) could throw `Cannot set properties of undefined (setting 'isWrapped')` inside xterm's internal setTimeout-based write loop, killing the process. The root cause is an xterm.js 6.x buffer-overflow bug triggered when `scrollback: 0` leaves the circular buffer with zero margin. Decoupled the terminal's internal scrollback from snapshot serialization — the terminal now always gets at least 100 lines of buffer headroom while snapshots remain viewport-only for agent sessions.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchRuntimeConfig, saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import type { PromptShortcut, RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeConfigResult {
@@ -9,44 +9,7 @@ export interface UseRuntimeConfigResult {
 	isLoading: boolean;
 	isSaving: boolean;
 	refresh: () => void;
-	save: (nextConfig: {
-		selectedAgentId?: RuntimeAgentId;
-		selectedShortcutLabel?: string | null;
-		agentAutonomousModeEnabled?: boolean;
-		shortcuts?: RuntimeProjectShortcut[];
-		promptShortcuts?: PromptShortcut[];
-		readyForReviewNotificationsEnabled?: boolean;
-		shellAutoRestartEnabled?: boolean;
-		terminalFontWeight?: number;
-		terminalWebGLRenderer?: boolean;
-		showSummaryOnCards?: boolean;
-		autoGenerateSummary?: boolean;
-		summaryStaleAfterSeconds?: number;
-		showTrashWorktreeNotice?: boolean;
-		uncommittedChangesOnCardsEnabled?: boolean;
-		unmergedChangesIndicatorEnabled?: boolean;
-		behindBaseIndicatorEnabled?: boolean;
-		skipTaskCheckoutConfirmation?: boolean;
-		skipHomeCheckoutConfirmation?: boolean;
-		showRunningTaskEmergencyActions?: boolean;
-		eventLogEnabled?: boolean;
-		commitPromptTemplate?: string;
-		openPrPromptTemplate?: string;
-		audibleNotificationsEnabled?: boolean;
-		audibleNotificationVolume?: number;
-		audibleNotificationEvents?: {
-			permission: boolean;
-			review: boolean;
-			failure: boolean;
-			completion: boolean;
-		};
-		audibleNotificationsOnlyWhenHidden?: boolean;
-		focusedTaskPollMs?: number;
-		backgroundTaskPollMs?: number;
-		homeRepoPollMs?: number;
-		worktreeAddParentRepoDir?: boolean;
-		worktreeAddQuarterdeckDir?: boolean;
-	}) => Promise<RuntimeConfigResponse | null>;
+	save: (nextConfig: RuntimeConfigSaveRequest) => Promise<RuntimeConfigResponse | null>;
 }
 
 export function useRuntimeConfig(
@@ -105,43 +68,7 @@ export function useRuntimeConfig(
 	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, workspaceId]);
 
 	const save = useCallback(
-		async (nextConfig: {
-			selectedAgentId?: RuntimeAgentId;
-			selectedShortcutLabel?: string | null;
-			agentAutonomousModeEnabled?: boolean;
-			shortcuts?: RuntimeProjectShortcut[];
-			promptShortcuts?: PromptShortcut[];
-			readyForReviewNotificationsEnabled?: boolean;
-			shellAutoRestartEnabled?: boolean;
-			terminalFontWeight?: number;
-			terminalWebGLRenderer?: boolean;
-			showSummaryOnCards?: boolean;
-			autoGenerateSummary?: boolean;
-			summaryStaleAfterSeconds?: number;
-			showTrashWorktreeNotice?: boolean;
-			uncommittedChangesOnCardsEnabled?: boolean;
-			unmergedChangesIndicatorEnabled?: boolean;
-			behindBaseIndicatorEnabled?: boolean;
-			skipTaskCheckoutConfirmation?: boolean;
-			skipHomeCheckoutConfirmation?: boolean;
-			showRunningTaskEmergencyActions?: boolean;
-			commitPromptTemplate?: string;
-			openPrPromptTemplate?: string;
-			audibleNotificationsEnabled?: boolean;
-			audibleNotificationVolume?: number;
-			audibleNotificationEvents?: {
-				permission: boolean;
-				review: boolean;
-				failure: boolean;
-				completion: boolean;
-			};
-			audibleNotificationsOnlyWhenHidden?: boolean;
-			focusedTaskPollMs?: number;
-			backgroundTaskPollMs?: number;
-			homeRepoPollMs?: number;
-			worktreeAddParentRepoDir?: boolean;
-			worktreeAddQuarterdeckDir?: boolean;
-		}): Promise<RuntimeConfigResponse | null> => {
+		async (nextConfig: RuntimeConfigSaveRequest): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {
 				const saved = await saveRuntimeConfig(workspaceId, nextConfig);

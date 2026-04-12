@@ -3,8 +3,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
-import { CONFIG_DEFAULTS, DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
-import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
+import { DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
 import {
 	Check,
 	ChevronDown,
@@ -39,6 +38,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 } from "@/components/ui/dialog";
+import { useSettingsForm } from "@/hooks/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost, saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
@@ -309,57 +309,10 @@ export function RuntimeSettingsDialog({
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
-	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>(CONFIG_DEFAULTS.selectedAgentId);
-	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(
-		CONFIG_DEFAULTS.agentAutonomousModeEnabled,
-	);
-	const [showSummaryOnCards, setShowSummaryOnCards] = useState(CONFIG_DEFAULTS.showSummaryOnCards);
-	const [autoGenerateSummary, setAutoGenerateSummary] = useState(CONFIG_DEFAULTS.autoGenerateSummary);
-	const [summaryStaleAfterSeconds, setSummaryStaleAfterSeconds] = useState(CONFIG_DEFAULTS.summaryStaleAfterSeconds);
-	const [shellAutoRestartEnabled, setShellAutoRestartEnabled] = useState(CONFIG_DEFAULTS.shellAutoRestartEnabled);
-	const [terminalFontWeight, setTerminalFontWeight] = useState(CONFIG_DEFAULTS.terminalFontWeight);
-	const [terminalWebGLRenderer, setTerminalWebGLRenderer] = useState(CONFIG_DEFAULTS.terminalWebGLRenderer);
-	const [showTrashWorktreeNotice, setShowTrashWorktreeNotice] = useState(CONFIG_DEFAULTS.showTrashWorktreeNotice);
-	const [uncommittedChangesOnCardsEnabled, setUncommittedChangesOnCardsEnabled] = useState(
-		CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
-	);
-	const [unmergedChangesIndicatorEnabled, setUnmergedChangesIndicatorEnabled] = useState(
-		CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
-	);
-	const [behindBaseIndicatorEnabled, setBehindBaseIndicatorEnabled] = useState(
-		CONFIG_DEFAULTS.behindBaseIndicatorEnabled,
-	);
-	const [skipTaskCheckoutConfirmation, setSkipTaskCheckoutConfirmation] = useState(
-		CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
-	);
-	const [skipHomeCheckoutConfirmation, setSkipHomeCheckoutConfirmation] = useState(
-		CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
-	);
-	const [showRunningTaskEmergencyActions, setShowRunningTaskEmergencyActions] = useState(
-		CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
-	);
-	const [eventLogEnabled, setEventLogEnabled] = useState(CONFIG_DEFAULTS.eventLogEnabled);
-	const [audibleNotificationsEnabled, setAudibleNotificationsEnabled] = useState(
-		CONFIG_DEFAULTS.audibleNotificationsEnabled,
-	);
-	const [audibleNotificationVolume, setAudibleNotificationVolume] = useState(
-		CONFIG_DEFAULTS.audibleNotificationVolume,
-	);
-	const [audibleNotificationEvents, setAudibleNotificationEvents] = useState({
-		...CONFIG_DEFAULTS.audibleNotificationEvents,
-	});
-	const [audibleNotificationsOnlyWhenHidden, setAudibleNotificationsOnlyWhenHidden] = useState(
-		CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
-	);
-	const [focusedTaskPollMs, setFocusedTaskPollMs] = useState(CONFIG_DEFAULTS.focusedTaskPollMs);
-	const [backgroundTaskPollMs, setBackgroundTaskPollMs] = useState(CONFIG_DEFAULTS.backgroundTaskPollMs);
-	const [homeRepoPollMs, setHomeRepoPollMs] = useState(CONFIG_DEFAULTS.homeRepoPollMs);
-	const [worktreeAddParentRepoDir, setWorktreeAddParentRepoDir] = useState(CONFIG_DEFAULTS.worktreeAddParentRepoDir);
-	const [worktreeAddQuarterdeckDir, setWorktreeAddQuarterdeckDir] = useState(
-		CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
-	);
-	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	useEffect(() => {
+		if (open) setSaveError(null);
+	}, [open]);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const [resetDefaultShortcutsDialogOpen, setResetDefaultShortcutsDialogOpen] = useState(false);
 	const [isResettingDefaultShortcuts, setIsResettingDefaultShortcuts] = useState(false);
@@ -410,7 +363,8 @@ export function RuntimeSettingsDialog({
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
-	const supportedAgents = useMemo<RuntimeSettingsAgentRowModel[]>(() => {
+	// Ordered agent list (no dependency on form state — needed to compute fallbackAgentId)
+	const orderedAgents = useMemo(() => {
 		const agents =
 			config?.agents.map((agent) => ({
 				id: agent.id,
@@ -425,274 +379,28 @@ export function RuntimeSettingsDialog({
 				installed: null,
 			}));
 		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
-		const orderedAgents = [...agents].sort((left, right) => {
+		return [...agents].sort((left, right) => {
 			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
 			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
 			return leftOrderIndex - rightOrderIndex;
 		});
-		return orderedAgents.map((agent) => ({
-			...agent,
-			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
-		}));
-	}, [agentAutonomousModeEnabled, config?.agents]);
-	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
-	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
-	const initialSelectedAgentId = config?.selectedAgentId ?? fallbackAgentId;
-	const initialAgentAutonomousModeEnabled =
-		config?.agentAutonomousModeEnabled ?? CONFIG_DEFAULTS.agentAutonomousModeEnabled;
-	const initialShowSummaryOnCards = config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards;
-	const initialAutoGenerateSummary = config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary;
-	const initialSummaryStaleAfterSeconds = config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds;
-	const llmConfigured = config?.llmConfigured ?? false;
-	const initialShellAutoRestartEnabled = config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled;
-	const initialTerminalFontWeight = config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
-	const initialTerminalWebGLRenderer = config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
-	const initialShowTrashWorktreeNotice = config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
-	const initialUncommittedChangesOnCardsEnabled =
-		config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled;
-	const initialUnmergedChangesIndicatorEnabled =
-		config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
-	const initialBehindBaseIndicatorEnabled =
-		config?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
-	const initialSkipTaskCheckoutConfirmation =
-		config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation;
-	const initialSkipHomeCheckoutConfirmation =
-		config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation;
-	const initialShowRunningTaskEmergencyActions =
-		config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions;
-	const initialEventLogEnabled = config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled;
-	const initialAudibleNotificationsEnabled =
-		config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
-	const initialAudibleNotificationVolume =
-		config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
-	const initialAudibleNotificationEvents =
-		config?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
-	const initialAudibleNotificationsOnlyWhenHidden =
-		config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
-	const initialFocusedTaskPollMs = config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs;
-	const initialBackgroundTaskPollMs = config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs;
-	const initialHomeRepoPollMs = config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs;
-	const initialWorktreeAddParentRepoDir = config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir;
-	const initialWorktreeAddQuarterdeckDir =
-		config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir;
-	const initialShortcuts = config?.shortcuts ?? [];
-	const hasUnsavedChanges = useMemo(() => {
-		if (!config) {
-			return false;
-		}
-		if (selectedAgentId !== initialSelectedAgentId) {
-			return true;
-		}
-		if (agentAutonomousModeEnabled !== initialAgentAutonomousModeEnabled) {
-			return true;
-		}
-		if (showSummaryOnCards !== initialShowSummaryOnCards) {
-			return true;
-		}
-		if (autoGenerateSummary !== initialAutoGenerateSummary) {
-			return true;
-		}
-		if (summaryStaleAfterSeconds !== initialSummaryStaleAfterSeconds) {
-			return true;
-		}
-		if (shellAutoRestartEnabled !== initialShellAutoRestartEnabled) {
-			return true;
-		}
-		if (terminalFontWeight !== initialTerminalFontWeight) {
-			return true;
-		}
-		if (terminalWebGLRenderer !== initialTerminalWebGLRenderer) {
-			return true;
-		}
-		if (showTrashWorktreeNotice !== initialShowTrashWorktreeNotice) {
-			return true;
-		}
-		if (uncommittedChangesOnCardsEnabled !== initialUncommittedChangesOnCardsEnabled) {
-			return true;
-		}
-		if (unmergedChangesIndicatorEnabled !== initialUnmergedChangesIndicatorEnabled) {
-			return true;
-		}
-		if (behindBaseIndicatorEnabled !== initialBehindBaseIndicatorEnabled) {
-			return true;
-		}
-		if (skipTaskCheckoutConfirmation !== initialSkipTaskCheckoutConfirmation) {
-			return true;
-		}
-		if (skipHomeCheckoutConfirmation !== initialSkipHomeCheckoutConfirmation) {
-			return true;
-		}
-		if (showRunningTaskEmergencyActions !== initialShowRunningTaskEmergencyActions) {
-			return true;
-		}
-		if (eventLogEnabled !== initialEventLogEnabled) {
-			return true;
-		}
-		if (audibleNotificationsEnabled !== initialAudibleNotificationsEnabled) {
-			return true;
-		}
-		if (audibleNotificationVolume !== initialAudibleNotificationVolume) {
-			return true;
-		}
-		if (
-			audibleNotificationEvents.permission !== initialAudibleNotificationEvents.permission ||
-			audibleNotificationEvents.review !== initialAudibleNotificationEvents.review ||
-			audibleNotificationEvents.failure !== initialAudibleNotificationEvents.failure ||
-			audibleNotificationEvents.completion !== initialAudibleNotificationEvents.completion
-		) {
-			return true;
-		}
-		if (audibleNotificationsOnlyWhenHidden !== initialAudibleNotificationsOnlyWhenHidden) {
-			return true;
-		}
-		if (focusedTaskPollMs !== initialFocusedTaskPollMs) {
-			return true;
-		}
-		if (backgroundTaskPollMs !== initialBackgroundTaskPollMs) {
-			return true;
-		}
-		if (homeRepoPollMs !== initialHomeRepoPollMs) {
-			return true;
-		}
-		if (worktreeAddParentRepoDir !== initialWorktreeAddParentRepoDir) {
-			return true;
-		}
-		if (worktreeAddQuarterdeckDir !== initialWorktreeAddQuarterdeckDir) {
-			return true;
-		}
-		return !areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts);
-	}, [
-		agentAutonomousModeEnabled,
-		autoGenerateSummary,
-		audibleNotificationEvents,
-		audibleNotificationVolume,
-		audibleNotificationsEnabled,
-		audibleNotificationsOnlyWhenHidden,
-		backgroundTaskPollMs,
-		config,
-		focusedTaskPollMs,
-		homeRepoPollMs,
-		initialAgentAutonomousModeEnabled,
-		initialAutoGenerateSummary,
-		initialAudibleNotificationEvents,
-		initialAudibleNotificationVolume,
-		initialAudibleNotificationsEnabled,
-		initialAudibleNotificationsOnlyWhenHidden,
-		initialBackgroundTaskPollMs,
-		initialFocusedTaskPollMs,
-		initialHomeRepoPollMs,
-		initialSelectedAgentId,
-		initialShellAutoRestartEnabled,
-		initialTerminalFontWeight,
-		initialTerminalWebGLRenderer,
-		initialShowSummaryOnCards,
-		initialShowTrashWorktreeNotice,
-		initialSkipHomeCheckoutConfirmation,
-		initialSkipTaskCheckoutConfirmation,
-		initialShowRunningTaskEmergencyActions,
-		initialUncommittedChangesOnCardsEnabled,
-		initialUnmergedChangesIndicatorEnabled,
-		initialBehindBaseIndicatorEnabled,
-		initialShortcuts,
-		initialSummaryStaleAfterSeconds,
-		initialWorktreeAddParentRepoDir,
-		initialWorktreeAddQuarterdeckDir,
-		selectedAgentId,
-		uncommittedChangesOnCardsEnabled,
-		behindBaseIndicatorEnabled,
-		shellAutoRestartEnabled,
-		terminalFontWeight,
-		terminalWebGLRenderer,
-		worktreeAddParentRepoDir,
-		worktreeAddQuarterdeckDir,
-		shortcuts,
-		showRunningTaskEmergencyActions,
-		eventLogEnabled,
-		skipHomeCheckoutConfirmation,
-		skipTaskCheckoutConfirmation,
-		showSummaryOnCards,
-		showTrashWorktreeNotice,
-		summaryStaleAfterSeconds,
-		unmergedChangesIndicatorEnabled,
-	]);
+	}, [config?.agents]);
+	const firstInstalledAgentId = orderedAgents.find((agent) => agent.installed)?.id;
+	const fallbackAgentId = firstInstalledAgentId ?? orderedAgents[0]?.id ?? "claude";
 
-	useEffect(() => {
-		if (!open) {
-			return;
-		}
-		setSelectedAgentId(config?.selectedAgentId ?? fallbackAgentId);
-		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? CONFIG_DEFAULTS.agentAutonomousModeEnabled);
-		setShowSummaryOnCards(config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards);
-		setAutoGenerateSummary(config?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary);
-		setSummaryStaleAfterSeconds(config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds);
-		setShellAutoRestartEnabled(config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled);
-		setTerminalFontWeight(config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight);
-		setTerminalWebGLRenderer(config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer);
-		setShowTrashWorktreeNotice(config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice);
-		setUncommittedChangesOnCardsEnabled(
-			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
-		);
-		setUnmergedChangesIndicatorEnabled(
-			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
-		);
-		setBehindBaseIndicatorEnabled(config?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled);
-		setSkipTaskCheckoutConfirmation(
-			config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
-		);
-		setSkipHomeCheckoutConfirmation(
-			config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
-		);
-		setShowRunningTaskEmergencyActions(
-			config?.showRunningTaskEmergencyActions ?? CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
-		);
-		setEventLogEnabled(config?.eventLogEnabled ?? CONFIG_DEFAULTS.eventLogEnabled);
-		setAudibleNotificationsEnabled(
-			config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
-		);
-		setAudibleNotificationVolume(config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume);
-		setAudibleNotificationEvents(
-			config?.audibleNotificationEvents ?? { ...CONFIG_DEFAULTS.audibleNotificationEvents },
-		);
-		setAudibleNotificationsOnlyWhenHidden(
-			config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
-		);
-		setFocusedTaskPollMs(config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs);
-		setBackgroundTaskPollMs(config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs);
-		setHomeRepoPollMs(config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs);
-		setWorktreeAddParentRepoDir(config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir);
-		setWorktreeAddQuarterdeckDir(config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir);
-		setShortcuts(config?.shortcuts ?? []);
-		setSaveError(null);
-	}, [
-		config?.agentAutonomousModeEnabled,
-		config?.autoGenerateSummary,
-		config?.audibleNotificationEvents,
-		config?.audibleNotificationVolume,
-		config?.audibleNotificationsEnabled,
-		config?.audibleNotificationsOnlyWhenHidden,
-		config?.focusedTaskPollMs,
-		config?.backgroundTaskPollMs,
-		config?.homeRepoPollMs,
-		config?.showTrashWorktreeNotice,
-		config?.uncommittedChangesOnCardsEnabled,
-		config?.unmergedChangesIndicatorEnabled,
-		config?.behindBaseIndicatorEnabled,
-		config?.skipTaskCheckoutConfirmation,
-		config?.skipHomeCheckoutConfirmation,
-		config?.showRunningTaskEmergencyActions,
-		config?.eventLogEnabled,
-		config?.selectedAgentId,
-		config?.shellAutoRestartEnabled,
-		config?.terminalFontWeight,
-		config?.terminalWebGLRenderer,
-		config?.worktreeAddParentRepoDir,
-		config?.worktreeAddQuarterdeckDir,
-		config?.shortcuts,
-		config?.showSummaryOnCards,
-		config?.summaryStaleAfterSeconds,
-		fallbackAgentId,
-		open,
-	]);
+	// Consolidated form state — dirty check, reset, and save payload are automatic
+	const { fields, setField, hasUnsavedChanges } = useSettingsForm(config, open, fallbackAgentId);
+
+	// Add command display string (depends on form state)
+	const supportedAgents = useMemo<RuntimeSettingsAgentRowModel[]>(
+		() =>
+			orderedAgents.map((agent) => ({
+				...agent,
+				command: buildDisplayedAgentCommand(agent.id, agent.binary, fields.agentAutonomousModeEnabled),
+			})),
+		[orderedAgents, fields.agentAutonomousModeEnabled],
+	);
+	const llmConfigured = config?.llmConfigured ?? false;
 
 	useEffect(() => {
 		if (!open || initialSection !== "shortcuts") {
@@ -722,7 +430,7 @@ export function RuntimeSettingsDialog({
 		return () => {
 			window.cancelAnimationFrame(frame);
 		};
-	}, [pendingShortcutScrollIndex, shortcuts]);
+	}, [pendingShortcutScrollIndex, fields.shortcuts]);
 
 	const handleSave = async () => {
 		setSaveError(null);
@@ -730,39 +438,12 @@ export function RuntimeSettingsDialog({
 			setSaveError("Runtime settings are still loading. Try again in a moment.");
 			return;
 		}
-		const selectedAgent = supportedAgents.find((agent) => agent.id === selectedAgentId);
+		const selectedAgent = supportedAgents.find((agent) => agent.id === fields.selectedAgentId);
 		if (!selectedAgent || selectedAgent.installed !== true) {
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
 		}
-		const saved = await save({
-			selectedAgentId,
-			agentAutonomousModeEnabled,
-			showSummaryOnCards,
-			autoGenerateSummary,
-			summaryStaleAfterSeconds,
-			shellAutoRestartEnabled,
-			terminalFontWeight,
-			terminalWebGLRenderer,
-			showTrashWorktreeNotice,
-			uncommittedChangesOnCardsEnabled,
-			unmergedChangesIndicatorEnabled,
-			behindBaseIndicatorEnabled,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			showRunningTaskEmergencyActions,
-			eventLogEnabled,
-			audibleNotificationsEnabled,
-			audibleNotificationVolume,
-			audibleNotificationEvents,
-			audibleNotificationsOnlyWhenHidden,
-			focusedTaskPollMs,
-			backgroundTaskPollMs,
-			homeRepoPollMs,
-			worktreeAddParentRepoDir,
-			worktreeAddQuarterdeckDir,
-			shortcuts,
-		});
+		const saved = await save(fields);
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
 			return;
@@ -808,8 +489,8 @@ export function RuntimeSettingsDialog({
 						<AgentRow
 							key={agent.id}
 							agent={agent}
-							isSelected={agent.id === selectedAgentId}
-							onSelect={() => setSelectedAgentId(agent.id)}
+							isSelected={agent.id === fields.selectedAgentId}
+							onSelect={() => setField("selectedAgentId", agent.id)}
 							disabled={controlsDisabled}
 						/>
 					))}
@@ -823,9 +504,9 @@ export function RuntimeSettingsDialog({
 						<RadixCheckbox.Root
 							id={bypassPermissionsCheckboxId}
 							aria-label="Enable bypass permissions flag"
-							checked={agentAutonomousModeEnabled}
+							checked={fields.agentAutonomousModeEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
+							onCheckedChange={(checked) => setField("agentAutonomousModeEnabled", checked === true)}
 							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 						>
 							<RadixCheckbox.Indicator>
@@ -861,9 +542,9 @@ export function RuntimeSettingsDialog({
 						<RadixCheckbox.Root
 							id="runtime-settings-show-summary-on-cards"
 							aria-label="Show conversation summary on cards"
-							checked={showSummaryOnCards}
+							checked={fields.showSummaryOnCards}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setShowSummaryOnCards(checked === true)}
+							onCheckedChange={(checked) => setField("showSummaryOnCards", checked === true)}
 							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 						>
 							<RadixCheckbox.Indicator>
@@ -883,9 +564,9 @@ export function RuntimeSettingsDialog({
 						<RadixCheckbox.Root
 							id="runtime-settings-auto-generate-summary"
 							aria-label="Auto-generate summary with LLM"
-							checked={autoGenerateSummary}
+							checked={fields.autoGenerateSummary}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setAutoGenerateSummary(checked === true)}
+							onCheckedChange={(checked) => setField("autoGenerateSummary", checked === true)}
 							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 						>
 							<RadixCheckbox.Indicator>
@@ -897,7 +578,7 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 						Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
 					</p>
-					{autoGenerateSummary ? (
+					{fields.autoGenerateSummary ? (
 						<div className="flex items-center gap-2 ml-6 mt-1.5">
 							<label
 								htmlFor="runtime-settings-summary-stale-seconds"
@@ -910,7 +591,7 @@ export function RuntimeSettingsDialog({
 								type="text"
 								inputMode="numeric"
 								pattern="[0-9]*"
-								value={summaryStaleAfterSeconds}
+								value={fields.summaryStaleAfterSeconds}
 								disabled={controlsDisabled}
 								onChange={(event) => {
 									const raw = event.target.value.replace(/\D/g, "");
@@ -919,7 +600,7 @@ export function RuntimeSettingsDialog({
 									}
 									const value = Number.parseInt(raw, 10);
 									if (Number.isFinite(value)) {
-										setSummaryStaleAfterSeconds(Math.max(5, Math.min(3600, value)));
+										setField("summaryStaleAfterSeconds", Math.max(5, Math.min(3600, value)));
 									}
 								}}
 								className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
@@ -931,9 +612,9 @@ export function RuntimeSettingsDialog({
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={audibleNotificationsEnabled}
+							checked={fields.audibleNotificationsEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setAudibleNotificationsEnabled}
+							onCheckedChange={(v) => setField("audibleNotificationsEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -943,14 +624,14 @@ export function RuntimeSettingsDialog({
 					<div
 						className={cn(
 							"flex items-center gap-2 mt-2 text-[13px]",
-							(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+							(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 						)}
 					>
 						<RadixCheckbox.Root
 							id="audible-notification-only-when-hidden"
-							checked={audibleNotificationsOnlyWhenHidden}
-							disabled={!audibleNotificationsEnabled || controlsDisabled}
-							onCheckedChange={(checked) => setAudibleNotificationsOnlyWhenHidden(checked === true)}
+							checked={fields.audibleNotificationsOnlyWhenHidden}
+							disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
+							onCheckedChange={(checked) => setField("audibleNotificationsOnlyWhenHidden", checked === true)}
 							className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
 						>
 							<RadixCheckbox.Indicator>
@@ -967,7 +648,7 @@ export function RuntimeSettingsDialog({
 							size={14}
 							className={cn(
 								"text-text-secondary",
-								(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+								(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 							)}
 						/>
 						<input
@@ -975,18 +656,18 @@ export function RuntimeSettingsDialog({
 							min={0}
 							max={100}
 							step={1}
-							value={Math.round(audibleNotificationVolume * 100)}
-							onChange={(e) => setAudibleNotificationVolume(Number(e.target.value) / 100)}
-							disabled={!audibleNotificationsEnabled || controlsDisabled}
+							value={Math.round(fields.audibleNotificationVolume * 100)}
+							onChange={(e) => setField("audibleNotificationVolume", Number(e.target.value) / 100)}
+							disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
 							className="flex-1 h-1.5 accent-accent disabled:opacity-40"
 						/>
 						<span
 							className={cn(
 								"text-[13px] text-text-secondary w-8 text-right tabular-nums",
-								(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+								(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 							)}
 						>
-							{Math.round(audibleNotificationVolume * 100)}%
+							{Math.round(fields.audibleNotificationVolume * 100)}%
 						</span>
 					</div>
 					<div className="flex flex-col gap-2 mt-3">
@@ -1002,15 +683,18 @@ export function RuntimeSettingsDialog({
 								key={key}
 								className={cn(
 									"flex items-center gap-2 text-[13px]",
-									(!audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
+									(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 								)}
 							>
 								<RadixCheckbox.Root
 									id={`audible-notification-${key}`}
-									checked={audibleNotificationEvents[key]}
-									disabled={!audibleNotificationsEnabled || controlsDisabled}
+									checked={fields.audibleNotificationEvents[key]}
+									disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
 									onCheckedChange={(checked) =>
-										setAudibleNotificationEvents((prev) => ({ ...prev, [key]: checked === true }))
+										setField("audibleNotificationEvents", {
+											...fields.audibleNotificationEvents,
+											[key]: checked === true,
+										})
 									}
 									className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
 								>
@@ -1031,10 +715,10 @@ export function RuntimeSettingsDialog({
 					<div className="mt-3">
 						<Button
 							size="sm"
-							disabled={!audibleNotificationsEnabled || controlsDisabled}
+							disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
 							onClick={() => {
 								notificationAudioPlayer.ensureContext();
-								notificationAudioPlayer.play("permission", audibleNotificationVolume);
+								notificationAudioPlayer.play("permission", fields.audibleNotificationVolume);
 							}}
 						>
 							Test sound
@@ -1044,9 +728,9 @@ export function RuntimeSettingsDialog({
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={shellAutoRestartEnabled}
+							checked={fields.shellAutoRestartEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setShellAutoRestartEnabled}
+							onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1057,8 +741,8 @@ export function RuntimeSettingsDialog({
 						When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
 					</p>
 					<FontWeightInput
-						value={terminalFontWeight}
-						onChange={setTerminalFontWeight}
+						value={fields.terminalFontWeight}
+						onChange={(v) => setField("terminalFontWeight", v)}
 						disabled={controlsDisabled}
 					/>
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
@@ -1066,9 +750,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={terminalWebGLRenderer}
+							checked={fields.terminalWebGLRenderer}
 							disabled={controlsDisabled}
-							onCheckedChange={setTerminalWebGLRenderer}
+							onCheckedChange={(v) => setField("terminalWebGLRenderer", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1101,9 +785,9 @@ export function RuntimeSettingsDialog({
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={uncommittedChangesOnCardsEnabled}
+							checked={fields.uncommittedChangesOnCardsEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setUncommittedChangesOnCardsEnabled}
+							onCheckedChange={(v) => setField("uncommittedChangesOnCardsEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1115,9 +799,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={unmergedChangesIndicatorEnabled}
+							checked={fields.unmergedChangesIndicatorEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setUnmergedChangesIndicatorEnabled}
+							onCheckedChange={(v) => setField("unmergedChangesIndicatorEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1130,9 +814,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={behindBaseIndicatorEnabled}
+							checked={fields.behindBaseIndicatorEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setBehindBaseIndicatorEnabled}
+							onCheckedChange={(v) => setField("behindBaseIndicatorEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1151,9 +835,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={worktreeAddParentRepoDir}
+							checked={fields.worktreeAddParentRepoDir}
 							disabled={controlsDisabled}
-							onCheckedChange={setWorktreeAddParentRepoDir}
+							onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1171,9 +855,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={worktreeAddQuarterdeckDir}
+							checked={fields.worktreeAddQuarterdeckDir}
 							disabled={controlsDisabled}
-							onCheckedChange={setWorktreeAddQuarterdeckDir}
+							onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1190,9 +874,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={eventLogEnabled}
+							checked={fields.eventLogEnabled}
 							disabled={controlsDisabled}
-							onCheckedChange={setEventLogEnabled}
+							onCheckedChange={(v) => setField("eventLogEnabled", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1223,8 +907,8 @@ export function RuntimeSettingsDialog({
 									min={500}
 									max={60000}
 									step={500}
-									value={focusedTaskPollMs}
-									onChange={(event) => setFocusedTaskPollMs(clampPollInterval(event.target.value))}
+									value={fields.focusedTaskPollMs}
+									onChange={(event) => setField("focusedTaskPollMs", clampPollInterval(event.target.value))}
 									disabled={controlsDisabled}
 									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
 								/>
@@ -1242,8 +926,8 @@ export function RuntimeSettingsDialog({
 									min={500}
 									max={60000}
 									step={500}
-									value={backgroundTaskPollMs}
-									onChange={(event) => setBackgroundTaskPollMs(clampPollInterval(event.target.value))}
+									value={fields.backgroundTaskPollMs}
+									onChange={(event) => setField("backgroundTaskPollMs", clampPollInterval(event.target.value))}
 									disabled={controlsDisabled}
 									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
 								/>
@@ -1261,8 +945,8 @@ export function RuntimeSettingsDialog({
 									min={500}
 									max={60000}
 									step={500}
-									value={homeRepoPollMs}
-									onChange={(event) => setHomeRepoPollMs(clampPollInterval(event.target.value))}
+									value={fields.homeRepoPollMs}
+									onChange={(event) => setField("homeRepoPollMs", clampPollInterval(event.target.value))}
 									disabled={controlsDisabled}
 									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
 								/>
@@ -1274,9 +958,9 @@ export function RuntimeSettingsDialog({
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Session Recovery</h6>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={showRunningTaskEmergencyActions}
+							checked={fields.showRunningTaskEmergencyActions}
 							disabled={controlsDisabled}
-							onCheckedChange={setShowRunningTaskEmergencyActions}
+							onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1305,9 +989,9 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
-							checked={showTrashWorktreeNotice}
+							checked={fields.showTrashWorktreeNotice}
 							disabled={controlsDisabled}
-							onCheckedChange={setShowTrashWorktreeNotice}
+							onCheckedChange={(v) => setField("showTrashWorktreeNotice", v)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1316,9 +1000,9 @@ export function RuntimeSettingsDialog({
 					</div>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={!skipTaskCheckoutConfirmation}
+							checked={!fields.skipTaskCheckoutConfirmation}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setSkipTaskCheckoutConfirmation(!checked)}
+							onCheckedChange={(checked) => setField("skipTaskCheckoutConfirmation", !checked)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1327,9 +1011,9 @@ export function RuntimeSettingsDialog({
 					</div>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root
-							checked={!skipHomeCheckoutConfirmation}
+							checked={!fields.skipHomeCheckoutConfirmation}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setSkipHomeCheckoutConfirmation(!checked)}
+							onCheckedChange={(checked) => setField("skipHomeCheckoutConfirmation", !checked)}
 							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
 						>
 							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
@@ -1380,18 +1064,17 @@ export function RuntimeSettingsDialog({
 							size="sm"
 							icon={<Plus size={14} />}
 							onClick={() => {
-								setShortcuts((current) => {
-									const nextLabel = getNextShortcutLabel(current, "Run");
-									setPendingShortcutScrollIndex(current.length);
-									return [
-										...current,
-										{
-											label: nextLabel,
-											command: "",
-											icon: "play",
-										},
-									];
-								});
+								const current = fields.shortcuts;
+								const nextLabel = getNextShortcutLabel(current, "Run");
+								setPendingShortcutScrollIndex(current.length);
+								setField("shortcuts", [
+									...current,
+									{
+										label: nextLabel,
+										command: "",
+										icon: "play",
+									},
+								]);
 							}}
 							disabled={controlsDisabled}
 						>
@@ -1399,7 +1082,7 @@ export function RuntimeSettingsDialog({
 						</Button>
 					</div>
 
-					{shortcuts.map((shortcut, shortcutIndex) => (
+					{fields.shortcuts.map((shortcut, shortcutIndex) => (
 						<div
 							key={shortcutIndex}
 							ref={(node) => {
@@ -1411,8 +1094,9 @@ export function RuntimeSettingsDialog({
 							<ShortcutIconPicker
 								value={shortcut.icon}
 								onSelect={(icon) =>
-									setShortcuts((current) =>
-										current.map((item, itemIndex) =>
+									setField(
+										"shortcuts",
+										fields.shortcuts.map((item, itemIndex) =>
 											itemIndex === shortcutIndex ? { ...item, icon } : item,
 										),
 									)
@@ -1421,8 +1105,9 @@ export function RuntimeSettingsDialog({
 							<input
 								value={shortcut.label}
 								onChange={(event) =>
-									setShortcuts((current) =>
-										current.map((item, itemIndex) =>
+									setField(
+										"shortcuts",
+										fields.shortcuts.map((item, itemIndex) =>
 											itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
 										),
 									)
@@ -1433,8 +1118,9 @@ export function RuntimeSettingsDialog({
 							<input
 								value={shortcut.command}
 								onChange={(event) =>
-									setShortcuts((current) =>
-										current.map((item, itemIndex) =>
+									setField(
+										"shortcuts",
+										fields.shortcuts.map((item, itemIndex) =>
 											itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
 										),
 									)
@@ -1448,12 +1134,15 @@ export function RuntimeSettingsDialog({
 								icon={<X size={14} />}
 								aria-label={`Remove shortcut ${shortcut.label}`}
 								onClick={() =>
-									setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
+									setField(
+										"shortcuts",
+										fields.shortcuts.filter((_, itemIndex) => itemIndex !== shortcutIndex),
+									)
 								}
 							/>
 						</div>
 					))}
-					{shortcuts.length === 0 ? (
+					{fields.shortcuts.length === 0 ? (
 						<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
 					) : null}
 
