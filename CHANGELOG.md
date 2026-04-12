@@ -4,7 +4,7 @@
 
 ### Fix: terminal renders at wrong width after untrashing a task
 
-- When untrashing a task, the agent terminal could render text at roughly 1/3 of the correct width until the browser window was manually resized. Root cause: the PersistentTerminal's WebSocket connected and sent a resize before the server-side PTY existed (silently dropped), then the PTY was created with estimated geometry. The client's dedup tracking prevented re-sending the correct dimensions. The terminal now re-sends its dimensions when it receives a session state transition to `running` or `awaiting_review`.
+- When untrashing a task, the agent terminal could render text at roughly 1/3 of the correct width until the browser window was manually resized. Root cause: the PersistentTerminal's WebSocket connected and sent a resize before the server-side PTY existed (silently dropped), then the PTY was created with estimated geometry. The client's dedup tracking prevented re-sending the correct dimensions. The terminal now re-sends its dimensions when it receives a session state transition to `running` or `awaiting_review`, and also resets dedup tracking whenever the terminal is mounted to a new container (e.g., switching views).
 
 ### Statusline: fix token throughput glyph and color
 

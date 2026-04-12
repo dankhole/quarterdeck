@@ -676,6 +676,11 @@ class PersistentTerminal {
 		if (this.visibleContainer !== container) {
 			this.visibleContainer = container;
 			container.appendChild(this.hostElement);
+			// New container — previous resize may have targeted a different
+			// (or parked) container, or been silently dropped.  Reset dedup
+			// so requestResize() always sends fresh dimensions.
+			this.lastSentCols = 0;
+			this.lastSentRows = 0;
 		}
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
