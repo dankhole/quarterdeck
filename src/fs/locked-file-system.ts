@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
@@ -65,6 +65,44 @@ async function readFileIfExists(path: string): Promise<string | null> {
 			return null;
 		}
 		throw error;
+	}
+}
+
+/**
+ * Remove stale `.lock` directories and orphaned `.tmp.*` files left by previous
+ * process crashes. Only removes entries whose mtime is older than {@link staleMs}
+ * (default: {@link DEFAULT_LOCK_STALE_MS}), matching `proper-lockfile`'s own
+ * staleness threshold. This makes the function safe to call at any time — active
+ * locks held by live processes will have a recent mtime and are skipped.
+ */
+export async function cleanupStaleLockAndTempFiles(
+	directories: string[],
+	staleMs: number = DEFAULT_LOCK_STALE_MS,
+	warn?: (message: string) => void,
+): Promise<void> {
+	const now = Date.now();
+	for (const directory of directories) {
+		let entries: string[];
+		try {
+			entries = await readdir(directory);
+		} catch {
+			continue;
+		}
+		for (const entry of entries) {
+			if (entry.endsWith(".lock") || entry.includes(".tmp.")) {
+				const entryPath = join(directory, entry);
+				try {
+					const info = await stat(entryPath);
+					if (now - info.mtimeMs < staleMs) {
+						continue;
+					}
+					await rm(entryPath, { recursive: true, force: true });
+					warn?.(`Removed stale artifact: ${entryPath}`);
+				} catch {
+					// Best-effort cleanup — ignore individual failures.
+				}
+			}
+		}
 	}
 }
 

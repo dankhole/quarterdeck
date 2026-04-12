@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: clean up stale lock files on server startup
+
+- Quarterdeck now automatically cleans up orphaned `.lock` directories and `.tmp.*` files left by previous process crashes (force-kill, double Ctrl+C, shutdown timeout) when the server starts. Uses mtime-based staleness detection matching `proper-lockfile`'s own 10-second threshold, so active locks held by live processes are never removed. Scans `~/.quarterdeck/`, `~/.quarterdeck/workspaces/`, and per-workspace subdirectories. Removed artifacts are logged with `[quarterdeck]` prefix for diagnostics.
+
 ### Markdown renderer in file browser
 
 - Markdown files (`.md`, `.markdown`, `.mdx`) now render as formatted HTML in the file browser instead of showing raw text. A toolbar toggle switches between rendered preview and source view — similar to JetBrains' split editor. Defaults to rendered, preference persisted in localStorage. Supports GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks) via `react-markdown` + `remark-gfm`. Dark theme styling uses existing design tokens.

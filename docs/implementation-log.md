@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: clean up stale lock files on server startup (2026-04-12)
+
+`proper-lockfile` creates `.lock` directories when acquiring file locks, and `writeTextFileAtomic` creates `.tmp.*` temp files during atomic writes. Both are cleaned up normally (`.lock` dirs by `release()` in `finally` blocks, `.tmp.*` by `rename()`), but when the process is force-killed or the shutdown timeout fires, these artifacts remain on disk. They don't block future operations (proper-lockfile's stale detection overrides old locks after 10 seconds), but they accumulate and require manual cleanup.
+
+**Solution**: Added `cleanupStaleLockAndTempFiles()` to `src/fs/locked-file-system.ts`. It scans a list of directories, `stat`s each `.lock` or `.tmp.*` entry, and removes only entries whose mtime is older than the stale threshold (10 seconds by default, matching `DEFAULT_LOCK_STALE_MS`). This mtime check makes the function safe to call at any time — active locks held by live processes have a continuously refreshed mtime and are skipped. An optional `warn` callback logs each removal.
+
+**Startup wiring**: In `src/cli.ts`, `startServer()` discovers workspace subdirectories under `~/.quarterdeck/workspaces/` (filtering out `.lock`/`.tmp.` artifacts from the directory list) and passes `[runtimeHome, workspacesRoot, ...workspaceSubdirs]` to the cleanup function before `createWorkspaceRegistry()` — ensuring all stale artifacts are removed before any lock acquisition.
+
+**Files touched**: `src/fs/locked-file-system.ts` (new function + `readdir`, `stat` imports), `src/cli.ts` (startup wiring with subdirectory discovery and warn callback), `test/runtime/locked-file-system.test.ts` (8 new test cases).
+
 ## Markdown renderer in file browser (2026-04-12, closes todo #13)
 
 Added a rendered markdown preview to `FileContentViewer` for `.md`, `.markdown`, and `.mdx` files. When a markdown file is selected in the file browser, it defaults to a rendered preview using `react-markdown` with `remark-gfm` for GFM support (tables, task lists, strikethrough, autolinks). A toolbar toggle switches between rendered and source views — `BookOpen` icon to enter preview, `Code` icon to show source — matching the JetBrains split-editor UX. The word wrap toggle hides in preview mode (not applicable to rendered content).

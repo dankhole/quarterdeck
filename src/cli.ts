@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { createServer as createNetServer, Socket as NetSocket } from "node:net";
+import { join } from "node:path";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
@@ -358,6 +359,8 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ cleanupStaleLockAndTempFiles },
+		{ getRuntimeHomePath, getWorkspacesRootPath },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -366,7 +369,30 @@ async function startServer(): Promise<{
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./fs/locked-file-system.js"),
+		import("./state/workspace-state.js"),
 	]);
+
+	const workspacesRoot = getWorkspacesRootPath();
+	const workspaceSubdirs: string[] = [];
+	try {
+		const entries = await readdir(workspacesRoot, { withFileTypes: true });
+		for (const entry of entries) {
+			if (entry.isDirectory() && !entry.name.endsWith(".lock") && !entry.name.includes(".tmp.")) {
+				workspaceSubdirs.push(join(workspacesRoot, entry.name));
+			}
+		}
+	} catch {
+		// workspacesRoot may not exist yet — safe to skip.
+	}
+	const cleanupWarn = (message: string): void => {
+		console.warn(`[quarterdeck] ${message}`);
+	};
+	await cleanupStaleLockAndTempFiles(
+		[getRuntimeHomePath(), workspacesRoot, ...workspaceSubdirs],
+		undefined,
+		cleanupWarn,
+	);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
