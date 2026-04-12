@@ -16,6 +16,7 @@ interface WorkspaceMetadataState {
 	workspacePath: string | null;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	homeGitStateVersion: number;
+	homeStashCount: number;
 	taskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorkspaceInfoResponse | null>;
 	taskWorkspaceSnapshotByTaskId: Record<string, ReviewTaskWorkspaceSnapshot | null>;
 	taskWorkspaceStateVersionByTaskId: Record<string, number>;
@@ -25,6 +26,7 @@ const workspaceMetadataState: WorkspaceMetadataState = {
 	workspacePath: null,
 	homeGitSummary: null,
 	homeGitStateVersion: 0,
+	homeStashCount: 0,
 	taskWorkspaceInfoByTaskId: {},
 	taskWorkspaceSnapshotByTaskId: {},
 	taskWorkspaceStateVersionByTaskId: {},
@@ -33,6 +35,7 @@ const workspaceMetadataState: WorkspaceMetadataState = {
 let homeConflictState: RuntimeConflictState | null = null;
 const homeGitSummaryListeners = new Set<StoreListener>();
 const homeConflictStateListeners = new Set<StoreListener>();
+const homeStashCountListeners = new Set<StoreListener>();
 const taskMetadataListenersByTaskId = new Map<string, Set<StoreListener>>();
 const anyTaskMetadataListeners = new Set<TaskMetadataListener>();
 
@@ -44,6 +47,12 @@ function emitHomeGitSummary(): void {
 
 function emitHomeConflictState(): void {
 	for (const listener of homeConflictStateListeners) {
+		listener();
+	}
+}
+
+function emitHomeStashCount(): void {
+	for (const listener of homeStashCountListeners) {
 		listener();
 	}
 }
@@ -341,12 +350,14 @@ export function resetWorkspaceMetadataStore(): void {
 	]);
 	workspaceMetadataState.homeGitSummary = null;
 	workspaceMetadataState.homeGitStateVersion = 0;
+	workspaceMetadataState.homeStashCount = 0;
 	workspaceMetadataState.taskWorkspaceInfoByTaskId = {};
 	workspaceMetadataState.taskWorkspaceSnapshotByTaskId = {};
 	workspaceMetadataState.taskWorkspaceStateVersionByTaskId = {};
 	homeConflictState = null;
 	emitHomeGitSummary();
 	emitHomeConflictState();
+	emitHomeStashCount();
 	for (const taskId of taskIds) {
 		emitTaskMetadata(taskId);
 	}
@@ -359,6 +370,12 @@ export function replaceWorkspaceMetadata(metadata: RuntimeWorkspaceMetadata | nu
 	if (!areConflictStatesEqual(homeConflictState, nextHomeConflictState)) {
 		homeConflictState = nextHomeConflictState;
 		emitHomeConflictState();
+	}
+
+	const nextHomeStashCount = metadata?.homeStashCount ?? 0;
+	if (workspaceMetadataState.homeStashCount !== nextHomeStashCount) {
+		workspaceMetadataState.homeStashCount = nextHomeStashCount;
+		emitHomeStashCount();
 	}
 
 	const nextTaskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorkspaceInfoResponse | null> = {};
@@ -514,5 +531,18 @@ export function useHomeConflictState(): RuntimeConflictState | null {
 		},
 		() => homeConflictState,
 		() => null,
+	);
+}
+
+export function useHomeStashCount(): number {
+	return useSyncExternalStore(
+		(listener) => {
+			homeStashCountListeners.add(listener);
+			return () => {
+				homeStashCountListeners.delete(listener);
+			};
+		},
+		() => workspaceMetadataState.homeStashCount,
+		() => 0,
 	);
 }

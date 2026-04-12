@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { cn } from "@/components/ui/cn";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export type CheckoutDialogState =
 	| { type: "closed" }
@@ -18,6 +19,8 @@ interface CheckoutConfirmationDialogProps {
 	onConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
 	onNavigateToTask?: (taskTitle: string) => void;
 	onSkipTaskConfirmationChange?: (skip: boolean) => void;
+	onStashAndCheckout?: () => void;
+	isStashingAndCheckingOut?: boolean;
 }
 
 export function CheckoutConfirmationDialog({
@@ -26,6 +29,8 @@ export function CheckoutConfirmationDialog({
 	onConfirmCheckout,
 	onNavigateToTask,
 	onSkipTaskConfirmationChange,
+	onStashAndCheckout,
+	isStashingAndCheckingOut,
 }: CheckoutConfirmationDialogProps): React.ReactElement | null {
 	const [dontShowAgain, setDontShowAgain] = useState(false);
 
@@ -120,16 +125,29 @@ export function CheckoutConfirmationDialog({
 						<button
 							type="button"
 							onClick={handleCancel}
-							className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer"
+							disabled={isStashingAndCheckingOut}
+							className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
 						>
 							Cancel
 						</button>
 					</RadixAlertDialog.Cancel>
+					{onStashAndCheckout ? (
+						<button
+							type="button"
+							onClick={onStashAndCheckout}
+							disabled={isStashingAndCheckingOut}
+							className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-accent text-white hover:bg-accent-hover cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+						>
+							{isStashingAndCheckingOut ? <Spinner size={14} /> : null}
+							Stash & Switch
+						</button>
+					) : null}
 					<RadixAlertDialog.Action asChild>
 						<button
 							type="button"
 							onClick={handleConfirm}
-							className="px-3 py-1.5 text-xs rounded-md bg-status-orange text-white hover:opacity-90 cursor-pointer"
+							disabled={isStashingAndCheckingOut}
+							className="px-3 py-1.5 text-xs rounded-md bg-status-orange text-white hover:opacity-90 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
 						>
 							Proceed anyway
 						</button>

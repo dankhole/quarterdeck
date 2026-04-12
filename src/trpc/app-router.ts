@@ -61,6 +61,11 @@ import type {
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
+	RuntimeStashDropResponse,
+	RuntimeStashListResponse,
+	RuntimeStashPopApplyResponse,
+	RuntimeStashPushResponse,
+	RuntimeStashShowResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
@@ -138,6 +143,13 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
+	runtimeStashActionRequestSchema,
+	runtimeStashDropResponseSchema,
+	runtimeStashListResponseSchema,
+	runtimeStashPopApplyResponseSchema,
+	runtimeStashPushRequestSchema,
+	runtimeStashPushResponseSchema,
+	runtimeStashShowResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -327,6 +339,30 @@ export interface RuntimeTrpcContext {
 			generatedAt: number | null,
 		) => Promise<void>;
 		setFocusedTask: (scope: RuntimeTrpcWorkspaceScope, taskId: string | null) => void;
+		stashPush: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null; paths: string[]; message?: string },
+		) => Promise<RuntimeStashPushResponse>;
+		stashList: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null },
+		) => Promise<RuntimeStashListResponse>;
+		stashPop: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
+		) => Promise<RuntimeStashPopApplyResponse>;
+		stashApply: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
+		) => Promise<RuntimeStashPopApplyResponse>;
+		stashDrop: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
+		) => Promise<RuntimeStashDropResponse>;
+		stashShow: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
+		) => Promise<RuntimeStashShowResponse>;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -765,6 +801,42 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ input }) => {
 				const branchName = await generateBranchName(input.prompt);
 				return { ok: branchName !== null, branchName };
+			}),
+		stashPush: workspaceProcedure
+			.input(runtimeStashPushRequestSchema)
+			.output(runtimeStashPushResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashPush(ctx.workspaceScope, input);
+			}),
+		stashList: workspaceProcedure
+			.input(z.object({ taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable() }))
+			.output(runtimeStashListResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashList(ctx.workspaceScope, input);
+			}),
+		stashPop: workspaceProcedure
+			.input(runtimeStashActionRequestSchema)
+			.output(runtimeStashPopApplyResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashPop(ctx.workspaceScope, input);
+			}),
+		stashApply: workspaceProcedure
+			.input(runtimeStashActionRequestSchema)
+			.output(runtimeStashPopApplyResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashApply(ctx.workspaceScope, input);
+			}),
+		stashDrop: workspaceProcedure
+			.input(runtimeStashActionRequestSchema)
+			.output(runtimeStashDropResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashDrop(ctx.workspaceScope, input);
+			}),
+		stashShow: workspaceProcedure
+			.input(runtimeStashActionRequestSchema)
+			.output(runtimeStashShowResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.stashShow(ctx.workspaceScope, input);
 			}),
 	}),
 	projects: t.router({

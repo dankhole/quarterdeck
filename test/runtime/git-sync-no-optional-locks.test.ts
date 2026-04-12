@@ -18,7 +18,12 @@ vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
 }));
 
-import { type GitWorkspaceProbe, getGitSyncSummary, probeGitWorkspaceState } from "../../src/workspace/git-sync";
+import {
+	type GitWorkspaceProbe,
+	getGitSyncSummary,
+	probeGitWorkspaceState,
+	stashCount,
+} from "../../src/workspace/git-sync";
 import { getCommitsBehindBase } from "../../src/workspace/git-utils";
 
 const FAKE_REPO = "/fake/repo";
@@ -154,6 +159,14 @@ describe("git-sync --no-optional-locks", () => {
 		for (const call of revListCalls) {
 			assertFlagBeforeSubcommand(call, "rev-list");
 		}
+	});
+
+	it("stashCount passes --no-optional-locks to git stash list", async () => {
+		setupExecFileMock();
+		await stashCount(FAKE_REPO);
+
+		const stashListCall = findCallContaining("stash", "list");
+		assertFlagBeforeSubcommand(stashListCall, "stash");
 	});
 
 	it("probeGitWorkspaceState output is unchanged with --no-optional-locks", async () => {

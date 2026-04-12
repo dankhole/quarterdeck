@@ -50,6 +50,8 @@ export interface UseBranchActionsResult {
 	handleSelectBranchView: (ref: string) => void;
 	handleCheckoutBranch: (branch: string) => void;
 	handleConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
+	handleStashAndCheckout: () => void;
+	isStashingAndCheckingOut: boolean;
 	handleMergeBranch: (branch: string) => void;
 	deleteBranchDialogState: DeleteBranchDialogState;
 	handleDeleteBranch: (branch: string) => void;
@@ -75,6 +77,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	const [isBranchPopoverOpen, setBranchPopoverOpen] = useState(false);
 	const [checkoutDialogState, setCheckoutDialogState] = useState<CheckoutDialogState>({ type: "closed" });
+	const [isStashingAndCheckingOut, setIsStashingAndCheckingOut] = useState(false);
 
 	// Fetch git refs when popover opens
 	const refsQueryFn = useCallback(async () => {
@@ -235,6 +238,34 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		[performCheckout],
 	);
 
+	const handleStashAndCheckout = useCallback(async () => {
+		if (!workspaceId || checkoutDialogState.type !== "dirty_warning") {
+			return;
+		}
+		const { branch, scope, taskId: checkoutTaskId, baseRef: checkoutBaseRef } = checkoutDialogState;
+		const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
+
+		setIsStashingAndCheckingOut(true);
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const stashResult = await trpc.workspace.stashPush.mutate({ taskScope, paths: [], message: undefined });
+			if (!stashResult.ok) {
+				showAppToast({ intent: "danger", message: stashResult.error ?? "Failed to stash changes" });
+				return;
+			}
+			// Stash succeeded — close dialog and perform checkout
+			setCheckoutDialogState({ type: "closed" });
+			await performCheckout(branch, scope, checkoutTaskId, checkoutBaseRef);
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: `Stash failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		} finally {
+			setIsStashingAndCheckingOut(false);
+		}
+	}, [workspaceId, checkoutDialogState, taskId, baseRef, performCheckout]);
+
 	const closeCheckoutDialog = useCallback(() => {
 		setCheckoutDialogState({ type: "closed" });
 	}, []);
@@ -311,6 +342,8 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		handleSelectBranchView,
 		handleCheckoutBranch,
 		handleConfirmCheckout,
+		handleStashAndCheckout,
+		isStashingAndCheckingOut,
 		handleMergeBranch,
 		deleteBranchDialogState,
 		handleDeleteBranch,

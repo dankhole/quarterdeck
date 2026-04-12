@@ -42,6 +42,7 @@ interface AppToastProps {
 	icon?: string;
 	message: string;
 	timeout?: number;
+	action?: { label: string; onClick: () => void };
 }
 
 interface NotifyErrorOptions {
@@ -54,6 +55,7 @@ export function showAppToast(props: AppToastProps, key?: string): void {
 	const options: Parameters<typeof toast>[1] = {
 		id: key,
 		duration: props.timeout ?? 5000,
+		action: props.action,
 	};
 	if (props.intent === "danger") {
 		toast.error(displayMessage, options);

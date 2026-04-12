@@ -27,6 +27,10 @@ export interface UseCommitPanelResult {
 	isPushing: boolean;
 	isDiscarding: boolean;
 	isRollingBack: boolean;
+	isStashing: boolean;
+	stashMessage: string;
+	setStashMessage: (msg: string) => void;
+	stashChanges: () => Promise<void>;
 	lastError: string | null;
 	clearError: () => void;
 	commitFiles: () => Promise<void>;
@@ -57,11 +61,15 @@ export function useCommitPanel(
 	const [isPushing, setIsPushing] = useState(false);
 	const [isDiscarding, setIsDiscarding] = useState(false);
 	const [isRollingBack, setIsRollingBack] = useState(false);
+	const [isStashing, setIsStashing] = useState(false);
+
+	// Stash message — separate from commit message.
+	const [stashMessage, setStashMessage] = useState("");
 
 	// Last error — shown inline in the commit panel so large hook output is readable.
 	const [lastError, setLastError] = useState<string | null>(null);
 	const clearError = useCallback(() => setLastError(null), []);
-	const isMutating = isCommitting || isDiscarding || isRollingBack;
+	const isMutating = isCommitting || isDiscarding || isRollingBack || isStashing;
 	const pollIntervalMs = isMutating ? null : 1000;
 
 	// File list data via shared hook.
@@ -288,6 +296,40 @@ export function useCommitPanel(
 		[workspaceId, isRollingBack, taskScope],
 	);
 
+	// Stash changes action.
+	const stashChanges = useCallback(async () => {
+		if (!workspaceId || isStashing) return;
+		setIsStashing(true);
+		setLastError(null);
+		try {
+			const trpcClient = getRuntimeTrpcClient(workspaceId);
+			const paths = selectedPaths.length === files?.length ? [] : selectedPaths;
+			const result = await trpcClient.workspace.stashPush.mutate({
+				taskScope,
+				paths,
+				message: stashMessage || undefined,
+			});
+			if (result.ok) {
+				showAppToast({
+					intent: "success",
+					message: `Changes stashed${stashMessage ? `: ${stashMessage}` : ""}`,
+					timeout: 4000,
+				});
+				setStashMessage("");
+			} else {
+				const fullError = result.error ?? "Stash failed.";
+				setLastError(fullError);
+				showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+			}
+		} catch (error) {
+			const fullError = error instanceof Error ? error.message : "Stash failed.";
+			setLastError(fullError);
+			showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
+		} finally {
+			setIsStashing(false);
+		}
+	}, [workspaceId, isStashing, taskScope, selectedPaths, files?.length, stashMessage]);
+
 	return {
 		files,
 		selectedPaths,
@@ -304,6 +346,10 @@ export function useCommitPanel(
 		isPushing,
 		isDiscarding,
 		isRollingBack,
+		isStashing,
+		stashMessage,
+		setStashMessage,
+		stashChanges,
 		lastError,
 		clearError,
 		commitFiles,

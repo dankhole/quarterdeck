@@ -14,6 +14,11 @@ import type {
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeListFilesResponse,
+	RuntimeStashDropResponse,
+	RuntimeStashListResponse,
+	RuntimeStashPopApplyResponse,
+	RuntimeStashPushResponse,
+	RuntimeStashShowResponse,
 	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
@@ -50,6 +55,12 @@ import {
 	runGitCheckoutAction,
 	runGitMergeAction,
 	runGitSyncAction,
+	stashApply,
+	stashDrop,
+	stashList,
+	stashPop,
+	stashPush,
+	stashShow,
 } from "../workspace/git-sync";
 import { getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
@@ -1019,6 +1030,134 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		setFocusedTask: (workspaceScope, taskId) => {
 			deps.setFocusedTask(workspaceScope.workspaceId, taskId);
+		},
+		stashPush: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				const response = await stashPush({
+					cwd,
+					paths: input.paths,
+					message: input.message,
+				});
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message } satisfies RuntimeStashPushResponse;
+			}
+		},
+		stashList: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				return await stashList(cwd);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, entries: [], error: message } satisfies RuntimeStashListResponse;
+			}
+		},
+		stashPop: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				const response = await stashPop({ cwd, index: input.index });
+				if (response.ok || response.conflicted) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, conflicted: false, error: message } satisfies RuntimeStashPopApplyResponse;
+			}
+		},
+		stashApply: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				const response = await stashApply({ cwd, index: input.index });
+				if (response.ok || response.conflicted) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, conflicted: false, error: message } satisfies RuntimeStashPopApplyResponse;
+			}
+		},
+		stashDrop: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				const response = await stashDrop({ cwd, index: input.index });
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message } satisfies RuntimeStashDropResponse;
+			}
+		},
+		stashShow: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				let cwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					cwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						...taskScope,
+					});
+				}
+				return await stashShow({ cwd, index: input.index });
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message } satisfies RuntimeStashShowResponse;
+			}
 		},
 	};
 }

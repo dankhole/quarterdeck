@@ -52,9 +52,7 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Cherry-pick commit — "Land on..." dropdown in git history commit diff header, cherry-picks individual commits onto any local branch via temp worktree, with confirmation dialog and skip-confirmation setting
 - Push to remote — context menu action on current branch, task-scoped push with worktree directory resolution, ahead/behind indicators on branch pill
 - Commit & Push — combined commit-and-push button in commit sidebar with detached HEAD detection
-
-**Tier 1 — High value, users hit these constantly:**
-- **Stash / unstash** — "Save my spot" before switching context. Especially useful when checkout is blocked by uncommitted changes (pull already blocks on this). Show stash list, allow pop/apply/drop.
+- Stash / unstash — stash button in commit sidebar (respects file selection, always includes untracked), collapsible stash list with pop/apply/drop/diff-preview, "Stash & Switch" for blocked checkouts, "Stash & Pull" with atomic stash→pull→auto-pop
 
 **Tier 2 — Valuable but less frequent:**
 - **Rebase onto** — Rebase a task branch onto latest main before merging. Keeps history linear.

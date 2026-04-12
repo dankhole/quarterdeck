@@ -8,6 +8,7 @@ import {
 	FileSearch,
 	FileText,
 	GitCompare,
+	MessageSquare,
 	Minus,
 	Undo2,
 	X,
@@ -30,6 +31,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommitPanel } from "@/hooks/use-commit-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import { useHomeStashCount } from "@/stores/workspace-metadata-store";
+import { StashListSection } from "./stash-list-section";
 
 export interface CommitPanelProps {
 	workspaceId: string;
@@ -159,6 +162,10 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		isCommitting,
 		isPushing,
 		isDiscarding,
+		isStashing,
+		stashMessage,
+		setStashMessage,
+		stashChanges,
 		lastError,
 		clearError,
 		discardAll,
@@ -167,8 +174,10 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		rollbackFile,
 	} = useCommitPanel(taskId, workspaceId, baseRef);
 
+	const stashCount = useHomeStashCount();
 	const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 	const [errorExpanded, setErrorExpanded] = useState(false);
+	const [stashMessageVisible, setStashMessageVisible] = useState(false);
 
 	const fileCount = files?.length ?? 0;
 	const hasFiles = fileCount > 0;
@@ -268,6 +277,28 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 					rows={3}
 					className="bg-surface-2 border border-border rounded-md p-2 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y min-h-[4.5rem] focus:outline-none focus:border-border-focus"
 				/>
+				{/* Stash message — collapsible input */}
+				{stashMessageVisible ? (
+					<div className="flex items-center gap-1.5">
+						<input
+							type="text"
+							value={stashMessage}
+							onChange={(e) => setStashMessage(e.target.value)}
+							placeholder="Stash message (optional)"
+							className="flex-1 bg-surface-2 border border-border rounded-md px-2 py-1 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-border-focus"
+						/>
+						<button
+							type="button"
+							className="p-1 rounded text-text-tertiary hover:text-text-primary cursor-pointer"
+							onClick={() => {
+								setStashMessageVisible(false);
+								setStashMessage("");
+							}}
+						>
+							<X size={14} />
+						</button>
+					</div>
+				) : null}
 				<div className="flex gap-2">
 					<Button variant="primary" size="sm" disabled={!canCommit} onClick={() => void commitFiles()}>
 						{isCommitting && !isPushing ? <Spinner size={14} /> : "Commit"}
@@ -284,17 +315,42 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 						</span>
 					</Tooltip>
 					{hasFiles ? (
-						<Button
-							variant="danger"
-							size="sm"
-							disabled={isDiscarding || !hasFiles}
-							onClick={() => setDiscardDialogOpen(true)}
-						>
-							{isDiscarding ? <Spinner size={14} /> : "Discard All"}
-						</Button>
+						<>
+							<div className="flex items-center gap-0.5">
+								<Button
+									variant="default"
+									size="sm"
+									disabled={!hasFiles || isStashing}
+									onClick={() => void stashChanges()}
+								>
+									{isStashing ? <Spinner size={14} /> : "Stash"}
+								</Button>
+								{!stashMessageVisible ? (
+									<button
+										type="button"
+										className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-surface-3 cursor-pointer"
+										title="Add stash message"
+										onClick={() => setStashMessageVisible(true)}
+									>
+										<MessageSquare size={14} />
+									</button>
+								) : null}
+							</div>
+							<Button
+								variant="danger"
+								size="sm"
+								disabled={isDiscarding || !hasFiles}
+								onClick={() => setDiscardDialogOpen(true)}
+							>
+								{isDiscarding ? <Spinner size={14} /> : "Discard All"}
+							</Button>
+						</>
 					) : null}
 				</div>
 			</div>
+
+			{/* Stash list */}
+			<StashListSection taskId={taskId ?? undefined} workspaceId={workspaceId} stashCount={stashCount} />
 
 			{/* Discard All confirmation */}
 			<AlertDialog open={discardDialogOpen} onOpenChange={(open) => !open && setDiscardDialogOpen(false)}>

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Feat: git stash support — stash button, stash list, stash-and-retry for checkout/pull
+
+- Stash button in the commit sidebar alongside Commit and Discard — stashes selected files (or all when none selected), always includes untracked files, with optional stash message. Uses existing file selection checkboxes for partial stash.
+- Collapsible "Stashes" section below the file list shows the full stash stack (shared across worktrees). Each entry displays index, message, originating branch, and relative date. Right-click context menu: Pop, Apply, Drop (with confirmation dialog), Show Diff (popover preview). Badge count auto-updates via metadata polling.
+- "Stash & Switch" recovery for checkout blocked by dirty working tree — offered in both the checkout confirmation dialog and the `switchHomeBranch` failure toast. Stashes all changes, then retries checkout.
+- "Stash & Pull" recovery for pull blocked by dirty working tree — offered in the git action error dialog. Atomic sequence: stash all → pull → auto-pop on success. If pop conflicts, the conflict resolution panel activates and a toast explains the state.
+- Backend: 7 git stash functions in `git-sync.ts`, 6 tRPC endpoints (`stashPush`, `stashList`, `stashPop`, `stashApply`, `stashDrop`, `stashShow`), `homeStashCount` in metadata polling (stash-only changes detected independently of `stateToken`), structured `dirtyTree` boolean on checkout/pull failure responses.
+- 37 tests across 4 new test files covering git operations, tRPC wiring, hook behavior, and edge cases.
+
 ### Feat: ahead/behind indicators + push to remote from branch selector
 
 - Branch pill in the top bar and home scope bar now shows ↑N/↓N arrows when the current branch is ahead of or behind the remote tracking branch. Counts are derived from `git status --porcelain=v2 --branch` during the existing git probe — no extra git commands.

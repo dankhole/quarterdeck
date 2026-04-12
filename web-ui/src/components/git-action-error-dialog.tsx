@@ -8,6 +8,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export function GitActionErrorDialog({
 	open,
@@ -15,12 +16,16 @@ export function GitActionErrorDialog({
 	message,
 	output,
 	onClose,
+	onStashAndRetry,
+	isStashAndRetrying,
 }: {
 	open: boolean;
 	title: string;
 	message: string;
 	output: string | null;
 	onClose: () => void;
+	onStashAndRetry?: () => void;
+	isStashAndRetrying?: boolean;
 }): ReactElement {
 	return (
 		<AlertDialog
@@ -43,8 +48,13 @@ export function GitActionErrorDialog({
 				) : null}
 			</AlertDialogBody>
 			<AlertDialogFooter className="justify-end">
+				{onStashAndRetry ? (
+					<Button variant="primary" size="sm" disabled={isStashAndRetrying} onClick={onStashAndRetry}>
+						{isStashAndRetrying ? <Spinner size={14} /> : "Stash & Pull"}
+					</Button>
+				) : null}
 				<AlertDialogAction asChild>
-					<Button variant="default" onClick={onClose}>
+					<Button variant="default" disabled={isStashAndRetrying} onClick={onClose}>
 						Close
 					</Button>
 				</AlertDialogAction>

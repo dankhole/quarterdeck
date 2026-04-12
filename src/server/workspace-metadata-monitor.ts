@@ -13,6 +13,7 @@ import {
 	getConflictedFiles,
 	getGitSyncSummary,
 	probeGitWorkspaceState,
+	stashCount,
 } from "../workspace/git-sync";
 import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
@@ -34,6 +35,7 @@ interface TrackedTaskWorkspace {
 interface CachedHomeGitMetadata {
 	summary: RuntimeGitSyncSummary | null;
 	conflictState: RuntimeConflictState | null;
+	stashCount: number;
 	stateToken: string | null;
 	stateVersion: number;
 }
@@ -180,6 +182,7 @@ function createEmptyWorkspaceMetadata(): RuntimeWorkspaceMetadata {
 		homeGitSummary: null,
 		homeGitStateVersion: 0,
 		homeConflictState: null,
+		homeStashCount: 0,
 		taskWorkspaces: [],
 	};
 }
@@ -197,6 +200,7 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 		homeGit: {
 			summary: null,
 			conflictState: null,
+			stashCount: 0,
 			stateToken: null,
 			stateVersion: 0,
 		},
@@ -210,6 +214,7 @@ function buildWorkspaceMetadataSnapshot(entry: WorkspaceMetadataEntry): RuntimeW
 		homeGitSummary: entry.homeGit.summary,
 		homeGitStateVersion: entry.homeGit.stateVersion,
 		homeConflictState: entry.homeGit.conflictState,
+		homeStashCount: entry.homeGit.stashCount,
 		taskWorkspaces: entry.trackedTasks
 			.map((task) => entry.taskMetadataByTaskId.get(task.taskId)?.data ?? null)
 			.filter((task): task is RuntimeTaskWorkspaceMetadata => task !== null),
@@ -218,8 +223,19 @@ function buildWorkspaceMetadataSnapshot(entry: WorkspaceMetadataEntry): RuntimeW
 
 async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<CachedHomeGitMetadata> {
 	try {
-		const probe = await probeGitWorkspaceState(entry.workspacePath);
+		const [probe, currentStashCount] = await Promise.all([
+			probeGitWorkspaceState(entry.workspacePath),
+			stashCount(entry.workspacePath),
+		]);
+		const stashCountChanged = currentStashCount !== entry.homeGit.stashCount;
 		if (entry.homeGit.stateToken === probe.stateToken) {
+			if (stashCountChanged) {
+				return {
+					...entry.homeGit,
+					stashCount: currentStashCount,
+					stateVersion: Date.now(),
+				};
+			}
 			return entry.homeGit;
 		}
 		const summary = await getGitSyncSummary(entry.workspacePath, { probe });
@@ -240,6 +256,7 @@ async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<Cache
 		return {
 			summary,
 			conflictState,
+			stashCount: currentStashCount,
 			stateToken: probe.stateToken,
 			stateVersion: Date.now(),
 		};

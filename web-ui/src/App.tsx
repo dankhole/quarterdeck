@@ -629,6 +629,8 @@ export default function App(): ReactElement {
 		resetGitActionState,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
+		onStashAndRetry,
+		isStashAndRetryingPull,
 	} = useGitActions({
 		currentProjectId,
 		board,
@@ -1811,12 +1813,16 @@ export default function App(): ReactElement {
 						state={homeBranchActions.checkoutDialogState}
 						onClose={homeBranchActions.closeCheckoutDialog}
 						onConfirmCheckout={homeBranchActions.handleConfirmCheckout}
+						onStashAndCheckout={homeBranchActions.handleStashAndCheckout}
+						isStashingAndCheckingOut={homeBranchActions.isStashingAndCheckingOut}
 					/>
 					<CheckoutConfirmationDialog
 						state={topbarBranchActions.checkoutDialogState}
 						onClose={topbarBranchActions.closeCheckoutDialog}
 						onConfirmCheckout={topbarBranchActions.handleConfirmCheckout}
 						onSkipTaskConfirmationChange={handleSkipTaskCheckoutConfirmationChange}
+						onStashAndCheckout={topbarBranchActions.handleStashAndCheckout}
+						isStashingAndCheckingOut={topbarBranchActions.isStashingAndCheckingOut}
 					/>
 					<CreateBranchDialog
 						state={homeBranchActions.createBranchDialogState}
@@ -1882,6 +1888,8 @@ export default function App(): ReactElement {
 						message={gitActionError?.message ?? ""}
 						output={gitActionError?.output ?? null}
 						onClose={clearGitActionError}
+						onStashAndRetry={onStashAndRetry}
+						isStashAndRetrying={isStashAndRetryingPull}
 					/>
 				</div>
 			</LayoutCustomizationsProvider>

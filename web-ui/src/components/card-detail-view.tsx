@@ -546,6 +546,8 @@ export function CardDetailView({
 				onClose={taskBranchActions.closeCheckoutDialog}
 				onConfirmCheckout={taskBranchActions.handleConfirmCheckout}
 				onSkipTaskConfirmationChange={onSkipTaskCheckoutConfirmationChange}
+				onStashAndCheckout={taskBranchActions.handleStashAndCheckout}
+				isStashingAndCheckingOut={taskBranchActions.isStashingAndCheckingOut}
 			/>
 			<CreateBranchDialog
 				state={taskBranchActions.createBranchDialogState}
