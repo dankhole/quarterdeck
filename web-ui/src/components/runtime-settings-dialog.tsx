@@ -521,7 +521,7 @@ export function RuntimeSettingsDialog({
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
 						<Sparkles size={14} />
-						LLM Generation
+						AI Features
 					</h6>
 					{!llmConfigured ? (
 						<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
@@ -609,7 +609,7 @@ export function RuntimeSettingsDialog({
 						</div>
 					) : null}
 
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Sound notifications</h6>
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
 							checked={fields.audibleNotificationsEnabled}
@@ -782,7 +782,8 @@ export function RuntimeSettingsDialog({
 						distorted after moving between monitors.
 					</p>
 
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Git & Worktrees</h6>
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
+					<p className="text-[13px] font-medium text-text-secondary mt-0 mb-2">Card indicators</p>
 					<div className="flex items-center gap-2">
 						<RadixSwitch.Root
 							checked={fields.uncommittedChangesOnCardsEnabled}
@@ -826,71 +827,7 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
 					</p>
-					<h6 className="font-semibold text-text-primary mt-4 mb-1">Developer / Experimental</h6>
-					<p className="text-text-secondary text-[13px] mt-1 mb-3">
-						These settings let agents escape their worktree sandbox. Enabling either one means the agent can{" "}
-						<code className="text-xs bg-surface-3 px-1 rounded">cd</code> out of the task worktree into shared
-						directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators
-						may desync because they assume the agent stays in its assigned worktree.
-					</p>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.worktreeAddParentRepoDir}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">
-							Allow agents to access the parent repo from worktrees
-						</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Passes the parent repository path via{" "}
-						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
-						read and write files in the original repo. The agent can navigate to the home repo, which means its
-						working directory may drift — UI elements that track the agent's location (status bar branch, card
-						branch pill) will show the home repo state instead of the worktree. Claude Code only.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.worktreeAddQuarterdeckDir}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">
-							Allow agents to access the{" "}
-							<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code> directory
-						</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Gives agents read/write access to Quarterdeck state files (board data, session state, other
-						worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also
-						navigate into other task worktrees, breaking isolation. Claude Code only.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.eventLogEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("eventLogEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Session event log</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Writes session lifecycle events to a JSONL file on disk (
-						<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>). Intended
-						for developer debugging — helps diagnose stuck sessions and state tracking issues. The file grows up
-						to 10 MB before rotating. Leave this off unless you are actively investigating a problem.
-					</p>
-
-					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
+					<p className="text-[13px] font-medium text-text-secondary mt-4 mb-2">Polling intervals</p>
 					<p className="text-text-secondary text-[13px] mt-1 mb-3">
 						How often to check for git changes in task worktrees. Lower values show changes faster but use more
 						resources when many tasks are active.
@@ -955,35 +892,7 @@ export function RuntimeSettingsDialog({
 						</div>
 					</div>
 
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Session Recovery</h6>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.showRunningTaskEmergencyActions}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
-					</div>
-					<p className="text-text-secondary text-[12px] mt-1 mb-0">
-						Adds emergency stop and trash actions to in-progress cards when a task is stuck.
-					</p>
-
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Layout & Debug</h6>
-					<Button size="sm" onClick={resetLayoutCustomizations}>
-						Reset layout
-					</Button>
-					<p className="text-text-secondary text-[13px] mt-2 mb-0">
-						Reset sidebar, split pane, and terminal resize customizations back to their defaults.
-					</p>
-					<p className="text-text-secondary text-[13px] mt-3 mb-0">
-						Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the
-						debug log panel. Debug logging activates automatically when the panel is opened.
-					</p>
-
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Suppressed Dialogs</h6>
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Confirmations</h6>
 					<p className="text-text-secondary text-[13px] mt-0 mb-2">
 						Re-enable dialogs and confirmations you've previously dismissed.
 					</p>
@@ -1031,6 +940,96 @@ export function RuntimeSettingsDialog({
 						</RadixSwitch.Root>
 						<span className="text-[13px] text-text-primary">Show cherry-pick landing confirmation</span>
 					</div>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Troubleshooting</h6>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={fields.showRunningTaskEmergencyActions}
+							disabled={controlsDisabled}
+							onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Adds emergency stop and trash actions to in-progress cards when a task is stuck.
+					</p>
+					<Button size="sm" className="mt-3" onClick={resetLayoutCustomizations}>
+						Reset layout
+					</Button>
+					<p className="text-text-secondary text-[13px] mt-2 mb-0">
+						Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+					</p>
+					<p className="text-text-secondary text-[13px] mt-3 mb-0">
+						Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the
+						debug log panel. Debug logging activates automatically when the panel is opened.
+					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-1">Advanced</h6>
+					<p className="text-text-secondary text-[13px] mt-1 mb-3">
+						These settings let agents escape their worktree sandbox. Enabling either one means the agent can{" "}
+						<code className="text-xs bg-surface-3 px-1 rounded">cd</code> out of the task worktree into shared
+						directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators
+						may desync because they assume the agent stays in its assigned worktree.
+					</p>
+					<div className="flex items-center gap-2">
+						<RadixSwitch.Root
+							checked={fields.worktreeAddParentRepoDir}
+							disabled={controlsDisabled}
+							onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">
+							Allow agents to access the parent repo from worktrees
+						</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Passes the parent repository path via{" "}
+						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
+						read and write files in the original repo. The agent can navigate to the home repo, which means its
+						working directory may drift — UI elements that track the agent's location (status bar branch, card
+						branch pill) will show the home repo state instead of the worktree. Claude Code only.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={fields.worktreeAddQuarterdeckDir}
+							disabled={controlsDisabled}
+							onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">
+							Allow agents to access the{" "}
+							<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code> directory
+						</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Gives agents read/write access to Quarterdeck state files (board data, session state, other
+						worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also
+						navigate into other task worktrees, breaking isolation. Claude Code only.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={fields.eventLogEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={(v) => setField("eventLogEnabled", v)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">Session event log</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Writes session lifecycle events to a JSONL file on disk (
+						<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>). Intended
+						for developer debugging — helps diagnose stuck sessions and state tracking issues. The file grows up
+						to 10 MB before rotating. Leave this off unless you are actively investigating a problem.
+					</p>
 
 					{showResetDefaultShortcuts ? (
 						<>

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: settings dialog reorganized with better section grouping
+
+- Consolidated 11 scattered sections into 8 focused groups ordered by user intent: Agent, AI Features, Notifications, Terminal, Git, Confirmations, Troubleshooting, Advanced. Merged split Git settings (card indicators + polling intervals) into one section with sub-headers, combined Session Recovery + Layout & Debug into Troubleshooting, promoted Confirmations above developer settings, and renamed headers for clarity (LLM Generation → AI Features, Sound notifications → Notifications, Developer / Experimental → Advanced, Suppressed Dialogs → Confirmations).
+
 ### Fix: title generation now prioritizes recent agent activity
 
 - Title generation was producing bad titles because the original prompt dominated the context — agent summaries (appended last) were truncated away by the 800-char limit. Reordered context assembly so most recent activity comes first, doubled the context budget to 1600 chars, and updated the system prompt to explicitly focus on recent work. The `finalMessage` fallback path now uses the same "Most recent activity" label as the summary path for consistency.

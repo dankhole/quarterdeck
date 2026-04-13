@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Refactor: settings dialog section reorganization (2026-04-12)
+
+Reorganized the settings dialog from 11 small, scattered sections into 8 focused groups. The primary issues: Git settings were split across "Git & Worktrees" and "Git Polling" with "Developer / Experimental" sandwiched between them; "Session Recovery" was an orphaned single-toggle section; "Layout & Debug" mixed unrelated concerns; and "Suppressed Dialogs" (frequently visited) was buried at the bottom.
+
+**New section order**: Agent → AI Features → Notifications → Terminal → Git → Confirmations → Troubleshooting → Advanced. Each section is organized by user intent frequency — core choices first, troubleshooting and dangerous settings last.
+
+**Key merges**: "Git & Worktrees" + "Git Polling" → unified "Git" section with "Card indicators" and "Polling intervals" sub-headers. "Session Recovery" + "Layout & Debug" → "Troubleshooting" (emergency stop, reset layout, debug panel all in one place).
+
+**Renames**: LLM Generation → AI Features, Sound notifications → Notifications, Developer / Experimental → Advanced, Suppressed Dialogs → Confirmations.
+
+**Minor fix**: Standardized session recovery description from `text-[12px]` to `text-[13px]` — it was the only description paragraph in the dialog using 12px.
+
+**Files touched**: `web-ui/src/components/runtime-settings-dialog.tsx`
+
 ## Fix: title generation prioritizes recent agent activity (2026-04-12)
 
 Title generation was producing poor titles because the context assembly put the original prompt first and agent summaries last, then truncated to 800 chars — so the summaries (the most useful signal) were often cut off entirely.
