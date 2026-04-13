@@ -274,15 +274,12 @@ export function useBoardInteractions({
 		[sendTaskSessionInput],
 	);
 
-	// ── Session → column sync + crash recovery ───────────────────────────
+	// ── Session → column sync ────────────────────────────────────────────
+	// Startup resume is handled server-side (triggered on first UI connection).
 	useSessionColumnSync({
 		board,
 		setBoard,
 		sessions,
-		setSelectedTaskId,
-		currentProjectId,
-		startTaskSession,
-		stopTaskSession,
 		tryProgrammaticCardMove,
 		programmaticCardMoveCycle,
 	});

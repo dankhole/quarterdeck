@@ -1,3 +1,4 @@
+import { resolveAgentCommand } from "../config/agent-registry";
 import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config/runtime-config";
 import type {
 	RuntimeBoardColumnId,
@@ -6,6 +7,7 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
+import { emitSessionEvent } from "../core/event-log";
 import {
 	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
@@ -86,6 +88,7 @@ export interface WorkspaceRegistry {
 			onRemovedWorkspace?: (workspace: RemovedWorkspaceNotice) => void;
 		},
 	) => Promise<ResolvedWorkspaceStreamTarget>;
+	resumeInterruptedSessions: (workspaceId: string, workspacePath: string) => Promise<number>;
 	listManagedWorkspaces: () => Array<{
 		workspaceId: string;
 		workspacePath: string | null;
@@ -161,10 +164,8 @@ function applyLiveSessionStateToProjectTaskCounts(
 			next.in_progress = Math.max(0, next.in_progress - 1);
 			next.review += 1;
 		}
-		if (summary.state === "interrupted" && columnId !== "trash") {
-			next[columnId] = Math.max(0, next[columnId] - 1);
-			next.trash += 1;
-		}
+		// Don't adjust counts for interrupted sessions — they stay in their
+		// work columns for auto-resume, not trash.
 	}
 	return next;
 }
@@ -449,6 +450,78 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		};
 	};
 
+	/**
+	 * Resume interrupted sessions after a server restart. Called once per
+	 * workspace when the first UI client connects. Finds sessions persisted
+	 * as "interrupted" in work columns, resolves the agent command, and
+	 * restarts each with --continue (awaitReview=true so they land in review).
+	 */
+	const resumeInterruptedSessions = async (workspaceId: string, workspacePath: string): Promise<number> => {
+		const manager = getTerminalManagerForWorkspace(workspaceId);
+		if (!manager) {
+			return 0;
+		}
+		let state: Awaited<ReturnType<typeof loadWorkspaceState>>;
+		try {
+			state = await loadWorkspaceState(workspacePath);
+		} catch {
+			return 0;
+		}
+		const runtimeConfig = await deps.loadRuntimeConfig(workspacePath, workspaceId);
+		const resolved = resolveAgentCommand(runtimeConfig);
+		if (!resolved) {
+			return 0;
+		}
+		const resumable: Array<{ taskId: string; cwd: string }> = [];
+		for (const column of state.board.columns) {
+			if (column.id !== "in_progress" && column.id !== "review") {
+				continue;
+			}
+			for (const card of column.cards) {
+				const summary = manager.store.getSummary(card.id);
+				if (summary?.state === "interrupted" && summary.reviewReason === "interrupted" && card.workingDirectory) {
+					resumable.push({ taskId: card.id, cwd: card.workingDirectory });
+				}
+			}
+		}
+		if (resumable.length === 0) {
+			return 0;
+		}
+		for (const { taskId, cwd } of resumable) {
+			emitSessionEvent(taskId, "startup.resume", {});
+			void manager
+				.startTaskSession({
+					taskId,
+					agentId: resolved.agentId,
+					binary: resolved.binary,
+					args: resolved.args,
+					autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+					cwd,
+					prompt: "",
+					resumeConversation: true,
+					awaitReview: true,
+					workspaceId,
+					workspacePath,
+					statuslineEnabled: runtimeConfig.statuslineEnabled,
+					worktreeAddParentRepoDir: runtimeConfig.worktreeAddParentRepoDir,
+					worktreeAddParentGitDir: runtimeConfig.worktreeAddParentGitDir,
+					worktreeAddQuarterdeckDir: runtimeConfig.worktreeAddQuarterdeckDir,
+				})
+				.catch((error) => {
+					const message = error instanceof Error ? error.message : String(error);
+					emitSessionEvent(taskId, "startup.resume_failed", { error: message });
+					// Transition immediately so the card moves to review without
+					// waiting for the reconciliation sweep to catch it.
+					manager.store.update(taskId, {
+						state: "awaiting_review",
+						reviewReason: "interrupted",
+						warningMessage: `Resume failed: ${message}`,
+					});
+				});
+		}
+		return resumable.length;
+	};
+
 	if (initialWorkspace) {
 		await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
 	}
@@ -479,6 +552,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		buildWorkspaceStateSnapshot,
 		buildProjectsPayload,
 		resolveWorkspaceForStream,
+		resumeInterruptedSessions,
 		listManagedWorkspaces: () => {
 			return Array.from(terminalManagersByWorkspaceId.entries()).map(([workspaceId, terminalManager]) => ({
 				workspaceId,

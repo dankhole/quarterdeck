@@ -6,7 +6,8 @@ export type SessionTransitionEvent =
 	| { type: "agent.prompt-ready" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean }
 	| { type: "interrupt.recovery" }
-	| { type: "reconciliation.stalled" };
+	| { type: "reconciliation.stalled" }
+	| { type: "autorestart.denied" };
 
 export interface SessionTransitionResult {
 	changed: boolean;
@@ -105,6 +106,19 @@ export function reduceSessionTransition(
 					stalledSince: Date.now(),
 				},
 				clearAttentionBuffer: true,
+			};
+		}
+		case "autorestart.denied": {
+			if (summary.state !== "interrupted") {
+				return { changed: false, patch: {}, clearAttentionBuffer: false };
+			}
+			return {
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "interrupted",
+				},
+				clearAttentionBuffer: false,
 			};
 		}
 		default: {

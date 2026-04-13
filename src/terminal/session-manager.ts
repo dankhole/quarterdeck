@@ -461,6 +461,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			scheduleAutoRestart(entry, {
 				startTaskSession: (r) => this.startTaskSession(r),
 				updateStore: (id, patch) => this.store.update(id, patch),
+				applyDenied: () => this.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" }),
 			});
 			return updated;
 		}
@@ -716,7 +717,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 			scheduleAutoRestart(currentEntry, {
 				startTaskSession: (r) => this.startTaskSession(r),
 				updateStore: (id, patch) => this.store.update(id, patch),
+				applyDenied: () => this.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" }),
 			});
+		} else if (exitSummary?.state === "interrupted") {
+			// Auto-restart was denied (suppressed, rate-limited, or no listeners).
+			// Move to awaiting_review so the card lands in review for the user.
+			this.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" });
 		}
 		if (cleanupFn) {
 			cleanupFn().catch(() => {});

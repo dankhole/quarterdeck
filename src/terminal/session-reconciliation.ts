@@ -6,6 +6,7 @@
 // consider whether stale/orphaned state needs cleanup here. Currently covers:
 //   - Dead processes (PID no longer exists)
 //   - Processless active sessions (state says running, no PTY)
+//   - Interrupted sessions with no pending auto-restart (failed or denied)
 //   - Stale hook activity metadata
 //   - Stalled sessions (running but no activity for several minutes)
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
@@ -15,7 +16,8 @@ export type ReconciliationAction =
 	| { type: "clear_hook_activity" }
 	| { type: "recover_dead_process" }
 	| { type: "mark_processless_error" }
-	| { type: "mark_stalled" };
+	| { type: "mark_stalled" }
+	| { type: "move_interrupted_to_review" };
 
 /** Minimal shape of a session entry needed by the check functions. */
 export interface ReconciliationEntry {
@@ -177,10 +179,28 @@ export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): 
 	return null;
 }
 
-/** Ordered by priority: dead process > processless recovery > clear activity > stalled. */
+/**
+ * Safety net for interrupted sessions where auto-restart was attempted but
+ * failed (pendingAutoRestart cleared in finally block), or where the onExit
+ * autorestart.denied transition was missed for any reason. Moves the session
+ * to awaiting_review so the card lands in review for the user to decide.
+ */
+export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
+	const { summary } = entry;
+	if (summary.state !== "interrupted") {
+		return null;
+	}
+	if (entry.pendingAutoRestart) {
+		return null;
+	}
+	return { type: "move_interrupted_to_review" };
+}
+
+/** Ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity > stalled. */
 export const reconciliationChecks: ReconciliationCheck[] = [
 	checkDeadProcess,
 	checkProcesslessActiveSession,
+	checkInterruptedNoRestart,
 	checkStaleHookActivity,
 	checkStalledSession,
 ];

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import {
 	checkDeadProcess,
+	checkInterruptedNoRestart,
 	checkProcesslessActiveSession,
 	checkStaleHookActivity,
 	checkStalledSession,
@@ -399,15 +400,42 @@ describe("checkStalledSession", () => {
 	});
 });
 
+// ── checkInterruptedNoRestart ────────────────────────────────────────────
+
+describe("checkInterruptedNoRestart", () => {
+	it("returns move_interrupted_to_review for interrupted session with no pending auto-restart", () => {
+		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
+		entry.pendingAutoRestart = null;
+		expect(checkInterruptedNoRestart(entry, Date.now())).toEqual({ type: "move_interrupted_to_review" });
+	});
+
+	it("returns null when session is not interrupted", () => {
+		const entry = createEntry({ state: "running" });
+		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when session is awaiting_review", () => {
+		const entry = createEntry({ state: "awaiting_review", reviewReason: "exit" });
+		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null when pendingAutoRestart is set", () => {
+		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
+		entry.pendingAutoRestart = Promise.resolve();
+		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
+	});
+});
+
 // ── reconciliationChecks ordering ─────────────────────────────────────────
 
 describe("reconciliationChecks", () => {
-	it("are ordered by priority: dead process > processless recovery > clear activity > stalled (24)", () => {
+	it("are ordered by priority: dead process > processless recovery > interrupted cleanup > clear activity > stalled (24)", () => {
 		expect(reconciliationChecks[0]).toBe(checkDeadProcess);
 		expect(reconciliationChecks[1]).toBe(checkProcesslessActiveSession);
-		expect(reconciliationChecks[2]).toBe(checkStaleHookActivity);
-		expect(reconciliationChecks[3]).toBe(checkStalledSession);
-		expect(reconciliationChecks).toHaveLength(4);
+		expect(reconciliationChecks[2]).toBe(checkInterruptedNoRestart);
+		expect(reconciliationChecks[3]).toBe(checkStaleHookActivity);
+		expect(reconciliationChecks[4]).toBe(checkStalledSession);
+		expect(reconciliationChecks).toHaveLength(5);
 	});
 });
 
@@ -428,6 +456,20 @@ describe("session-state-machine regression for reconciliation", () => {
 		expect(result.changed).toBe(true);
 		expect(result.patch.state).toBe("running");
 		expect(result.patch.reviewReason).toBeNull();
+	});
+
+	it("autorestart.denied transitions interrupted to awaiting_review", () => {
+		const summary = createSummary({ state: "interrupted", reviewReason: "interrupted" });
+		const result = reduceSessionTransition(summary, { type: "autorestart.denied" });
+		expect(result.changed).toBe(true);
+		expect(result.patch.state).toBe("awaiting_review");
+		expect(result.patch.reviewReason).toBe("interrupted");
+	});
+
+	it("autorestart.denied is a no-op for non-interrupted states", () => {
+		const summary = createSummary({ state: "running" });
+		const result = reduceSessionTransition(summary, { type: "autorestart.denied" });
+		expect(result.changed).toBe(false);
 	});
 });
 

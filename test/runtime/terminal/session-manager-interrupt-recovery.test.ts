@@ -391,9 +391,10 @@ describe("recoverStaleSession with launched sessions", () => {
 		// Let the restart complete
 		await vi.advanceTimersByTimeAsync(0);
 
-		// A new session should have been spawned
+		// A new session should have been spawned (awaitReview=true — agent is at
+		// its prompt, not actively working, so it lands in review).
 		expect(spawnedSessions).toHaveLength(2);
-		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 	});
 
 	it("does not restart for clean exits (reviewReason: exit)", async () => {

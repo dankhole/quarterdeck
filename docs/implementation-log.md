@@ -2,6 +2,24 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: startup session resume — stop auto-trashing, move resume to server (2026-04-13)
+
+Three independent issues were compounding on startup: (1) `use-session-column-sync.ts` had two effects — column sync and crash recovery — and on startup `previousSessionsRef` was empty, so `previous?.state !== "interrupted"` was always true (undefined !== "interrupted"), causing all interrupted sessions to be auto-trashed before crash recovery could fire. (2) During normal operation, auto-restart raced with the UI's auto-trash — the UI saw the intermediate "interrupted" state and trashed the card before restart completed. (3) Auto-restart used `resumeConversation=false`, starting agents fresh with no context, and `awaitReview=false`, marking restarted agents as "running" even though `--continue` just opens the prompt.
+
+**Fix:** Three layers of changes:
+
+**State machine:** New `autorestart.denied` event transitions `interrupted → awaiting_review` with `reviewReason: "interrupted"`. No-op for any other state. This gives the server an explicit way to move interrupted sessions to review when auto-restart is denied (suppressed, rate-limited, no listeners) or fails.
+
+**Auto-restart:** `awaitReview=true` on all restart paths (both `--continue` and fresh fallback). New `applyDenied` callback on `AutoRestartCallbacks` interface — when both restart attempts fail, the error handler fires `applyDenied()` immediately instead of relying on the 10s reconciliation sweep. `session-manager.ts` onExit handler fires `autorestart.denied` immediately when `shouldAutoRestart` returns false and the session is interrupted.
+
+**Startup resume moved to server:** `resumeInterruptedSessions(workspaceId, workspacePath)` added to workspace registry. Loads board state, finds interrupted sessions in work columns, resolves agent config via `resolveAgentCommand`, and calls `startTaskSession(resumeConversation: true, awaitReview: true)` for each. On failure, transitions the session to `awaiting_review` with a `warningMessage` immediately. Called from `runtime-state-hub.ts` on first UI WebSocket connection per workspace (tracked via `resumeAttemptedWorkspaces` Set, cleared on workspace dispose).
+
+**UI simplified:** `use-session-column-sync.ts` stripped from 150 lines to 77 — pure column sync only (`awaiting_review ↔ running`). Removed `isFirstSync`, `resumeAttemptedRef`, toast, async resume loop, `startTaskSession`/`stopTaskSession`/`currentProjectId` params. The hook no longer makes any session lifecycle decisions.
+
+**Reconciliation safety net:** New `checkInterruptedNoRestart` check catches interrupted sessions with no `pendingAutoRestart` and returns `move_interrupted_to_review`, handled by applying `autorestart.denied`. Sweep filter expanded to include `"interrupted"` state.
+
+Files: `src/server/workspace-registry.ts`, `src/server/runtime-state-hub.ts`, `src/terminal/session-auto-restart.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-state-machine.ts`, `src/terminal/session-reconciliation.ts`, `src/terminal/session-reconciliation-sweep.ts`, `web-ui/src/hooks/use-session-column-sync.ts`, `web-ui/src/hooks/use-board-interactions.ts`, `test/runtime/terminal/session-reconciliation.test.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`.
+
 ## Perf: reduce agent terminal scrollback from 10,000 to 100 (2026-04-13)
 
 Agent TUIs (Claude Code) run entirely in the alternate buffer — our normal-buffer scrollback contains only launch noise (a few lines before alternate mode, duplicate frames from screen transitions, `[quarterdeck] session exited`). We were maintaining 10,000 lines of this, serializing it into restore snapshots, and sending it over the wire on reconnect. Reduced to 100 lines (the minimum for the xterm.js 6.x circular-buffer crash workaround) on both client and server mirror. Shell terminals keep the 10,000 default.

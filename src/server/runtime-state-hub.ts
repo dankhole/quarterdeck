@@ -35,7 +35,7 @@ export interface DisposeRuntimeStateWorkspaceOptions {
 export interface CreateRuntimeStateHubDependencies {
 	workspaceRegistry: Pick<
 		WorkspaceRegistry,
-		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
+		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot" | "resumeInterruptedSessions"
 	>;
 	getActivePollIntervals: () => WorkspaceMetadataPollIntervals;
 }
@@ -74,6 +74,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
+	const resumeAttemptedWorkspaces = new Set<string>();
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
 	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
 		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
@@ -209,6 +210,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
+		resumeAttemptedWorkspaces.delete(workspaceId);
 		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
 
 		if (!options?.disconnectClients) {
@@ -447,6 +449,13 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 				if (workspace.didPruneProjects) {
 					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
+				}
+				// Resume interrupted sessions on first UI connection per workspace.
+				// Fire-and-forget — resumed sessions broadcast state changes via
+				// the normal onChange subscription, so the client sees them arrive.
+				if (monitorWorkspaceId && workspace.workspacePath && !resumeAttemptedWorkspaces.has(monitorWorkspaceId)) {
+					resumeAttemptedWorkspaces.add(monitorWorkspaceId);
+					void deps.workspaceRegistry.resumeInterruptedSessions(monitorWorkspaceId, workspace.workspacePath);
 				}
 			} catch (error) {
 				if (didConnectWorkspaceMonitor && monitorWorkspaceId) {

@@ -41,7 +41,10 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 	for (const entry of ctx.entries.values()) {
 		try {
 			const summary = ctx.store.getSummary(entry.taskId);
-			if (!summary || (summary.state !== "running" && summary.state !== "awaiting_review")) {
+			if (
+				!summary ||
+				(summary.state !== "running" && summary.state !== "awaiting_review" && summary.state !== "interrupted")
+			) {
 				continue;
 			}
 			sessionsChecked += 1;
@@ -137,6 +140,10 @@ export function applyReconciliationAction(
 		}
 		case "mark_stalled": {
 			ctx.applySessionEventWithSideEffects(entry, { type: "reconciliation.stalled" });
+			break;
+		}
+		case "move_interrupted_to_review": {
+			ctx.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" });
 			break;
 		}
 	}

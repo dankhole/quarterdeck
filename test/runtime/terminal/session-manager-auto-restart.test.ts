@@ -80,7 +80,9 @@ describe("TerminalSessionManager auto-restart", () => {
 		await vi.waitFor(() => {
 			expect(ptySessionSpawnMock).toHaveBeenCalledTimes(2);
 		});
-		expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		// Auto-restart uses awaitReview=true — the agent is at its prompt, not
+		// actively working, so it lands in review for the user to re-engage.
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 	});
 

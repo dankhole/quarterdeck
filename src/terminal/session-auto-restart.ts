@@ -42,6 +42,7 @@ export function shouldAutoRestart(entry: ProcessEntry): boolean {
 export interface AutoRestartCallbacks {
 	startTaskSession: (request: StartTaskSessionRequest) => Promise<RuntimeTaskSessionSummary>;
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
+	applyDenied: () => void;
 }
 
 /**
@@ -64,17 +65,26 @@ export function scheduleAutoRestart(entry: ProcessEntry, callbacks: AutoRestartC
 	pendingAutoRestart = (async () => {
 		try {
 			const request = cloneStartTaskSessionRequest(restartRequest.request);
-			// Don't carry resumeConversation into auto-restarts. If the original
-			// --continue attempt failed (e.g. "No conversation found"), retrying
-			// with --continue would just fail again. Start a fresh session instead.
-			request.resumeConversation = false;
-			request.awaitReview = false;
-			await callbacks.startTaskSession(request);
+			// Resume conversation so the agent has context. awaitReview=true
+			// because --continue opens the prompt — it doesn't resume active work.
+			// If --continue fails, fall back to a fresh start (still in review).
+			request.resumeConversation = true;
+			request.awaitReview = true;
+			try {
+				await callbacks.startTaskSession(request);
+			} catch {
+				emitSessionEvent(entry.taskId, "autorestart.continue_failed", {});
+				request.resumeConversation = false;
+				await callbacks.startTaskSession(request);
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			emitSessionEvent(entry.taskId, "autorestart.failed", {
 				error: message,
 			});
+			// Transition to review immediately instead of waiting for the
+			// reconciliation sweep to catch the orphaned interrupted state.
+			callbacks.applyDenied();
 			const summary = callbacks.updateStore(entry.taskId, {
 				warningMessage: message,
 			});

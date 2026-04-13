@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fix: don't auto-trash interrupted sessions, move session resume to server
+
+- Removed the UI's auto-trash of interrupted sessions on startup — the UI no longer makes session lifecycle decisions. Column sync is now purely reactive (`awaiting_review ↔ running`).
+- Auto-restart after agent crash now uses `awaitReview=true` — the agent is at its prompt, not actively working, so the card lands in review for the user to re-engage. Both `--continue` and fresh fallback paths are covered.
+- Auto-restart failure fires `autorestart.denied` immediately instead of relying on the 10-second reconciliation sweep.
+- Startup resume moved from the UI to the server: `resumeInterruptedSessions` in the workspace registry fires on first UI WebSocket connection, resolves agent config, and restarts each interrupted session with `--continue` + `awaitReview=true`.
+- New `autorestart.denied` state machine event transitions `interrupted → awaiting_review`.
+- New `checkInterruptedNoRestart` reconciliation check as a safety net for orphaned interrupted sessions.
+- Removed server-side task count adjustment that miscounted interrupted sessions as trash.
+
 ### Fix: worktree context not propagated to subagents
 
 - The `--append-system-prompt` worktree orientation injected into Claude sessions does not propagate to subagents spawned via the Agent tool. Added an instruction line telling the agent to include the worktree context when briefing subagents, so they know they're in a worktree and respect the same guardrails.
