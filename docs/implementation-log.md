@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: worktree context not propagated to subagents (2026-04-13)
+
+Claude Code's `--append-system-prompt` flag only applies to the top-level agent session — subagents spawned via the Agent tool get their own independent system prompt and never see the worktree orientation context. This meant subagents didn't know they were in a worktree and wouldn't respect guardrails like "don't modify files outside the worktree" or "don't run destructive git operations."
+
+Added one line to the worktree context prompt in `buildWorktreeContextPrompt()`: "When spawning subagents, include the above worktree context in their prompts." This instructs the parent agent to forward the worktree constraints when briefing subagents, rather than trying to structurally inject context (e.g. writing a CLAUDE.md into the worktree, which would pollute git diff).
+
+Files: `src/terminal/worktree-context.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: behind-base indicator flaky due to shared poll lock (2026-04-13)
 
 The behind-base indicator on task cards was unreliable — sometimes stale, sometimes flickering. Root cause: `workspace-metadata-monitor.ts` used a single `taskRefreshInFlight` boolean that was shared between the focused task poll (fast, ~2s) and the background task poll (slow, ~10s). When a background refresh was in flight (probing N tasks in parallel), the focused task's interval tick would see the guard and skip, delaying its update by up to an entire background cycle. With many tasks, this delay was long enough to be visible.

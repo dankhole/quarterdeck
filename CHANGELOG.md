@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: worktree context not propagated to subagents
+
+- The `--append-system-prompt` worktree orientation injected into Claude sessions does not propagate to subagents spawned via the Agent tool. Added an instruction line telling the agent to include the worktree context when briefing subagents, so they know they're in a worktree and respect the same guardrails.
+
 ### Fix: behind-base indicator flaky due to shared poll lock
 
 - The focused task and background tasks shared a single `taskRefreshInFlight` guard in the workspace metadata monitor. A slow background refresh of many tasks could starve the focused task's poll, causing the behind-base indicator to go stale or flicker. Split into independent `focusedRefreshInFlight` / `backgroundRefreshInFlight` guards with dedicated `refreshFocusedTask` and `refreshBackgroundTasks` functions.
