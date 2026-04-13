@@ -1,11 +1,8 @@
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { updateTaskDependencies } from "../core/task-board-mutations";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
 import { killOrphanedAgentProcesses } from "../terminal/orphan-cleanup";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
-import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {
 	workspaceRegistry: Pick<WorkspaceRegistry, "listManagedWorkspaces">;
@@ -14,46 +11,12 @@ export interface RuntimeShutdownCoordinatorDependencies {
 	skipSessionCleanup?: boolean;
 }
 
-function moveTaskToTrash(
-	board: RuntimeWorkspaceStateResponse["board"],
-	taskId: string,
-): RuntimeWorkspaceStateResponse["board"] {
-	const columns = board.columns.map((column) => ({
-		...column,
-		cards: [...column.cards],
-	}));
-	let removedCard: RuntimeWorkspaceStateResponse["board"]["columns"][number]["cards"][number] | undefined;
-
-	for (const column of columns) {
-		const cardIndex = column.cards.findIndex((candidate) => candidate.id === taskId);
-		if (cardIndex === -1) {
-			continue;
-		}
-		removedCard = column.cards[cardIndex];
-		column.cards.splice(cardIndex, 1);
-		break;
-	}
-
-	if (!removedCard) {
-		return board;
-	}
-	const trashColumnIndex = columns.findIndex((column) => column.id === "trash");
-	if (trashColumnIndex === -1) {
-		return board;
-	}
-	const trashColumn = columns[trashColumnIndex];
-	if (!trashColumn.cards.some((candidate) => candidate.id === taskId)) {
-		trashColumn.cards.unshift({
-			...removedCard,
-			updatedAt: Date.now(),
-		});
-	}
-	return updateTaskDependencies({
-		...board,
-		columns,
-	});
-}
-
+/**
+ * Persist interrupted session state without moving cards or deleting worktrees.
+ * Cards stay in their current columns so the board survives a restart. Worktrees
+ * are left on disk so agent conversation history (`.claude/`, etc.) is preserved
+ * and `--continue` works on resume.
+ */
 async function persistInterruptedSessions(
 	workspacePath: string,
 	interruptedTaskIds: string[],
@@ -61,17 +24,11 @@ async function persistInterruptedSessions(
 		workspaceState?: RuntimeWorkspaceStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	},
-): Promise<string[]> {
+): Promise<void> {
 	if (interruptedTaskIds.length === 0) {
-		return [];
+		return;
 	}
 	const workspaceState = options?.workspaceState ?? (await loadWorkspaceState(workspacePath));
-	const worktreeTaskIds = collectProjectWorktreeTaskIdsForRemoval(workspaceState.board);
-	const worktreeTaskIdsToCleanup = interruptedTaskIds.filter((taskId) => worktreeTaskIds.has(taskId));
-	let nextBoard = workspaceState.board;
-	for (const taskId of interruptedTaskIds) {
-		nextBoard = moveTaskToTrash(nextBoard, taskId);
-	}
 	const nextSessions = {
 		...workspaceState.sessions,
 	};
@@ -88,36 +45,9 @@ async function persistInterruptedSessions(
 		}
 	}
 	await saveWorkspaceState(workspacePath, {
-		board: nextBoard,
+		board: workspaceState.board,
 		sessions: nextSessions,
 	});
-	return worktreeTaskIdsToCleanup;
-}
-
-async function cleanupInterruptedTaskWorktrees(
-	repoPath: string,
-	taskIds: string[],
-	warn: (message: string) => void,
-): Promise<void> {
-	if (taskIds.length === 0) {
-		return;
-	}
-	const deletions = await Promise.all(
-		taskIds.map(async (taskId) => ({
-			taskId,
-			deleted: await deleteTaskWorktree({
-				repoPath,
-				taskId,
-			}),
-		})),
-	);
-	for (const { taskId, deleted } of deletions) {
-		if (deleted.ok) {
-			continue;
-		}
-		const message = deleted.error ?? `Could not delete task workspace for task "${taskId}" during shutdown.`;
-		warn(message);
-	}
 }
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
@@ -141,8 +71,18 @@ function collectShutdownInterruptedTaskIds(
 	return Array.from(taskIds);
 }
 
+/** Collect task IDs from all work columns (everything except backlog and trash). */
 function collectWorkColumnTaskIds(workspaceState: RuntimeWorkspaceStateResponse): string[] {
-	return Array.from(collectProjectWorktreeTaskIdsForRemoval(workspaceState.board));
+	const taskIds: string[] = [];
+	for (const column of workspaceState.board.columns) {
+		if (column.id === "backlog" || column.id === "trash") {
+			continue;
+		}
+		for (const card of column.cards) {
+			taskIds.push(card.id);
+		}
+	}
+	return taskIds;
 }
 
 export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDependencies): Promise<void> {
@@ -191,6 +131,8 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		}
 		try {
 			const workspaceState = await loadWorkspaceState(workspace.repoPath);
+			// Over-collects — tasks without a pre-existing session record are
+			// silently skipped by persistInterruptedSessions's `if (summary)` guard.
 			const interruptedTaskIds = collectWorkColumnTaskIds(workspaceState);
 			if (interruptedTaskIds.length === 0) {
 				continue;
@@ -213,15 +155,10 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	const CLEANUP_TIMEOUT_MS = 7000;
 	const cleanupPromise = Promise.all(
 		interruptedByWorkspace.map(async (workspace) => {
-			const worktreeTaskIds = await persistInterruptedSessions(
-				workspace.workspacePath,
-				workspace.interruptedTaskIds,
-				{
-					workspaceState: workspace.workspaceState,
-					resolveSummary: workspace.resolveSummary,
-				},
-			);
-			await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds, deps.warn);
+			await persistInterruptedSessions(workspace.workspacePath, workspace.interruptedTaskIds, {
+				workspaceState: workspace.workspaceState,
+				resolveSummary: workspace.resolveSummary,
+			});
 		}),
 	);
 	const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), CLEANUP_TIMEOUT_MS));

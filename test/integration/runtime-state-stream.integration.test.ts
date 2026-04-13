@@ -781,7 +781,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 45_000);
 
-	it("moves stale completed review cards to trash on shutdown", async () => {
+	it("preserves stale review cards in review column and marks sessions interrupted on shutdown", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stale-exit-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-stale-exit-review-");
 
@@ -877,8 +877,8 @@ describe.sequential("runtime state stream integration", () => {
 
 			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
 			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-			expect(reviewCards.some((card) => card.id === taskId)).toBe(false);
-			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
@@ -892,7 +892,7 @@ describe.sequential("runtime state stream integration", () => {
 				},
 			});
 			expect(workspaceInfo.status).toBe(200);
-			expect(workspaceInfo.payload.exists).toBe(false);
+			expect(workspaceInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();
 			cleanupProject();

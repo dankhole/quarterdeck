@@ -310,6 +310,14 @@ describe("checkProcesslessActiveSession", () => {
 		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 
+	it("returns null for awaiting_review/stalled (agent still alive, just quiet)", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "stalled" },
+			{ active: null, restartRequest: { kind: "task" } },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
+	});
+
 	it("returns mark_processless_error for awaiting_review/attention with no process", () => {
 		const entry = createEntry(
 			{ state: "awaiting_review", reviewReason: "attention" },

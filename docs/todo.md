@@ -24,7 +24,7 @@ Rewrite the Node.js/TypeScript runtime server in Go for better performance, conc
 Three overlapping problems with session continuity:
 
 - ~~**Sessions break after crash/closure**~~: **Fixed.** Running sessions are now marked as interrupted during hydration and auto-restarted with `--continue` when the UI reconnects. Tasks stay in their columns; the agent resumes its conversation. Terminal scrollback from before the crash is still lost (in-memory only), but the agent picks up where it left off.
-- **Auto-trashing on graceful shutdown**: All open tasks (in_progress, review) get moved to trash when Quarterdeck is shut down gracefully (Ctrl+C). Investigate whether this is a technical requirement (agent sessions can't be resumed so tasks are considered dead) or just an early UX decision that was never revisited. Losing board state on every restart is disruptive, especially for tasks with meaningful progress. Keeping cards in place may be possible even if full session resumption isn't. The crash recovery auto-restart infrastructure could apply here too if tasks weren't trashed.
+- ~~**Auto-trashing on graceful shutdown**~~: **Fixed.** Graceful shutdown now preserves cards in their columns and marks sessions as "interrupted" with `pid: null`. On restart, the crash-recovery auto-restart infrastructure picks them up — same as after an unexpected crash.
 - **Un-trash doesn't reliably auto-resume**: After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context. Manually typing `/resume` works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash.
 
 ## 3. Performance audit for concurrent agents

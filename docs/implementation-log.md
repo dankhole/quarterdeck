@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Combined feature landing: 7 branches merged (2026-04-13)
+
+Landed 7 feature branches into main via a combined-features integration branch. One merge conflict in `runtime-settings-dialog.tsx` required manual resolution — `feat/git-action-success-toasts` diverged before the settings dialog decomposition and carried the old monolithic file, which was discarded in favor of main's decomposed structure. Also fixed a pre-existing bug where a duplicate "Git Polling" section in the dialog shell used bare variable names instead of `fields.*`, causing TypeScript errors. One integration test (`runtime-state-stream`) was updated to match the new preserve-tasks-on-shutdown behavior.
+
+**Stalled tasks to review:** Added stalled session detection to the reconciliation sweep — sessions stuck in "running" without hook activity for 60+ seconds are marked "stalled" and shown in review with a green badge. Files: `session-state-machine.ts`, `session-reconciliation-sweep.ts`, `session-reconciliation.ts`, `task-session.ts`, `session-status.ts`.
+
+**Preserve tasks on shutdown:** Graceful shutdown no longer trashes in-progress/review cards. Cards stay in place; sessions marked interrupted. On restart, crash-recovery auto-restart picks them up. Files: `shutdown-coordinator.ts`, `cli.ts`, `shutdown-coordinator.integration.test.ts`, `shutdown-coordinator-timeout.test.ts`.
+
+**Pull latest context menu:** Added "Pull latest" to the right-click context menu on branch refs in git history panel and git refs sidebar. Wired through `onPullLatest` prop to `runGitAction("pull")`. Files: `git-refs-panel.tsx`, `git-history-view.tsx`, `App.tsx`.
+
+**Diff viewer rollback:** Added "Rollback file" to the diff viewer file header context menu — restores the file to its base-ref version via `git checkout`. Only shown for modified files. Files: `diff-viewer-panel.tsx`, `git-view.tsx`.
+
+**Git action success toasts:** Push/pull/fetch now show a brief success toast on completion. Files: `use-git-actions.ts`.
+
+**Debug flag independent of emergency actions:** Debug flag icon on in-progress cards renders independently of the emergency actions setting. Files: `board-card.tsx`.
+
+**Branch dropdown tooltip width:** Truncated branch names in the branch selector dropdown now show a tooltip with the full name. Dropdown width increased. Files: `branch-selector-popover.tsx`.
+
+**Settings dialog fix:** Removed duplicate Git Polling section from the dialog shell (pre-existing bug from decomposition). Files: `runtime-settings-dialog.tsx`, `runtime-state-stream.integration.test.ts`.
+
 ## Fix: colored ahead/behind arrows on branch pill and dropdown + settings dialog type errors (2026-04-13)
 
 **Branch indicator improvements:**

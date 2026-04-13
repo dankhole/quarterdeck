@@ -3,6 +3,7 @@ import { ArrowRight, Check, CornerDownLeft, GitCompareArrows, PanelLeft } from "
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { showAppToast } from "@/components/app-toaster";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
 import { ConflictResolutionPanel } from "@/components/detail-panels/conflict-resolution-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
@@ -20,6 +21,7 @@ import {
 	type ResizeNumberPreference,
 } from "@/resize/resize-preferences";
 import { useResizeDrag } from "@/resize/use-resize-drag";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeGitRef,
 	RuntimeGitSyncSummary,
@@ -431,6 +433,46 @@ export function GitView({
 		setSelectedPath(availablePaths[0] ?? null);
 	}, [availablePaths, selectedPath]);
 
+	// --- File rollback (uncommitted tab only) ---
+
+	const taskScope = useMemo(() => (taskId && baseRef ? { taskId, baseRef } : null), [taskId, baseRef]);
+	const isRollingBackRef = useRef(false);
+
+	const handleRollbackFile = useCallback(
+		async (path: string) => {
+			if (!currentProjectId || isRollingBackRef.current) return;
+			const file = uncommittedChanges?.files?.find((f) => f.path === path);
+			if (!file) return;
+			isRollingBackRef.current = true;
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const result = await trpcClient.workspace.discardFile.mutate({
+					taskScope,
+					path,
+					fileStatus: file.status,
+				});
+				if (result.ok) {
+					showAppToast({
+						intent: "success",
+						message: `Discarded changes to ${path.split("/").pop()}`,
+						timeout: 4000,
+					});
+				} else {
+					showAppToast({ intent: "danger", message: result.error ?? "Rollback failed.", timeout: 7000 });
+				}
+			} catch (error) {
+				showAppToast({
+					intent: "danger",
+					message: error instanceof Error ? error.message : "Rollback failed.",
+					timeout: 7000,
+				});
+			} finally {
+				isRollingBackRef.current = false;
+			}
+		},
+		[currentProjectId, taskScope, uncommittedChanges?.files],
+	);
+
 	// --- Reset on context switches ---
 
 	useEffect(() => {
@@ -587,6 +629,7 @@ export function GitView({
 									workspaceFiles={isRuntimeAvailable ? activeFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
+									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}
 									viewMode="split"
 									comments={diffComments}
 									onCommentsChange={setDiffComments}

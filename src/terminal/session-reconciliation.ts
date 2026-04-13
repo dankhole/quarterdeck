@@ -140,7 +140,7 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	// where the process disappeared without proper exit handling.
 	if (summary.state === "awaiting_review") {
 		const reason = summary.reviewReason;
-		if (reason === "error" || reason === "exit" || reason === "interrupted") {
+		if (reason === "error" || reason === "exit" || reason === "interrupted" || reason === "stalled") {
 			return null;
 		}
 	}

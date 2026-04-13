@@ -10,16 +10,8 @@ vi.mock("../../src/state/workspace-state.js", () => ({
 	listWorkspaceIndexEntries: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../src/workspace/task-worktree.js", () => ({
-	deleteTaskWorktree: vi.fn().mockResolvedValue({ ok: true, removed: false }),
-}));
-
-vi.mock("../../src/core/task-board-mutations.js", () => ({
-	updateTaskDependencies: (board: RuntimeBoardData) => board,
-}));
-
-vi.mock("../../src/server/workspace-registry.js", () => ({
-	collectProjectWorktreeTaskIdsForRemoval: () => new Set<string>(),
+vi.mock("../../src/terminal/orphan-cleanup.js", () => ({
+	killOrphanedAgentProcesses: vi.fn().mockResolvedValue(undefined),
 }));
 
 function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {

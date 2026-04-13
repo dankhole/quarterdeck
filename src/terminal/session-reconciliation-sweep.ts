@@ -136,7 +136,7 @@ export function applyReconciliationAction(
 			break;
 		}
 		case "mark_stalled": {
-			ctx.store.update(entry.taskId, { stalledSince: Date.now() });
+			ctx.applySessionEventWithSideEffects(entry, { type: "reconciliation.stalled" });
 			break;
 		}
 	}

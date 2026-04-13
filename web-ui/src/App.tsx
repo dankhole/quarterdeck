@@ -1290,6 +1290,9 @@ export default function App(): ReactElement {
 										workspaceId={currentProjectId}
 										gitHistory={gitHistory}
 										onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+										onPullLatest={() => {
+											void runGitAction("pull", gitHistoryTaskScope);
+										}}
 										taskScope={gitHistoryTaskScope}
 										skipCherryPickConfirmation={skipCherryPickConfirmation}
 									/>
@@ -1414,6 +1417,9 @@ export default function App(): ReactElement {
 																	void switchHomeBranch(branch);
 																}}
 																onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+																onPullLatest={() => {
+																	void runGitAction("pull");
+																}}
 																taskScope={gitHistoryTaskScope}
 																skipCherryPickConfirmation={skipCherryPickConfirmation}
 															/>

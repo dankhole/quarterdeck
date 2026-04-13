@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Feat: stalled tasks move to review column
+
+- Sessions stuck in "running" without hook activity for 60+ seconds are now detected by the reconciliation sweep and marked as "stalled" instead of staying in the running state indefinitely. Stalled tasks appear in the review column with a green badge and explanatory tooltip. Auto-clears when hooks resume.
+
+### Feat: preserve board state on graceful shutdown
+
+- Graceful shutdown (Ctrl+C) no longer trashes all in-progress and review tasks. Cards stay in their columns; sessions are marked as "interrupted" with `pid: null`. On restart, the existing crash-recovery auto-restart infrastructure picks them up — same as after an unexpected crash. Eliminates the disruptive loss of board state on every restart.
+
+### Feat: "Pull latest" in branch context menu
+
+- Added a "Pull latest" action to the right-click context menu on branch refs in the git history panel and the git refs sidebar. Runs `git pull` scoped to the relevant task or home repo.
+
+### Feat: rollback file from diff viewer context menu
+
+- Right-clicking a file header in the diff viewer now includes a "Rollback file" action that restores the file to its base-ref version. Only shown for modified files (not new/deleted). Uses `git checkout <baseRef> -- <path>`.
+
+### Feat: success toasts for git push/pull/fetch
+
+- Push, pull, and fetch actions now show a brief success toast ("Pushed", "Pulled", "Fetched") on completion, matching the existing error toast pattern.
+
+### Fix: debug flag icon shown independently of emergency actions
+
+- The debug flag icon on in-progress cards was previously only visible when the "show emergency actions" setting was enabled. It now renders independently — the debug indicator is informational, not an emergency action.
+
+### Fix: tooltip for truncated branch names in dropdown
+
+- Branch names that overflow the dropdown width now show a tooltip with the full name on hover. Dropdown width also increased slightly to reduce truncation.
+
+### Fix: duplicate Git Polling section in settings dialog
+
+- Removed a duplicate inline "Git Polling" section from the settings dialog shell that was left over from the decomposition refactor. The section was already rendered by the extracted `GitSection` component. The duplicate used bare variable names (`focusedTaskPollMs` instead of `fields.focusedTaskPollMs`) causing TypeScript errors.
+
 ### Git view — file context menus
 
 - Right-clicking a file name in the diff viewer (both file headers and the file tree sidebar) now shows a context menu with Copy name, Copy path, and Show in File Browser.

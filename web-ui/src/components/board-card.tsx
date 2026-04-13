@@ -521,27 +521,27 @@ export function BoardCard({
 											) : null}
 										</div>
 									)}
+									{columnId === "in_progress" && onFlagForDebug && isHovered ? (
+										<Tooltip content="Flag for debug log">
+											<Button
+												icon={<Bug size={12} />}
+												variant="ghost"
+												size="sm"
+												className="text-text-tertiary hover:text-status-purple"
+												aria-label="Flag task state for debug log"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onFlagForDebug(card.id);
+												}}
+											/>
+										</Tooltip>
+									) : null}
 									{columnId === "in_progress" &&
 									showRunningTaskEmergencyActions &&
 									!isSessionDead &&
 									isHovered ? (
 										<>
-											{onFlagForDebug ? (
-												<Tooltip content="Flag for debug log">
-													<Button
-														icon={<Bug size={12} />}
-														variant="ghost"
-														size="sm"
-														className="text-text-tertiary hover:text-status-purple"
-														aria-label="Flag task state for debug log"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															onFlagForDebug(card.id);
-														}}
-													/>
-												</Tooltip>
-											) : null}
 											{onRestartSession ? (
 												<Tooltip content="Force restart session">
 													<Button

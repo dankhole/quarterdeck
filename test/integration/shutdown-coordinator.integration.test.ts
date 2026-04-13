@@ -64,7 +64,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 }
 
 describe.sequential("shutdown coordinator integration", () => {
-	it("moves all in-progress and review cards to trash for every indexed project on shutdown", async () => {
+	it("preserves cards in their columns and marks sessions interrupted on shutdown", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-shutdown-scope-");
 			try {
@@ -135,20 +135,33 @@ describe.sequential("shutdown coordinator integration", () => {
 
 				expect(didCloseRuntimeServer).toBe(true);
 
+				// Cards stay in their original columns — not moved to trash.
 				const managedAfter = await loadWorkspaceState(managedProjectPath);
+				const managedInProgress =
+					managedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+				const managedReview = managedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
 				const managedTrash = managedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(managedTrash.map((card) => card.id).sort()).toEqual(
-					["managed-idle", "managed-missing-session", "managed-running"].sort(),
+				expect(managedInProgress.map((card) => card.id).sort()).toEqual(
+					["managed-missing-session", "managed-running"].sort(),
 				);
+				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle"]);
+				expect(managedTrash).toEqual([]);
+
+				// Sessions with persisted state are marked interrupted.
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
+				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
+				// Indexed (non-managed) workspaces are also preserved in place.
 				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
+				const indexedInProgress =
+					indexedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+				const indexedReview = indexedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
 				const indexedTrash = indexedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(indexedTrash.map((card) => card.id).sort()).toEqual(
-					["indexed-awaiting-review", "indexed-missing-session"].sort(),
-				);
+				expect(indexedInProgress.map((card) => card.id)).toEqual(["indexed-missing-session"]);
+				expect(indexedReview.map((card) => card.id)).toEqual(["indexed-awaiting-review"]);
+				expect(indexedTrash).toEqual([]);
 				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
 				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
 			} finally {

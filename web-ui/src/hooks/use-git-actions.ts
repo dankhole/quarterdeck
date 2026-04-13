@@ -382,6 +382,8 @@ export function useGitActions({
 					setHomeGitSummary(payload.summary);
 				}
 				refreshGitHistory();
+				const label = action === "push" ? "Pushed" : action === "pull" ? "Pulled" : "Fetched";
+				showAppToast({ intent: "success", message: label, timeout: 3000 });
 			} catch (error) {
 				const message = toErrorMessage(error);
 				setGitActionError({

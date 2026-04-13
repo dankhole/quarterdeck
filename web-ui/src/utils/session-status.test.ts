@@ -38,10 +38,8 @@ describe("describeSessionState", () => {
 		expect(describeSessionState(makeSummary({ state: "running" }))).toBe("Running");
 	});
 
-	it("returns 'Stalled' for running state with stalledSince set", () => {
-		expect(describeSessionState(makeSummary({ state: "running", stalledSince: Date.now() - 30_000 }))).toBe(
-			"Stalled",
-		);
+	it("returns 'Stalled' for awaiting_review with stalled reason", () => {
+		expect(describeSessionState(makeSummary({ state: "awaiting_review", reviewReason: "stalled" }))).toBe("Stalled");
 	});
 
 	it("returns 'Completed' for awaiting_review with exit reason", () => {
@@ -119,9 +117,9 @@ describe("getSessionStatusBadgeStyle", () => {
 		expect(getSessionStatusBadgeStyle(makeSummary({ state: "running" }))).toBe("running");
 	});
 
-	it("returns needs_input for stalled running state", () => {
-		expect(getSessionStatusBadgeStyle(makeSummary({ state: "running", stalledSince: Date.now() }))).toBe(
-			"needs_input",
+	it("returns review (green) for stalled review state", () => {
+		expect(getSessionStatusBadgeStyle(makeSummary({ state: "awaiting_review", reviewReason: "stalled" }))).toBe(
+			"review",
 		);
 	});
 
@@ -192,14 +190,14 @@ describe("getSessionStatusTooltip", () => {
 		expect(getSessionStatusTooltip(makeSummary({ state: "running" }))).toBeNull();
 	});
 
-	it("returns explanatory text for stalled running state", () => {
-		const tooltip = getSessionStatusTooltip(makeSummary({ state: "running", stalledSince: Date.now() }));
+	it("returns explanatory text for stalled review state", () => {
+		const tooltip = getSessionStatusTooltip(makeSummary({ state: "awaiting_review", reviewReason: "stalled" }));
 		expect(tooltip).toContain("stalled");
 		expect(tooltip).toContain("thinking");
 	});
 
-	it("returns null for non-running states even with stalledSince", () => {
-		expect(getSessionStatusTooltip(makeSummary({ state: "idle", stalledSince: Date.now() }))).toBeNull();
+	it("returns null for non-stalled review states", () => {
+		expect(getSessionStatusTooltip(makeSummary({ state: "awaiting_review", reviewReason: "hook" }))).toBeNull();
 	});
 });
 

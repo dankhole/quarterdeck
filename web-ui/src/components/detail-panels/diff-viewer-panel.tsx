@@ -1,11 +1,12 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { ChevronDown, ChevronRight, Command, CornerDownLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, Command, CornerDownLeft, Undo2 } from "lucide-react";
 
 import { useMemo, useState } from "react";
 
-import { FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
+import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { useDiffComments } from "@/hooks/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/use-diff-scroll-sync";
 import type { FileNavigation } from "@/hooks/use-git-navigation";
@@ -30,6 +31,7 @@ export function DiffViewerPanel({
 	onSelectedPathChange,
 	onAddToTerminal,
 	onSendToTerminal,
+	onRollbackFile,
 	comments,
 	onCommentsChange,
 	viewMode = "unified",
@@ -40,12 +42,21 @@ export function DiffViewerPanel({
 	onSelectedPathChange: (path: string) => void;
 	onAddToTerminal?: (formatted: string) => void;
 	onSendToTerminal?: (formatted: string) => void;
+	onRollbackFile?: (path: string) => void;
 	comments: Map<string, DiffLineComment>;
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
 	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
+
+	const fileStatusByPath = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const file of workspaceFiles ?? []) {
+			map.set(file.path, file.status);
+		}
+		return map;
+	}, [workspaceFiles]);
 
 	const diffEntries = useMemo(() => {
 		return (workspaceFiles ?? []).map((file, index) => ({
@@ -165,6 +176,8 @@ export function DiffViewerPanel({
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
 							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
+							const fileStatus = fileStatusByPath.get(group.path);
+							const canRollback = fileStatus !== "renamed" && fileStatus !== "copied";
 							return (
 								<section
 									key={group.path}
@@ -221,7 +234,27 @@ export function DiffViewerPanel({
 												fileName={group.path.split("/").pop() ?? group.path}
 												filePath={group.path}
 												navigateToFile={navigateToFile}
-											/>
+											>
+												{onRollbackFile ? (
+													<>
+														<ContextMenu.Separator className="h-px bg-border my-1" />
+														<ContextMenu.Item
+															className={cn(
+																CONTEXT_MENU_ITEM_CLASS,
+																canRollback ? "text-status-red" : "opacity-50",
+															)}
+															disabled={!canRollback}
+															onSelect={canRollback ? () => onRollbackFile(group.path) : undefined}
+														>
+															<Undo2
+																size={14}
+																className={canRollback ? "text-status-red" : "text-text-tertiary"}
+															/>
+															{canRollback ? "Rollback" : "Cannot rollback renamed/copied"}
+														</ContextMenu.Item>
+													</>
+												) : null}
+											</FileContextMenuItems>
 										</ContextMenu.Portal>
 									</ContextMenu.Root>
 									{isExpanded ? (

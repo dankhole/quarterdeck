@@ -192,7 +192,7 @@ export function BranchSelectorPopover({
 					align="start"
 					sideOffset={4}
 					collisionPadding={8}
-					className="z-50 w-64 rounded-lg border border-border bg-surface-1 shadow-lg"
+					className="z-50 w-72 rounded-lg border border-border bg-surface-1 shadow-lg"
 					onOpenAutoFocus={(e) => {
 						e.preventDefault();
 						inputRef.current?.focus();
@@ -428,7 +428,9 @@ function BranchItem({
 					className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
 				>
 					<GitBranch size={12} className="shrink-0" />
-					<span className="flex-1 truncate">{shortName}</span>
+					<span className="flex-1 truncate" title={shortName}>
+						{shortName}
+					</span>
 					{gitRef.behind && gitRef.behind > 0 ? (
 						<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
 							<ArrowDown size={10} />

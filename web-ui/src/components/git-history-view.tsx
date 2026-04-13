@@ -105,6 +105,7 @@ interface GitHistoryViewProps {
 	gitHistory: UseGitHistoryDataResult;
 	onCheckoutBranch?: (branch: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
+	onPullLatest?: () => void;
 	/** Task scope for cherry-pick operations (null = home repo context). */
 	taskScope?: { taskId: string; baseRef: string } | null;
 	/** When true, skip the cherry-pick confirmation dialog and execute immediately. */
@@ -116,6 +117,7 @@ export function GitHistoryView({
 	gitHistory,
 	onCheckoutBranch,
 	onCreateBranch,
+	onPullLatest,
 	taskScope,
 	skipCherryPickConfirmation = false,
 }: GitHistoryViewProps): React.ReactElement {
@@ -309,6 +311,7 @@ export function GitHistoryView({
 					onSelectWorkingCopy={gitHistory.hasWorkingCopy ? gitHistory.selectWorkingCopy : undefined}
 					onCheckoutRef={onCheckoutBranch}
 					onCreateBranch={onCreateBranch}
+					onPullLatest={onPullLatest}
 				/>
 				<ResizeHandle
 					orientation="vertical"

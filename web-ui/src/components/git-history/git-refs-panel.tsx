@@ -88,6 +88,7 @@ export function GitRefsPanel({
 	onSelectWorkingCopy,
 	onCheckoutRef,
 	onCreateBranch,
+	onPullLatest,
 }: {
 	refs: RuntimeGitRef[];
 	selectedRefName: string | null;
@@ -100,6 +101,7 @@ export function GitRefsPanel({
 	onSelectWorkingCopy?: () => void;
 	onCheckoutRef?: (branchName: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
+	onPullLatest?: () => void;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 
@@ -242,6 +244,7 @@ export function GitRefsPanel({
 								refName={headBranch.name}
 								onCheckoutRef={undefined}
 								onCreateBranch={onCreateBranch}
+								onPullLatest={onPullLatest}
 							>
 								<RefRow isSelected={isHeadBranchSelected} onSelect={() => onSelectRef(headBranch)}>
 									<GitBranch size={12} />
@@ -382,14 +385,16 @@ function RefContextMenu({
 	refName,
 	onCheckoutRef,
 	onCreateBranch,
+	onPullLatest,
 	children,
 }: {
 	refName: string;
 	onCheckoutRef?: (branchName: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
+	onPullLatest?: () => void;
 	children: React.ReactNode;
 }): React.ReactElement {
-	const hasActions = onCheckoutRef || onCreateBranch;
+	const hasActions = onCheckoutRef || onCreateBranch || onPullLatest;
 	if (!hasActions) {
 		return <>{children}</>;
 	}
@@ -404,13 +409,21 @@ function RefContextMenu({
 							Checkout
 						</ContextMenu.Item>
 					) : null}
+					{onPullLatest ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPullLatest}>
+							<ArrowDown size={14} className="text-text-secondary" />
+							Pull latest
+						</ContextMenu.Item>
+					) : null}
 					{onCreateBranch ? (
 						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onCreateBranch(refName)}>
 							<GitBranchPlus size={14} className="text-text-secondary" />
 							Create branch from here
 						</ContextMenu.Item>
 					) : null}
-					{onCheckoutRef || onCreateBranch ? <ContextMenu.Separator className="my-1 h-px bg-border" /> : null}
+					{onCheckoutRef || onCreateBranch || onPullLatest ? (
+						<ContextMenu.Separator className="my-1 h-px bg-border" />
+					) : null}
 					<ContextMenu.Item
 						className={CONTEXT_MENU_ITEM_CLASS}
 						onSelect={() => copyToClipboard(refName, "Branch name")}
