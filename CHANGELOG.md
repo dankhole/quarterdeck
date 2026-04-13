@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: terminal rendering artifacts and stale canvas on task switch
+
+- Switching to a task now triggers the agent to redraw its TUI — the mount-time cols-1 resize trick is sent to the server so the PTY sees an actual dimension change, delivers SIGWINCH, and the agent repaints cleanly. Previously the intermediate resize was local-only and the server never saw it.
+- "Reset terminal rendering" button in settings now actually works — it calls `terminal.refresh()` + `forceResize()` after swapping the WebGL addon, and is no longer a no-op when WebGL is disabled.
+
 ### Feat: stalled tasks move to review column
 
 - Sessions stuck in "running" without hook activity for 60+ seconds are now detected by the reconciliation sweep and marked as "stalled" instead of staying in the running state indefinitely. Stalled tasks appear in the review column with a green badge and explanatory tooltip. Auto-clears when hooks resume.

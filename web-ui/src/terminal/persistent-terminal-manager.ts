@@ -667,11 +667,14 @@ export class PersistentTerminal {
 			// (or parked) container, or been silently dropped.
 			this.invalidateResize();
 			// The host element was just moved from the parking root (or another
-			// container). The WebGL/canvas renderer may have initialized its canvas
-			// at the old container's dimensions. Schedule a deferred resize after
-			// the browser has settled the layout to force the renderer to update
-			// its canvas size — fitAddon.fit() skips terminal.resize() when
-			// cols/rows match, which leaves the canvas stale.
+			// container). Schedule a deferred resize that:
+			// 1. Forces the WebGL/canvas renderer to recalculate its canvas
+			//    dimensions (fitAddon.fit() skips terminal.resize() when
+			//    cols/rows match, leaving the canvas stale after a DOM move).
+			// 2. Sends the intermediate cols-1 to the server so the PTY
+			//    actually changes size → SIGWINCH → the agent redraws its
+			//    TUI. Without this the server-side dimensions never change
+			//    and artifacts from the previous render persist.
 			if (this.deferredResizeRaf !== null) {
 				cancelAnimationFrame(this.deferredResizeRaf);
 			}
@@ -683,6 +686,9 @@ export class PersistentTerminal {
 				const { cols, rows } = this.terminal;
 				if (cols > 2) {
 					this.terminal.resize(cols - 1, rows);
+					// Send the intermediate size to the server so the PTY
+					// sees an actual dimension change and delivers SIGWINCH.
+					this.sendControlMessage({ type: "resize", cols: cols - 1, rows });
 				}
 				this.forceResize();
 			});
@@ -794,6 +800,13 @@ export class PersistentTerminal {
 			this.webglAddon = null;
 		}
 		this.attachWebglAddon();
+		// Force the (re)created renderer to recalculate canvas dimensions and
+		// repaint. Without this the new addon initialises at stale dimensions
+		// and the reset appears to do nothing.
+		this.terminal.refresh(0, this.terminal.rows - 1);
+		if (this.visibleContainer) {
+			this.forceResize();
+		}
 		const newRenderer = this.webglAddon ? "webgl" : "canvas-fallback";
 		console.log(
 			`[terminal:${this.taskId}] renderer reset — previous: ${hadWebgl ? "webgl" : "none"}, new: ${newRenderer}, dpr: ${window.devicePixelRatio}`,

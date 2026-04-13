@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal rendering artifacts and broken "Reset terminal rendering" button (2026-04-13)
+
+Two issues in `PersistentTerminal` (`web-ui/src/terminal/persistent-terminal-manager.ts`):
+
+**1. Agent TUI artifacts on task switch:** When switching to a previously viewed task, the terminal often showed rendering artifacts (misaligned lines, stale content from previous dimensions). Window resize fixed everything because it changed the actual PTY dimensions, triggering SIGWINCH → agent TUI redraw. The existing mount-time RAF did a `cols-1` → `cols` resize trick to force the local WebGL canvas to update, but the intermediate `cols-1` was never sent to the server. The server-side PTY dimensions never changed, so no SIGWINCH was delivered and the agent never redrew.
+
+**Fix:** Added `this.sendControlMessage({ type: "resize", cols: cols - 1, rows })` after the local `terminal.resize(cols - 1, rows)` in the mount RAF. The server now sees `cols-1` → resizes the PTY → SIGWINCH → agent redraws. Then `forceResize()` sends the correct `cols` immediately after. The agent gets two rapid SIGWINCHs and debounces them into one redraw at the final dimensions. One extra WebSocket message per mount, dropped silently if no active session.
+
+**2. "Reset terminal rendering" button was a no-op:** `resetRenderer()` disposed the WebGL addon and reattached it, but never told the new renderer to recalculate dimensions or repaint. When WebGL was disabled, `attachWebglAddon()` returned early and the method did literally nothing.
+
+**Fix:** Added `terminal.refresh(0, rows - 1)` (forces repaint of all visible rows) and `forceResize()` (recalculates canvas dimensions and sends resize to server) after the addon swap. The `forceResize()` is guarded by `this.visibleContainer` to skip parked terminals.
+
+**Files changed:** `web-ui/src/terminal/persistent-terminal-manager.ts`
+
 ## Combined feature landing: 7 branches merged (2026-04-13)
 
 Landed 7 feature branches into main via a combined-features integration branch. One merge conflict in `runtime-settings-dialog.tsx` required manual resolution — `feat/git-action-success-toasts` diverged before the settings dialog decomposition and carried the old monolithic file, which was discarded in favor of main's decomposed structure. Also fixed a pre-existing bug where a duplicate "Git Polling" section in the dialog shell used bare variable names instead of `fields.*`, causing TypeScript errors. One integration test (`runtime-state-stream`) was updated to match the new preserve-tasks-on-shutdown behavior.
