@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: Shift+Enter in agent terminal triggers optimistic running transition (2026-04-13)
+
+The optimistic running transition added in 03f08f81 ("fix: transition card to running immediately on prompt submit") checked for both CR (byte 13) and LF (byte 10) in `writeInput()`. Shift+Enter in the xterm terminal sends LF (`\n`) via the custom key event handler in `persistent-terminal-manager.ts`, which matched the LF check and moved the card from review to in_progress before the user actually submitted anything.
+
+**Root cause:** The original commit assumed LF was equivalent to Enter for submission purposes, but in the quarterdeck terminal, LF is the Shift+Enter newline character — a multi-line editing action, not a submit.
+
+**Fix:** Removed the `data.includes(10)` check from both the non-Codex optimistic transition and the Codex prompt-after-Enter flag. Only CR (byte 13) now triggers these code paths. Updated the test that asserted LF should trigger the transition — it now asserts the opposite.
+
+Files: `src/terminal/session-manager.ts`, `test/runtime/terminal/session-manager-ordering.test.ts`.
+
 ## Move default base ref UX from settings to branch dropdown (2026-04-13)
 
 Replaced the Settings > Git text input for `defaultBaseRef` with a pin icon inside the branch dropdown in the task creation dialog. The text input required users to know and type branch names — the pin icon lets them set the default right where they're already choosing branches.

@@ -156,9 +156,9 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 	});
 
-	// ── Gap 2: writeInput CR/LF optimistic transition ───────────────────
+	// ── Gap 2: writeInput CR optimistic transition ──────────────────────
 
-	describe("writeInput CR/LF optimistic transition", () => {
+	describe("writeInput CR optimistic transition", () => {
 		it("CR triggers immediate transition from awaiting_review to running for non-Codex agent", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -182,7 +182,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
 		});
 
-		it("LF triggers immediate transition from awaiting_review to running for non-Codex agent", async () => {
+		it("LF (Shift+Enter newline) does NOT trigger optimistic transition for non-Codex agent", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
@@ -200,11 +200,13 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			manager.writeInput("task-1", Buffer.from([0x0a]));
 
-			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			// LF is sent by Shift+Enter for multi-line input — should NOT move to running
+			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+			// Input is still forwarded to the PTY
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
 		});
 
-		it("Codex agent is excluded from CR/LF optimistic transition", async () => {
+		it("Codex agent is excluded from CR optimistic transition", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 

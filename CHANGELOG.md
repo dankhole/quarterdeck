@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: Shift+Enter in agent terminal no longer moves task to running
+
+- Pressing Shift+Enter to insert a newline in the agent terminal was triggering the optimistic "review → running" transition introduced in 03f08f81. The `writeInput()` CR/LF check treated LF (byte 10, sent by Shift+Enter) the same as CR (byte 13, sent by Enter). Now only CR triggers the optimistic transition.
+
 ### Feat: truncation-aware tooltip and wider branch dropdown
 
 - Branch names in the `BranchSelectorPopover` dropdown now show a Radix tooltip with the full ref name (including `origin/` for remotes) when the text is truncated. Non-truncated names show no tooltip. Uses a fast 150ms delay instead of the global 400ms so it feels responsive when scanning a list.

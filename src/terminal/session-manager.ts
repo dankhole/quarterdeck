@@ -472,13 +472,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const summary = this.store.getSummary(taskId);
 
 		// Codex: flag that we're waiting for a prompt after Enter
+		// Only trigger on CR (byte 13 = Enter), not LF (byte 10 = Shift+Enter newline).
 		if (
 			summary?.agentId === "codex" &&
 			summary.state === "awaiting_review" &&
 			(summary.reviewReason === "hook" ||
 				summary.reviewReason === "attention" ||
 				summary.reviewReason === "error") &&
-			(data.includes(13) || data.includes(10))
+			data.includes(13)
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
 			emitSessionEvent(taskId, "writeInput.codex_flag", {
@@ -488,11 +489,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		// Optimistic running transition on Enter (non-Codex)
+		// Only trigger on CR (byte 13 = Enter), not LF (byte 10 = Shift+Enter newline).
 		if (
 			summary?.agentId !== "codex" &&
 			summary?.state === "awaiting_review" &&
 			canReturnToRunning(summary.reviewReason) &&
-			(data.includes(13) || data.includes(10))
+			data.includes(13)
 		) {
 			emitSessionEvent(taskId, "state.transition.optimistic", {
 				fromState: summary.state,
