@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: status bar line diff not updating after merge or checkout via branch selector
+
+- After merging or checking out a branch through the branch selector popover, the status bar's `+additions -deletions` display now updates immediately instead of waiting for the next polling cycle (~10s). The merge and checkout handlers in `use-branch-actions.ts` were ignoring the fresh `summary` in the server response — now they call `setHomeGitSummary()` to update the store, matching the pattern used by all other git operations (fetch, pull, push, discard).
+
 ### Fix: top bar branch selector no longer checks out on left-click
 
 - Left-clicking a branch in the top bar branch selector popover previously triggered a checkout instead of just closing the popover. Now it behaves like the home and task scope bar popovers — left-click is a no-op view action, checkout requires the explicit icon or right-click menu.

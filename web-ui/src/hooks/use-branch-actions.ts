@@ -8,6 +8,7 @@ import type { CreateBranchDialogState } from "@/components/detail-panels/create-
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import { setHomeGitSummary } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
 
 interface UseBranchActionsOptions {
@@ -141,6 +142,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(scope === "task" && checkoutTaskId ? { taskId: checkoutTaskId } : {}),
 					...(checkoutBaseRef ? { baseRef: checkoutBaseRef } : {}),
 				});
+				// Update the status bar line diff immediately from the response summary
+				if (scope === "home" && result.summary) {
+					setHomeGitSummary(result.summary);
+				}
 				if (result.ok) {
 					showAppToast({ intent: "success", message: `Switched to ${branch}` });
 					onCheckoutSuccess?.();
@@ -169,6 +174,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					...(taskId ? { taskId } : {}),
 					...(baseRef ? { baseRef } : {}),
 				});
+				// Update the status bar line diff immediately from the response summary
+				if (!taskId && result.summary) {
+					setHomeGitSummary(result.summary);
+				}
 				if (result.ok) {
 					showAppToast({
 						intent: "success",

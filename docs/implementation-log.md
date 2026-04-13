@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: status bar line diff stale after merge/checkout via branch selector (2026-04-12)
+
+`handleMergeBranch` and `performCheckout` in `use-branch-actions.ts` called the server, received a response containing a fresh `RuntimeGitSyncSummary`, but never pushed it into the workspace metadata store. The status bar's `+additions -deletions` display only updated on the next metadata polling cycle (~10s for the home repo). Meanwhile, `use-git-actions.ts` — which handles fetch, pull, push, checkout (via `switchHomeBranch`), and discard — correctly called `setHomeGitSummary(payload.summary)` after every operation. The branch selector popover uses a separate hook (`use-branch-actions.ts`) for its merge and checkout flows, and these were never wired up.
+
+Fix: import `setHomeGitSummary` from the workspace metadata store and call it immediately after both operations return, guarded by scope (`scope === "home"` for checkout, `!taskId` for merge) to avoid incorrectly updating home metadata for task-scoped operations. The call is placed before the ok/conflict/error branching so the summary updates regardless of outcome — matching the pattern in `use-git-actions.ts` where error cases also update the summary (the server always computes a fresh summary reflecting the current state, whether that's post-merge, post-conflict, or post-abort).
+
+**Files touched**: `web-ui/src/hooks/use-branch-actions.ts`
+
 ## Fix: top bar branch selector no longer checks out on left-click (2026-04-12)
 
 The top bar `BranchSelectorPopover` in `App.tsx` wired `onSelectBranchView` to `handleCheckoutBranch` instead of `handleSelectBranchView`. This meant left-clicking any branch in the top bar popover triggered a checkout (with confirmation dialog). The home files scope bar and task detail scope bar were already correct — only the top bar had this miswiring.
