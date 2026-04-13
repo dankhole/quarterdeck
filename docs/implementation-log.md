@@ -2,6 +2,12 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feat: truncation-aware tooltip on branch dropdown items (2026-04-13)
+
+Branch names in the `BranchSelectorPopover` dropdown had a native `title` attribute that was unreliable inside Radix wrappers and showed `shortName` instead of the full ref. Replaced with a new `TruncateTooltip` component that only activates when text overflows (`scrollWidth > clientWidth`), using a 150ms delay for fast scanning. Also widened the dropdown from `w-72` to `w-80`. Added optional `delayDuration` prop to the base `Tooltip` component.
+
+Files: `web-ui/src/components/ui/tooltip.tsx`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`.
+
 ## UX: move task title to far left of top bar (2026-04-13)
 
 Moved the task title from its previous position (after branch pill, separated by a middot) to immediately after the back arrow button — making it the first visible element in task scope. Wrapped in a `<Tooltip>` showing "Task name" on hover so the accent-colored text is self-explanatory.

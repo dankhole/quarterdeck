@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feat: truncation-aware tooltip and wider branch dropdown
+
+- Branch names in the `BranchSelectorPopover` dropdown now show a Radix tooltip with the full ref name (including `origin/` for remotes) when the text is truncated. Non-truncated names show no tooltip. Uses a fast 150ms delay instead of the global 400ms so it feels responsive when scanning a list.
+- Branch dropdown widened from `w-72` (288px) to `w-80` (320px) to reduce truncation.
+- New `TruncateTooltip` component in `tooltip.tsx` — checks `scrollWidth > clientWidth` on pointer enter and suppresses the tooltip when content fits. Reusable for any truncated text.
+- Added optional `delayDuration` prop to the existing `Tooltip` component for per-instance delay override.
+
 ### UX: move task title to far left of top bar
 
 - Task name now appears immediately after the back button instead of after the branch pill. Adds a "Task name" tooltip on hover for discoverability.
