@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: worktree `.git`-only access option (2026-04-12)
+
+Added `worktreeAddParentGitDir` config field — a lighter alternative to `worktreeAddParentRepoDir` that passes only the parent repo's `.git` directory via `--add-dir` to Claude Code agents in worktrees. Agents get git metadata access (history, branches, refs) without full file read/write access to the parent working tree.
+
+The option uses `else if` precedence in the Claude adapter: if `worktreeAddParentRepoDir` is also enabled, the full repo option wins and the `.git`-only option is silently ignored. The UI enforces this by disabling the `.git` toggle when the full repo toggle is on.
+
+Files: `src/config/global-config-fields.ts` (field definition), `src/core/api-contract.ts` (response + save Zod schemas), `src/terminal/agent-session-adapters.ts` (adapter interface + `--add-dir` logic with `join(workspacePath, ".git")`), `src/terminal/session-manager.ts` (request type + passthrough), `src/trpc/runtime-api.ts` (two call sites), `web-ui/src/components/runtime-settings-dialog.tsx` (switch in Advanced section), `web-ui/src/hooks/use-settings-form.ts` (form type + initial values), `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts` (3 fixture updates).
+
 ## Feat: top bar git sync actions, pull-from-remote context menu, merge confirmation dialog (2026-04-12)
 
 Three branch management UX improvements landed together:

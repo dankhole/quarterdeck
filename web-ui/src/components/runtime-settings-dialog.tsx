@@ -827,7 +827,7 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
 					</p>
-					<p className="text-[13px] font-medium text-text-secondary mt-4 mb-2">Polling intervals</p>
+					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
 					<p className="text-text-secondary text-[13px] mt-1 mb-3">
 						How often to check for git changes in task worktrees. Lower values show changes faster but use more
 						resources when many tasks are active.
@@ -993,6 +993,26 @@ export function RuntimeSettingsDialog({
 						read and write files in the original repo. The agent can navigate to the home repo, which means its
 						working directory may drift — UI elements that track the agent's location (status bar branch, card
 						branch pill) will show the home repo state instead of the worktree. Claude Code only.
+					</p>
+					<div className="flex items-center gap-2 mt-3">
+						<RadixSwitch.Root
+							checked={fields.worktreeAddParentGitDir}
+							disabled={controlsDisabled || fields.worktreeAddParentRepoDir}
+							onCheckedChange={(v) => setField("worktreeAddParentGitDir", v)}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+						<span className="text-[13px] text-text-primary">
+							Allow agents to access the parent repo's{" "}
+							<code className="text-xs bg-surface-3 px-1 rounded">.git</code> directory
+						</span>
+					</div>
+					<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						Passes only the parent repo's <code className="text-xs bg-surface-3 px-1 rounded">.git</code>{" "}
+						directory via <code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> instead of the
+						entire repo. Agents can read git history, branches, and refs without full file access. Ignored when
+						the full parent repo option above is enabled. Claude Code only.
 					</p>
 					<div className="flex items-center gap-2 mt-3">
 						<RadixSwitch.Root

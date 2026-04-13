@@ -33,6 +33,7 @@ export interface AgentAdapterLaunchInput {
 	workspacePath?: string;
 	statuslineEnabled?: boolean;
 	worktreeAddParentRepoDir?: boolean;
+	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
 }
 
@@ -247,12 +248,17 @@ const claudeAdapter: AgentSessionAdapter = {
 			workspacePath: input.workspacePath ?? null,
 			isWorktree,
 			worktreeAddParentRepoDir: input.worktreeAddParentRepoDir ?? false,
+			worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
 			worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		});
 		if (isWorktree) {
 			if (input.worktreeAddParentRepoDir) {
 				log.debug("adding --add-dir for parent repo", { path: input.workspacePath });
 				args.push("--add-dir", input.workspacePath!);
+			} else if (input.worktreeAddParentGitDir) {
+				const gitDir = join(input.workspacePath!, ".git");
+				log.debug("adding --add-dir for parent .git dir", { path: gitDir });
+				args.push("--add-dir", gitDir);
 			}
 			if (input.worktreeAddQuarterdeckDir) {
 				const quarterdeckPath = getRuntimeHomePath();
@@ -386,6 +392,7 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		cwd: input.cwd,
 		workspacePath: input.workspacePath ?? null,
 		worktreeAddParentRepoDir: input.worktreeAddParentRepoDir ?? false,
+		worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
 		worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		hasPrompt: input.prompt.trim().length > 0,
 		imageCount: input.images?.length ?? 0,

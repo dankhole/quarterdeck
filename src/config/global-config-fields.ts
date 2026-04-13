@@ -102,6 +102,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	terminalFontWeight: numField(325),
 	terminalWebGLRenderer: boolField(true),
 	worktreeAddParentRepoDir: boolField(false),
+	worktreeAddParentGitDir: boolField(false),
 	worktreeAddQuarterdeckDir: boolField(false),
 	showRunningTaskEmergencyActions: boolField(false),
 	eventLogEnabled: boolField(false),

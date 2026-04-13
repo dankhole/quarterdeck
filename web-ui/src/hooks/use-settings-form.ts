@@ -46,6 +46,7 @@ export interface SettingsFormValues {
 	backgroundTaskPollMs: number;
 	homeRepoPollMs: number;
 	worktreeAddParentRepoDir: boolean;
+	worktreeAddParentGitDir: boolean;
 	worktreeAddQuarterdeckDir: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 }
@@ -92,6 +93,7 @@ export function resolveInitialValues(
 		backgroundTaskPollMs: config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs,
 		homeRepoPollMs: config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs,
 		worktreeAddParentRepoDir: config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir,
+		worktreeAddParentGitDir: config?.worktreeAddParentGitDir ?? CONFIG_DEFAULTS.worktreeAddParentGitDir,
 		worktreeAddQuarterdeckDir: config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 		shortcuts: config?.shortcuts ?? [],
 	};

@@ -185,6 +185,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					workspacePath: workspaceScope.workspacePath,
 					statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 					worktreeAddParentRepoDir: scopedRuntimeConfig.worktreeAddParentRepoDir,
+					worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 					worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
 					env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 				});
@@ -455,6 +456,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						workspacePath: workspaceScope.workspacePath,
 						statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 						worktreeAddParentRepoDir: scopedRuntimeConfig.worktreeAddParentRepoDir,
+						worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 						worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
 						env: card.baseRef ? { QUARTERDECK_BASE_REF: card.baseRef } : undefined,
 					};

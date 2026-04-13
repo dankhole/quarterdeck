@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: worktree `.git`-only access option for agents
+
+- New setting "Allow agents to access the parent repo's `.git` directory" gives agents read access to git metadata (history, branches, refs) without exposing the full parent repo working tree. Passes `--add-dir /path/to/repo/.git` instead of `--add-dir /path/to/repo`. The full parent repo option takes precedence when both are enabled. Claude Code only.
+
 ### Feat: top bar git sync actions — fetch, pull, push accessible from any view
 
 - Moved fetch, pull, and push buttons from the git view tab bar into the top bar next to the branch pill. Actions are now accessible regardless of which view is active. All three work for both home context and task worktrees (passing `taskScope` when a task is selected).

@@ -66,6 +66,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	terminalWebGLRenderer: CONFIG_DEFAULTS.terminalWebGLRenderer,
 	worktreeAddParentRepoDir: CONFIG_DEFAULTS.worktreeAddParentRepoDir,
+	worktreeAddParentGitDir: CONFIG_DEFAULTS.worktreeAddParentGitDir,
 	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	showRunningTaskEmergencyActions: CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 	eventLogEnabled: CONFIG_DEFAULTS.eventLogEnabled,

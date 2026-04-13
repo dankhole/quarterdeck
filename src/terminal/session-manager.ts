@@ -112,6 +112,7 @@ export interface StartTaskSessionRequest {
 	workspacePath?: string;
 	statuslineEnabled?: boolean;
 	worktreeAddParentRepoDir?: boolean;
+	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
 }
 
@@ -336,6 +337,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspacePath: request.workspacePath,
 			statuslineEnabled: request.statuslineEnabled,
 			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir,
+			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
 		});
 
@@ -361,6 +363,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			argCount: commandArgs.length,
 			willAutoTrust,
 			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir ?? false,
+			worktreeAddParentGitDir: request.worktreeAddParentGitDir ?? false,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
 		};
 		sessionLog.info("spawning task session", { taskId: request.taskId, ...spawnData });
