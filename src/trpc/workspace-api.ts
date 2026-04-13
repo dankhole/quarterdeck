@@ -82,6 +82,7 @@ export interface CreateWorkspaceApiDependencies {
 	) => void;
 	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
+	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────────
@@ -227,7 +228,11 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						taskId: input.taskId,
 						baseRef: input.baseRef ?? "",
 					});
-					return await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
+					const response = await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
+					if (response.ok) {
+						deps.requestTaskRefresh(workspaceScope.workspaceId, input.taskId);
+					}
+					return response;
 				}
 
 				// Home repo checkout: block when an active task is running in the shared checkout
@@ -263,7 +268,11 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						taskId: input.taskId,
 						baseRef: input.baseRef ?? "",
 					});
-					return await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
+					const response = await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
+					if (response.ok || response.conflictState) {
+						deps.requestTaskRefresh(workspaceScope.workspaceId, input.taskId);
+					}
+					return response;
 				}
 
 				// Home repo merge: block when an active task is running in the shared checkout

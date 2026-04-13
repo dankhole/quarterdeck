@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: behind-base indicator flaky due to shared poll lock
+
+- The focused task and background tasks shared a single `taskRefreshInFlight` guard in the workspace metadata monitor. A slow background refresh of many tasks could starve the focused task's poll, causing the behind-base indicator to go stale or flicker. Split into independent `focusedRefreshInFlight` / `backgroundRefreshInFlight` guards with dedicated `refreshFocusedTask` and `refreshBackgroundTasks` functions.
+- After `git fetch --all`, the focused task is now refreshed immediately so behind-base indicators pick up updated origin refs without waiting for the next poll cycle.
+- New `requestTaskRefresh` API triggers an immediate metadata refresh for a specific task after checkout and merge operations. Invalidates the cached `stateToken` to force a full re-probe.
+
 ### Feat: pull/push from remote for all local branches
 
 - "Pull from remote" and "Push to remote" context menu items in the branch dropdown now appear for all local branches, not just the currently checked-out one. For non-current branches, pull uses `git fetch origin <branch>:<branch>` (fast-forward update without checkout) and push uses `git push origin <branch>`. Current branch behavior is unchanged.

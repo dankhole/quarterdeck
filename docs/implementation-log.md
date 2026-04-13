@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: behind-base indicator flaky due to shared poll lock (2026-04-13)
+
+The behind-base indicator on task cards was unreliable — sometimes stale, sometimes flickering. Root cause: `workspace-metadata-monitor.ts` used a single `taskRefreshInFlight` boolean that was shared between the focused task poll (fast, ~2s) and the background task poll (slow, ~10s). When a background refresh was in flight (probing N tasks in parallel), the focused task's interval tick would see the guard and skip, delaying its update by up to an entire background cycle. With many tasks, this delay was long enough to be visible.
+
+**Fix — split in-flight guards:** Replaced the single `refreshTasks(workspaceId, taskIds)` function and `taskRefreshInFlight` guard with two dedicated functions: `refreshFocusedTask` (guarded by `focusedRefreshInFlight`) and `refreshBackgroundTasks` (guarded by `backgroundRefreshInFlight`). The focused task refreshes a single task entry; the background function filters out the focused task and refreshes the rest. Neither blocks the other.
+
+**Fix — post-fetch focused refresh:** After `performRemoteFetch` runs `git fetch --all --prune` and updates home metadata, it now fires `void refreshFocusedTask(workspaceId)` so the behind-base indicator picks up updated origin refs immediately instead of waiting for the next focused poll cycle.
+
+**New API — `requestTaskRefresh`:** Added an imperative refresh path called after `checkoutGitBranch` and `mergeBranch` in `workspace-api.ts`. It invalidates the cached `stateToken` for the target task (so `loadTaskWorkspaceMetadata` doesn't short-circuit), then dispatches either `refreshFocusedTask` or an inline `taskProbeLimit` probe depending on whether the task is focused. This eliminates the delay between a git operation and the UI reflecting the new branch state.
+
+Known race: if `requestTaskRefresh` fires while `refreshFocusedTask` is already in flight, the stateToken invalidation may be overwritten when the in-flight refresh completes. Documented with an inline comment — the window is narrow and the consequence is just waiting for the next poll cycle.
+
+Files: `src/server/workspace-metadata-monitor.ts`, `src/server/runtime-state-hub.ts`, `src/server/runtime-server.ts`, `src/trpc/workspace-api.ts`, `test/runtime/trpc/workspace-api.test.ts`, `test/runtime/trpc/workspace-api-conflict.test.ts`, `test/runtime/trpc/workspace-api-stash.test.ts`.
+
 ## Feat: pull/push from remote for all local branches (2026-04-13)
 
 Extended the branch dropdown context menu so "Pull from remote" and "Push to remote" appear on all local branches, not just the current one. Previously, the `onPull`/`onPush` callbacks were `() => void` and gated by `gitRef.name === currentBranch`. Now they accept a branch name `(branch: string) => void` and are passed to every local `BranchItem` unconditionally.

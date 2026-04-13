@@ -44,6 +44,7 @@ export interface WorkspaceMetadataMonitor {
 		board: RuntimeBoardData;
 	}) => Promise<RuntimeWorkspaceMetadata>;
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
+	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
 	setPollIntervals: (
 		workspaceId: string,
 		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
@@ -56,10 +57,16 @@ export interface WorkspaceMetadataMonitor {
 export function createWorkspaceMetadataMonitor(
 	deps: CreateWorkspaceMetadataMonitorDependencies,
 ): WorkspaceMetadataMonitor {
+	// TODO: In-flight guards are module-scoped, not per-workspace — a refresh in one workspace
+	// blocks the same refresh type in another. Currently fine since the UI is single-tab, but:
+	// 1. Add a user-facing limit to enforce single-tab (reject/redirect duplicate connections).
+	// 2. Rename "workspace" to something clearer — it conflates the project directory, the
+	//    runtime session, and the monitor entry, which makes multi-workspace reasoning confusing.
 	const workspaces = new Map<string, WorkspaceMetadataEntry>();
 	const taskProbeLimit = pLimit(GIT_PROBE_CONCURRENCY_LIMIT);
 	let homeRefreshInFlight = false;
-	let taskRefreshInFlight = false;
+	let focusedRefreshInFlight = false;
+	let backgroundRefreshInFlight = false;
 	let remoteFetchInFlight = false;
 
 	const stopAllTimers = (entry: WorkspaceMetadataEntry) => {
@@ -100,6 +107,9 @@ export function createWorkspaceMetadataMonitor(
 				// the updated tracking refs instead of short-circuiting.
 				entry.homeGit.stateToken = null;
 				await refreshHome(workspaceId);
+				// Also refresh the focused task so behind-base indicators pick up
+				// the updated origin refs without waiting for the next poll cycle.
+				void refreshFocusedTask(workspaceId);
 			}
 		} catch {
 			// Network errors, auth failures — silently skip. Next cycle retries.
@@ -139,20 +149,37 @@ export function createWorkspaceMetadataMonitor(
 		}
 	};
 
-	/** Refresh a specific set of tasks (by task ID). Skips if a previous task refresh is still in flight. */
-	const refreshTasks = async (workspaceId: string, taskIds: Set<string>) => {
-		if (taskRefreshInFlight) {
-			return;
-		}
+	/** Refresh the focused task. Has its own in-flight guard so it is never starved by background refreshes. */
+	const refreshFocusedTask = async (workspaceId: string) => {
+		if (focusedRefreshInFlight) return;
 		const entry = workspaces.get(workspaceId);
-		if (!entry) {
-			return;
+		if (!entry?.focusedTaskId) return;
+		const task = entry.trackedTasks.find((t) => t.taskId === entry.focusedTaskId);
+		if (!task) return;
+		focusedRefreshInFlight = true;
+		try {
+			const previous = buildWorkspaceMetadataSnapshot(entry);
+			const next = await taskProbeLimit(async () => {
+				const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
+				return await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
+			});
+			if (next) {
+				entry.taskMetadataByTaskId.set(task.taskId, next);
+			}
+			broadcastIfChanged(workspaceId, entry, previous);
+		} finally {
+			focusedRefreshInFlight = false;
 		}
-		const tasksToRefresh = entry.trackedTasks.filter((task) => taskIds.has(task.taskId));
-		if (tasksToRefresh.length === 0) {
-			return;
-		}
-		taskRefreshInFlight = true;
+	};
+
+	/** Refresh non-focused tasks. Skips if a previous background refresh is still in flight. */
+	const refreshBackgroundTasks = async (workspaceId: string) => {
+		if (backgroundRefreshInFlight) return;
+		const entry = workspaces.get(workspaceId);
+		if (!entry) return;
+		const tasksToRefresh = entry.trackedTasks.filter((t) => t.taskId !== entry.focusedTaskId);
+		if (tasksToRefresh.length === 0) return;
+		backgroundRefreshInFlight = true;
 		try {
 			const previous = buildWorkspaceMetadataSnapshot(entry);
 			const results = await Promise.all(
@@ -171,7 +198,7 @@ export function createWorkspaceMetadataMonitor(
 			}
 			broadcastIfChanged(workspaceId, entry, previous);
 		} finally {
-			taskRefreshInFlight = false;
+			backgroundRefreshInFlight = false;
 		}
 	};
 
@@ -242,20 +269,13 @@ export function createWorkspaceMetadataMonitor(
 		entry.homeTimer = homeTimer;
 
 		const focusedTimer = setInterval(() => {
-			if (entry.focusedTaskId) {
-				void refreshTasks(workspaceId, new Set([entry.focusedTaskId]));
-			}
+			void refreshFocusedTask(workspaceId);
 		}, entry.pollIntervals.focusedTaskPollMs);
 		focusedTimer.unref();
 		entry.focusedTaskTimer = focusedTimer;
 
 		const backgroundTimer = setInterval(() => {
-			const backgroundTaskIds = new Set(
-				entry.trackedTasks.map((task) => task.taskId).filter((taskId) => taskId !== entry.focusedTaskId),
-			);
-			if (backgroundTaskIds.size > 0) {
-				void refreshTasks(workspaceId, backgroundTaskIds);
-			}
+			void refreshBackgroundTasks(workspaceId);
 		}, entry.pollIntervals.backgroundTaskPollMs);
 		backgroundTimer.unref();
 		entry.backgroundTaskTimer = backgroundTimer;
@@ -297,7 +317,35 @@ export function createWorkspaceMetadataMonitor(
 			entry.focusedTaskId = taskId;
 			// Immediate probe so the UI shows fresh data when the user selects a task.
 			if (taskId) {
-				void refreshTasks(workspaceId, new Set([taskId]));
+				void refreshFocusedTask(workspaceId);
+			}
+		},
+		requestTaskRefresh: (workspaceId, taskId) => {
+			const entry = workspaces.get(workspaceId);
+			if (!entry) return;
+			const task = entry.trackedTasks.find((t) => t.taskId === taskId);
+			if (!task) return;
+			// Invalidate the cached stateToken so the refresh detects the change.
+			// Note: if a focused refresh is already in flight, it may have already read the
+			// old cached entry and will overwrite this null when it finishes — the invalidation
+			// is effectively deferred to the next poll cycle. Acceptable for imperative refreshes
+			// triggered by checkout/merge since the next focused poll is fast (seconds).
+			const cached = entry.taskMetadataByTaskId.get(taskId);
+			if (cached) {
+				entry.taskMetadataByTaskId.set(taskId, { ...cached, stateToken: null });
+			}
+			if (taskId === entry.focusedTaskId) {
+				void refreshFocusedTask(workspaceId);
+			} else {
+				void taskProbeLimit(async () => {
+					const previous = buildWorkspaceMetadataSnapshot(entry);
+					const current = entry.taskMetadataByTaskId.get(taskId) ?? null;
+					const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
+					if (next) {
+						entry.taskMetadataByTaskId.set(taskId, next);
+					}
+					broadcastIfChanged(workspaceId, entry, previous);
+				});
 			}
 		},
 		setPollIntervals: (workspaceId, intervals) => {
