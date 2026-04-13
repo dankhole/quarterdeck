@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: force SIGWINCH on task switch to fix off-by-1 TUI rendering
+
+- The kernel only sends SIGWINCH when PTY dimensions actually change. On task switch the client sends a resize with the same container size, so the agent never redraws — leaving its TUI rendered for stale dimensions (off-by-1 status bar, shifted input). Added a `force` flag to the resize protocol. The client sets it on task switch and state transitions; the server sends SIGWINCH directly when dimensions haven't changed. Normal resizes don't set the flag.
+
+### Docs: consolidated terminal architecture documentation
+
+- Replaced 5 fragmented investigation docs with 3 focused docs: `terminal-visual-bugs.md` (rendering artifacts and fixes), `terminal-scrollback-and-history.md` (buffer duplication and dedup approaches), `terminal-unfocused-task-strategy.md` (parking root analysis, visibility toggle + IO socket design). Old docs moved to `docs/archived/`. Architecture reference docs (`terminal-architecture.md`, `terminal-architecture-explained.md`) unchanged.
+
 ### Fix: truncated branch name tooltips — unreliable show/hide and missing coverage
 
 - Rewrote `TruncateTooltip` to use fully controlled Radix mode (`open` + `onOpenChange`) instead of flipping between controlled and uncontrolled (`open={isTruncated ? undefined : false}`). The old approach missed the initial pointer-enter event after switching modes, causing tooltips to not show on first hover, get stuck, or flicker. Truncation is now checked via a ref (no re-render) and gated in `onOpenChange`.

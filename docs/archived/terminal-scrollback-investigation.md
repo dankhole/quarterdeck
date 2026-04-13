@@ -1,3 +1,5 @@
+> **ARCHIVED** — Superseded by `docs/terminal-scrollback-and-history.md`
+
 # Terminal Scrollback Investigation
 
 **Date**: 2026-04-11 → 2026-04-12

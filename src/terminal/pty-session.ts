@@ -140,6 +140,17 @@ export class PtySession {
 		}
 	}
 
+	sendSignal(signal: string): void {
+		if (this.exited) {
+			return;
+		}
+		try {
+			process.kill(this.ptyProcess.pid, signal);
+		} catch {
+			// Process may already be gone.
+		}
+	}
+
 	pause(): void {
 		this.ptyProcess.pause();
 	}

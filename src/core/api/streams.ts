@@ -129,6 +129,9 @@ export const runtimeTerminalWsResizeMessageSchema = z.object({
 	rows: z.number().int().positive(),
 	pixelWidth: z.number().int().positive().optional(),
 	pixelHeight: z.number().int().positive().optional(),
+	/** When true, the server sends SIGWINCH even if dimensions haven't changed.
+	 *  Used on task switch to force TUI agents to redraw. */
+	force: z.boolean().optional(),
 });
 export type RuntimeTerminalWsResizeMessage = z.infer<typeof runtimeTerminalWsResizeMessageSchema>;
 

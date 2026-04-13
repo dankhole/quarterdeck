@@ -529,7 +529,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 	}
 
-	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean {
+	resize(
+		taskId: string,
+		cols: number,
+		rows: number,
+		pixelWidth?: number,
+		pixelHeight?: number,
+		force?: boolean,
+	): boolean {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
 			return false;
@@ -542,7 +549,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 			: undefined;
 		const normalizedPixelWidth = safePixelWidth !== undefined && safePixelWidth > 0 ? safePixelWidth : undefined;
 		const normalizedPixelHeight = safePixelHeight !== undefined && safePixelHeight > 0 ? safePixelHeight : undefined;
+		const dimensionsUnchanged = safeCols === entry.active.cols && safeRows === entry.active.rows;
 		entry.active.session.resize(safeCols, safeRows, normalizedPixelWidth, normalizedPixelHeight);
+		// The kernel only sends SIGWINCH when PTY dimensions actually change.
+		// On task switch the viewer sends force:true so TUI agents redraw even
+		// when the container happens to be the same size as the PTY.
+		if (force && dimensionsUnchanged) {
+			entry.active.session.sendSignal("SIGWINCH");
+		}
 		entry.terminalStateMirror?.resize(safeCols, safeRows);
 		entry.active.cols = safeCols;
 		entry.active.rows = safeRows;

@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: force SIGWINCH on task switch to fix off-by-1 TUI rendering (2026-04-13)
+
+The kernel only sends SIGWINCH when PTY dimensions actually change via the `TIOCSWINSZ` ioctl. On task switch, the client calls `forceResize()` which sends the current container dimensions to the server. If the PTY already has those dimensions (common — same container size), the ioctl is a no-op and no SIGWINCH is delivered. Claude Code doesn't redraw, leaving its TUI rendered for whatever dimensions it last drew at — producing the off-by-1 status bar, shifted input prompt, and cursor-in-bottom-left artifacts that manual window resize fixes.
+
+Verified empirically: `pty.resize(80, 24)` on a PTY already at 80x24 produces no SIGWINCH. Only a different size triggers it.
+
+**Fix:** Added a `force` boolean to the resize control message schema. The client sets `force: true` only from `forceResize()` (task switch, state transitions). The server checks `force && dimensionsUnchanged` and sends SIGWINCH directly via `process.kill(pid, 'SIGWINCH')`. Normal ResizeObserver resizes don't set the flag, avoiding spurious SIGWINCHs. Added `PtySession.sendSignal()` for delivering signals directly to the agent process.
+
+Files: `src/core/api/streams.ts`, `src/terminal/pty-session.ts`, `src/terminal/session-manager.ts`, `src/terminal/terminal-session-service.ts`, `src/terminal/ws-server.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`.
+
+## Docs: consolidated terminal architecture documentation (2026-04-13)
+
+Replaced 5 fragmented investigation docs (written during iterative debugging) with 3 focused docs covering distinct concerns:
+
+- `docs/terminal-visual-bugs.md` — off-by-1 root cause, canvas repair mechanics, resize epoch fix, DPR handling gap, WebGL vs canvas 2D
+- `docs/terminal-scrollback-and-history.md` — how scrollback duplication occurs (ED2 mechanism + alternate screen transitions), Claude's output model (needs verification), dedup approaches (row-by-row erase, content-aware filtering)
+- `docs/terminal-unfocused-task-strategy.md` — parking root resource costs, agent throttling from offscreen backpressure, visibility toggle design, IO socket management, hover prefetch idea
+
+Old docs moved to `docs/archived/` with supersession notes. Architecture reference docs (`terminal-architecture.md`, `terminal-architecture-explained.md`) unchanged.
+
 ## Fix: truncated branch name tooltips — unreliable show/hide and missing coverage (2026-04-13)
 
 `TruncateTooltip` (the conditional tooltip that only shows when text is CSS-truncated) used `open={isTruncated ? undefined : false}`, switching between Radix controlled mode (forced closed) and uncontrolled mode (Radix manages hover) on every render. This violates Radix's expectation that a component stays in one mode for its lifetime — when the pointer entered and `isTruncated` flipped to `true`, Radix transitioned to uncontrolled mode but had already missed the pointer-enter event, so the tooltip wouldn't show until a second hover. It could also get stuck open or flicker during rapid hovering.

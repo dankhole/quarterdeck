@@ -509,7 +509,14 @@ export function createTerminalWebSocketBridge({
 			}
 
 			if (message.type === "resize") {
-				terminalManager.resize(taskId, message.cols, message.rows, message.pixelWidth, message.pixelHeight);
+				terminalManager.resize(
+					taskId,
+					message.cols,
+					message.rows,
+					message.pixelWidth,
+					message.pixelHeight,
+					message.force,
+				);
 				return;
 			}
 

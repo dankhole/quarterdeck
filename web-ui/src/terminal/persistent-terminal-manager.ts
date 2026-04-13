@@ -374,22 +374,23 @@ export class PersistentTerminal {
 	}
 
 	/**
-	 * Invalidate and immediately re-send terminal dimensions.
-	 * Convenience for lifecycle events that need both steps.
+	 * Invalidate and immediately re-send terminal dimensions with force flag.
+	 * The server sends SIGWINCH even if dimensions haven't changed, ensuring
+	 * TUI agents redraw after task switch.
 	 */
 	private forceResize(): void {
 		this.invalidateResize();
-		this.requestResize();
+		this.requestResize(true);
 	}
 
-	private requestResize(): void {
+	private requestResize(force?: boolean): void {
 		if (!this.visibleContainer) {
 			return;
 		}
 		this.fitAddon.fit();
 		const { cols, rows } = this.terminal;
 		const epochSatisfied = this.lastSatisfiedResizeEpoch === this.resizeEpoch;
-		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows) {
+		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows && !force) {
 			return;
 		}
 		const bounds = this.visibleContainer.getBoundingClientRect();
@@ -405,6 +406,7 @@ export class PersistentTerminal {
 			rows,
 			pixelWidth: pixelWidth > 0 ? pixelWidth : undefined,
 			pixelHeight: pixelHeight > 0 ? pixelHeight : undefined,
+			force: force || undefined,
 		});
 		if (sent) {
 			this.lastSentCols = cols;

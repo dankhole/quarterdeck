@@ -12,7 +12,14 @@ export interface TerminalSessionService {
 	getRestoreSnapshot(taskId: string): Promise<TerminalRestoreSnapshot | null>;
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null;
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null;
-	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean;
+	resize(
+		taskId: string,
+		cols: number,
+		rows: number,
+		pixelWidth?: number,
+		pixelHeight?: number,
+		force?: boolean,
+	): boolean;
 	pauseOutput(taskId: string): boolean;
 	resumeOutput(taskId: string): boolean;
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null;

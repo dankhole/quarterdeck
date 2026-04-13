@@ -1,3 +1,5 @@
+> **ARCHIVED** — Superseded by `docs/terminal-visual-bugs.md`
+
 # Terminal Rendering Investigation
 
 **Date**: 2026-04-11
