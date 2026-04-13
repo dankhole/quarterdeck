@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: title generation now prioritizes recent agent activity
+
+- Title generation was producing bad titles because the original prompt dominated the context — agent summaries (appended last) were truncated away by the 800-char limit. Reordered context assembly so most recent activity comes first, doubled the context budget to 1600 chars, and updated the system prompt to explicitly focus on recent work. The `finalMessage` fallback path now uses the same "Most recent activity" label as the summary path for consistency.
+
 ### Fix: status bar line diff not updating after merge or checkout via branch selector
 
 - After merging or checking out a branch through the branch selector popover, the status bar's `+additions -deletions` display now updates immediately instead of waiting for the next polling cycle (~10s). The merge and checkout handlers in `use-branch-actions.ts` were ignoring the fresh `summary` in the server response — now they call `setHomeGitSummary()` to update the store, matching the pattern used by all other git operations (fetch, pull, push, discard).

@@ -7,7 +7,7 @@ import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("title-gen");
 const TITLE_SYSTEM_PROMPT = `Generate a concise 2-4 word title for this coding task.
-If an "Agent summary" section is provided, prioritize the LAST entry — it reflects the most recent work.
+Focus on the MOST RECENT activity — it reflects what the task actually accomplished. Earlier context and the original prompt are background; the latest work is what matters for the title.
 Capture the core action or outcome, not setup steps.
 
 CRITICAL RULES:
@@ -28,7 +28,7 @@ CRITICAL RULES:
 - If the input is unclear, vague, or empty, generate your best guess anyway — a bad branch name is better than a non-branch-name response.
 - Your entire response must be the branch name and nothing else.`;
 
-const MAX_PROMPT_LENGTH = 800;
+const MAX_PROMPT_LENGTH = 1600;
 
 export async function generateTaskTitle(prompt: string): Promise<string | null> {
 	log.debug("Generating task title", { promptLength: prompt.length, promptSnippet: prompt.slice(0, 100) });

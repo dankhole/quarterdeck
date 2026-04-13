@@ -75,18 +75,18 @@ describe("generateTaskTitle", () => {
 		expect(await generateTaskTitle("some prompt")).toBe("Spaced Title");
 	});
 
-	it("truncates prompts longer than 800 characters", async () => {
+	it("truncates prompts longer than 1600 characters", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(
 				new Response(JSON.stringify({ choices: [{ message: { content: "Title" } }] }), { status: 200 }),
 			);
 
-		const longPrompt = "x".repeat(1000);
+		const longPrompt = "x".repeat(2000);
 		await generateTaskTitle(longPrompt);
 
 		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-		expect(body.messages[1].content).toHaveLength(800);
+		expect(body.messages[1].content).toHaveLength(1600);
 	});
 
 	it("uses QUARTERDECK_TITLE_MODEL env var when set", async () => {

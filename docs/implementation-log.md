@@ -4,6 +4,20 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: title generation prioritizes recent agent activity (2026-04-12)
+
+Title generation was producing poor titles because the context assembly put the original prompt first and agent summaries last, then truncated to 800 chars — so the summaries (the most useful signal) were often cut off entirely.
+
+**Root cause**: In `app-router.ts` `regenerateTaskTitle`, the context string was `${prompt}\n\nAgent summary:\n${agentContext}`. With `MAX_PROMPT_LENGTH = 800` in `title-generator.ts`, a long prompt would consume the entire budget before the summaries were reached.
+
+**Fix — context ordering**: Reversed the assembly: most recent summary first, earlier summaries second, original prompt last. The `finalMessage` fallback path (used when no conversation summaries exist) now wraps the text with a "Most recent activity:" label for consistency with the summary path.
+
+**Fix — truncation budget**: Doubled `MAX_PROMPT_LENGTH` from 800 to 1600 chars, giving enough room for both agent context and the original prompt in most cases. This constant is shared with `generateBranchName`, but branch name generation only receives raw prompts (not assembled context), so the practical impact there is just allowing slightly longer prompts through.
+
+**Fix — system prompt**: Updated `TITLE_SYSTEM_PROMPT` to say "Focus on the MOST RECENT activity" instead of the previous "If an Agent summary section is provided, prioritize the LAST entry." The new wording makes it explicit that earlier context and the original prompt are background.
+
+**Files touched**: `src/title/title-generator.ts` (system prompt, `MAX_PROMPT_LENGTH`), `src/trpc/app-router.ts` (context assembly in `regenerateTaskTitle`), `test/runtime/title-generator.test.ts` (truncation test updated to 1600).
+
 ## Fix: status bar line diff stale after merge/checkout via branch selector (2026-04-12)
 
 `handleMergeBranch` and `performCheckout` in `use-branch-actions.ts` called the server, received a response containing a fresh `RuntimeGitSyncSummary`, but never pushed it into the workspace metadata store. The status bar's `+additions -deletions` display only updated on the next metadata polling cycle (~10s for the home repo). Meanwhile, `use-git-actions.ts` — which handles fetch, pull, push, checkout (via `switchHomeBranch`), and discard — correctly called `setHomeGitSummary(payload.summary)` after every operation. The branch selector popover uses a separate hook (`use-branch-actions.ts`) for its merge and checkout flows, and these were never wired up.

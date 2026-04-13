@@ -701,22 +701,26 @@ export const runtimeAppRouter = t.router({
 					latestSummary: summaries.at(-1)?.text?.slice(0, 100),
 				});
 
-				// Build context with summaries labeled so the LLM can prioritize the latest.
+				// Build context with latest activity FIRST so it survives truncation.
 				let agentContext: string | null = null;
 				if (summaries.length > 0) {
 					const earlier = summaries.slice(0, -1).map((s) => s.text);
-					const latest = summaries[summaries.length - 1]?.text ?? "";
+					const latest = summaries.at(-1)?.text ?? "";
 					const parts =
 						earlier.length > 0
-							? [`Earlier activity:\n${earlier.join("\n")}`, `Latest activity:\n${latest}`]
-							: [`Latest activity:\n${latest}`];
+							? [`Most recent activity:\n${latest}`, `Earlier activity:\n${earlier.join("\n")}`]
+							: [`Most recent activity:\n${latest}`];
 					agentContext = parts.join("\n\n");
 				}
 
 				// Fall back to finalMessage if no conversation summaries.
-				agentContext ??= session?.latestHookActivity?.finalMessage?.slice(0, 500) ?? null;
+				agentContext ??= session?.latestHookActivity?.finalMessage
+					? `Most recent activity:\n${session.latestHookActivity.finalMessage.slice(0, 500)}`
+					: null;
 
-				const context = agentContext ? `${prompt}\n\nAgent summary:\n${agentContext}` : prompt;
+				// Put agent context before the original prompt so recent work
+				// is what the LLM sees first (and survives truncation).
+				const context = agentContext ? `${agentContext}\n\nOriginal prompt:\n${prompt}` : prompt;
 				const title = await generateTaskTitle(context);
 				if (!title) {
 					return { ok: false, title: null };
