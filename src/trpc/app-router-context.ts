@@ -134,7 +134,11 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeGitSummaryResponse>;
 		runGitSyncAction: (
 			scope: RuntimeTrpcWorkspaceScope,
-			input: { action: RuntimeGitSyncAction; taskScope?: RuntimeTaskWorkspaceInfoRequest | null },
+			input: {
+				action: RuntimeGitSyncAction;
+				taskScope?: RuntimeTaskWorkspaceInfoRequest | null;
+				branch?: string | null;
+			},
 		) => Promise<RuntimeGitSyncResponse>;
 		checkoutGitBranch: (
 			scope: RuntimeTrpcWorkspaceScope,

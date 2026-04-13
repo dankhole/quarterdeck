@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feat: pull/push from remote for all local branches (2026-04-13)
+
+Extended the branch dropdown context menu so "Pull from remote" and "Push to remote" appear on all local branches, not just the current one. Previously, the `onPull`/`onPush` callbacks were `() => void` and gated by `gitRef.name === currentBranch`. Now they accept a branch name `(branch: string) => void` and are passed to every local `BranchItem` unconditionally.
+
+**Server-side:** Added optional `branch` field to the `runGitSyncAction` tRPC input and the underlying `git-sync.ts` function. When `branch` differs from the current branch (`isOtherBranch`), pull uses `git fetch origin <branch>:<branch>` (fast-forward update of a non-checked-out ref) and push uses `git push origin <branch>`. When `branch` is null or matches the current branch, behavior is identical to before (`git pull --ff-only` / `git push`). The dirty-tree guard correctly only applies to current-branch pulls since `fetch origin X:X` doesn't touch the working tree.
+
+**Client-side:** `BranchSelectorPopover` props changed from `onPull?: () => void` to `onPull?: (branch: string) => void` (same for `onPush`). `BranchItem` invokes with `gitRef.name`. `useGitActions.runGitAction` gained an optional third `branch` parameter forwarded through the tRPC call. All call sites in `App.tsx` and `card-detail-view.tsx` updated to pass the branch name through.
+
+Files: `src/workspace/git-sync.ts`, `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/hooks/use-git-actions.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## Fix: terminal task-switch rendering — client-side canvas fix + server resync (2026-04-13)
 
 The previous fix (48aa0762) sent an intermediate `cols-1` resize to the server during task switch to trigger SIGWINCH, hoping the agent would redraw its TUI. This had two problems: (1) the two resizes were sent back-to-back in the same synchronous block, so the kernel coalesced the SIGWINCHs and the agent never saw a meaningful dimension change, and (2) when it did work, the agent re-output its entire TUI through the PTY stream, which xterm.js processed as new terminal output — duplicating the chat content.

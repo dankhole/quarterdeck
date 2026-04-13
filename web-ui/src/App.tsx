@@ -1349,17 +1349,25 @@ export default function App(): ReactElement {
 							pinnedBranches={pinnedBranches}
 							onTogglePinBranch={handleTogglePinBranch}
 							onConflictDetected={() => navigateToGitViewRef.current?.()}
-							onPullBranch={() => {
-								void runGitAction("pull", {
-									taskId: selectedCard.card.id,
-									baseRef: selectedCard.card.baseRef,
-								});
+							onPullBranch={(branch) => {
+								void runGitAction(
+									"pull",
+									{
+										taskId: selectedCard.card.id,
+										baseRef: selectedCard.card.baseRef,
+									},
+									branch,
+								);
 							}}
-							onPushBranch={() => {
-								void runGitAction("push", {
-									taskId: selectedCard.card.id,
-									baseRef: selectedCard.card.baseRef,
-								});
+							onPushBranch={(branch) => {
+								void runGitAction(
+									"push",
+									{
+										taskId: selectedCard.card.id,
+										baseRef: selectedCard.card.baseRef,
+									},
+									branch,
+								);
 							}}
 						/>
 					) : (
@@ -1475,15 +1483,15 @@ export default function App(): ReactElement {
 																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
 																	onPull={
 																		homeResolvedScope?.type !== "branch_view"
-																			? () => {
-																					void runGitAction("pull");
+																			? (branch) => {
+																					void runGitAction("pull", null, branch);
 																				}
 																			: undefined
 																	}
 																	onPush={
 																		homeResolvedScope?.type !== "branch_view"
-																			? () => {
-																					void runGitAction("push");
+																			? (branch) => {
+																					void runGitAction("push", null, branch);
 																				}
 																			: undefined
 																	}

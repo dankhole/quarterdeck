@@ -192,10 +192,10 @@ export function CardDetailView({
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
 	onConflictDetected?: () => void;
-	/** Pull current branch from remote. Called with the task scope for worktree-scoped pull. */
-	onPullBranch?: () => void;
-	/** Push current branch to remote. Called with the task scope for worktree-scoped push. */
-	onPushBranch?: () => void;
+	/** Pull a branch from remote. Called with branch name and task scope for worktree-scoped pull. */
+	onPullBranch?: (branch: string) => void;
+	/** Push a branch to remote. Called with branch name and task scope for worktree-scoped push. */
+	onPushBranch?: (branch: string) => void;
 }): React.ReactElement {
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();

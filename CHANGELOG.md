@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: pull/push from remote for all local branches
+
+- "Pull from remote" and "Push to remote" context menu items in the branch dropdown now appear for all local branches, not just the currently checked-out one. For non-current branches, pull uses `git fetch origin <branch>:<branch>` (fast-forward update without checkout) and push uses `git push origin <branch>`. Current branch behavior is unchanged.
+
 ### Fix: terminal rendering on task switch — client-side canvas repair + on-demand server resync
 
 - Replaced the SIGWINCH resize hack (which duplicated chat content) with a proper client-side canvas fix: local `cols-1` dimension bounce, `clearTextureAtlas()`, `refresh()`, and `forceResize()`. No server round-trip on task switch.

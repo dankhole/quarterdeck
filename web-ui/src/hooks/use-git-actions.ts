@@ -65,6 +65,7 @@ export interface UseGitActionsResult {
 	runGitAction: (
 		action: RuntimeGitSyncAction,
 		taskScope?: { taskId: string; baseRef: string } | null,
+		branch?: string | null,
 	) => Promise<void>;
 	switchHomeBranch: (branch: string) => Promise<void>;
 	discardHomeWorkingChanges: () => Promise<void>;
@@ -352,7 +353,11 @@ export function useGitActions({
 	);
 
 	const runGitAction = useCallback(
-		async (action: RuntimeGitSyncAction, taskScope?: { taskId: string; baseRef: string } | null) => {
+		async (
+			action: RuntimeGitSyncAction,
+			taskScope?: { taskId: string; baseRef: string } | null,
+			branch?: string | null,
+		) => {
 			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 				return;
 			}
@@ -362,6 +367,7 @@ export function useGitActions({
 				const payload = await trpcClient.workspace.runGitSyncAction.mutate({
 					action,
 					taskScope: taskScope ?? null,
+					branch: branch ?? null,
 				});
 				if (!payload.ok || !payload.summary) {
 					const errorMessage = payload.error ?? `${action} failed.`;

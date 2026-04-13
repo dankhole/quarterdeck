@@ -52,10 +52,10 @@ interface BranchSelectorPopoverProps {
 	onCreateBranch?: (sourceRef: string) => void;
 	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
 	onDeleteBranch?: (branchName: string) => void;
-	/** When provided, shows "Pull from remote" in the current branch's right-click menu. */
-	onPull?: () => void;
-	/** When provided, shows "Push to remote" in the current branch's right-click menu. */
-	onPush?: () => void;
+	/** When provided, shows "Pull from remote" in any local branch's right-click menu. */
+	onPull?: (branch: string) => void;
+	/** When provided, shows "Push to remote" in any local branch's right-click menu. */
+	onPush?: (branch: string) => void;
 	/** Branch names that should appear in a "Pinned" section at the top. */
 	pinnedBranches?: string[];
 	/** When provided, shows "Pin to top" / "Unpin" in the branch right-click menu. */
@@ -156,17 +156,23 @@ export function BranchSelectorPopover({
 		[onCreateBranch, onOpenChange],
 	);
 
-	const handlePull = useCallback(() => {
-		onPull?.();
-		onOpenChange(false);
-		setQuery("");
-	}, [onPull, onOpenChange]);
+	const handlePull = useCallback(
+		(branch: string) => {
+			onPull?.(branch);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onPull, onOpenChange],
+	);
 
-	const handlePush = useCallback(() => {
-		onPush?.();
-		onOpenChange(false);
-		setQuery("");
-	}, [onPush, onOpenChange]);
+	const handlePush = useCallback(
+		(branch: string) => {
+			onPush?.(branch);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onPush, onOpenChange],
+	);
 
 	const closePopover = useCallback(() => {
 		onOpenChange(false);
@@ -284,8 +290,8 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
-										onPull={gitRef.name === currentBranch && onPull ? handlePull : undefined}
-										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
+										onPull={onPull ? handlePull : undefined}
+										onPush={onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -309,8 +315,8 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
-										onPull={gitRef.name === currentBranch && onPull ? handlePull : undefined}
-										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
+										onPull={onPull ? handlePull : undefined}
+										onPush={onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -412,8 +418,8 @@ function BranchItem({
 	onCreateBranch?: (sourceRef: string) => void;
 	onDeleteBranch?: (branchName: string) => void;
 	onTogglePin?: (branchName: string) => void;
-	onPull?: () => void;
-	onPush?: () => void;
+	onPull?: (branch: string) => void;
+	onPush?: (branch: string) => void;
 	onClose: () => void;
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
@@ -506,13 +512,13 @@ function BranchItem({
 						</ContextMenu.Item>
 					) : null}
 					{onPull ? (
-						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPull}>
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onPull(gitRef.name)}>
 							<ArrowDown size={14} className="text-text-secondary" />
 							Pull from remote
 						</ContextMenu.Item>
 					) : null}
 					{onPush ? (
-						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPush}>
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onPush(gitRef.name)}>
 							<ArrowUp size={14} className="text-text-secondary" />
 							Push to remote
 						</ContextMenu.Item>

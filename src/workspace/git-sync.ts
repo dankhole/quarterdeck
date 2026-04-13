@@ -14,10 +14,14 @@ import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } f
 export async function runGitSyncAction(options: {
 	cwd: string;
 	action: RuntimeGitSyncAction;
+	/** When set, targets a specific branch instead of the currently checked-out one. */
+	branch?: string | null;
 }): Promise<RuntimeGitSyncResponse> {
 	const initialSummary = await getGitSyncSummary(options.cwd);
+	const targetBranch = options.branch?.trim() || null;
+	const isOtherBranch = targetBranch !== null && targetBranch !== initialSummary.currentBranch;
 
-	if (options.action === "pull" && initialSummary.changedFiles > 0) {
+	if (options.action === "pull" && !isOtherBranch && initialSummary.changedFiles > 0) {
 		return {
 			ok: false,
 			action: options.action,
@@ -28,12 +32,27 @@ export async function runGitSyncAction(options: {
 		};
 	}
 
-	const argsByAction: Record<RuntimeGitSyncAction, string[]> = {
-		fetch: ["fetch", "--all", "--prune"],
-		pull: ["pull", "--ff-only"],
-		push: ["push"],
-	};
-	const commandResult = await runGit(options.cwd, argsByAction[options.action]);
+	let gitArgs: string[];
+	if (isOtherBranch) {
+		if (options.action === "pull") {
+			// Fast-forward update a non-checked-out local branch from its remote tracking branch.
+			gitArgs = ["fetch", "origin", `${targetBranch}:${targetBranch}`];
+		} else if (options.action === "push") {
+			gitArgs = ["push", "origin", targetBranch];
+		} else {
+			// fetch: no branch-specific behaviour needed
+			gitArgs = ["fetch", "--all", "--prune"];
+		}
+	} else {
+		const argsByAction: Record<RuntimeGitSyncAction, string[]> = {
+			fetch: ["fetch", "--all", "--prune"],
+			pull: ["pull", "--ff-only"],
+			push: ["push"],
+		};
+		gitArgs = argsByAction[options.action];
+	}
+
+	const commandResult = await runGit(options.cwd, gitArgs);
 	const nextSummary = await getGitSyncSummary(options.cwd);
 
 	if (!commandResult.ok) {

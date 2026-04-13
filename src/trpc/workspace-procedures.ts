@@ -73,6 +73,8 @@ const optionalTaskWorkspaceInfoRequestSchema = runtimeTaskWorkspaceInfoRequestSc
 const gitSyncActionInputSchema = z.object({
 	action: runtimeGitSyncActionSchema,
 	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+	/** When set, targets a specific branch instead of the currently checked-out one. */
+	branch: z.string().nullable().optional(),
 });
 
 export const workspaceRouter = t.router({

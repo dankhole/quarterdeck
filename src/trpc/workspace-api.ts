@@ -204,7 +204,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					workspaceScope.workspacePath,
 					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
 				);
-				return await runGitSyncAction({ cwd, action: input.action });
+				return await runGitSyncAction({ cwd, action: input.action, branch: input.branch ?? null });
 			} catch (error) {
 				return {
 					ok: false,
