@@ -373,7 +373,9 @@ export const BranchPillTrigger = forwardRef<
 			aria-label="Switch branch"
 		>
 			<GitBranch size={11} className="shrink-0 text-text-tertiary" />
-			<span className="truncate">{label}</span>
+			<TruncateTooltip content={label} side="bottom">
+				<span className="truncate">{label}</span>
+			</TruncateTooltip>
 			{behind > 0 ? (
 				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
 					<ArrowDown size={10} />

@@ -7,7 +7,7 @@ import { InlineTitleEditor } from "@/components/inline-title-editor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip } from "@/components/ui/tooltip";
+import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getWorkspacePath, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
@@ -701,43 +701,45 @@ export function BoardCard({
 									</div>
 								) : null}
 								{showWorkspaceStatus && reviewBranchLabel ? (
-									<p
-										className="font-mono kb-line-clamp-1"
-										style={{
-											margin: "4px 0 0",
-											fontSize: 12,
-											lineHeight: 1.4,
-											color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
-										}}
-									>
-										<GitBranch
-											size={10}
+									<TruncateTooltip content={effectiveBranch ?? reviewBranchLabel} side="top">
+										<p
+											className="font-mono kb-line-clamp-1"
 											style={{
-												display: "inline",
-												color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-												margin: "0px 4px 2px 0",
-												verticalAlign: "middle",
-											}}
-										/>
-										<span
-											style={{
-												color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
-												textDecoration: isTrashCard ? "line-through" : undefined,
+												margin: "4px 0 0",
+												fontSize: 12,
+												lineHeight: 1.4,
+												color: isTrashCard ? CARD_TEXT_COLOR.muted : undefined,
 											}}
 										>
-											{reviewBranchLabel}
-										</span>
-										{reviewChangeSummary && !isTrashCard ? (
-											<>
-												<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
-												<span style={{ color: CARD_TEXT_COLOR.muted }}>
-													{reviewChangeSummary.filesLabel}
-												</span>
-												<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-												<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-											</>
-										) : null}
-									</p>
+											<GitBranch
+												size={10}
+												style={{
+													display: "inline",
+													color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+													margin: "0px 4px 2px 0",
+													verticalAlign: "middle",
+												}}
+											/>
+											<span
+												style={{
+													color: isTrashCard ? CARD_TEXT_COLOR.muted : CARD_TEXT_COLOR.secondary,
+													textDecoration: isTrashCard ? "line-through" : undefined,
+												}}
+											>
+												{reviewBranchLabel}
+											</span>
+											{reviewChangeSummary && !isTrashCard ? (
+												<>
+													<span style={{ color: CARD_TEXT_COLOR.muted }}> · </span>
+													<span style={{ color: CARD_TEXT_COLOR.muted }}>
+														{reviewChangeSummary.filesLabel}
+													</span>
+													<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+													<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+												</>
+											) : null}
+										</p>
+									</TruncateTooltip>
 								) : null}
 								{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 									<Button

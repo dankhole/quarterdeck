@@ -50,22 +50,28 @@ export function TruncateTooltip({
 	children: ReactNode;
 	side?: "top" | "right" | "bottom" | "left";
 }): React.ReactElement {
-	const [isTruncated, setIsTruncated] = useState(false);
+	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<HTMLElement | null>(null);
+	const truncatedRef = useRef(false);
 
-	const handlePointerEnter = useCallback(() => {
+	/** Snapshot truncation state on pointer-enter so it's ready before the delay fires. */
+	const checkTruncation = useCallback(() => {
 		const el = triggerRef.current;
-		if (el) {
-			setIsTruncated(el.scrollWidth > el.clientWidth);
-		}
+		truncatedRef.current = el ? el.scrollWidth > el.clientWidth : false;
+	}, []);
+
+	/** Stay fully controlled — only allow open when the element is actually truncated. */
+	const handleOpenChange = useCallback((nextOpen: boolean) => {
+		if (nextOpen && !truncatedRef.current) return;
+		setOpen(nextOpen);
 	}, []);
 
 	return (
-		<RadixTooltip.Root delayDuration={150} open={isTruncated ? undefined : false}>
+		<RadixTooltip.Root delayDuration={150} open={open} onOpenChange={handleOpenChange}>
 			<RadixTooltip.Trigger
 				asChild
 				ref={triggerRef as React.Ref<HTMLButtonElement>}
-				onPointerEnter={handlePointerEnter}
+				onPointerEnter={checkTruncation}
 			>
 				{children}
 			</RadixTooltip.Trigger>

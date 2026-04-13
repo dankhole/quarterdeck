@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: truncated branch name tooltips — unreliable show/hide and missing coverage (2026-04-13)
+
+`TruncateTooltip` (the conditional tooltip that only shows when text is CSS-truncated) used `open={isTruncated ? undefined : false}`, switching between Radix controlled mode (forced closed) and uncontrolled mode (Radix manages hover) on every render. This violates Radix's expectation that a component stays in one mode for its lifetime — when the pointer entered and `isTruncated` flipped to `true`, Radix transitioned to uncontrolled mode but had already missed the pointer-enter event, so the tooltip wouldn't show until a second hover. It could also get stuck open or flicker during rapid hovering.
+
+Rewrote to fully controlled mode: `open={open}` state + `onOpenChange` callback that gates `nextOpen=true` on a `truncatedRef` (ref, not state — avoids unnecessary re-renders). `onPointerEnter` snapshots the truncation check into the ref before Radix's delay timer fires, so by the time `onOpenChange(true)` is called, the ref is guaranteed fresh.
+
+Also added `TruncateTooltip` to three locations that previously had no tooltip or only a native `title` attribute for truncated branch names: board card branch labels (`board-card.tsx`), the branch pill trigger (`branch-selector-popover.tsx`), and the top bar branch button (`top-bar.tsx` — replaced native `title`).
+
+Files: `web-ui/src/components/ui/tooltip.tsx`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/components/top-bar.tsx`.
+
 ## Feat: file browser remembers last viewed file per task (2026-04-13)
 
 The file browser's `useFileBrowserData` hook already had a module-level `Map` (`lastSelectedPathByScope`) that remembered the last selected file per task within a session, but it was lost on page refresh. Added localStorage persistence: an IIFE at module load hydrates the Map from `quarterdeck.file-browser-last-selected-path`, and every selection change writes through to localStorage via `persistCacheToStorage()`. The scope key is the taskId (or `"__home__"` for the home view), so each task's file selection is independent. The existing stale-file validation effect (clears selection if the file no longer appears in the file list) works unchanged.

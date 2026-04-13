@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: truncated branch name tooltips — unreliable show/hide and missing coverage
+
+- Rewrote `TruncateTooltip` to use fully controlled Radix mode (`open` + `onOpenChange`) instead of flipping between controlled and uncontrolled (`open={isTruncated ? undefined : false}`). The old approach missed the initial pointer-enter event after switching modes, causing tooltips to not show on first hover, get stuck, or flicker. Truncation is now checked via a ref (no re-render) and gated in `onOpenChange`.
+- Added `TruncateTooltip` to board card branch labels, the branch pill trigger, and the top bar branch button — all previously had either no tooltip or a native `title` attribute.
+
 ### Feat: file browser remembers last viewed file per task
 
 - The file browser now persists the last selected file per task to localStorage, so reopening the file browser (or refreshing the page) restores the file you were last viewing. Each task and the home scope maintain independent selections. Stale paths are cleared automatically if the file no longer exists.

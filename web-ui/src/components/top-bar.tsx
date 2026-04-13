@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip } from "@/components/ui/tooltip";
+import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import type { PromptShortcut, RuntimeProjectShortcut } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform } from "@/utils/platform";
@@ -124,9 +124,10 @@ export function GitBranchStatusControl({
 						"font-mono text-xs shrink min-w-0 max-w-full overflow-hidden",
 						isGitHistoryOpen ? "ring-1 ring-accent" : "kb-navbar-btn",
 					)}
-					title={branchLabel}
 				>
-					<span className="truncate w-full text-left">{branchLabel}</span>
+					<TruncateTooltip content={branchLabel} side="bottom">
+						<span className="truncate w-full text-left">{branchLabel}</span>
+					</TruncateTooltip>
 				</Button>
 				<span className="font-mono text-xs text-text-tertiary ml-1.5 shrink-0 whitespace-nowrap">
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
