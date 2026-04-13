@@ -2,6 +2,29 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: split api-contract.ts into 11 domain modules (2026-04-13)
+
+Split the 1,297-line monolithic Zod schema file into 11 focused domain files under `src/core/api/`. Motivation: AI coding agents must read the entire file to find any schema, burning ~1,300 lines of context window every time. Domain splitting gives 4–25x context reduction depending on the feature area (e.g., an agent working on git history reads ~95 lines instead of 1,297).
+
+**File assignments:**
+- `shared.ts` (93 lines) — foundational enums (`runtimeAgentIdSchema`, `runtimeBoardColumnIdSchema`, etc.), cross-cutting primitives (`runtimeTaskImageSchema`, `runtimeTaskWorkspaceInfoRequestSchema`), small standalone schemas (slash commands, shortcuts, command run, open file, debug reset)
+- `board.ts` (41 lines) — `runtimeBoardCardSchema`, `runtimeBoardColumnSchema`, `runtimeBoardDependencySchema`, `runtimeBoardDataSchema`
+- `workspace-files.ts` (80 lines) — file changes, search, content, list files
+- `git-sync.ts` (116 lines) — repo info, sync summary/response, checkout, discard, branch CRUD, commit, discard file
+- `git-merge.ts` (174 lines) — merge, conflict state/resolution/continue/abort, auto-merged files, stash operations
+- `git-history.ts` (90 lines) — git log, refs, commit diff, cherry-pick
+- `task-session.ts` (165 lines) — session state/mode/hooks/summary, start/stop/input, shell, migration, hook ingest
+- `task-chat.ts` (88 lines) — chat messages + CRUD operations
+- `config.ts` (114 lines) — agent definition, config response/save
+- `workspace-state.ts` (175 lines) — workspace state/metadata, projects, worktree lifecycle
+- `streams.ts` (191 lines) — state stream messages (11 variants + discriminated union), terminal WS client/server messages
+
+**Dependency DAG (no cycles):** `shared` is the leaf (depends only on zod). `board`, `workspace-files`, `git-sync`, `git-history`, `config` depend on `shared`. `git-merge` depends on `shared` + `git-sync`. `task-session` depends on `shared`. `task-chat` depends on `shared` + `task-session`. `workspace-state` depends on `git-sync` + `git-merge` + `board` + `task-session`. `streams` depends on `workspace-state` + `task-session`.
+
+**Backward compatibility:** `api-contract.ts` becomes `export * from "./api/index.js"` — all 42+ runtime consumers and 92 web-ui consumers resolve through the barrel chain with zero import changes. The web-ui path alias (`@runtime-contract` → `api-contract.ts`) and package export (`src/index.ts`) both work unchanged.
+
+Files touched: 13 (1 modified, 12 new). Net change: +1,339 / −1,297 lines. All checks pass: typecheck (runtime + web-ui), lint (415 files), runtime tests (690), web-ui tests (509), production build.
+
 ## Refactor: large file decomposition — 8 modules split into focused units (2026-04-13)
 
 Systematic decomposition of the largest files across runtime, web-ui, CLI commands, and test infrastructure. All 8 splits are pure refactors with zero behavior change — verified by full test suite (690 runtime + 509 web-ui tests passing).

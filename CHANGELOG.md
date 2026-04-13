@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split api-contract.ts into domain modules
+
+- Split the 1,297-line monolithic `src/core/api-contract.ts` into 11 focused domain files under `src/core/api/`: `shared.ts`, `board.ts`, `workspace-files.ts`, `git-sync.ts`, `git-merge.ts`, `git-history.ts`, `task-session.ts`, `task-chat.ts`, `config.ts`, `workspace-state.ts`, `streams.ts`. Each file is 50–200 lines. The original `api-contract.ts` is now a 1-line barrel re-export — zero consumer changes needed.
+
 ### Refactor: code duplication cleanup across runtime and web-ui
 
 - Consolidated duplicated git utilities into shared functions in `git-utils.ts`: `resolveRepoRoot`, `countLines`, `parseNumstatTotals`, `parseNumstatLine`, `runGitSync`. Eliminates duplicate implementations across `git-sync.ts`, `get-workspace-changes.ts`, and `workspace-state.ts`.
