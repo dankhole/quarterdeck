@@ -12,6 +12,24 @@ The option uses `else if` precedence in the Claude adapter: if `worktreeAddParen
 
 Files: `src/config/global-config-fields.ts` (field definition), `src/core/api-contract.ts` (response + save Zod schemas), `src/terminal/agent-session-adapters.ts` (adapter interface + `--add-dir` logic with `join(workspacePath, ".git")`), `src/terminal/session-manager.ts` (request type + passthrough), `src/trpc/runtime-api.ts` (two call sites), `web-ui/src/components/runtime-settings-dialog.tsx` (switch in Advanced section), `web-ui/src/hooks/use-settings-form.ts` (form type + initial values), `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts` (3 fixture updates).
 
+## Fix: automatic stale git index.lock cleanup for worktrees (2026-04-12)
+
+Agent processes killed mid-git-operation (SIGTERM from stop/interrupt/trash) leave `index.lock` files in per-worktree git directories (`.git/worktrees/<name>/index.lock`), blocking all subsequent git commands in that worktree. The existing lock cleanup in `lock-cleanup.ts` intentionally skipped git's own `index.lock` — it only cleaned Quarterdeck-owned locks.
+
+**Three cleanup layers added**:
+
+1. **Startup** (`cleanupProjectStaleLockArtifacts` in `lock-cleanup.ts`): Now calls `cleanStaleGitIndexLocks` which scans `.git/index.lock` and all `.git/worktrees/*/index.lock`. Removes any older than 10 seconds (matching git's own staleness heuristic).
+
+2. **Periodic sweep** (`reconcileSessionStates` in `session-manager.ts`): The 10-second reconciliation timer now fire-and-forgets `cleanStaleGitIndexLocks` on each tick. `startReconciliation()` accepts an optional `repoPath` parameter, threaded from `workspace-registry.ts`.
+
+3. **Post-exit** (`onExit` handler in `session-manager.ts`): When a PTY session exits, calls `cleanStaleIndexLockForWorktree(request.cwd)`. This path uses `force: true` to skip the age check — the owning process is known dead, so the lock is definitively stale regardless of mtime.
+
+The `removeIndexLock` helper (private to `lock-cleanup.ts`) accepts a `force` boolean: `false` for periodic/startup sweeps (preserves fresh locks from active git processes), `true` for post-exit cleanup (removes immediately).
+
+Also added `getGitDir()` to `git-utils.ts` (parallel to `getGitCommonDir`). Returns the per-worktree git directory via `git rev-parse --git-dir` with `createGitProcessEnv()` sanitization. Used by `cleanStaleIndexLockForWorktree` instead of a hand-rolled `execFile` call.
+
+Files: `src/fs/lock-cleanup.ts` (3 new exports: `cleanStaleGitIndexLocks`, `cleanStaleIndexLockForWorktree`, plus internal `removeIndexLock`), `src/workspace/git-utils.ts` (new `getGitDir`), `src/terminal/session-manager.ts` (imports, periodic sweep, post-exit cleanup, `repoPath` field), `src/server/workspace-registry.ts` (passes `repoPath` to `startReconciliation`), `test/runtime/lock-cleanup.test.ts` (9 new tests).
+
 ## Feat: top bar git sync actions, pull-from-remote context menu, merge confirmation dialog (2026-04-12)
 
 Three branch management UX improvements landed together:

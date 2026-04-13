@@ -245,7 +245,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			} catch {
 				// Workspace state will be created on demand.
 			}
-			manager.startReconciliation();
+			manager.startReconciliation(repoPath);
 			terminalManagersByWorkspaceId.set(workspaceId, manager);
 			return manager;
 		})().finally(() => {

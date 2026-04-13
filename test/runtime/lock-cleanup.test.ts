@@ -22,13 +22,18 @@ vi.mock("../../src/state/workspace-state", () => ({
 
 vi.mock("../../src/workspace/git-utils", () => ({
 	getGitCommonDir: async (repoPath: string) => join(repoPath, ".git"),
+	getGitDir: async (cwd: string) => join(cwd, ".git"),
 }));
 
 vi.mock("proper-lockfile", () => ({
 	lock: vi.fn(async () => async () => {}),
 }));
 
-import { cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts } from "../../src/fs/lock-cleanup";
+import {
+	cleanStaleGitIndexLocks,
+	cleanupGlobalStaleLockArtifacts,
+	cleanupProjectStaleLockArtifacts,
+} from "../../src/fs/lock-cleanup";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -220,5 +225,132 @@ describe("cleanupProjectStaleLockArtifacts (phase 2)", () => {
 
 	it("handles empty project list", async () => {
 		await expect(cleanupProjectStaleLockArtifacts([])).resolves.toBeUndefined();
+	});
+});
+
+describe("cleanStaleGitIndexLocks", () => {
+	beforeEach(() => {
+		mockRuntimeHome = createTempDir("quarterdeck-lock-cleanup-global-");
+		mockProjectRepo = createTempDir("quarterdeck-lock-cleanup-project-");
+	});
+
+	afterEach(() => {
+		mockRuntimeHome.cleanup();
+		mockProjectRepo.cleanup();
+	});
+
+	it("removes stale index.lock from the main .git/ directory", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		mkdirSync(gitDir);
+		createStaleFile(gitDir, "index.lock");
+		writeFileSync(join(gitDir, "HEAD"), "ref: refs/heads/main");
+
+		await cleanStaleGitIndexLocks([mockProjectRepo.path]);
+
+		expect(readdirSync(gitDir).sort()).toEqual(["HEAD"]);
+	});
+
+	it("removes stale index.lock from per-worktree git directories", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		mkdirSync(gitDir);
+
+		const worktreesDir = join(gitDir, "worktrees");
+		const wt1Dir = join(worktreesDir, "task-alpha");
+		const wt2Dir = join(worktreesDir, "task-beta");
+		mkdirSync(wt1Dir, { recursive: true });
+		mkdirSync(wt2Dir, { recursive: true });
+
+		createStaleFile(wt1Dir, "index.lock");
+		createStaleFile(wt2Dir, "index.lock");
+		writeFileSync(join(wt1Dir, "HEAD"), "abc123");
+		writeFileSync(join(wt2Dir, "HEAD"), "def456");
+
+		await cleanStaleGitIndexLocks([mockProjectRepo.path]);
+
+		expect(readdirSync(wt1Dir).sort()).toEqual(["HEAD"]);
+		expect(readdirSync(wt2Dir).sort()).toEqual(["HEAD"]);
+	});
+
+	it("preserves fresh (non-stale) index.lock files", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		mkdirSync(gitDir);
+
+		// Create a fresh lock — mtime is now, so it should be preserved.
+		writeFileSync(join(gitDir, "index.lock"), "");
+
+		await cleanStaleGitIndexLocks([mockProjectRepo.path]);
+
+		expect(readdirSync(gitDir)).toContain("index.lock");
+	});
+
+	it("does not remove non-index.lock files from worktree dirs", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		const wtDir = join(gitDir, "worktrees", "task-gamma");
+		mkdirSync(wtDir, { recursive: true });
+
+		writeFileSync(join(wtDir, "HEAD"), "abc123");
+		writeFileSync(join(wtDir, "ORIG_HEAD"), "def456");
+		createStaleFile(wtDir, "index.lock");
+
+		await cleanStaleGitIndexLocks([mockProjectRepo.path]);
+
+		expect(readdirSync(wtDir).sort()).toEqual(["HEAD", "ORIG_HEAD"]);
+	});
+
+	it("invokes warn callback for each removed stale lock", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		const wtDir = join(gitDir, "worktrees", "task-delta");
+		mkdirSync(wtDir, { recursive: true });
+
+		createStaleFile(gitDir, "index.lock");
+		createStaleFile(wtDir, "index.lock");
+
+		const warnings: string[] = [];
+		await cleanStaleGitIndexLocks([mockProjectRepo.path], (msg) => warnings.push(msg));
+
+		expect(warnings).toHaveLength(2);
+		expect(warnings.every((w) => w.includes("index.lock"))).toBe(true);
+	});
+
+	it("handles repos with no worktrees directory", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		mkdirSync(gitDir);
+
+		// No .git/worktrees/ at all — should not throw.
+		await expect(cleanStaleGitIndexLocks([mockProjectRepo.path])).resolves.toBeUndefined();
+	});
+
+	it("handles nonexistent repo paths gracefully", async () => {
+		await expect(cleanStaleGitIndexLocks(["/nonexistent/repo"])).resolves.toBeUndefined();
+	});
+
+	it("deduplicates repos sharing the same git common dir", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		const wtDir = join(gitDir, "worktrees", "task-echo");
+		mkdirSync(wtDir, { recursive: true });
+
+		createStaleFile(wtDir, "index.lock");
+
+		const warnings: string[] = [];
+		// Pass the same repo path twice — should only produce one warning.
+		await cleanStaleGitIndexLocks([mockProjectRepo.path, mockProjectRepo.path], (msg) => warnings.push(msg));
+
+		expect(warnings).toHaveLength(1);
+	});
+
+	it("is also called as part of cleanupProjectStaleLockArtifacts", async () => {
+		const gitDir = join(mockProjectRepo.path, ".git");
+		const wtDir = join(gitDir, "worktrees", "task-foxtrot");
+		mkdirSync(wtDir, { recursive: true });
+
+		createStaleFile(wtDir, "index.lock");
+		writeFileSync(join(wtDir, "HEAD"), "abc123");
+
+		const warnings: string[] = [];
+		await cleanupProjectStaleLockArtifacts([mockProjectRepo.path], (msg) => warnings.push(msg));
+
+		// The worktree's index.lock should have been cleaned up.
+		expect(readdirSync(wtDir).sort()).toEqual(["HEAD"]);
+		expect(warnings.some((w) => w.includes("index.lock"))).toBe(true);
 	});
 });

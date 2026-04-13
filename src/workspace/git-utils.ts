@@ -217,6 +217,16 @@ export async function getGitCommonDir(repoPath: string): Promise<string> {
 	return isAbsolute(gitCommonDir) ? gitCommonDir : join(repoPath, gitCommonDir);
 }
 
+/**
+ * Resolve the per-worktree git directory.
+ * For the main working tree this is `.git/`; for worktrees it's `.git/worktrees/<name>/`.
+ * This is the directory that contains the worktree's own `index`, `HEAD`, etc.
+ */
+export async function getGitDir(cwd: string): Promise<string> {
+	const gitDir = await getGitStdout(["rev-parse", "--git-dir"], cwd);
+	return isAbsolute(gitDir) ? gitDir : join(cwd, gitDir);
+}
+
 export function getGitCommandErrorMessage(error: unknown): string {
 	if (error && typeof error === "object" && "stderr" in error) {
 		const stderr = (error as { stderr?: unknown }).stderr;

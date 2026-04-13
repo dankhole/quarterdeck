@@ -4,6 +4,7 @@
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
+import { cleanStaleGitIndexLocks, cleanStaleIndexLockForWorktree } from "../fs/lock-cleanup";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -198,6 +199,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
 	private reconciliationTimer: NodeJS.Timeout | null = null;
+	private repoPath: string | null = null;
 
 	constructor(store: SessionSummaryStore) {
 		this.store = store;
@@ -563,6 +565,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 							// Best effort: cleanup failure is non-critical.
 						});
 					}
+
+					// Clean up any stale index.lock left in the worktree's git dir.
+					// Agent processes that are killed mid-git-operation (SIGTERM from
+					// stop/interrupt) can leave the lock behind, blocking subsequent
+					// git commands in that worktree.
+					void cleanStaleIndexLockForWorktree(request.cwd).catch(() => {});
 				},
 			});
 		} catch (error) {
@@ -1017,9 +1025,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return this.store.markAllInterrupted(activeTaskIds);
 	}
 
-	startReconciliation(): void {
+	startReconciliation(repoPath?: string): void {
 		if (this.reconciliationTimer) {
 			return;
+		}
+		if (repoPath) {
+			this.repoPath = repoPath;
 		}
 		this.reconciliationTimer = setInterval(() => {
 			this.reconcileSessionStates();
@@ -1177,6 +1188,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 	}
 
 	private reconcileSessionStates(): void {
+		// Sweep stale git index.lock files from worktrees. This is fire-and-forget
+		// and cheap (just stat + unlink per worktree dir). Runs alongside session
+		// reconciliation to catch locks orphaned by killed agent processes.
+		if (this.repoPath) {
+			void cleanStaleGitIndexLocks([this.repoPath]).catch(() => {});
+		}
+
 		const nowMs = Date.now();
 		let sessionsChecked = 0;
 		let actionsApplied = 0;

@@ -6,6 +6,11 @@
 
 - New setting "Allow agents to access the parent repo's `.git` directory" gives agents read access to git metadata (history, branches, refs) without exposing the full parent repo working tree. Passes `--add-dir /path/to/repo/.git` instead of `--add-dir /path/to/repo`. The full parent repo option takes precedence when both are enabled. Claude Code only.
 
+### Fix: automatic stale git index.lock cleanup for worktrees
+
+- Added three-layer cleanup for stale `index.lock` files orphaned when agent processes are killed mid-git-operation: startup scan of all worktree git directories, periodic 10-second sweep during the reconciliation loop, and immediate per-worktree cleanup on session exit. The post-exit path skips the staleness age check since the owning process is known dead.
+- Added `getGitDir()` helper to `git-utils.ts` — resolves the per-worktree git directory (`.git/worktrees/<name>/`) with proper `GIT_*` env sanitization via `createGitProcessEnv`.
+
 ### Feat: top bar git sync actions — fetch, pull, push accessible from any view
 
 - Moved fetch, pull, and push buttons from the git view tab bar into the top bar next to the branch pill. Actions are now accessible regardless of which view is active. All three work for both home context and task worktrees (passing `taskScope` when a task is selected).
