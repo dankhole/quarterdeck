@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: file browser remembers last viewed file per task
+
+- The file browser now persists the last selected file per task to localStorage, so reopening the file browser (or refreshing the page) restores the file you were last viewing. Each task and the home scope maintain independent selections. Stale paths are cleared automatically if the file no longer exists.
+
 ### Fix: remove optimistic state transition, unblock permission approval flow
 
 - Removed the eager `transitionToRunning` in `writeInput` that moved tasks to "running" on Enter before the agent confirmed via hooks. Tasks now stay in `awaiting_review` until a `to_in_progress` hook arrives — hooks are the sole authority for state transitions.

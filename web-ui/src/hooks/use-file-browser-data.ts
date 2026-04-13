@@ -2,11 +2,35 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
 const FILE_LIST_POLL_INTERVAL_MS = 5_000;
 
 /** Module-level cache of the last viewed file per scope key (taskId or "home"). */
 const lastSelectedPathByScope = new Map<string, string>();
+
+/** Hydrate the in-memory cache from localStorage once at module load. */
+(function hydrateCache(): void {
+	const raw = readLocalStorageItem(LocalStorageKey.FileBrowserLastSelectedPath);
+	if (!raw) return;
+	try {
+		const parsed: Record<string, string> = JSON.parse(raw);
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof value === "string") {
+				lastSelectedPathByScope.set(key, value);
+			}
+		}
+	} catch {
+		// Ignore corrupt data.
+	}
+})();
+
+function persistCacheToStorage(): void {
+	writeLocalStorageItem(
+		LocalStorageKey.FileBrowserLastSelectedPath,
+		JSON.stringify(Object.fromEntries(lastSelectedPathByScope)),
+	);
+}
 
 function scopeKey(taskId: string | null): string {
 	return taskId ?? "__home__";
@@ -38,7 +62,7 @@ export function useFileBrowserData(options: {
 	const { workspaceId, taskId, baseRef, ref: browseRef } = options;
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-	// Wrap setSelectedPath to also persist in the module-level cache.
+	// Wrap setSelectedPath to also persist in the module-level cache + localStorage.
 	const setSelectedPathPersisted = useCallback(
 		(path: string | null) => {
 			setSelectedPath(path);
@@ -48,6 +72,7 @@ export function useFileBrowserData(options: {
 			} else {
 				lastSelectedPathByScope.delete(key);
 			}
+			persistCacheToStorage();
 		},
 		[taskId],
 	);

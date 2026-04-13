@@ -2,6 +2,12 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feat: file browser remembers last viewed file per task (2026-04-13)
+
+The file browser's `useFileBrowserData` hook already had a module-level `Map` (`lastSelectedPathByScope`) that remembered the last selected file per task within a session, but it was lost on page refresh. Added localStorage persistence: an IIFE at module load hydrates the Map from `quarterdeck.file-browser-last-selected-path`, and every selection change writes through to localStorage via `persistCacheToStorage()`. The scope key is the taskId (or `"__home__"` for the home view), so each task's file selection is independent. The existing stale-file validation effect (clears selection if the file no longer appears in the file list) works unchanged.
+
+Files: `web-ui/src/hooks/use-file-browser-data.ts`, `web-ui/src/storage/local-storage-store.ts`.
+
 ## Fix: remove optimistic state transition, unblock permission approval flow (2026-04-13)
 
 Two related state flow bugs — one caused tasks to get stuck in "running", the other in "awaiting_review".
