@@ -16,6 +16,7 @@ export const INDEX_FILENAME = "index.json";
 export const BOARD_FILENAME = "board.json";
 export const SESSIONS_FILENAME = "sessions.json";
 export const META_FILENAME = "meta.json";
+export const PINNED_BRANCHES_FILENAME = "pinned-branches.json";
 
 export function getRuntimeHomePath(): string {
 	const override = process.env.QUARTERDECK_STATE_HOME;
@@ -61,6 +62,10 @@ export function getWorkspaceSessionsPath(workspaceId: string): string {
 
 export function getWorkspaceMetaPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
+}
+
+export function getWorkspacePinnedBranchesPath(workspaceId: string): string {
+	return join(getWorkspaceDirectoryPath(workspaceId), PINNED_BRANCHES_FILENAME);
 }
 
 export function getWorkspaceIndexLockRequest(): LockRequest {

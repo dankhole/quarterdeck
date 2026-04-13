@@ -62,7 +62,6 @@ import { useGitActions } from "@/hooks/use-git-actions";
 import { useGitNavigation } from "@/hooks/use-git-navigation";
 import { useMigrateTaskDialog } from "@/hooks/use-migrate-task-dialog";
 import { useNavbarState } from "@/hooks/use-navbar-state";
-import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectSwitchCleanup } from "@/hooks/use-project-switch-cleanup";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
@@ -462,7 +461,11 @@ export default function App(): ReactElement {
 
 	useTaskTitleSync({ latestTaskTitleUpdate, setBoard });
 
-	const { createTaskBranchOptions, defaultTaskBranchRef } = useTaskBranchOptions({ workspaceGit });
+	const configDefaultBaseRef = runtimeProjectConfig?.defaultBaseRef ?? "";
+	const { createTaskBranchOptions, defaultTaskBranchRef, isConfigDefaultBaseRef } = useTaskBranchOptions({
+		workspaceGit,
+		configDefaultBaseRef,
+	});
 	const queueTaskStartAfterEdit = useCallback((taskId: string) => {
 		setPendingTaskStartAfterEditId(taskId);
 	}, []);
@@ -515,6 +518,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
+		isConfigDefaultBaseRef,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});
@@ -893,37 +897,20 @@ export default function App(): ReactElement {
 
 	useEscapeHandler({ isGitHistoryOpen, setIsGitHistoryOpen, selectedCard, setSelectedTaskId });
 
-	const {
-		activeWorkspacePath,
-		navbarWorkspacePath,
-		navbarWorkspaceHint,
-		navbarRuntimeHint,
-		shouldHideProjectDependentTopBarActions,
-	} = useNavbarState({
-		selectedCard,
-		selectedTaskWorkspaceInfo,
-		selectedTaskWorkspaceSnapshot,
-		workspacePath,
-		shouldUseNavigationPath,
-		navigationProjectPath,
-		runtimeProjectConfig,
-		hasNoProjects,
-		isProjectSwitching,
-		isAwaitingWorkspaceSnapshot,
-		isWorkspaceMetadataPending,
-	});
-
-	const {
-		openTargetOptions,
-		selectedOpenTargetId,
-		onSelectOpenTarget,
-		onOpenWorkspace,
-		canOpenWorkspace,
-		isOpeningWorkspace,
-	} = useOpenWorkspace({
-		currentProjectId,
-		workspacePath: activeWorkspacePath,
-	});
+	const { navbarWorkspacePath, navbarWorkspaceHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
+		useNavbarState({
+			selectedCard,
+			selectedTaskWorkspaceInfo,
+			selectedTaskWorkspaceSnapshot,
+			workspacePath,
+			shouldUseNavigationPath,
+			navigationProjectPath,
+			runtimeProjectConfig,
+			hasNoProjects,
+			isProjectSwitching,
+			isAwaitingWorkspaceSnapshot,
+			isWorkspaceMetadataPending,
+		});
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
@@ -1031,6 +1018,17 @@ export default function App(): ReactElement {
 		[notificationSessions, notificationWorkspaceIds, currentProjectId],
 	);
 
+	// Board sidebar badge — orange dot when any task in the current project needs input.
+	const boardBadgeColor: "orange" | undefined = useMemo(
+		() =>
+			Object.entries(notificationSessions).some(
+				([taskId, session]) => notificationWorkspaceIds[taskId] === currentProjectId && isApprovalState(session),
+			)
+				? "orange"
+				: undefined,
+		[notificationSessions, notificationWorkspaceIds, currentProjectId],
+	);
+
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
 	}
@@ -1074,12 +1072,6 @@ export default function App(): ReactElement {
 			isPromptShortcutRunning={isPromptShortcutRunning}
 			onRunPromptShortcut={runPromptShortcut}
 			onManagePromptShortcuts={() => setPromptShortcutEditorOpen(true)}
-			openTargetOptions={openTargetOptions}
-			selectedOpenTargetId={selectedOpenTargetId}
-			onSelectOpenTarget={onSelectOpenTarget}
-			onOpenWorkspace={onOpenWorkspace}
-			canOpenWorkspace={canOpenWorkspace}
-			isOpeningWorkspace={isOpeningWorkspace}
 			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 			branchPillSlot={
 				topbarBranchLabel ? (
@@ -1122,7 +1114,8 @@ export default function App(): ReactElement {
 								<Button
 									variant="ghost"
 									size="sm"
-									icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={16} />}
+									className="h-6"
+									icon={runningGitAction === "fetch" ? <Spinner size={12} /> : <CircleArrowDown size={14} />}
 									onClick={() => {
 										void runGitAction("fetch", gitSyncTaskScope);
 									}}
@@ -1134,7 +1127,8 @@ export default function App(): ReactElement {
 								<Button
 									variant="ghost"
 									size="sm"
-									icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
+									className="h-6"
+									icon={runningGitAction === "pull" ? <Spinner size={12} /> : <ArrowDown size={12} />}
 									onClick={() => {
 										void runGitAction("pull", gitSyncTaskScope);
 									}}
@@ -1146,7 +1140,8 @@ export default function App(): ReactElement {
 								<Button
 									variant="ghost"
 									size="sm"
-									icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
+									className="h-6"
+									icon={runningGitAction === "push" ? <Spinner size={12} /> : <ArrowUp size={12} />}
 									onClick={() => {
 										void runGitAction("push", gitSyncTaskScope);
 									}}
@@ -1196,6 +1191,7 @@ export default function App(): ReactElement {
 									: false
 							}
 							projectsBadgeColor={projectsBadgeColor}
+							boardBadgeColor={selectedCard ? boardBadgeColor : undefined}
 						/>
 
 						{/* Sidebar panel content — depends on sidebar state */}

@@ -2,6 +2,28 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Combined feature landing: 6 branches merged (2026-04-13)
+
+Landed 6 feature branches into main via an integration branch. All merges were clean — no conflicts.
+
+**Refactor: move pinnedBranches to workspace directory:** Pinned branches were stored in the project's `.quarterdeck/config.json`, polluting user repos. Moved to `~/.quarterdeck/workspaces/<id>/pinned-branches.json`. Added `getWorkspacePinnedBranchesPath` helper to `workspace-state-utils.ts`. The `loadRuntimeConfig`/`updateRuntimeConfig`/`saveRuntimeConfig` functions now accept an optional `workspaceId` param for the pinned branches path. `writeRuntimeProjectConfigFile` simplified to only handle shortcuts. No migration — old entries silently ignored.
+Files: `src/config/runtime-config.ts`, `src/server/workspace-registry.ts`, `src/state/workspace-state-utils.ts`, `src/trpc/runtime-api.ts`, `test/runtime/config/runtime-config.test.ts`.
+
+**Fix: remove Open button and slim git sync buttons:** Removed the "Open in VS Code" dropdown from the top bar. Made fetch/pull/push buttons thinner (`h-6`, 24px) with smaller icons. Removed associated test expectations.
+Files: `web-ui/src/App.tsx`, `web-ui/src/components/top-bar.tsx`, `web-ui/src/components/top-bar.test.tsx`.
+
+**Feat: board sidebar needs-input badge:** Added orange badge to the Board (LayoutGrid) sidebar button when tasks in the current project need approval/input. Uses the same `isApprovalState` filter as the Projects badge but scoped to the current project via `===` instead of `!==`. Badge suppressed when no task selected (button disabled).
+Files: `web-ui/src/App.tsx`, `web-ui/src/components/detail-panels/detail-toolbar.tsx`.
+
+**Fix: settings/context-menu/diff cleanup:** (1) Removed duplicate Git Polling section from the settings dialog shell — it used bare variable names (`focusedTaskPollMs`) instead of `fields.*`, leftover from the decomposition refactor. (2) Fixed file tree directory rows suppressing native context menu — only file nodes get `ContextMenu.Root` now. (3) Moved `DiffLineGutter` and `DiffCommentCallbacks` from `diff-unified.tsx` to `diff-viewer-utils.tsx`, breaking the coupling where `diff-split` imported from `diff-unified`. (4) Unexported `CONTEXT_MENU_CONTENT_CLASS`.
+Files: `context-menu-utils.tsx`, `diff-split.tsx`, `diff-unified.tsx`, `diff-viewer-utils.tsx`, `file-tree-panel.tsx`.
+
+**Feat: worktree agent context injection:** Agents in worktrees had no awareness of isolation context — they'd try to checkout branches, cd to wrong dirs, or run destructive git ops that could wreck parallel tasks. Added `--append-system-prompt` injection to the Claude adapter when `cwd !== workspacePath`. The prompt covers: worktree identity, shell cwd reset, main repo location, parallel agent awareness, git guardrails (no checkout/push/destructive ops without explicit ask), detached HEAD note. Guarded by `hasCliOption` to avoid conflicts with explicit flags. New `worktree-context.ts` module with `buildWorktreeContextPrompt` and `readGitHeadInfo`.
+Files: `src/terminal/agent-session-adapters.ts`, `src/terminal/worktree-context.ts` (new), `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/terminal/worktree-context.test.ts` (new).
+
+**Feat: default base ref config:** New `defaultBaseRef` global config field. When set, always used as the initial base ref in the task creation dialog, overriding per-project "last used branch" memory. Validated against available branches — falls back to auto-detection if configured branch doesn't exist. Added to `global-config-fields.ts`, `api/config.ts`, `use-settings-form.ts`, settings UI in `general-sections.tsx`. Task creation logic in `use-task-branch-options.ts` and `use-task-editor.ts` now checks for the config value first.
+Files: `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/settings/general-sections.tsx`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/hooks/use-task-branch-options.ts`, `web-ui/src/hooks/use-task-editor.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`.
+
 ## Fix: terminal rendering artifacts and broken "Reset terminal rendering" button (2026-04-13)
 
 Two issues in `PersistentTerminal` (`web-ui/src/terminal/persistent-terminal-manager.ts`):

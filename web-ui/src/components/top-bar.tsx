@@ -13,7 +13,6 @@ import {
 	Terminal,
 } from "lucide-react";
 import { useState } from "react";
-import { OpenWorkspaceButton } from "@/components/open-workspace-button";
 import {
 	getRuntimeShortcutIconComponent,
 	getRuntimeShortcutPickerOption,
@@ -26,7 +25,6 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { PromptShortcut, RuntimeProjectShortcut } from "@/runtime/types";
-import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform } from "@/utils/platform";
 
@@ -179,12 +177,6 @@ export function TopBar({
 	isPromptShortcutRunning,
 	onRunPromptShortcut,
 	onManagePromptShortcuts,
-	openTargetOptions,
-	selectedOpenTargetId,
-	onSelectOpenTarget,
-	onOpenWorkspace,
-	canOpenWorkspace,
-	isOpeningWorkspace,
 	selectedTaskId,
 	hideProjectDependentActions = false,
 	branchPillSlot,
@@ -214,12 +206,6 @@ export function TopBar({
 	isPromptShortcutRunning?: boolean;
 	onRunPromptShortcut?: (taskId: string, shortcutLabel: string) => void;
 	onManagePromptShortcuts?: () => void;
-	openTargetOptions: readonly OpenTargetOption[];
-	selectedOpenTargetId: OpenTargetId;
-	onSelectOpenTarget: (targetId: OpenTargetId) => void;
-	onOpenWorkspace: () => void;
-	canOpenWorkspace: boolean;
-	isOpeningWorkspace: boolean;
 	selectedTaskId?: string | null;
 	hideProjectDependentActions?: boolean;
 	branchPillSlot?: React.ReactNode;
@@ -333,18 +319,6 @@ export function TopBar({
 									);
 								})}
 							</span>
-						</div>
-					) : null}
-					{displayWorkspacePath && !isWorkspacePathLoading ? (
-						<div className="ml-2 shrink-0">
-							<OpenWorkspaceButton
-								options={openTargetOptions}
-								selectedOptionId={selectedOpenTargetId}
-								disabled={!canOpenWorkspace || isOpeningWorkspace}
-								loading={isOpeningWorkspace}
-								onOpen={onOpenWorkspace}
-								onSelectOption={onSelectOpenTarget}
-							/>
 						</div>
 					) : null}
 					{!hideProjectDependentActions && workspaceHint ? (

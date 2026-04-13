@@ -6,7 +6,7 @@ import type { FileNavigation } from "@/hooks/use-git-navigation";
 export const CONTEXT_MENU_ITEM_CLASS =
 	"flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3";
 
-export const CONTEXT_MENU_CONTENT_CLASS =
+const CONTEXT_MENU_CONTENT_CLASS =
 	"z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg";
 
 export function copyToClipboard(text: string, label: string): void {

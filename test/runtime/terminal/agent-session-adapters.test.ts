@@ -2,9 +2,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
+
+const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
+vi.mock("../../../src/terminal/worktree-context.js", () => ({
+	buildWorktreeContextPrompt: buildWorktreeContextPromptMock,
+}));
 
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
@@ -238,5 +243,92 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+	});
+});
+
+describe("worktree context system prompt", () => {
+	afterEach(() => {
+		buildWorktreeContextPromptMock.mockReset().mockResolvedValue("");
+	});
+
+	it("injects --append-system-prompt when context builder returns content", async () => {
+		setupTempHome();
+		const contextText = "You are working in a git worktree.\n- Your working directory is /worktree.";
+		buildWorktreeContextPromptMock.mockResolvedValue(contextText);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-wt",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/worktree",
+			prompt: "Fix the bug",
+			workspaceId: "ws-1",
+			workspacePath: "/repo",
+		});
+
+		expect(launch.args).toContain("--append-system-prompt");
+		const flagIndex = launch.args.indexOf("--append-system-prompt");
+		expect(launch.args[flagIndex + 1]).toBe(contextText);
+
+		// --append-system-prompt must appear before "--" separator
+		const separatorIndex = launch.args.indexOf("--");
+		expect(separatorIndex).toBeGreaterThan(flagIndex);
+	});
+
+	it("does not inject --append-system-prompt when context builder returns empty", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValue("");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-no-wt",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/repo",
+			prompt: "Fix the bug",
+			workspaceId: "ws-1",
+			workspacePath: "/repo",
+		});
+
+		expect(launch.args).not.toContain("--append-system-prompt");
+	});
+
+	it("skips injection when --append-system-prompt is already present", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValue("Should not appear");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-existing",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--append-system-prompt", "Custom prompt"],
+			cwd: "/worktree",
+			prompt: "Fix the bug",
+			workspaceId: "ws-1",
+			workspacePath: "/repo",
+		});
+
+		const matches = launch.args.filter((a) => a === "--append-system-prompt");
+		expect(matches).toHaveLength(1);
+		expect(launch.args[launch.args.indexOf("--append-system-prompt") + 1]).toBe("Custom prompt");
+	});
+
+	it("skips injection when --system-prompt is already present", async () => {
+		setupTempHome();
+		buildWorktreeContextPromptMock.mockResolvedValue("Should not appear");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-sys",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--system-prompt", "Full override"],
+			cwd: "/worktree",
+			prompt: "Fix the bug",
+			workspaceId: "ws-1",
+			workspacePath: "/repo",
+		});
+
+		expect(launch.args).not.toContain("--append-system-prompt");
 	});
 });

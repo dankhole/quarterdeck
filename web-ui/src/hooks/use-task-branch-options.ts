@@ -9,14 +9,20 @@ interface TaskBranchOption {
 
 interface UseTaskBranchOptionsInput {
 	workspaceGit: RuntimeGitRepositoryInfo | null;
+	configDefaultBaseRef?: string;
 }
 
 interface UseTaskBranchOptionsResult {
 	createTaskBranchOptions: TaskBranchOption[];
 	defaultTaskBranchRef: string;
+	/** True when the default was set via the config field (overrides last-used-branch memory). */
+	isConfigDefaultBaseRef: boolean;
 }
 
-export function useTaskBranchOptions({ workspaceGit }: UseTaskBranchOptionsInput): UseTaskBranchOptionsResult {
+export function useTaskBranchOptions({
+	workspaceGit,
+	configDefaultBaseRef,
+}: UseTaskBranchOptionsInput): UseTaskBranchOptionsResult {
 	const createTaskBranchOptions = useMemo(() => {
 		if (!workspaceGit) {
 			return [] as TaskBranchOption[];
@@ -46,15 +52,22 @@ export function useTaskBranchOptions({ workspaceGit }: UseTaskBranchOptionsInput
 		return options;
 	}, [workspaceGit]);
 
+	const configRef = configDefaultBaseRef?.trim() || "";
+	const configRefIsValid = configRef !== "" && createTaskBranchOptions.some((opt) => opt.value === configRef);
+
 	const defaultTaskBranchRef = useMemo(() => {
+		if (configRefIsValid) {
+			return configRef;
+		}
 		if (!workspaceGit) {
 			return "";
 		}
 		return workspaceGit.defaultBranch ?? workspaceGit.currentBranch ?? createTaskBranchOptions[0]?.value ?? "";
-	}, [createTaskBranchOptions, workspaceGit]);
+	}, [configRef, configRefIsValid, createTaskBranchOptions, workspaceGit]);
 
 	return {
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
+		isConfigDefaultBaseRef: configRefIsValid,
 	};
 }

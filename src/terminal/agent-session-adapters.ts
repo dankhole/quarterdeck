@@ -16,6 +16,7 @@ import { createHookRuntimeEnv } from "./hook-runtime-context";
 import { stripAnsi } from "./output-utils";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
+import { buildWorktreeContextPrompt } from "./worktree-context";
 
 export interface AgentAdapterLaunchInput {
 	taskId: string;
@@ -264,6 +265,18 @@ const claudeAdapter: AgentSessionAdapter = {
 				const quarterdeckPath = getRuntimeHomePath();
 				log.debug("adding --add-dir for quarterdeck dir", { path: quarterdeckPath });
 				args.push("--add-dir", quarterdeckPath);
+			}
+		}
+
+		// Inject worktree context so the agent knows it's in an isolated worktree,
+		// not the main repo. Must go before "--" which terminates option parsing.
+		if (!hasCliOption(args, "--append-system-prompt") && !hasCliOption(args, "--system-prompt")) {
+			const worktreeContext = await buildWorktreeContextPrompt({
+				cwd: input.cwd,
+				workspacePath: input.workspacePath,
+			});
+			if (worktreeContext) {
+				args.push("--append-system-prompt", worktreeContext);
 			}
 		}
 

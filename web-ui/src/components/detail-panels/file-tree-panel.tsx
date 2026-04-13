@@ -45,44 +45,46 @@ function FileTreeRow({
 	const addedStatClassName = isSelected ? "text-white" : "text-status-green";
 	const removedStatClassName = isSelected ? "text-white" : "text-status-red";
 
+	const rowButton = (
+		<button
+			type="button"
+			className={rowClassName}
+			style={{ paddingLeft: depth * 12 + 8 }}
+			onClick={() => {
+				if (!isDirectory) {
+					onSelectPath(node.path);
+				}
+			}}
+		>
+			{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
+			<span className="truncate">{node.name}</span>
+			{fileStats ? (
+				<span
+					className="font-mono"
+					style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4, alignItems: "center" }}
+				>
+					<span className={isSelected ? "text-white" : STATUS_BADGE[fileStats.status].className}>
+						{STATUS_BADGE[fileStats.status].letter}
+					</span>
+					{fileStats.added > 0 ? <span className={addedStatClassName}>+{fileStats.added}</span> : null}
+					{fileStats.removed > 0 ? <span className={removedStatClassName}>-{fileStats.removed}</span> : null}
+				</span>
+			) : null}
+		</button>
+	);
+
 	return (
 		<div>
-			<ContextMenu.Root>
-				<ContextMenu.Trigger asChild>
-					<button
-						type="button"
-						className={rowClassName}
-						style={{ paddingLeft: depth * 12 + 8 }}
-						onClick={() => {
-							if (!isDirectory) {
-								onSelectPath(node.path);
-							}
-						}}
-					>
-						{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
-						<span className="truncate">{node.name}</span>
-						{fileStats ? (
-							<span
-								className="font-mono"
-								style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4, alignItems: "center" }}
-							>
-								<span className={isSelected ? "text-white" : STATUS_BADGE[fileStats.status].className}>
-									{STATUS_BADGE[fileStats.status].letter}
-								</span>
-								{fileStats.added > 0 ? <span className={addedStatClassName}>+{fileStats.added}</span> : null}
-								{fileStats.removed > 0 ? (
-									<span className={removedStatClassName}>-{fileStats.removed}</span>
-								) : null}
-							</span>
-						) : null}
-					</button>
-				</ContextMenu.Trigger>
-				{!isDirectory ? (
+			{isDirectory ? (
+				rowButton
+			) : (
+				<ContextMenu.Root>
+					<ContextMenu.Trigger asChild>{rowButton}</ContextMenu.Trigger>
 					<ContextMenu.Portal>
 						<FileContextMenuItems fileName={node.name} filePath={node.path} navigateToFile={navigateToFile} />
 					</ContextMenu.Portal>
-				) : null}
-			</ContextMenu.Root>
+				</ContextMenu.Root>
+			)}
 			{node.children.length > 0 ? (
 				<div>
 					{node.children.map((child) => (

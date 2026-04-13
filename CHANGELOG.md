@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Refactor: move pinnedBranches storage from project config to workspace directory
+
+- Pinned branches are now stored in `~/.quarterdeck/workspaces/<id>/pinned-branches.json` instead of `<project>/.quarterdeck/config.json`. Prevents polluting user project repos with Quarterdeck state. No migration — existing pinned branches in project config are silently ignored; users will need to re-pin branches once.
+
+### Fix: remove Open workspace dropdown and slim down git sync buttons
+
+- Removed the "Open in VS Code" dropdown button from the top bar — it added clutter with minimal value. Fetch/pull/push buttons are now thinner (24px) with smaller icons for better toolbar density.
+
+### Feat: orange badge on board sidebar icon when tasks need input
+
+- The Board (LayoutGrid) sidebar button now shows an orange dot when any task in the current project is waiting for approval or needs user input. Mirrors the existing cross-project notification pattern on the Projects icon but scoped to the active project.
+
+### Fix: remove duplicate settings controls, restore directory context menu, relocate shared diff components
+
+- Removed leftover inline Git Polling controls from the settings dialog shell that duplicated the already-extracted `GitSection` component and caused TypeScript errors (undefined `clampPollInterval`).
+- Fixed the file tree sidebar suppressing native right-click on directory rows — only file nodes are now wrapped in `ContextMenu.Root`, so directories get the browser's native context menu.
+- Moved `DiffLineGutter` and `DiffCommentCallbacks` from `diff-unified.tsx` to `diff-viewer-utils.tsx` where other shared diff primitives live, eliminating the coupling where `diff-split` imported from `diff-unified`.
+
+### Feat: inject worktree context into agent system prompt
+
+- Claude Code agents launched in git worktrees now receive a system prompt injection that orients them about their isolation context — working directory identity, main repo location, parallel agent awareness, and git guardrails (no checkout/push/destructive ops unless explicitly asked). Detached HEAD state is noted when applicable. Guarded by CLI option checks to avoid conflicts with explicit `--append-system-prompt` flags.
+
+### Feat: configurable default base ref for task creation
+
+- New `defaultBaseRef` setting in Settings > Git lets users specify a branch that's always used as the base ref when creating tasks. Overrides the per-project "last used branch" memory. When empty, preserves existing auto-detection (git default branch → current branch). The configured ref is validated against available branches — silently falls back to auto-detection if the branch doesn't exist.
+
 ### Fix: terminal rendering artifacts and stale canvas on task switch
 
 - Switching to a task now triggers the agent to redraw its TUI — the mount-time cols-1 resize trick is sent to the server so the PTY sees an actual dimension change, delivers SIGWINCH, and the agent repaints cleanly. Previously the intermediate resize was local-only and the server never saw it.

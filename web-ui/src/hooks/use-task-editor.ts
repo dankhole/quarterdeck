@@ -21,6 +21,8 @@ interface UseTaskEditorInput {
 	currentProjectId: string | null;
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef: string;
+	/** When true, the default base ref was set via config — overrides last-used-branch memory. */
+	isConfigDefaultBaseRef?: boolean;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 }
@@ -87,9 +89,11 @@ export function useTaskEditor({
 	currentProjectId,
 	createTaskBranchOptions,
 	defaultTaskBranchRef,
+	isConfigDefaultBaseRef,
 	setSelectedTaskId,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
+	const configOverridesDefault = isConfigDefaultBaseRef === true;
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
@@ -129,6 +133,9 @@ export function useTaskEditor({
 	}, [currentProjectId, lastCreatedTaskBranchByProjectId]);
 
 	const resolvedDefaultTaskBranchRef = useMemo(() => {
+		if (configOverridesDefault) {
+			return defaultTaskBranchRef;
+		}
 		if (
 			lastCreatedTaskBranchRef &&
 			createTaskBranchOptions.some((option) => option.value === lastCreatedTaskBranchRef)
@@ -136,7 +143,7 @@ export function useTaskEditor({
 			return lastCreatedTaskBranchRef;
 		}
 		return defaultTaskBranchRef;
-	}, [createTaskBranchOptions, defaultTaskBranchRef, lastCreatedTaskBranchRef]);
+	}, [configOverridesDefault, createTaskBranchOptions, defaultTaskBranchRef, lastCreatedTaskBranchRef]);
 
 	useEffect(() => {
 		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === newTaskBranchRef);

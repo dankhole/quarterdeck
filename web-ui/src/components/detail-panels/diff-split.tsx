@@ -12,8 +12,13 @@ import {
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 
-import { type DiffCommentCallbacks, DiffLineGutter } from "./diff-unified";
-import { commentKey, type DiffLineComment, InlineComment } from "./diff-viewer-utils";
+import {
+	commentKey,
+	type DiffCommentCallbacks,
+	type DiffLineComment,
+	DiffLineGutter,
+	InlineComment,
+} from "./diff-viewer-utils";
 
 interface SplitDiffRowPair {
 	key: string;

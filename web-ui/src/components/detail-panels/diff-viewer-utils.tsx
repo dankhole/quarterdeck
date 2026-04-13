@@ -1,3 +1,4 @@
+import { MessageSquare, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { buildFileTree } from "@/utils/file-tree";
@@ -62,6 +63,51 @@ export function getSectionTopWithinScrollContainer(container: HTMLElement, secti
 	const containerRect = container.getBoundingClientRect();
 	const sectionRect = section.getBoundingClientRect();
 	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
+}
+
+export interface DiffCommentCallbacks {
+	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
+	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+}
+
+export function DiffLineGutter({
+	lineNumber,
+	hasComment,
+	canComment = true,
+	onDeleteComment,
+}: {
+	lineNumber: number | null | undefined;
+	hasComment: boolean;
+	canComment?: boolean;
+	onDeleteComment?: () => void;
+}): React.ReactElement {
+	return (
+		<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
+			<span className="kb-diff-line-number-text">{lineNumber ?? ""}</span>
+			{lineNumber != null && canComment ? (
+				<span
+					className="kb-diff-comment-gutter"
+					onClick={
+						hasComment
+							? (event) => {
+									event.stopPropagation();
+									onDeleteComment?.();
+								}
+							: undefined
+					}
+					style={hasComment ? { cursor: "pointer" } : undefined}
+				>
+					<span className="kb-diff-gutter-icon-comment">
+						<MessageSquare size={12} />
+					</span>
+					<span className="kb-diff-gutter-icon-delete">
+						<X size={12} className="text-status-red" />
+					</span>
+				</span>
+			) : null}
+		</span>
+	);
 }
 
 export function InlineComment({

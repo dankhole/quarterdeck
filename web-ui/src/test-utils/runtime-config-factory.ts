@@ -70,6 +70,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	worktreeAddQuarterdeckDir: CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
 	showRunningTaskEmergencyActions: CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 	eventLogEnabled: CONFIG_DEFAULTS.eventLogEnabled,
+	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	llmConfigured: false,
 };
 

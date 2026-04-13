@@ -26,6 +26,7 @@ interface DetailToolbarProps {
 	gitBadgeColor?: "red" | "blue";
 	isBehindBase?: boolean;
 	projectsBadgeColor?: "orange";
+	boardBadgeColor?: "orange";
 }
 
 function Badge({ color }: { color: "red" | "blue" | "orange" }): React.ReactElement {
@@ -138,6 +139,7 @@ export function DetailToolbar({
 	gitBadgeColor,
 	isBehindBase,
 	projectsBadgeColor,
+	boardBadgeColor,
 }: DetailToolbarProps): React.ReactElement {
 	const filesBadgeColor: "blue" | undefined = hasSelectedTask && isBehindBase ? "blue" : undefined;
 
@@ -202,6 +204,7 @@ export function DetailToolbar({
 				onSidebarChange={onSidebarChange}
 				icon={<LayoutGrid size={18} />}
 				label="Board"
+				badgeColor={boardBadgeColor}
 				disabled={!hasSelectedTask}
 			/>
 			<SidebarButton

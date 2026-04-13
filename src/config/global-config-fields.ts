@@ -36,6 +36,13 @@ export function normalizeNumber(value: unknown, fallback: number): number {
 	return fallback;
 }
 
+export function normalizeString(value: unknown, fallback: string): string {
+	if (typeof value === "string") {
+		return value.trim();
+	}
+	return fallback;
+}
+
 export function normalizeVolume(value: unknown, fallback: number): number {
 	if (typeof value === "number" && Number.isFinite(value)) {
 		return Math.max(0, Math.min(1, value));
@@ -65,6 +72,10 @@ function numField(defaultValue: number): ConfigField<number> {
 
 function volumeField(defaultValue: number): ConfigField<number> {
 	return { defaultValue, normalize: normalizeVolume };
+}
+
+function stringField(defaultValue: string): ConfigField<string> {
+	return { defaultValue, normalize: normalizeString };
 }
 
 function pollField(defaultValue: number): ConfigField<number> {
@@ -106,6 +117,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	worktreeAddQuarterdeckDir: boolField(false),
 	showRunningTaskEmergencyActions: boolField(false),
 	eventLogEnabled: boolField(false),
+	defaultBaseRef: stringField(""),
 } as const;
 
 // --- Derived types ---

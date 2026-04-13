@@ -12,13 +12,13 @@ import {
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 
-import { commentKey, type DiffLineComment, InlineComment } from "./diff-viewer-utils";
-
-export interface DiffCommentCallbacks {
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
-	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
-	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
-}
+import {
+	commentKey,
+	type DiffCommentCallbacks,
+	type DiffLineComment,
+	DiffLineGutter,
+	InlineComment,
+} from "./diff-viewer-utils";
 
 export function UnifiedDiff({
 	path,
@@ -120,47 +120,5 @@ export function UnifiedDiff({
 				);
 			})}
 		</>
-	);
-}
-
-/* Shared gutter cell — used by both UnifiedDiff and SplitDiff */
-import { MessageSquare, X } from "lucide-react";
-
-export function DiffLineGutter({
-	lineNumber,
-	hasComment,
-	canComment = true,
-	onDeleteComment,
-}: {
-	lineNumber: number | null | undefined;
-	hasComment: boolean;
-	canComment?: boolean;
-	onDeleteComment?: () => void;
-}): React.ReactElement {
-	return (
-		<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
-			<span className="kb-diff-line-number-text">{lineNumber ?? ""}</span>
-			{lineNumber != null && canComment ? (
-				<span
-					className="kb-diff-comment-gutter"
-					onClick={
-						hasComment
-							? (event) => {
-									event.stopPropagation();
-									onDeleteComment?.();
-								}
-							: undefined
-					}
-					style={hasComment ? { cursor: "pointer" } : undefined}
-				>
-					<span className="kb-diff-gutter-icon-comment">
-						<MessageSquare size={12} />
-					</span>
-					<span className="kb-diff-gutter-icon-delete">
-						<X size={12} className="text-status-red" />
-					</span>
-				</span>
-			) : null}
-		</span>
 	);
 }

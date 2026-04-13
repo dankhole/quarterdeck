@@ -27,7 +27,7 @@ export interface WorkspaceRegistryScope {
 export interface CreateWorkspaceRegistryDependencies {
 	cwd: string;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
-	loadRuntimeConfig: (cwd: string) => Promise<RuntimeConfigState>;
+	loadRuntimeConfig: (cwd: string, workspaceId?: string | null) => Promise<RuntimeConfigState>;
 	hasGitRepository: (path: string) => boolean;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	onTerminalManagerReady?: (workspaceId: string, manager: TerminalSessionManager) => void;
@@ -199,7 +199,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 	let activeWorkspacePath: string | null = initialWorkspace?.repoPath ?? indexedWorkspace?.repoPath ?? null;
 	let globalRuntimeConfig = await deps.loadGlobalRuntimeConfig();
 	let activeRuntimeConfig = activeWorkspacePath
-		? await deps.loadRuntimeConfig(activeWorkspacePath)
+		? await deps.loadRuntimeConfig(activeWorkspacePath, activeWorkspaceId)
 		: globalRuntimeConfig;
 	const workspacePathsById = new Map<string, string>(
 		activeWorkspaceId && activeWorkspacePath ? [[activeWorkspaceId, activeWorkspacePath]] : [],
@@ -262,7 +262,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		activeWorkspacePath = repoPath;
 		rememberWorkspace(workspaceId, repoPath);
 		await ensureTerminalManagerForWorkspace(workspaceId, repoPath);
-		activeRuntimeConfig = await deps.loadRuntimeConfig(repoPath);
+		activeRuntimeConfig = await deps.loadRuntimeConfig(repoPath, workspaceId);
 		globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
 	};
 
@@ -467,7 +467,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			if (scope.workspaceId === activeWorkspaceId) {
 				return activeRuntimeConfig;
 			}
-			return await deps.loadRuntimeConfig(scope.workspacePath);
+			return await deps.loadRuntimeConfig(scope.workspacePath, scope.workspaceId);
 		},
 		getTerminalManagerForWorkspace,
 		ensureTerminalManagerForWorkspace,

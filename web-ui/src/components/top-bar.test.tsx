@@ -48,17 +48,7 @@ describe("TopBar script shortcut onboarding", () => {
 
 		await act(async () => {
 			root.render(
-				<TopBar
-					openTargetOptions={[]}
-					selectedOpenTargetId="vscode"
-					onSelectOpenTarget={() => {}}
-					onOpenWorkspace={() => {}}
-					canOpenWorkspace={false}
-					isOpeningWorkspace={false}
-					shortcuts={[]}
-					onRunShortcut={onRunShortcut}
-					onCreateFirstShortcut={onCreateFirstShortcut}
-				/>,
+				<TopBar shortcuts={[]} onRunShortcut={onRunShortcut} onCreateFirstShortcut={onCreateFirstShortcut} />,
 			);
 		});
 
@@ -109,12 +99,6 @@ describe("TopBar script shortcut onboarding", () => {
 		await act(async () => {
 			root.render(
 				<TopBar
-					openTargetOptions={[]}
-					selectedOpenTargetId="vscode"
-					onSelectOpenTarget={() => {}}
-					onOpenWorkspace={() => {}}
-					canOpenWorkspace={false}
-					isOpeningWorkspace={false}
 					selectedTaskId="task-1"
 					promptShortcuts={[{ label: "Approve", prompt: "LGTM" }]}
 					activePromptShortcut={{ label: "Approve", prompt: "LGTM" }}
@@ -136,16 +120,7 @@ describe("TopBar script shortcut onboarding", () => {
 	it("hides prompt shortcut button when no task is selected", async () => {
 		await act(async () => {
 			root.render(
-				<TopBar
-					openTargetOptions={[]}
-					selectedOpenTargetId="vscode"
-					onSelectOpenTarget={() => {}}
-					onOpenWorkspace={() => {}}
-					canOpenWorkspace={false}
-					isOpeningWorkspace={false}
-					promptShortcuts={[{ label: "Approve", prompt: "LGTM" }]}
-					onRunPromptShortcut={() => {}}
-				/>,
+				<TopBar promptShortcuts={[{ label: "Approve", prompt: "LGTM" }]} onRunPromptShortcut={() => {}} />,
 			);
 		});
 
@@ -155,19 +130,7 @@ describe("TopBar script shortcut onboarding", () => {
 
 	it("hides prompt shortcut button when shortcuts array is empty", async () => {
 		await act(async () => {
-			root.render(
-				<TopBar
-					openTargetOptions={[]}
-					selectedOpenTargetId="vscode"
-					onSelectOpenTarget={() => {}}
-					onOpenWorkspace={() => {}}
-					canOpenWorkspace={false}
-					isOpeningWorkspace={false}
-					selectedTaskId="task-1"
-					promptShortcuts={[]}
-					onRunPromptShortcut={() => {}}
-				/>,
-			);
+			root.render(<TopBar selectedTaskId="task-1" promptShortcuts={[]} onRunPromptShortcut={() => {}} />);
 		});
 
 		expect(container.querySelector('[aria-label="Select prompt shortcut"]')).toBeNull();
@@ -177,18 +140,7 @@ describe("TopBar script shortcut onboarding", () => {
 		const onOpenSettings = vi.fn();
 
 		await act(async () => {
-			root.render(
-				<TopBar
-					openTargetOptions={[]}
-					selectedOpenTargetId="vscode"
-					onSelectOpenTarget={() => {}}
-					onOpenWorkspace={() => {}}
-					canOpenWorkspace={false}
-					isOpeningWorkspace={false}
-					runtimeHint="No agent configured"
-					onOpenSettings={onOpenSettings}
-				/>,
-			);
+			root.render(<TopBar runtimeHint="No agent configured" onOpenSettings={onOpenSettings} />);
 		});
 
 		const runtimeHintButton = findButtonByText(container, "No agent configured");

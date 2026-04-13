@@ -40,6 +40,23 @@ export function GitSection({ fields, setField, disabled }: SettingsSectionProps)
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
+			<div className="mb-3">
+				<label htmlFor="default-base-ref" className="text-text-primary text-[13px] block mb-1">
+					Default base ref
+				</label>
+				<input
+					id="default-base-ref"
+					type="text"
+					value={fields.defaultBaseRef}
+					onChange={(event) => setField("defaultBaseRef", event.target.value)}
+					disabled={disabled}
+					placeholder="e.g. main, develop (auto-detect when empty)"
+					className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+				/>
+				<p className="text-text-secondary text-[11px] mt-1 mb-0">
+					Branch used as the base ref for new tasks. Leave empty to auto-detect from git.
+				</p>
+			</div>
 			<p className="text-[13px] font-medium text-text-secondary mt-0 mb-2">Card indicators</p>
 			{GIT_CARD_INDICATOR_TOGGLES.map(({ field, label, description }, i) => (
 				<SettingsSwitch

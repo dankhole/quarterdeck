@@ -62,6 +62,7 @@ export const runtimeConfigResponseSchema = z.object({
 	worktreeAddQuarterdeckDir: z.boolean(),
 	showRunningTaskEmergencyActions: z.boolean(),
 	eventLogEnabled: z.boolean(),
+	defaultBaseRef: z.string(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -110,5 +111,6 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	worktreeAddQuarterdeckDir: z.boolean().optional(),
 	showRunningTaskEmergencyActions: z.boolean().optional(),
 	eventLogEnabled: z.boolean().optional(),
+	defaultBaseRef: z.string().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
