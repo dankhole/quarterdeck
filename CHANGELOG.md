@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract session-manager.ts into focused modules
+
+- Decomposed the 1,359-line monolithic `session-manager.ts` into 6 focused files: shared types/helpers (`session-manager-types.ts`), workspace trust auto-confirm (`session-workspace-trust.ts`), interrupt detection and recovery (`session-interrupt-recovery.ts`), auto-restart logic (`session-auto-restart.ts`), and reconciliation sweep orchestration (`session-reconciliation-sweep.ts`). The core lifecycle (start/stop/attach/write) stays in `session-manager.ts` at ~780 lines. Also deduplicated spawn-failure formatters, cols/rows normalization, active-state construction, and exit cleanup sequences. Zero behavior change.
+
 ### Fix: terminal renders at half width after untrashing a task
 
 - When a task was untrashed, the terminal canvas could render at the wrong width until the user manually resized the window. Root cause: the WebGL renderer initialized its canvas while the host element was in the offscreen parking root (1px × 1px), and xterm's FitAddon skips `terminal.resize()` when cols/rows match the current values, leaving the canvas stale. Added a deferred `requestAnimationFrame` in `PersistentTerminal.mount()` that forces the renderer to update its canvas dimensions after the browser settles layout in the new container.

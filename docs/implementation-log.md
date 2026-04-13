@@ -2,6 +2,34 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: extract session-manager.ts into focused modules (2026-04-13)
+
+Decomposed the monolithic `session-manager.ts` (1,359 lines) into 6 files with clear responsibility boundaries. The class had accumulated workspace trust auto-confirm, auto-restart, reconciliation sweep, and interrupt recovery logic alongside its core session lifecycle — all loosely coupled but forced into one file.
+
+**Extracted modules:**
+- `session-manager-types.ts` (255 lines) — `ActiveProcessState`, `ProcessEntry`, `Start*Request` interfaces, clone helpers, `createActiveProcessState` factory, `teardownActiveSession`, `finalizeProcessExit`, `normalizeDimension`, merged `formatSpawnFailure`
+- `session-workspace-trust.ts` (153 lines) — `processWorkspaceTrustOutput`, `trySendDeferredCodexStartupInput`, `checkAndSendDeferredCodexInput`, trust buffer constants
+- `session-interrupt-recovery.ts` (70 lines) — `clearInterruptRecoveryTimer`, `detectInterruptSignal`, `scheduleInterruptRecovery`
+- `session-auto-restart.ts` (95 lines) — `shouldAutoRestart`, `scheduleAutoRestart`, rate-limit constants
+- `session-reconciliation-sweep.ts` (173 lines) — `reconcileSessionStates`, `applyReconciliationAction`, `createReconciliationTimer`
+- `session-manager.ts` (780 lines) — core lifecycle: `startTaskSession`, `startShellSession`, `stop*`, `writeInput`, `attach`, `hydrateFromRecord`
+
+**DRY improvements folded in:**
+- Merged `formatSpawnFailure` / `formatShellSpawnFailure` into one function with `context` param
+- Extracted `normalizeDimension(value, fallback)` — was duplicated inline in both start methods
+- Created `createActiveProcessState` factory — shell sessions just pass `willAutoTrust: false`
+- Extracted `teardownActiveSession` — shared "stop timers, kill PTY, null active, dispose mirror" block
+- Extracted `finalizeProcessExit` — shared "notify listeners, extract cleanup fn, null active, resolve exits" sequence used by onExit and reconciliation dead-process recovery
+- Inlined the `now()` wrapper (was just `Date.now()`)
+- Extracted `handleTaskSessionOutput` and `handleTaskSessionExit` as private methods to flatten the deeply nested `onData`/`onExit` closures in `startTaskSession`
+
+**Design decisions:**
+- All extracted modules receive dependencies via callback interfaces, never a manager reference — avoids circular imports and keeps each module independently testable
+- The public API (`TerminalSessionManager` class, `StartTaskSessionRequest`, `StartShellSessionRequest`) is unchanged — zero import path changes for external consumers
+- The reconciliation timer lifecycle is encapsulated in a `createReconciliationTimer()` closure, replacing the `reconciliationTimer` / `repoPath` fields on the class
+
+**Files changed:** `src/terminal/session-manager.ts`, `src/terminal/session-manager-types.ts` (new), `src/terminal/session-workspace-trust.ts` (new), `src/terminal/session-interrupt-recovery.ts` (new), `src/terminal/session-auto-restart.ts` (new), `src/terminal/session-reconciliation-sweep.ts` (new)
+
 ## Fix: terminal renders at half width after untrashing a task (2026-04-13)
 
 When a task was untrashed (restored from trash to the review column), the terminal rendered at roughly half its container width until the user resized the browser window. The issue was specific to tasks being untrashed but could also occur on any mount where the terminal's initial geometry estimate matched the container's actual dimensions.
