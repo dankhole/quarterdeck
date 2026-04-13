@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Top bar scope indicator
+
+- Added a colored left-edge accent to the top bar that mirrors the file browser scope bar — gray for home, blue for task, purple for branch view. When viewing a task, the task title is shown (truncated to 200px) so the current scope is always visible at a glance.
+
 ### Fix: pinned branches not shared across all branch dropdowns
 
 - Git view compare bar's source and target branch selectors now receive pinned branches and pin/unpin callbacks, matching the top bar and file browser scope bar. Pinning a branch in any dropdown now appears everywhere.

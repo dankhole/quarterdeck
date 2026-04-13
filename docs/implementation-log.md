@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Top bar scope indicator (2026-04-13)
+
+Added scope-aware visual context to the top bar, matching the pattern already used by the file browser's `ScopeBar` component. The top bar now shows a 3px colored left border (gray/blue/purple for home/task/branch_view) and, when in task scope, a truncated task title in accent blue.
+
+**Changes:**
+- `web-ui/src/components/top-bar.tsx` — added `scopeType` and `taskTitle` props, computed `border-l-3` class based on scope type, added task title `<span>` with `truncate max-w-[200px]` after the branch pill slot
+- `web-ui/src/App.tsx` — passed `scopeType` (derived from `selectedCard` presence and `homeResolvedScope.type`) and `taskTitle` (from `selectedCard.card.title`) to `TopBar`
+
+No new dependencies. Reuses existing design tokens (`border-l-accent`, `border-l-text-secondary`, `border-l-status-purple`) and the `cn` utility.
+
 ## Fix: pinned branches not shared across all branch dropdowns (2026-04-13)
 
 The git view compare bar's two `BranchSelectorPopover` instances (source ref and target ref selectors) were not receiving `pinnedBranches` or `onTogglePinBranch` props. Branches pinned via the top bar or file browser scope bar didn't appear pinned in the compare bar, and users couldn't pin/unpin from those dropdowns.

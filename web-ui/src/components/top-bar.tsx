@@ -188,6 +188,8 @@ export function TopBar({
 	selectedTaskId,
 	hideProjectDependentActions = false,
 	branchPillSlot,
+	scopeType: rawScopeType,
+	taskTitle,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -221,6 +223,10 @@ export function TopBar({
 	selectedTaskId?: string | null;
 	hideProjectDependentActions?: boolean;
 	branchPillSlot?: React.ReactNode;
+	/** Scope type for the left-edge accent color ("home" | "task" | "branch_view"). */
+	scopeType?: "home" | "task" | "branch_view";
+	/** Task title to display as a scope indicator when in task scope. */
+	taskTitle?: string | null;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -269,10 +275,21 @@ export function TopBar({
 		setIsCreateShortcutDialogOpen(false);
 	};
 
+	const scopeType = rawScopeType ?? "home";
+	const scopeBorderClass = cn(
+		"border-l-3",
+		scopeType === "home" && "border-l-text-secondary",
+		scopeType === "task" && "border-l-accent",
+		scopeType === "branch_view" && "border-l-status-purple",
+	);
+
 	return (
 		<>
 			<nav
-				className="kb-top-bar flex flex-nowrap items-center h-10 min-h-[40px] min-w-0 bg-surface-1"
+				className={cn(
+					"kb-top-bar flex flex-nowrap items-center h-10 min-h-[40px] min-w-0 bg-surface-1",
+					scopeBorderClass,
+				)}
 				style={{
 					paddingLeft: onBack ? 6 : 12,
 					paddingRight: 8,
@@ -351,6 +368,14 @@ export function TopBar({
 						)
 					) : null}
 					{!hideProjectDependentActions && branchPillSlot ? branchPillSlot : null}
+					{scopeType === "task" && taskTitle ? (
+						<span className="inline-flex items-center gap-1 shrink min-w-0 ml-1 text-xs">
+							<span className="text-text-tertiary">&middot;</span>
+							<span className="text-accent truncate max-w-[200px]" title={taskTitle}>
+								{taskTitle}
+							</span>
+						</span>
+					) : null}
 				</div>
 				<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">
 					{!hideProjectDependentActions && onRunShortcut ? (

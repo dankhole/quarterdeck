@@ -1052,6 +1052,8 @@ export default function App(): ReactElement {
 			workspaceHint={navbarWorkspaceHint}
 			runtimeHint={navbarRuntimeHint}
 			selectedTaskId={selectedCard?.card.id ?? null}
+			scopeType={selectedCard ? "task" : (homeResolvedScope?.type ?? "home")}
+			taskTitle={selectedCard?.card.title ?? null}
 			onToggleTerminal={
 				hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
 			}
