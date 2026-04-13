@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Remove worktreeAddParentRepoDir — use git show for cross-branch file access (2026-04-13)
+
+Removed the `worktreeAddParentRepoDir` config option entirely. This setting passed `--add-dir <parent-repo-path>` to Claude Code when launching agents in worktrees, giving agents full filesystem access to the home repo. The problem: agents could `cd` into the parent repo, and all task-scoped UI elements (status bar branch pill, card branch label, "shared" indicator) tracked the agent's actual working directory, so they'd desync and show the home repo state instead of the worktree's (todos #12, #13).
+
+The replacement is a system prompt directive in the worktree context prompt (`worktree-context.ts`). Since git worktrees share the object database with the parent repo, agents can read any file from any branch via `git show <ref>:<path>` without leaving the worktree. The prompt now explains this with examples (`git show main:CLAUDE.md`, `git show main:docs/guide.md`) and instructs agents to prefer this over navigating to the parent directory.
+
+The other two `--add-dir` options remain: `worktreeAddParentGitDir` (read-only git metadata access) and `worktreeAddQuarterdeckDir` (access to `~/.quarterdeck` state). The `.git` dir switch's `disabled` prop no longer depends on the removed field. The Advanced settings section description was updated accordingly.
+
+Removed the field from: `global-config-fields.ts`, `api/config.ts` (response + save schemas), `session-manager-types.ts`, `agent-session-adapters.ts` (input type + `--add-dir` conditional), `session-manager.ts` (2 pass-through sites), `runtime-api.ts` (3 call sites), `workspace-registry.ts`, `use-settings-form.ts` (type + initializer), `general-sections.tsx` (switch + description), `runtime-config-factory.ts`, `runtime-config.test.ts` (3 test fixtures). Updated `todo.md`: removed todo #15, renumbered 16-24 → 15-21, updated #12 and #13 descriptions.
+
 ## Fix: force SIGWINCH on task switch to fix off-by-1 TUI rendering (2026-04-13)
 
 The kernel only sends SIGWINCH when PTY dimensions actually change via the `TIOCSWINSZ` ioctl. On task switch, the client calls `forceResize()` which sends the current container dimensions to the server. If the PTY already has those dimensions (common — same container size), the ioctl is a no-op and no SIGWINCH is delivered. Claude Code doesn't redraw, leaving its TUI rendered for whatever dimensions it last drew at — producing the off-by-1 status bar, shifted input prompt, and cursor-in-bottom-left artifacts that manual window resize fixes.

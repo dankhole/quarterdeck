@@ -36,6 +36,7 @@ export async function buildWorktreeContextPrompt(input: WorktreeContextInput): P
 		`- The main repository is at ${workspacePath}. Other agents may be running in parallel worktrees on the same repo.`,
 		"- Do not check out branches, commit, push, or run destructive git operations (reset --hard, clean -fdx, force push) unless explicitly asked.",
 		`- Do not modify files outside your worktree unless explicitly asked.${detachedNote}`,
+		"- This worktree shares the git object database with the main repo. To read any file from another branch without leaving the worktree, use `git show <ref>:<path>` (e.g. `git show main:CLAUDE.md`, `git show main:docs/guide.md`). Prefer this over trying to navigate to the parent repo directory.",
 		"- When spawning subagents, include the above worktree context in their prompts.",
 	].join("\n");
 }

@@ -503,7 +503,6 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 					workspaceId,
 					workspacePath,
 					statuslineEnabled: runtimeConfig.statuslineEnabled,
-					worktreeAddParentRepoDir: runtimeConfig.worktreeAddParentRepoDir,
 					worktreeAddParentGitDir: runtimeConfig.worktreeAddParentGitDir,
 					worktreeAddQuarterdeckDir: runtimeConfig.worktreeAddQuarterdeckDir,
 				})

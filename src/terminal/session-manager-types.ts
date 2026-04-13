@@ -64,7 +64,6 @@ export interface StartTaskSessionRequest {
 	workspaceId?: string;
 	workspacePath?: string;
 	statuslineEnabled?: boolean;
-	worktreeAddParentRepoDir?: boolean;
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
 }

@@ -194,7 +194,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspaceId: request.workspaceId,
 			workspacePath: request.workspacePath,
 			statuslineEnabled: request.statuslineEnabled,
-			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir,
 			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
 		});
@@ -217,7 +216,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspacePath: request.workspacePath ?? null,
 			argCount: commandArgs.length,
 			willAutoTrust,
-			worktreeAddParentRepoDir: request.worktreeAddParentRepoDir ?? false,
 			worktreeAddParentGitDir: request.worktreeAddParentGitDir ?? false,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir ?? false,
 		};

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Remove worktreeAddParentRepoDir — use git show for cross-branch file access
+
+- Removed the `worktreeAddParentRepoDir` config option that passed `--add-dir` with the parent repo path to agents in worktrees. This let agents `cd` into the home repo, breaking worktree isolation and causing branch/status UI desync (todos #12, #13).
+- Instead, the worktree system prompt now tells agents to use `git show <ref>:<path>` to read files from other branches — worktrees share the git object database, so this works without filesystem access to the parent directory.
+- The other two `--add-dir` options (`worktreeAddParentGitDir`, `worktreeAddQuarterdeckDir`) remain unchanged.
+
 ### Fix: force SIGWINCH on task switch to fix off-by-1 TUI rendering
 
 - The kernel only sends SIGWINCH when PTY dimensions actually change. On task switch the client sends a resize with the same container size, so the agent never redraws — leaving its TUI rendered for stale dimensions (off-by-1 status bar, shifted input). Added a `force` flag to the resize protocol. The client sets it on task switch and state transitions; the server sends SIGWINCH directly when dimensions haven't changed. Normal resizes don't set the flag.

@@ -159,31 +159,15 @@ export function AdvancedSection({ fields, setField, disabled }: SettingsSectionP
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-1">Advanced</h6>
 			<p className="text-text-secondary text-[13px] mt-1 mb-3">
-				These settings let agents escape their worktree sandbox. Enabling either one means the agent can{" "}
+				These settings let agents escape their worktree sandbox. Enabling them means the agent can{" "}
 				<code className="text-xs bg-surface-3 px-1 rounded">cd</code> out of the task worktree into shared
 				directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators may
 				desync because they assume the agent stays in its assigned worktree.
 			</p>
 			<SettingsSwitch
-				checked={fields.worktreeAddParentRepoDir}
-				onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
-				disabled={disabled}
-				label="Allow agents to access the parent repo from worktrees"
-				description={
-					<>
-						Passes the parent repository path via{" "}
-						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
-						read and write files in the original repo. The agent can navigate to the home repo, which means its
-						working directory may drift — UI elements that track the agent's location (status bar branch, card
-						branch pill) will show the home repo state instead of the worktree. Claude Code only.
-					</>
-				}
-			/>
-			<SettingsSwitch
-				className="mt-3"
 				checked={fields.worktreeAddParentGitDir}
 				onCheckedChange={(v) => setField("worktreeAddParentGitDir", v)}
-				disabled={disabled || fields.worktreeAddParentRepoDir}
+				disabled={disabled}
 				label={
 					<>
 						Allow agents to access the parent repo's{" "}

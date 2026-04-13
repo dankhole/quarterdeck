@@ -55,9 +55,8 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Stash / unstash — stash button in commit sidebar (respects file selection, always includes untracked), collapsible stash list with pop/apply/drop/diff-preview, "Stash & Switch" for blocked checkouts, "Stash & Pull" with atomic stash→pull→auto-pop
 
 **Tier 2 — Valuable but less frequent:**
-- **Rebase onto** — Rebase a task branch onto latest main before merging. Keeps history linear.
+- **Rebase onto** — Rebase a task branch onto latest main before merging. Keeps history linear. (Note: conflict resolution and abort for in-progress rebases are already fully implemented — this is just the initiation action.)
 - **Rename branch** — Minor convenience but nice for fixing typos.
-- **Abort merge/rebase** — Escape hatch when conflict resolution goes sideways. Should be prominent when repo is in a conflicted state.
 
 **Tier 3 — Nice-to-have, power user:**
 - **Interactive rebase** (reorder/squash commits) — Hard to do well in UI, questionable ROI.
@@ -117,29 +116,25 @@ Periodically read through docs in `docs/` (research, plans, specs, top-level) an
 
 ## 12. UI branch/status indicators desync when agent leaves worktree
 
-When `worktreeAddParentRepoDir` or `worktreeAddQuarterdeckDir` are enabled, agents can `cd` out of their assigned worktree into the home repo or other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the home repo's branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
+When `worktreeAddQuarterdeckDir` is enabled, agents can `cd` out of their assigned worktree into other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the wrong branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
 
 ## 13. "Shared" indicator on task cards should update when agent moves to shared directory
 
-Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddParentRepoDir` is enabled, an agent that was started in an isolated worktree can `cd` into the home repo — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config. Both `worktreeAddParentRepoDir` and `worktreeAddQuarterdeckDir` can cause this — they let the agent escape the worktree sandbox, so any indicator that assumes worktree isolation needs to account for directory drift.
+Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddQuarterdeckDir` is enabled, an agent that was started in an isolated worktree can `cd` into shared directories — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config.
 
 ## 14. Add clarification when multiple worktrees share the same detached HEAD hash
 
 When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
 
-## 15. Test git object sharing as a read-only alternative to --add-dir
-
-Git worktrees share the full object database with the parent repo, so agents can already read any file from any branch via `git show main:path/to/file` without filesystem access to the parent directory. Test whether this is a viable alternative to `worktreeAddParentRepoDir` — if agents can reliably read reference files (CLAUDE.md, docs, configs) through git commands, the `--add-dir` flags may be unnecessary for most use cases. Would avoid the worktree isolation breakage entirely. May need a system prompt hint so agents know to use `git show` instead of trying to navigate to the parent repo.
-
-## 16. Revisit HTML chat view concept
+## 15. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.
 
-## 17. Commit sidebar: Auto-generated commit messages
+## 16. Commit sidebar: Auto-generated commit messages
 
 Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.
 
-## 18. Full Codex support
+## 17. Full Codex support
 
 Codex has basic launch, event parsing, and workspace trust working, but it's far from feature parity with Claude. The infrastructure is "make it run" — this is about "make it first-class."
 
@@ -162,7 +157,7 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 - Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
 - Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (todo #6)
 
-## 19. Commit sidebar performance
+## 18. Commit sidebar performance
 
 Committing from the sidebar is noticeably slow — there's a delay after clicking the commit button, and then a further delay before the file list refreshes to reflect the new state. Investigate and fix both:
 
@@ -170,7 +165,7 @@ Committing from the sidebar is noticeably slow — there's a delay after clickin
 - **Post-commit file list refresh**: After the commit completes, the staged/unstaged file list takes too long to update. Check whether it's re-scanning the entire worktree, re-running expensive git commands sequentially, or waiting on a full state persistence cycle before refreshing the UI.
 - Consider optimistic UI updates — clear the staged files immediately on commit success and refresh in the background.
 
-## 20. File browser and diff viewer performance
+## 19. File browser and diff viewer performance
 
 The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
 
@@ -178,7 +173,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 
-## 21. Investigate deeper App.tsx state architecture refactor
+## 20. Investigate deeper App.tsx state architecture refactor
 
 The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
 
@@ -188,7 +183,7 @@ The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the
 
 This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
 
-## 24. Code duplication cleanup
+## 21. Code duplication cleanup
 
 Work through the findings in [docs/code-duplication-audit.md](code-duplication-audit.md) — 14 items covering duplicated logic across both runtime and web-ui. A detailed audit with specific files, line numbers, and consolidation approaches for each.
 
