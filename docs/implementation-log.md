@@ -4,6 +4,14 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: top bar branch selector no longer checks out on left-click (2026-04-12)
+
+The top bar `BranchSelectorPopover` in `App.tsx` wired `onSelectBranchView` to `handleCheckoutBranch` instead of `handleSelectBranchView`. This meant left-clicking any branch in the top bar popover triggered a checkout (with confirmation dialog). The home files scope bar and task detail scope bar were already correct — only the top bar had this miswiring.
+
+**Fix**: Changed `onSelectBranchView={topbarBranchActions.handleCheckoutBranch}` to `onSelectBranchView={topbarBranchActions.handleSelectBranchView}` (which calls the existing `topbarBranchViewNoop`). Checkout still available via the inline LogIn icon and right-click context menu.
+
+**Files touched**: `web-ui/src/App.tsx`
+
 ## Docs: todo list updates — Codex support, commit perf, file browser perf (2026-04-12)
 
 Added three new items to `docs/todo.md`:

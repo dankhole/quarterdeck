@@ -1283,7 +1283,7 @@ export default function App(): ReactElement {
 						branches={topbarBranchActions.branches}
 						currentBranch={topbarBranchActions.currentBranch}
 						worktreeBranches={topbarBranchActions.worktreeBranches}
-						onSelectBranchView={topbarBranchActions.handleCheckoutBranch}
+						onSelectBranchView={topbarBranchActions.handleSelectBranchView}
 						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
 						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
 						onMergeBranch={topbarBranchActions.handleMergeBranch}

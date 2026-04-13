@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: top bar branch selector no longer checks out on left-click
+
+- Left-clicking a branch in the top bar branch selector popover previously triggered a checkout instead of just closing the popover. Now it behaves like the home and task scope bar popovers — left-click is a no-op view action, checkout requires the explicit icon or right-click menu.
+
 ### Docs: todo list updates
 
 - Added todo #18: Full Codex support — conversation history UI, per-task session resume, hook configuration, error diagnostics
