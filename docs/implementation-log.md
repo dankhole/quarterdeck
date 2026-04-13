@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Git view — file context menus (2026-04-13)
+
+Added right-click context menus to file names in the diff viewer panel (file section headers) and the file tree sidebar panel. Both menus offer Copy name, Copy path, and Show in File Browser. "Show in File Browser" navigates to the file browser main view and selects the file, using the existing `navigateToFile` infrastructure from `use-git-navigation.ts`.
+
+Extracted a shared `FileContextMenuItems` component into `context-menu-utils.tsx` (renamed from `.ts` to support JSX). It renders `ContextMenu.Content` with optional "Show in File Browser" navigation, Copy name, Copy path, and a `children` slot for extra items. Refactored `file-browser-tree-panel.tsx` to use it too (passing "Copy file contents" as a child). The commit panel was left as-is because its menu has unique leading items (Rollback, Open in Diff Viewer) that don't fit the shared pattern.
+
+Threading: `navigateToFile` callback is passed from `App.tsx` / `card-detail-view.tsx` → `GitView` → `DiffViewerPanel` and `FileTreePanel`. Both the home-level and task-level git views receive it.
+
+Files touched: `context-menu-utils.ts` → `context-menu-utils.tsx` (renamed + expanded), `diff-viewer-panel.tsx`, `file-tree-panel.tsx`, `file-browser-tree-panel.tsx`, `git-view.tsx`, `card-detail-view.tsx`, `App.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Top bar scope indicator (2026-04-13)
 
 Added scope-aware visual context to the top bar, matching the pattern already used by the file browser's `ScopeBar` component. The top bar now shows a 3px colored left border (gray/blue/purple for home/task/branch_view) and, when in task scope, a truncated task title in accent blue.

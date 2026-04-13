@@ -396,6 +396,7 @@ export function CardDetailView({
 							onCompareNavigationConsumed={onCompareNavigationConsumed}
 							pendingFileNavigation={pendingFileNavigation}
 							onFileNavigationConsumed={onFileNavigationConsumed}
+							navigateToFile={navigateToFile}
 							branchStatusSlot={
 								taskWorkspaceInfo || taskWorkspaceSnapshot ? (
 									<TaskBranchStatus

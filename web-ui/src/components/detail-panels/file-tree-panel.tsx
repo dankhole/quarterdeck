@@ -1,5 +1,8 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { FileText, Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
+import { FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
+import type { FileNavigation } from "@/hooks/use-git-navigation";
 import type { RuntimeWorkspaceFileChange, RuntimeWorkspaceFileStatus } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 
@@ -26,12 +29,14 @@ function FileTreeRow({
 	selectedPath,
 	onSelectPath,
 	diffStatsByPath,
+	navigateToFile,
 }: {
 	node: FileTreeNode;
 	depth: number;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 	diffStatsByPath: Record<string, FileDiffStats>;
+	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
 	const isDirectory = node.type === "directory";
 	const isSelected = !isDirectory && node.path === selectedPath;
@@ -42,31 +47,42 @@ function FileTreeRow({
 
 	return (
 		<div>
-			<button
-				type="button"
-				className={rowClassName}
-				style={{ paddingLeft: depth * 12 + 8 }}
-				onClick={() => {
-					if (!isDirectory) {
-						onSelectPath(node.path);
-					}
-				}}
-			>
-				{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
-				<span className="truncate">{node.name}</span>
-				{fileStats ? (
-					<span
-						className="font-mono"
-						style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4, alignItems: "center" }}
+			<ContextMenu.Root>
+				<ContextMenu.Trigger asChild>
+					<button
+						type="button"
+						className={rowClassName}
+						style={{ paddingLeft: depth * 12 + 8 }}
+						onClick={() => {
+							if (!isDirectory) {
+								onSelectPath(node.path);
+							}
+						}}
 					>
-						<span className={isSelected ? "text-white" : STATUS_BADGE[fileStats.status].className}>
-							{STATUS_BADGE[fileStats.status].letter}
-						</span>
-						{fileStats.added > 0 ? <span className={addedStatClassName}>+{fileStats.added}</span> : null}
-						{fileStats.removed > 0 ? <span className={removedStatClassName}>-{fileStats.removed}</span> : null}
-					</span>
+						{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
+						<span className="truncate">{node.name}</span>
+						{fileStats ? (
+							<span
+								className="font-mono"
+								style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4, alignItems: "center" }}
+							>
+								<span className={isSelected ? "text-white" : STATUS_BADGE[fileStats.status].className}>
+									{STATUS_BADGE[fileStats.status].letter}
+								</span>
+								{fileStats.added > 0 ? <span className={addedStatClassName}>+{fileStats.added}</span> : null}
+								{fileStats.removed > 0 ? (
+									<span className={removedStatClassName}>-{fileStats.removed}</span>
+								) : null}
+							</span>
+						) : null}
+					</button>
+				</ContextMenu.Trigger>
+				{!isDirectory ? (
+					<ContextMenu.Portal>
+						<FileContextMenuItems fileName={node.name} filePath={node.path} navigateToFile={navigateToFile} />
+					</ContextMenu.Portal>
 				) : null}
-			</button>
+			</ContextMenu.Root>
 			{node.children.length > 0 ? (
 				<div>
 					{node.children.map((child) => (
@@ -77,6 +93,7 @@ function FileTreeRow({
 							selectedPath={selectedPath}
 							onSelectPath={onSelectPath}
 							diffStatsByPath={diffStatsByPath}
+							navigateToFile={navigateToFile}
 						/>
 					))}
 				</div>
@@ -90,11 +107,13 @@ export function FileTreePanel({
 	selectedPath,
 	onSelectPath,
 	panelFlex,
+	navigateToFile,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 	panelFlex?: string;
+	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
 	const referencedPaths = useMemo(() => {
 		return workspaceFiles?.map((file) => file.path) ?? [];
@@ -140,6 +159,7 @@ export function FileTreePanel({
 								selectedPath={selectedPath}
 								onSelectPath={onSelectPath}
 								diffStatsByPath={diffStatsByPath}
+								navigateToFile={navigateToFile}
 							/>
 						))}
 					</div>

@@ -1,11 +1,14 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft } from "lucide-react";
 
 import { useMemo, useState } from "react";
 
+import { FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { useDiffComments } from "@/hooks/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/use-diff-scroll-sync";
+import type { FileNavigation } from "@/hooks/use-git-navigation";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
@@ -30,6 +33,7 @@ export function DiffViewerPanel({
 	comments,
 	onCommentsChange,
 	viewMode = "unified",
+	navigateToFile,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
@@ -39,6 +43,7 @@ export function DiffViewerPanel({
 	comments: Map<string, DiffLineComment>;
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
+	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 
@@ -168,42 +173,57 @@ export function DiffViewerPanel({
 									}}
 									style={{ marginTop: 12 }}
 								>
-									<button
-										type="button"
-										className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[12px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
-										aria-expanded={isExpanded}
-										aria-current={selectedPath === group.path ? "true" : undefined}
-										onClick={() => {
-											const container = scrollContainerRef.current;
-											const sectionEl = sectionElementsRef.current[group.path];
-											const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
-											const nextExpanded = !(expandedPaths[group.path] ?? true);
-											suppressScrollSyncUntilRef.current = Date.now() + 250;
-											setExpandedPaths((prev) => ({
-												...prev,
-												[group.path]: nextExpanded,
-											}));
-											requestAnimationFrame(() => {
-												if (previousTop == null || !container || !sectionEl) {
-													return;
-												}
-												const nextTop = sectionEl.getBoundingClientRect().top;
-												container.scrollTop += nextTop - previousTop;
-											});
-										}}
-									>
-										{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-										<span className="truncate" title={group.path} style={{ flex: "1 1 auto", minWidth: 0 }}>
-											{truncatePathMiddle(group.path)}
-										</span>
-										<span style={{ flexShrink: 0 }}>
-											<span className="text-status-green">+{group.added}</span>{" "}
-											<span className="text-status-red">-{group.removed}</span>
-											{group.added === 0 && group.removed === 0 && hasBinaryEntry ? (
-												<span className="ml-2 text-text-tertiary">Binary</span>
-											) : null}
-										</span>
-									</button>
+									<ContextMenu.Root>
+										<ContextMenu.Trigger asChild>
+											<button
+												type="button"
+												className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[12px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
+												aria-expanded={isExpanded}
+												aria-current={selectedPath === group.path ? "true" : undefined}
+												onClick={() => {
+													const container = scrollContainerRef.current;
+													const sectionEl = sectionElementsRef.current[group.path];
+													const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
+													const nextExpanded = !(expandedPaths[group.path] ?? true);
+													suppressScrollSyncUntilRef.current = Date.now() + 250;
+													setExpandedPaths((prev) => ({
+														...prev,
+														[group.path]: nextExpanded,
+													}));
+													requestAnimationFrame(() => {
+														if (previousTop == null || !container || !sectionEl) {
+															return;
+														}
+														const nextTop = sectionEl.getBoundingClientRect().top;
+														container.scrollTop += nextTop - previousTop;
+													});
+												}}
+											>
+												{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+												<span
+													className="truncate"
+													title={group.path}
+													style={{ flex: "1 1 auto", minWidth: 0 }}
+												>
+													{truncatePathMiddle(group.path)}
+												</span>
+												<span style={{ flexShrink: 0 }}>
+													<span className="text-status-green">+{group.added}</span>{" "}
+													<span className="text-status-red">-{group.removed}</span>
+													{group.added === 0 && group.removed === 0 && hasBinaryEntry ? (
+														<span className="ml-2 text-text-tertiary">Binary</span>
+													) : null}
+												</span>
+											</button>
+										</ContextMenu.Trigger>
+										<ContextMenu.Portal>
+											<FileContextMenuItems
+												fileName={group.path.split("/").pop() ?? group.path}
+												filePath={group.path}
+												navigateToFile={navigateToFile}
+											/>
+										</ContextMenu.Portal>
+									</ContextMenu.Root>
 									{isExpanded ? (
 										<div
 											className="rounded-b-md border-x border-b border-border bg-surface-1"

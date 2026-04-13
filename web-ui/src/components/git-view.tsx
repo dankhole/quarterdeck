@@ -240,6 +240,8 @@ export interface GitViewProps {
 	onCompareNavigationConsumed?: () => void;
 	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
 	onFileNavigationConsumed?: () => void;
+	/** Navigate to a file in a different main view (e.g. file browser). */
+	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
 	/** Slot for the branch pill + git status controls rendered in the tab bar. */
 	branchStatusSlot?: React.ReactNode;
 	/** When provided, renders the git history panel instead of the normal diff content. */
@@ -258,6 +260,7 @@ export function GitView({
 	onCompareNavigationConsumed,
 	pendingFileNavigation,
 	onFileNavigationConsumed,
+	navigateToFile,
 	branchStatusSlot,
 	gitHistoryPanel,
 	pinnedBranches,
@@ -561,6 +564,7 @@ export function GitView({
 											selectedPath={selectedPath}
 											onSelectPath={setSelectedPath}
 											panelFlex="1 1 0"
+											navigateToFile={navigateToFile}
 										/>
 									</div>
 									<ResizeHandle
@@ -586,6 +590,7 @@ export function GitView({
 									viewMode="split"
 									comments={diffComments}
 									onCommentsChange={setDiffComments}
+									navigateToFile={navigateToFile}
 								/>
 							</div>
 						</>

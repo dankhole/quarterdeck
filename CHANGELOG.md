@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Git view — file context menus
+
+- Right-clicking a file name in the diff viewer (both file headers and the file tree sidebar) now shows a context menu with Copy name, Copy path, and Show in File Browser.
+- Extracted shared `FileContextMenuItems` component in `context-menu-utils.tsx` — used by diff viewer, file tree, and file browser panels to eliminate duplicated context menu markup.
+
 ### Top bar scope indicator
 
 - Added a colored left-edge accent to the top bar that mirrors the file browser scope bar — gray for home, blue for task, purple for branch view. When viewing a task, the task title is shown (truncated to 200px) so the current scope is always visible at a glance.

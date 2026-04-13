@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
-import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
+import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeFileContentResponse } from "@/runtime/types";
@@ -324,23 +324,10 @@ export function FileBrowserTreePanel({
 										</button>
 									</ContextMenu.Trigger>
 									<ContextMenu.Portal>
-										<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
-											<ContextMenu.Item
-												className={CONTEXT_MENU_ITEM_CLASS}
-												onSelect={() => copyToClipboard(node.name, "Name")}
-											>
-												<ClipboardCopy size={14} className="text-text-secondary" />
-												Copy name
-											</ContextMenu.Item>
-											<ContextMenu.Item
-												className={CONTEXT_MENU_ITEM_CLASS}
-												onSelect={() =>
-													copyToClipboard(rootPath ? `${rootPath}/${node.path}` : node.path, "Path")
-												}
-											>
-												<ClipboardCopy size={14} className="text-text-secondary" />
-												Copy path
-											</ContextMenu.Item>
+										<FileContextMenuItems
+											fileName={node.name}
+											filePath={rootPath ? `${rootPath}/${node.path}` : node.path}
+										>
 											{!isDirectory && getFileContent ? (
 												<ContextMenu.Item
 													className={CONTEXT_MENU_ITEM_CLASS}
@@ -350,7 +337,7 @@ export function FileBrowserTreePanel({
 													Copy file contents
 												</ContextMenu.Item>
 											) : null}
-										</ContextMenu.Content>
+										</FileContextMenuItems>
 									</ContextMenu.Portal>
 								</ContextMenu.Root>
 							);

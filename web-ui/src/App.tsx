@@ -1390,6 +1390,7 @@ export default function App(): ReactElement {
 													onCompareNavigationConsumed={clearPendingCompareNavigation}
 													pendingFileNavigation={pendingFileNavigation}
 													onFileNavigationConsumed={clearPendingFileNavigation}
+													navigateToFile={navigateToFile}
 													pinnedBranches={pinnedBranches}
 													onTogglePinBranch={handleTogglePinBranch}
 													branchStatusSlot={
