@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-04-13
+
 ### Fix: crash recovery auto-restart
 
 - Running sessions that survive a server crash are now automatically detected during hydration and marked as interrupted. When the UI reconnects, each crash-recovered session auto-restarts with `--continue` so the agent resumes its conversation. Tasks stay in their board columns instead of silently resetting to idle. A toast notifies the user that sessions are being resumed. Terminal scrollback from before the crash is still lost (in-memory only), but the agent picks up where it left off. The manual restart button on task cards continues to work as before.

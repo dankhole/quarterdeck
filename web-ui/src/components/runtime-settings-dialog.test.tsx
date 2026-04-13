@@ -251,8 +251,8 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 
-		// Master toggle — look for the "Sound notifications" heading and the switch.
-		expect(document.body.textContent).toContain("Sound notifications");
+		// Master toggle — look for the "Notifications" heading and the switch.
+		expect(document.body.textContent).toContain("Notifications");
 		expect(document.body.textContent).toContain("Play sounds when tasks need attention");
 
 		// Volume slider.

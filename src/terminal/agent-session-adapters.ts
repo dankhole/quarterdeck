@@ -251,12 +251,12 @@ const claudeAdapter: AgentSessionAdapter = {
 			worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
 			worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		});
-		if (isWorktree) {
+		if (isWorktree && input.workspacePath) {
 			if (input.worktreeAddParentRepoDir) {
 				log.debug("adding --add-dir for parent repo", { path: input.workspacePath });
-				args.push("--add-dir", input.workspacePath!);
+				args.push("--add-dir", input.workspacePath);
 			} else if (input.worktreeAddParentGitDir) {
-				const gitDir = join(input.workspacePath!, ".git");
+				const gitDir = join(input.workspacePath, ".git");
 				log.debug("adding --add-dir for parent .git dir", { path: gitDir });
 				args.push("--add-dir", gitDir);
 			}

@@ -120,7 +120,7 @@ describe.sequential("commitSelectedFiles", () => {
 
 			const headHash = runGit(repoPath, ["rev-parse", "HEAD"]);
 			// commitHash is an abbreviated hash; HEAD is the full hash. Check that HEAD starts with it.
-			expect(headHash.startsWith(result.commitHash!)).toBe(true);
+			expect(headHash.startsWith(result.commitHash as string)).toBe(true);
 		} finally {
 			cleanup();
 		}
