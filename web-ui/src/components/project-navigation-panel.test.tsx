@@ -106,7 +106,7 @@ describe("ProjectNavigationPanel", () => {
 	it("renders the beta notice with report issue link", () => {
 		renderPanel();
 		expect(container.textContent).toContain("Quarterdeck is in beta");
-		const link = container.querySelector('a[href*="github.com"]');
+		const link = container.querySelector('a[href*="bitbucket.build.dkinternal.com"]');
 		expect(link).toBeInstanceOf(HTMLAnchorElement);
 		expect(link?.textContent).toContain("Report issue");
 		expect(link?.getAttribute("target")).toBe("_blank");

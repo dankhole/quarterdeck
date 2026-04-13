@@ -369,13 +369,13 @@ export const BranchPillTrigger = forwardRef<
 			<GitBranch size={11} className="shrink-0 text-text-tertiary" />
 			<span className="truncate">{label}</span>
 			{behind > 0 ? (
-				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-text-tertiary">
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
 					<ArrowDown size={10} />
 					{behind}
 				</span>
 			) : null}
 			{ahead > 0 ? (
-				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-text-tertiary">
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-green">
 					<ArrowUp size={10} />
 					{ahead}
 				</span>
@@ -429,6 +429,18 @@ function BranchItem({
 				>
 					<GitBranch size={12} className="shrink-0" />
 					<span className="flex-1 truncate">{shortName}</span>
+					{gitRef.behind && gitRef.behind > 0 ? (
+						<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
+							<ArrowDown size={10} />
+							{gitRef.behind}
+						</span>
+					) : null}
+					{gitRef.ahead && gitRef.ahead > 0 ? (
+						<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-green">
+							<ArrowUp size={10} />
+							{gitRef.ahead}
+						</span>
+					) : null}
 					{isCurrent ? <Check size={12} className="shrink-0 text-accent" /> : null}
 					{isLocked ? (
 						<Tooltip content={`Checked out by Task: ${worktreeTaskTitle}`} side="right">

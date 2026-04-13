@@ -2,41 +2,21 @@
 
 ## Quarterdeck
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe" width="100%" />
-</p>
-
 A terminal replacement with light IDE features — run many agents in parallel, review diffs, and manage your full dev workflow without swapping between apps. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
 
 Supports **Claude Code** and **Codex CLI** out of the box — Quarterdeck detects whichever is installed and launches it for you.
 
 > [!NOTE]
-> Quarterdeck is under active development. Found a bug or have an idea? Open a [GitHub Issue](https://github.com/dankhole/quarterdeck/issues).
+> Quarterdeck is under active development. Found a bug or have an idea? Reach out to d.cole.
 >
-> **Windows support** is experimental — basic functionality should work but is largely untested. If you try it on Windows, bug reports are very welcome.
-
-<div align="left">
-<table>
-<tbody>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck" target="_blank">GitHub</a>
-</td>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck/issues" target="_blank">Issues</a>
-</td>
-<td align="center">
-<a href="https://github.com/dankhole/quarterdeck/discussions/categories/ideas" target="_blank">Feature Requests</a>
-</td>
-</tbody>
-</table>
-</div>
+> **Windows support** is experimental — basic functionality should work but is largely untested.
 
 ### 1. Install quarterdeck
 
-For the best terminal experience, install a [Nerd Font](https://www.nerdfonts.com/) (we recommend **JetBrainsMono Nerd Font**). Nerd Fonts include the glyphs that CLI agents use for status icons and UI elements. Without one installed, the terminal falls back to SF Mono / Menlo.
+For the best terminal experience, install a [Nerd Font](https://www.nerdfonts.com/) (**JetBrainsMono Nerd Font** recommended). Nerd Fonts include the glyphs that CLI agents use for status icons and UI elements. Without one installed, the terminal falls back to SF Mono / Menlo.
 
 ```bash
-git clone https://github.com/dankhole/quarterdeck.git
+git clone ssh://git@bitbucket.build.dkinternal.com/~d.cole/quarterdeck.git
 cd quarterdeck
 npm run install:all
 npm run link

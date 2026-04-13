@@ -67,6 +67,12 @@
 ### Fix: branch ahead/behind indicators now appear on the branch pill
 
 - The up/down arrow indicators on the branch pill were always showing 0 due to two issues: (1) branches without explicit upstream tracking (never pushed with `-u`) had no `# branch.ab` line in `git status`, so counts stayed at 0 — added a fallback that computes ahead/behind against `origin/<branch>` via `git rev-list --left-right --count`, and (2) remote tracking refs went stale because no periodic fetch was happening — added a 60-second background `git fetch --all --prune` to the workspace metadata monitor, with an initial fetch on workspace connect. The fetch uses `GIT_TERMINAL_PROMPT=0` to prevent hanging on expired credentials.
+- Colored the ahead/behind arrows on the branch pill — behind (down arrow) is blue, ahead (up arrow) is green, instead of both being muted tertiary text.
+- Added ahead/behind indicators to every local branch row in the branch selector dropdown, not just the current branch pill. Uses the same colored arrows.
+
+### Fix: settings dialog type errors in project git polling section
+
+- The project-scoped "Git Polling" section in the settings dialog referenced bare variable names (`focusedTaskPollMs`, `setFocusedTaskPollMs`, etc.) instead of the consolidated `fields.` / `setField()` pattern used everywhere else. Caused TypeScript compilation failures.
 
 ## [0.7.2] — 2026-04-13
 
@@ -571,6 +577,7 @@
 - Task cards now transition to "running" immediately when the user submits a prompt (Enter/CR) from the review sidebar or terminal — previously the card stayed in "awaiting review" for 500ms–2s while waiting for the agent's async `to_in_progress` hook.
 
 ## [0.6.0] — 2026-04-10
+
 
 ### Error boundary & disconnection UX
 

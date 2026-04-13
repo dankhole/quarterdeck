@@ -44,8 +44,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		title: "Create tasks with Quarterdeck",
 		description:
 			"Press c to create a task yourself, or talk to the sidebar Quarterdeck agent to plan work for you. It can pull projects and issues from Linear and GitHub, then turn them into tasks your coding agent can pick up.",
-		assetVideoUrl: "https://github.com/user-attachments/assets/4408930c-33cd-4af9-a343-e82b099eab8c",
-		assetAlt: "Talking to the sidebar Quarterdeck agent to create tasks from Linear and GitHub",
+		assetAlt: "Talking to the sidebar Quarterdeck agent to create tasks",
 		assetWidthPx: 1908,
 		assetHeightPx: 720,
 	},
@@ -54,7 +53,6 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		title: "Auto commit and link",
 		description:
 			"Create dependency chains of linked tasks that start one another automatically. Agents can auto commit their work as they finish, so you can orchestrate tasks in order and watch the board burn them down automatically.",
-		assetVideoUrl: "https://github.com/user-attachments/assets/9a979242-bd22-4ac1-94c5-3ed5351a99d1",
 		assetAlt: "Linking task cards in Quarterdeck",
 		assetWidthPx: 1156,
 		assetHeightPx: 720,
@@ -64,7 +62,6 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		title: "Review changes with comments",
 		description:
 			"Your workflow will feel like writing tickets, reviewing code, and shipping. Watch the agent work next to real-time diffs, then click lines to leave comments like you're reviewing a PR.",
-		assetVideoUrl: "https://github.com/user-attachments/assets/17992035-c1ca-449a-a48b-bb094007f0a1",
 		assetAlt: "Leaving comments on code diffs in Quarterdeck",
 		assetWidthPx: 1616,
 		assetHeightPx: 1080,

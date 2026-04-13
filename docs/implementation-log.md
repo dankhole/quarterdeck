@@ -2,6 +2,17 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: colored ahead/behind arrows on branch pill and dropdown + settings dialog type errors (2026-04-13)
+
+**Branch indicator improvements:**
+- `BranchPillTrigger` — changed the behind (down) arrow from `text-text-tertiary` to `text-status-blue` and the ahead (up) arrow to `text-status-green`. Previously both were muted gray and hard to notice.
+- `BranchItem` — added ahead/behind count indicators (same colored arrows) to every local branch row in the `BranchSelectorPopover` dropdown. The data was already served from the backend via `git for-each-ref`'s `%(upstream:track)` and present on `RuntimeGitRef.ahead`/`.behind` — it just wasn't rendered in individual branch rows.
+
+**Settings dialog fix:**
+- The project-scoped "Git Polling" section (under the "Project" heading, below shortcuts) referenced bare variable names (`focusedTaskPollMs`, `setFocusedTaskPollMs`, `backgroundTaskPollMs`, `setBackgroundTaskPollMs`, `homeRepoPollMs`, `setHomeRepoPollMs`) — likely left over from before the settings form was consolidated into `useSettingsForm`. Changed all six references to use `fields.focusedTaskPollMs` / `setField("focusedTaskPollMs", ...)` etc., matching the pattern used by the identical controls in the Git section above.
+
+Files touched: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`
+
 ## Refactor: continued module decomposition — tier-2 and tier-3 files (2026-04-13)
 
 Continued the large-file decomposition effort, targeting files in the 700–1,100 line range. Four separate passes, each splitting a different area of the codebase. Motivation: reduce agent context window consumption — agents investigating a single concern no longer need to read 800+ lines of unrelated logic.
