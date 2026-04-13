@@ -18,9 +18,9 @@ import {
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
-import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/persistent-terminal-manager";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/terminal-registry";
 import type { BoardCard, CardSelection } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 

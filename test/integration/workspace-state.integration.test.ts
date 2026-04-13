@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -15,8 +14,8 @@ import {
 	removeWorkspaceIndexEntry,
 	saveWorkspaceState,
 } from "../../src/state/workspace-state";
-import { createGitTestEnv } from "../utilities/git-env";
-import { createTempDir } from "../utilities/temp-dir";
+import { initGitRepository } from "../utilities/git-env";
+import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 function createBoard(title: string): RuntimeBoardData {
 	return {
@@ -63,40 +62,6 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
 	};
-}
-
-async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
-	const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-");
-	const previousHome = process.env.HOME;
-	const previousUserProfile = process.env.USERPROFILE;
-	process.env.HOME = tempHome;
-	process.env.USERPROFILE = tempHome;
-	try {
-		return await run();
-	} finally {
-		if (previousHome === undefined) {
-			delete process.env.HOME;
-		} else {
-			process.env.HOME = previousHome;
-		}
-		if (previousUserProfile === undefined) {
-			delete process.env.USERPROFILE;
-		} else {
-			process.env.USERPROFILE = previousUserProfile;
-		}
-		cleanup();
-	}
-}
-
-function initGitRepository(path: string): void {
-	const init = spawnSync("git", ["init"], {
-		cwd: path,
-		stdio: "ignore",
-		env: createGitTestEnv(),
-	});
-	if (init.status !== 0) {
-		throw new Error(`Failed to initialize git repository at ${path}`);
-	}
 }
 
 describe.sequential("workspace-state integration", () => {

@@ -236,6 +236,25 @@ export async function getGitDir(cwd: string): Promise<string> {
 	return isAbsolute(gitDir) ? gitDir : join(cwd, gitDir);
 }
 
+/**
+ * Resolve the repository root directory for a given working directory.
+ */
+export async function resolveRepoRoot(cwd: string): Promise<string> {
+	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
+	if (!result.ok || !result.stdout) {
+		throw new Error("No git repository detected for this workspace.");
+	}
+	return result.stdout;
+}
+
+/**
+ * Check whether a specific git ref exists in the repository.
+ */
+export async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
+	const result = await runGit(repoRoot, ["show-ref", "--verify", "--quiet", ref]);
+	return result.ok;
+}
+
 export function getGitCommandErrorMessage(error: unknown): string {
 	if (error && typeof error === "object" && "stderr" in error) {
 		const stderr = (error as { stderr?: unknown }).stderr;
@@ -249,18 +268,6 @@ export function getGitCommandErrorMessage(error: unknown): string {
 // ---------------------------------------------------------------------------
 // Shared git helpers extracted from git-sync / get-workspace-changes / workspace-state
 // ---------------------------------------------------------------------------
-
-/**
- * Resolve the repository root (`git rev-parse --show-toplevel`).
- * Throws when `cwd` is not inside a git repository.
- */
-export async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
-	if (!result.ok || !result.stdout) {
-		throw new Error("No git repository detected for this workspace.");
-	}
-	return result.stdout;
-}
 
 /** Count newline-separated lines in a string (returns 0 for empty/falsy input). */
 export function countLines(text: string): number {

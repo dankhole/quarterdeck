@@ -1,137 +1,19 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
-import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { createGitTestEnv } from "../utilities/git-env";
+import { commitAll, createGitTestEnv, initGitRepository, runGit } from "../utilities/git-env";
+import {
+	getAvailablePort,
+	requestGracefulShutdown,
+	resolveShutdownIpcHookPath,
+	resolveTsxLoaderImportSpecifier,
+	waitForExit,
+	waitForProcessStart,
+} from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir";
-
-const requireFromHere = createRequire(import.meta.url);
-
-function resolveShutdownIpcHookPath(): string {
-	return resolve(process.cwd(), "test/integration/shutdown-ipc-hook.cjs");
-}
-
-function resolveTsxLoaderImportSpecifier(): string {
-	return pathToFileURL(requireFromHere.resolve("tsx")).href;
-}
-
-function initGitRepository(path: string): void {
-	const init = spawnSync("git", ["init"], {
-		cwd: path,
-		stdio: "ignore",
-		env: createGitTestEnv(),
-	});
-	if (init.status !== 0) {
-		throw new Error(`Failed to initialize git repository at ${path}`);
-	}
-	const checkout = spawnSync("git", ["checkout", "-B", "main"], {
-		cwd: path,
-		stdio: "ignore",
-		env: createGitTestEnv(),
-	});
-	if (checkout.status !== 0) {
-		throw new Error(`Failed to create main branch at ${path}`);
-	}
-}
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
-	}
-	return result.stdout.trim();
-}
-
-function commitAll(cwd: string, message: string): string {
-	runGit(cwd, ["add", "."]);
-	runGit(cwd, ["commit", "-qm", message]);
-	return runGit(cwd, ["rev-parse", "HEAD"]);
-}
-
-async function getAvailablePort(): Promise<number> {
-	const server = createServer();
-	await new Promise<void>((resolveListen, rejectListen) => {
-		server.once("error", rejectListen);
-		server.listen(0, "127.0.0.1", () => {
-			resolveListen();
-		});
-	});
-	const address = server.address();
-	const port = typeof address === "object" && address ? address.port : null;
-	await new Promise<void>((resolveClose, rejectClose) => {
-		server.close((error) => {
-			if (error) {
-				rejectClose(error);
-				return;
-			}
-			resolveClose();
-		});
-	});
-	if (!port) {
-		throw new Error("Could not allocate a test port.");
-	}
-	return port;
-}
-
-async function waitForServerStart(process: ChildProcess, timeoutMs = 10_000): Promise<void> {
-	await new Promise<void>((resolveStart, rejectStart) => {
-		if (!process.stdout || !process.stderr) {
-			rejectStart(new Error("Expected child process stdout/stderr pipes to be available."));
-			return;
-		}
-		let settled = false;
-		let stdout = "";
-		let stderr = "";
-		const timeoutId = setTimeout(() => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			rejectStart(new Error(`Timed out waiting for server start.\nstdout:\n${stdout}\nstderr:\n${stderr}`));
-		}, timeoutMs);
-		const handleOutput = (chunk: Buffer, source: "stdout" | "stderr") => {
-			const text = chunk.toString();
-			if (source === "stdout") {
-				stdout += text;
-			} else {
-				stderr += text;
-			}
-			if (!stdout.includes("Quarterdeck running at ") || settled) {
-				return;
-			}
-			settled = true;
-			clearTimeout(timeoutId);
-			resolveStart();
-		};
-		process.stdout.on("data", (chunk: Buffer) => {
-			handleOutput(chunk, "stdout");
-		});
-		process.stderr.on("data", (chunk: Buffer) => {
-			handleOutput(chunk, "stderr");
-		});
-		process.once("exit", (code, signal) => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			clearTimeout(timeoutId);
-			rejectStart(
-				new Error(
-					`Server process exited before startup (code=${String(code)} signal=${String(signal)}).\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-				),
-			);
-		});
-	});
-}
 
 function installBrowserOpenStub(binDir: string, logPath: string): void {
 	mkdirSync(binDir, { recursive: true });
@@ -162,44 +44,13 @@ async function waitForBrowserOpenCount(logPath: string, expectedCount: number, t
 		if (readBrowserOpenLog(logPath).length >= expectedCount) {
 			return;
 		}
-		await new Promise<void>((resolve) => {
-			setTimeout(resolve, 25);
+		await new Promise<void>((resolveDelay) => {
+			setTimeout(resolveDelay, 25);
 		});
 	}
 	throw new Error(
 		`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`,
 	);
-}
-
-async function waitForExit(process: ChildProcess, timeoutMs: number): Promise<boolean> {
-	if (process.exitCode !== null) {
-		return true;
-	}
-
-	return await new Promise<boolean>((resolveExit) => {
-		const handleExit = () => {
-			clearTimeout(timeoutId);
-			resolveExit(true);
-		};
-		const timeoutId = setTimeout(() => {
-			process.removeListener("exit", handleExit);
-			resolveExit(false);
-		}, timeoutMs);
-		process.once("exit", handleExit);
-	});
-}
-
-async function requestGracefulShutdown(process: ChildProcess): Promise<void> {
-	if (typeof process.send !== "function" || !process.connected) {
-		process.kill("SIGINT");
-		return;
-	}
-
-	await new Promise<void>((resolveSend) => {
-		process.send?.({ type: "quarterdeck.shutdown" }, () => {
-			resolveSend();
-		});
-	});
 }
 
 function spawnSourceCli(
@@ -220,31 +71,36 @@ async function runCliCommandAndCollectOutput(options: {
 	env: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; exitCode: number | null; didExit: boolean }> {
-	const process = spawnSourceCli(options.args, {
+	const childProcess = spawnSourceCli(options.args, {
 		cwd: options.cwd,
 		env: options.env,
 	});
 
 	let stdout = "";
 	let stderr = "";
-	process.stdout?.on("data", (chunk: Buffer) => {
+	childProcess.stdout?.on("data", (chunk: Buffer) => {
 		stdout += chunk.toString();
 	});
-	process.stderr?.on("data", (chunk: Buffer) => {
+	childProcess.stderr?.on("data", (chunk: Buffer) => {
 		stderr += chunk.toString();
 	});
 
-	const didExit = await waitForExit(process, options.timeoutMs ?? 8_000);
+	const didExit = await waitForExit(childProcess, options.timeoutMs ?? 8_000);
 	if (!didExit) {
-		process.kill("SIGKILL");
+		childProcess.kill("SIGKILL");
 	}
 
 	return {
 		stdout,
 		stderr,
-		exitCode: process.exitCode,
+		exitCode: childProcess.exitCode,
 		didExit,
 	};
+}
+
+function initGitRepositoryWithMainBranch(path: string): void {
+	initGitRepository(path);
+	runGit(path, ["checkout", "-B", "main"]);
 }
 
 describe("source task commands", () => {
@@ -253,7 +109,7 @@ describe("source task commands", () => {
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-task-exit-");
 
 		try {
-			initGitRepository(projectPath);
+			initGitRepositoryWithMainBranch(projectPath);
 			writeFileSync(join(projectPath, "README.md"), "# Task Exit Test\n", "utf8");
 			commitAll(projectPath, "init");
 
@@ -282,7 +138,7 @@ describe("source task commands", () => {
 			);
 
 			try {
-				await waitForServerStart(serverProcess);
+				await waitForProcessStart(serverProcess);
 
 				const commandProcess = spawnSourceCli(
 					[
@@ -339,7 +195,7 @@ describe("source task commands", () => {
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-root-launch-open-");
 
 		try {
-			initGitRepository(projectPath);
+			initGitRepositoryWithMainBranch(projectPath);
 			writeFileSync(join(projectPath, "README.md"), "# Root Launch Browser Open Test\n", "utf8");
 			commitAll(projectPath, "init");
 
@@ -372,7 +228,7 @@ describe("source task commands", () => {
 			);
 
 			try {
-				await waitForServerStart(serverProcess);
+				await waitForProcessStart(serverProcess);
 
 				for (const [args, expectedOpenCount] of [
 					[[], 1],
@@ -409,7 +265,7 @@ describe("source task commands", () => {
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-task-trash-delete-");
 
 		try {
-			initGitRepository(projectPath);
+			initGitRepositoryWithMainBranch(projectPath);
 			writeFileSync(join(projectPath, "README.md"), "# Task Trash Delete Test\n", "utf8");
 			commitAll(projectPath, "init");
 
@@ -438,7 +294,7 @@ describe("source task commands", () => {
 			);
 
 			try {
-				await waitForServerStart(serverProcess);
+				await waitForProcessStart(serverProcess);
 
 				for (const prompt of [
 					"Create a temporary task for trash and delete",

@@ -1,12 +1,11 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
-import { createGitTestEnv } from "../utilities/git-env";
-import { createTempDir } from "../utilities/temp-dir";
+import { runGit } from "../utilities/git-env";
+import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 function expectMirroredPathBehavior(path: string): void {
 	const exists = existsSync(path);
@@ -18,45 +17,6 @@ function expectMirroredPathBehavior(path: string): void {
 	}
 	expect(exists).toBe(true);
 	expect(lstatSync(path).isSymbolicLink()).toBe(true);
-}
-
-function runGit(cwd: string, args: string[]): string {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		env: createGitTestEnv(),
-	});
-	if (result.status !== 0) {
-		throw new Error(
-			[`git ${args.join(" ")} failed in ${cwd}`, result.stdout.trim(), result.stderr.trim()]
-				.filter((part) => part.length > 0)
-				.join("\n"),
-		);
-	}
-	return result.stdout.trim();
-}
-
-async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
-	const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-");
-	const previousHome = process.env.HOME;
-	const previousUserProfile = process.env.USERPROFILE;
-	process.env.HOME = tempHome;
-	process.env.USERPROFILE = tempHome;
-	try {
-		return await run();
-	} finally {
-		if (previousHome === undefined) {
-			delete process.env.HOME;
-		} else {
-			process.env.HOME = previousHome;
-		}
-		if (previousUserProfile === undefined) {
-			delete process.env.USERPROFILE;
-		} else {
-			process.env.USERPROFILE = previousUserProfile;
-		}
-		cleanup();
-	}
 }
 
 describe.sequential("task-worktree integration", () => {

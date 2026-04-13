@@ -1,21 +1,8 @@
 // Settings dialog composition for Quarterdeck.
-import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
-import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { DEFAULT_PROMPT_SHORTCUTS } from "@runtime-config-defaults";
-import {
-	Check,
-	ChevronDown,
-	Circle,
-	CircleDot,
-	ExternalLink,
-	Plus,
-	Settings,
-	Sparkles,
-	Volume2,
-	X,
-} from "lucide-react";
+import { ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, Sparkles, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
@@ -38,12 +25,13 @@ import {
 	DialogFooter,
 	DialogHeader,
 } from "@/components/ui/dialog";
+import { SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
 import { useSettingsForm } from "@/hooks/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost, saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
-import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
+import { resetAllTerminalRenderers } from "@/terminal/terminal-registry";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -75,6 +63,38 @@ function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, aut
 export type RuntimeSettingsSection = "shortcuts";
 
 const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex"];
+
+const GIT_CARD_INDICATOR_TOGGLES = [
+	{
+		field: "uncommittedChangesOnCardsEnabled",
+		label: "Show uncommitted changes dot on cards",
+		description: "Show a red dot on task cards when the worktree has uncommitted file changes.",
+	},
+	{
+		field: "unmergedChangesIndicatorEnabled",
+		label: "Show unmerged changes indicator",
+		description:
+			"Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the base branch.",
+	},
+	{
+		field: "behindBaseIndicatorEnabled",
+		label: "Show behind-base indicator",
+		description: "Show a blue dot on the Files icon when the base branch has advanced since the task branched off.",
+	},
+] as const;
+
+const POLL_INTERVAL_FIELDS = [
+	{ id: "focused-task-poll", label: "Selected task", field: "focusedTaskPollMs" },
+	{ id: "background-task-poll", label: "Background tasks", field: "backgroundTaskPollMs" },
+	{ id: "home-repo-poll", label: "Home repository", field: "homeRepoPollMs" },
+] as const;
+
+const CONFIRMATION_TOGGLES = [
+	{ field: "showTrashWorktreeNotice", label: "Show worktree notice when trashing tasks", inverted: false },
+	{ field: "skipTaskCheckoutConfirmation", label: "Show task worktree checkout confirmation", inverted: true },
+	{ field: "skipHomeCheckoutConfirmation", label: "Show home checkout confirmation", inverted: true },
+	{ field: "skipCherryPickConfirmation", label: "Show cherry-pick landing confirmation", inverted: true },
+] as const;
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -502,18 +522,12 @@ export function RuntimeSettingsDialog({
 						htmlFor={bypassPermissionsCheckboxId}
 						className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
 					>
-						<RadixCheckbox.Root
+						<SettingsCheckbox
 							id={bypassPermissionsCheckboxId}
-							aria-label="Enable bypass permissions flag"
 							checked={fields.agentAutonomousModeEnabled}
+							onCheckedChange={(v) => setField("agentAutonomousModeEnabled", v)}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("agentAutonomousModeEnabled", checked === true)}
-							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={12} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
+						/>
 						<span>Enable bypass permissions flag</span>
 					</label>
 					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
@@ -540,18 +554,12 @@ export function RuntimeSettingsDialog({
 						htmlFor="runtime-settings-show-summary-on-cards"
 						className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
 					>
-						<RadixCheckbox.Root
+						<SettingsCheckbox
 							id="runtime-settings-show-summary-on-cards"
-							aria-label="Show conversation summary on cards"
 							checked={fields.showSummaryOnCards}
+							onCheckedChange={(v) => setField("showSummaryOnCards", v)}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("showSummaryOnCards", checked === true)}
-							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={12} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
+						/>
 						<span>Show conversation summary on cards</span>
 					</label>
 					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
@@ -562,18 +570,12 @@ export function RuntimeSettingsDialog({
 						htmlFor="runtime-settings-auto-generate-summary"
 						className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
 					>
-						<RadixCheckbox.Root
+						<SettingsCheckbox
 							id="runtime-settings-auto-generate-summary"
-							aria-label="Auto-generate summary with LLM"
 							checked={fields.autoGenerateSummary}
+							onCheckedChange={(v) => setField("autoGenerateSummary", v)}
 							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("autoGenerateSummary", checked === true)}
-							className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={12} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
+						/>
 						<span>Auto-generate summary with LLM</span>
 					</label>
 					<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
@@ -611,34 +613,24 @@ export function RuntimeSettingsDialog({
 					) : null}
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.audibleNotificationsEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("audibleNotificationsEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Play sounds when tasks need attention</span>
-					</div>
+					<SettingsSwitch
+						checked={fields.audibleNotificationsEnabled}
+						onCheckedChange={(v) => setField("audibleNotificationsEnabled", v)}
+						disabled={controlsDisabled}
+						label="Play sounds when tasks need attention"
+					/>
 					<div
 						className={cn(
 							"flex items-center gap-2 mt-2 text-[13px]",
 							(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 						)}
 					>
-						<RadixCheckbox.Root
+						<SettingsCheckbox
 							id="audible-notification-only-when-hidden"
 							checked={fields.audibleNotificationsOnlyWhenHidden}
+							onCheckedChange={(v) => setField("audibleNotificationsOnlyWhenHidden", v)}
 							disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
-							onCheckedChange={(checked) => setField("audibleNotificationsOnlyWhenHidden", checked === true)}
-							className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={12} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
+						/>
 						<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
 							<span className="text-text-primary">Only when tab is hidden</span>
 							<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
@@ -687,22 +679,17 @@ export function RuntimeSettingsDialog({
 									(!fields.audibleNotificationsEnabled || controlsDisabled) && "opacity-40",
 								)}
 							>
-								<RadixCheckbox.Root
+								<SettingsCheckbox
 									id={`audible-notification-${key}`}
 									checked={fields.audibleNotificationEvents[key]}
-									disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
-									onCheckedChange={(checked) =>
+									onCheckedChange={(v) =>
 										setField("audibleNotificationEvents", {
 											...fields.audibleNotificationEvents,
-											[key]: checked === true,
+											[key]: v,
 										})
 									}
-									className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
-								>
-									<RadixCheckbox.Indicator>
-										<Check size={12} className="text-white" />
-									</RadixCheckbox.Indicator>
-								</RadixCheckbox.Root>
+									disabled={!fields.audibleNotificationsEnabled || controlsDisabled}
+								/>
 								<label
 									htmlFor={`audible-notification-${key}`}
 									className="flex items-center gap-1 cursor-pointer"
@@ -727,20 +714,13 @@ export function RuntimeSettingsDialog({
 					</div>
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.shellAutoRestartEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Auto-restart shell terminals on unexpected exit</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						When enabled, shell terminals that crash or exit unexpectedly will automatically restart.
-					</p>
+					<SettingsSwitch
+						checked={fields.shellAutoRestartEnabled}
+						onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
+						disabled={controlsDisabled}
+						label="Auto-restart shell terminals on unexpected exit"
+						description="When enabled, shell terminals that crash or exit unexpectedly will automatically restart."
+					/>
 					<FontWeightInput
 						value={fields.terminalFontWeight}
 						onChange={(v) => setField("terminalFontWeight", v)}
@@ -749,21 +729,14 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px] mt-1 mb-0">
 						CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.terminalWebGLRenderer}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("terminalWebGLRenderer", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Use WebGL renderer</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native
-						canvas 2D renderer.
-					</p>
+					<SettingsSwitch
+						className="mt-3"
+						checked={fields.terminalWebGLRenderer}
+						onCheckedChange={(v) => setField("terminalWebGLRenderer", v)}
+						disabled={controlsDisabled}
+						label="Use WebGL renderer"
+						description="Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native canvas 2D renderer."
+					/>
 					<Button
 						size="sm"
 						className="mt-3"
@@ -785,178 +758,69 @@ export function RuntimeSettingsDialog({
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
 					<p className="text-[13px] font-medium text-text-secondary mt-0 mb-2">Card indicators</p>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.uncommittedChangesOnCardsEnabled}
+					{GIT_CARD_INDICATOR_TOGGLES.map(({ field, label, description }, i) => (
+						<SettingsSwitch
+							key={field}
+							className={i > 0 ? "mt-3" : undefined}
+							checked={fields[field]}
+							onCheckedChange={(v) => setField(field, v)}
 							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("uncommittedChangesOnCardsEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show uncommitted changes dot on cards</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Show a red dot on task cards when the worktree has uncommitted file changes.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.unmergedChangesIndicatorEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("unmergedChangesIndicatorEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show unmerged changes indicator</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Show a blue dot on the Changes icon when a task branch has committed changes not yet merged into the
-						base branch.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.behindBaseIndicatorEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("behindBaseIndicatorEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show behind-base indicator</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Show a blue dot on the Files icon when the base branch has advanced since the task branched off.
-					</p>
+							label={label}
+							description={description}
+						/>
+					))}
 					<h6 className="font-semibold text-text-primary mt-4 mb-1">Git Polling</h6>
 					<p className="text-text-secondary text-[13px] mt-1 mb-3">
 						How often to check for git changes in task worktrees. Lower values show changes faster but use more
 						resources when many tasks are active.
 					</p>
 					<div className="flex flex-col gap-2">
-						<div className="flex items-center justify-between gap-3">
-							<label htmlFor="focused-task-poll" className="text-text-primary text-[13px] shrink-0">
-								Selected task
-							</label>
-							<div className="flex items-center gap-1.5">
-								<input
-									id="focused-task-poll"
-									type="number"
-									min={500}
-									max={60000}
-									step={500}
-									value={fields.focusedTaskPollMs}
-									onChange={(event) => setField("focusedTaskPollMs", clampPollInterval(event.target.value))}
-									disabled={controlsDisabled}
-									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-								/>
-								<span className="text-text-secondary text-[11px]">ms</span>
+						{POLL_INTERVAL_FIELDS.map(({ id, label, field }) => (
+							<div key={id} className="flex items-center justify-between gap-3">
+								<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
+									{label}
+								</label>
+								<div className="flex items-center gap-1.5">
+									<input
+										id={id}
+										type="number"
+										min={500}
+										max={60000}
+										step={500}
+										value={fields[field]}
+										onChange={(event) => setField(field, clampPollInterval(event.target.value))}
+										disabled={controlsDisabled}
+										className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
+									/>
+									<span className="text-text-secondary text-[11px]">ms</span>
+								</div>
 							</div>
-						</div>
-						<div className="flex items-center justify-between gap-3">
-							<label htmlFor="background-task-poll" className="text-text-primary text-[13px] shrink-0">
-								Background tasks
-							</label>
-							<div className="flex items-center gap-1.5">
-								<input
-									id="background-task-poll"
-									type="number"
-									min={500}
-									max={60000}
-									step={500}
-									value={fields.backgroundTaskPollMs}
-									onChange={(event) => setField("backgroundTaskPollMs", clampPollInterval(event.target.value))}
-									disabled={controlsDisabled}
-									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-								/>
-								<span className="text-text-secondary text-[11px]">ms</span>
-							</div>
-						</div>
-						<div className="flex items-center justify-between gap-3">
-							<label htmlFor="home-repo-poll" className="text-text-primary text-[13px] shrink-0">
-								Home repository
-							</label>
-							<div className="flex items-center gap-1.5">
-								<input
-									id="home-repo-poll"
-									type="number"
-									min={500}
-									max={60000}
-									step={500}
-									value={fields.homeRepoPollMs}
-									onChange={(event) => setField("homeRepoPollMs", clampPollInterval(event.target.value))}
-									disabled={controlsDisabled}
-									className="h-7 w-20 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right focus:border-border-focus focus:outline-none"
-								/>
-								<span className="text-text-secondary text-[11px]">ms</span>
-							</div>
-						</div>
+						))}
 					</div>
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Confirmations</h6>
 					<p className="text-text-secondary text-[13px] mt-0 mb-2">
 						Re-enable dialogs and confirmations you've previously dismissed.
 					</p>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.showTrashWorktreeNotice}
+					{CONFIRMATION_TOGGLES.map(({ field, label, inverted }, i) => (
+						<SettingsSwitch
+							key={field}
+							className={i > 0 ? "mt-3" : undefined}
+							checked={inverted ? !fields[field] : fields[field]}
+							onCheckedChange={(v) => setField(field, inverted ? !v : v)}
 							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("showTrashWorktreeNotice", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show worktree notice when trashing tasks</span>
-					</div>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={!fields.skipTaskCheckoutConfirmation}
-							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("skipTaskCheckoutConfirmation", !checked)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show task worktree checkout confirmation</span>
-					</div>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={!fields.skipHomeCheckoutConfirmation}
-							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("skipHomeCheckoutConfirmation", !checked)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show home checkout confirmation</span>
-					</div>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={!fields.skipCherryPickConfirmation}
-							disabled={controlsDisabled}
-							onCheckedChange={(checked) => setField("skipCherryPickConfirmation", !checked)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show cherry-pick landing confirmation</span>
-					</div>
+							label={label}
+						/>
+					))}
 
 					<h6 className="font-semibold text-text-primary mt-4 mb-2">Troubleshooting</h6>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.showRunningTaskEmergencyActions}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Show stop & trash buttons on running tasks</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Adds emergency stop and trash actions to in-progress cards when a task is stuck.
-					</p>
+					<SettingsSwitch
+						checked={fields.showRunningTaskEmergencyActions}
+						onCheckedChange={(v) => setField("showRunningTaskEmergencyActions", v)}
+						disabled={controlsDisabled}
+						label="Show stop & trash buttons on running tasks"
+						description="Adds emergency stop and trash actions to in-progress cards when a task is stuck."
+					/>
 					<Button size="sm" className="mt-3" onClick={resetLayoutCustomizations}>
 						Reset layout
 					</Button>
@@ -975,82 +839,71 @@ export function RuntimeSettingsDialog({
 						directories, which breaks worktree isolation — the status bar, branch display, and "shared" indicators
 						may desync because they assume the agent stays in its assigned worktree.
 					</p>
-					<div className="flex items-center gap-2">
-						<RadixSwitch.Root
-							checked={fields.worktreeAddParentRepoDir}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">
-							Allow agents to access the parent repo from worktrees
-						</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Passes the parent repository path via{" "}
-						<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees can
-						read and write files in the original repo. The agent can navigate to the home repo, which means its
-						working directory may drift — UI elements that track the agent's location (status bar branch, card
-						branch pill) will show the home repo state instead of the worktree. Claude Code only.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.worktreeAddParentGitDir}
-							disabled={controlsDisabled || fields.worktreeAddParentRepoDir}
-							onCheckedChange={(v) => setField("worktreeAddParentGitDir", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">
-							Allow agents to access the parent repo's{" "}
-							<code className="text-xs bg-surface-3 px-1 rounded">.git</code> directory
-						</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Passes only the parent repo's <code className="text-xs bg-surface-3 px-1 rounded">.git</code>{" "}
-						directory via <code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> instead of the
-						entire repo. Agents can read git history, branches, and refs without full file access. Ignored when
-						the full parent repo option above is enabled. Claude Code only.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.worktreeAddQuarterdeckDir}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">
-							Allow agents to access the{" "}
-							<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code> directory
-						</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Gives agents read/write access to Quarterdeck state files (board data, session state, other
-						worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also
-						navigate into other task worktrees, breaking isolation. Claude Code only.
-					</p>
-					<div className="flex items-center gap-2 mt-3">
-						<RadixSwitch.Root
-							checked={fields.eventLogEnabled}
-							disabled={controlsDisabled}
-							onCheckedChange={(v) => setField("eventLogEnabled", v)}
-							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
-						>
-							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
-						</RadixSwitch.Root>
-						<span className="text-[13px] text-text-primary">Session event log</span>
-					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-0">
-						Writes session lifecycle events to a JSONL file on disk (
-						<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>). Intended
-						for developer debugging — helps diagnose stuck sessions and state tracking issues. The file grows up
-						to 10 MB before rotating. Leave this off unless you are actively investigating a problem.
-					</p>
+					<SettingsSwitch
+						checked={fields.worktreeAddParentRepoDir}
+						onCheckedChange={(v) => setField("worktreeAddParentRepoDir", v)}
+						disabled={controlsDisabled}
+						label="Allow agents to access the parent repo from worktrees"
+						description={
+							<>
+								Passes the parent repository path via{" "}
+								<code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> so agents in task worktrees
+								can read and write files in the original repo. The agent can navigate to the home repo, which
+								means its working directory may drift — UI elements that track the agent's location (status bar
+								branch, card branch pill) will show the home repo state instead of the worktree. Claude Code
+								only.
+							</>
+						}
+					/>
+					<SettingsSwitch
+						className="mt-3"
+						checked={fields.worktreeAddParentGitDir}
+						onCheckedChange={(v) => setField("worktreeAddParentGitDir", v)}
+						disabled={controlsDisabled || fields.worktreeAddParentRepoDir}
+						label={
+							<>
+								Allow agents to access the parent repo's{" "}
+								<code className="text-xs bg-surface-3 px-1 rounded">.git</code> directory
+							</>
+						}
+						description={
+							<>
+								Passes only the parent repo's <code className="text-xs bg-surface-3 px-1 rounded">.git</code>{" "}
+								directory via <code className="text-xs bg-surface-3 px-1 rounded">--add-dir</code> instead of
+								the entire repo. Agents can read git history, branches, and refs without full file access.
+								Ignored when the full parent repo option above is enabled. Claude Code only.
+							</>
+						}
+					/>
+					<SettingsSwitch
+						className="mt-3"
+						checked={fields.worktreeAddQuarterdeckDir}
+						onCheckedChange={(v) => setField("worktreeAddQuarterdeckDir", v)}
+						disabled={controlsDisabled}
+						label={
+							<>
+								Allow agents to access the{" "}
+								<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck</code> directory
+							</>
+						}
+						description="Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also navigate into other task worktrees, breaking isolation. Claude Code only."
+					/>
+					<SettingsSwitch
+						className="mt-3"
+						checked={fields.eventLogEnabled}
+						onCheckedChange={(v) => setField("eventLogEnabled", v)}
+						disabled={controlsDisabled}
+						label="Session event log"
+						description={
+							<>
+								Writes session lifecycle events to a JSONL file on disk (
+								<code className="text-xs bg-surface-3 px-1 rounded">~/.quarterdeck/logs/events.jsonl</code>
+								). Intended for developer debugging — helps diagnose stuck sessions and state tracking issues.
+								The file grows up to 10 MB before rotating. Leave this off unless you are actively investigating
+								a problem.
+							</>
+						}
+					/>
 
 					{showResetDefaultShortcuts ? (
 						<>

@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-	runGitCheckoutAction,
-	runGitSyncAction,
 	stashApply,
 	stashCount,
 	stashDrop,
@@ -14,7 +12,8 @@ import {
 	stashPop,
 	stashPush,
 	stashShow,
-} from "../../src/workspace/git-sync";
+} from "../../src/workspace/git-stash";
+import { runGitCheckoutAction, runGitSyncAction } from "../../src/workspace/git-sync";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

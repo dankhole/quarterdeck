@@ -46,11 +46,38 @@ vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("../../../src/workspace/git-cherry-pick.js", () => ({
+	cherryPickCommit: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/git-conflict.js", () => ({
+	abortMergeOrRebase: vi.fn(),
+	continueMergeOrRebase: vi.fn(),
+	getAutoMergedFileContent: vi.fn(),
+	getConflictFileContent: vi.fn(),
+	resolveConflictFile: vi.fn(),
+	runGitMergeAction: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/git-probe.js", () => ({
+	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
+}));
+
+vi.mock("../../../src/workspace/git-stash.js", () => ({
+	stashApply: vi.fn(),
+	stashDrop: vi.fn(),
+	stashList: vi.fn(),
+	stashPop: vi.fn(),
+	stashPush: vi.fn(),
+	stashShow: vi.fn(),
+}));
+
 vi.mock("../../../src/workspace/git-sync.js", () => ({
 	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
+	createBranchFromRef: vi.fn(),
+	deleteBranch: vi.fn(),
 	discardGitChanges: gitSyncMocks.discardGitChanges,
 	discardSingleFile: gitSyncMocks.discardSingleFile,
-	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
 	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
 	runGitSyncAction: gitSyncMocks.runGitSyncAction,
 }));

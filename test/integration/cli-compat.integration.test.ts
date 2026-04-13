@@ -1,15 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const requireFromHere = createRequire(import.meta.url);
-
-function resolveTsxLoaderImportSpecifier(): string {
-	return pathToFileURL(requireFromHere.resolve("tsx")).href;
-}
+import { resolveTsxLoaderImportSpecifier } from "../utilities/integration-server";
 
 describe("cli compatibility flags", () => {
 	it("accepts the deprecated --agent flag as a no-op", () => {

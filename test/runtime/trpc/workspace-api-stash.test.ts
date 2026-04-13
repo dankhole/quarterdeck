@@ -49,27 +49,40 @@ const workspaceStateMocks = vi.hoisted(() => ({
 	WorkspaceStateConflictError: class extends Error {},
 }));
 
-vi.mock("../../../src/workspace/git-sync.js", () => ({
-	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
-	discardGitChanges: gitSyncMocks.discardGitChanges,
-	discardSingleFile: gitSyncMocks.discardSingleFile,
-	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
-	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
-	runGitSyncAction: gitSyncMocks.runGitSyncAction,
-	runGitMergeAction: gitSyncMocks.runGitMergeAction,
+vi.mock("../../../src/workspace/git-cherry-pick.js", () => ({
+	cherryPickCommit: gitSyncMocks.cherryPickCommit,
+}));
+
+vi.mock("../../../src/workspace/git-conflict.js", () => ({
+	abortMergeOrRebase: gitSyncMocks.abortMergeOrRebase,
+	continueMergeOrRebase: gitSyncMocks.continueMergeOrRebase,
+	getAutoMergedFileContent: vi.fn(),
 	getConflictFileContent: gitSyncMocks.getConflictFileContent,
 	resolveConflictFile: gitSyncMocks.resolveConflictFile,
-	continueMergeOrRebase: gitSyncMocks.continueMergeOrRebase,
-	abortMergeOrRebase: gitSyncMocks.abortMergeOrRebase,
-	createBranchFromRef: gitSyncMocks.createBranchFromRef,
-	deleteBranch: gitSyncMocks.deleteBranch,
-	cherryPickCommit: gitSyncMocks.cherryPickCommit,
-	stashPush: gitSyncMocks.stashPush,
-	stashList: gitSyncMocks.stashList,
-	stashPop: gitSyncMocks.stashPop,
+	runGitMergeAction: gitSyncMocks.runGitMergeAction,
+}));
+
+vi.mock("../../../src/workspace/git-probe.js", () => ({
+	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
+}));
+
+vi.mock("../../../src/workspace/git-stash.js", () => ({
 	stashApply: gitSyncMocks.stashApply,
 	stashDrop: gitSyncMocks.stashDrop,
+	stashList: gitSyncMocks.stashList,
+	stashPop: gitSyncMocks.stashPop,
+	stashPush: gitSyncMocks.stashPush,
 	stashShow: gitSyncMocks.stashShow,
+}));
+
+vi.mock("../../../src/workspace/git-sync.js", () => ({
+	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
+	createBranchFromRef: gitSyncMocks.createBranchFromRef,
+	deleteBranch: gitSyncMocks.deleteBranch,
+	discardGitChanges: gitSyncMocks.discardGitChanges,
+	discardSingleFile: gitSyncMocks.discardSingleFile,
+	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
+	runGitSyncAction: gitSyncMocks.runGitSyncAction,
 }));
 
 vi.mock("../../../src/workspace/task-worktree.js", () => ({

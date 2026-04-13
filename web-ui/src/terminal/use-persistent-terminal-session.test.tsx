@@ -9,7 +9,7 @@ const ensurePersistentTerminalMock = vi.hoisted(() => vi.fn());
 const disposePersistentTerminalMock = vi.hoisted(() => vi.fn());
 const registerTerminalControllerMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/terminal/persistent-terminal-manager", () => ({
+vi.mock("@/terminal/terminal-registry", () => ({
 	ensurePersistentTerminal: ensurePersistentTerminalMock,
 	disposePersistentTerminal: disposePersistentTerminalMock,
 }));

@@ -11,8 +11,6 @@ import type {
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeGitSummaryResponse,
-	RuntimeGitSyncAction,
-	RuntimeGitSyncResponse,
 	RuntimeListFilesResponse,
 	RuntimeStashDropResponse,
 	RuntimeStashListResponse,
@@ -37,29 +35,26 @@ import {
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
 } from "../workspace/get-workspace-changes";
-import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
+import { cherryPickCommit } from "../workspace/git-cherry-pick";
 import {
 	abortMergeOrRebase,
-	cherryPickCommit,
-	commitSelectedFiles,
 	continueMergeOrRebase,
+	getAutoMergedFileContent,
+	getConflictFileContent,
+	resolveConflictFile as gitResolveConflictFile,
+	runGitMergeAction,
+} from "../workspace/git-conflict";
+import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
+import { getGitSyncSummary } from "../workspace/git-probe";
+import { stashApply, stashDrop, stashList, stashPop, stashPush, stashShow } from "../workspace/git-stash";
+import {
+	commitSelectedFiles,
 	createBranchFromRef,
 	deleteBranch,
 	discardGitChanges,
 	discardSingleFile,
-	getAutoMergedFileContent,
-	getConflictFileContent,
-	getGitSyncSummary,
-	resolveConflictFile as gitResolveConflictFile,
 	runGitCheckoutAction,
-	runGitMergeAction,
 	runGitSyncAction,
-	stashApply,
-	stashDrop,
-	stashList,
-	stashPop,
-	stashPush,
-	stashShow,
 } from "../workspace/git-sync";
 import { assertValidGitRef, getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
@@ -89,21 +84,69 @@ export interface CreateWorkspaceApiDependencies {
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
 }
 
+// ── Shared helpers ──────────────────────────────────────────────────────────────
+
+const EMPTY_GIT_SUMMARY = {
+	currentBranch: null,
+	upstreamBranch: null,
+	changedFiles: 0,
+	additions: 0,
+	deletions: 0,
+	aheadCount: 0,
+	behindCount: 0,
+} as const;
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/** Resolve cwd for optional task scope — returns workspace root when taskScope is null. */
+async function resolveWorkingDir(
+	workspacePath: string,
+	taskScope: { taskId: string; baseRef: string } | null,
+): Promise<string> {
+	if (!taskScope) return workspacePath;
+	return await resolveTaskWorkingDirectory({ workspacePath, ...taskScope });
+}
+
+/** Resolve task cwd, returning null instead of throwing for missing worktrees. */
+async function tryResolveTaskCwd(workspacePath: string, taskId: string, baseRef: string): Promise<string | null> {
+	try {
+		return await resolveTaskWorkingDirectory({ workspacePath, taskId, baseRef });
+	} catch (error) {
+		if (isMissingTaskWorktreeError(error)) return null;
+		throw error;
+	}
+}
+
+/** Check whether any in_progress or review task is running against the shared checkout. */
+async function hasActiveSharedCheckoutTask(workspacePath: string): Promise<boolean> {
+	const state = await loadWorkspaceState(workspacePath);
+	const activeColumnIds = new Set(["in_progress", "review"]);
+	return state.board.columns
+		.filter((col) => activeColumnIds.has(col.id))
+		.some((col) =>
+			col.cards.some((card) => {
+				const isSharedCheckout = card.workingDirectory
+					? resolve(card.workingDirectory) === resolve(workspacePath)
+					: card.useWorktree === false;
+				return isSharedCheckout;
+			}),
+		);
+}
+
+// ── Input normalization ─────────────────────────────────────────────────────────
+
 function normalizeOptionalTaskWorkspaceScopeInput(
 	input: { taskId: string; baseRef: string } | null,
 ): { taskId: string; baseRef: string } | null {
-	if (!input) {
-		return null;
-	}
+	if (!input) return null;
 	const taskId = input.taskId.trim();
 	const baseRef = input.baseRef.trim();
 	if (!taskId || !baseRef) {
 		throw new Error("baseRef query parameter requires taskId.");
 	}
-	return {
-		taskId,
-		baseRef,
-	};
+	return { taskId, baseRef };
 }
 
 function normalizeRequiredTaskWorkspaceScopeInput(input: {
@@ -117,166 +160,62 @@ function normalizeRequiredTaskWorkspaceScopeInput(input: {
 } {
 	const taskId = (input.taskId ?? "").trim();
 	const baseRef = (input.baseRef ?? "").trim();
-	if (!taskId) {
-		throw new Error("Missing taskId query parameter.");
-	}
-	if (!baseRef) {
-		throw new Error("Missing baseRef query parameter.");
-	}
-	const mode: RuntimeWorkspaceChangesMode = input.mode ?? "working_copy";
-	return {
-		taskId,
-		baseRef,
-		mode,
-	};
+	if (!taskId) throw new Error("Missing taskId query parameter.");
+	if (!baseRef) throw new Error("Missing baseRef query parameter.");
+	return { taskId, baseRef, mode: input.mode ?? "working_copy" };
 }
 
-function createEmptyGitSummaryErrorResponse(error: unknown): RuntimeGitSummaryResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		error: message,
-	};
+// ── Error response factories ────────────────────────────────────────────────────
+
+/** Checkout and merge error responses share the same shape. */
+function createGitBranchErrorResponse(error: unknown): RuntimeGitCheckoutResponse & RuntimeGitMergeResponse {
+	return { ok: false, branch: "", summary: { ...EMPTY_GIT_SUMMARY }, output: "", error: errorMessage(error) };
 }
 
-function createEmptyGitSyncErrorResponse(action: RuntimeGitSyncAction, error: unknown): RuntimeGitSyncResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		action,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-		error: message,
-	};
+/** Discard and commit error responses share the same shape. */
+function createGitOutputErrorResponse(error: unknown): RuntimeGitDiscardResponse & RuntimeGitCommitResponse {
+	return { ok: false, summary: { ...EMPTY_GIT_SUMMARY }, output: "", error: errorMessage(error) };
 }
 
-function createEmptyGitCheckoutErrorResponse(error: unknown): RuntimeGitCheckoutResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		branch: "",
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-		error: message,
-	};
-}
-
-function createEmptyGitMergeErrorResponse(error: unknown): RuntimeGitMergeResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		branch: "",
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-		error: message,
-	};
-}
-
-function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-		error: message,
-	};
-}
-
-function createEmptyGitCommitErrorResponse(error: unknown): RuntimeGitCommitResponse {
-	const message = error instanceof Error ? error.message : String(error);
-	return {
-		ok: false,
-		summary: {
-			currentBranch: null,
-			upstreamBranch: null,
-			changedFiles: 0,
-			additions: 0,
-			deletions: 0,
-			aheadCount: 0,
-			behindCount: 0,
-		},
-		output: "",
-		error: message,
-	};
-}
+// ── Workspace API implementation ────────────────────────────────────────────────
 
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
+	const broadcastStateUpdate = (scope: { workspaceId: string; workspacePath: string }) => {
+		void deps.broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
+	};
+
 	return {
 		loadGitSummary: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
-				let summaryCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					summaryCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
-				const summary = await getGitSyncSummary(summaryCwd);
-				return {
-					ok: true,
-					summary,
-				} satisfies RuntimeGitSummaryResponse;
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input),
+				);
+				const summary = await getGitSyncSummary(cwd);
+				return { ok: true, summary } satisfies RuntimeGitSummaryResponse;
 			} catch (error) {
-				return createEmptyGitSummaryErrorResponse(error);
+				return { ok: false, summary: { ...EMPTY_GIT_SUMMARY }, error: errorMessage(error) };
 			}
 		},
+
 		runGitSyncAction: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
+				);
 				return await runGitSyncAction({ cwd, action: input.action });
 			} catch (error) {
-				return createEmptyGitSyncErrorResponse(input.action, error);
+				return {
+					ok: false,
+					action: input.action,
+					summary: { ...EMPTY_GIT_SUMMARY },
+					output: "",
+					error: errorMessage(error),
+				};
 			}
 		},
+
 		checkoutGitBranch: async (workspaceScope, input) => {
 			try {
 				const body = parseGitCheckoutRequest(input);
@@ -288,28 +227,12 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						taskId: input.taskId,
 						baseRef: input.baseRef ?? "",
 					});
-					const response = await runGitCheckoutAction({
-						cwd: taskCwd,
-						branch: body.branch,
-					});
-					return response;
+					return await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
 				}
 
 				// Home repo checkout: block when an active task is running in the shared checkout
-				const state = await loadWorkspaceState(workspaceScope.workspacePath);
-				const activeColumnIds = new Set(["in_progress", "review"]);
-				const hasSharedCheckoutTask = state.board.columns
-					.filter((col) => activeColumnIds.has(col.id))
-					.some((col) =>
-						col.cards.some((card) => {
-							const isSharedCheckout = card.workingDirectory
-								? resolve(card.workingDirectory) === resolve(workspaceScope.workspacePath)
-								: card.useWorktree === false;
-							return isSharedCheckout;
-						}),
-					);
-				if (hasSharedCheckoutTask) {
-					return createEmptyGitCheckoutErrorResponse(
+				if (await hasActiveSharedCheckoutTask(workspaceScope.workspacePath)) {
+					return createGitBranchErrorResponse(
 						new Error(
 							"Cannot switch branches while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
 						),
@@ -319,22 +242,18 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					cwd: workspaceScope.workspacePath,
 					branch: body.branch,
 				});
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				return createEmptyGitCheckoutErrorResponse(error);
+				return createGitBranchErrorResponse(error);
 			}
 		},
+
 		mergeBranch: async (workspaceScope, input) => {
 			try {
 				const branchToMerge = input.branch.trim();
 				if (!branchToMerge) {
-					return createEmptyGitMergeErrorResponse(new Error("Branch name cannot be empty."));
+					return createGitBranchErrorResponse(new Error("Branch name cannot be empty."));
 				}
 
 				// Task-scoped merge: resolve task worktree and merge there
@@ -344,211 +263,129 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 						taskId: input.taskId,
 						baseRef: input.baseRef ?? "",
 					});
-					const response = await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
-					return response;
+					return await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
 				}
 
 				// Home repo merge: block when an active task is running in the shared checkout
-				const state = await loadWorkspaceState(workspaceScope.workspacePath);
-				const activeColumnIds = new Set(["in_progress", "review"]);
-				const hasSharedCheckoutTask = state.board.columns
-					.filter((col) => activeColumnIds.has(col.id))
-					.some((col) =>
-						col.cards.some((card) => {
-							const isSharedCheckout = card.workingDirectory
-								? resolve(card.workingDirectory) === resolve(workspaceScope.workspacePath)
-								: card.useWorktree === false;
-							return isSharedCheckout;
-						}),
-					);
-				if (hasSharedCheckoutTask) {
-					return createEmptyGitMergeErrorResponse(
+				if (await hasActiveSharedCheckoutTask(workspaceScope.workspacePath)) {
+					return createGitBranchErrorResponse(
 						new Error(
 							"Cannot merge while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
 						),
 					);
 				}
 				const response = await runGitMergeAction({ cwd: workspaceScope.workspacePath, branch: branchToMerge });
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
-				if (!response.ok && response.conflictState) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok || response.conflictState) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				return createEmptyGitMergeErrorResponse(error);
+				return createGitBranchErrorResponse(error);
 			}
 		},
+
 		getConflictFiles: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				if (input.taskId) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						taskId: input.taskId,
-						baseRef: "",
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
+				);
 				const files = await Promise.all(input.paths.map((path) => getConflictFileContent(cwd, path)));
 				return { ok: true, files } satisfies RuntimeConflictFilesResponse;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, files: [], error: message } satisfies RuntimeConflictFilesResponse;
+				return { ok: false, files: [], error: errorMessage(error) } satisfies RuntimeConflictFilesResponse;
 			}
 		},
+
 		getAutoMergedFiles: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				if (input.taskId) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						taskId: input.taskId,
-						baseRef: "",
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
+				);
 				const files = await Promise.all(input.paths.map((path) => getAutoMergedFileContent(cwd, path)));
 				return { ok: true, files } satisfies RuntimeAutoMergedFilesResponse;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, files: [], error: message } satisfies RuntimeAutoMergedFilesResponse;
+				return { ok: false, files: [], error: errorMessage(error) } satisfies RuntimeAutoMergedFilesResponse;
 			}
 		},
+
 		resolveConflictFile: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				if (input.taskId) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						taskId: input.taskId,
-						baseRef: "",
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
+				);
 				const result = await gitResolveConflictFile(cwd, input.path, input.resolution);
-				if (result.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (result.ok) broadcastStateUpdate(workspaceScope);
 				return result;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, error: message };
+				return { ok: false, error: errorMessage(error) };
 			}
 		},
+
 		continueConflictResolution: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				if (input.taskId) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						taskId: input.taskId,
-						baseRef: "",
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
+				);
 				const response = await continueMergeOrRebase(cwd);
-				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
 				return {
 					ok: false,
 					completed: false,
-					summary: {
-						currentBranch: null,
-						upstreamBranch: null,
-						changedFiles: 0,
-						additions: 0,
-						deletions: 0,
-						aheadCount: 0,
-						behindCount: 0,
-					},
+					summary: { ...EMPTY_GIT_SUMMARY },
 					output: "",
-					error: message,
+					error: errorMessage(error),
 				} satisfies RuntimeConflictContinueResponse;
 			}
 		},
+
 		abortConflictResolution: async (workspaceScope, input) => {
 			try {
-				let cwd = workspaceScope.workspacePath;
-				if (input.taskId) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						taskId: input.taskId,
-						baseRef: "",
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
+				);
 				const response = await abortMergeOrRebase(cwd);
-				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
 				return {
 					ok: false,
-					summary: {
-						currentBranch: null,
-						upstreamBranch: null,
-						changedFiles: 0,
-						additions: 0,
-						deletions: 0,
-						aheadCount: 0,
-						behindCount: 0,
-					},
-					error: message,
+					summary: { ...EMPTY_GIT_SUMMARY },
+					error: errorMessage(error),
 				} satisfies RuntimeConflictAbortResponse;
 			}
 		},
+
 		discardGitChanges: async (workspaceScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
-				let discardCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					discardCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-					// Block discard for non-worktree tasks to avoid destroying shared checkout state.
-					if (resolve(discardCwd) === resolve(workspaceScope.workspacePath)) {
-						return createEmptyGitDiscardErrorResponse(
-							new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
-						);
-					}
-				}
-				const response = await discardGitChanges({
-					cwd: discardCwd,
-				});
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
+				// Block discard for non-worktree tasks to avoid destroying shared checkout state.
+				if (taskScope && resolve(cwd) === resolve(workspaceScope.workspacePath)) {
+					return createGitOutputErrorResponse(
+						new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
 					);
 				}
+				const response = await discardGitChanges({ cwd });
+				if (response.ok) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				return createEmptyGitDiscardErrorResponse(error);
+				return createGitOutputErrorResponse(error);
 			}
 		},
+
 		commitSelectedFiles: async (workspaceScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let commitCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					commitCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-					if (resolve(commitCwd) === resolve(workspaceScope.workspacePath)) {
-						return createEmptyGitCommitErrorResponse(
-							new Error("Cannot commit in the shared checkout. Isolate the task to a worktree first."),
-						);
-					}
+				const commitCwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
+				if (taskScope && resolve(commitCwd) === resolve(workspaceScope.workspacePath)) {
+					return createGitOutputErrorResponse(
+						new Error("Cannot commit in the shared checkout. Isolate the task to a worktree first."),
+					);
 				}
 				const response = await commitSelectedFiles({
 					cwd: commitCwd,
@@ -556,10 +393,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					message: input.message,
 				});
 				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
+					broadcastStateUpdate(workspaceScope);
 
 					// Push after successful commit if requested, reusing the existing git sync infrastructure.
 					if (input.pushAfterCommit) {
@@ -575,40 +409,31 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				}
 				return response;
 			} catch (error) {
-				return createEmptyGitCommitErrorResponse(error);
+				return createGitOutputErrorResponse(error);
 			}
 		},
+
 		discardFile: async (workspaceScope, input) => {
 			try {
 				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let discardCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					discardCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-					if (resolve(discardCwd) === resolve(workspaceScope.workspacePath)) {
-						return createEmptyGitDiscardErrorResponse(
-							new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
-						);
-					}
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
+				if (taskScope && resolve(cwd) === resolve(workspaceScope.workspacePath)) {
+					return createGitOutputErrorResponse(
+						new Error("Cannot discard changes in the shared checkout. Isolate the task to a worktree first."),
+					);
 				}
 				const response = await discardSingleFile({
-					cwd: discardCwd,
+					cwd,
 					path: input.path,
 					fileStatus: input.fileStatus,
 				});
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				return createEmptyGitDiscardErrorResponse(error);
+				return createGitOutputErrorResponse(error);
 			}
 		},
+
 		createBranch: async (workspaceScope, input) => {
 			try {
 				const result = await createBranchFromRef({
@@ -616,136 +441,87 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					branchName: input.branchName,
 					startRef: input.startRef,
 				});
-				if (result.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (result.ok) broadcastStateUpdate(workspaceScope);
 				return result;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false as const, branchName: input.branchName, error: message };
+				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
 			}
 		},
+
 		deleteBranch: async (workspaceScope, input) => {
 			try {
 				const result = await deleteBranch({
 					cwd: workspaceScope.workspacePath,
 					branchName: input.branchName,
 				});
-				if (result.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (result.ok) broadcastStateUpdate(workspaceScope);
 				return result;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false as const, branchName: input.branchName, error: message };
+				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
 			}
 		},
+
 		cherryPickCommit: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
-				let pickCwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					pickCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
+				);
 				const result = await cherryPickCommit({
-					cwd: pickCwd,
+					cwd,
 					commitHash: input.commitHash,
 					targetBranch: input.targetBranch,
 				});
-				if (result.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (result.ok) broadcastStateUpdate(workspaceScope);
 				return result;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
 				return {
 					ok: false as const,
 					commitHash: input.commitHash,
 					targetBranch: input.targetBranch,
 					output: "",
-					error: message,
+					error: errorMessage(error),
 				};
 			}
 		},
-		loadChanges: async (workspaceScope, input) => {
-			// Path A: Ref-to-ref comparison (Compare tab)
-			if (input.fromRef && input.toRef) {
-				assertValidGitRef(input.fromRef, "fromRef");
-				assertValidGitRef(input.toRef, "toRef");
-				let cwd: string;
-				if (input.taskId) {
-					try {
-						cwd = await resolveTaskWorkingDirectory({
-							workspacePath: workspaceScope.workspacePath,
-							taskId: input.taskId,
-							baseRef: input.baseRef ?? "",
-						});
-					} catch (error) {
-						if (isMissingTaskWorktreeError(error)) {
-							return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
-						}
-						throw error;
-					}
-				} else {
-					cwd = workspaceScope.workspacePath;
-				}
-				return await getWorkspaceChangesBetweenRefs({ cwd, fromRef: input.fromRef, toRef: input.toRef });
-			}
 
-			// Path A2: Ref-to-working-tree (Compare with uncommitted)
-			if (input.fromRef && !input.toRef) {
+		loadChanges: async (workspaceScope, input) => {
+			// Ref-based comparison (Compare tab / Compare with uncommitted)
+			if (input.fromRef) {
 				assertValidGitRef(input.fromRef, "fromRef");
-				let cwd: string;
+				if (input.toRef) assertValidGitRef(input.toRef, "toRef");
+
+				let cwd = workspaceScope.workspacePath;
 				if (input.taskId) {
-					try {
-						cwd = await resolveTaskWorkingDirectory({
-							workspacePath: workspaceScope.workspacePath,
-							taskId: input.taskId,
-							baseRef: input.baseRef ?? "",
-						});
-					} catch (error) {
-						if (isMissingTaskWorktreeError(error)) {
-							return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
-						}
-						throw error;
-					}
-				} else {
-					cwd = workspaceScope.workspacePath;
+					const resolved = await tryResolveTaskCwd(
+						workspaceScope.workspacePath,
+						input.taskId,
+						input.baseRef ?? "",
+					);
+					if (!resolved) return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+					cwd = resolved;
+				}
+
+				if (input.toRef) {
+					return await getWorkspaceChangesBetweenRefs({ cwd, fromRef: input.fromRef, toRef: input.toRef });
 				}
 				return await getWorkspaceChangesFromRef({ cwd, fromRef: input.fromRef });
 			}
 
-			// Path B: Home repo uncommitted (no task)
+			// Home repo uncommitted (no task)
 			if (!input.taskId) {
 				return await getWorkspaceChanges(workspaceScope.workspacePath);
 			}
 
-			// Path C & D: Task-scoped (existing behavior)
+			// Task-scoped
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
-			let taskCwd: string;
-			try {
-				taskCwd = await resolveTaskWorkingDirectory({
-					workspacePath: workspaceScope.workspacePath,
-					...normalizedInput,
-				});
-			} catch (error) {
-				if (isMissingTaskWorktreeError(error)) {
-					return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
-				}
-				throw error;
-			}
+			const taskCwd = await tryResolveTaskCwd(
+				workspaceScope.workspacePath,
+				normalizedInput.taskId,
+				normalizedInput.baseRef,
+			);
+			if (!taskCwd) return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+
 			if (normalizedInput.mode === "last_turn") {
 				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
 					workspaceScope.workspaceId,
@@ -771,6 +547,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			}
 			return await getWorkspaceChanges(taskCwd);
 		},
+
 		// Called by the UI's ensureTaskWorkspace (use-task-sessions.ts) for restore-from-trash.
 		// The other path to ensureTaskWorktreeIfDoesntExist is startTaskSession in runtime-api.ts,
 		// which reads branch from persisted board state server-side instead.
@@ -783,6 +560,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				branch: body.branch ?? undefined,
 			});
 		},
+
 		deleteWorktree: async (workspaceScope, input) => {
 			const body = parseWorktreeDeleteRequest(input);
 			const result = await deleteTaskWorktree({
@@ -796,6 +574,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			// client's persist debounce is in flight.
 			return result;
 		},
+
 		loadTaskContext: async (workspaceScope, input) => {
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
 			return await getTaskWorkspaceInfo({
@@ -804,15 +583,13 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				baseRef: normalizedInput.baseRef,
 			});
 		},
+
 		searchFiles: async (workspaceScope, input) => {
 			const query = input.query.trim();
-			const limit = input.limit;
-			const files = await searchWorkspaceFiles(workspaceScope.workspacePath, query, limit);
-			return {
-				query,
-				files,
-			} satisfies RuntimeWorkspaceFileSearchResponse;
+			const files = await searchWorkspaceFiles(workspaceScope.workspacePath, query, input.limit);
+			return { query, files } satisfies RuntimeWorkspaceFileSearchResponse;
 		},
+
 		listFiles: async (workspaceScope, input) => {
 			// Home-scoped or branch-view: no task resolution needed
 			if (!input.taskId) {
@@ -824,90 +601,53 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return { files } satisfies RuntimeListFilesResponse;
 			}
 
-			// Ref-based browsing against a task worktree's repo
+			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
+			const taskCwd = await tryResolveTaskCwd(
+				workspaceScope.workspacePath,
+				normalizedInput.taskId,
+				normalizedInput.baseRef,
+			);
+			if (!taskCwd) return { files: [] } satisfies RuntimeListFilesResponse;
+
 			if (input.ref) {
-				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
-				let taskCwd: string;
-				try {
-					taskCwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...normalizedInput,
-					});
-				} catch (error) {
-					if (!isMissingTaskWorktreeError(error)) {
-						throw error;
-					}
-					return { files: [] } satisfies RuntimeListFilesResponse;
-				}
 				const files = await listFilesAtRef(taskCwd, input.ref);
 				return { files } satisfies RuntimeListFilesResponse;
 			}
 
-			// Task-scoped: existing behavior
-			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
-			let taskCwd: string;
-			try {
-				taskCwd = await resolveTaskWorkingDirectory({
-					workspacePath: workspaceScope.workspacePath,
-					...normalizedInput,
-				});
-			} catch (error) {
-				if (!isMissingTaskWorktreeError(error)) {
-					throw error;
-				}
-				return { files: [] } satisfies RuntimeListFilesResponse;
-			}
 			const files = await listAllWorkspaceFiles(taskCwd);
 			return { files } satisfies RuntimeListFilesResponse;
 		},
+
 		getFileContent: async (workspaceScope, input) => {
 			const filePath = input.path.trim();
-			if (!filePath) {
-				throw new Error("Missing path parameter.");
-			}
+			if (!filePath) throw new Error("Missing path parameter.");
+
+			const EMPTY_FILE_RESPONSE = {
+				content: "",
+				language: "",
+				binary: false,
+				size: 0,
+				truncated: false,
+			} satisfies RuntimeFileContentResponse;
 
 			// Determine the working directory for file reading
-			const resolveCwd = async (): Promise<string | null> => {
-				if (!input.taskId) {
-					return workspaceScope.workspacePath;
-				}
+			let cwd: string | null;
+			if (!input.taskId) {
+				cwd = workspaceScope.workspacePath;
+			} else {
 				const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
-				try {
-					return await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...normalizedInput,
-					});
-				} catch (error) {
-					if (isMissingTaskWorktreeError(error)) {
-						return null;
-					}
-					throw error;
-				}
-			};
-
-			const cwd = await resolveCwd();
-			if (!cwd) {
-				return {
-					content: "",
-					language: "",
-					binary: false,
-					size: 0,
-					truncated: false,
-				} satisfies RuntimeFileContentResponse;
+				cwd = await tryResolveTaskCwd(
+					workspaceScope.workspacePath,
+					normalizedInput.taskId,
+					normalizedInput.baseRef,
+				);
 			}
+			if (!cwd) return EMPTY_FILE_RESPONSE;
 
 			// Ref-based content: read from git object store
 			if (input.ref) {
 				const refContent = await getFileContentAtRef(cwd, input.ref, filePath);
-				if (!refContent) {
-					return {
-						content: "",
-						language: "",
-						binary: false,
-						size: 0,
-						truncated: false,
-					} satisfies RuntimeFileContentResponse;
-				}
+				if (!refContent) return EMPTY_FILE_RESPONSE;
 				return {
 					content: refContent.content,
 					language: "",
@@ -920,16 +660,17 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 			// Disk-based content: existing behavior
 			return await readWorkspaceFile(cwd, filePath);
 		},
+
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);
 		},
+
 		notifyStateUpdated: async (workspaceScope) => {
-			void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+			broadcastStateUpdate(workspaceScope);
 			void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
-			return {
-				ok: true,
-			};
+			return { ok: true };
 		},
+
 		saveState: async (workspaceScope, input) => {
 			try {
 				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
@@ -940,7 +681,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					input.sessions[summary.taskId] = summary;
 				}
 				const response = await saveWorkspaceState(workspaceScope.workspacePath, input);
-				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				broadcastStateUpdate(workspaceScope);
 				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
 
 				// Fire-and-forget: generate titles for any new cards that have title === null.
@@ -948,9 +689,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				const untitledCards = input.board.columns.flatMap((col) => col.cards.filter((card) => card.title === null));
 				const generateTitle = async (card: (typeof untitledCards)[number]) => {
 					const title = await generateTaskTitle(card.prompt);
-					if (!title) {
-						return;
-					}
+					if (!title) return;
 					// Send the title to the UI via a lightweight message. The client
 					// applies it to its board state and persists through its normal
 					// cycle, avoiding a dual-writer race where mutateWorkspaceState
@@ -972,190 +711,141 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					throw new TRPCError({
 						code: "CONFLICT",
 						message: error.message,
-						cause: {
-							currentRevision: error.currentRevision,
-						},
+						cause: { currentRevision: error.currentRevision },
 					});
 				}
 				throw error;
 			}
 		},
+
 		loadWorkspaceChanges: async (workspaceScope) => {
 			return await getWorkspaceChanges(workspaceScope.workspacePath);
 		},
+
 		loadGitLog: async (workspaceScope, input) => {
-			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
-			let logCwd = workspaceScope.workspacePath;
-			if (taskScope) {
-				logCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
-			}
+			const cwd = await resolveWorkingDir(
+				workspaceScope.workspacePath,
+				normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
+			);
 			return await getGitLog({
-				cwd: logCwd,
+				cwd,
 				ref: input.ref ?? null,
 				refs: input.refs ?? null,
 				maxCount: input.maxCount,
 				skip: input.skip,
 			});
 		},
+
 		loadGitRefs: async (workspaceScope, input) => {
-			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input ?? null);
-			let refsCwd = workspaceScope.workspacePath;
-			if (taskScope) {
-				refsCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
-			}
-			return await getGitRefs(refsCwd);
+			const cwd = await resolveWorkingDir(
+				workspaceScope.workspacePath,
+				normalizeOptionalTaskWorkspaceScopeInput(input ?? null),
+			);
+			return await getGitRefs(cwd);
 		},
+
 		loadCommitDiff: async (workspaceScope, input) => {
-			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
-			let diffCwd = workspaceScope.workspacePath;
-			if (taskScope) {
-				diffCwd = await resolveTaskWorkingDirectory({ workspacePath: workspaceScope.workspacePath, ...taskScope });
-			}
-			return await getCommitDiff({
-				cwd: diffCwd,
-				commitHash: input.commitHash,
-			});
+			const cwd = await resolveWorkingDir(
+				workspaceScope.workspacePath,
+				normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
+			);
+			return await getCommitDiff({ cwd, commitHash: input.commitHash });
 		},
+
 		notifyTaskTitleUpdated: (workspaceScope, taskId, title) => {
 			deps.broadcastTaskTitleUpdated(workspaceScope.workspaceId, taskId, title);
 		},
+
 		setTaskDisplaySummary: async (workspaceScope, taskId, text, generatedAt) => {
 			const manager = await deps.ensureTerminalManagerForWorkspace(
 				workspaceScope.workspaceId,
 				workspaceScope.workspacePath,
 			);
 			manager.store.setDisplaySummary(taskId, text, generatedAt);
-			void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+			broadcastStateUpdate(workspaceScope);
 		},
+
 		setFocusedTask: (workspaceScope, taskId) => {
 			deps.setFocusedTask(workspaceScope.workspaceId, taskId);
 		},
+
 		stashPush: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
-				const response = await stashPush({
-					cwd,
-					paths: input.paths,
-					message: input.message,
-				});
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
+				const response = await stashPush({ cwd, paths: input.paths, message: input.message });
+				if (response.ok) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, error: message } satisfies RuntimeStashPushResponse;
+				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashPushResponse;
 			}
 		},
+
 		stashList: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
 				return await stashList(cwd);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, entries: [], error: message } satisfies RuntimeStashListResponse;
+				return { ok: false, entries: [], error: errorMessage(error) } satisfies RuntimeStashListResponse;
 			}
 		},
+
 		stashPop: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
 				const response = await stashPop({ cwd, index: input.index });
-				if (response.ok || response.conflicted) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok || response.conflicted) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, conflicted: false, error: message } satisfies RuntimeStashPopApplyResponse;
+				return { ok: false, conflicted: false, error: errorMessage(error) } satisfies RuntimeStashPopApplyResponse;
 			}
 		},
+
 		stashApply: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
 				const response = await stashApply({ cwd, index: input.index });
-				if (response.ok || response.conflicted) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok || response.conflicted) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, conflicted: false, error: message } satisfies RuntimeStashPopApplyResponse;
+				return { ok: false, conflicted: false, error: errorMessage(error) } satisfies RuntimeStashPopApplyResponse;
 			}
 		},
+
 		stashDrop: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
 				const response = await stashDrop({ cwd, index: input.index });
-				if (response.ok) {
-					void deps.broadcastRuntimeWorkspaceStateUpdated(
-						workspaceScope.workspaceId,
-						workspaceScope.workspacePath,
-					);
-				}
+				if (response.ok) broadcastStateUpdate(workspaceScope);
 				return response;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, error: message } satisfies RuntimeStashDropResponse;
+				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashDropResponse;
 			}
 		},
+
 		stashShow: async (workspaceScope, input) => {
 			try {
-				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
-				let cwd = workspaceScope.workspacePath;
-				if (taskScope) {
-					cwd = await resolveTaskWorkingDirectory({
-						workspacePath: workspaceScope.workspacePath,
-						...taskScope,
-					});
-				}
+				const cwd = await resolveWorkingDir(
+					workspaceScope.workspacePath,
+					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
+				);
 				return await stashShow({ cwd, index: input.index });
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { ok: false, error: message } satisfies RuntimeStashShowResponse;
+				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashShowResponse;
 			}
 		},
 	};

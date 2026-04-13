@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getCommitDiff, getGitLog, getGitRefs } from "../../src/workspace/git-history";
-import { discardGitChanges, getGitSyncSummary } from "../../src/workspace/git-sync";
+import { getGitSyncSummary } from "../../src/workspace/git-probe";
+import { discardGitChanges } from "../../src/workspace/git-sync";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

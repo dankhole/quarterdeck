@@ -2,6 +2,28 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: large file decomposition — 8 modules split into focused units (2026-04-13)
+
+Systematic decomposition of the largest files across runtime, web-ui, CLI commands, and test infrastructure. All 8 splits are pure refactors with zero behavior change — verified by full test suite (690 runtime + 509 web-ui tests passing).
+
+**Runtime splits:**
+- `src/workspace/git-sync.ts` (1,407 → ~240 lines) — extracted `git-probe.ts` (workspace probing, sync summary, untracked line counting, fingerprint-based change detection), `git-conflict.ts` (merge/rebase conflict resolution, pause-on-conflict, per-file resolution actions), `git-cherry-pick.ts` (cherry-pick via temp worktree with cleanup), `git-stash.ts` (stash/pop/apply/drop with selection support). Imports updated across 15+ consumer files in both runtime and web-ui.
+- `src/trpc/workspace-api.ts` — deduplicated error factories (collapsed ~10 near-identical error response builders into shared helpers), extracted common validation patterns, reduced by ~300 lines net.
+- `src/commands/task.ts` — extracted `task-board-helpers.ts` (board state queries, card lookup), `task-lifecycle-handlers.ts` (start/stop/restart/trash command handlers), `task-workspace.ts` (worktree creation and checkout).
+
+**Web-UI splits:**
+- `dependency-overlay.tsx` — extracted `dependency-geometry.ts` (SVG path calculations, control points, arrow tip rendering), `use-dependency-layout.ts` (DOM measurement, column/card rect computation), `use-side-transitions.ts` (animated opacity/scale side transitions).
+- `diff-viewer-panel.tsx` — extracted `diff-split.tsx` (side-by-side diff view), `diff-unified.tsx` (unified diff view), `diff-viewer-utils.tsx` (shared line number gutter, line rendering), `use-diff-comments.ts` (comment state management), `use-diff-scroll-sync.ts` (scroll position synchronization between split panes).
+- `persistent-terminal-manager.ts` — extracted `terminal-registry.ts` (terminal instance creation, disposal, lookup) and `terminal-socket-utils.ts` (WebSocket URL construction, connection lifecycle).
+- `runtime-settings-dialog.tsx` — extracted `SettingsSwitch` and `SettingsCheckbox` primitives to `ui/settings-controls.tsx`, replacing ~80 inline Radix Switch/Checkbox + label compositions.
+
+**Test infrastructure:**
+- Extracted shared utilities from 6 integration test files into `test/utilities/`: `integration-server.ts` (server lifecycle), `runtime-stream-client.ts` (WebSocket stream client), `trpc-request.ts` (tRPC HTTP helper), `temp-dir.ts` (temp directory creation), `git-env.ts` (git test env setup). Net reduction of ~220 lines of duplicated setup code.
+
+**Merge notes:** `workspace-api-dedup` and `split-git-sync` both independently extracted `resolveRepoRoot` to `git-utils.ts` — resolved by removing the duplicate definition.
+
+Files touched: 51 files across `src/`, `web-ui/src/`, and `test/`. 28 new files created, net reduction of ~195 lines.
+
 ## Refactor: code duplication cleanup across runtime and web-ui (2026-04-13)
 
 Systematic deduplication based on a full codebase audit. Net reduction of ~55 lines while improving maintainability.

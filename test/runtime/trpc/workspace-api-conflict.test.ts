@@ -40,19 +40,40 @@ const workspaceStateMocks = vi.hoisted(() => ({
 	WorkspaceStateConflictError: class extends Error {},
 }));
 
-vi.mock("../../../src/workspace/git-sync.js", () => ({
-	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
-	discardGitChanges: gitSyncMocks.discardGitChanges,
-	discardSingleFile: gitSyncMocks.discardSingleFile,
-	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
-	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
-	runGitSyncAction: gitSyncMocks.runGitSyncAction,
-	runGitMergeAction: gitSyncMocks.runGitMergeAction,
+vi.mock("../../../src/workspace/git-cherry-pick.js", () => ({
+	cherryPickCommit: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/git-conflict.js", () => ({
+	abortMergeOrRebase: gitSyncMocks.abortMergeOrRebase,
+	continueMergeOrRebase: gitSyncMocks.continueMergeOrRebase,
+	getAutoMergedFileContent: vi.fn(),
 	getConflictFileContent: gitSyncMocks.getConflictFileContent,
 	resolveConflictFile: gitSyncMocks.resolveConflictFile,
-	continueMergeOrRebase: gitSyncMocks.continueMergeOrRebase,
-	abortMergeOrRebase: gitSyncMocks.abortMergeOrRebase,
+	runGitMergeAction: gitSyncMocks.runGitMergeAction,
+}));
+
+vi.mock("../../../src/workspace/git-probe.js", () => ({
+	getGitSyncSummary: gitSyncMocks.getGitSyncSummary,
+}));
+
+vi.mock("../../../src/workspace/git-stash.js", () => ({
+	stashApply: vi.fn(),
+	stashDrop: vi.fn(),
+	stashList: vi.fn(),
+	stashPop: vi.fn(),
+	stashPush: vi.fn(),
+	stashShow: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/git-sync.js", () => ({
+	commitSelectedFiles: gitSyncMocks.commitSelectedFiles,
 	createBranchFromRef: gitSyncMocks.createBranchFromRef,
+	deleteBranch: vi.fn(),
+	discardGitChanges: gitSyncMocks.discardGitChanges,
+	discardSingleFile: gitSyncMocks.discardSingleFile,
+	runGitCheckoutAction: gitSyncMocks.runGitCheckoutAction,
+	runGitSyncAction: gitSyncMocks.runGitSyncAction,
 }));
 
 vi.mock("../../../src/workspace/task-worktree.js", () => ({

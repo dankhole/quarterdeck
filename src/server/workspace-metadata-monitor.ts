@@ -8,14 +8,9 @@ import type {
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
 import { createGitProcessEnv } from "../core/git-process-env";
-import {
-	computeAutoMergedFiles,
-	detectActiveConflict,
-	getConflictedFiles,
-	getGitSyncSummary,
-	probeGitWorkspaceState,
-	stashCount,
-} from "../workspace/git-sync";
+import { computeAutoMergedFiles, detectActiveConflict, getConflictedFiles } from "../workspace/git-conflict";
+import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-probe";
+import { stashCount } from "../workspace/git-stash";
 import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 

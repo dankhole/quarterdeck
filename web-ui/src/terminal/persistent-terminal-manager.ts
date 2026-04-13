@@ -23,7 +23,14 @@ import {
 	hasInterruptAcknowledgement,
 	hasLikelyShellPrompt,
 } from "@/terminal/terminal-prompt-heuristics";
-import { createClientLogger } from "@/utils/client-logger";
+import {
+	decodeTerminalSocketChunk,
+	generateTerminalClientId,
+	getTerminalSocketChunkByteLength,
+	getTerminalSocketWriteData,
+	getTerminalWebSocketUrl,
+	isCopyShortcut,
+} from "@/terminal/terminal-socket-utils";
 import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
@@ -35,7 +42,7 @@ const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 let currentTerminalWebGLRenderer: boolean = CONFIG_DEFAULTS.terminalWebGLRenderer;
 
-interface PersistentTerminalAppearance {
+export interface PersistentTerminalAppearance {
 	cursorColor: string;
 	terminalBackgroundColor: string;
 }
@@ -53,73 +60,10 @@ interface MountPersistentTerminalOptions {
 	isVisible?: boolean;
 }
 
-interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
+export interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	taskId: string;
 	workspaceId: string;
 	scrollOnEraseInDisplay?: boolean;
-}
-
-function generateTerminalClientId(): string {
-	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-		return crypto.randomUUID();
-	}
-	return `terminal-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/api/terminal/io`);
-	url.searchParams.set("taskId", taskId);
-	url.searchParams.set("workspaceId", workspaceId);
-	url.searchParams.set("clientId", clientId);
-	return url.toString();
-}
-
-function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/api/terminal/control`);
-	url.searchParams.set("taskId", taskId);
-	url.searchParams.set("workspaceId", workspaceId);
-	url.searchParams.set("clientId", clientId);
-	return url.toString();
-}
-
-function decodeTerminalSocketChunk(decoder: TextDecoder, data: string | ArrayBuffer | Blob): string {
-	if (typeof data === "string") {
-		return data;
-	}
-	if (data instanceof ArrayBuffer) {
-		return decoder.decode(new Uint8Array(data), { stream: true });
-	}
-	return "";
-}
-
-function getTerminalSocketWriteData(data: string | ArrayBuffer | Blob): string | Uint8Array | null {
-	if (typeof data === "string") {
-		return data;
-	}
-	if (data instanceof ArrayBuffer) {
-		return new Uint8Array(data);
-	}
-	return null;
-}
-
-function getTerminalSocketChunkByteLength(data: string | ArrayBuffer | Blob): number {
-	if (typeof data === "string") {
-		return new TextEncoder().encode(data).byteLength;
-	}
-	if (data instanceof ArrayBuffer) {
-		return data.byteLength;
-	}
-	return 0;
-}
-
-function isCopyShortcut(event: KeyboardEvent): boolean {
-	return (
-		event.type === "keydown" &&
-		((isMacPlatform && event.metaKey && !event.shiftKey && event.key.toLowerCase() === "c") ||
-			(!isMacPlatform && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c"))
-	);
 }
 
 function getParkingRoot(): HTMLDivElement {
@@ -144,11 +88,21 @@ function getParkingRoot(): HTMLDivElement {
 	return root;
 }
 
-function buildKey(workspaceId: string, taskId: string): string {
+export function buildKey(workspaceId: string, taskId: string): string {
 	return `${workspaceId}:${taskId}`;
 }
 
-class PersistentTerminal {
+/** Update the global font weight state used when constructing new terminals. */
+export function updateGlobalTerminalFontWeight(weight: number): void {
+	currentTerminalFontWeight = weight;
+}
+
+/** Update the global WebGL renderer state used when constructing new terminals. */
+export function updateGlobalTerminalWebGLRenderer(enabled: boolean): void {
+	currentTerminalWebGLRenderer = enabled;
+}
+
+export class PersistentTerminal {
 	private readonly terminal: Terminal;
 	private readonly fitAddon = new FitAddon();
 	private readonly hostElement: HTMLDivElement;
@@ -467,7 +421,7 @@ class PersistentTerminal {
 		if (this.ioSocket) {
 			return;
 		}
-		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
+		const ioSocket = new WebSocket(getTerminalWebSocketUrl("io", this.taskId, this.workspaceId, this.clientId));
 		ioSocket.binaryType = "arraybuffer";
 		// No browser-side restoreCompleted gate needed here — the server buffers output
 		// in pendingOutputChunks until restore_complete is acknowledged, so IO data only
@@ -523,7 +477,9 @@ class PersistentTerminal {
 	}
 
 	private connectControl(): void {
-		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
+		const controlSocket = new WebSocket(
+			getTerminalWebSocketUrl("control", this.taskId, this.workspaceId, this.clientId),
+		);
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {
@@ -945,113 +901,5 @@ class PersistentTerminal {
 		this.subscribers.clear();
 		this.terminal.dispose();
 		this.hostElement.remove();
-	}
-}
-
-const terminals = new Map<string, PersistentTerminal>();
-
-export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): PersistentTerminal {
-	const key = buildKey(input.workspaceId, input.taskId);
-	let terminal = terminals.get(key);
-	if (!terminal) {
-		terminal = new PersistentTerminal(
-			input.taskId,
-			input.workspaceId,
-			{ cursorColor: input.cursorColor, terminalBackgroundColor: input.terminalBackgroundColor },
-			input.scrollOnEraseInDisplay,
-		);
-		terminals.set(key, terminal);
-		return terminal;
-	}
-	terminal.setAppearance({
-		cursorColor: input.cursorColor,
-		terminalBackgroundColor: input.terminalBackgroundColor,
-	});
-	if (input.scrollOnEraseInDisplay !== undefined) {
-		terminal.setScrollOnEraseInDisplay(input.scrollOnEraseInDisplay);
-	}
-	return terminal;
-}
-
-export function disposePersistentTerminal(workspaceId: string, taskId: string): void {
-	const key = buildKey(workspaceId, taskId);
-	const terminal = terminals.get(key);
-	if (!terminal) {
-		return;
-	}
-	terminal.dispose();
-	terminals.delete(key);
-}
-
-export function disposeAllPersistentTerminalsForWorkspace(workspaceId: string): void {
-	for (const [key, terminal] of terminals.entries()) {
-		if (!key.startsWith(`${workspaceId}:`)) {
-			continue;
-		}
-		terminal.dispose();
-		terminals.delete(key);
-	}
-}
-
-export function writeToTerminalBuffer(workspaceId: string, taskId: string, text: string): void {
-	const key = buildKey(workspaceId, taskId);
-	const terminal = terminals.get(key);
-	if (!terminal) {
-		return;
-	}
-	terminal.writeText(text);
-}
-
-export function isTerminalSessionRunning(workspaceId: string, taskId: string): boolean {
-	const key = buildKey(workspaceId, taskId);
-	const terminal = terminals.get(key);
-	if (!terminal) {
-		return false;
-	}
-	return terminal.sessionState === "running";
-}
-
-export function resetAllTerminalRenderers(): number {
-	const count = terminals.size;
-	console.log(`[terminal] resetting renderers for ${count} terminal(s), dpr: ${window.devicePixelRatio}`);
-	for (const terminal of terminals.values()) {
-		terminal.resetRenderer();
-	}
-	return count;
-}
-
-export function setTerminalFontWeight(weight: number): void {
-	currentTerminalFontWeight = weight;
-	for (const terminal of terminals.values()) {
-		terminal.setFontWeight(weight);
-	}
-}
-
-export function setTerminalWebGLRenderer(enabled: boolean): void {
-	currentTerminalWebGLRenderer = enabled;
-	for (const terminal of terminals.values()) {
-		terminal.setWebGLRenderer(enabled);
-	}
-}
-
-const terminalDebugLog = createClientLogger("terminal");
-
-export function dumpTerminalDebugInfo(): void {
-	if (terminals.size === 0) {
-		terminalDebugLog.info("No active terminals");
-		return;
-	}
-	for (const [key, pt] of terminals.entries()) {
-		const info = pt.getBufferDebugInfo();
-		const taskId = key.split(":").slice(1).join(":");
-		terminalDebugLog.info(`${taskId}`, {
-			buffer: info.activeBuffer,
-			scrollback: `${info.normalScrollbackLines} lines (max ${info.scrollbackOption})`,
-			normal: `len=${info.normalLength} baseY=${info.normalBaseY}`,
-			alternate: `len=${info.alternateLength}`,
-			viewport: info.viewportRows,
-			scrollOnEraseInDisplay: info.scrollOnEraseInDisplay,
-			session: info.sessionState,
-		});
 	}
 }
