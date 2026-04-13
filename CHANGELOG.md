@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: restore agent terminal scrollback for mouse-wheel scrolling
+
+- Reverted agent terminal scrollback from 100 to 10,000 and re-enabled `scrollOnEraseInDisplay`. The reduced scrollback prevented mouse-wheel scrolling through conversation history — agents like Claude Code write the full chat into normal-buffer scrollback, and users expect to scroll it just like in a regular terminal emulator. Duplicate TUI frames remain a known tradeoff until xterm.js-level deduplication is feasible.
+
 ### Fix: don't auto-trash interrupted sessions, move session resume to server
 
 - Removed the UI's auto-trash of interrupted sessions on startup — the UI no longer makes session lifecycle decisions. Column sync is now purely reactive (`awaiting_review ↔ running`).

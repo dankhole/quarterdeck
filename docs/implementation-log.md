@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: restore agent terminal scrollback for mouse-wheel scrolling (2026-04-13)
+
+The previous change (same day) reduced agent scrollback from 10,000 to 100 and set `scrollOnEraseInDisplay: false` to eliminate duplicate TUI frames. This had the unintended effect of killing mouse-wheel scrolling entirely — in a real terminal (e.g. Ghostty), Claude Code writes conversation history into the normal buffer via ED2 redraws, and users scroll through it with the mouse wheel. With `scrollOnEraseInDisplay: false`, that content never enters scrollback at all.
+
+Reverted both settings to their defaults: `scrollOnEraseInDisplay: true`, `scrollback: 10_000`. This restores the scrollable history at the cost of duplicate frames from TUI redraws — the same tradeoff every terminal emulator makes. Proper deduplication would require intercepting the byte stream and diffing ED2-delimited frames, which is complex and fragile.
+
+Files: `src/terminal/session-manager.ts`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## Fix: startup session resume — stop auto-trashing, move resume to server (2026-04-13)
 
 Three independent issues were compounding on startup: (1) `use-session-column-sync.ts` had two effects — column sync and crash recovery — and on startup `previousSessionsRef` was empty, so `previous?.state !== "interrupted"` was always true (undefined !== "interrupted"), causing all interrupted sessions to be auto-trashed before crash recovery could fire. (2) During normal operation, auto-restart raced with the UI's auto-trash — the UI saw the intermediate "interrupted" state and trashed the card before restart completed. (3) Auto-restart used `resumeConversation=false`, starting agents fresh with no context, and `awaitReview=false`, marking restarted agents as "running" even though `--continue` just opens the prompt.

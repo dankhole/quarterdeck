@@ -175,11 +175,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				}
 				entry.active.session.write(data);
 			},
-			scrollOnEraseInDisplay: false,
-			// Agent TUIs (Claude Code, etc.) run in the alternate buffer — our
-			// normal-buffer scrollback is just launch noise. Keep it minimal to
-			// shrink restore snapshots and reduce duplicate-content artifacts.
-			scrollback: 100,
+			scrollOnEraseInDisplay: true,
+			scrollback: 10_000,
 		});
 
 		const launch = await prepareAgentLaunch({
