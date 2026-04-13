@@ -4,6 +4,7 @@ import { saveRuntimeConfig as saveRuntimeConfigQuery } from "@/runtime/runtime-c
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseStartupOnboardingOptions {
 	currentProjectId: string | null;
@@ -102,7 +103,7 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 			} catch (error) {
 				return {
 					ok: false,
-					message: error instanceof Error ? error.message : String(error),
+					message: toErrorMessage(error),
 				};
 			}
 		},

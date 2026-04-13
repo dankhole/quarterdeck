@@ -2,6 +2,29 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: code duplication cleanup across runtime and web-ui (2026-04-13)
+
+Systematic deduplication based on a full codebase audit. Net reduction of ~55 lines while improving maintainability.
+
+**New shared utilities:**
+- `src/fs/node-error.ts` — `isNodeError(error, code)` replaces 3 ad-hoc ENOENT checks in `locked-file-system.ts`, `lock-cleanup.ts`, `workspace-state.ts`
+- `src/workspace/file-fingerprint.ts` — `FileFingerprint` interface + `buildFileFingerprints()` replaces two identical implementations in `git-sync.ts` and `get-workspace-changes.ts`
+- `src/workspace/git-utils.ts` — added `resolveRepoRoot`, `countLines`, `parseNumstatTotals`, `parseNumstatLine`, `runGitSync`, `assertValidGitRef`
+- `web-ui/src/utils/to-error-message.ts` — `toErrorMessage()` replaces 42 inline error extraction patterns across 18 files
+
+**Runtime deduplication:**
+- `git-sync.ts` — removed 4 local functions (countLines, parseNumstatTotals, buildPathFingerprints, resolveRepoRoot), imports from shared modules. Renamed `GitPathFingerprint` → `FileFingerprint`.
+- `get-workspace-changes.ts` — removed 5 local definitions (FileFingerprint, buildFileFingerprints, toLineCount, validateRef) + consolidated 3 readDiffStat variants into 1 `readDiffNumstat`. Replaced 4 inline repo-root-resolution patterns with `resolveRepoRoot`.
+- `workspace-state.ts` — removed `isNodeErrorWithCode` and `runGitCapture`, imports `isNodeError` and `runGitSync`
+- `workspace-api.ts` — imports `assertValidGitRef` from `git-utils.ts` instead of `validateRef` from `get-workspace-changes.ts`
+
+**Web-UI fixes:**
+- `web-ui/src/types/board.ts` — `resolveTaskAutoReviewMode` now respects its input instead of always returning `"move_to_trash"`. `getTaskAutoReviewCancelButtonLabel` returns mode-specific labels.
+
+**Audit doc:** `docs/code-duplication-audit.md` — 14 findings with phases 1–3 and partial 5 completed. Remaining: ConfirmationDialog wrapper (needs visual testing), cross-boundary ANSI stripping, git error formatting round-trip.
+
+Files touched: `src/fs/node-error.ts`, `src/fs/lock-cleanup.ts`, `src/fs/locked-file-system.ts`, `src/workspace/file-fingerprint.ts`, `src/workspace/git-utils.ts`, `src/workspace/git-sync.ts`, `src/workspace/get-workspace-changes.ts`, `src/state/workspace-state.ts`, `src/trpc/workspace-api.ts`, `web-ui/src/utils/to-error-message.ts`, `web-ui/src/types/board.ts`, `web-ui/src/types/board.test.ts`, 18 web-ui hook/component files, `docs/code-duplication-audit.md`, `docs/todo.md`, `CHANGELOG.md`
+
 ## Refactor: extract 11 custom hooks from App.tsx (2026-04-13)
 
 Extracted inline state, callbacks, and effects from `App.tsx` (1,975 → 1,774 lines) into 11 focused custom hooks. The file had accumulated ~1,360 lines of hooks/state/effects before the JSX return — much of it logically grouped but physically scattered. This follows the same extraction pattern already used by `use-board-interactions`, `use-task-sessions`, `use-task-editor`, etc.

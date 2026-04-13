@@ -6,6 +6,7 @@ import type { PromptShortcut } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { useRawLocalStorageValue } from "@/utils/react-use";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UsePromptShortcutsInput {
 	currentProjectId: string | null;
@@ -115,7 +116,7 @@ export function usePromptShortcuts({
 				refreshRuntimeConfig();
 				return true;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast({
 					intent: "danger",
 					icon: "error",

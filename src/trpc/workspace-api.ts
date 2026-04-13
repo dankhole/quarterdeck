@@ -36,7 +36,6 @@ import {
 	getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
-	validateRef,
 } from "../workspace/get-workspace-changes";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import {
@@ -62,7 +61,7 @@ import {
 	stashPush,
 	stashShow,
 } from "../workspace/git-sync";
-import { getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
+import { assertValidGitRef, getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
 import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
@@ -683,8 +682,8 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		loadChanges: async (workspaceScope, input) => {
 			// Path A: Ref-to-ref comparison (Compare tab)
 			if (input.fromRef && input.toRef) {
-				validateRef(input.fromRef, "fromRef");
-				validateRef(input.toRef, "toRef");
+				assertValidGitRef(input.fromRef, "fromRef");
+				assertValidGitRef(input.toRef, "toRef");
 				let cwd: string;
 				if (input.taskId) {
 					try {
@@ -707,7 +706,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 			// Path A2: Ref-to-working-tree (Compare with uncommitted)
 			if (input.fromRef && !input.toRef) {
-				validateRef(input.fromRef, "fromRef");
+				assertValidGitRef(input.fromRef, "fromRef");
 				let cwd: string;
 				if (input.taskId) {
 					try {

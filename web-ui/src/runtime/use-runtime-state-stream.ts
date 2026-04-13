@@ -13,6 +13,7 @@ import type {
 	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
 import { createClientLogger } from "@/utils/client-logger";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 const log = createClientLogger("ws-stream");
 
@@ -384,7 +385,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 				setRuntimeDisconnected(true);
 				dispatch({
 					type: "stream_disconnected",
-					message: error instanceof Error ? error.message : String(error),
+					message: toErrorMessage(error),
 				});
 				scheduleReconnect();
 				return;

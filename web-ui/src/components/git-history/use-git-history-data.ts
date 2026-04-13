@@ -11,6 +11,7 @@ import type {
 	RuntimeWorkspaceChangesResponse,
 } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 export type GitHistoryViewMode = "working-copy" | "commit";
 
@@ -247,7 +248,7 @@ export function useGitHistoryData({
 				if (options.silent) {
 					return;
 				}
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				if (!options.append) {
 					setCommits([]);
 					setTotalCommitCount(0);

@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { getRuntimeHomePath, getWorkspacesRootPath } from "../state/workspace-state.js";
 import { getGitCommonDir, getGitDir } from "../workspace/git-utils.js";
 import { cleanupStaleLockAndTempFiles, DEFAULT_LOCK_STALE_MS } from "./locked-file-system.js";
+import { isNodeError } from "./node-error.js";
 
 /** Staleness threshold for git index.lock files (seconds). */
 const GIT_INDEX_LOCK_STALE_MS = 10_000;
@@ -262,7 +263,7 @@ async function removeIndexLock(gitDir: string, force: boolean, warn?: WarnFn): P
 		warn?.(`Removed stale git index.lock: ${lockPath}`);
 	} catch (error) {
 		// ENOENT is the common case (no stale lock) — ignore silently.
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+		if (isNodeError(error, "ENOENT")) {
 			return;
 		}
 		// Other errors (permissions, etc.) — best-effort, skip.

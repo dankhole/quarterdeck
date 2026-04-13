@@ -18,6 +18,7 @@ import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard } from "@/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
@@ -136,7 +137,7 @@ export function useTaskSessions({
 				}
 				return { ok: true, response: payload };
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				return { ok: false, message };
 			}
 		},
@@ -179,7 +180,7 @@ export function useTaskSessions({
 				}
 				return { ok: true };
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				return { ok: false, message };
 			}
 		},
@@ -236,7 +237,7 @@ export function useTaskSessions({
 				}
 				return { ok: true };
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				return { ok: false, message };
 			}
 		},
@@ -258,7 +259,7 @@ export function useTaskSessions({
 				}
 				return payload;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				console.error(`[cleanupTaskWorkspace] ${message}`);
 				return null;
 			}
@@ -278,7 +279,7 @@ export function useTaskSessions({
 					baseRef: task.baseRef,
 				});
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				notifyError(message);
 				return null;
 			}

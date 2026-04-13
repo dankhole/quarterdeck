@@ -13,6 +13,7 @@ import {
 	resolveOpenTargetPlatform,
 } from "@/utils/open-targets";
 import { useRawLocalStorageValue } from "@/utils/react-use";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseOpenWorkspaceParams {
 	currentProjectId: string | null;
@@ -95,7 +96,7 @@ export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWor
 					showOpenFailureToast(details);
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showOpenFailureToast(message);
 			} finally {
 				setIsOpeningWorkspace(false);

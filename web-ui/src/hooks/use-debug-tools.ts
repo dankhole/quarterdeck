@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { notifyError } from "@/components/app-toaster";
 import { resetRuntimeDebugState } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseDebugToolsParams {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
@@ -55,7 +56,7 @@ export function useDebugTools({
 				window.sessionStorage.clear();
 				window.location.reload();
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				notifyError(`Could not reset all state: ${message}`);
 				setIsResetAllStatePending(false);
 			}

@@ -46,6 +46,7 @@ import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { resetAllTerminalRenderers } from "@/terminal/persistent-terminal-manager";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 function clampPollInterval(value: string): number {
 	return Math.max(500, Math.min(60000, Number(value)));
@@ -348,7 +349,7 @@ export function RuntimeSettingsDialog({
 				timeout: 3000,
 			});
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			showAppToast({
 				intent: "danger",
 				icon: "error",
@@ -456,7 +457,7 @@ export function RuntimeSettingsDialog({
 		(filePath: string) => {
 			setSaveError(null);
 			void openFileOnHost(workspaceId, filePath).catch((error) => {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				setSaveError(`Could not open file on host: ${message}`);
 			});
 		},

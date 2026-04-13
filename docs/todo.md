@@ -187,3 +187,22 @@ The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the
 - **Expand the `useSyncExternalStore` pattern** — already used for workspace metadata. Could generalize to board state and sessions. Risk: more boilerplate than Zustand, but zero new deps.
 
 This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
+
+## 24. Code duplication cleanup
+
+Work through the findings in [docs/code-duplication-audit.md](code-duplication-audit.md) — 14 items covering duplicated logic across both runtime and web-ui. A detailed audit with specific files, line numbers, and consolidation approaches for each.
+
+**Done:**
+- ~~Phase 1~~: Removed duplicate `validateRef`, made auto-review-mode stubs functional
+- ~~Phase 2~~: Consolidated numstat parsing (`parseNumstatTotals`, `parseNumstatLine`, `countLines` in `git-utils.ts`), extracted shared `FileFingerprint` + builder (`file-fingerprint.ts`), added shared `resolveRepoRoot` to `git-utils.ts`
+- ~~Phase 3 (partial)~~: Extracted `isNodeError` to `src/fs/node-error.ts`, consolidated `runGitCapture` as `runGitSync` in `git-utils.ts`
+- ~~Phase 5 (partial)~~: Extracted `toErrorMessage` to `web-ui/src/utils/to-error-message.ts`, updated 18 files
+
+**Remaining:**
+- **ConfirmationDialog wrapper** — Create reusable component to collapse 17 near-identical dialog files. Needs visual testing.
+- **Cross-boundary ANSI stripping** — Share runtime's `stripAnsi` implementation with web-ui
+- **Git error formatting round-trip** — Runtime wraps errors in boilerplate, web-ui regex-strips it back out
+
+**Skipped (low ROI):**
+- Path normalization (#9) — divergent semantics are intentional per platform
+- `useLatestRef` / `useRequestId` hooks — too few instances (~10 and 3) to justify abstractions

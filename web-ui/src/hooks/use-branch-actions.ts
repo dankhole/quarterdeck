@@ -10,6 +10,7 @@ import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } fro
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { setHomeGitSummary } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseBranchActionsOptions {
 	workspaceId: string | null;
@@ -159,7 +160,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			} catch (error) {
 				showAppToast({
 					intent: "danger",
-					message: `Checkout failed: ${error instanceof Error ? error.message : String(error)}`,
+					message: `Checkout failed: ${toErrorMessage(error)}`,
 				});
 			}
 		},
@@ -204,7 +205,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showAppToast({
 				intent: "danger",
-				message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
+				message: `Merge failed: ${toErrorMessage(error)}`,
 			});
 		}
 	}, [workspaceId, mergeBranchDialogState, taskId, baseRef, currentBranch, onConflictDetected]);
@@ -278,7 +279,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showAppToast({
 				intent: "danger",
-				message: `Stash failed: ${error instanceof Error ? error.message : String(error)}`,
+				message: `Stash failed: ${toErrorMessage(error)}`,
 			});
 		} finally {
 			setIsStashingAndCheckingOut(false);
@@ -331,7 +332,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showAppToast({
 				intent: "danger",
-				message: `Delete failed: ${error instanceof Error ? error.message : String(error)}`,
+				message: `Delete failed: ${toErrorMessage(error)}`,
 			});
 		}
 	}, [workspaceId, deleteBranchDialogState, refetchRefs]);

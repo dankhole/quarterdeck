@@ -4,6 +4,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 export interface CreateBranchDialogState {
 	type: "closed" | "open";
@@ -59,7 +60,7 @@ export function CreateBranchDialog({
 		} catch (error) {
 			showAppToast({
 				intent: "danger",
-				message: `Failed to create branch: ${error instanceof Error ? error.message : String(error)}`,
+				message: `Failed to create branch: ${toErrorMessage(error)}`,
 			});
 		} finally {
 			setIsCreating(false);

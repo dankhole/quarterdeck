@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { createGitProcessEnv } from "../core/git-process-env";
@@ -160,6 +160,15 @@ export function validateGitRef(ref: string): boolean {
 }
 
 /**
+ * Throwing variant of {@link validateGitRef} for use at API boundaries.
+ */
+export function assertValidGitRef(ref: string, label: string): void {
+	if (!validateGitRef(ref)) {
+		throw new Error(`Invalid ${label}: must not start with "-" or contain ".."`);
+	}
+}
+
+/**
  * Validate a file path for safe use in git show commands.
  * Rejects paths containing `..` traversal.
  */
@@ -235,4 +244,88 @@ export function getGitCommandErrorMessage(error: unknown): string {
 		}
 	}
 	return error instanceof Error ? error.message : String(error);
+}
+
+// ---------------------------------------------------------------------------
+// Shared git helpers extracted from git-sync / get-workspace-changes / workspace-state
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the repository root (`git rev-parse --show-toplevel`).
+ * Throws when `cwd` is not inside a git repository.
+ */
+export async function resolveRepoRoot(cwd: string): Promise<string> {
+	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
+	if (!result.ok || !result.stdout) {
+		throw new Error("No git repository detected for this workspace.");
+	}
+	return result.stdout;
+}
+
+/** Count newline-separated lines in a string (returns 0 for empty/falsy input). */
+export function countLines(text: string): number {
+	if (!text) {
+		return 0;
+	}
+	return text.split("\n").length;
+}
+
+/** Parse `git diff --numstat` output into aggregate additions/deletions. */
+export function parseNumstatTotals(output: string): { additions: number; deletions: number } {
+	let additions = 0;
+	let deletions = 0;
+
+	for (const rawLine of output.split("\n")) {
+		const line = rawLine.trim();
+		if (!line) {
+			continue;
+		}
+		const [addedRaw, deletedRaw] = line.split("\t");
+		const added = Number.parseInt(addedRaw ?? "", 10);
+		const deleted = Number.parseInt(deletedRaw ?? "", 10);
+		if (Number.isFinite(added)) {
+			additions += added;
+		}
+		if (Number.isFinite(deleted)) {
+			deletions += deleted;
+		}
+	}
+
+	return { additions, deletions };
+}
+
+/**
+ * Parse a single numstat line into per-file additions/deletions.
+ * Returns `null` if the line is empty or unparseable.
+ */
+export function parseNumstatLine(line: string): { additions: number; deletions: number } | null {
+	const trimmed = line.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const [addedRaw, deletedRaw] = trimmed.split("\t");
+	const additions = Number.parseInt(addedRaw ?? "", 10);
+	const deletions = Number.parseInt(deletedRaw ?? "", 10);
+	return {
+		additions: Number.isFinite(additions) ? additions : 0,
+		deletions: Number.isFinite(deletions) ? deletions : 0,
+	};
+}
+
+/**
+ * Synchronous git command execution — returns trimmed stdout or null on failure.
+ * Use sparingly; prefer the async {@link runGit} for most operations.
+ */
+export function runGitSync(cwd: string, args: string[]): string | null {
+	const result = spawnSync("git", args, {
+		cwd,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "ignore"],
+		env: createGitProcessEnv(),
+	});
+	if (result.status !== 0 || typeof result.stdout !== "string") {
+		return null;
+	}
+	const value = result.stdout.trim();
+	return value.length > 0 ? value : null;
 }

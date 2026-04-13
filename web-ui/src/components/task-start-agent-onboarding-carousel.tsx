@@ -5,6 +5,7 @@ import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } 
 
 import { cn } from "@/components/ui/cn";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface BaseOnboardingSlide {
 	kind: "media" | "agent-selection";
@@ -370,7 +371,7 @@ export function TaskStartAgentOnboardingCarousel({
 				if (selectionSavePromiseRef.current !== savePromise) {
 					return;
 				}
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				setSelectionError(message || "Could not switch agents. Try again.");
 				setActiveAgentId(selectedAgentId);
 			})
@@ -385,7 +386,7 @@ export function TaskStartAgentOnboardingCarousel({
 		if (selectionSavePromiseRef.current) {
 			const selectionResult = await selectionSavePromiseRef.current.catch((error: unknown) => ({
 				ok: false,
-				message: error instanceof Error ? error.message : String(error),
+				message: toErrorMessage(error),
 			}));
 			if (!selectionResult.ok) {
 				const message = selectionResult.message ?? "Could not switch agents. Try again.";

@@ -21,6 +21,7 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitCommit } from "@/runtime/types";
 import { useWindowEvent } from "@/utils/react-use";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 function CommitDiffHeader({
 	commit,
@@ -173,7 +174,7 @@ export function GitHistoryView({
 			} catch (error) {
 				showAppToast({
 					intent: "danger",
-					message: `Cherry-pick failed: ${error instanceof Error ? error.message : String(error)}`,
+					message: `Cherry-pick failed: ${toErrorMessage(error)}`,
 				});
 				setCherryPickDialog({ type: "closed" });
 			} finally {

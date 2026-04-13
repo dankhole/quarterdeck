@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 export type MigrateDirection = "isolate" | "de-isolate";
 
@@ -30,7 +31,7 @@ export function useMigrateWorkingDirectory(workspaceId: string | null) {
 					});
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast({ intent: "danger", message });
 			} finally {
 				migratingRef.current = false;

@@ -3,6 +3,7 @@ import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "no
 import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
+import { isNodeError } from "./node-error";
 
 export const DEFAULT_LOCK_STALE_MS = 10_000;
 const DEFAULT_LOCK_RETRIES: NonNullable<LockOptions["retries"]> = {
@@ -61,7 +62,7 @@ async function readFileIfExists(path: string): Promise<string | null> {
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+		if (isNodeError(error, "ENOENT")) {
 			return null;
 		}
 		throw error;

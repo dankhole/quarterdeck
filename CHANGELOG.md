@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Refactor: code duplication cleanup across runtime and web-ui
+
+- Consolidated duplicated git utilities into shared functions in `git-utils.ts`: `resolveRepoRoot`, `countLines`, `parseNumstatTotals`, `parseNumstatLine`, `runGitSync`. Eliminates duplicate implementations across `git-sync.ts`, `get-workspace-changes.ts`, and `workspace-state.ts`.
+- Extracted shared `FileFingerprint` type and `buildFileFingerprints` builder to `file-fingerprint.ts` — was identically implemented in both `git-sync.ts` and `get-workspace-changes.ts`.
+- Consolidated three near-identical `readDiffStat` / `readDiffStatBetweenRefs` / `readDiffStatFromRef` functions in `get-workspace-changes.ts` into a single `readDiffNumstat` helper.
+- Extracted `isNodeError` to `src/fs/node-error.ts` — replaces ad-hoc ENOENT type-guard checks in `locked-file-system.ts`, `lock-cleanup.ts`, and `workspace-state.ts`.
+- Removed duplicate `validateRef` from `get-workspace-changes.ts`, replaced with `assertValidGitRef` in `git-utils.ts`.
+- Made `resolveTaskAutoReviewMode` and `getTaskAutoReviewCancelButtonLabel` in `web-ui/src/types/board.ts` functional — they previously ignored their input and always returned `"move_to_trash"` / `"Cancel Auto-trash"`.
+- Extracted `toErrorMessage` utility to `web-ui/src/utils/to-error-message.ts` — replaces 42 inline `error instanceof Error ? error.message : String(error)` patterns across 18 web-ui files.
+- Added `docs/code-duplication-audit.md` documenting all findings and remaining items.
+
 ### Refactor: extract 11 custom hooks from App.tsx
 
 - Extracted inline state, callbacks, and effects from `App.tsx` into 11 focused custom hooks, reducing the file from 1,975 to 1,774 lines. The pre-JSX logic section shrinks by ~280 lines, replaced by hook calls. Effect-only hooks: `useStreamErrorHandler`, `useTaskTitleSync`, `useBoardMetadataSync`, `useTerminalConfigSync`, `useFocusedTaskNotification`. State+callback hooks: `useGitNavigation`, `useAppDialogs`, `useMigrateTaskDialog`. Cleanup/derived hooks: `useProjectSwitchCleanup`, `useEscapeHandler`, `useNavbarState`. All follow the existing single-options-object input / named-result-interface output convention. Zero behavior change.

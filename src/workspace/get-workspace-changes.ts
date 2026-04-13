@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
@@ -6,7 +6,9 @@ import type {
 	RuntimeWorkspaceFileChange,
 	RuntimeWorkspaceFileStatus,
 } from "../core/api-contract";
-import { getGitStdout } from "./git-utils";
+import type { FileFingerprint } from "./file-fingerprint";
+import { buildFileFingerprints } from "./file-fingerprint";
+import { countLines, getGitStdout, parseNumstatLine, resolveRepoRoot } from "./git-utils";
 
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
 
@@ -22,11 +24,6 @@ interface NameStatusEntry {
 	path: string;
 	status: RuntimeWorkspaceFileStatus;
 	previousPath?: string;
-}
-
-export function validateRef(ref: string, label: string): void {
-	if (ref.startsWith("-")) throw new Error(`Invalid ${label}: must not start with "-"`);
-	if (ref.includes("..")) throw new Error(`Invalid ${label}: must not contain ".."`);
 }
 
 interface ChangesBetweenRefsInput {
@@ -45,13 +42,6 @@ interface DiffStat {
 	deletions: number;
 }
 
-interface FileFingerprint {
-	path: string;
-	size: number | null;
-	mtimeMs: number | null;
-	ctimeMs: number | null;
-}
-
 function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
 	const kind = code.charAt(0);
 	if (kind === "M") return "modified";
@@ -61,13 +51,6 @@ function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
 	if (kind === "C") return "copied";
 	if (kind === "U") return "conflicted";
 	return "unknown";
-}
-
-function toLineCount(text: string): number {
-	if (!text) {
-		return 0;
-	}
-	return text.split("\n").length;
 }
 
 function parseTrackedChanges(output: string): NameStatusEntry[] {
@@ -104,35 +87,6 @@ function parseTrackedChanges(output: string): NameStatusEntry[] {
 		}
 	}
 
-	return entries;
-}
-
-async function buildFileFingerprints(repoRoot: string, paths: string[]): Promise<FileFingerprint[]> {
-	if (paths.length === 0) {
-		return [];
-	}
-	const uniqueSortedPaths = Array.from(new Set(paths)).sort((left, right) => left.localeCompare(right));
-	const entries = await Promise.all(
-		uniqueSortedPaths.map(async (path) => {
-			const absolutePath = join(repoRoot, path);
-			try {
-				const fileStat = await stat(absolutePath);
-				return {
-					path,
-					size: fileStat.size,
-					mtimeMs: fileStat.mtimeMs,
-					ctimeMs: fileStat.ctimeMs,
-				} satisfies FileFingerprint;
-			} catch {
-				return {
-					path,
-					size: null,
-					mtimeMs: null,
-					ctimeMs: null,
-				} satisfies FileFingerprint;
-			}
-		}),
-	);
 	return entries;
 }
 
@@ -201,23 +155,24 @@ function fallbackStats(oldText: string | null, newText: string | null): DiffStat
 		return { additions: 0, deletions: 0 };
 	}
 	if (oldText == null) {
-		return { additions: toLineCount(newText ?? ""), deletions: 0 };
+		return { additions: countLines(newText ?? ""), deletions: 0 };
 	}
 	if (newText == null) {
-		return { additions: 0, deletions: toLineCount(oldText) };
+		return { additions: 0, deletions: countLines(oldText) };
 	}
 
-	const oldLines = toLineCount(oldText);
-	const newLines = toLineCount(newText);
+	const oldLines = countLines(oldText);
+	const newLines = countLines(newText);
 	return {
 		additions: Math.max(newLines - oldLines, 0),
 		deletions: Math.max(oldLines - newLines, 0),
 	};
 }
 
-async function readDiffStat(repoRoot: string, path: string): Promise<DiffStat | null> {
+/** Run `git diff --numstat <args>` and parse the first result line. */
+async function readDiffNumstat(repoRoot: string, args: string[]): Promise<DiffStat | null> {
 	try {
-		const output = await getGitStdout(["diff", "--numstat", "HEAD", "--", path], repoRoot);
+		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot);
 		const firstLine = output
 			.split("\n")
 			.map((line) => line.trim())
@@ -225,62 +180,7 @@ async function readDiffStat(repoRoot: string, path: string): Promise<DiffStat | 
 		if (!firstLine) {
 			return null;
 		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
-	} catch {
-		return null;
-	}
-}
-
-async function readDiffStatBetweenRefs(
-	repoRoot: string,
-	fromRef: string,
-	toRef: string,
-	path: string,
-): Promise<DiffStat | null> {
-	try {
-		const output = await getGitStdout(["diff", "--numstat", fromRef, toRef, "--", path], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
-		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
-	} catch {
-		return null;
-	}
-}
-
-async function readDiffStatFromRef(repoRoot: string, fromRef: string, path: string): Promise<DiffStat | null> {
-	try {
-		const output = await getGitStdout(["diff", "--numstat", fromRef, "--", path], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
-		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
+		return parseNumstatLine(firstLine);
 	} catch {
 		return null;
 	}
@@ -293,8 +193,8 @@ async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promis
 	const newText = entry.status === "deleted" ? null : await readWorkingTreeFile(repoRoot, entry.path);
 	const stats =
 		entry.status === "untracked"
-			? { additions: toLineCount(newText ?? ""), deletions: 0 }
-			: ((await readDiffStat(repoRoot, entry.path)) ?? fallbackStats(oldText, newText));
+			? { additions: countLines(newText ?? ""), deletions: 0 }
+			: ((await readDiffNumstat(repoRoot, ["HEAD", "--", entry.path])) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,
@@ -317,7 +217,7 @@ async function buildFileChangeBetweenRefs(
 	const oldText = entry.status === "added" ? null : await readFileAtRef(repoRoot, fromRef, basePath);
 	const newText = entry.status === "deleted" ? null : await readFileAtRef(repoRoot, toRef, entry.path);
 	const stats =
-		(await readDiffStatBetweenRefs(repoRoot, fromRef, toRef, entry.path)) ?? fallbackStats(oldText, newText);
+		(await readDiffNumstat(repoRoot, [fromRef, toRef, "--", entry.path])) ?? fallbackStats(oldText, newText);
 
 	return {
 		path: entry.path,
@@ -343,8 +243,8 @@ async function buildFileChangeFromRef(
 	const newText = entry.status === "deleted" ? null : await readWorkingTreeFile(repoRoot, entry.path);
 	const stats =
 		entry.status === "untracked"
-			? { additions: toLineCount(newText ?? ""), deletions: 0 }
-			: ((await readDiffStatFromRef(repoRoot, fromRef, entry.path)) ?? fallbackStats(oldText, newText));
+			? { additions: countLines(newText ?? ""), deletions: 0 }
+			: ((await readDiffNumstat(repoRoot, [fromRef, "--", entry.path])) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,
@@ -358,10 +258,7 @@ async function buildFileChangeFromRef(
 }
 
 export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], cwd)).trim();
-	if (!repoRoot) {
-		throw new Error("Could not resolve git repository root.");
-	}
+	const repoRoot = await resolveRepoRoot(cwd);
 	return {
 		repoRoot,
 		generatedAt: Date.now(),
@@ -370,10 +267,7 @@ export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<
 }
 
 export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], cwd)).trim();
-	if (!repoRoot) {
-		throw new Error("Could not resolve git repository root.");
-	}
+	const repoRoot = await resolveRepoRoot(cwd);
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
 		getGitStdout(["diff", "--name-status", "HEAD", "--"], repoRoot),
@@ -430,10 +324,7 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 export async function getWorkspaceChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], input.cwd)).trim();
-	if (!repoRoot) {
-		throw new Error("Could not resolve git repository root.");
-	}
+	const repoRoot = await resolveRepoRoot(input.cwd);
 
 	const trackedChangesOutput = await getGitStdout(
 		["diff", "--name-status", "--find-renames", input.fromRef, input.toRef, "--"],
@@ -461,10 +352,7 @@ export async function getWorkspaceChangesBetweenRefs(
 }
 
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], input.cwd)).trim();
-	if (!repoRoot) {
-		throw new Error("Could not resolve git repository root.");
-	}
+	const repoRoot = await resolveRepoRoot(input.cwd);
 
 	const [trackedChangesOutput, untrackedOutput] = await Promise.all([
 		getGitStdout(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),

@@ -22,6 +22,7 @@ import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/pers
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, CardSelection } from "@/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 const HOME_TERMINAL_ROWS = 16;
 const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
@@ -287,7 +288,7 @@ export function useTerminalPanels({
 			);
 			return true;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			notifyError(message);
 			return false;
 		} finally {
@@ -334,7 +335,7 @@ export function useTerminalPanels({
 				upsertSession(payload.summary);
 				return true;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				notifyError(message);
 				return false;
 			} finally {

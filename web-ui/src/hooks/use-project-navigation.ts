@@ -6,6 +6,7 @@ import { preloadProjectWorkspaceState } from "@/runtime/project-preload-cache";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { useWindowEvent } from "@/utils/react-use";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
@@ -185,7 +186,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			}
 			await addProjectByPath(projectPath);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			showAppToast({
 				intent: "danger",
 				icon: "warning-sign",
@@ -203,7 +204,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		try {
 			await addProjectByPath(pendingGitInitializationPath, true);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			showAppToast({
 				intent: "danger",
 				icon: "warning-sign",
@@ -240,7 +241,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 				}
 				return true;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				notifyError(message);
 				return false;
 			} finally {
@@ -322,7 +323,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 					throw new Error(result.error ?? "Could not reorder projects.");
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				notifyError(message);
 			}
 		},

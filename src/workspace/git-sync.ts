@@ -26,14 +26,9 @@ import type {
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
 } from "../core/api-contract";
-import { runGit, validateGitPath, validateGitRef } from "./git-utils";
-
-interface GitPathFingerprint {
-	path: string;
-	size: number | null;
-	mtimeMs: number | null;
-	ctimeMs: number | null;
-}
+import type { FileFingerprint } from "./file-fingerprint";
+import { buildFileFingerprints } from "./file-fingerprint";
+import { countLines, parseNumstatTotals, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
 
 export interface GitWorkspaceProbe {
 	repoRoot: string;
@@ -44,38 +39,8 @@ export interface GitWorkspaceProbe {
 	behindCount: number;
 	changedFiles: number;
 	untrackedPaths: string[];
-	pathFingerprints: GitPathFingerprint[];
+	pathFingerprints: FileFingerprint[];
 	stateToken: string;
-}
-
-function countLines(text: string): number {
-	if (!text) {
-		return 0;
-	}
-	return text.split("\n").length;
-}
-
-function parseNumstatTotals(output: string): { additions: number; deletions: number } {
-	let additions = 0;
-	let deletions = 0;
-
-	for (const rawLine of output.split("\n")) {
-		const line = rawLine.trim();
-		if (!line) {
-			continue;
-		}
-		const [addedRaw, deletedRaw] = line.split("\t");
-		const added = Number.parseInt(addedRaw ?? "", 10);
-		const deleted = Number.parseInt(deletedRaw ?? "", 10);
-		if (Number.isFinite(added)) {
-			additions += added;
-		}
-		if (Number.isFinite(deleted)) {
-			deletions += deleted;
-		}
-	}
-
-	return { additions, deletions };
 }
 
 function parseAheadBehindCounts(output: string): { aheadCount: number; behindCount: number } {
@@ -88,34 +53,10 @@ function parseAheadBehindCounts(output: string): { aheadCount: number; behindCou
 	};
 }
 
-function buildFingerprintToken(fingerprints: GitPathFingerprint[]): string {
+function buildFingerprintToken(fingerprints: FileFingerprint[]): string {
 	return fingerprints
 		.map((entry) => `${entry.path}\t${entry.size ?? "null"}\t${entry.mtimeMs ?? "null"}\t${entry.ctimeMs ?? "null"}`)
 		.join("\n");
-}
-
-async function buildPathFingerprints(repoRoot: string, paths: string[]): Promise<GitPathFingerprint[]> {
-	const uniqueSortedPaths = Array.from(new Set(paths)).sort((left, right) => left.localeCompare(right));
-	return await Promise.all(
-		uniqueSortedPaths.map(async (path) => {
-			try {
-				const fileStat = await stat(join(repoRoot, path));
-				return {
-					path,
-					size: fileStat.size,
-					mtimeMs: fileStat.mtimeMs,
-					ctimeMs: fileStat.ctimeMs,
-				} satisfies GitPathFingerprint;
-			} catch {
-				return {
-					path,
-					size: null,
-					mtimeMs: null,
-					ctimeMs: null,
-				} satisfies GitPathFingerprint;
-			}
-		}),
-	);
 }
 
 function parseStatusPath(line: string): string | null {
@@ -212,7 +153,7 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 	}
 
 	const headCommit = headCommitResult.ok && headCommitResult.stdout ? headCommitResult.stdout : null;
-	const fingerprints = await buildPathFingerprints(repoRoot, fingerprintPaths);
+	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
 
 	return {
 		repoRoot,
@@ -237,21 +178,13 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 	};
 }
 
-async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
-	if (!result.ok || !result.stdout) {
-		throw new Error("No git repository detected for this workspace.");
-	}
-	return result.stdout;
-}
-
 const untrackedLineCountCache = new Map<string, { mtimeMs: number; lineCount: number }>();
 const UNTRACKED_CACHE_MAX_SIZE = 2_000;
 
 async function countUntrackedAdditions(
 	repoRoot: string,
 	untrackedPaths: string[],
-	fingerprints: GitPathFingerprint[],
+	fingerprints: FileFingerprint[],
 ): Promise<number> {
 	const fingerprintByPath = new Map(fingerprints.map((fp) => [fp.path, fp]));
 	const counts = await Promise.all(

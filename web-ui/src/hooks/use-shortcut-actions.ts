@@ -4,6 +4,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import { waitForTerminalLikelyPrompt } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
 const TERMINAL_PROMPT_WAIT_TIMEOUT_MS = 3000;
@@ -79,7 +80,7 @@ export function useShortcutActions({
 				refreshRuntimeProjectConfig();
 				return true;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast(
 					{
 						intent: "danger",
@@ -140,7 +141,7 @@ export function useShortcutActions({
 					throw new Error(runResult.message ?? "Could not run shortcut command.");
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast(
 					{
 						intent: "danger",
@@ -189,7 +190,7 @@ export function useShortcutActions({
 				refreshRuntimeProjectConfig();
 				return { ok: true };
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast(
 					{
 						intent: "danger",

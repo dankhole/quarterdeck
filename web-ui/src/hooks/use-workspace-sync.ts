@@ -13,6 +13,7 @@ import { fetchWorkspaceState } from "@/runtime/workspace-state-query";
 import { normalizeBoardData } from "@/state/board-state";
 import { setWorkspacePath as setStoreWorkspacePath } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseWorkspaceSyncInput {
 	currentProjectId: string | null;
@@ -156,7 +157,7 @@ export function useWorkspaceSync({
 			) {
 				return;
 			}
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			notifyError(message);
 		} finally {
 			if (workspaceRefreshRequestIdRef.current === requestId) {

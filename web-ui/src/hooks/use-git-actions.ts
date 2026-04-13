@@ -17,6 +17,7 @@ import {
 } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -382,7 +383,7 @@ export function useGitActions({
 				}
 				refreshGitHistory();
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				setGitActionError({
 					action,
 					message,
@@ -441,7 +442,7 @@ export function useGitActions({
 											}
 											await switchHomeBranch(normalizedBranch);
 										} catch (stashError) {
-											const stashMsg = stashError instanceof Error ? stashError.message : String(stashError);
+											const stashMsg = toErrorMessage(stashError);
 											showAppToast({
 												intent: "danger",
 												icon: "warning-sign",
@@ -467,7 +468,7 @@ export function useGitActions({
 				refreshGitHistory();
 				await refreshWorkspaceState();
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = toErrorMessage(error);
 				showAppToast({
 					intent: "danger",
 					icon: "warning-sign",
@@ -516,7 +517,7 @@ export function useGitActions({
 				timeout: 4000,
 			});
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			showAppToast({
 				intent: "danger",
 				icon: "warning-sign",
@@ -614,7 +615,7 @@ export function useGitActions({
 			setGitActionError(null);
 			refreshGitHistory();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = toErrorMessage(error);
 			showAppToast({
 				intent: "danger",
 				icon: "warning-sign",

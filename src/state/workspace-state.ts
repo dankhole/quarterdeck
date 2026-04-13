@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -16,9 +15,10 @@ import {
 	runtimeTaskSessionSummarySchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 } from "../core/api-contract";
-import { createGitProcessEnv } from "../core/git-process-env";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
+import { isNodeError } from "../fs/node-error";
+import { runGitSync } from "../workspace/git-utils";
 
 const RUNTIME_HOME_DIR = ".quarterdeck";
 const RUNTIME_WORKTREES_DIR = "worktrees";
@@ -229,10 +229,6 @@ function getWorkspacesRootLockRequest(): LockRequest {
 	};
 }
 
-function isNodeErrorWithCode(error: unknown, code: string): boolean {
-	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
-}
-
 async function readJsonFile(path: string): Promise<unknown | null> {
 	try {
 		const raw = await readFile(path, "utf8");
@@ -243,7 +239,7 @@ async function readJsonFile(path: string): Promise<unknown | null> {
 			throw new Error(`Malformed JSON in ${path}. ${message}`);
 		}
 	} catch (error) {
-		if (isNodeErrorWithCode(error, "ENOENT")) {
+		if (isNodeError(error, "ENOENT")) {
 			return null;
 		}
 		const message = error instanceof Error ? error.message : String(error);
@@ -445,32 +441,18 @@ function findWorkspaceEntry(index: WorkspaceIndexFile, repoPath: string): Worksp
 	return entry;
 }
 
-function runGitCapture(cwd: string, args: string[]): string | null {
-	const result = spawnSync("git", args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
-		env: createGitProcessEnv(),
-	});
-	if (result.status !== 0 || typeof result.stdout !== "string") {
-		return null;
-	}
-	const value = result.stdout.trim();
-	return value.length > 0 ? value : null;
-}
-
 function detectGitRoot(cwd: string): string | null {
-	return runGitCapture(cwd, ["rev-parse", "--show-toplevel"]);
+	return runGitSync(cwd, ["rev-parse", "--show-toplevel"]);
 }
 
 function detectGitCurrentBranch(repoPath: string): string | null {
-	return runGitCapture(repoPath, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+	return runGitSync(repoPath, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
 }
 
 function detectGitBranches(repoPath: string): string[] {
 	// TODO: support showing remote branches again once worktree creation can safely fetch/pull
 	// and resolve missing local tracking branches automatically.
-	const output = runGitCapture(repoPath, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+	const output = runGitSync(repoPath, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
 	if (!output) {
 		return [];
 	}
@@ -487,7 +469,7 @@ function detectGitBranches(repoPath: string): string[] {
 }
 
 function detectGitDefaultBranch(repoPath: string, branches: string[]): string | null {
-	const remoteHead = runGitCapture(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+	const remoteHead = runGitSync(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
 	if (remoteHead) {
 		const normalized = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : remoteHead;
 		if (normalized) {
