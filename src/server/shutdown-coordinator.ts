@@ -1,7 +1,7 @@
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
-import { clearPidRegistry } from "../terminal/pid-registry";
+import { killOrphanedAgentProcesses } from "../terminal/orphan-cleanup";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
@@ -230,9 +230,9 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		deps.warn(`Shutdown cleanup timed out after ${CLEANUP_TIMEOUT_MS}ms. Closing server without full cleanup.`);
 	}
 
-	// All managed processes are stopped — clear the PID registry so the next
-	// startup doesn't try to kill already-dead PIDs.
-	await clearPidRegistry().catch(() => {});
+	// Best-effort orphan cleanup for agents left by a previously crashed instance.
+	// Fire-and-forget — startup catches any stragglers.
+	killOrphanedAgentProcesses().catch(() => {});
 
 	await deps.closeRuntimeServer();
 }

@@ -177,3 +177,28 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **File browser**: Slow to load and navigate. Profile whether the bottleneck is git command execution (status, ls-files), data transfer over WebSocket, or React rendering. Tree expansion and file selection should feel instant.
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
+
+## 21. Refactor `session-manager.ts` — extract responsibility groups
+
+`session-manager.ts` is 1,400+ lines with several loosely-coupled responsibility groups packed into one class. Extract them into focused modules:
+
+- **Workspace trust auto-confirm** (Claude + Codex) — ~150 lines, self-contained, no reason to live in the manager
+- **Auto-restart logic** (`shouldAutoRestart`, `scheduleAutoRestart`) — ~100 lines, only touches `ProcessEntry` and the entries map
+- **Reconciliation** (`reconcileSessionStates`, `applyReconciliationAction`) — ~150 lines, half-extracted already (`session-reconciliation.ts` exists)
+- **PTY event handling / interrupt recovery** — ~200 lines, side-effect handlers that could take a manager reference
+
+The core session lifecycle (`startTaskSession`, `startShellSession`, `stop`) stays. Extracted modules take the manager or entries map as a parameter. Goal is to get the file under ~600 lines so agents can read the relevant section without loading 1,400 lines of context.
+
+## 22. Refactor `App.tsx` — extract custom hooks
+
+`App.tsx` is ~2,000 lines with 68 hooks and 1,360 lines of state/logic before the JSX return. Much of this is related state + callbacks that could be bundled into custom hooks (same pattern already used for `use-board-interactions`, `use-task-sessions`, etc.). Identify the remaining groups of `useState`/`useCallback`/`useEffect` that belong together and extract them. Goal is to get App.tsx down to mostly `const { ... } = useFoo()` calls plus JSX wiring. Lower risk than a context provider refactor — component interfaces don't change.
+
+## 23. Investigate deeper App.tsx state architecture refactor
+
+The custom hook extraction (#22) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
+
+- **React Context providers** — split state into domain-specific contexts (board, sessions, config, git). Standard React, no new deps. Risk: re-render cascades if contexts aren't split granularly enough.
+- **Zustand or Jotai** — lightweight external stores. Components subscribe to slices, minimal re-renders. Risk: migration cost, new dependency, coexistence with the existing Immer reducer.
+- **Expand the `useSyncExternalStore` pattern** — already used for workspace metadata. Could generalize to board state and sessions. Risk: more boilerplate than Zustand, but zero new deps.
+
+This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
