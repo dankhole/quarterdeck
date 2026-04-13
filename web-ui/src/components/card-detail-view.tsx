@@ -415,6 +415,8 @@ export function CardDetailView({
 								) : undefined
 							}
 							gitHistoryPanel={gitHistoryPanel}
+							pinnedBranches={pinnedBranches}
+							onTogglePinBranch={onTogglePinBranch}
 						/>
 					</div>
 				) : mainView === "files" ? (

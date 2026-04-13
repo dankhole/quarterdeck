@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: pinned branches not shared across all branch dropdowns
+
+- Git view compare bar's source and target branch selectors now receive pinned branches and pin/unpin callbacks, matching the top bar and file browser scope bar. Pinning a branch in any dropdown now appears everywhere.
+
 ### Refactor: split api-contract.ts into domain modules
 
 - Split the 1,297-line monolithic `src/core/api-contract.ts` into 11 focused domain files under `src/core/api/`: `shared.ts`, `board.ts`, `workspace-files.ts`, `git-sync.ts`, `git-merge.ts`, `git-history.ts`, `task-session.ts`, `task-chat.ts`, `config.ts`, `workspace-state.ts`, `streams.ts`. Each file is 50–200 lines. The original `api-contract.ts` is now a 1-line barrel re-export — zero consumer changes needed.

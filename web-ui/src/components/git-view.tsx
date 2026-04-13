@@ -140,6 +140,8 @@ function CompareBar({
 	onTargetRefChange,
 	onResetToDefaults,
 	onIncludeUncommittedChange,
+	pinnedBranches,
+	onTogglePinBranch,
 }: {
 	sourceRef: string | null;
 	targetRef: string | null;
@@ -152,6 +154,8 @@ function CompareBar({
 	onTargetRefChange: (ref: string) => void;
 	onResetToDefaults: () => void;
 	onIncludeUncommittedChange: (value: boolean) => void;
+	pinnedBranches?: string[];
+	onTogglePinBranch?: (branchName: string) => void;
 }): React.ReactElement {
 	const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
 	const [targetPopoverOpen, setTargetPopoverOpen] = useState(false);
@@ -166,6 +170,8 @@ function CompareBar({
 				branches={branches}
 				currentBranch={sourceRef}
 				worktreeBranches={worktreeBranches}
+				pinnedBranches={pinnedBranches}
+				onTogglePinBranch={onTogglePinBranch}
 				onSelectBranchView={(ref) => {
 					onSourceRefChange(ref);
 					setSourcePopoverOpen(false);
@@ -181,6 +187,8 @@ function CompareBar({
 				branches={branches}
 				currentBranch={targetRef}
 				worktreeBranches={worktreeBranches}
+				pinnedBranches={pinnedBranches}
+				onTogglePinBranch={onTogglePinBranch}
 				onSelectBranchView={(ref) => {
 					onTargetRefChange(ref);
 					setTargetPopoverOpen(false);
@@ -236,6 +244,8 @@ export interface GitViewProps {
 	branchStatusSlot?: React.ReactNode;
 	/** When provided, renders the git history panel instead of the normal diff content. */
 	gitHistoryPanel?: React.ReactNode;
+	pinnedBranches?: string[];
+	onTogglePinBranch?: (branchName: string) => void;
 }
 
 export function GitView({
@@ -250,6 +260,8 @@ export function GitView({
 	onFileNavigationConsumed,
 	branchStatusSlot,
 	gitHistoryPanel,
+	pinnedBranches,
+	onTogglePinBranch,
 }: GitViewProps): React.ReactElement {
 	const [activeTab, setActiveTabState] = useState<GitViewTab>(loadGitViewTab);
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
@@ -516,6 +528,8 @@ export function GitView({
 					onTargetRefChange={compare.setTargetRef}
 					onResetToDefaults={compare.resetToDefaults}
 					onIncludeUncommittedChange={compare.setIncludeUncommitted}
+					pinnedBranches={pinnedBranches}
+					onTogglePinBranch={onTogglePinBranch}
 				/>
 			)}
 

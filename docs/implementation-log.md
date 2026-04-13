@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: pinned branches not shared across all branch dropdowns (2026-04-13)
+
+The git view compare bar's two `BranchSelectorPopover` instances (source ref and target ref selectors) were not receiving `pinnedBranches` or `onTogglePinBranch` props. Branches pinned via the top bar or file browser scope bar didn't appear pinned in the compare bar, and users couldn't pin/unpin from those dropdowns.
+
+Threaded `pinnedBranches` and `onTogglePinBranch` through `GitViewProps` → `CompareBar` → both `BranchSelectorPopover` instances. Passed the props at both `GitView` call sites: home scope in `App.tsx` and task scope in `card-detail-view.tsx`.
+
+Files touched: `web-ui/src/components/git-view.tsx` (+14), `web-ui/src/App.tsx` (+2), `web-ui/src/components/card-detail-view.tsx` (+2).
+
 ## Refactor: split api-contract.ts into 11 domain modules (2026-04-13)
 
 Split the 1,297-line monolithic Zod schema file into 11 focused domain files under `src/core/api/`. Motivation: AI coding agents must read the entire file to find any schema, burning ~1,300 lines of context window every time. Domain splitting gives 4–25x context reduction depending on the feature area (e.g., an agent working on git history reads ~95 lines instead of 1,297).
