@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Feat: top bar git sync actions — fetch, pull, push accessible from any view
+
+- Moved fetch, pull, and push buttons from the git view tab bar into the top bar next to the branch pill. Actions are now accessible regardless of which view is active. All three work for both home context and task worktrees (passing `taskScope` when a task is selected).
+- Added "from {baseRef}" label in the top bar when viewing a task worktree, with a "(N behind)" indicator in blue when the worktree has fallen behind its base branch.
+- Deleted the `HomeBranchStatus` component — the git view tab bar now shows only `GitBranchStatusControl` (branch name, file stats, git history toggle).
+
+### Feat: "Pull from remote" in branch context menu
+
+- Added "Pull from remote" option to the branch selector context menu (right-click on the current branch), available in the files view scope bar and card detail view. Mirrors the existing "Push to remote" menu item.
+
+### Feat: merge branch confirmation dialog
+
+- "Merge into current" in the branch context menu now shows a confirmation dialog before merging, displaying source and target branch names. Prevents accidental merges.
+
 ### Fix: stalled session detection fires less aggressively
 
 - Stalled detection threshold increased from 60 seconds to 3 minutes, and now considers terminal output in addition to hook events — if the agent is producing output, it's probably still working. Also fixes false positives after returning from review: `lastHookAt` is now reset when a session transitions back to running, so time spent in review no longer counts toward the stalled threshold.

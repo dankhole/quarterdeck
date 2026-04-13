@@ -35,6 +35,7 @@ interface UseBranchActionsOptions {
 }
 
 export type DeleteBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
+export type MergeBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
 
 export interface UseBranchActionsResult {
 	isBranchPopoverOpen: boolean;
@@ -53,7 +54,10 @@ export interface UseBranchActionsResult {
 	handleConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
 	handleStashAndCheckout: () => void;
 	isStashingAndCheckingOut: boolean;
+	mergeBranchDialogState: MergeBranchDialogState;
 	handleMergeBranch: (branch: string) => void;
+	handleConfirmMergeBranch: () => void;
+	closeMergeBranchDialog: () => void;
 	deleteBranchDialogState: DeleteBranchDialogState;
 	handleDeleteBranch: (branch: string) => void;
 	handleConfirmDeleteBranch: () => void;
@@ -162,42 +166,48 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		[workspaceId, onCheckoutSuccess],
 	);
 
-	const handleMergeBranch = useCallback(
-		async (branch: string) => {
-			if (!workspaceId) {
-				return;
-			}
-			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const result = await trpc.workspace.mergeBranch.mutate({
-					branch,
-					...(taskId ? { taskId } : {}),
-					...(baseRef ? { baseRef } : {}),
-				});
-				// Update the status bar line diff immediately from the response summary
-				if (!taskId && result.summary) {
-					setHomeGitSummary(result.summary);
-				}
-				if (result.ok) {
-					showAppToast({
-						intent: "success",
-						message: `Merged ${branch} into ${currentBranch ?? "current branch"}`,
-					});
-				} else if (result.conflictState) {
-					showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 opening resolver" });
-					onConflictDetected?.();
-				} else {
-					showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branch}` });
-				}
-			} catch (error) {
+	// Merge branch dialog
+	const [mergeBranchDialogState, setMergeBranchDialogState] = useState<MergeBranchDialogState>({ type: "closed" });
+
+	const handleMergeBranch = useCallback((branch: string) => {
+		setMergeBranchDialogState({ type: "open", branchName: branch });
+	}, []);
+
+	const closeMergeBranchDialog = useCallback(() => {
+		setMergeBranchDialogState({ type: "closed" });
+	}, []);
+
+	const handleConfirmMergeBranch = useCallback(async () => {
+		if (!workspaceId || mergeBranchDialogState.type !== "open") {
+			return;
+		}
+		const { branchName } = mergeBranchDialogState;
+		setMergeBranchDialogState({ type: "closed" });
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const result = await trpc.workspace.mergeBranch.mutate({
+				branch: branchName,
+				...(taskId ? { taskId } : {}),
+				...(baseRef ? { baseRef } : {}),
+			});
+			if (result.ok) {
 				showAppToast({
-					intent: "danger",
-					message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
+					intent: "success",
+					message: `Merged ${branchName} into ${currentBranch ?? "current branch"}`,
 				});
+			} else if (result.conflictState) {
+				showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 opening resolver" });
+				onConflictDetected?.();
+			} else {
+				showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branchName}` });
 			}
-		},
-		[workspaceId, taskId, baseRef, currentBranch, onConflictDetected],
-	);
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}, [workspaceId, mergeBranchDialogState, taskId, baseRef, currentBranch, onConflictDetected]);
 
 	const handleCheckoutBranch = useCallback(
 		(branch: string) => {
@@ -353,7 +363,10 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		handleConfirmCheckout,
 		handleStashAndCheckout,
 		isStashingAndCheckingOut,
+		mergeBranchDialogState,
 		handleMergeBranch,
+		handleConfirmMergeBranch,
+		closeMergeBranchDialog,
 		deleteBranchDialogState,
 		handleDeleteBranch,
 		handleConfirmDeleteBranch,

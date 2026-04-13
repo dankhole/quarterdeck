@@ -52,6 +52,8 @@ interface BranchSelectorPopoverProps {
 	onCreateBranch?: (sourceRef: string) => void;
 	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
 	onDeleteBranch?: (branchName: string) => void;
+	/** When provided, shows "Pull from remote" in the current branch's right-click menu. */
+	onPull?: () => void;
 	/** When provided, shows "Push to remote" in the current branch's right-click menu. */
 	onPush?: () => void;
 	/** Branch names that should appear in a "Pinned" section at the top. */
@@ -73,6 +75,7 @@ export function BranchSelectorPopover({
 	onMergeBranch,
 	onCreateBranch,
 	onDeleteBranch,
+	onPull,
 	onPush,
 	pinnedBranches,
 	onTogglePinBranch,
@@ -153,6 +156,12 @@ export function BranchSelectorPopover({
 		[onCreateBranch, onOpenChange],
 	);
 
+	const handlePull = useCallback(() => {
+		onPull?.();
+		onOpenChange(false);
+		setQuery("");
+	}, [onPull, onOpenChange]);
+
 	const handlePush = useCallback(() => {
 		onPush?.();
 		onOpenChange(false);
@@ -216,24 +225,40 @@ export function BranchSelectorPopover({
 											<Check size={12} className="shrink-0 text-accent ml-auto" />
 										</div>
 									</ContextMenu.Trigger>
-									{onPush ? (
+									{onPull || onPush ? (
 										<ContextMenu.Portal>
 											<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
-												<Tooltip
-													content="Cannot push from a detached HEAD — checkout a branch first"
-													side="right"
-												>
-													{/* Uses onSelect + preventDefault instead of Radix `disabled` prop because
-													   Radix disabled blocks pointer events, which prevents the wrapping Tooltip
-													   from showing. This is the only context menu item using this pattern. */}
-													<ContextMenu.Item
-														className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
-														onSelect={(e) => e.preventDefault()}
+												{/* Uses onSelect + preventDefault instead of Radix `disabled` prop because
+												   Radix disabled blocks pointer events, which prevents the wrapping Tooltip
+												   from showing. */}
+												{onPull ? (
+													<Tooltip
+														content="Cannot pull on a detached HEAD — checkout a branch first"
+														side="right"
 													>
-														<ArrowUp size={14} className="text-text-secondary" />
-														Push to remote
-													</ContextMenu.Item>
-												</Tooltip>
+														<ContextMenu.Item
+															className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
+															onSelect={(e) => e.preventDefault()}
+														>
+															<ArrowDown size={14} className="text-text-secondary" />
+															Pull from remote
+														</ContextMenu.Item>
+													</Tooltip>
+												) : null}
+												{onPush ? (
+													<Tooltip
+														content="Cannot push from a detached HEAD — checkout a branch first"
+														side="right"
+													>
+														<ContextMenu.Item
+															className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
+															onSelect={(e) => e.preventDefault()}
+														>
+															<ArrowUp size={14} className="text-text-secondary" />
+															Push to remote
+														</ContextMenu.Item>
+													</Tooltip>
+												) : null}
 											</ContextMenu.Content>
 										</ContextMenu.Portal>
 									) : null}
@@ -259,6 +284,7 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
+										onPull={gitRef.name === currentBranch && onPull ? handlePull : undefined}
 										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
@@ -283,6 +309,7 @@ export function BranchSelectorPopover({
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
 										onTogglePin={onTogglePinBranch}
+										onPull={gitRef.name === currentBranch && onPull ? handlePull : undefined}
 										onPush={gitRef.name === currentBranch && onPush ? handlePush : undefined}
 										onClose={closePopover}
 									/>
@@ -370,6 +397,7 @@ function BranchItem({
 	onCreateBranch,
 	onDeleteBranch,
 	onTogglePin,
+	onPull,
 	onPush,
 	onClose,
 }: {
@@ -384,6 +412,7 @@ function BranchItem({
 	onCreateBranch?: (sourceRef: string) => void;
 	onDeleteBranch?: (branchName: string) => void;
 	onTogglePin?: (branchName: string) => void;
+	onPull?: () => void;
 	onPush?: () => void;
 	onClose: () => void;
 }): React.ReactElement {
@@ -462,13 +491,19 @@ function BranchItem({
 							Create branch from here
 						</ContextMenu.Item>
 					) : null}
+					{onPull ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPull}>
+							<ArrowDown size={14} className="text-text-secondary" />
+							Pull from remote
+						</ContextMenu.Item>
+					) : null}
 					{onPush ? (
 						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={onPush}>
 							<ArrowUp size={14} className="text-text-secondary" />
 							Push to remote
 						</ContextMenu.Item>
 					) : null}
-					{onCheckout || onCompare || onMerge || onCreateBranch || onPush ? (
+					{onCheckout || onCompare || onMerge || onCreateBranch || onPull || onPush ? (
 						<ContextMenu.Separator className="my-1 h-px bg-border" />
 					) : null}
 					<ContextMenu.Item

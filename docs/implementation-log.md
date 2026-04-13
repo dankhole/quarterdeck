@@ -4,6 +4,22 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: top bar git sync actions, pull-from-remote context menu, merge confirmation dialog (2026-04-12)
+
+Three branch management UX improvements landed together:
+
+**Top bar git sync actions**: Fetch, pull, and push buttons moved from the git view tab bar (`HomeBranchStatus` component) into the top bar's `branchPillSlot`, next to the branch selector pill. This makes git sync actions accessible from any view (board, files, git) without switching tabs. All three actions support both home context (no `taskScope`) and task/worktree context (passes `{ taskId, baseRef }` to `runGitAction`). A "from {baseRef}" label with optional "(N behind)" count now appears in the top bar when a task is selected. `HomeBranchStatus` was deleted; the git view tab bar renders `GitBranchStatusControl` directly. A `gitSyncTaskScope` variable was extracted to avoid repeating the `selectedCard ? { taskId, baseRef } : undefined` ternary across three button handlers.
+
+Files: `web-ui/src/App.tsx` (imports, `gitSyncTaskScope` variable, `branchPillSlot` composition, `branchStatusSlot` simplified), `web-ui/src/components/home-branch-status.tsx` (deleted).
+
+**Pull from remote context menu**: Added `onPull` prop to `BranchSelectorPopover` and `BranchItem`, mirroring the existing `onPush` pattern. Shows "Pull from remote" in the current branch's right-click context menu. Wired up in the files view scope bar (`App.tsx`) and card detail view (`card-detail-view.tsx`). The top bar popover does not use `onPull`/`onPush` since it has dedicated buttons.
+
+Files: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
+**Merge branch confirmation dialog**: `handleMergeBranch` in `use-branch-actions.ts` now opens a `MergeBranchDialog` (new component) instead of merging immediately. The dialog shows source and target branch names with a Cancel/Merge footer. Three `MergeBranchDialog` instances added (home, topbar, task branch actions). Also removed the now-unnecessary `setHomeGitSummary` calls from checkout and merge handlers — the git summary updates via the normal metadata polling cycle.
+
+Files: `web-ui/src/components/detail-panels/merge-branch-dialog.tsx` (new), `web-ui/src/hooks/use-branch-actions.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`.
+
 ## Fix: stalled session detection false positives (2026-04-12)
 
 Two bugs caused the stalled badge to fire on tasks that were actively working.

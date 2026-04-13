@@ -3,7 +3,7 @@
 // push runtime-specific orchestration down into hooks and service modules.
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import { FolderOpen } from "lucide-react";
+import { ArrowDown, ArrowUp, CircleArrowDown, FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
@@ -19,6 +19,7 @@ import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { DeleteBranchDialog } from "@/components/detail-panels/delete-branch-dialog";
 import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
+import { MergeBranchDialog } from "@/components/detail-panels/merge-branch-dialog";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
 import { GitActionErrorDialog } from "@/components/git-action-error-dialog";
@@ -26,7 +27,6 @@ import { GitHistoryView } from "@/components/git-history-view";
 import { GitInitDialog } from "@/components/git-init-dialog";
 import { GitView } from "@/components/git-view";
 import { HardDeleteTaskDialog } from "@/components/hard-delete-task-dialog";
-import { HomeBranchStatus } from "@/components/home-branch-status";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { PromptShortcutEditorDialog } from "@/components/prompt-shortcut-editor-dialog";
@@ -36,9 +36,10 @@ import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog"
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
-import { TopBar } from "@/components/top-bar";
+import { GitBranchStatusControl, TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
@@ -1240,6 +1241,10 @@ export default function App(): ReactElement {
 
 	const homeSidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
 
+	const gitSyncTaskScope = selectedCard
+		? { taskId: selectedCard.card.id, baseRef: selectedCard.card.baseRef }
+		: undefined;
+
 	const topBar = (
 		<TopBar
 			onBack={selectedCard ? handleBack : undefined}
@@ -1277,35 +1282,79 @@ export default function App(): ReactElement {
 			hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 			branchPillSlot={
 				topbarBranchLabel ? (
-					<BranchSelectorPopover
-						isOpen={topbarBranchActions.isBranchPopoverOpen}
-						onOpenChange={topbarBranchActions.setBranchPopoverOpen}
-						branches={topbarBranchActions.branches}
-						currentBranch={topbarBranchActions.currentBranch}
-						worktreeBranches={topbarBranchActions.worktreeBranches}
-						onSelectBranchView={topbarBranchActions.handleSelectBranchView}
-						onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
-						onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
-						onMergeBranch={topbarBranchActions.handleMergeBranch}
-						onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
-						onDeleteBranch={topbarBranchActions.handleDeleteBranch}
-						pinnedBranches={pinnedBranches}
-						onTogglePinBranch={handleTogglePinBranch}
-						onPush={
-							!selectedCard
-								? () => {
-										void runGitAction("push");
-									}
-								: undefined
-						}
-						trigger={
-							<BranchPillTrigger
-								label={topbarBranchLabel}
-								aheadCount={!selectedCard ? homeGitSummary?.aheadCount : undefined}
-								behindCount={!selectedCard ? homeGitSummary?.behindCount : undefined}
-							/>
-						}
-					/>
+					<div className="flex items-center gap-1.5">
+						<BranchSelectorPopover
+							isOpen={topbarBranchActions.isBranchPopoverOpen}
+							onOpenChange={topbarBranchActions.setBranchPopoverOpen}
+							branches={topbarBranchActions.branches}
+							currentBranch={topbarBranchActions.currentBranch}
+							worktreeBranches={topbarBranchActions.worktreeBranches}
+							onSelectBranchView={topbarBranchActions.handleSelectBranchView}
+							onCheckoutBranch={topbarBranchActions.handleCheckoutBranch}
+							onCompareWithBranch={(branch) => openGitCompare({ targetRef: branch })}
+							onMergeBranch={topbarBranchActions.handleMergeBranch}
+							onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
+							onDeleteBranch={topbarBranchActions.handleDeleteBranch}
+							pinnedBranches={pinnedBranches}
+							onTogglePinBranch={handleTogglePinBranch}
+							trigger={
+								<BranchPillTrigger
+									label={topbarBranchLabel}
+									aheadCount={!selectedCard ? homeGitSummary?.aheadCount : undefined}
+									behindCount={!selectedCard ? homeGitSummary?.behindCount : undefined}
+								/>
+							}
+						/>
+						{selectedCard?.card.baseRef ? (
+							<span className="text-xs text-text-tertiary whitespace-nowrap">
+								from <span className="font-mono">{selectedCard.card.baseRef}</span>
+								{(selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0 ? (
+									<span className="text-status-blue">
+										{" "}
+										({selectedTaskWorkspaceSnapshot?.behindBaseCount} behind)
+									</span>
+								) : null}
+							</span>
+						) : null}
+						<div className="flex">
+							<Tooltip side="bottom" content="Fetch latest refs from upstream">
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={16} />}
+									onClick={() => {
+										void runGitAction("fetch", gitSyncTaskScope);
+									}}
+									disabled={runningGitAction != null}
+									aria-label="Fetch from upstream"
+								/>
+							</Tooltip>
+							<Tooltip side="bottom" content="Pull from upstream">
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
+									onClick={() => {
+										void runGitAction("pull", gitSyncTaskScope);
+									}}
+									disabled={runningGitAction != null}
+									aria-label="Pull from upstream"
+								/>
+							</Tooltip>
+							<Tooltip side="bottom" content="Push to upstream">
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
+									onClick={() => {
+										void runGitAction("push", gitSyncTaskScope);
+									}}
+									disabled={runningGitAction != null}
+									aria-label="Push to upstream"
+								/>
+							</Tooltip>
+						</div>
+					</div>
 				) : undefined
 			}
 		/>
@@ -1481,6 +1530,12 @@ export default function App(): ReactElement {
 							pinnedBranches={pinnedBranches}
 							onTogglePinBranch={handleTogglePinBranch}
 							onConflictDetected={() => navigateToGitViewRef.current?.()}
+							onPullBranch={() => {
+								void runGitAction("pull", {
+									taskId: selectedCard.card.id,
+									baseRef: selectedCard.card.baseRef,
+								});
+							}}
 							onPushBranch={() => {
 								void runGitAction("push", {
 									taskId: selectedCard.card.id,
@@ -1536,20 +1591,13 @@ export default function App(): ReactElement {
 													onFileNavigationConsumed={clearPendingFileNavigation}
 													branchStatusSlot={
 														homeGitSummary ? (
-															<HomeBranchStatus
-																homeGitSummary={homeGitSummary}
-																isGitHistoryOpen={isGitHistoryOpen}
+															<GitBranchStatusControl
+																branchLabel={homeGitSummary.currentBranch ?? "detached HEAD"}
+																changedFiles={homeGitSummary.changedFiles ?? 0}
+																additions={homeGitSummary.additions ?? 0}
+																deletions={homeGitSummary.deletions ?? 0}
 																onToggleGitHistory={handleToggleGitHistory}
-																runningGitAction={runningGitAction}
-																onGitFetch={() => {
-																	void runGitAction("fetch");
-																}}
-																onGitPull={() => {
-																	void runGitAction("pull");
-																}}
-																onGitPush={() => {
-																	void runGitAction("push");
-																}}
+																isGitHistoryOpen={isGitHistoryOpen}
 															/>
 														) : undefined
 													}
@@ -1600,6 +1648,13 @@ export default function App(): ReactElement {
 																	onMergeBranch={homeBranchActions.handleMergeBranch}
 																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
 																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
+																	onPull={
+																		homeResolvedScope?.type !== "branch_view"
+																			? () => {
+																					void runGitAction("pull");
+																				}
+																			: undefined
+																	}
 																	onPush={
 																		homeResolvedScope?.type !== "branch_view"
 																			? () => {
@@ -1855,6 +1910,28 @@ export default function App(): ReactElement {
 						}
 						onCancel={topbarBranchActions.closeDeleteBranchDialog}
 						onConfirm={topbarBranchActions.handleConfirmDeleteBranch}
+					/>
+					<MergeBranchDialog
+						open={homeBranchActions.mergeBranchDialogState.type === "open"}
+						branchName={
+							homeBranchActions.mergeBranchDialogState.type === "open"
+								? homeBranchActions.mergeBranchDialogState.branchName
+								: ""
+						}
+						currentBranch={homeBranchActions.currentBranch ?? "current branch"}
+						onCancel={homeBranchActions.closeMergeBranchDialog}
+						onConfirm={homeBranchActions.handleConfirmMergeBranch}
+					/>
+					<MergeBranchDialog
+						open={topbarBranchActions.mergeBranchDialogState.type === "open"}
+						branchName={
+							topbarBranchActions.mergeBranchDialogState.type === "open"
+								? topbarBranchActions.mergeBranchDialogState.branchName
+								: ""
+						}
+						currentBranch={topbarBranchActions.currentBranch ?? "current branch"}
+						onCancel={topbarBranchActions.closeMergeBranchDialog}
+						onConfirm={topbarBranchActions.handleConfirmMergeBranch}
 					/>
 					<MigrateWorkingDirectoryDialog
 						open={pendingMigrate !== null}

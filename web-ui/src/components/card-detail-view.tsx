@@ -10,6 +10,7 @@ import { ColumnContextPanel } from "@/components/detail-panels/column-context-pa
 import { CommitPanel } from "@/components/detail-panels/commit-panel";
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { DeleteBranchDialog } from "@/components/detail-panels/delete-branch-dialog";
+import { MergeBranchDialog } from "@/components/detail-panels/merge-branch-dialog";
 import { ScopeBar } from "@/components/detail-panels/scope-bar";
 import { FilesView } from "@/components/files-view";
 import { GitView } from "@/components/git-view";
@@ -136,6 +137,7 @@ export function CardDetailView({
 	pinnedBranches,
 	onTogglePinBranch,
 	onConflictDetected,
+	onPullBranch,
 	onPushBranch,
 }: {
 	selection: CardSelection;
@@ -190,6 +192,8 @@ export function CardDetailView({
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
 	onConflictDetected?: () => void;
+	/** Pull current branch from remote. Called with the task scope for worktree-scoped pull. */
+	onPullBranch?: () => void;
 	/** Push current branch to remote. Called with the task scope for worktree-scoped push. */
 	onPushBranch?: () => void;
 }): React.ReactElement {
@@ -448,6 +452,7 @@ export function CardDetailView({
 												onMergeBranch={taskBranchActions.handleMergeBranch}
 												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
 												onDeleteBranch={taskBranchActions.handleDeleteBranch}
+												onPull={onPullBranch}
 												onPush={onPushBranch}
 												pinnedBranches={pinnedBranches}
 												onTogglePinBranch={onTogglePinBranch}
@@ -564,6 +569,17 @@ export function CardDetailView({
 				}
 				onCancel={taskBranchActions.closeDeleteBranchDialog}
 				onConfirm={taskBranchActions.handleConfirmDeleteBranch}
+			/>
+			<MergeBranchDialog
+				open={taskBranchActions.mergeBranchDialogState.type === "open"}
+				branchName={
+					taskBranchActions.mergeBranchDialogState.type === "open"
+						? taskBranchActions.mergeBranchDialogState.branchName
+						: ""
+				}
+				currentBranch={taskBranchActions.currentBranch ?? "current branch"}
+				onCancel={taskBranchActions.closeMergeBranchDialog}
+				onConfirm={taskBranchActions.handleConfirmMergeBranch}
 			/>
 		</div>
 	);
