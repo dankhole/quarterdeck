@@ -7,6 +7,7 @@ import type {
 	RuntimeTaskWorkspaceMetadata,
 	RuntimeWorkspaceMetadata,
 } from "../core/api-contract";
+import { createGitProcessEnv } from "../core/git-process-env";
 import {
 	computeAutoMergedFiles,
 	detectActiveConflict,
@@ -19,6 +20,14 @@ import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
 import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
 
 const GIT_PROBE_CONCURRENCY_LIMIT = 3;
+
+/**
+ * Interval (ms) between automatic `git fetch --all --prune` runs that keep
+ * remote tracking refs up-to-date. Without periodic fetch, the ahead/behind
+ * counts reported by `git status` are stale because the local tracking ref
+ * (e.g. `origin/main`) only reflects the last fetch/pull/push.
+ */
+const REMOTE_FETCH_INTERVAL_MS = 60_000;
 
 export interface WorkspaceMetadataPollIntervals {
 	focusedTaskPollMs: number;
@@ -55,6 +64,7 @@ interface WorkspaceMetadataEntry {
 	homeTimer: NodeJS.Timeout | null;
 	focusedTaskTimer: NodeJS.Timeout | null;
 	backgroundTaskTimer: NodeJS.Timeout | null;
+	remoteFetchTimer: NodeJS.Timeout | null;
 	refreshPromise: Promise<RuntimeWorkspaceMetadata> | null;
 	homeGit: CachedHomeGitMetadata;
 	taskMetadataByTaskId: Map<string, CachedTaskWorkspaceMetadata>;
@@ -196,6 +206,7 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 		homeTimer: null,
 		focusedTaskTimer: null,
 		backgroundTaskTimer: null,
+		remoteFetchTimer: null,
 		refreshPromise: null,
 		homeGit: {
 			summary: null,
@@ -421,6 +432,7 @@ export function createWorkspaceMetadataMonitor(
 	const taskProbeLimit = pLimit(GIT_PROBE_CONCURRENCY_LIMIT);
 	let homeRefreshInFlight = false;
 	let taskRefreshInFlight = false;
+	let remoteFetchInFlight = false;
 
 	const stopAllTimers = (entry: WorkspaceMetadataEntry) => {
 		if (entry.homeTimer) {
@@ -434,6 +446,37 @@ export function createWorkspaceMetadataMonitor(
 		if (entry.backgroundTaskTimer) {
 			clearInterval(entry.backgroundTaskTimer);
 			entry.backgroundTaskTimer = null;
+		}
+		if (entry.remoteFetchTimer) {
+			clearInterval(entry.remoteFetchTimer);
+			entry.remoteFetchTimer = null;
+		}
+	};
+
+	/**
+	 * Run `git fetch --all --prune` to update remote tracking refs so that
+	 * the ahead/behind counts from `git status` are accurate. After a
+	 * successful fetch, triggers a home metadata refresh to pick up changes.
+	 */
+	const performRemoteFetch = async (workspaceId: string) => {
+		if (remoteFetchInFlight) return;
+		const entry = workspaces.get(workspaceId);
+		if (!entry) return;
+		remoteFetchInFlight = true;
+		try {
+			const result = await runGit(entry.workspacePath, ["fetch", "--all", "--prune"], {
+				env: createGitProcessEnv({ GIT_TERMINAL_PROMPT: "0" }),
+			});
+			if (result.ok) {
+				// Invalidate the home stateToken so the next refreshHome picks up
+				// the updated tracking refs instead of short-circuiting.
+				entry.homeGit.stateToken = null;
+				await refreshHome(workspaceId);
+			}
+		} catch {
+			// Network errors, auth failures — silently skip. Next cycle retries.
+		} finally {
+			remoteFetchInFlight = false;
 		}
 	};
 
@@ -588,6 +631,12 @@ export function createWorkspaceMetadataMonitor(
 		}, entry.pollIntervals.backgroundTaskPollMs);
 		backgroundTimer.unref();
 		entry.backgroundTaskTimer = backgroundTimer;
+
+		const fetchTimer = setInterval(() => {
+			void performRemoteFetch(workspaceId);
+		}, REMOTE_FETCH_INTERVAL_MS);
+		fetchTimer.unref();
+		entry.remoteFetchTimer = fetchTimer;
 	};
 
 	return {
@@ -596,6 +645,10 @@ export function createWorkspaceMetadataMonitor(
 			entry.subscriberCount += 1;
 			entry.pollIntervals = pollIntervals;
 			startTimers(workspaceId, entry);
+			// Fire a background fetch so remote tracking refs are fresh from the start.
+			// Don't await — the initial snapshot uses local state, fetch results arrive
+			// on the next poll cycle (or sooner via the refreshHome inside performRemoteFetch).
+			void performRemoteFetch(workspaceId);
 			return await refreshWorkspace(workspaceId);
 		},
 		updateWorkspaceState: async ({ workspaceId, workspacePath, board }) => {

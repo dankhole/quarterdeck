@@ -193,6 +193,24 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 		}
 	}
 
+	// Fallback: when no upstream is configured, try to compute ahead/behind
+	// against origin/<branch> so indicators still appear for untracked branches.
+	if (upstreamBranch === null && currentBranch !== null && aheadCount === 0 && behindCount === 0) {
+		const originRef = `origin/${currentBranch}`;
+		const revListResult = await runGit(repoRoot, [
+			"--no-optional-locks",
+			"rev-list",
+			"--left-right",
+			"--count",
+			`HEAD...${originRef}`,
+		]);
+		if (revListResult.ok && revListResult.stdout) {
+			const fallback = parseAheadBehindCounts(revListResult.stdout);
+			aheadCount = fallback.aheadCount;
+			behindCount = fallback.behindCount;
+		}
+	}
+
 	const headCommit = headCommitResult.ok && headCommitResult.stdout ? headCommitResult.stdout : null;
 	const fingerprints = await buildPathFingerprints(repoRoot, fingerprintPaths);
 

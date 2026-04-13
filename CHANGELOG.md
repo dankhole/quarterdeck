@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: branch ahead/behind indicators now appear on the branch pill
+
+- The up/down arrow indicators on the branch pill were always showing 0 due to two issues: (1) branches without explicit upstream tracking (never pushed with `-u`) had no `# branch.ab` line in `git status`, so counts stayed at 0 — added a fallback that computes ahead/behind against `origin/<branch>` via `git rev-list --left-right --count`, and (2) remote tracking refs went stale because no periodic fetch was happening — added a 60-second background `git fetch --all --prune` to the workspace metadata monitor, with an initial fetch on workspace connect. The fetch uses `GIT_TERMINAL_PROMPT=0` to prevent hanging on expired credentials.
+
 ## [0.7.2] — 2026-04-13
 
 ### Fix: remove orphaned process sweep that killed active agent sessions
