@@ -17,7 +17,6 @@ interface UsePersistentTerminalSessionInput {
 	sessionStartedAt?: number | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
-	scrollOnEraseInDisplay?: boolean;
 	scrollback?: number;
 }
 
@@ -41,7 +40,6 @@ export function usePersistentTerminalSession({
 	sessionStartedAt = null,
 	terminalBackgroundColor,
 	cursorColor,
-	scrollOnEraseInDisplay,
 	scrollback,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -109,7 +107,6 @@ export function usePersistentTerminalSession({
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
-			scrollOnEraseInDisplay,
 			scrollback,
 		});
 		if (didSessionRestart) {
@@ -159,7 +156,6 @@ export function usePersistentTerminalSession({
 		enabled,
 		isVisible,
 		scrollback,
-		scrollOnEraseInDisplay,
 		sessionStartedAt,
 		taskId,
 		terminalBackgroundColor,

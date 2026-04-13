@@ -175,7 +175,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				}
 				entry.active.session.write(data);
 			},
-			scrollOnEraseInDisplay: true,
 			scrollback: 10_000,
 		});
 

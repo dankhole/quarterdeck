@@ -66,7 +66,6 @@ interface MountPersistentTerminalOptions {
 export interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	taskId: string;
 	workspaceId: string;
-	scrollOnEraseInDisplay?: boolean;
 	scrollback?: number;
 }
 
@@ -146,7 +145,6 @@ export class PersistentTerminal {
 		private readonly taskId: string,
 		private readonly workspaceId: string,
 		appearance: PersistentTerminalAppearance,
-		scrollOnEraseInDisplay = true,
 		scrollback?: number,
 	) {
 		this.appearance = appearance;
@@ -164,7 +162,6 @@ export class PersistentTerminal {
 				cursorColor: this.appearance.cursorColor,
 				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
-				scrollOnEraseInDisplay,
 				scrollback,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
 			}),
@@ -420,7 +417,11 @@ export class PersistentTerminal {
 		const dpr = window.devicePixelRatio;
 		const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
 		const handler = () => {
-			this.requestResize();
+			// DPR changed (monitor move, zoom, display settings) — the glyph
+			// texture atlas is now stale. A plain requestResize() would send
+			// correct dimensions but leave blurry text. repairRendererCanvas()
+			// clears the atlas, repaints, and includes a force-resize.
+			this.repairRendererCanvas("dpr-change");
 			// Re-register for the next DPR change since the query matched against the old value.
 			this.listenForDprChange();
 		};
@@ -618,10 +619,6 @@ export class PersistentTerminal {
 
 	setFontWeight(weight: number): void {
 		this.terminal.options.fontWeight = weight;
-	}
-
-	setScrollOnEraseInDisplay(value: boolean): void {
-		this.terminal.options.scrollOnEraseInDisplay = value;
 	}
 
 	setWebGLRenderer(enabled: boolean): void {
@@ -919,7 +916,6 @@ export class PersistentTerminal {
 		alternateLength: number;
 		viewportRows: number;
 		scrollbackOption: number;
-		scrollOnEraseInDisplay: boolean;
 		sessionState: string | null;
 	} {
 		const buf = this.terminal.buffer;
@@ -932,7 +928,6 @@ export class PersistentTerminal {
 			alternateLength: buf.alternate.length,
 			viewportRows: this.terminal.rows,
 			scrollbackOption: this.terminal.options.scrollback ?? 0,
-			scrollOnEraseInDisplay: this.terminal.options.scrollOnEraseInDisplay ?? true,
 			sessionState: this.latestSummary?.state ?? null,
 		};
 	}

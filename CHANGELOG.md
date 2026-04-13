@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: DPR change listener now repairs terminal rendering
+
+- The DPR change listener (monitor moves, zoom, display setting changes) previously only sent a resize to the server, leaving the glyph texture atlas stale — producing blurry text until the next task switch. Now calls the full canvas repair sequence (dimension bounce, `clearTextureAtlas()`, repaint) so DPR changes are handled immediately.
+
+### Cleanup: remove dead `scrollOnEraseInDisplay` parameter plumbing
+
+- Removed the `scrollOnEraseInDisplay` parameter threading from 8 files across the terminal stack. The setting was experimentally set to `false` to prevent TUI frame duplication, then reverted to `true` because it broke mouse-wheel scrolling. The configurable parameter was dead code — always `true` at every call site, never exposed in settings. Now hardcoded to `true` in `terminal-options.ts` and `terminal-state-mirror.ts`, matching upstream.
+
 ### Refactor: complete code duplication cleanup (todo #24)
 
 - Created `ConfirmationDialog` component (`web-ui/src/components/ui/confirmation-dialog.tsx`) — reusable AlertDialog wrapper with built-in Radix double-fire guard, loading/disabled states, and configurable variant. Migrated 7 dialog files, replaced hand-written Tailwind button classes in cherry-pick and checkout dialogs with the `Button` component.

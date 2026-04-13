@@ -6,7 +6,6 @@ interface CreateQuarterdeckTerminalOptionsInput {
 	cursorColor: string;
 	fontWeight: number;
 	isMacPlatform: boolean;
-	scrollOnEraseInDisplay?: boolean;
 	scrollback?: number;
 	terminalBackgroundColor: string;
 }
@@ -20,7 +19,6 @@ export function createQuarterdeckTerminalOptions({
 	cursorColor,
 	fontWeight,
 	isMacPlatform,
-	scrollOnEraseInDisplay = true,
 	scrollback = 10_000,
 	terminalBackgroundColor,
 }: CreateQuarterdeckTerminalOptionsInput): ITerminalOptions {
@@ -41,7 +39,7 @@ export function createQuarterdeckTerminalOptions({
 		macOptionClickForcesSelection: isMacPlatform,
 		macOptionIsMeta: isMacPlatform,
 		rightClickSelectsWord: false,
-		scrollOnEraseInDisplay,
+		scrollOnEraseInDisplay: true,
 		scrollOnUserInput: true,
 		scrollback,
 		smoothScrollDuration: 0,

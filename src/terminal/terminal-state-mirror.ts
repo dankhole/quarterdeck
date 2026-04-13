@@ -29,7 +29,6 @@ export interface TerminalRestoreSnapshot {
 
 interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
-	scrollOnEraseInDisplay?: boolean;
 	/**
 	 * Scrollback line count for the mirror terminal and snapshot serialization.
 	 * Defaults to {@link TERMINAL_SCROLLBACK} (10,000). The terminal itself
@@ -55,7 +54,7 @@ export class TerminalStateMirror {
 			cols,
 			rows,
 			scrollback: Math.max(scrollback, MINIMUM_TERMINAL_SCROLLBACK),
-			scrollOnEraseInDisplay: options.scrollOnEraseInDisplay ?? true,
+			scrollOnEraseInDisplay: true,
 		});
 		this.terminal.loadAddon(this.serializeAddon);
 		this.terminal.onData((data) => {

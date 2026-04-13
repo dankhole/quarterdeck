@@ -17,7 +17,6 @@ export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): 
 			input.taskId,
 			input.workspaceId,
 			{ cursorColor: input.cursorColor, terminalBackgroundColor: input.terminalBackgroundColor },
-			input.scrollOnEraseInDisplay,
 			input.scrollback,
 		);
 		terminals.set(key, terminal);
@@ -27,9 +26,6 @@ export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): 
 		cursorColor: input.cursorColor,
 		terminalBackgroundColor: input.terminalBackgroundColor,
 	});
-	if (input.scrollOnEraseInDisplay !== undefined) {
-		terminal.setScrollOnEraseInDisplay(input.scrollOnEraseInDisplay);
-	}
 	return terminal;
 }
 
@@ -135,7 +131,6 @@ export function dumpTerminalDebugInfo(): void {
 			normal: `len=${info.normalLength} baseY=${info.normalBaseY}`,
 			alternate: `len=${info.alternateLength}`,
 			viewport: info.viewportRows,
-			scrollOnEraseInDisplay: info.scrollOnEraseInDisplay,
 			session: info.sessionState,
 		});
 	}

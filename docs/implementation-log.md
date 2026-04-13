@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: DPR change listener + remove dead scrollOnEraseInDisplay plumbing (2026-04-13)
+
+**DPR listener fix:** The `listenForDprChange()` handler in `persistent-terminal-manager.ts` only called `requestResize()`, which sends correct dimensions to the server but doesn't invalidate xterm.js's stale glyph texture atlas. After a monitor move or zoom, text stayed blurry until the next task switch (which triggers `mount()` → `repairRendererCanvas()`). Changed the handler to call `repairRendererCanvas("dpr-change")` directly, which includes the full three-step repair: dimension bounce, `clearTextureAtlas()`, `refresh()`, plus a `forceResize()`. The `!this.visibleContainer` guard in `repairRendererCanvas` prevents work on parked terminals, and `unmount()` clears the DPR listener anyway, so the guard is belt-and-suspenders.
+
+**scrollOnEraseInDisplay cleanup:** Removed the configurable `scrollOnEraseInDisplay` parameter from 8 files. History: it was set to `false` to prevent Claude Code's ED2 screen clears from pushing duplicate TUI frames into scrollback. That broke mouse-wheel scrolling (commit `c9f0c29a` reverted it). Since then the parameter has been `true` at every call site with no UI exposure — pure dead code. Hardcoded `true` in `terminal-options.ts` and `terminal-state-mirror.ts` to match upstream kanban.
+
+Files: `web-ui/src/terminal/persistent-terminal-manager.ts` (DPR handler, removed constructor param, removed `setScrollOnEraseInDisplay()`, removed from `getBufferDebugInfo()`), `web-ui/src/terminal/terminal-options.ts` (removed from interface and function params), `web-ui/src/terminal/terminal-registry.ts` (removed from constructor call, cache-hit update, debug dump), `web-ui/src/terminal/use-persistent-terminal-session.ts` (removed from interface, destructuring, effect deps), `web-ui/src/components/detail-panels/agent-terminal-panel.tsx` (removed from props), `web-ui/src/components/card-detail-view.tsx` (removed prop), `src/terminal/terminal-state-mirror.ts` (removed from options interface, hardcoded `true`), `src/terminal/session-manager.ts` (removed from mirror constructor call).
+
 ## Refactor: complete code duplication cleanup — todo #24 (2026-04-13)
 
 Closed out the final 3 items from the code duplication audit (`docs/code-duplication-audit.md`). Net reduction of ~280 lines across 19 files.
