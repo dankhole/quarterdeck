@@ -48,7 +48,6 @@ export interface SettingsFormValues {
 	worktreeAddParentRepoDir: boolean;
 	worktreeAddParentGitDir: boolean;
 	worktreeAddQuarterdeckDir: boolean;
-	defaultBaseRef: string;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
@@ -96,7 +95,6 @@ export function resolveInitialValues(
 		worktreeAddParentRepoDir: config?.worktreeAddParentRepoDir ?? CONFIG_DEFAULTS.worktreeAddParentRepoDir,
 		worktreeAddParentGitDir: config?.worktreeAddParentGitDir ?? CONFIG_DEFAULTS.worktreeAddParentGitDir,
 		worktreeAddQuarterdeckDir: config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
-		defaultBaseRef: config?.defaultBaseRef ?? CONFIG_DEFAULTS.defaultBaseRef,
 		shortcuts: config?.shortcuts ?? [],
 	};
 }

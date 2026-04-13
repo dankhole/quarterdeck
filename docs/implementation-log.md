@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Move default base ref UX from settings to branch dropdown (2026-04-13)
+
+Replaced the Settings > Git text input for `defaultBaseRef` with a pin icon inside the branch dropdown in the task creation dialog. The text input required users to know and type branch names — the pin icon lets them set the default right where they're already choosing branches.
+
+**SearchSelectDropdown:** Added `renderOptionAction` render prop and `group/option` CSS class on option buttons. The action element is wrapped in a `<span>` with `stopPropagation`/`preventDefault` so clicking it doesn't trigger option selection or close the dropdown.
+
+**BranchSelectDropdown:** New `defaultValue` and `onSetDefault` props. When `onSetDefault` is provided, each option renders a `<Pin>` icon (lucide) — filled with `fill-current` for the current default (always visible), outline with `opacity-0 group-hover/option:opacity-100` for others (hover-to-reveal). Wrapped in `<Tooltip>` for clarity.
+
+**App.tsx:** New `handleSetDefaultBaseRef` callback does a targeted partial config save (`saveRuntimeConfig(currentProjectId, { defaultBaseRef })`) followed by `refreshRuntimeProjectConfig()` to update the pin icon state. Shows success/error toasts. Passed to both `TaskCreateDialog` and `TaskInlineCreateCard`.
+
+**Settings cleanup:** Removed the `defaultBaseRef` text input from `GitSection` and the field from `SettingsFormValues`/`resolveInitialValues`. The config field still exists server-side — it's just managed from the dropdown now. Settings saves omit the field (it's optional in the Zod schema), so they don't clobber the pin-set value.
+
+Files: `web-ui/src/App.tsx`, `web-ui/src/components/branch-select-dropdown.tsx`, `web-ui/src/components/search-select-dropdown.tsx`, `web-ui/src/components/settings/general-sections.tsx`, `web-ui/src/components/task-create-dialog.tsx`, `web-ui/src/components/task-inline-create-card.tsx`, `web-ui/src/hooks/use-settings-form.ts`.
+
 ## Feat: truncation-aware tooltip on branch dropdown items (2026-04-13)
 
 Branch names in the `BranchSelectorPopover` dropdown had a native `title` attribute that was unreliable inside Radix wrappers and showed `shortName` instead of the full ref. Replaced with a new `TruncateTooltip` component that only activates when text overflows (`scrollWidth > clientWidth`), using a 150ms delay for fast scanning. Also widened the dropdown from `w-72` to `w-80`. Added optional `delayDuration` prop to the base `Tooltip` component.
@@ -33,8 +47,8 @@ Files: `context-menu-utils.tsx`, `diff-split.tsx`, `diff-unified.tsx`, `diff-vie
 **Feat: worktree agent context injection:** Agents in worktrees had no awareness of isolation context — they'd try to checkout branches, cd to wrong dirs, or run destructive git ops that could wreck parallel tasks. Added `--append-system-prompt` injection to the Claude adapter when `cwd !== workspacePath`. The prompt covers: worktree identity, shell cwd reset, main repo location, parallel agent awareness, git guardrails (no checkout/push/destructive ops without explicit ask), detached HEAD note. Guarded by `hasCliOption` to avoid conflicts with explicit flags. New `worktree-context.ts` module with `buildWorktreeContextPrompt` and `readGitHeadInfo`.
 Files: `src/terminal/agent-session-adapters.ts`, `src/terminal/worktree-context.ts` (new), `test/runtime/terminal/agent-session-adapters.test.ts`, `test/runtime/terminal/worktree-context.test.ts` (new).
 
-**Feat: default base ref config:** New `defaultBaseRef` global config field. When set, always used as the initial base ref in the task creation dialog, overriding per-project "last used branch" memory. Validated against available branches — falls back to auto-detection if configured branch doesn't exist. Added to `global-config-fields.ts`, `api/config.ts`, `use-settings-form.ts`, settings UI in `general-sections.tsx`. Task creation logic in `use-task-branch-options.ts` and `use-task-editor.ts` now checks for the config value first.
-Files: `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/settings/general-sections.tsx`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/hooks/use-task-branch-options.ts`, `web-ui/src/hooks/use-task-editor.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`.
+**Feat: default base ref config:** New `defaultBaseRef` global config field. When set, always used as the initial base ref in the task creation dialog, overriding per-project "last used branch" memory. Validated against available branches — falls back to auto-detection if configured branch doesn't exist. Added to `global-config-fields.ts`, `api/config.ts`, `use-task-branch-options.ts`, `use-task-editor.ts`. *(Settings text input superseded same day — UX moved to branch dropdown pin icon, see entry above.)*
+Files: `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/App.tsx`, `web-ui/src/hooks/use-task-branch-options.ts`, `web-ui/src/hooks/use-task-editor.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`.
 
 ## Fix: terminal rendering artifacts and broken "Reset terminal rendering" button (2026-04-13)
 

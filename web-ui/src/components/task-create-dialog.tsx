@@ -128,6 +128,8 @@ export function TaskCreateDialog({
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
+	defaultBaseRef,
+	onSetDefaultBaseRef,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -159,6 +161,10 @@ export function TaskCreateDialog({
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
 	onBranchRefChange: (value: string) => void;
+	/** The branch currently set as the default base ref (empty string = auto-detect). */
+	defaultBaseRef?: string;
+	/** Called when the user pins/unpins a branch as the default base ref. */
+	onSetDefaultBaseRef?: (value: string | null) => void;
 }): ReactElement {
 	const [mode, setMode] = useState<"single" | "multi">("single");
 	const [createMore, setCreateMore] = useState(false);
@@ -519,6 +525,8 @@ export function TaskCreateDialog({
 							fill
 							size="sm"
 							emptyText="No branches detected"
+							defaultValue={defaultBaseRef || null}
+							onSetDefault={onSetDefaultBaseRef}
 						/>
 					</div>
 

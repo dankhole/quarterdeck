@@ -466,6 +466,23 @@ export default function App(): ReactElement {
 		workspaceGit,
 		configDefaultBaseRef,
 	});
+	const handleSetDefaultBaseRef = useCallback(
+		async (value: string | null) => {
+			const nextValue = value ?? "";
+			try {
+				await saveRuntimeConfig(currentProjectId, { defaultBaseRef: nextValue });
+				refreshRuntimeProjectConfig();
+				showAppToast({
+					intent: "success",
+					message: nextValue ? `Default base ref set to ${nextValue}` : "Default base ref cleared",
+					timeout: 2000,
+				});
+			} catch {
+				showAppToast({ intent: "danger", message: "Failed to update default base ref" });
+			}
+		},
+		[currentProjectId, refreshRuntimeProjectConfig],
+	);
 	const queueTaskStartAfterEdit = useCallback((taskId: string) => {
 		setPendingTaskStartAfterEditId(taskId);
 	}, []);
@@ -930,6 +947,8 @@ export default function App(): ReactElement {
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
+			defaultBaseRef={configDefaultBaseRef}
+			onSetDefaultBaseRef={handleSetDefaultBaseRef}
 			mode="edit"
 			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>
@@ -1651,6 +1670,8 @@ export default function App(): ReactElement {
 						branchRef={newTaskBranchRef}
 						branchOptions={createTaskBranchOptions}
 						onBranchRefChange={setNewTaskBranchRef}
+						defaultBaseRef={configDefaultBaseRef}
+						onSetDefaultBaseRef={handleSetDefaultBaseRef}
 					/>
 					<ClearTrashDialog
 						open={isClearTrashDialogOpen}

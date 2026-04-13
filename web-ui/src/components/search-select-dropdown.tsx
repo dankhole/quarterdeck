@@ -13,6 +13,8 @@ export interface SearchSelectOption {
 	label: string;
 }
 
+export type RenderOptionAction = (option: SearchSelectOption) => ReactNode;
+
 const MATCHED_TEXT_STYLE = {
 	color: "var(--color-text-primary)",
 	fontWeight: 600,
@@ -44,6 +46,7 @@ export function SearchSelectDropdown({
 	menuStyle,
 	onPopoverOpenChange,
 	footerAction,
+	renderOptionAction,
 }: {
 	options: readonly SearchSelectOption[];
 	selectedValue?: string | null;
@@ -73,6 +76,7 @@ export function SearchSelectDropdown({
 		label: string;
 		onClick: () => void;
 	};
+	renderOptionAction?: RenderOptionAction;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -265,7 +269,7 @@ export function SearchSelectDropdown({
 					optionRefs.current[optionIndex] = node;
 				}}
 				className={cn(
-					"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
+					"group/option flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
 					isActive
 						? "bg-surface-3 text-text-primary"
 						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
@@ -279,6 +283,18 @@ export function SearchSelectDropdown({
 				<span className="flex-1 break-all">
 					{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
 				</span>
+				{renderOptionAction ? (
+					<span
+						className="shrink-0"
+						onClick={(e) => {
+							e.stopPropagation();
+							e.preventDefault();
+						}}
+						onMouseDown={(e) => e.stopPropagation()}
+					>
+						{renderOptionAction(option)}
+					</span>
+				) : null}
 				{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
 			</button>
 		);

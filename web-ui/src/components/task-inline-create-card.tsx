@@ -53,6 +53,8 @@ export function TaskInlineCreateCard({
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
+	defaultBaseRef,
+	onSetDefaultBaseRef,
 	enabled = true,
 	mode = "create",
 	idPrefix = "inline-task",
@@ -75,6 +77,8 @@ export function TaskInlineCreateCard({
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
 	onBranchRefChange: (value: string) => void;
+	defaultBaseRef?: string;
+	onSetDefaultBaseRef?: (value: string | null) => void;
 	enabled?: boolean;
 	mode?: TaskInlineCardMode;
 	idPrefix?: string;
@@ -203,6 +207,8 @@ export function TaskInlineCreateCard({
 						fill
 						size="sm"
 						emptyText="No branches detected"
+						defaultValue={defaultBaseRef || null}
+						onSetDefault={onSetDefaultBaseRef}
 					/>
 				</div>
 

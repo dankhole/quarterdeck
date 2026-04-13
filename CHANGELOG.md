@@ -35,9 +35,9 @@
 
 - Claude Code agents launched in git worktrees now receive a system prompt injection that orients them about their isolation context — working directory identity, main repo location, parallel agent awareness, and git guardrails (no checkout/push/destructive ops unless explicitly asked). Detached HEAD state is noted when applicable. Guarded by CLI option checks to avoid conflicts with explicit `--append-system-prompt` flags.
 
-### Feat: configurable default base ref for task creation
+### Feat: pin default base ref from branch dropdown
 
-- New `defaultBaseRef` setting in Settings > Git lets users specify a branch that's always used as the base ref when creating tasks. Overrides the per-project "last used branch" memory. When empty, preserves existing auto-detection (git default branch → current branch). The configured ref is validated against available branches — silently falls back to auto-detection if the branch doesn't exist.
+- The default base ref is now set directly from the branch dropdown in the task creation dialog via a pin icon on each branch option. Filled pin = current default (always visible), outline pin = appears on hover. Clicking the pin saves the config immediately and shows a toast confirmation. Clicking an already-pinned branch clears the default. Replaces the previous Settings > Git text input approach — more discoverable and doesn't require knowing branch names by heart.
 
 ### Fix: terminal rendering artifacts and stale canvas on task switch
 
