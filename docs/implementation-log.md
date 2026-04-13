@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: remove optimistic state transition, unblock permission approval flow (2026-04-13)
+
+Two related state flow bugs — one caused tasks to get stuck in "running", the other in "awaiting_review".
+
+**Bug 1 — Optimistic transition orphans tasks in running:** `writeInput` in `session-manager.ts` eagerly called `store.transitionToRunning(taskId)` on any Enter keypress (CR byte) when a non-Codex task was in `awaiting_review`. If the user typed something that didn't cause the agent to emit a `to_in_progress` hook (e.g., `/resume`, stale input, or a prompt during a permission block), the task stayed in "running" permanently — no hook arrived to move it back, and reconciliation didn't catch it because the PTY was still alive.
+
+**Fix:** Removed the optimistic transition entirely. State transitions from `awaiting_review` to `running` are now driven exclusively by hooks (`to_in_progress` from `PostToolUse`/`UserPromptSubmit`) and the Codex `agent.prompt-ready` output detection. Removed the `canReturnToRunning` import that was only used by this block.
+
+**Bug 2 — Permission approval stuck in review:** When Claude Code hit a permission prompt, `PermissionRequest` fired `to_review` and set `latestHookActivity` with permission metadata. After the user approved the permission (single keypress in the agent terminal), `PostToolUse` fired `to_in_progress`. But the permission-aware guard in `hooks-api.ts:194-220` blocked it because `isPermissionActivity(currentActivity)` was true and `hookEventName !== "UserPromptSubmit"`. The guard was designed to block stale `PostToolUse` from before the permission prompt, but it also blocked the legitimate one after approval. Reconciliation didn't clean it up because `checkStaleHookActivity` skips `awaiting_review` with `reviewReason === "hook"`.
+
+**Fix:** Added a block in `writeInput` that clears `latestHookActivity` when the user sends input to a session in `awaiting_review` with active permission activity. User input to a permission prompt = permission being resolved. The stale `PostToolUse` race is still handled because the stale hook arrives before the user types anything (permission activity is still set at that point).
+
+Files: `src/terminal/session-manager.ts`, `test/runtime/terminal/session-manager-ordering.test.ts`.
+
 ## Fix: restore agent terminal scrollback for mouse-wheel scrolling (2026-04-13)
 
 The previous change (same day) reduced agent scrollback from 10,000 to 100 and set `scrollOnEraseInDisplay: false` to eliminate duplicate TUI frames. This had the unintended effect of killing mouse-wheel scrolling entirely — in a real terminal (e.g. Ghostty), Claude Code writes conversation history into the normal buffer via ED2 redraws, and users scroll through it with the mouse wheel. With `scrollOnEraseInDisplay: false`, that content never enters scrollback at all.

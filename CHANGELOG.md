@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: remove optimistic state transition, unblock permission approval flow
+
+- Removed the eager `transitionToRunning` in `writeInput` that moved tasks to "running" on Enter before the agent confirmed via hooks. Tasks now stay in `awaiting_review` until a `to_in_progress` hook arrives — hooks are the sole authority for state transitions.
+- Fixed permission approval getting stuck: after `PermissionRequest` moved a task to review, the user approving the permission produced a `PostToolUse` → `to_in_progress` hook that was blocked by the permission-aware guard (it only exempted `UserPromptSubmit`). Now `writeInput` clears `latestHookActivity` on user input during permission state, unblocking the subsequent hook.
+
 ### Fix: restore agent terminal scrollback for mouse-wheel scrolling
 
 - Reverted agent terminal scrollback from 100 to 10,000 and re-enabled `scrollOnEraseInDisplay`. The reduced scrollback prevented mouse-wheel scrolling through conversation history — agents like Claude Code write the full chat into normal-buffer scrollback, and users expect to scroll it just like in a regular terminal emulator. Duplicate TUI frames remain a known tradeoff until xterm.js-level deduplication is feasible.

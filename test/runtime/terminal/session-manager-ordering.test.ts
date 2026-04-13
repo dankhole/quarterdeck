@@ -156,10 +156,12 @@ describe("TerminalSessionManager ordering invariants", () => {
 		});
 	});
 
-	// ── Gap 2: writeInput CR optimistic transition ──────────────────────
+	// ── Gap 2: writeInput does NOT optimistically transition state ──────
+	// State transitions are driven exclusively by hooks (to_in_progress,
+	// to_review). writeInput just forwards data to the PTY.
 
-	describe("writeInput CR optimistic transition", () => {
-		it("CR triggers immediate transition from awaiting_review to running for non-Codex agent", async () => {
+	describe("writeInput does not transition state on Enter", () => {
+		it("CR on non-Codex agent stays in awaiting_review", async () => {
 			const spawnedSessions = setupMockPtySpawn();
 			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 
@@ -177,79 +179,9 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			manager.writeInput("task-1", Buffer.from([0x0d]));
 
-			// State must have transitioned synchronously before the PTY write
-			expect(manager.store.getSummary("task-1")?.state).toBe("running");
-			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
-		});
-
-		it("LF (Shift+Enter newline) does NOT trigger optimistic transition for non-Codex agent", async () => {
-			const spawnedSessions = setupMockPtySpawn();
-			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-
-			await manager.startTaskSession({
-				taskId: "task-1",
-				agentId: "claude",
-				binary: "claude",
-				args: [],
-				cwd: "/tmp/task-1",
-				prompt: "Fix the bug",
-			});
-
-			manager.store.transitionToReview("task-1", "hook");
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-
-			manager.writeInput("task-1", Buffer.from([0x0a]));
-
-			// LF is sent by Shift+Enter for multi-line input — should NOT move to running
+			// State stays in awaiting_review — only hooks move to running
 			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 			// Input is still forwarded to the PTY
-			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
-		});
-
-		it("Codex agent is excluded from CR optimistic transition", async () => {
-			const spawnedSessions = setupMockPtySpawn();
-			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-
-			await manager.startTaskSession({
-				taskId: "task-1",
-				agentId: "codex",
-				binary: "codex",
-				args: [],
-				cwd: "/tmp/task-1",
-				prompt: "Fix the bug",
-			});
-
-			manager.store.transitionToReview("task-1", "hook");
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-
-			manager.writeInput("task-1", Buffer.from([0x0d]));
-
-			// Codex stays in awaiting_review — it uses its own prompt-ready flow
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-			// The PTY write still happens
-			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
-		});
-
-		it("non-Enter input does not trigger optimistic transition", async () => {
-			const spawnedSessions = setupMockPtySpawn();
-			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-
-			await manager.startTaskSession({
-				taskId: "task-1",
-				agentId: "claude",
-				binary: "claude",
-				args: [],
-				cwd: "/tmp/task-1",
-				prompt: "Fix the bug",
-			});
-
-			manager.store.transitionToReview("task-1", "hook");
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-
-			manager.writeInput("task-1", Buffer.from("hello"));
-
-			// No CR/LF means no transition
-			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 			expect(spawnedSessions[0]?.write).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -322,7 +254,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 
 			// Press Enter to set the flag
 			manager.writeInput("task-1", Buffer.from([0x0d]));
-			// Codex stays in awaiting_review (no optimistic transition for Codex)
+			// Codex stays in awaiting_review until prompt-ready fires
 			expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 
 			// Now PROMPT_READY should trigger the transition because the flag is set

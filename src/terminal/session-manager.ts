@@ -38,8 +38,8 @@ import {
 	type StartTaskSessionRequest,
 	teardownActiveSession,
 } from "./session-manager-types";
+import { isPermissionActivity } from "./session-reconciliation";
 import { createReconciliationTimer } from "./session-reconciliation-sweep";
-import { canReturnToRunning } from "./session-state-machine";
 import {
 	cloneSummary,
 	type SessionSummaryStore,
@@ -473,6 +473,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		const summary = this.store.getSummary(taskId);
 
+		// Clear permission activity on user input — the user is interacting with
+		// the permission prompt (approving/denying). This unblocks the permission-
+		// aware transition guard in hooks-api so the next PostToolUse to_in_progress
+		// hook can move the task back to running.
+		if (
+			summary?.state === "awaiting_review" &&
+			summary.latestHookActivity != null &&
+			isPermissionActivity(summary.latestHookActivity)
+		) {
+			this.store.update(taskId, { latestHookActivity: null });
+		}
+
 		// Codex: flag that we're waiting for a prompt after Enter
 		// Only trigger on CR (byte 13 = Enter), not LF (byte 10 = Shift+Enter newline).
 		if (
@@ -488,22 +500,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 				currentState: summary.state,
 				reviewReason: summary.reviewReason,
 			});
-		}
-
-		// Optimistic running transition on Enter (non-Codex)
-		// Only trigger on CR (byte 13 = Enter), not LF (byte 10 = Shift+Enter newline).
-		if (
-			summary?.agentId !== "codex" &&
-			summary?.state === "awaiting_review" &&
-			canReturnToRunning(summary.reviewReason) &&
-			data.includes(13)
-		) {
-			emitSessionEvent(taskId, "state.transition.optimistic", {
-				fromState: summary.state,
-				toState: "running",
-				reviewReason: summary.reviewReason,
-			});
-			this.store.transitionToRunning(taskId);
 		}
 
 		// Detect user interrupt signals
