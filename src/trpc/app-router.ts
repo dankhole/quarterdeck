@@ -2,133 +2,15 @@
 // Keep request and response contracts plus workspace-scoped procedures here,
 // and delegate domain behavior to runtime-api.ts and lower-level services.
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
-import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type {
-	RuntimeAutoMergedFilesRequest,
-	RuntimeAutoMergedFilesResponse,
-	RuntimeCommandRunRequest,
-	RuntimeCommandRunResponse,
-	RuntimeConfigResponse,
-	RuntimeConfigSaveRequest,
-	RuntimeConflictAbortRequest,
-	RuntimeConflictAbortResponse,
-	RuntimeConflictContinueRequest,
-	RuntimeConflictContinueResponse,
-	RuntimeConflictFilesRequest,
-	RuntimeConflictFilesResponse,
-	RuntimeConflictResolveRequest,
-	RuntimeDebugResetAllStateResponse,
-	RuntimeFileContentRequest,
-	RuntimeFileContentResponse,
-	RuntimeGitCheckoutRequest,
-	RuntimeGitCheckoutResponse,
-	RuntimeGitCherryPickRequest,
-	RuntimeGitCherryPickResponse,
-	RuntimeGitCommitDiffRequest,
-	RuntimeGitCommitDiffResponse,
-	RuntimeGitCommitRequest,
-	RuntimeGitCommitResponse,
-	RuntimeGitCreateBranchRequest,
-	RuntimeGitCreateBranchResponse,
-	RuntimeGitDeleteBranchRequest,
-	RuntimeGitDeleteBranchResponse,
-	RuntimeGitDiscardFileRequest,
-	RuntimeGitDiscardResponse,
-	RuntimeGitLogRequest,
-	RuntimeGitLogResponse,
-	RuntimeGitMergeRequest,
-	RuntimeGitMergeResponse,
-	RuntimeGitRefsResponse,
-	RuntimeGitSummaryResponse,
-	RuntimeGitSyncAction,
-	RuntimeGitSyncResponse,
-	RuntimeHookIngestRequest,
-	RuntimeHookIngestResponse,
-	RuntimeListFilesRequest,
-	RuntimeListFilesResponse,
-	RuntimeMigrateTaskWorkingDirectoryRequest,
-	RuntimeMigrateTaskWorkingDirectoryResponse,
-	RuntimeOpenFileRequest,
-	RuntimeOpenFileResponse,
-	RuntimeProjectAddRequest,
-	RuntimeProjectAddResponse,
-	RuntimeProjectDirectoryPickerResponse,
-	RuntimeProjectRemoveRequest,
-	RuntimeProjectRemoveResponse,
-	RuntimeProjectReorderRequest,
-	RuntimeProjectReorderResponse,
-	RuntimeProjectsResponse,
-	RuntimeShellSessionStartRequest,
-	RuntimeShellSessionStartResponse,
-	RuntimeStashDropResponse,
-	RuntimeStashListResponse,
-	RuntimeStashPopApplyResponse,
-	RuntimeStashPushResponse,
-	RuntimeStashShowResponse,
-	RuntimeTaskSessionInputRequest,
-	RuntimeTaskSessionInputResponse,
-	RuntimeTaskSessionStartRequest,
-	RuntimeTaskSessionStartResponse,
-	RuntimeTaskSessionStopRequest,
-	RuntimeTaskSessionStopResponse,
-	RuntimeTaskWorkspaceInfoRequest,
-	RuntimeTaskWorkspaceInfoResponse,
-	RuntimeWorkspaceChangesRequest,
-	RuntimeWorkspaceChangesResponse,
-	RuntimeWorkspaceFileSearchRequest,
-	RuntimeWorkspaceFileSearchResponse,
-	RuntimeWorkspaceStateNotifyResponse,
-	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
-	RuntimeWorktreeDeleteRequest,
-	RuntimeWorktreeDeleteResponse,
-	RuntimeWorktreeEnsureRequest,
-	RuntimeWorktreeEnsureResponse,
-} from "../core/api-contract";
 import {
-	runtimeAutoMergedFilesRequestSchema,
-	runtimeAutoMergedFilesResponseSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
-	runtimeConflictAbortRequestSchema,
-	runtimeConflictAbortResponseSchema,
-	runtimeConflictContinueRequestSchema,
-	runtimeConflictContinueResponseSchema,
-	runtimeConflictFilesRequestSchema,
-	runtimeConflictFilesResponseSchema,
-	runtimeConflictResolveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
-	runtimeFileContentRequestSchema,
-	runtimeFileContentResponseSchema,
-	runtimeGitCheckoutRequestSchema,
-	runtimeGitCheckoutResponseSchema,
-	runtimeGitCherryPickRequestSchema,
-	runtimeGitCherryPickResponseSchema,
-	runtimeGitCommitDiffRequestSchema,
-	runtimeGitCommitDiffResponseSchema,
-	runtimeGitCommitRequestSchema,
-	runtimeGitCommitResponseSchema,
-	runtimeGitCreateBranchRequestSchema,
-	runtimeGitCreateBranchResponseSchema,
-	runtimeGitDeleteBranchRequestSchema,
-	runtimeGitDeleteBranchResponseSchema,
-	runtimeGitDiscardFileRequestSchema,
-	runtimeGitDiscardResponseSchema,
-	runtimeGitLogRequestSchema,
-	runtimeGitLogResponseSchema,
-	runtimeGitMergeRequestSchema,
-	runtimeGitMergeResponseSchema,
-	runtimeGitRefsResponseSchema,
-	runtimeGitSummaryResponseSchema,
-	runtimeGitSyncActionSchema,
-	runtimeGitSyncResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
-	runtimeListFilesRequestSchema,
-	runtimeListFilesResponseSchema,
 	runtimeMigrateTaskWorkingDirectoryRequestSchema,
 	runtimeMigrateTaskWorkingDirectoryResponseSchema,
 	runtimeOpenFileRequestSchema,
@@ -143,740 +25,129 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
-	runtimeStashActionRequestSchema,
-	runtimeStashDropResponseSchema,
-	runtimeStashListResponseSchema,
-	runtimeStashPopApplyResponseSchema,
-	runtimeStashPushRequestSchema,
-	runtimeStashPushResponseSchema,
-	runtimeStashShowResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStartResponseSchema,
 	runtimeTaskSessionStopRequestSchema,
 	runtimeTaskSessionStopResponseSchema,
-	runtimeTaskWorkspaceInfoRequestSchema,
-	runtimeTaskWorkspaceInfoResponseSchema,
-	runtimeWorkspaceChangesRequestSchema,
-	runtimeWorkspaceChangesResponseSchema,
-	runtimeWorkspaceFileSearchRequestSchema,
-	runtimeWorkspaceFileSearchResponseSchema,
-	runtimeWorkspaceStateNotifyResponseSchema,
-	runtimeWorkspaceStateResponseSchema,
-	runtimeWorkspaceStateSaveRequestSchema,
-	runtimeWorktreeDeleteRequestSchema,
-	runtimeWorktreeDeleteResponseSchema,
-	runtimeWorktreeEnsureRequestSchema,
-	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
-import { findCardInBoard } from "../core/task-board-mutations";
-import { generateDisplaySummary } from "../title/summary-generator";
-import { generateBranchName, generateTaskTitle } from "../title/title-generator";
+import { t, workspaceProcedure } from "./app-router-init";
+import { workspaceRouter } from "./workspace-procedures";
 
-const log = createTaggedLogger("task-gen");
+// Re-export context types for consumers.
+export type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router-context";
 
-/** Tracks taskIds with in-flight LLM summary generation to prevent duplicate concurrent calls. */
-const summaryGenerationInFlight = new Set<string>();
-
-export interface RuntimeTrpcWorkspaceScope {
-	workspaceId: string;
-	workspacePath: string;
-}
-
-export interface RuntimeTrpcContext {
-	requestedWorkspaceId: string | null;
-	workspaceScope: RuntimeTrpcWorkspaceScope | null;
-	runtimeApi: {
-		loadConfig: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeConfigResponse>;
-		saveConfig: (
-			scope: RuntimeTrpcWorkspaceScope | null,
-			input: RuntimeConfigSaveRequest,
-		) => Promise<RuntimeConfigResponse>;
-		startTaskSession: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskSessionStartRequest,
-		) => Promise<RuntimeTaskSessionStartResponse>;
-		stopTaskSession: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskSessionStopRequest,
-		) => Promise<RuntimeTaskSessionStopResponse>;
-		sendTaskSessionInput: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskSessionInputRequest,
-		) => Promise<RuntimeTaskSessionInputResponse>;
-		startShellSession: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeShellSessionStartRequest,
-		) => Promise<RuntimeShellSessionStartResponse>;
-		runCommand: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeCommandRunRequest,
-		) => Promise<RuntimeCommandRunResponse>;
-		resetAllState: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeDebugResetAllStateResponse>;
-		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
-		migrateTaskWorkingDirectory: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeMigrateTaskWorkingDirectoryRequest,
-		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
-		setDebugLogging: (enabled: boolean) => { ok: boolean; enabled: boolean };
-		flagTaskForDebug: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskId: string; note?: string },
-		) => Promise<{ ok: boolean }>;
-	};
-	workspaceApi: {
-		loadGitSummary: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
-		) => Promise<RuntimeGitSummaryResponse>;
-		runGitSyncAction: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { action: RuntimeGitSyncAction; taskScope?: RuntimeTaskWorkspaceInfoRequest | null },
-		) => Promise<RuntimeGitSyncResponse>;
-		checkoutGitBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitCheckoutRequest,
-		) => Promise<RuntimeGitCheckoutResponse>;
-		mergeBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitMergeRequest,
-		) => Promise<RuntimeGitMergeResponse>;
-		getConflictFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeConflictFilesRequest,
-		) => Promise<RuntimeConflictFilesResponse>;
-		getAutoMergedFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeAutoMergedFilesRequest,
-		) => Promise<RuntimeAutoMergedFilesResponse>;
-		resolveConflictFile: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeConflictResolveRequest,
-		) => Promise<{ ok: boolean; error?: string }>;
-		continueConflictResolution: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeConflictContinueRequest,
-		) => Promise<RuntimeConflictContinueResponse>;
-		abortConflictResolution: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeConflictAbortRequest,
-		) => Promise<RuntimeConflictAbortResponse>;
-		createBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitCreateBranchRequest,
-		) => Promise<RuntimeGitCreateBranchResponse>;
-		deleteBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitDeleteBranchRequest,
-		) => Promise<RuntimeGitDeleteBranchResponse>;
-		cherryPickCommit: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitCherryPickRequest,
-		) => Promise<RuntimeGitCherryPickResponse>;
-		discardGitChanges: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
-		) => Promise<RuntimeGitDiscardResponse>;
-		commitSelectedFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitCommitRequest,
-		) => Promise<RuntimeGitCommitResponse>;
-		discardFile: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitDiscardFileRequest,
-		) => Promise<RuntimeGitDiscardResponse>;
-		loadChanges: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceChangesRequest,
-		) => Promise<RuntimeWorkspaceChangesResponse>;
-		ensureWorktree: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorktreeEnsureRequest,
-		) => Promise<RuntimeWorktreeEnsureResponse>;
-		deleteWorktree: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorktreeDeleteRequest,
-		) => Promise<RuntimeWorktreeDeleteResponse>;
-		loadTaskContext: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest,
-		) => Promise<RuntimeTaskWorkspaceInfoResponse>;
-		searchFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceFileSearchRequest,
-		) => Promise<RuntimeWorkspaceFileSearchResponse>;
-		listFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeListFilesRequest,
-		) => Promise<RuntimeListFilesResponse>;
-		getFileContent: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeFileContentRequest,
-		) => Promise<RuntimeFileContentResponse>;
-		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
-		notifyStateUpdated: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateNotifyResponse>;
-		saveState: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceStateSaveRequest,
-		) => Promise<RuntimeWorkspaceStateResponse>;
-		loadWorkspaceChanges: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceChangesResponse>;
-		loadGitLog: (scope: RuntimeTrpcWorkspaceScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
-		loadGitRefs: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
-		) => Promise<RuntimeGitRefsResponse>;
-		loadCommitDiff: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitCommitDiffRequest,
-		) => Promise<RuntimeGitCommitDiffResponse>;
-		notifyTaskTitleUpdated: (scope: RuntimeTrpcWorkspaceScope, taskId: string, title: string) => void;
-		setTaskDisplaySummary: (
-			scope: RuntimeTrpcWorkspaceScope,
-			taskId: string,
-			text: string,
-			generatedAt: number | null,
-		) => Promise<void>;
-		setFocusedTask: (scope: RuntimeTrpcWorkspaceScope, taskId: string | null) => void;
-		stashPush: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null; paths: string[]; message?: string },
-		) => Promise<RuntimeStashPushResponse>;
-		stashList: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null },
-		) => Promise<RuntimeStashListResponse>;
-		stashPop: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
-		) => Promise<RuntimeStashPopApplyResponse>;
-		stashApply: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
-		) => Promise<RuntimeStashPopApplyResponse>;
-		stashDrop: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
-		) => Promise<RuntimeStashDropResponse>;
-		stashShow: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
-		) => Promise<RuntimeStashShowResponse>;
-	};
-	projectsApi: {
-		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
-		addProject: (
-			preferredWorkspaceId: string | null,
-			input: RuntimeProjectAddRequest,
-		) => Promise<RuntimeProjectAddResponse>;
-		removeProject: (
-			preferredWorkspaceId: string | null,
-			input: RuntimeProjectRemoveRequest,
-		) => Promise<RuntimeProjectRemoveResponse>;
-		pickProjectDirectory: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
-		reorderProjects: (
-			preferredWorkspaceId: string | null,
-			input: RuntimeProjectReorderRequest,
-		) => Promise<RuntimeProjectReorderResponse>;
-	};
-	hooksApi: {
-		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
-	};
-}
-
-interface RuntimeTrpcContextWithWorkspaceScope extends RuntimeTrpcContext {
-	workspaceScope: RuntimeTrpcWorkspaceScope;
-}
-
-function readConflictRevision(cause: unknown): number | null {
-	if (!cause || typeof cause !== "object" || !("currentRevision" in cause)) {
-		return null;
-	}
-	const revision = (cause as { currentRevision?: unknown }).currentRevision;
-	if (typeof revision !== "number") {
-		return null;
-	}
-	return Number.isFinite(revision) ? revision : null;
-}
-
-const t = initTRPC.context<RuntimeTrpcContext>().create({
-	errorFormatter({ shape, error }) {
-		const conflictRevision = error.code === "CONFLICT" ? readConflictRevision(error.cause) : null;
-		return {
-			...shape,
-			data: {
-				...shape.data,
-				conflictRevision,
-			},
-		};
-	},
+const runtimeRouter = t.router({
+	getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
+		return await ctx.runtimeApi.loadConfig(ctx.workspaceScope);
+	}),
+	saveConfig: t.procedure
+		.input(runtimeConfigSaveRequestSchema)
+		.output(runtimeConfigResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.saveConfig(ctx.workspaceScope, input);
+		}),
+	startTaskSession: workspaceProcedure
+		.input(runtimeTaskSessionStartRequestSchema)
+		.output(runtimeTaskSessionStartResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.startTaskSession(ctx.workspaceScope, input);
+		}),
+	stopTaskSession: workspaceProcedure
+		.input(runtimeTaskSessionStopRequestSchema)
+		.output(runtimeTaskSessionStopResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.stopTaskSession(ctx.workspaceScope, input);
+		}),
+	sendTaskSessionInput: workspaceProcedure
+		.input(runtimeTaskSessionInputRequestSchema)
+		.output(runtimeTaskSessionInputResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.sendTaskSessionInput(ctx.workspaceScope, input);
+		}),
+	startShellSession: workspaceProcedure
+		.input(runtimeShellSessionStartRequestSchema)
+		.output(runtimeShellSessionStartResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.startShellSession(ctx.workspaceScope, input);
+		}),
+	runCommand: workspaceProcedure
+		.input(runtimeCommandRunRequestSchema)
+		.output(runtimeCommandRunResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.runCommand(ctx.workspaceScope, input);
+		}),
+	resetAllState: t.procedure.output(runtimeDebugResetAllStateResponseSchema).mutation(async ({ ctx }) => {
+		return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
+	}),
+	setDebugLogging: t.procedure
+		.input(z.object({ enabled: z.boolean() }))
+		.output(z.object({ ok: z.boolean(), enabled: z.boolean() }))
+		.mutation(({ ctx, input }) => {
+			return ctx.runtimeApi.setDebugLogging(input.enabled);
+		}),
+	flagTaskForDebug: workspaceProcedure
+		.input(z.object({ taskId: z.string(), note: z.string().optional() }))
+		.output(z.object({ ok: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.flagTaskForDebug(ctx.workspaceScope, input);
+		}),
+	openFile: t.procedure
+		.input(runtimeOpenFileRequestSchema)
+		.output(runtimeOpenFileResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.openFile(input);
+		}),
+	migrateTaskWorkingDirectory: workspaceProcedure
+		.input(runtimeMigrateTaskWorkingDirectoryRequestSchema)
+		.output(runtimeMigrateTaskWorkingDirectoryResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.runtimeApi.migrateTaskWorkingDirectory(ctx.workspaceScope, input);
+		}),
 });
 
-const workspaceProcedure = t.procedure.use(({ ctx, next }) => {
-	if (!ctx.requestedWorkspaceId) {
-		throw new TRPCError({
-			code: "BAD_REQUEST",
-			message: "Missing workspace scope. Include x-quarterdeck-workspace-id header or workspaceId query parameter.",
-		});
-	}
-	if (!ctx.workspaceScope) {
-		throw new TRPCError({
-			code: "NOT_FOUND",
-			message: `Unknown workspace ID: ${ctx.requestedWorkspaceId}`,
-		});
-	}
-	return next({
-		ctx: {
-			...ctx,
-			workspaceScope: ctx.workspaceScope,
-		} satisfies RuntimeTrpcContextWithWorkspaceScope,
-	});
+const projectsRouter = t.router({
+	list: t.procedure.output(runtimeProjectsResponseSchema).query(async ({ ctx }) => {
+		return await ctx.projectsApi.listProjects(ctx.requestedWorkspaceId);
+	}),
+	add: t.procedure
+		.input(runtimeProjectAddRequestSchema)
+		.output(runtimeProjectAddResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectsApi.addProject(ctx.requestedWorkspaceId, input);
+		}),
+	remove: t.procedure
+		.input(runtimeProjectRemoveRequestSchema)
+		.output(runtimeProjectRemoveResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectsApi.removeProject(ctx.requestedWorkspaceId, input);
+		}),
+	pickDirectory: t.procedure.output(runtimeProjectDirectoryPickerResponseSchema).mutation(async ({ ctx }) => {
+		return await ctx.projectsApi.pickProjectDirectory(ctx.requestedWorkspaceId);
+	}),
+	reorder: t.procedure
+		.input(runtimeProjectReorderRequestSchema)
+		.output(runtimeProjectReorderResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.projectsApi.reorderProjects(ctx.requestedWorkspaceId, input);
+		}),
 });
 
-const optionalTaskWorkspaceInfoRequestSchema = runtimeTaskWorkspaceInfoRequestSchema.nullable().optional();
-const gitSyncActionInputSchema = z.object({
-	action: runtimeGitSyncActionSchema,
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+const hooksRouter = t.router({
+	ingest: t.procedure
+		.input(runtimeHookIngestRequestSchema)
+		.output(runtimeHookIngestResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.hooksApi.ingest(input);
+		}),
 });
 
 export const runtimeAppRouter = t.router({
-	runtime: t.router({
-		getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
-			return await ctx.runtimeApi.loadConfig(ctx.workspaceScope);
-		}),
-		saveConfig: t.procedure
-			.input(runtimeConfigSaveRequestSchema)
-			.output(runtimeConfigResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.saveConfig(ctx.workspaceScope, input);
-			}),
-		startTaskSession: workspaceProcedure
-			.input(runtimeTaskSessionStartRequestSchema)
-			.output(runtimeTaskSessionStartResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.startTaskSession(ctx.workspaceScope, input);
-			}),
-		stopTaskSession: workspaceProcedure
-			.input(runtimeTaskSessionStopRequestSchema)
-			.output(runtimeTaskSessionStopResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.stopTaskSession(ctx.workspaceScope, input);
-			}),
-		sendTaskSessionInput: workspaceProcedure
-			.input(runtimeTaskSessionInputRequestSchema)
-			.output(runtimeTaskSessionInputResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.sendTaskSessionInput(ctx.workspaceScope, input);
-			}),
-		startShellSession: workspaceProcedure
-			.input(runtimeShellSessionStartRequestSchema)
-			.output(runtimeShellSessionStartResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.startShellSession(ctx.workspaceScope, input);
-			}),
-		runCommand: workspaceProcedure
-			.input(runtimeCommandRunRequestSchema)
-			.output(runtimeCommandRunResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.runCommand(ctx.workspaceScope, input);
-			}),
-		resetAllState: t.procedure.output(runtimeDebugResetAllStateResponseSchema).mutation(async ({ ctx }) => {
-			return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
-		}),
-		setDebugLogging: t.procedure
-			.input(z.object({ enabled: z.boolean() }))
-			.output(z.object({ ok: z.boolean(), enabled: z.boolean() }))
-			.mutation(({ ctx, input }) => {
-				return ctx.runtimeApi.setDebugLogging(input.enabled);
-			}),
-		flagTaskForDebug: workspaceProcedure
-			.input(z.object({ taskId: z.string(), note: z.string().optional() }))
-			.output(z.object({ ok: z.boolean() }))
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.flagTaskForDebug(ctx.workspaceScope, input);
-			}),
-		openFile: t.procedure
-			.input(runtimeOpenFileRequestSchema)
-			.output(runtimeOpenFileResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.openFile(input);
-			}),
-		migrateTaskWorkingDirectory: workspaceProcedure
-			.input(runtimeMigrateTaskWorkingDirectoryRequestSchema)
-			.output(runtimeMigrateTaskWorkingDirectoryResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.migrateTaskWorkingDirectory(ctx.workspaceScope, input);
-			}),
-	}),
-	workspace: t.router({
-		getGitSummary: workspaceProcedure
-			.input(optionalTaskWorkspaceInfoRequestSchema)
-			.output(runtimeGitSummaryResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadGitSummary(ctx.workspaceScope, input ?? null);
-			}),
-		runGitSyncAction: workspaceProcedure
-			.input(gitSyncActionInputSchema)
-			.output(runtimeGitSyncResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.runGitSyncAction(ctx.workspaceScope, input);
-			}),
-		checkoutGitBranch: workspaceProcedure
-			.input(runtimeGitCheckoutRequestSchema)
-			.output(runtimeGitCheckoutResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.checkoutGitBranch(ctx.workspaceScope, input);
-			}),
-		mergeBranch: workspaceProcedure
-			.input(runtimeGitMergeRequestSchema)
-			.output(runtimeGitMergeResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.mergeBranch(ctx.workspaceScope, input);
-			}),
-		getConflictFiles: workspaceProcedure
-			.input(runtimeConflictFilesRequestSchema)
-			.output(runtimeConflictFilesResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.getConflictFiles(ctx.workspaceScope, input);
-			}),
-		getAutoMergedFiles: workspaceProcedure
-			.input(runtimeAutoMergedFilesRequestSchema)
-			.output(runtimeAutoMergedFilesResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.getAutoMergedFiles(ctx.workspaceScope, input);
-			}),
-		resolveConflictFile: workspaceProcedure
-			.input(runtimeConflictResolveRequestSchema)
-			.output(z.object({ ok: z.boolean(), error: z.string().optional() }))
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.resolveConflictFile(ctx.workspaceScope, input);
-			}),
-		continueConflictResolution: workspaceProcedure
-			.input(runtimeConflictContinueRequestSchema)
-			.output(runtimeConflictContinueResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.continueConflictResolution(ctx.workspaceScope, input);
-			}),
-		abortConflictResolution: workspaceProcedure
-			.input(runtimeConflictAbortRequestSchema)
-			.output(runtimeConflictAbortResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.abortConflictResolution(ctx.workspaceScope, input);
-			}),
-		createBranch: workspaceProcedure
-			.input(runtimeGitCreateBranchRequestSchema)
-			.output(runtimeGitCreateBranchResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.createBranch(ctx.workspaceScope, input);
-			}),
-		deleteBranch: workspaceProcedure
-			.input(runtimeGitDeleteBranchRequestSchema)
-			.output(runtimeGitDeleteBranchResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.deleteBranch(ctx.workspaceScope, input);
-			}),
-		cherryPickCommit: workspaceProcedure
-			.input(runtimeGitCherryPickRequestSchema)
-			.output(runtimeGitCherryPickResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.cherryPickCommit(ctx.workspaceScope, input);
-			}),
-		discardGitChanges: workspaceProcedure
-			.input(optionalTaskWorkspaceInfoRequestSchema)
-			.output(runtimeGitDiscardResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.discardGitChanges(ctx.workspaceScope, input ?? null);
-			}),
-		commitSelectedFiles: workspaceProcedure
-			.input(runtimeGitCommitRequestSchema)
-			.output(runtimeGitCommitResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.commitSelectedFiles(ctx.workspaceScope, input);
-			}),
-		discardFile: workspaceProcedure
-			.input(runtimeGitDiscardFileRequestSchema)
-			.output(runtimeGitDiscardResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.discardFile(ctx.workspaceScope, input);
-			}),
-		getChanges: workspaceProcedure
-			.input(runtimeWorkspaceChangesRequestSchema)
-			.output(runtimeWorkspaceChangesResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadChanges(ctx.workspaceScope, input);
-			}),
-		ensureWorktree: workspaceProcedure
-			.input(runtimeWorktreeEnsureRequestSchema)
-			.output(runtimeWorktreeEnsureResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.ensureWorktree(ctx.workspaceScope, input);
-			}),
-		deleteWorktree: workspaceProcedure
-			.input(runtimeWorktreeDeleteRequestSchema)
-			.output(runtimeWorktreeDeleteResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.deleteWorktree(ctx.workspaceScope, input);
-			}),
-		getTaskContext: workspaceProcedure
-			.input(runtimeTaskWorkspaceInfoRequestSchema)
-			.output(runtimeTaskWorkspaceInfoResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadTaskContext(ctx.workspaceScope, input);
-			}),
-		searchFiles: workspaceProcedure
-			.input(runtimeWorkspaceFileSearchRequestSchema)
-			.output(runtimeWorkspaceFileSearchResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
-			}),
-		listFiles: workspaceProcedure
-			.input(runtimeListFilesRequestSchema)
-			.output(runtimeListFilesResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.listFiles(ctx.workspaceScope, input);
-			}),
-		getFileContent: workspaceProcedure
-			.input(runtimeFileContentRequestSchema)
-			.output(runtimeFileContentResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.getFileContent(ctx.workspaceScope, input);
-			}),
-		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
-			return await ctx.workspaceApi.loadState(ctx.workspaceScope);
-		}),
-		notifyStateUpdated: workspaceProcedure
-			.output(runtimeWorkspaceStateNotifyResponseSchema)
-			.mutation(async ({ ctx }) => {
-				return await ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
-			}),
-		saveState: workspaceProcedure
-			.input(runtimeWorkspaceStateSaveRequestSchema)
-			.output(runtimeWorkspaceStateResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.saveState(ctx.workspaceScope, input);
-			}),
-		setFocusedTask: workspaceProcedure
-			.input(z.object({ taskId: z.string().nullable() }))
-			.mutation(({ ctx, input }) => {
-				ctx.workspaceApi.setFocusedTask(ctx.workspaceScope, input.taskId);
-			}),
-		getWorkspaceChanges: workspaceProcedure.output(runtimeWorkspaceChangesResponseSchema).query(async ({ ctx }) => {
-			return await ctx.workspaceApi.loadWorkspaceChanges(ctx.workspaceScope);
-		}),
-		getGitLog: workspaceProcedure
-			.input(runtimeGitLogRequestSchema)
-			.output(runtimeGitLogResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadGitLog(ctx.workspaceScope, input);
-			}),
-		getGitRefs: workspaceProcedure
-			.input(optionalTaskWorkspaceInfoRequestSchema)
-			.output(runtimeGitRefsResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadGitRefs(ctx.workspaceScope, input ?? null);
-			}),
-		getCommitDiff: workspaceProcedure
-			.input(runtimeGitCommitDiffRequestSchema)
-			.output(runtimeGitCommitDiffResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.loadCommitDiff(ctx.workspaceScope, input);
-			}),
-		regenerateTaskTitle: workspaceProcedure
-			.input(z.object({ taskId: z.string() }))
-			.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
-			.mutation(async ({ ctx, input }) => {
-				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
-				const card = findCardInBoard(state.board, input.taskId);
-				if (!card) {
-					throw new TRPCError({ code: "NOT_FOUND", message: `Task "${input.taskId}" not found.` });
-				}
-				const prompt = card.prompt;
-				const session = state.sessions[card.id];
-				const summaries = session?.conversationSummaries ?? [];
-				log.debug("regenerateTaskTitle", {
-					taskId: input.taskId,
-					promptSnippet: prompt.slice(0, 80),
-					summaryCount: summaries.length,
-					latestSummary: summaries.at(-1)?.text?.slice(0, 100),
-				});
-
-				// Build context with latest activity FIRST so it survives truncation.
-				let agentContext: string | null = null;
-				if (summaries.length > 0) {
-					const earlier = summaries.slice(0, -1).map((s) => s.text);
-					const latest = summaries.at(-1)?.text ?? "";
-					const parts =
-						earlier.length > 0
-							? [`Most recent activity:\n${latest}`, `Earlier activity:\n${earlier.join("\n")}`]
-							: [`Most recent activity:\n${latest}`];
-					agentContext = parts.join("\n\n");
-				}
-
-				// Fall back to finalMessage if no conversation summaries.
-				agentContext ??= session?.latestHookActivity?.finalMessage
-					? `Most recent activity:\n${session.latestHookActivity.finalMessage.slice(0, 500)}`
-					: null;
-
-				// Put agent context before the original prompt so recent work
-				// is what the LLM sees first (and survives truncation).
-				const context = agentContext ? `${agentContext}\n\nOriginal prompt:\n${prompt}` : prompt;
-				const title = await generateTaskTitle(context);
-				if (!title) {
-					return { ok: false, title: null };
-				}
-				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, title);
-				return { ok: true, title };
-			}),
-		updateTaskTitle: workspaceProcedure
-			.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))
-			.output(z.object({ ok: z.boolean() }))
-			.mutation(async ({ ctx, input }) => {
-				ctx.workspaceApi.notifyTaskTitleUpdated(ctx.workspaceScope, input.taskId, input.title);
-				return { ok: true };
-			}),
-		generateDisplaySummary: workspaceProcedure
-			.input(
-				z.object({
-					taskId: z.string(),
-					staleAfterSeconds: z.number().min(5).default(300),
-				}),
-			)
-			.output(z.object({ ok: z.boolean(), summary: z.string().nullable() }))
-			.mutation(async ({ ctx, input }) => {
-				const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
-				const session = state.sessions[input.taskId];
-				if (!session) {
-					return { ok: false, summary: null };
-				}
-
-				const summaries = session.conversationSummaries ?? [];
-
-				// Server-side staleness check — always respect the user-configured
-				// staleAfterSeconds window. Only regenerate after the window expires
-				// AND newer conversation data has arrived since the last generation.
-				if (session.displaySummaryGeneratedAt) {
-					const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
-					if (ageSeconds < input.staleAfterSeconds) {
-						return { ok: true, summary: session.displaySummary };
-					}
-					// Window expired — only regenerate if there's newer conversation data.
-					const latestCapturedAt = summaries.length > 0 ? Math.max(...summaries.map((s) => s.capturedAt)) : 0;
-					const hasNewerData = latestCapturedAt > session.displaySummaryGeneratedAt;
-					if (!hasNewerData) {
-						return { ok: true, summary: session.displaySummary };
-					}
-				}
-				const conversationText = summaries.length > 0 ? summaries.map((s) => s.text).join("\n") : null;
-				// Fall back to finalMessage if no conversation summaries.
-				const sourceText = conversationText ?? session.latestHookActivity?.finalMessage ?? null;
-				if (!sourceText?.trim()) {
-					return { ok: false, summary: null };
-				}
-				log.debug("generateDisplaySummary", {
-					taskId: input.taskId,
-					summaryCount: summaries.length,
-					sourceTextSnippet: sourceText.slice(0, 120),
-					usedFinalMessage: conversationText === null,
-				});
-
-				// Prevent duplicate concurrent LLM calls for the same task.
-				if (summaryGenerationInFlight.has(input.taskId)) {
-					return { ok: true, summary: session.displaySummary };
-				}
-				summaryGenerationInFlight.add(input.taskId);
-				try {
-					const generated = await generateDisplaySummary(sourceText);
-					if (!generated) {
-						return { ok: false, summary: null };
-					}
-
-					await ctx.workspaceApi.setTaskDisplaySummary(ctx.workspaceScope, input.taskId, generated, Date.now());
-					return { ok: true, summary: generated };
-				} finally {
-					summaryGenerationInFlight.delete(input.taskId);
-				}
-			}),
-		// No server-side rate limiting: this is user-triggered (not batch) and the client
-		// guards against duplicate in-flight calls via isGeneratingBranchName state.
-		generateBranchName: workspaceProcedure
-			.input(z.object({ prompt: z.string().min(1) }))
-			.output(z.object({ ok: z.boolean(), branchName: z.string().nullable() }))
-			.mutation(async ({ input }) => {
-				const branchName = await generateBranchName(input.prompt);
-				return { ok: branchName !== null, branchName };
-			}),
-		stashPush: workspaceProcedure
-			.input(runtimeStashPushRequestSchema)
-			.output(runtimeStashPushResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashPush(ctx.workspaceScope, input);
-			}),
-		stashList: workspaceProcedure
-			.input(z.object({ taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable() }))
-			.output(runtimeStashListResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashList(ctx.workspaceScope, input);
-			}),
-		stashPop: workspaceProcedure
-			.input(runtimeStashActionRequestSchema)
-			.output(runtimeStashPopApplyResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashPop(ctx.workspaceScope, input);
-			}),
-		stashApply: workspaceProcedure
-			.input(runtimeStashActionRequestSchema)
-			.output(runtimeStashPopApplyResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashApply(ctx.workspaceScope, input);
-			}),
-		stashDrop: workspaceProcedure
-			.input(runtimeStashActionRequestSchema)
-			.output(runtimeStashDropResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashDrop(ctx.workspaceScope, input);
-			}),
-		stashShow: workspaceProcedure
-			.input(runtimeStashActionRequestSchema)
-			.output(runtimeStashShowResponseSchema)
-			.query(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.stashShow(ctx.workspaceScope, input);
-			}),
-	}),
-	projects: t.router({
-		list: t.procedure.output(runtimeProjectsResponseSchema).query(async ({ ctx }) => {
-			return await ctx.projectsApi.listProjects(ctx.requestedWorkspaceId);
-		}),
-		add: t.procedure
-			.input(runtimeProjectAddRequestSchema)
-			.output(runtimeProjectAddResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.projectsApi.addProject(ctx.requestedWorkspaceId, input);
-			}),
-		remove: t.procedure
-			.input(runtimeProjectRemoveRequestSchema)
-			.output(runtimeProjectRemoveResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.projectsApi.removeProject(ctx.requestedWorkspaceId, input);
-			}),
-		pickDirectory: t.procedure.output(runtimeProjectDirectoryPickerResponseSchema).mutation(async ({ ctx }) => {
-			return await ctx.projectsApi.pickProjectDirectory(ctx.requestedWorkspaceId);
-		}),
-		reorder: t.procedure
-			.input(runtimeProjectReorderRequestSchema)
-			.output(runtimeProjectReorderResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.projectsApi.reorderProjects(ctx.requestedWorkspaceId, input);
-			}),
-	}),
-	hooks: t.router({
-		ingest: t.procedure
-			.input(runtimeHookIngestRequestSchema)
-			.output(runtimeHookIngestResponseSchema)
-			.mutation(async ({ ctx, input }) => {
-				return await ctx.hooksApi.ingest(input);
-			}),
-	}),
+	runtime: runtimeRouter,
+	workspace: workspaceRouter,
+	projects: projectsRouter,
+	hooks: hooksRouter,
 });
 
 export type RuntimeAppRouter = typeof runtimeAppRouter;

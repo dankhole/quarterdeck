@@ -1,0 +1,299 @@
+// Settings sections: AI Features, Notifications, and Terminal.
+import { Sparkles, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { showAppToast } from "@/components/app-toaster";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
+import { SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
+import { resetAllTerminalRenderers } from "@/terminal/terminal-registry";
+import { notificationAudioPlayer } from "@/utils/notification-audio";
+import type { SettingsSectionProps } from "./settings-section-props";
+
+// ---------------------------------------------------------------------------
+// AI Features
+// ---------------------------------------------------------------------------
+
+export function AiFeaturesSection({
+	fields,
+	setField,
+	disabled,
+	llmConfigured,
+}: SettingsSectionProps & { llmConfigured: boolean }): React.ReactElement {
+	return (
+		<>
+			<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
+				<Sparkles size={14} />
+				AI Features
+			</h6>
+			{!llmConfigured ? (
+				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2 text-[13px] text-status-orange mb-2">
+					LLM features are unavailable. Set <code className="text-[12px]">ANTHROPIC_BEDROCK_BASE_URL</code> and{" "}
+					<code className="text-[12px]">ANTHROPIC_AUTH_TOKEN</code> in the shell that launches Quarterdeck to
+					enable auto-generated titles, branch names, and summaries.
+				</div>
+			) : (
+				<p className="text-text-secondary text-[13px] mt-0 mb-2">
+					Titles, branch names, and summaries are generated via a lightweight LLM call.
+				</p>
+			)}
+
+			<label
+				htmlFor="runtime-settings-show-summary-on-cards"
+				className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
+			>
+				<SettingsCheckbox
+					id="runtime-settings-show-summary-on-cards"
+					checked={fields.showSummaryOnCards}
+					onCheckedChange={(v) => setField("showSummaryOnCards", v)}
+					disabled={disabled}
+				/>
+				<span>Show conversation summary on cards</span>
+			</label>
+			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+				Display a truncated preview of the agent's latest summary below the title.
+			</p>
+
+			<label
+				htmlFor="runtime-settings-auto-generate-summary"
+				className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+			>
+				<SettingsCheckbox
+					id="runtime-settings-auto-generate-summary"
+					checked={fields.autoGenerateSummary}
+					onCheckedChange={(v) => setField("autoGenerateSummary", v)}
+					disabled={disabled}
+				/>
+				<span>Auto-generate summary with LLM</span>
+			</label>
+			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+				Uses a fast model to condense agent conversation excerpts into a short summary for card tooltips.
+			</p>
+			{fields.autoGenerateSummary ? (
+				<div className="flex items-center gap-2 ml-6 mt-1.5">
+					<label htmlFor="runtime-settings-summary-stale-seconds" className="text-[13px] text-text-secondary">
+						Regenerate after
+					</label>
+					<input
+						id="runtime-settings-summary-stale-seconds"
+						type="text"
+						inputMode="numeric"
+						pattern="[0-9]*"
+						value={fields.summaryStaleAfterSeconds}
+						disabled={disabled}
+						onChange={(event) => {
+							const raw = event.target.value.replace(/\D/g, "");
+							if (raw === "") {
+								return;
+							}
+							const value = Number.parseInt(raw, 10);
+							if (Number.isFinite(value)) {
+								setField("summaryStaleAfterSeconds", Math.max(5, Math.min(3600, value)));
+							}
+						}}
+						className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-[13px] text-text-primary disabled:opacity-40"
+					/>
+					<span className="text-[13px] text-text-secondary">seconds</span>
+				</div>
+			) : null}
+		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+const NOTIFICATION_EVENTS = [
+	["permission", "Permissions", "Task is waiting for approval"],
+	["review", "Review", "Task is ready for review"],
+	["failure", "Failure", "Agent session failed or errored"],
+	["completion", "Completion", "Task completed successfully"],
+] as const;
+
+export function NotificationsSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
+	const masterOff = !fields.audibleNotificationsEnabled || disabled;
+
+	return (
+		<>
+			<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
+			<SettingsSwitch
+				checked={fields.audibleNotificationsEnabled}
+				onCheckedChange={(v) => setField("audibleNotificationsEnabled", v)}
+				disabled={disabled}
+				label="Play sounds when tasks need attention"
+			/>
+			<div className={cn("flex items-center gap-2 mt-2 text-[13px]", masterOff && "opacity-40")}>
+				<SettingsCheckbox
+					id="audible-notification-only-when-hidden"
+					checked={fields.audibleNotificationsOnlyWhenHidden}
+					onCheckedChange={(v) => setField("audibleNotificationsOnlyWhenHidden", v)}
+					disabled={masterOff}
+				/>
+				<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
+					<span className="text-text-primary">Only when tab is hidden</span>
+					<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
+				</label>
+			</div>
+			<div className="flex items-center gap-3 mt-3">
+				<Volume2 size={14} className={cn("text-text-secondary", masterOff && "opacity-40")} />
+				<input
+					type="range"
+					min={0}
+					max={100}
+					step={1}
+					value={Math.round(fields.audibleNotificationVolume * 100)}
+					onChange={(e) => setField("audibleNotificationVolume", Number(e.target.value) / 100)}
+					disabled={masterOff}
+					className="flex-1 h-1.5 accent-accent disabled:opacity-40"
+				/>
+				<span
+					className={cn("text-[13px] text-text-secondary w-8 text-right tabular-nums", masterOff && "opacity-40")}
+				>
+					{Math.round(fields.audibleNotificationVolume * 100)}%
+				</span>
+			</div>
+			<div className="flex flex-col gap-2 mt-3">
+				{NOTIFICATION_EVENTS.map(([key, label, description]) => (
+					<div key={key} className={cn("flex items-center gap-2 text-[13px]", masterOff && "opacity-40")}>
+						<SettingsCheckbox
+							id={`audible-notification-${key}`}
+							checked={fields.audibleNotificationEvents[key]}
+							onCheckedChange={(v) =>
+								setField("audibleNotificationEvents", {
+									...fields.audibleNotificationEvents,
+									[key]: v,
+								})
+							}
+							disabled={masterOff}
+						/>
+						<label htmlFor={`audible-notification-${key}`} className="flex items-center gap-1 cursor-pointer">
+							<span className="text-text-primary">{label}</span>
+							<span className="text-text-tertiary">— {description}</span>
+						</label>
+					</div>
+				))}
+			</div>
+			<div className="mt-3">
+				<Button
+					size="sm"
+					disabled={masterOff}
+					onClick={() => {
+						notificationAudioPlayer.ensureContext();
+						notificationAudioPlayer.play("permission", fields.audibleNotificationVolume);
+					}}
+				>
+					Test sound
+				</Button>
+			</div>
+		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Terminal
+// ---------------------------------------------------------------------------
+
+function FontWeightInput({
+	value,
+	onChange,
+	disabled,
+}: {
+	value: number;
+	onChange: (v: number) => void;
+	disabled: boolean;
+}) {
+	const [draft, setDraft] = useState(String(value));
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	// Sync draft when value changes externally (e.g. config load)
+	useEffect(() => {
+		if (document.activeElement !== inputRef.current) {
+			setDraft(String(value));
+		}
+	}, [value]);
+
+	const commit = () => {
+		const parsed = Number(draft);
+		if (Number.isFinite(parsed) && parsed >= 100 && parsed <= 900) {
+			onChange(parsed);
+			setDraft(String(parsed));
+		} else {
+			// Revert to current value on invalid input
+			setDraft(String(value));
+		}
+	};
+
+	return (
+		<div className="flex items-center justify-between gap-3 mt-3">
+			<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
+				Font weight
+			</label>
+			<input
+				ref={inputRef}
+				id="terminal-font-weight"
+				type="text"
+				inputMode="numeric"
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				onBlur={commit}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") {
+						commit();
+						inputRef.current?.blur();
+					}
+				}}
+				disabled={disabled}
+				className="h-7 w-14 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary text-right tabular-nums focus:border-border-focus focus:outline-none"
+			/>
+		</div>
+	);
+}
+
+export function TerminalSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
+	return (
+		<>
+			<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
+			<SettingsSwitch
+				checked={fields.shellAutoRestartEnabled}
+				onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
+				disabled={disabled}
+				label="Auto-restart shell terminals on unexpected exit"
+				description="When enabled, shell terminals that crash or exit unexpectedly will automatically restart."
+			/>
+			<FontWeightInput
+				value={fields.terminalFontWeight}
+				onChange={(v) => setField("terminalFontWeight", v)}
+				disabled={disabled}
+			/>
+			<p className="text-text-secondary text-[13px] mt-1 mb-0">
+				CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+			</p>
+			<SettingsSwitch
+				className="mt-3"
+				checked={fields.terminalWebGLRenderer}
+				onCheckedChange={(v) => setField("terminalWebGLRenderer", v)}
+				disabled={disabled}
+				label="Use WebGL renderer"
+				description="Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native canvas 2D renderer."
+			/>
+			<Button
+				size="sm"
+				className="mt-3"
+				onClick={() => {
+					const count = resetAllTerminalRenderers();
+					showAppToast({
+						intent: "success",
+						message: `Reset rendering for ${count} terminal${count === 1 ? "" : "s"}`,
+						timeout: 3000,
+					});
+				}}
+			>
+				Reset terminal rendering
+			</Button>
+			<p className="text-text-secondary text-[13px] mt-2 mb-0">
+				Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or distorted
+				after moving between monitors.
+			</p>
+		</>
+	);
+}

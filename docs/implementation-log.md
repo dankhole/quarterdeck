@@ -2,6 +2,28 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: continued module decomposition — tier-2 and tier-3 files (2026-04-13)
+
+Continued the large-file decomposition effort, targeting files in the 700–1,100 line range. Four separate passes, each splitting a different area of the codebase. Motivation: reduce agent context window consumption — agents investigating a single concern no longer need to read 800+ lines of unrelated logic.
+
+**Pass 1 — codex-hook-events.ts (1,015 lines → 3 files):**
+Split into `codex-session-parser.ts` (369 lines — session log line parsing, watcher state, shared `CodexMappedHookEvent` type), `codex-rollout-parser.ts` (350 lines — rollout JSONL file discovery/reading/parsing), and the slimmed `codex-hook-events.ts` (207 lines — watcher orchestration loop + barrel re-exports). The two parsers handle completely different file formats with no shared domain logic. Four trivial string/JSON helpers (`normalizeWhitespace`, `truncateText`, `asRecord`, `readStringField`) are duplicated rather than creating a shared utils file — each is 1–5 lines. The barrel preserves the original public API so `hooks.ts` and all test files are unchanged.
+
+**Pass 2 — runtime-settings-dialog.tsx (913 lines → 5 files):**
+Extracted four section components under `web-ui/src/components/settings/`: `agent-section.tsx` (agent defaults, model, mode), `display-sections.tsx` (theme, layout, terminal settings), `general-sections.tsx` (project paths, worktree options, misc toggles), `shortcuts-section.tsx` (project + prompt shortcut editors). Shared `SettingsSectionProps` interface in `settings-section-props.ts`. The dialog shell (open/close, tabs, save/reset) stays in the original file.
+
+**Pass 3 — use-board-interactions.ts (1,027 lines → 5 hooks):**
+Extracted `use-board-drag-handler.ts` (DnD column/card reordering), `use-session-column-sync.ts` (session state → column position reconciliation), `use-task-lifecycle.ts` (stop/restart/archive handlers), `use-task-start.ts` (agent launch + worktree setup), `use-trash-workflow.ts` (trash/untrash/hard-delete with dialog state). The original hook composes all five.
+
+**Pass 4 — five tier-2 modules (700–999 lines each):**
+- `hooks.ts` (919 → 3 files) — extracted `hook-metadata.ts` (metadata building, source inference, enrichment) and `codex-wrapper.ts` (Codex wrapper child process spawn). Core ingest/dispatch stays.
+- `workspace-metadata-monitor.ts` (807 → 2 files) — extracted `workspace-metadata-loaders.ts` (git probe, task summary builder, file change detection). Monitor scheduling/lifecycle stays.
+- `workspace-state.ts` (816 → 3 files) — extracted `workspace-state-index.ts` (workspace discovery, indexing, cleanup) and `workspace-state-utils.ts` (snapshot diffing, revision helpers). Core CRUD stays.
+- `app-router.ts` (937 → 3 files) — extracted `app-router-context.ts` (context builder, auth middleware, dependency wiring) and `workspace-procedures.ts` (workspace CRUD tRPC procedures). Added `app-router-init.ts` for tRPC instance initialization. Route registration stays.
+- `diff-renderer.tsx` (922 → 3 files) — extracted `diff-parser.ts` (unified diff → structured hunk parsing) and `diff-highlighting.ts` (syntax token highlighting, line-level rendering). React component stays.
+
+Files touched: `src/commands/codex-hook-events.ts`, `src/commands/codex-rollout-parser.ts` (new), `src/commands/codex-session-parser.ts` (new), `src/commands/codex-wrapper.ts` (new), `src/commands/hook-metadata.ts` (new), `src/commands/hooks.ts`, `src/server/workspace-metadata-loaders.ts` (new), `src/server/workspace-metadata-monitor.ts`, `src/state/workspace-state-index.ts` (new), `src/state/workspace-state-utils.ts` (new), `src/state/workspace-state.ts`, `src/trpc/app-router-context.ts` (new), `src/trpc/app-router-init.ts` (new), `src/trpc/app-router.ts`, `src/trpc/workspace-procedures.ts` (new), `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/components/settings/agent-section.tsx` (new), `web-ui/src/components/settings/display-sections.tsx` (new), `web-ui/src/components/settings/general-sections.tsx` (new), `web-ui/src/components/settings/settings-section-props.ts` (new), `web-ui/src/components/settings/shortcuts-section.tsx` (new), `web-ui/src/components/shared/diff-highlighting.ts` (new), `web-ui/src/components/shared/diff-parser.ts` (new), `web-ui/src/components/shared/diff-renderer.tsx`, `web-ui/src/hooks/use-board-drag-handler.ts` (new), `web-ui/src/hooks/use-board-interactions.ts`, `web-ui/src/hooks/use-session-column-sync.ts` (new), `web-ui/src/hooks/use-task-lifecycle.ts` (new), `web-ui/src/hooks/use-task-start.ts` (new), `web-ui/src/hooks/use-trash-workflow.ts` (new), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Git view — file context menus (2026-04-13)
 
 Added right-click context menus to file names in the diff viewer panel (file section headers) and the file tree sidebar panel. Both menus offer Copy name, Copy path, and Show in File Browser. "Show in File Browser" navigates to the file browser main view and selects the file, using the existing `navigateToFile` infrastructure from `use-git-navigation.ts`.

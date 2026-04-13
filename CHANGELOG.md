@@ -15,6 +15,17 @@
 
 - Git view compare bar's source and target branch selectors now receive pinned branches and pin/unpin callbacks, matching the top bar and file browser scope bar. Pinning a branch in any dropdown now appears everywhere.
 
+### Refactor: continued module decomposition (tier-2 and tier-3 files)
+
+- **codex-hook-events.ts** (1,015 → 3 files) — extracted `codex-session-parser.ts` (session log parsing + shared types), `codex-rollout-parser.ts` (rollout JSONL file I/O and parsing). The original file retains the watcher orchestration + barrel re-exports.
+- **runtime-settings-dialog.tsx** (913 → 5 files) — extracted `agent-section.tsx`, `display-sections.tsx`, `general-sections.tsx`, `shortcuts-section.tsx` under `settings/`, with shared `settings-section-props.ts`. The dialog shell stays in the original file.
+- **use-board-interactions.ts** (1,027 → 5 hooks) — extracted `use-board-drag-handler.ts`, `use-session-column-sync.ts`, `use-task-lifecycle.ts`, `use-task-start.ts`, `use-trash-workflow.ts`. The orchestrator hook composes them.
+- **hooks.ts** (919 → 3 files) — extracted `hook-metadata.ts` (metadata building/enrichment) and `codex-wrapper.ts` (Codex wrapper spawn logic).
+- **workspace-metadata-monitor.ts** (807 → 2 files) — extracted `workspace-metadata-loaders.ts` (git probe, task summary, file change loaders).
+- **workspace-state.ts** (816 → 3 files) — extracted `workspace-state-index.ts` (workspace discovery/indexing) and `workspace-state-utils.ts` (snapshot helpers).
+- **app-router.ts** (937 → 3 files) — extracted `app-router-context.ts` (context builder + middleware) and `workspace-procedures.ts` (workspace CRUD procedures). Added `app-router-init.ts` for tRPC initialization.
+- **diff-renderer.tsx** (922 → 3 files) — extracted `diff-parser.ts` (unified diff parsing) and `diff-highlighting.ts` (syntax highlighting + line rendering).
+
 ### Refactor: split api-contract.ts into domain modules
 
 - Split the 1,297-line monolithic `src/core/api-contract.ts` into 11 focused domain files under `src/core/api/`: `shared.ts`, `board.ts`, `workspace-files.ts`, `git-sync.ts`, `git-merge.ts`, `git-history.ts`, `task-session.ts`, `task-chat.ts`, `config.ts`, `workspace-state.ts`, `streams.ts`. Each file is 50–200 lines. The original `api-contract.ts` is now a 1-line barrel re-export — zero consumer changes needed.
