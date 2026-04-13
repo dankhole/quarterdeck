@@ -32,16 +32,4 @@ describe("sanitizeErrorForToast", () => {
 		const message = "a".repeat(150);
 		expect(sanitizeErrorForToast(message)).toBe(message);
 	});
-
-	it("strips runGit prefix and returns the git stderr", () => {
-		const message =
-			"Failed to run Git Command: \n Command: \n git switch my-branch failed \n error: Your local changes would be overwritten";
-		expect(sanitizeErrorForToast(message)).toBe("error: Your local changes would be overwritten");
-	});
-
-	it("strips runGit prefix then truncates long stderr to first line", () => {
-		const message =
-			"Failed to run Git Command: \n Command: \n git commit -m test -- file.ts failed \n Running biome check on staged files...\nfile.ts:10 lint/style/noNonNullAssertion\nfile.ts:20 lint/correctness/noUnusedImports";
-		expect(sanitizeErrorForToast(message)).toBe("Running biome check on staged files...");
-	});
 });

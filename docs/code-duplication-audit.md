@@ -245,6 +245,6 @@ Suggested sequence, balancing impact with risk:
 | 2 | #3 (numstat parsing), #4 (fingerprinting), #5 (repo root) | **Done** |
 | 3 | #10 (isNodeError), #11 (runGitSync) | **Done** — #9 (path normalization) skipped, divergent semantics are intentional |
 | 2 partial | #2 (toErrorMessage utility) | **Done** — 18 files updated |
-| 4 | #1 (ConfirmationDialog) | Remaining — needs visual testing |
+| 4 | #1 (ConfirmationDialog) | **Done** — shared component, 7 dialogs migrated, 2 more switched to Button |
 | 5 | #12 (useLatestRef), #13 (request ID) | Skipped — too few instances (~10 and 3) to justify the abstraction |
-| 6 | #7 (ANSI strip), #8 (git error format) | Remaining — cross-boundary, needs both sides updated together |
+| 6 | #7 (ANSI strip), #8 (git error format) | **Done** — shared via @runtime-terminal-utils alias; runGit returns raw stderr |

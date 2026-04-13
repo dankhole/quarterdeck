@@ -1,6 +1,7 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
 import { GitCommitHorizontal } from "lucide-react";
 import { useCallback, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -79,22 +80,12 @@ export function CherryPickConfirmationDialog({
 			</AlertDialogBody>
 			<AlertDialogFooter>
 				<RadixAlertDialog.Cancel asChild>
-					<button
-						type="button"
-						onClick={handleCancel}
-						disabled={isLoading}
-						className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-					>
+					<Button variant="default" size="sm" onClick={handleCancel} disabled={isLoading}>
 						Cancel
-					</button>
+					</Button>
 				</RadixAlertDialog.Cancel>
 				<RadixAlertDialog.Action asChild>
-					<button
-						type="button"
-						onClick={handleConfirm}
-						disabled={isLoading}
-						className="px-3 py-1.5 text-xs rounded-md bg-accent text-white hover:bg-accent-hover cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-					>
+					<Button variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
 						{isLoading ? (
 							<>
 								<Spinner size={12} />
@@ -103,7 +94,7 @@ export function CherryPickConfirmationDialog({
 						) : (
 							"Land commit"
 						)}
-					</button>
+					</Button>
 				</RadixAlertDialog.Action>
 			</AlertDialogFooter>
 		</AlertDialog>

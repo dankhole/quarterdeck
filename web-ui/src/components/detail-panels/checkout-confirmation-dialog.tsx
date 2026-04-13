@@ -3,6 +3,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { AlertTriangle, Check, GitBranch, Info } from "lucide-react";
 import { useCallback, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -77,26 +78,22 @@ export function CheckoutConfirmationDialog({
 				<AlertDialogFooter>
 					{onNavigateToTask ? (
 						<RadixAlertDialog.Action asChild>
-							<button
-								type="button"
+							<Button
+								variant="primary"
+								size="sm"
 								onClick={() => {
 									onNavigateToTask(state.taskTitle);
 									onClose();
 								}}
-								className="px-3 py-1.5 text-xs rounded-md bg-accent text-white hover:bg-accent-hover cursor-pointer"
 							>
 								Go to task
-							</button>
+							</Button>
 						</RadixAlertDialog.Action>
 					) : null}
 					<RadixAlertDialog.Cancel asChild>
-						<button
-							type="button"
-							onClick={handleCancel}
-							className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer"
-						>
+						<Button variant="default" size="sm" onClick={handleCancel}>
 							Close
-						</button>
+						</Button>
 					</RadixAlertDialog.Cancel>
 				</AlertDialogFooter>
 			</AlertDialog>
@@ -122,35 +119,26 @@ export function CheckoutConfirmationDialog({
 				</AlertDialogBody>
 				<AlertDialogFooter>
 					<RadixAlertDialog.Cancel asChild>
-						<button
-							type="button"
-							onClick={handleCancel}
-							disabled={isStashingAndCheckingOut}
-							className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-						>
+						<Button variant="default" size="sm" onClick={handleCancel} disabled={isStashingAndCheckingOut}>
 							Cancel
-						</button>
+						</Button>
 					</RadixAlertDialog.Cancel>
 					{onStashAndCheckout ? (
-						<button
-							type="button"
-							onClick={onStashAndCheckout}
-							disabled={isStashingAndCheckingOut}
-							className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-accent text-white hover:bg-accent-hover cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-						>
+						<Button variant="primary" size="sm" onClick={onStashAndCheckout} disabled={isStashingAndCheckingOut}>
 							{isStashingAndCheckingOut ? <Spinner size={14} /> : null}
 							Stash & Switch
-						</button>
+						</Button>
 					) : null}
 					<RadixAlertDialog.Action asChild>
-						<button
-							type="button"
+						<Button
+							variant="primary"
+							size="sm"
+							className="bg-status-orange border-status-orange hover:bg-status-orange hover:opacity-90"
 							onClick={handleConfirm}
 							disabled={isStashingAndCheckingOut}
-							className="px-3 py-1.5 text-xs rounded-md bg-status-orange text-white hover:opacity-90 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
 						>
 							Proceed anyway
-						</button>
+						</Button>
 					</RadixAlertDialog.Action>
 				</AlertDialogFooter>
 			</AlertDialog>
@@ -198,22 +186,14 @@ export function CheckoutConfirmationDialog({
 			</AlertDialogBody>
 			<AlertDialogFooter>
 				<RadixAlertDialog.Cancel asChild>
-					<button
-						type="button"
-						onClick={handleCancel}
-						className="px-3 py-1.5 text-xs rounded-md bg-surface-3 text-text-secondary hover:bg-surface-4 cursor-pointer"
-					>
+					<Button variant="default" size="sm" onClick={handleCancel}>
 						Cancel
-					</button>
+					</Button>
 				</RadixAlertDialog.Cancel>
 				<RadixAlertDialog.Action asChild>
-					<button
-						type="button"
-						onClick={handleConfirm}
-						className="px-3 py-1.5 text-xs rounded-md bg-accent text-white hover:bg-accent-hover cursor-pointer"
-					>
+					<Button variant="primary" size="sm" onClick={handleConfirm}>
 						Switch branch
-					</button>
+					</Button>
 				</RadixAlertDialog.Action>
 			</AlertDialogFooter>
 		</AlertDialog>

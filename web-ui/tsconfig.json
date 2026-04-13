@@ -20,7 +20,8 @@
       "@runtime-shortcuts": ["../src/config/shortcut-utils.ts"],
       "@runtime-task-id": ["../src/core/task-id.ts"],
       "@runtime-task-worktree-path": ["../src/workspace/task-worktree-path.ts"],
-      "@runtime-task-state": ["../src/core/task-board-mutations.ts"]
+      "@runtime-task-state": ["../src/core/task-board-mutations.ts"],
+      "@runtime-terminal-utils": ["../src/terminal/output-utils.ts"]
     },
     "types": ["vitest/globals"]
   },

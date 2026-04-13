@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: complete code duplication cleanup (todo #24)
+
+- Created `ConfirmationDialog` component (`web-ui/src/components/ui/confirmation-dialog.tsx`) — reusable AlertDialog wrapper with built-in Radix double-fire guard, loading/disabled states, and configurable variant. Migrated 7 dialog files, replaced hand-written Tailwind button classes in cherry-pick and checkout dialogs with the `Button` component.
+- Shared runtime's state-machine `stripAnsi` with web-ui via `@runtime-terminal-utils` path alias, replacing a buggy regex-based implementation that mishandled OSC sequences.
+- Eliminated git error formatting round-trip — `runGit()` now returns raw stderr instead of wrapping in verbose boilerplate that the UI then regex-stripped back out. Deleted `parseGitErrorForDisplay` and simplified `sanitizeErrorForToast` to just truncation.
+
 ### Remove worktreeAddParentRepoDir — use git show for cross-branch file access
 
 - Removed the `worktreeAddParentRepoDir` config option that passed `--add-dir` with the parent repo path to agents in worktrees. This let agents `cd` into the home repo, breaking worktree isolation and causing branch/status UI desync (todos #12, #13).

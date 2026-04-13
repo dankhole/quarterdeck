@@ -11,28 +11,25 @@
 import { toast } from "sonner";
 
 import { createClientLogger } from "@/utils/client-logger";
-import { parseGitErrorForDisplay } from "@/utils/git-error";
 
 const log = createClientLogger("toast");
 
 const TOAST_TRUNCATE_THRESHOLD = 150;
 
 /**
- * Prepare an error message for toast display. Two-stage pipeline:
- * 1. Strip the verbose `runGit` prefix so the user sees actual git stderr.
- * 2. Truncate to the first non-empty line if still too long (safety net for
- *    e.g. multi-page pre-commit hook output).
+ * Prepare an error message for toast display.
+ * Truncates to the first non-empty line if the message is multi-line or too
+ * long (safety net for e.g. multi-page pre-commit hook output).
  */
 export function sanitizeErrorForToast(message: string): string {
-	const parsed = parseGitErrorForDisplay(message);
-	if (parsed.length <= TOAST_TRUNCATE_THRESHOLD && !parsed.includes("\n")) {
-		return parsed;
+	if (message.length <= TOAST_TRUNCATE_THRESHOLD && !message.includes("\n")) {
+		return message;
 	}
-	const firstLine = parsed
+	const firstLine = message
 		.split("\n")
 		.map((l) => l.trim())
 		.find((l) => l.length > 0);
-	if (!firstLine) return parsed;
+	if (!firstLine) return message;
 	if (firstLine.length <= TOAST_TRUNCATE_THRESHOLD) return firstLine;
 	return `${firstLine.slice(0, TOAST_TRUNCATE_THRESHOLD - 1)}\u2026`;
 }

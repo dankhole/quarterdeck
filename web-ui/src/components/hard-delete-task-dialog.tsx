@@ -1,16 +1,6 @@
 import type { ReactElement } from "react";
-
-import { Button } from "@/components/ui/button";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogBody,
-	AlertDialogCancel,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { AlertDialogDescription } from "@/components/ui/dialog";
 
 export function HardDeleteTaskDialog({
 	open,
@@ -24,39 +14,24 @@ export function HardDeleteTaskDialog({
 	onConfirm: () => void;
 }): ReactElement {
 	return (
-		<AlertDialog
+		<ConfirmationDialog
 			open={open}
-			onOpenChange={(isOpen) => {
-				if (!isOpen) onCancel();
-			}}
+			title="Delete task permanently?"
+			confirmLabel="Delete Permanently"
+			confirmVariant="danger"
+			onCancel={onCancel}
+			onConfirm={onConfirm}
 		>
-			<AlertDialogHeader>
-				<AlertDialogTitle>Delete task permanently?</AlertDialogTitle>
-			</AlertDialogHeader>
-			<AlertDialogBody>
-				<AlertDialogDescription>
-					{taskTitle ? (
-						<>
-							This will permanently delete <strong>{taskTitle}</strong>.
-						</>
-					) : (
-						"This will permanently delete this task."
-					)}
-				</AlertDialogDescription>
-				<p className="text-text-primary">This action cannot be undone.</p>
-			</AlertDialogBody>
-			<AlertDialogFooter>
-				<AlertDialogCancel asChild>
-					<Button variant="default" onClick={onCancel}>
-						Cancel
-					</Button>
-				</AlertDialogCancel>
-				<AlertDialogAction asChild>
-					<Button variant="danger" onClick={onConfirm}>
-						Delete Permanently
-					</Button>
-				</AlertDialogAction>
-			</AlertDialogFooter>
-		</AlertDialog>
+			<AlertDialogDescription>
+				{taskTitle ? (
+					<>
+						This will permanently delete <strong>{taskTitle}</strong>.
+					</>
+				) : (
+					"This will permanently delete this task."
+				)}
+			</AlertDialogDescription>
+			<p className="text-text-primary">This action cannot be undone.</p>
+		</ConfirmationDialog>
 	);
 }

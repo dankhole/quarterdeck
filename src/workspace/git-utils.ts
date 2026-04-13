@@ -63,8 +63,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		const stdout = options.trimStdout === false ? rawStdout : rawStdout.trim();
 		const stderr = String(candidate.stderr ?? "").trim();
 		const message = String(candidate.message ?? "").trim();
-		const command = `git ${args.join(" ")} failed`;
-		const errorMessage = `Failed to run Git Command: \n Command: \n ${command} \n ${stderr || message}`;
+		const errorMessage = stderr || message || "Unknown git error";
 		const exitCode = normalizeProcessExitCode(candidate.code);
 
 		return {

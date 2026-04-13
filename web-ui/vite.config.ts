@@ -86,6 +86,7 @@ export default defineConfig({
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
 			"@runtime-task-worktree-path": resolve(__dirname, "../src/workspace/task-worktree-path.ts"),
 			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
+			"@runtime-terminal-utils": resolve(__dirname, "../src/terminal/output-utils.ts"),
 		},
 	},
 	server: {

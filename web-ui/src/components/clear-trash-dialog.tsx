@@ -1,16 +1,6 @@
 import type { ReactElement } from "react";
-
-import { Button } from "@/components/ui/button";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogBody,
-	AlertDialogCancel,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { AlertDialogDescription } from "@/components/ui/dialog";
 
 export function ClearTrashDialog({
 	open,
@@ -26,33 +16,18 @@ export function ClearTrashDialog({
 	const taskLabel = taskCount === 1 ? "task" : "tasks";
 
 	return (
-		<AlertDialog
+		<ConfirmationDialog
 			open={open}
-			onOpenChange={(isOpen) => {
-				if (!isOpen) onCancel();
-			}}
+			title="Clear trash permanently?"
+			confirmLabel="Clear Trash"
+			confirmVariant="danger"
+			onCancel={onCancel}
+			onConfirm={onConfirm}
 		>
-			<AlertDialogHeader>
-				<AlertDialogTitle>Clear trash permanently?</AlertDialogTitle>
-			</AlertDialogHeader>
-			<AlertDialogBody>
-				<AlertDialogDescription>
-					This will permanently delete {taskCount} {taskLabel} from Trash.
-				</AlertDialogDescription>
-				<p className="text-text-primary">This action cannot be undone.</p>
-			</AlertDialogBody>
-			<AlertDialogFooter>
-				<AlertDialogCancel asChild>
-					<Button variant="default" onClick={onCancel}>
-						Cancel
-					</Button>
-				</AlertDialogCancel>
-				<AlertDialogAction asChild>
-					<Button variant="danger" onClick={onConfirm}>
-						Clear Trash
-					</Button>
-				</AlertDialogAction>
-			</AlertDialogFooter>
-		</AlertDialog>
+			<AlertDialogDescription>
+				This will permanently delete {taskCount} {taskLabel} from Trash.
+			</AlertDialogDescription>
+			<p className="text-text-primary">This action cannot be undone.</p>
+		</ConfirmationDialog>
 	);
 }
