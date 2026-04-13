@@ -295,6 +295,13 @@ export function TopBar({
 							/>
 						</div>
 					) : null}
+					{scopeType === "task" && taskTitle ? (
+						<Tooltip side="bottom" content="Task name">
+							<span className="inline-flex items-center shrink min-w-0 mr-1.5 text-xs">
+								<span className="text-accent truncate max-w-[200px]">{taskTitle}</span>
+							</span>
+						</Tooltip>
+					) : null}
 					{isWorkspacePathLoading ? (
 						<span
 							className="kb-skeleton inline-block"
@@ -342,14 +349,6 @@ export function TopBar({
 						)
 					) : null}
 					{!hideProjectDependentActions && branchPillSlot ? branchPillSlot : null}
-					{scopeType === "task" && taskTitle ? (
-						<span className="inline-flex items-center gap-1 shrink min-w-0 ml-1 text-xs">
-							<span className="text-text-tertiary">&middot;</span>
-							<span className="text-accent truncate max-w-[200px]" title={taskTitle}>
-								{taskTitle}
-							</span>
-						</span>
-					) : null}
 				</div>
 				<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">
 					{!hideProjectDependentActions && onRunShortcut ? (

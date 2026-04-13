@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### UX: move task title to far left of top bar
+
+- Task name now appears immediately after the back button instead of after the branch pill. Adds a "Task name" tooltip on hover for discoverability.
+
 ### Refactor: move pinnedBranches storage from project config to workspace directory
 
 - Pinned branches are now stored in `~/.quarterdeck/workspaces/<id>/pinned-branches.json` instead of `<project>/.quarterdeck/config.json`. Prevents polluting user project repos with Quarterdeck state. No migration — existing pinned branches in project config are silently ignored; users will need to re-pin branches once.

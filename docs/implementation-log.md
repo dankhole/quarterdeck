@@ -2,6 +2,12 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## UX: move task title to far left of top bar (2026-04-13)
+
+Moved the task title from its previous position (after branch pill, separated by a middot) to immediately after the back arrow button — making it the first visible element in task scope. Wrapped in a `<Tooltip>` showing "Task name" on hover so the accent-colored text is self-explanatory.
+
+Files: `web-ui/src/components/top-bar.tsx`.
+
 ## Combined feature landing: 6 branches merged (2026-04-13)
 
 Landed 6 feature branches into main via an integration branch. All merges were clean — no conflicts.
