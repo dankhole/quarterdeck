@@ -181,6 +181,7 @@ class PersistentTerminal {
 	/** Cols/rows we last sent — for within-epoch dedup when dimensions change. */
 	private lastSentCols = 0;
 	private lastSentRows = 0;
+	private deferredResizeRaf: number | null = null;
 	private disposed = false;
 
 	constructor(
@@ -709,6 +710,26 @@ class PersistentTerminal {
 			// New container — previous resize may have targeted a different
 			// (or parked) container, or been silently dropped.
 			this.invalidateResize();
+			// The host element was just moved from the parking root (or another
+			// container). The WebGL/canvas renderer may have initialized its canvas
+			// at the old container's dimensions. Schedule a deferred resize after
+			// the browser has settled the layout to force the renderer to update
+			// its canvas size — fitAddon.fit() skips terminal.resize() when
+			// cols/rows match, which leaves the canvas stale.
+			if (this.deferredResizeRaf !== null) {
+				cancelAnimationFrame(this.deferredResizeRaf);
+			}
+			this.deferredResizeRaf = requestAnimationFrame(() => {
+				this.deferredResizeRaf = null;
+				if (this.disposed || this.visibleContainer !== container) {
+					return;
+				}
+				const { cols, rows } = this.terminal;
+				if (cols > 2) {
+					this.terminal.resize(cols - 1, rows);
+				}
+				this.forceResize();
+			});
 		}
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
@@ -743,6 +764,10 @@ class PersistentTerminal {
 		if (this.resizeTimer !== null) {
 			clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
+		}
+		if (this.deferredResizeRaf !== null) {
+			cancelAnimationFrame(this.deferredResizeRaf);
+			this.deferredResizeRaf = null;
 		}
 		this.clearDprListener();
 		if (container && this.visibleContainer !== container) {

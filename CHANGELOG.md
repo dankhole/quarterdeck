@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: terminal renders at half width after untrashing a task
+
+- When a task was untrashed, the terminal canvas could render at the wrong width until the user manually resized the window. Root cause: the WebGL renderer initialized its canvas while the host element was in the offscreen parking root (1px × 1px), and xterm's FitAddon skips `terminal.resize()` when cols/rows match the current values, leaving the canvas stale. Added a deferred `requestAnimationFrame` in `PersistentTerminal.mount()` that forces the renderer to update its canvas dimensions after the browser settles layout in the new container.
+
 ### Fix: branch ahead/behind indicators now appear on the branch pill
 
 - The up/down arrow indicators on the branch pill were always showing 0 due to two issues: (1) branches without explicit upstream tracking (never pushed with `-u`) had no `# branch.ab` line in `git status`, so counts stayed at 0 — added a fallback that computes ahead/behind against `origin/<branch>` via `git rev-list --left-right --count`, and (2) remote tracking refs went stale because no periodic fetch was happening — added a 60-second background `git fetch --all --prune` to the workspace metadata monitor, with an initial fetch on workspace connect. The fetch uses `GIT_TERMINAL_PROMPT=0` to prevent hanging on expired credentials.
