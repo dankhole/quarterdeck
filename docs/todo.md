@@ -178,13 +178,9 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 
-## 21. Refactor `App.tsx` — extract custom hooks
+## 21. Investigate deeper App.tsx state architecture refactor
 
-`App.tsx` is ~2,000 lines with 68 hooks and 1,360 lines of state/logic before the JSX return. Much of this is related state + callbacks that could be bundled into custom hooks (same pattern already used for `use-board-interactions`, `use-task-sessions`, etc.). Identify the remaining groups of `useState`/`useCallback`/`useEffect` that belong together and extract them. Goal is to get App.tsx down to mostly `const { ... } = useFoo()` calls plus JSX wiring. Lower risk than a context provider refactor — component interfaces don't change.
-
-## 22. Investigate deeper App.tsx state architecture refactor
-
-The custom hook extraction (#21) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
+The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
 
 - **React Context providers** — split state into domain-specific contexts (board, sessions, config, git). Standard React, no new deps. Risk: re-render cascades if contexts aren't split granularly enough.
 - **Zustand or Jotai** — lightweight external stores. Components subscribe to slices, minimal re-renders. Risk: migration cost, new dependency, coexistence with the existing Immer reducer.

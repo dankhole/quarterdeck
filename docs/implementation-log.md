@@ -2,6 +2,35 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: extract 11 custom hooks from App.tsx (2026-04-13)
+
+Extracted inline state, callbacks, and effects from `App.tsx` (1,975 → 1,774 lines) into 11 focused custom hooks. The file had accumulated ~1,360 lines of hooks/state/effects before the JSX return — much of it logically grouped but physically scattered. This follows the same extraction pattern already used by `use-board-interactions`, `use-task-sessions`, `use-task-editor`, etc.
+
+**Extracted hooks (effect-only, no return values):**
+- `use-stream-error-handler.ts` — stream error → toast notification effect (was `lastStreamErrorRef` + effect)
+- `use-task-title-sync.ts` — applies WebSocket-delivered task title updates to the board
+- `use-board-metadata-sync.ts` — `replaceWorkspaceMetadata` + self-heal reconciliation effects
+- `use-terminal-config-sync.ts` — syncs terminal font weight and WebGL renderer to persistent manager
+- `use-focused-task-notification.ts` — fire-and-forget tRPC call to notify runtime of focused task
+
+**Extracted hooks (state + callbacks):**
+- `use-git-navigation.ts` — `pendingCompareNavigation`, `pendingFileNavigation`, `openGitCompare`, `navigateToFile`, `navigateToGitView`, auto-switch effect. Note: `isGitHistoryOpen` state stays in App.tsx because `handleProjectSwitchStart` (declared before `useCardDetailLayout`) references it.
+- `use-app-dialogs.ts` — `isSettingsOpen`, `settingsInitialSection`, `isClearTrashDialogOpen`, `promptShortcutEditorOpen` + their open/close handlers
+- `use-migrate-task-dialog.ts` — wraps `useMigrateWorkingDirectory` + dialog confirmation state (`pendingMigrate`, `handleConfirmMigrate`, `cancelMigrate`). `serverMutationInFlightRef` stays in App.tsx as a bridge to the workspace persistence conflict handler.
+
+**Extracted hooks (cleanup / derived state):**
+- `use-project-switch-cleanup.ts` — consolidates 4 scattered effects that reset state on `isProjectSwitching` or `currentProjectId` change
+- `use-escape-handler.ts` — unified Escape key handler (close git history, deselect task)
+- `use-navbar-state.ts` — derives `activeWorkspacePath`, `activeWorkspaceHint`, `navbarWorkspacePath`, `navbarRuntimeHint`, `shouldHideProjectDependentTopBarActions`
+
+**Design decisions:**
+- Hook call ordering matters: `useGitNavigation` must be called after `useCardDetailLayout` (needs `setMainView`). The `navigateToGitViewRef` bridge stays in App.tsx to allow branch action hooks (declared earlier) to reference the callback.
+- `isGitHistoryOpen` stays in App.tsx because `handleProjectSwitchStart` is declared before `useCardDetailLayout` and needs the setter. Extracting it would require a ref bridge — not worth the indirection.
+- Config-derived one-liners (`skipTaskCheckoutConfirmation = config?.x ?? DEFAULT`) stay in App.tsx — extracting them adds indirection without reducing complexity.
+- `stableCardActions`/`reactiveCardState` memos stay — they have 15+ inputs and just pass through to context providers.
+
+**Files touched:** `web-ui/src/App.tsx` (modified), 11 new files in `web-ui/src/hooks/`.
+
 ## Refactor: extract session-manager.ts into focused modules (2026-04-13)
 
 Decomposed the monolithic `session-manager.ts` (1,359 lines) into 6 files with clear responsibility boundaries. The class had accumulated workspace trust auto-confirm, auto-restart, reconciliation sweep, and interrupt recovery logic alongside its core session lifecycle — all loosely coupled but forced into one file.

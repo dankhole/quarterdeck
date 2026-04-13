@@ -6,7 +6,7 @@ import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { ArrowDown, ArrowUp, CircleArrowDown, FolderOpen } from "lucide-react";
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { notifyError, showAppToast } from "@/components/app-toaster";
+import { showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { ConflictBanner } from "@/components/conflict-banner";
@@ -31,7 +31,7 @@ import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-dire
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { PromptShortcutEditorDialog } from "@/components/prompt-shortcut-editor-dialog";
 import { QuarterdeckBoard } from "@/components/quarterdeck-board";
-import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
+import { RuntimeSettingsDialog } from "@/components/runtime-settings-dialog";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
@@ -44,21 +44,27 @@ import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { QuarterdeckAccessBlockedFallback } from "@/hooks/quarterdeck-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { useAppDialogs } from "@/hooks/use-app-dialogs";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useAudibleNotifications } from "@/hooks/use-audible-notifications";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useBoardMetadataSync } from "@/hooks/use-board-metadata-sync";
 import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useDebugLogging } from "@/hooks/use-debug-logging";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDetailTaskNavigation } from "@/hooks/use-detail-task-navigation";
 import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useEscapeHandler } from "@/hooks/use-escape-handler";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
+import { useFocusedTaskNotification } from "@/hooks/use-focused-task-notification";
 import { useGitActions } from "@/hooks/use-git-actions";
-import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
-import { type MigrateDirection, useMigrateWorkingDirectory } from "@/hooks/use-migrate-working-directory";
+import { useGitNavigation } from "@/hooks/use-git-navigation";
+import { useMigrateTaskDialog } from "@/hooks/use-migrate-task-dialog";
+import { useNavbarState } from "@/hooks/use-navbar-state";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
-import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
+import { useProjectNavigation } from "@/hooks/use-project-navigation";
+import { useProjectSwitchCleanup } from "@/hooks/use-project-switch-cleanup";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
 import { useQuarterdeckAccessGate } from "@/hooks/use-quarterdeck-access-gate";
@@ -66,11 +72,14 @@ import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notificati
 import { useScopeContext } from "@/hooks/use-scope-context";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
+import { useStreamErrorHandler } from "@/hooks/use-stream-error-handler";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
-import { getDetailTerminalTaskId, useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useTaskTitleSync } from "@/hooks/use-task-title-sync";
+import { useTerminalConfigSync } from "@/hooks/use-terminal-config-sync";
+import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useTitleActions } from "@/hooks/use-title-actions";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
@@ -78,7 +87,7 @@ import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { type MainViewId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
+import { isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -86,27 +95,15 @@ import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import {
-	findCardSelection,
-	reconcileTaskBranch,
-	reconcileTaskWorkingDirectory,
-	toggleTaskPinned,
-} from "@/state/board-state";
+import { findCardSelection, reconcileTaskWorkingDirectory, toggleTaskPinned } from "@/state/board-state";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import {
-	getTaskWorkspaceSnapshot,
-	getWorkspacePath,
-	replaceWorkspaceMetadata,
-	resetWorkspaceMetadataStore,
-	subscribeToAnyTaskMetadata,
 	useHomeGitSummaryValue,
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
-import { setTerminalFontWeight, setTerminalWebGLRenderer } from "@/terminal/persistent-terminal-manager";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
-import { useWindowEvent } from "@/utils/react-use";
 import { isApprovalState } from "@/utils/session-status";
 
 /** Noop for useBranchActions selectBranchView — the topbar pill uses checkout as its primary action. */
@@ -126,11 +123,7 @@ export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
-	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
-	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
-	const [pendingCompareNavigation, setPendingCompareNavigation] = useState<GitViewCompareNavigation | null>(null);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const boardRef = useRef(board);
@@ -139,7 +132,6 @@ export default function App(): ReactElement {
 		(cardId: string) => findCardSelection(boardRef.current, cardId)?.card ?? null,
 		[],
 	);
-	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
 		setIsGitHistoryOpen(false);
@@ -282,17 +274,7 @@ export default function App(): ReactElement {
 		},
 	});
 
-	// Notify the runtime which task is focused so it can prioritize git polling.
-	useEffect(() => {
-		if (!currentProjectId || selectedTaskId === null) {
-			return;
-		}
-		getRuntimeTrpcClient(currentProjectId)
-			.workspace.setFocusedTask.mutate({ taskId: selectedTaskId })
-			.catch(() => {
-				// Fire-and-forget — polling priority is non-critical.
-			});
-	}, [currentProjectId, selectedTaskId]);
+	useFocusedTaskNotification({ currentProjectId, selectedTaskId });
 
 	// Reactive subscriptions — re-render when the metadata store updates for the selected task.
 	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
@@ -419,35 +401,7 @@ export default function App(): ReactElement {
 	const refreshWorkspaceStateRef = useRef<(() => Promise<void>) | null>(null);
 	refreshWorkspaceStateRef.current = refreshWorkspaceState;
 
-	useEffect(() => {
-		replaceWorkspaceMetadata(workspaceMetadata);
-	}, [workspaceMetadata]);
-
-	// Self-heal card.workingDirectory and card.branch when the metadata monitor
-	// reports values different from what the card has persisted. This catches
-	// drift after migration, manual worktree changes, or any server-side CWD
-	// resolution that the UI missed.
-	useEffect(() => {
-		return subscribeToAnyTaskMetadata((taskId) => {
-			const snapshot = getTaskWorkspaceSnapshot(taskId);
-			if (!snapshot?.path) {
-				return;
-			}
-			setBoard((currentBoard) => {
-				const wdResult = reconcileTaskWorkingDirectory(currentBoard, taskId, snapshot.path, getWorkspacePath());
-				const branchResult = reconcileTaskBranch(wdResult.board, taskId, snapshot.branch);
-				const updated = wdResult.updated || branchResult.updated;
-				return updated ? branchResult.board : currentBoard;
-			});
-		});
-	}, [setBoard]);
-
-	useEffect(() => {
-		if (!isProjectSwitching) {
-			return;
-		}
-		resetWorkspaceMetadataStore();
-	}, [isProjectSwitching]);
+	useBoardMetadataSync({ workspaceMetadata, setBoard });
 
 	const {
 		displayedProjects,
@@ -503,45 +457,10 @@ export default function App(): ReactElement {
 	});
 
 	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
-	useEffect(() => {
-		setTerminalFontWeight(terminalFontWeight);
-	}, [terminalFontWeight]);
-
 	const terminalWebGLRenderer = runtimeProjectConfig?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
-	useEffect(() => {
-		setTerminalWebGLRenderer(terminalWebGLRenderer);
-	}, [terminalWebGLRenderer]);
+	useTerminalConfigSync({ terminalFontWeight, terminalWebGLRenderer });
 
-	// Apply task title updates received via WebSocket. Auto-generated titles
-	// are only applied when the card title is still null (not yet set by the user).
-	useEffect(() => {
-		if (!latestTaskTitleUpdate) {
-			return;
-		}
-		const { taskId, title, autoGenerated } = latestTaskTitleUpdate;
-		setBoard((current) => {
-			for (const column of current.columns) {
-				const cardIndex = column.cards.findIndex((c) => c.id === taskId);
-				if (cardIndex === -1) {
-					continue;
-				}
-				const card = column.cards[cardIndex]!;
-				if (card.title === title) {
-					return current;
-				}
-				if (autoGenerated && card.title !== null) {
-					return current;
-				}
-				const updatedCards = [...column.cards];
-				updatedCards[cardIndex] = { ...card, title };
-				return {
-					...current,
-					columns: current.columns.map((col) => (col.id === column.id ? { ...col, cards: updatedCards } : col)),
-				};
-			}
-			return current;
-		});
-	}, [latestTaskTitleUpdate, setBoard]);
+	useTaskTitleSync({ latestTaskTitleUpdate, setBoard });
 
 	const { createTaskBranchOptions, defaultTaskBranchRef } = useTaskBranchOptions({ workspaceGit });
 	const queueTaskStartAfterEdit = useCallback((taskId: string) => {
@@ -600,23 +519,22 @@ export default function App(): ReactElement {
 		queueTaskStartAfterEdit,
 	});
 
+	const {
+		isSettingsOpen,
+		setIsSettingsOpen,
+		settingsInitialSection,
+		setSettingsInitialSection,
+		isClearTrashDialogOpen,
+		setIsClearTrashDialogOpen,
+		promptShortcutEditorOpen,
+		setPromptShortcutEditorOpen,
+		handleOpenSettings,
+		handleCreateDialogOpenChange,
+	} = useAppDialogs({ handleCancelCreateTask });
+
 	useEffect(() => {
 		taskEditorResetRef.current = resetTaskEditorState;
 	}, [resetTaskEditorState]);
-
-	useEffect(() => {
-		if (!isProjectSwitching) {
-			return;
-		}
-		resetWorkspaceSyncState();
-	}, [isProjectSwitching, resetWorkspaceSyncState]);
-
-	useEffect(() => {
-		if (!isProjectSwitching) {
-			return;
-		}
-		resetTaskEditorState();
-	}, [isProjectSwitching, resetTaskEditorState]);
 
 	const {
 		runningGitAction,
@@ -705,7 +623,6 @@ export default function App(): ReactElement {
 		refreshRuntimeConfig: refreshRuntimeProjectConfig,
 		sendTaskSessionInput,
 	});
-	const [promptShortcutEditorOpen, setPromptShortcutEditorOpen] = useState(false);
 
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>
@@ -744,50 +661,18 @@ export default function App(): ReactElement {
 		onWorkspaceStateConflict: handleWorkspaceStateConflict,
 	});
 
-	useEffect(() => {
-		if (!streamError) {
-			lastStreamErrorRef.current = null;
-			return;
-		}
-		const removedPath = parseRemovedProjectPathFromStreamError(streamError);
-		if (removedPath !== null) {
-			showAppToast(
-				{
-					intent: "danger",
-					icon: "warning-sign",
-					message: removedPath
-						? `Project no longer exists and was removed: ${removedPath}`
-						: "Project no longer exists and was removed.",
-					timeout: 6000,
-				},
-				`project-removed-${removedPath || "unknown"}`,
-			);
-			lastStreamErrorRef.current = null;
-			return;
-		}
-		if (isRuntimeDisconnected) {
-			lastStreamErrorRef.current = streamError;
-			return;
-		}
-		if (lastStreamErrorRef.current !== streamError) {
-			notifyError(streamError, { key: `error:${streamError}` });
-		}
-		lastStreamErrorRef.current = streamError;
-	}, [isRuntimeDisconnected, streamError]);
+	useStreamErrorHandler({ streamError, isRuntimeDisconnected });
 
-	useEffect(() => {
-		resetTaskEditorState();
-		setIsClearTrashDialogOpen(false);
-		resetGitActionState();
-		resetProjectNavigationState();
-		resetTerminalPanelsState();
-	}, [
+	useProjectSwitchCleanup({
 		currentProjectId,
+		isProjectSwitching,
+		resetTaskEditorState,
+		setIsClearTrashDialogOpen,
 		resetGitActionState,
 		resetProjectNavigationState,
-		resetTaskEditorState,
 		resetTerminalPanelsState,
-	]);
+		resetWorkspaceSyncState,
+	});
 
 	useEffect(() => {
 		if (selectedCard) {
@@ -811,10 +696,6 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen(false);
 	}, []);
 
-	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
-		setSettingsInitialSection(section ?? null);
-		setIsSettingsOpen(true);
-	}, []);
 	const handleToggleGitHistory = useCallback(() => {
 		if (hasNoProjects) {
 			return;
@@ -893,27 +774,13 @@ export default function App(): ReactElement {
 		[setBoard],
 	);
 
-	const { migrate: migrateWorkingDirectory, migratingTaskId } = useMigrateWorkingDirectory(currentProjectId);
-	const [pendingMigrate, setPendingMigrate] = useState<{
-		taskId: string;
-		direction: MigrateDirection;
-	} | null>(null);
-	const handleMigrateWorkingDirectory = useCallback((taskId: string, direction: "isolate" | "de-isolate") => {
-		setPendingMigrate({ taskId, direction });
-	}, []);
-	const handleConfirmMigrate = useCallback(() => {
-		if (pendingMigrate) {
-			serverMutationInFlightRef.current = true;
-			void migrateWorkingDirectory(pendingMigrate.taskId, pendingMigrate.direction).finally(() => {
-				serverMutationInFlightRef.current = false;
-				// Stop any open detail shell for this task so the next open
-				// spawns in the new working directory.
-				void stopTaskSession(getDetailTerminalTaskId(pendingMigrate.taskId));
-				void refreshWorkspaceState();
-			});
-			setPendingMigrate(null);
-		}
-	}, [pendingMigrate, migrateWorkingDirectory, refreshWorkspaceState, stopTaskSession]);
+	const { pendingMigrate, migratingTaskId, handleMigrateWorkingDirectory, handleConfirmMigrate, cancelMigrate } =
+		useMigrateTaskDialog({
+			currentProjectId,
+			serverMutationInFlightRef,
+			stopTaskSession,
+			refreshWorkspaceState,
+		});
 
 	useAppHotkeys({
 		selectedCard,
@@ -968,8 +835,18 @@ export default function App(): ReactElement {
 		isProjectSwitching,
 	});
 
+	const {
+		pendingCompareNavigation,
+		pendingFileNavigation,
+		openGitCompare,
+		clearPendingCompareNavigation,
+		navigateToFile,
+		clearPendingFileNavigation,
+		navigateToGitView,
+	} = useGitNavigation({ isGitHistoryOpen, setMainView, setSelectedTaskId });
+
 	// Wire the conflict navigation ref now that setMainView is available.
-	navigateToGitViewRef.current = () => setMainView("git", { setSelectedTaskId });
+	navigateToGitViewRef.current = navigateToGitView;
 
 	const handleMainViewChange = useCallback(
 		(view: MainViewId) => {
@@ -986,37 +863,6 @@ export default function App(): ReactElement {
 		},
 		[handleCardSelect, setMainView, setSelectedTaskId],
 	);
-
-	/** Navigate to the git view's Compare tab with pre-set branch parameters (#5). */
-	const openGitCompare = useCallback(
-		(navigation: GitViewCompareNavigation) => {
-			setPendingCompareNavigation(navigation);
-			setMainView("git", { setSelectedTaskId });
-		},
-		[setMainView, setSelectedTaskId],
-	);
-	const clearPendingCompareNavigation = useCallback(() => setPendingCompareNavigation(null), []);
-
-	/** Navigate to a specific file in the git diff viewer or file browser from the commit panel. */
-	const [pendingFileNavigation, setPendingFileNavigation] = useState<{
-		targetView: "git" | "files";
-		filePath: string;
-	} | null>(null);
-	const navigateToFile = useCallback(
-		(nav: { targetView: "git" | "files"; filePath: string }) => {
-			setPendingFileNavigation(nav);
-			setMainView(nav.targetView, { setSelectedTaskId });
-		},
-		[setMainView, setSelectedTaskId],
-	);
-	const clearPendingFileNavigation = useCallback(() => setPendingFileNavigation(null), []);
-
-	// Auto-switch to git main view when git history is toggled on (e.g. via Cmd+G)
-	useEffect(() => {
-		if (isGitHistoryOpen) {
-			setMainView("git", { setSelectedTaskId });
-		}
-	}, [isGitHistoryOpen, setMainView, setSelectedTaskId]);
 
 	// --- Home side panel resize ---
 	const { startDrag: startHomeSidePanelResize } = useResizeDrag();
@@ -1045,66 +891,27 @@ export default function App(): ReactElement {
 		[setSidePanelRatio, startHomeSidePanelResize, sidePanelRatio],
 	);
 
-	// --- Unified Escape handler ---
-	const handleEscapeKeydown = useCallback(
-		(event: KeyboardEvent) => {
-			if (event.key !== "Escape" || event.defaultPrevented) return;
-			// Skip if inside a dialog
-			if (event.target instanceof Element && event.target.closest("[role='dialog']")) return;
+	useEscapeHandler({ isGitHistoryOpen, setIsGitHistoryOpen, selectedCard, setSelectedTaskId });
 
-			// 1. Git history open → close it (home or task context)
-			if (isGitHistoryOpen) {
-				event.preventDefault();
-				setIsGitHistoryOpen(false);
-				return;
-			}
-
-			const isTyping =
-				event.target instanceof HTMLElement &&
-				(event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable);
-			if (isTyping) return;
-
-			// 2. Task selected → deselect
-			if (selectedCard) {
-				event.preventDefault();
-				setSelectedTaskId(null);
-				return;
-			}
-		},
-		[isGitHistoryOpen, selectedCard],
-	);
-	useWindowEvent("keydown", handleEscapeKeydown);
-
-	const runtimeHint = useMemo(() => {
-		return getTaskAgentNavbarHint(runtimeProjectConfig, {
-			shouldUseNavigationPath,
-		});
-	}, [runtimeProjectConfig, shouldUseNavigationPath]);
-
-	const activeWorkspacePath = selectedCard
-		? (selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? workspacePath ?? undefined)
-		: shouldUseNavigationPath
-			? (navigationProjectPath ?? undefined)
-			: (workspacePath ?? undefined);
-
-	const activeWorkspaceHint = useMemo(() => {
-		if (!selectedCard) {
-			return undefined;
-		}
-		if (!selectedTaskWorkspaceInfo) {
-			return undefined;
-		}
-		if (!selectedTaskWorkspaceInfo.exists) {
-			return selectedCard.column.id === "trash" ? "Task workspace deleted" : "Task workspace not created yet";
-		}
-		return undefined;
-	}, [selectedCard, selectedTaskWorkspaceInfo]);
-
-	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
-	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
-	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
-	const shouldHideProjectDependentTopBarActions =
-		!selectedCard && (isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
+	const {
+		activeWorkspacePath,
+		navbarWorkspacePath,
+		navbarWorkspaceHint,
+		navbarRuntimeHint,
+		shouldHideProjectDependentTopBarActions,
+	} = useNavbarState({
+		selectedCard,
+		selectedTaskWorkspaceInfo,
+		selectedTaskWorkspaceSnapshot,
+		workspacePath,
+		shouldUseNavigationPath,
+		navigationProjectPath,
+		runtimeProjectConfig,
+		hasNoProjects,
+		isProjectSwitching,
+		isAwaitingWorkspaceSnapshot,
+		isWorkspaceMetadataPending,
+	});
 
 	const {
 		openTargetOptions,
@@ -1117,14 +924,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const handleCreateDialogOpenChange = useCallback(
-		(open: boolean) => {
-			if (!open) {
-				handleCancelCreateTask();
-			}
-		},
-		[handleCancelCreateTask],
-	);
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
@@ -1937,7 +1736,7 @@ export default function App(): ReactElement {
 						open={pendingMigrate !== null}
 						direction={pendingMigrate?.direction ?? "isolate"}
 						isMigrating={migratingTaskId !== null}
-						onCancel={() => setPendingMigrate(null)}
+						onCancel={cancelMigrate}
 						onConfirm={handleConfirmMigrate}
 					/>
 					<StartupOnboardingDialog
