@@ -31,7 +31,10 @@ import {
 	getTerminalWebSocketUrl,
 	isCopyShortcut,
 } from "@/terminal/terminal-socket-utils";
+import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
+
+const log = createClientLogger("persistent-terminal");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
@@ -64,6 +67,7 @@ export interface EnsurePersistentTerminalInput extends PersistentTerminalAppeara
 	taskId: string;
 	workspaceId: string;
 	scrollOnEraseInDisplay?: boolean;
+	scrollback?: number;
 }
 
 function getParkingRoot(): HTMLDivElement {
@@ -143,6 +147,7 @@ export class PersistentTerminal {
 		private readonly workspaceId: string,
 		appearance: PersistentTerminalAppearance,
 		scrollOnEraseInDisplay = true,
+		scrollback?: number,
 	) {
 		this.appearance = appearance;
 		this.parkingRoot = getParkingRoot();
@@ -160,6 +165,7 @@ export class PersistentTerminal {
 				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
 				scrollOnEraseInDisplay,
+				scrollback,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
 			}),
 			cols: initialGeometry.cols,
@@ -283,11 +289,18 @@ export class PersistentTerminal {
 		}
 	}
 
-	private sendControlMessage(message: RuntimeTerminalWsClientMessage): void {
+	/**
+	 * Send a message on the control WebSocket. Returns true if the message was
+	 * actually sent, false if the socket was missing or not open. Callers that
+	 * update dedup state (e.g. requestResize) must check the return value and
+	 * avoid marking the message as "sent" when it was silently dropped.
+	 */
+	private sendControlMessage(message: RuntimeTerminalWsClientMessage): boolean {
 		if (!this.controlSocket || this.controlSocket.readyState !== WebSocket.OPEN) {
-			return;
+			return false;
 		}
 		this.controlSocket.send(JSON.stringify(message));
+		return true;
 	}
 
 	private sendIoData(data: string | Uint8Array): boolean {
@@ -379,20 +392,25 @@ export class PersistentTerminal {
 		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows) {
 			return;
 		}
-		this.lastSentCols = cols;
-		this.lastSentRows = rows;
-		this.lastSatisfiedResizeEpoch = this.resizeEpoch;
 		const bounds = this.visibleContainer.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
 		reportTerminalGeometry(this.taskId, { cols, rows });
-		this.sendControlMessage({
+		// Only mark as sent if the message actually reached the socket.
+		// Otherwise the dedup check above will suppress future attempts
+		// with the same dimensions, leaving the PTY at stale sizes.
+		const sent = this.sendControlMessage({
 			type: "resize",
 			cols,
 			rows,
 			pixelWidth: pixelWidth > 0 ? pixelWidth : undefined,
 			pixelHeight: pixelHeight > 0 ? pixelHeight : undefined,
 		});
+		if (sent) {
+			this.lastSentCols = cols;
+			this.lastSentRows = rows;
+			this.lastSatisfiedResizeEpoch = this.resizeEpoch;
+		}
 	}
 
 	private listenForDprChange(): void {
@@ -667,12 +685,9 @@ export class PersistentTerminal {
 			// New container — previous resize may have targeted a different
 			// (or parked) container, or been silently dropped.
 			this.invalidateResize();
-			// Recalculate canvas dimensions after the DOM move. The WebGL/canvas
-			// renderer may have been sized for the parking root or a previous
-			// container. We bounce cols-1 → cols locally so fitAddon.fit() sees
-			// a dimension change and calls terminal.resize(), which forces the
-			// renderer to recalculate its canvas. Then clear the texture atlas
-			// and refresh all rows to fix any WebGL glyph corruption.
+			// Canvas repair after DOM move — see repairRendererCanvas() for
+			// why each step is needed. Deferred to a RAF so the container has
+			// its final layout dimensions before we measure.
 			if (this.deferredResizeRaf !== null) {
 				cancelAnimationFrame(this.deferredResizeRaf);
 			}
@@ -681,13 +696,7 @@ export class PersistentTerminal {
 				if (this.disposed || this.visibleContainer !== container) {
 					return;
 				}
-				const { cols } = this.terminal;
-				if (cols > 2) {
-					this.terminal.resize(cols - 1, this.terminal.rows);
-				}
-				this.terminal.clearTextureAtlas();
-				this.terminal.refresh(0, this.terminal.rows - 1);
-				this.forceResize();
+				this.repairRendererCanvas("mount");
 			});
 		}
 		if (this.resizeObserver) {
@@ -790,6 +799,72 @@ export class PersistentTerminal {
 			});
 	}
 
+	/**
+	 * Canvas repair sequence — the three steps that fix blurry/stale terminal
+	 * rendering after a DPR change, monitor move, or DOM re-parent.
+	 *
+	 * xterm.js caches rendered glyphs in a texture atlas (both the WebGL and
+	 * canvas 2D renderers). When the device pixel ratio changes or the canvas
+	 * is moved in the DOM, the cached textures become stale but xterm doesn't
+	 * automatically invalidate them. Three things need to happen:
+	 *
+	 *   1. **Dimension bounce** — resize(cols-1, rows) then forceResize() back
+	 *      to the real size. fitAddon.fit() short-circuits when cols/rows
+	 *      haven't changed, so the bounce forces it to actually call
+	 *      terminal.resize() which recalculates the canvas pixel dimensions.
+	 *
+	 *   2. **clearTextureAtlas()** — discards the cached glyph textures so the
+	 *      renderer rebuilds them at the current DPR. This is the step that
+	 *      actually fixes blurriness. Without it, refresh() just re-composites
+	 *      the same stale textures.
+	 *
+	 *   3. **refresh(0, rows-1)** — repaints every visible row from the buffer
+	 *      using the newly rebuilt textures.
+	 *
+	 * All three steps must run together — skipping any one produces a subtle
+	 * no-op where the button appears to "not do anything".
+	 *
+	 * Called from:
+	 *   - mount() RAF callback — repairs after DOM re-parent (task switch)
+	 *   - resetRenderer() — user-initiated "Reset terminal rendering" button
+	 */
+	private repairRendererCanvas(trigger: string): void {
+		// No canvas to fix when the terminal is parked (not mounted in a visible
+		// container). The repair will run on the next mount() instead.
+		if (!this.visibleContainer) {
+			log.debug(`${this.taskId} canvas repair skipped — not visible`, { trigger });
+			return;
+		}
+
+		const t0 = performance.now();
+		const prevCols = this.terminal.cols;
+		const prevRows = this.terminal.rows;
+
+		// Step 1: dimension bounce
+		if (prevCols > 2) {
+			this.terminal.resize(prevCols - 1, prevRows);
+		}
+
+		// Step 2: clear glyph texture cache
+		this.terminal.clearTextureAtlas();
+
+		// Step 3: repaint all rows
+		this.terminal.refresh(0, prevRows - 1);
+
+		// Restore real dimensions and send to server
+		this.forceResize();
+
+		const elapsed = (performance.now() - t0).toFixed(1);
+		log.debug(`${this.taskId} canvas repair`, {
+			trigger,
+			renderer: this.webglAddon ? "webgl" : "canvas-2d",
+			dpr: window.devicePixelRatio,
+			cols: prevCols,
+			rows: prevRows,
+			elapsedMs: elapsed,
+		});
+	}
+
 	resetRenderer(): void {
 		const hadWebgl = this.webglAddon !== null;
 		if (this.webglAddon) {
@@ -797,17 +872,13 @@ export class PersistentTerminal {
 			this.webglAddon = null;
 		}
 		this.attachWebglAddon();
-		// Force the (re)created renderer to recalculate canvas dimensions and
-		// repaint. Without this the new addon initialises at stale dimensions
-		// and the reset appears to do nothing.
-		this.terminal.refresh(0, this.terminal.rows - 1);
-		if (this.visibleContainer) {
-			this.forceResize();
-		}
-		const newRenderer = this.webglAddon ? "webgl" : "canvas-fallback";
-		console.log(
-			`[terminal:${this.taskId}] renderer reset — previous: ${hadWebgl ? "webgl" : "none"}, new: ${newRenderer}, dpr: ${window.devicePixelRatio}`,
-		);
+		const newRenderer = this.webglAddon ? "webgl" : "canvas-2d";
+		log.info(`${this.taskId} renderer reset`, {
+			previous: hadWebgl ? "webgl" : "none",
+			current: newRenderer,
+			dpr: window.devicePixelRatio,
+		});
+		this.repairRendererCanvas("resetRenderer");
 	}
 
 	/**
@@ -818,9 +889,23 @@ export class PersistentTerminal {
 	 * prevent data loss.
 	 */
 	requestRestore(): void {
-		if (this.disposed || !this.restoreCompleted) {
+		if (this.disposed) {
+			log.warn(`${this.taskId} requestRestore skipped — terminal disposed`);
 			return;
 		}
+		if (!this.restoreCompleted) {
+			log.warn(`${this.taskId} requestRestore skipped — initial restore not yet complete`);
+			return;
+		}
+		const socketState = this.controlSocket?.readyState;
+		if (!this.controlSocket || socketState !== WebSocket.OPEN) {
+			log.warn(`${this.taskId} requestRestore skipped — control socket not open`, {
+				hasSocket: this.controlSocket !== null,
+				readyState: socketState,
+			});
+			return;
+		}
+		log.info(`${this.taskId} requesting restore from server`);
 		this.sendControlMessage({ type: "request_restore" });
 	}
 

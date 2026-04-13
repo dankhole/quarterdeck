@@ -22,6 +22,16 @@
 - Added `request_restore` WebSocket protocol message for on-demand full resync — client fetches a fresh snapshot from the server's headless mirror, resets the buffer, and replays. Server pauses live output during transit to prevent data loss.
 - New "Re-sync terminal content" button in Settings > Terminal for manual repair of drifted terminals.
 - `scrollToBottom()` now runs after every restore (initial connection and re-sync).
+- "Reset terminal rendering" button now performs the full canvas repair sequence (dimension bounce + `clearTextureAtlas` + refresh) instead of just refresh + resize, which was a no-op.
+- Extracted `repairRendererCanvas()` shared method used by both mount and reset paths, with a visibility guard to skip parked terminals.
+
+### Fix: terminal resize silently dropped when socket not open
+
+- `requestResize()` updated dedup state (`lastSentCols`, `lastSentRows`, `lastSatisfiedResizeEpoch`) before calling `sendControlMessage()`, which silently dropped the message if the control socket wasn't open. Future resizes with the same dimensions were deduped, leaving the PTY at stale dimensions. Now dedup state is only updated when the message is actually sent.
+
+### Perf: reduce agent terminal scrollback from 10,000 to 100
+
+- Agent TUIs (Claude Code) run in the alternate buffer — our normal-buffer scrollback is just launch noise. Reduced from 10,000 to 100 lines (the xterm.js crash-avoidance minimum) on both client and server mirror. Shrinks restore snapshots and reduces duplicate-content artifacts. Shell terminals keep the 10,000 default.
 
 ### Fix: Shift+Enter in agent terminal no longer moves task to running
 

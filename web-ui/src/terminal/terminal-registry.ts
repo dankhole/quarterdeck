@@ -18,6 +18,7 @@ export function ensurePersistentTerminal(input: EnsurePersistentTerminalInput): 
 			input.workspaceId,
 			{ cursorColor: input.cursorColor, terminalBackgroundColor: input.terminalBackgroundColor },
 			input.scrollOnEraseInDisplay,
+			input.scrollback,
 		);
 		terminals.set(key, terminal);
 		return terminal;
@@ -72,16 +73,32 @@ export function isTerminalSessionRunning(workspaceId: string, taskId: string): b
 
 export function resetAllTerminalRenderers(): number {
 	const count = terminals.size;
-	console.log(`[terminal] resetting renderers for ${count} terminal(s), dpr: ${window.devicePixelRatio}`);
+	if (count === 0) {
+		terminalDebugLog.warn("resetAllTerminalRenderers — no terminals in registry");
+		return 0;
+	}
+	const t0 = performance.now();
+	terminalDebugLog.info(`resetting renderers for ${count} terminal(s)`, {
+		keys: [...terminals.keys()],
+		dpr: window.devicePixelRatio,
+	});
 	for (const terminal of terminals.values()) {
 		terminal.resetRenderer();
 	}
+	const elapsed = (performance.now() - t0).toFixed(1);
+	terminalDebugLog.info(`renderer reset complete — ${elapsed}ms total`);
 	return count;
 }
 
 export function restoreAllTerminals(): number {
 	const count = terminals.size;
-	console.log(`[terminal] requesting restore for ${count} terminal(s)`);
+	if (count === 0) {
+		terminalDebugLog.warn("restoreAllTerminals — no terminals in registry");
+		return 0;
+	}
+	terminalDebugLog.info(`requesting restore for ${count} terminal(s)`, {
+		keys: [...terminals.keys()],
+	});
 	for (const terminal of terminals.values()) {
 		terminal.requestRestore();
 	}

@@ -45,6 +45,7 @@ export interface AgentTerminalPanelProps {
 	onRestart?: () => void;
 	onExit?: (taskId: string, exitCode: number | null) => void;
 	scrollOnEraseInDisplay?: boolean;
+	scrollback?: number;
 }
 
 function AgentTerminalPanelLayout({
@@ -280,6 +281,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 		scrollOnEraseInDisplay: props.scrollOnEraseInDisplay,
+		scrollback: props.scrollback,
 	});
 
 	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;

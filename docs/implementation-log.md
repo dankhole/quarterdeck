@@ -2,6 +2,30 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Perf: reduce agent terminal scrollback from 10,000 to 100 (2026-04-13)
+
+Agent TUIs (Claude Code) run entirely in the alternate buffer — our normal-buffer scrollback contains only launch noise (a few lines before alternate mode, duplicate frames from screen transitions, `[quarterdeck] session exited`). We were maintaining 10,000 lines of this, serializing it into restore snapshots, and sending it over the wire on reconnect. Reduced to 100 lines (the minimum for the xterm.js 6.x circular-buffer crash workaround) on both client and server mirror. Shell terminals keep the 10,000 default.
+
+Threaded `scrollback` as an optional parameter through the same path as `scrollOnEraseInDisplay`: `createQuarterdeckTerminalOptions` → `PersistentTerminal` constructor → `EnsurePersistentTerminalInput` → `terminal-registry` → `usePersistentTerminalSession` → `AgentTerminalPanel` → `card-detail-view.tsx` (passes `scrollback={100}` for agent terminals). Server side: `session-manager.ts` passes `scrollback: 100` to the agent `TerminalStateMirror`.
+
+Files: `web-ui/src/terminal/terminal-options.ts`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/terminal/terminal-registry.ts`, `web-ui/src/terminal/use-persistent-terminal-session.ts`, `web-ui/src/components/detail-panels/agent-terminal-panel.tsx`, `web-ui/src/components/card-detail-view.tsx`, `src/terminal/session-manager.ts`.
+
+## Fix: terminal resize silently dropped when socket not open (2026-04-13)
+
+`requestResize()` in `persistent-terminal-manager.ts` updated its dedup state (`lastSentCols`, `lastSentRows`, `lastSatisfiedResizeEpoch`) before calling `sendControlMessage()`. But `sendControlMessage` silently returns when the control socket isn't open (line 290). The system then thought it had sent the resize and future calls with the same dimensions hit the dedup check and returned early — leaving the PTY at stale dimensions.
+
+This explains several long-standing symptoms: off-by-1 terminal sizing, Claude's status bar in the wrong position, Enter scrolling the status bar, cursor stuck in bottom-left. Manual window resize "fixed" it because it produced different dimensions that bypassed the dedup. The SIGWINCH hack removed in d72fedc5 had been masking this by forcing Claude to redraw on every task switch regardless.
+
+**Fix:** Changed `sendControlMessage` to return `boolean` (true if actually sent). `requestResize` now only updates dedup state when the return value is true. Added a JSDoc comment explaining the contract so future callers don't repeat the pattern.
+
+Files: `web-ui/src/terminal/persistent-terminal-manager.ts`.
+
+## Fix: reset terminal rendering button was a no-op (2026-04-13)
+
+The "Reset terminal rendering" settings button called `resetRenderer()` which did `refresh()` + `forceResize()` but was missing `clearTextureAtlas()` and the dimension bounce — the two steps that actually invalidate the WebGL texture cache. Extracted the 3-step canvas repair sequence into `repairRendererCanvas()`, used by both `mount()` (task switch) and `resetRenderer()` (settings button). Added a visibility guard so parked terminals skip the repair (the next `mount()` handles it). Added debug logging via `createClientLogger` to both repair paths and `requestRestore` bail-outs.
+
+Files: `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/terminal/terminal-registry.ts`.
+
 ## Fix: worktree context not propagated to subagents (2026-04-13)
 
 Claude Code's `--append-system-prompt` flag only applies to the top-level agent session — subagents spawned via the Agent tool get their own independent system prompt and never see the worktree orientation context. This meant subagents didn't know they were in a worktree and wouldn't respect guardrails like "don't modify files outside the worktree" or "don't run destructive git operations."
