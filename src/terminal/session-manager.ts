@@ -19,6 +19,7 @@ import {
 } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { stripAnsi } from "./output-utils";
+import { periodicPidSweep, registerManagedPid, unregisterManagedPid } from "./pid-registry";
 import { PtySession } from "./pty-session";
 import { isProcessAlive, type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
 import { canReturnToRunning } from "./session-state-machine";
@@ -48,6 +49,8 @@ const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 const INTERRUPT_RECOVERY_DELAY_MS = 5_000;
 const SESSION_RECONCILIATION_INTERVAL_MS = 10_000;
+/** Run the PID registry sweep every Nth reconciliation cycle (60s at 10s interval). */
+const PID_SWEEP_EVERY_N_CYCLES = 6;
 const SIGINT_BYTE = 0x03;
 const ESC_BYTE = 0x1b;
 // Real Ctrl+C arrives as a 1–3 byte sequence; larger buffers are likely pasted text.
@@ -199,6 +202,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
 	private reconciliationTimer: NodeJS.Timeout | null = null;
+	private reconciliationCycleCount = 0;
 	private repoPath: string | null = null;
 
 	constructor(store: SessionSummaryStore) {
@@ -524,6 +528,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 						trustConfirmCount: exitEventData.trustConfirmCount,
 					});
 					emitSessionEvent(request.taskId, "session.exited", exitEventData);
+					// Use `session.pid` from the spawn closure — NOT `entry.active.session.pid`.
+					// If the task was restarted quickly, entry.active may already point to the
+					// new session by the time this onExit fires.
+					unregisterManagedPid(session.pid).catch(() => {});
 					const currentEntry = this.entries.get(request.taskId);
 					if (!currentEntry) {
 						return;
@@ -614,6 +622,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 			taskId: request.taskId,
 			pid: session.pid,
 			willAutoTrust,
+		});
+		registerManagedPid(session.pid, {
+			taskId: request.taskId,
+			agentId: request.agentId,
+			spawnedAt: Date.now(),
+		}).catch((err) => {
+			sessionLog.error("failed to register PID in registry", {
+				pid: session.pid,
+				error: err instanceof Error ? err.message : String(err),
+			});
 		});
 		emitSessionEvent(request.taskId, "session.started", {
 			...spawnData,
@@ -740,6 +758,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (!currentActive) {
 						return;
 					}
+					unregisterManagedPid(session.pid).catch(() => {});
 					stopWorkspaceTrustTimers(currentActive);
 					clearInterruptRecoveryTimer(currentActive);
 
@@ -800,6 +819,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
 
+		registerManagedPid(session.pid, {
+			taskId: request.taskId,
+			agentId: "shell",
+			spawnedAt: Date.now(),
+		}).catch((err) => {
+			sessionLog.error("failed to register shell PID in registry", {
+				pid: session.pid,
+				error: err instanceof Error ? err.message : String(err),
+			});
+		});
 		emitSessionEvent(request.taskId, "session.started.shell", {
 			binary: request.binary,
 			cwd: request.cwd,
@@ -1023,6 +1052,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 			entry.active.session.stop({ interrupted: true });
 		}
 		return this.store.markAllInterrupted(activeTaskIds);
+	}
+
+	/** Returns the set of PIDs currently owned by active in-memory sessions. */
+	getActivePids(): Set<number> {
+		const pids = new Set<number>();
+		for (const entry of this.entries.values()) {
+			if (entry.active) {
+				pids.add(entry.active.session.pid);
+			}
+		}
+		return pids;
 	}
 
 	startReconciliation(repoPath?: string): void {
@@ -1253,6 +1293,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 			emitSessionEvent("_system", "reconciliation.sweep", {
 				sessionsChecked,
 				actionsApplied,
+			});
+		}
+
+		// Run the PID registry sweep less frequently than the main reconciliation.
+		this.reconciliationCycleCount++;
+		if (this.reconciliationCycleCount % PID_SWEEP_EVERY_N_CYCLES === 0) {
+			periodicPidSweep(this.getActivePids()).catch((err) => {
+				sessionLog.error("PID registry sweep error", {
+					error: err instanceof Error ? err.message : String(err),
+				});
 			});
 		}
 	}

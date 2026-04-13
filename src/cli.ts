@@ -26,6 +26,7 @@ import {
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
+import { sweepOrphanedPids } from "./terminal/pid-registry";
 import type { TerminalSessionManager } from "./terminal/session-manager";
 
 interface CliOptions {
@@ -396,6 +397,19 @@ async function startServer(): Promise<{
 	} catch {
 		// Workspace index may not exist yet on first run — safe to skip.
 	}
+
+	// Phase 3: Kill orphaned agent processes left over from a previous unclean exit.
+	// Non-blocking — the sweep runs in the background while the server finishes
+	// booting. It's serialized internally so it won't race with new session PIDs.
+	sweepOrphanedPids()
+		.then((result) => {
+			if (result.killed > 0) {
+				console.warn(
+					`[quarterdeck] Cleaned up ${result.killed} orphaned agent process(es) from a previous session.`,
+				);
+			}
+		})
+		.catch(() => {});
 
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({

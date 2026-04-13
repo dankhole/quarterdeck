@@ -1,6 +1,7 @@
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
+import { clearPidRegistry } from "../terminal/pid-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
@@ -228,6 +229,10 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	if (result === "timeout") {
 		deps.warn(`Shutdown cleanup timed out after ${CLEANUP_TIMEOUT_MS}ms. Closing server without full cleanup.`);
 	}
+
+	// All managed processes are stopped — clear the PID registry so the next
+	// startup doesn't try to kill already-dead PIDs.
+	await clearPidRegistry().catch(() => {});
 
 	await deps.closeRuntimeServer();
 }

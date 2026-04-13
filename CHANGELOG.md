@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feat: persistent PID registry for orphaned agent process cleanup
+
+- Agent processes (Claude Code, Codex, shell sessions) are now tracked in `~/.quarterdeck/managed-pids.json` so orphaned processes can be found and killed after crashes or force-kills. PIDs are registered on spawn and unregistered on exit. A background sweep runs on startup to kill any survivors from a previous unclean exit, and a periodic sweep every 60 seconds catches stragglers during normal operation. Clean shutdowns clear the registry entirely.
+- Kill escalation uses SIGTERM first (with 3-second grace period), then SIGKILL if the process doesn't exit. Process groups are also signaled to clean up PTY children.
+- PID reuse detection prevents killing unrelated processes after reboots — compares the OS-reported process start time against the stored spawn timestamp.
+- Registry writes use atomic temp-file-then-rename via `lockedFileSystem` to prevent corruption from crashes mid-write. All read-modify-write operations are serialized through an in-memory promise queue to prevent races from concurrent spawns/exits.
+
 ### Feat: worktree `.git`-only access option for agents
 
 - New setting "Allow agents to access the parent repo's `.git` directory" gives agents read access to git metadata (history, branches, refs) without exposing the full parent repo working tree. Passes `--add-dir /path/to/repo/.git` instead of `--add-dir /path/to/repo`. The full parent repo option takes precedence when both are enabled. Claude Code only.

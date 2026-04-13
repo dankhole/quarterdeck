@@ -4,6 +4,26 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Feat: persistent PID registry for orphaned agent process cleanup (2026-04-12)
+
+Quarterdeck spawns agent processes via PTY (Claude Code, Codex, shell sessions). On clean shutdown, `markInterruptedAndStopAll` kills them all. But after crashes or force-kills, the graceful shutdown never runs and agent processes are left as orphans consuming resources indefinitely. There was no mechanism to find or clean them up.
+
+**Solution**: A persistent PID registry at `~/.quarterdeck/managed-pids.json` that tracks every process Quarterdeck spawns. Each entry stores `{taskId, agentId, spawnedAt}` keyed by PID. The registry is:
+- **Written on spawn** — fire-and-forget `registerManagedPid()` after `PtySession.spawn()` succeeds
+- **Cleaned on exit** — fire-and-forget `unregisterManagedPid()` in the `onExit` handler, using the closure-captured `session.pid` (not `entry.active.session.pid`) to avoid a restart-race where `entry.active` could point to a new session
+- **Swept on startup** — background `sweepOrphanedPids()` runs non-blocking while the server boots, checking each PID and killing orphans
+- **Swept periodically** — `periodicPidSweep(activePids)` runs every 60 seconds (every 6th reconciliation cycle), skipping PIDs managed by the current server instance
+- **Cleared on shutdown** — `clearPidRegistry()` after all processes are stopped in `shutdownRuntimeServer`
+
+**Safety mechanisms**:
+- PID reuse detection via `ps -o lstart=` compares OS-reported process start time against stored `spawnedAt` — if they differ by >30 seconds, the PID was recycled and is skipped
+- Kill escalation: SIGTERM + process group signal → poll for 3 seconds → SIGKILL if still alive
+- Only successfully killed PIDs are removed from the registry — survivors are preserved for retry on next sweep/startup
+- All read-modify-write operations go through an in-memory promise queue (`serialized()`) to prevent concurrent spawns/exits from clobbering each other's writes
+- Registry writes use `lockedFileSystem.writeJsonFileAtomic` (temp file + rename) so a crash mid-write can't corrupt the file
+
+Files: `src/terminal/pid-registry.ts` (new — core module), `src/terminal/session-manager.ts` (register/unregister/periodic sweep/getActivePids), `src/server/shutdown-coordinator.ts` (clearPidRegistry), `src/cli.ts` (startup sweep), `test/runtime/pid-registry.test.ts` (12 tests covering register, unregister, clear, sweeps, concurrency, corruption resilience).
+
 ## Feat: worktree `.git`-only access option (2026-04-12)
 
 Added `worktreeAddParentGitDir` config field — a lighter alternative to `worktreeAddParentRepoDir` that passes only the parent repo's `.git` directory via `--add-dir` to Claude Code agents in worktrees. Agents get git metadata access (history, branches, refs) without full file read/write access to the parent working tree.
