@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Docs: todo list updates — Codex support, commit perf, file browser perf (2026-04-12)
+
+Added three new items to `docs/todo.md`:
+
+- **#18 — Full Codex support**: Codex has basic launch, event parsing, and workspace trust working but lacks feature parity with Claude. Gaps: no conversation history in the sidebar chat view (no Codex equivalent of Claude's chat messages API), no per-task session resume (`codex resume --last` is global not per-task), no Codex-side hook configuration (wrapper is a thin pass-through), silent failures when session/rollout logs are unavailable. Also needs documentation, version detection, and rollout file discovery optimization.
+- **#19 — Commit sidebar performance**: Noticeable delay between clicking Commit and the operation completing, plus a further delay before the file list refreshes. Needs profiling of the commit path (tRPC call → git commit → state persistence → UI refresh) and likely optimistic UI updates.
+- **#20 — File browser and diff viewer performance**: File browser slow to load/navigate, diff viewer lags on large diffs. Full file text sent inline with client-side diff computation is the known bottleneck for diffs. May need server-side diff computation, virtualized rendering, or lazy-loading per file.
+
+**Files touched**: `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Feat: git stash support — stash button, stash list, stash-and-retry (2026-04-12)
 
 Added git stash as a first-class operation in the commit sidebar panel, implementing the Tier 1 "Stash / unstash" item from the branch management roadmap (todo #4).

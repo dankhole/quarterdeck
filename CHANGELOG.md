@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Docs: todo list updates
+
+- Added todo #18: Full Codex support — conversation history UI, per-task session resume, hook configuration, error diagnostics
+- Added todo #19: Commit sidebar performance — slow commit execution and post-commit file list refresh
+- Added todo #20: File browser and diff viewer performance — laggy file tree navigation and large diff rendering
+
 ## [0.7.0] — 2026-04-12
 
 ### Feat: git stash support — stash button, stash list, stash-and-retry for checkout/pull

@@ -138,3 +138,42 @@ The experimental HTML chat view (`terminalChatViewEnabled`) was removed because 
 ## 17. Commit sidebar: Auto-generated commit messages
 
 Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.
+
+## 18. Full Codex support
+
+Codex has basic launch, event parsing, and workspace trust working, but it's far from feature parity with Claude. The infrastructure is "make it run" — this is about "make it first-class."
+
+**What works today:**
+- Agent registration, selection, and onboarding UI
+- CLI launch via `codexAdapter` (autonomous mode, resume, plan mode)
+- Hook wrapper (`codex-wrapper`) with session log and rollout log event parsing
+- Workspace trust auto-confirmation
+- Prompt readiness detection
+
+**Missing — core gaps:**
+- **Conversation history in UI**: Claude exposes chat messages via API; Codex has no equivalent. The sidebar chat view is blank for Codex tasks. Need to either parse Codex session logs into a chat-like format or build a Codex-specific history endpoint.
+- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (todo #5). If Codex adds session ID targeting, wire it up.
+- **Hook configuration**: Claude gets a full `settings.json` with hook matchers (`PreToolUse`, `PostToolUse`, etc.). Codex gets nothing — the wrapper is a thin pass-through. Need to define what Codex-side hook configuration looks like and whether it can support the same granularity.
+- **Error diagnostics**: If session logs aren't written or rollout file discovery fails, failures are silent. Add explicit error reporting when both log sources fail, and surface it in the UI.
+
+**Missing — polish:**
+- No Codex-specific documentation or setup guide
+- No version detection or capability checking beyond `isBinaryAvailableOnPath()`
+- Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
+- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (todo #6)
+
+## 19. Commit sidebar performance
+
+Committing from the sidebar is noticeably slow — there's a delay after clicking the commit button, and then a further delay before the file list refreshes to reflect the new state. Investigate and fix both:
+
+- **Commit execution latency**: Profile the commit path from button click through the tRPC call to the git commit completing. Check whether the commit is waiting on unnecessary work (full status refresh, lock contention, diff recomputation) before or during the actual `git commit`.
+- **Post-commit file list refresh**: After the commit completes, the staged/unstaged file list takes too long to update. Check whether it's re-scanning the entire worktree, re-running expensive git commands sequentially, or waiting on a full state persistence cycle before refreshing the UI.
+- Consider optimistic UI updates — clear the staged files immediately on commit success and refresh in the background.
+
+## 20. File browser and diff viewer performance
+
+The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
+
+- **File browser**: Slow to load and navigate. Profile whether the bottleneck is git command execution (status, ls-files), data transfer over WebSocket, or React rendering. Tree expansion and file selection should feel instant.
+- **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
+- **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
