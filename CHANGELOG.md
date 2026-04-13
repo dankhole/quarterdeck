@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: stalled session detection fires less aggressively
+
+- Stalled detection threshold increased from 60 seconds to 3 minutes, and now considers terminal output in addition to hook events — if the agent is producing output, it's probably still working. Also fixes false positives after returning from review: `lastHookAt` is now reset when a session transitions back to running, so time spent in review no longer counts toward the stalled threshold.
+
 ### Refactor: settings dialog reorganized with better section grouping
 
 - Consolidated 11 scattered sections into 8 focused groups ordered by user intent: Agent, AI Features, Notifications, Terminal, Git, Confirmations, Troubleshooting, Advanced. Merged split Git settings (card indicators + polling intervals) into one section with sub-headers, combined Session Recovery + Layout & Debug into Troubleshooting, promoted Confirmations above developer settings, and renamed headers for clarity (LLM Generation → AI Features, Sound notifications → Notifications, Developer / Experimental → Advanced, Suppressed Dialogs → Confirmations).

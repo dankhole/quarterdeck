@@ -4,6 +4,16 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: stalled session detection false positives (2026-04-12)
+
+Two bugs caused the stalled badge to fire on tasks that were actively working.
+
+**Bug 1 — threshold too aggressive, terminal output ignored**: The stalled check used only `lastHookAt` with a 60-second threshold, but agents routinely go over a minute between hooks during deep thinking, long file reads, or batch writes. Terminal output (`lastOutputAt`) was tracked in the session summary but completely ignored by `checkStalledSession`. Changed the check to use `Math.max(lastHookAt, lastOutputAt ?? 0)` as the activity reference and bumped the threshold to 180 seconds (3 minutes). The `?? 0` fallback ensures null `lastOutputAt` degrades gracefully to hook-only timing.
+
+**Bug 2 — review time counted toward stalled threshold**: When a session transitions from `awaiting_review` back to `running` (via `hook.to_in_progress` or `agent.prompt-ready`), the state machine cleared `stalledSince` but did NOT reset `lastHookAt`. So after a long review (e.g., 2 minutes reading a diff), `lastHookAt` was already stale, and the very next reconciliation sweep (10s later) could flag the session as stalled. Fixed by resetting `lastHookAt = now()` in `applySessionEvent` whenever `transition.patch.state === "running"`. This covers both the hooks-api path (`transitionToRunning`) and the terminal adapter path (`agent.prompt-ready`).
+
+**Files touched**: `src/terminal/session-reconciliation.ts` (threshold, `checkStalledSession` logic, comment), `src/terminal/session-summary-store.ts` (`lastHookAt` reset in `applySessionEvent`), `web-ui/src/utils/session-status.ts` (tooltip text), `test/runtime/terminal/session-reconciliation.test.ts` (3 new test cases for output-based detection, 1 existing test made explicit about `lastOutputAt`).
+
 ## Refactor: settings dialog section reorganization (2026-04-12)
 
 Reorganized the settings dialog from 11 small, scattered sections into 8 focused groups. The primary issues: Git settings were split across "Git & Worktrees" and "Git Polling" with "Developer / Experimental" sandwiched between them; "Session Recovery" was an orphaned single-toggle section; "Layout & Debug" mixed unrelated concerns; and "Suppressed Dialogs" (frequently visited) was buried at the bottom.

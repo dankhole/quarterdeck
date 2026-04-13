@@ -7,7 +7,7 @@
 //   - Dead processes (PID no longer exists)
 //   - Processless active sessions (state says running, no PTY)
 //   - Stale hook activity metadata
-//   - Stalled sessions (running but no hook activity for over a minute)
+//   - Stalled sessions (running but no activity for several minutes)
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
 
@@ -147,11 +147,14 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	return { type: "mark_processless_error" };
 }
 
-/** How long (ms) a running session can go without a hook before being marked stalled. */
-export const STALLED_HOOK_THRESHOLD_MS = 60_000;
+/** How long (ms) a running session can go without activity before being marked stalled. */
+export const STALLED_HOOK_THRESHOLD_MS = 180_000;
 
 /**
- * Detects running sessions that haven't received a hook in over a minute.
+ * Detects running sessions that haven't shown activity in over 3 minutes.
+ * Uses the more recent of lastHookAt and lastOutputAt as the activity reference —
+ * terminal output isn't as authoritative as hooks but does indicate the process
+ * is alive and producing something, so it suppresses premature stalled warnings.
  * Only fires after at least one hook has been received (lastHookAt is set),
  * so fresh sessions in their initial thinking phase aren't flagged.
  * Sets stalledSince once; subsequent sweeps skip already-stalled sessions.
@@ -167,7 +170,8 @@ export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): 
 	if (summary.stalledSince != null) {
 		return null;
 	}
-	if (nowMs - summary.lastHookAt > STALLED_HOOK_THRESHOLD_MS) {
+	const lastActivity = Math.max(summary.lastHookAt, summary.lastOutputAt ?? 0);
+	if (nowMs - lastActivity > STALLED_HOOK_THRESHOLD_MS) {
 		return { type: "mark_stalled" };
 	}
 	return null;

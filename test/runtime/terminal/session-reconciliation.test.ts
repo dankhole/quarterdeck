@@ -322,17 +322,17 @@ describe("checkProcesslessActiveSession", () => {
 // ── checkStalledSession ──────────────────────────────────────────────────
 
 describe("checkStalledSession", () => {
-	it("returns mark_stalled when hook gap exceeds threshold", () => {
+	it("returns mark_stalled when hook gap exceeds threshold and no recent output", () => {
 		const nowMs = Date.now();
 		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
-		const entry = createEntry({ state: "running", lastHookAt, stalledSince: null });
+		const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: lastHookAt, stalledSince: null });
 		expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
 	});
 
 	it("returns null when hook gap is within threshold", () => {
 		const nowMs = Date.now();
 		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS + 1;
-		const entry = createEntry({ state: "running", lastHookAt, stalledSince: null });
+		const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: lastHookAt, stalledSince: null });
 		expect(checkStalledSession(entry, nowMs)).toBeNull();
 	});
 
@@ -361,6 +361,33 @@ describe("checkStalledSession", () => {
 
 		const idle = createEntry({ state: "idle", lastHookAt, stalledSince: null });
 		expect(checkStalledSession(idle, nowMs)).toBeNull();
+	});
+
+	it("returns null when hooks are stale but terminal output is recent", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const lastOutputAt = nowMs - 10_000; // output 10s ago — still active
+		const entry = createEntry({ state: "running", lastHookAt, lastOutputAt, stalledSince: null });
+		expect(checkStalledSession(entry, nowMs)).toBeNull();
+	});
+
+	it("returns mark_stalled when both hooks and output exceed threshold", () => {
+		const nowMs = Date.now();
+		const staleTime = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const entry = createEntry({
+			state: "running",
+			lastHookAt: staleTime,
+			lastOutputAt: staleTime,
+			stalledSince: null,
+		});
+		expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
+	});
+
+	it("returns mark_stalled when lastOutputAt is null and hooks exceed threshold", () => {
+		const nowMs = Date.now();
+		const lastHookAt = nowMs - STALLED_HOOK_THRESHOLD_MS - 1;
+		const entry = createEntry({ state: "running", lastHookAt, lastOutputAt: null, stalledSince: null });
+		expect(checkStalledSession(entry, nowMs)).toEqual({ type: "mark_stalled" });
 	});
 });
 

@@ -56,7 +56,7 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 export function getSessionStatusTooltip(summary: RuntimeTaskSessionSummary | null): string | null {
 	if (!summary) return null;
 	if (summary.state === "running" && summary.stalledSince != null) {
-		return "No hook activity for over a minute \u2014 the agent may be stalled or could still be thinking";
+		return "No activity for several minutes \u2014 the agent may be stalled or could still be thinking";
 	}
 	return null;
 }
