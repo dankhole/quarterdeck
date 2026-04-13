@@ -253,12 +253,32 @@ export class TerminalSessionManager implements TerminalSessionService {
 	/**
 	 * Hydrate both the summary store and the process entry map from a persisted
 	 * session record. Called once during workspace bootstrap.
+	 *
+	 * Sessions persisted as "running" are crash survivors — the server died
+	 * while the agent was actively working. Mark them as interrupted so the UI
+	 * shows the restart button immediately and can auto-restart them.
+	 *
+	 * Sessions in "awaiting_review" were already paused (agent finished or
+	 * errored). Their work products exist in the worktree. Leave them as-is;
+	 * recoverStaleSession will reset them to idle when a viewer connects.
 	 */
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		this.store.hydrateFromRecord(record);
-		for (const taskId of Object.keys(record)) {
+		for (const [taskId, summary] of Object.entries(record)) {
 			if (!this.entries.has(taskId)) {
 				this.entries.set(taskId, this.createProcessEntry(taskId));
+			}
+			// Crash recovery: the agent was actively working when the server died.
+			// No live process exists — mark interrupted so the card shows a restart
+			// button and the UI can auto-resume.
+			if (summary.state === "running") {
+				this.store.update(taskId, {
+					state: "interrupted",
+					reviewReason: "interrupted",
+					pid: null,
+					stalledSince: null,
+					latestHookActivity: null,
+				});
 			}
 		}
 	}
@@ -866,16 +886,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		// The session is in an active state (running or awaiting_review) but has
-		// no backing process. Two scenarios lead here:
+		// no backing process. This happens when a task was launched this server
+		// lifetime and the process exited while no WebSocket listeners were
+		// attached (so auto-restart in onExit was skipped). restartRequest is
+		// set — we can attempt a restart now that a viewer is reconnecting.
 		//
-		// 1. The task was launched this server lifetime and the process exited
-		//    while no WebSocket listeners were attached (so auto-restart in onExit
-		//    was skipped). restartRequest is set — we can attempt a restart now
-		//    that a viewer is reconnecting.
-		//
-		// 2. The entry was hydrated from persisted state after a server restart.
-		//    restartRequest is null — we don't have the launch parameters and the
-		//    process is genuinely gone. Reset to idle.
+		// Note: crash-recovered sessions (hydrated from disk in an active state)
+		// are marked as interrupted during hydrateFromRecord, so they don't
+		// reach this code path — they're handled by the UI's auto-restart.
 		if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
 			// Clean exit (code 0) means the agent finished its work — restarting
 			// would re-run it from scratch. Keep the state as-is so the user can
@@ -893,7 +911,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return updated;
 		}
 
-		// Hydrated entry or shell session — reset to idle.
+		// Shell session or unexpected state — reset to idle.
 		return this.store.recoverStaleSession(taskId);
 	}
 

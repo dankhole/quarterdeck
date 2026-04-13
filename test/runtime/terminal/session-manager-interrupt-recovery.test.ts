@@ -267,7 +267,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 	});
 
-	it("recovers stale sessions when process is dead but exit was missed (hydrated)", () => {
+	it("marks crash-recovered running sessions as interrupted during hydration", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		// Hydrate with a session that claims to be running with a PID that doesn't exist
 		manager.hydrateFromRecord({
@@ -277,9 +277,15 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			}),
 		});
 
+		// Hydration detects the stale running state and marks as interrupted.
+		// recoverStaleSession is a no-op since it's no longer in an active state.
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("interrupted");
+		expect(summary?.reviewReason).toBe("interrupted");
+		expect(summary?.pid).toBeNull();
+
 		const recovered = manager.recoverStaleSession("task-1");
-		// recoverStaleSession handles hydrated entries with no active process
-		expect(recovered?.state).toBe("idle");
+		expect(recovered?.state).toBe("interrupted");
 	});
 
 	it("watchdog recovers a live session whose process died without an exit event", async () => {

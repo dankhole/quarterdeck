@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: crash recovery auto-restart
+
+- Running sessions that survive a server crash are now automatically detected during hydration and marked as interrupted. When the UI reconnects, each crash-recovered session auto-restarts with `--continue` so the agent resumes its conversation. Tasks stay in their board columns instead of silently resetting to idle. A toast notifies the user that sessions are being resumed. Terminal scrollback from before the crash is still lost (in-memory only), but the agent picks up where it left off. The manual restart button on task cards continues to work as before.
+
 ### Feat: persistent PID registry for orphaned agent process cleanup
 
 - Agent processes (Claude Code, Codex, shell sessions) are now tracked in `~/.quarterdeck/managed-pids.json` so orphaned processes can be found and killed after crashes or force-kills. PIDs are registered on spawn and unregistered on exit. A background sweep runs on startup to kill any survivors from a previous unclean exit, and a periodic sweep every 60 seconds catches stragglers during normal operation. Clean shutdowns clear the registry entirely.

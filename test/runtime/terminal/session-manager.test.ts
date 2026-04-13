@@ -51,7 +51,7 @@ describe("TerminalSessionManager", () => {
 
 	it("stores hook activity metadata on sessions", () => {
 		const manager = createTestManager();
-		manager.hydrateFromRecord({
+		manager.store.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
 		});
 
@@ -69,7 +69,7 @@ describe("TerminalSessionManager", () => {
 
 	it("clears stale event-identity fields when a new hook event arrives", () => {
 		const manager = createTestManager();
-		manager.hydrateFromRecord({
+		manager.store.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
 		});
 
@@ -101,7 +101,7 @@ describe("TerminalSessionManager", () => {
 
 	it("preserves previous fields for non-event activity updates", () => {
 		const manager = createTestManager();
-		manager.hydrateFromRecord({
+		manager.store.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
 		});
 
@@ -129,7 +129,7 @@ describe("TerminalSessionManager", () => {
 
 	it("transitionToReview preserves latestHookActivity (RC4 invariant — no null-window)", () => {
 		const manager = createTestManager();
-		manager.hydrateFromRecord({
+		manager.store.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "running",
 				latestHookActivity: {
@@ -170,24 +170,24 @@ describe("TerminalSessionManager", () => {
 		expect(updated?.latestHookActivity?.finalMessage).toBe("Done with the work");
 	});
 
-	it("resets stale running sessions without active processes", () => {
+	it("marks crash-recovered running sessions as interrupted during hydration", () => {
 		const manager = createTestManager();
 		manager.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
 		});
 
-		const recovered = manager.recoverStaleSession("task-1");
-
-		expect(recovered?.state).toBe("idle");
-		expect(recovered?.pid).toBeNull();
-		expect(recovered?.agentId).toBe("claude");
-		expect(recovered?.workspacePath).toBeNull();
-		expect(recovered?.reviewReason).toBeNull();
+		// Hydration detects the stale running state and marks it as interrupted
+		// so the UI can show a restart button and auto-resume.
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("interrupted");
+		expect(summary?.reviewReason).toBe("interrupted");
+		expect(summary?.pid).toBeNull();
+		expect(summary?.agentId).toBe("claude");
 	});
 
 	it("tracks only the latest two turn checkpoints", () => {
 		const manager = createTestManager();
-		manager.hydrateFromRecord({
+		manager.store.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
 		});
 
@@ -246,7 +246,7 @@ describe("TerminalSessionManager", () => {
 	describe("appendConversationSummary", () => {
 		it("adds a conversation summary entry and sets raw displaySummary", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -264,7 +264,7 @@ describe("TerminalSessionManager", () => {
 
 		it("truncates displaySummary to 90 chars with ellipsis", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -281,7 +281,7 @@ describe("TerminalSessionManager", () => {
 		it("preserves displaySummaryGeneratedAt when LLM summary exists", () => {
 			const generatedAt = Date.now();
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({
 					state: "running",
 					displaySummaryGeneratedAt: generatedAt,
@@ -298,7 +298,7 @@ describe("TerminalSessionManager", () => {
 
 		it("retains at most 5 entries", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -319,7 +319,7 @@ describe("TerminalSessionManager", () => {
 
 		it("drops entries when total chars exceed 2000", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -340,7 +340,7 @@ describe("TerminalSessionManager", () => {
 
 		it("truncates individual entry text to 500 chars", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -364,7 +364,7 @@ describe("TerminalSessionManager", () => {
 
 		it("auto-increments sessionIndex", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -381,7 +381,7 @@ describe("TerminalSessionManager", () => {
 	describe("setDisplaySummary", () => {
 		it("sets displaySummary and generatedAt timestamp", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
@@ -394,7 +394,7 @@ describe("TerminalSessionManager", () => {
 
 		it("sets generatedAt to null for raw fallback summaries", () => {
 			const manager = createTestManager();
-			manager.hydrateFromRecord({
+			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 

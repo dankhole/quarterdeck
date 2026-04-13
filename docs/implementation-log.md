@@ -4,6 +4,24 @@ Detailed implementation notes for completed features and fixes. Listed in revers
 
 For the concise, user-facing summary of each release, see [CHANGELOG.md](../CHANGELOG.md).
 
+## Fix: crash recovery auto-restart (2026-04-12)
+
+Fixed the behavior where tasks came back in a useless idle state with blank chat after a server crash. Previously, sessions hydrated from disk in an active state (running/awaiting_review) were silently reset to idle when a viewer connected, with no attempt to resume the agent's conversation. The restart button worked but required manual intervention for every task.
+
+**Root cause**: `recoverStaleSession` in `session-manager.ts` distinguished between same-lifetime crashes (has `restartRequest`, can auto-restart) and cross-restart crashes (hydrated from disk, no `restartRequest`). The latter path unconditionally reset to idle because the server didn't have the launch parameters to restart.
+
+**Server-side fix** (`src/terminal/session-manager.ts`): `hydrateFromRecord` now detects sessions persisted as `state: "running"` — these are definitively crash survivors since graceful shutdown moves tasks to trash before persisting. Marks them as `state: "interrupted"` with `reviewReason: "interrupted"` and nulls out the stale PID. Sessions in `awaiting_review` are left as-is since their work products exist in the worktree and `recoverStaleSession` handles them correctly on viewer connect.
+
+**UI-side fix** (`web-ui/src/hooks/use-board-interactions.ts`): Added crash recovery auto-restart effect that runs once per project load. Scans for tasks in in_progress/review columns with `state: "interrupted"` + `reviewReason: "interrupted"` — this combination can only occur from crash recovery (graceful shutdown always moves tasks to trash first). For each crash-recovered task, calls the existing restart flow: stop (no-op since no process) → `startTaskSession` with `resumeConversation: true`. Shows a toast notification. Errors per-task are reported individually.
+
+**Key design decision**: Only `running` sessions are marked as crash-recovered and auto-restarted. `awaiting_review` sessions (agent finished or errored before the crash) keep their state — their work products exist in the worktree and the user should review them. The column-based discrimination (interrupted + active column = crash; interrupted + trash = graceful shutdown) is reliable because the shutdown coordinator always moves to trash.
+
+**Updated comments** in `recoverStaleSession` to document that crash-recovered sessions are now handled during hydration and no longer reach the idle-reset fallthrough.
+
+**Tests**: Updated 3 tests in `session-manager.test.ts` and `session-manager-interrupt-recovery.test.ts` to reflect the new hydration behavior. Tests that were verifying store-level operations (not crash recovery) switched from `manager.hydrateFromRecord` to `manager.store.hydrateFromRecord` to bypass the crash recovery logic.
+
+**Files changed**: `src/terminal/session-manager.ts`, `web-ui/src/hooks/use-board-interactions.ts`, `test/runtime/terminal/session-manager.test.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`, `docs/todo.md`, `CHANGELOG.md`
+
 ## Feat: persistent PID registry for orphaned agent process cleanup (2026-04-12)
 
 Quarterdeck spawns agent processes via PTY (Claude Code, Codex, shell sessions). On clean shutdown, `markInterruptedAndStopAll` kills them all. But after crashes or force-kills, the graceful shutdown never runs and agent processes are left as orphans consuming resources indefinitely. There was no mechanism to find or clean them up.
