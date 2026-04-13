@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: terminal rendering on task switch — client-side canvas repair + on-demand server resync
+
+- Replaced the SIGWINCH resize hack (which duplicated chat content) with a proper client-side canvas fix: local `cols-1` dimension bounce, `clearTextureAtlas()`, `refresh()`, and `forceResize()`. No server round-trip on task switch.
+- Added `request_restore` WebSocket protocol message for on-demand full resync — client fetches a fresh snapshot from the server's headless mirror, resets the buffer, and replays. Server pauses live output during transit to prevent data loss.
+- New "Re-sync terminal content" button in Settings > Terminal for manual repair of drifted terminals.
+- `scrollToBottom()` now runs after every restore (initial connection and re-sync).
+
 ### Fix: Shift+Enter in agent terminal no longer moves task to running
 
 - Pressing Shift+Enter to insert a newline in the agent terminal was triggering the optimistic "review → running" transition introduced in 03f08f81. The `writeInput()` CR/LF check treated LF (byte 10, sent by Shift+Enter) the same as CR (byte 13, sent by Enter). Now only CR triggers the optimistic transition.

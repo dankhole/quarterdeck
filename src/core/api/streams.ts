@@ -148,11 +148,17 @@ export const runtimeTerminalWsRestoreCompleteMessageSchema = z.object({
 });
 export type RuntimeTerminalWsRestoreCompleteMessage = z.infer<typeof runtimeTerminalWsRestoreCompleteMessageSchema>;
 
+export const runtimeTerminalWsRequestRestoreMessageSchema = z.object({
+	type: z.literal("request_restore"),
+});
+export type RuntimeTerminalWsRequestRestoreMessage = z.infer<typeof runtimeTerminalWsRequestRestoreMessageSchema>;
+
 export const runtimeTerminalWsClientMessageSchema = z.discriminatedUnion("type", [
 	runtimeTerminalWsResizeMessageSchema,
 	runtimeTerminalWsStopMessageSchema,
 	runtimeTerminalWsOutputAckMessageSchema,
 	runtimeTerminalWsRestoreCompleteMessageSchema,
+	runtimeTerminalWsRequestRestoreMessageSchema,
 ]);
 export type RuntimeTerminalWsClientMessage = z.infer<typeof runtimeTerminalWsClientMessageSchema>;
 

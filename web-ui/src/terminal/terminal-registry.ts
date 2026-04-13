@@ -79,6 +79,15 @@ export function resetAllTerminalRenderers(): number {
 	return count;
 }
 
+export function restoreAllTerminals(): number {
+	const count = terminals.size;
+	console.log(`[terminal] requesting restore for ${count} terminal(s)`);
+	for (const terminal of terminals.values()) {
+		terminal.requestRestore();
+	}
+	return count;
+}
+
 export function setTerminalFontWeight(weight: number): void {
 	updateGlobalTerminalFontWeight(weight);
 	for (const terminal of terminals.values()) {

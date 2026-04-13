@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal task-switch rendering — client-side canvas fix + server resync (2026-04-13)
+
+The previous fix (48aa0762) sent an intermediate `cols-1` resize to the server during task switch to trigger SIGWINCH, hoping the agent would redraw its TUI. This had two problems: (1) the two resizes were sent back-to-back in the same synchronous block, so the kernel coalesced the SIGWINCHs and the agent never saw a meaningful dimension change, and (2) when it did work, the agent re-output its entire TUI through the PTY stream, which xterm.js processed as new terminal output — duplicating the chat content.
+
+**Root cause analysis:** There were actually two separate problems conflated into one fix:
+1. **Canvas stale after DOM move** — when `appendChild` moves the terminal's host element between containers, the WebGL canvas dimensions and glyph texture cache become stale. This is a renderer problem requiring a renderer fix.
+2. **Terminal content drift over time** — with many concurrent tasks, the xterm.js buffer can diverge from the server's headless mirror. This needs a full content resync.
+
+**Fix for problem 1 (every task switch):** Client-side only in the mount() RAF callback: local `cols-1` bounce (forces `fitAddon.fit()` to actually call `terminal.resize()`), `clearTextureAtlas()` (regenerates WebGL glyph cache), `refresh(0, rows-1)` (repaints all rows from buffer), `forceResize()` (sends correct final dimensions to server). No intermediate resize sent to server, no SIGWINCH.
+
+**Fix for problem 2 (on-demand):** New `request_restore` client→server WebSocket message. Server handler pauses live output (`viewerState.restoreComplete = false`), serializes the headless terminal mirror via `serializeAddon.serialize()`, sends the snapshot, client does `terminal.reset()` + `terminal.write(snapshot)` + `scrollToBottom()`, then sends `restore_complete` to resume output. Extracted duplicated snapshot-send logic into `sendRestoreSnapshot()` helper. Exposed as "Re-sync terminal content" button in Settings > Terminal via `restoreAllTerminals()` registry function.
+
+Files: `src/core/api/streams.ts`, `src/terminal/ws-server.ts`, `web-ui/src/components/settings/display-sections.tsx`, `web-ui/src/terminal/persistent-terminal-manager.ts`, `web-ui/src/terminal/terminal-registry.ts`.
+
 ## Fix: Shift+Enter in agent terminal triggers optimistic running transition (2026-04-13)
 
 The optimistic running transition added in 03f08f81 ("fix: transition card to running immediately on prompt submit") checked for both CR (byte 13) and LF (byte 10) in `writeInput()`. Shift+Enter in the xterm terminal sends LF (`\n`) via the custom key event handler in `persistent-terminal-manager.ts`, which matched the LF check and moved the card from review to in_progress before the user actually submitted anything.

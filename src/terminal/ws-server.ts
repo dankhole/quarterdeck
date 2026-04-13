@@ -108,6 +108,27 @@ function sendControlMessage(ws: WebSocket, message: RuntimeTerminalWsServerMessa
 	ws.send(JSON.stringify(message));
 }
 
+function sendRestoreSnapshot(ws: WebSocket, terminalManager: TerminalSessionService, taskId: string): void {
+	void terminalManager
+		.getRestoreSnapshot(taskId)
+		.then((snapshot) => {
+			sendControlMessage(ws, {
+				type: "restore",
+				snapshot: snapshot?.snapshot ?? "",
+				cols: snapshot?.cols ?? null,
+				rows: snapshot?.rows ?? null,
+			});
+		})
+		.catch(() => {
+			sendControlMessage(ws, {
+				type: "restore",
+				snapshot: "",
+				cols: null,
+				rows: null,
+			});
+		});
+}
+
 function buildConnectionKey(workspaceId: string, taskId: string): string {
 	return `${workspaceId}:${taskId}`;
 }
@@ -475,24 +496,7 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 
-		void terminalManager
-			.getRestoreSnapshot(taskId)
-			.then((snapshot) => {
-				sendControlMessage(ws, {
-					type: "restore",
-					snapshot: snapshot?.snapshot ?? "",
-					cols: snapshot?.cols ?? null,
-					rows: snapshot?.rows ?? null,
-				});
-			})
-			.catch(() => {
-				sendControlMessage(ws, {
-					type: "restore",
-					snapshot: "",
-					cols: null,
-					rows: null,
-				});
-			});
+		sendRestoreSnapshot(ws, terminalManager, taskId);
 
 		ws.on("message", (rawMessage: RawData) => {
 			const message = parseWebSocketPayload(rawMessage);
@@ -516,6 +520,14 @@ export function createTerminalWebSocketBridge({
 
 			if (message.type === "output_ack") {
 				viewerState.ioState?.acknowledgeOutput(message.bytes);
+				return;
+			}
+
+			if (message.type === "request_restore") {
+				// Pause live output while the client applies the fresh snapshot.
+				viewerState.restoreComplete = false;
+				viewerState.pendingOutputChunks = [];
+				sendRestoreSnapshot(ws, terminalManager, taskId);
 				return;
 			}
 

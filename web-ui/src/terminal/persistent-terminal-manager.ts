@@ -506,6 +506,7 @@ export class PersistentTerminal {
 						}
 						this.restoreCompleted = true;
 						this.sendControlMessage({ type: "restore_complete" });
+						this.terminal.scrollToBottom();
 						if (this.ioSocket && this.visibleContainer) {
 							this.requestResize();
 						}
@@ -666,15 +667,12 @@ export class PersistentTerminal {
 			// New container — previous resize may have targeted a different
 			// (or parked) container, or been silently dropped.
 			this.invalidateResize();
-			// The host element was just moved from the parking root (or another
-			// container). Schedule a deferred resize that:
-			// 1. Forces the WebGL/canvas renderer to recalculate its canvas
-			//    dimensions (fitAddon.fit() skips terminal.resize() when
-			//    cols/rows match, leaving the canvas stale after a DOM move).
-			// 2. Sends the intermediate cols-1 to the server so the PTY
-			//    actually changes size → SIGWINCH → the agent redraws its
-			//    TUI. Without this the server-side dimensions never change
-			//    and artifacts from the previous render persist.
+			// Recalculate canvas dimensions after the DOM move. The WebGL/canvas
+			// renderer may have been sized for the parking root or a previous
+			// container. We bounce cols-1 → cols locally so fitAddon.fit() sees
+			// a dimension change and calls terminal.resize(), which forces the
+			// renderer to recalculate its canvas. Then clear the texture atlas
+			// and refresh all rows to fix any WebGL glyph corruption.
 			if (this.deferredResizeRaf !== null) {
 				cancelAnimationFrame(this.deferredResizeRaf);
 			}
@@ -683,13 +681,12 @@ export class PersistentTerminal {
 				if (this.disposed || this.visibleContainer !== container) {
 					return;
 				}
-				const { cols, rows } = this.terminal;
+				const { cols } = this.terminal;
 				if (cols > 2) {
-					this.terminal.resize(cols - 1, rows);
-					// Send the intermediate size to the server so the PTY
-					// sees an actual dimension change and delivers SIGWINCH.
-					this.sendControlMessage({ type: "resize", cols: cols - 1, rows });
+					this.terminal.resize(cols - 1, this.terminal.rows);
 				}
+				this.terminal.clearTextureAtlas();
+				this.terminal.refresh(0, this.terminal.rows - 1);
 				this.forceResize();
 			});
 		}
@@ -811,6 +808,20 @@ export class PersistentTerminal {
 		console.log(
 			`[terminal:${this.taskId}] renderer reset — previous: ${hadWebgl ? "webgl" : "none"}, new: ${newRenderer}, dpr: ${window.devicePixelRatio}`,
 		);
+	}
+
+	/**
+	 * Request a fresh restore snapshot from the server, replacing the entire
+	 * local terminal buffer with the authoritative state from the headless
+	 * mirror. Use this to repair terminals that have drifted into a weird
+	 * visual state. The server pauses live output during the snapshot to
+	 * prevent data loss.
+	 */
+	requestRestore(): void {
+		if (this.disposed || !this.restoreCompleted) {
+			return;
+		}
+		this.sendControlMessage({ type: "request_restore" });
 	}
 
 	getBufferDebugInfo(): {

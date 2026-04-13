@@ -5,7 +5,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
-import { resetAllTerminalRenderers } from "@/terminal/terminal-registry";
+import { resetAllTerminalRenderers, restoreAllTerminals } from "@/terminal/terminal-registry";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -293,6 +293,24 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 			<p className="text-text-secondary text-[13px] mt-2 mb-0">
 				Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or distorted
 				after moving between monitors.
+			</p>
+			<Button
+				size="sm"
+				className="mt-3"
+				onClick={() => {
+					const count = restoreAllTerminals();
+					showAppToast({
+						intent: "success",
+						message: `Restoring ${count} terminal${count === 1 ? "" : "s"} from server`,
+						timeout: 3000,
+					});
+				}}
+			>
+				Re-sync terminal content
+			</Button>
+			<p className="text-text-secondary text-[13px] mt-2 mb-0">
+				Fetch a fresh snapshot from the server for all terminals. Use this if terminal content looks wrong or out of
+				sync with the agent.
 			</p>
 		</>
 	);
