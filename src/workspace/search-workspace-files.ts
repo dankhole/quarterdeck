@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import type { Dirent } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
 import type { RuntimeWorkspaceFileSearchMatch } from "../core/api-contract";
@@ -8,6 +11,38 @@ const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+
+// ── Filesystem-based file listing (used by file browser) ────────────────────
+
+interface CachedFileList {
+	expiresAt: number;
+	files: string[];
+}
+
+const fsFileListCache = new Map<string, CachedFileList>();
+
+/** Recursively walk a directory tree, collecting all file paths. */
+async function walkDirectory(rootDir: string, dirPath: string, files: string[]): Promise<void> {
+	let entries: Dirent[];
+	try {
+		entries = await readdir(dirPath, { withFileTypes: true });
+	} catch {
+		return; // Permission denied, symlink loop, etc.
+	}
+
+	for (const entry of entries) {
+		const fullPath = join(dirPath, entry.name);
+
+		if (entry.isDirectory()) {
+			await walkDirectory(rootDir, fullPath, files);
+		} else {
+			const relPath = relative(rootDir, fullPath);
+			files.push(sep === "\\" ? relPath.replaceAll("\\", "/") : relPath);
+		}
+	}
+}
+
+// ── Git-based file index (used by search for change-status metadata) ────────
 
 interface CachedFileIndex {
 	expiresAt: number;
@@ -141,7 +176,17 @@ function normalizeLimit(limit: number | undefined): number {
 }
 
 export async function listAllWorkspaceFiles(cwd: string): Promise<string[]> {
-	const { files } = await loadFileIndex(cwd);
+	const cached = fsFileListCache.get(cwd);
+	if (cached && cached.expiresAt > Date.now()) {
+		return [...cached.files];
+	}
+	fsFileListCache.delete(cwd);
+
+	const files: string[] = [];
+	await walkDirectory(cwd, cwd, files);
+	files.sort();
+
+	fsFileListCache.set(cwd, { expiresAt: Date.now() + CACHE_TTL_MS, files });
 	return [...files];
 }
 

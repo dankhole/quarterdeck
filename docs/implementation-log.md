@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: file browser uses filesystem listing for on-disk repos (2026-04-14)
+
+`listAllWorkspaceFiles` in `src/workspace/search-workspace-files.ts` previously used `git ls-files --cached --others --exclude-standard` to populate the file browser tree. This filtered out gitignored files, which meant the file browser didn't show what was actually on disk.
+
+Replaced with a recursive `fs.readdir` walk that lists all files in the directory tree. No filtering — what's on disk is what you see. The walk uses a 5-second cache (same TTL as before) to avoid re-walking on every poll tick.
+
+Branch browsing (viewing a ref that isn't checked out) continues to use `git ls-tree` via the existing `listFilesAtRef` function. The routing in `workspace-api.ts` (`listFiles` endpoint) already distinguished between the two paths based on whether `input.ref` is set. Frontend polling behavior was already correct (polls for on-disk, skips for refs).
+
+The git-based `loadFileIndex` function is retained for `searchWorkspaceFiles` (Ctrl+P search), which still needs `git status` for change-status badges.
+
+**Files**: `src/workspace/search-workspace-files.ts`.
+
 ## Docs: comprehensive performance audit (2026-04-14)
 
 Replaced the 2026-04-07 performance bottleneck analysis with a full audit covering all major subsystems. The previous audit identified 6 issues; this one audits 10 areas with specific file/line references.

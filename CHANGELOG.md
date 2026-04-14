@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: file browser uses filesystem listing for on-disk repos
+
+- The file browser tree now lists files via `fs.readdir` instead of `git ls-files` when viewing on-disk repos (home and task worktrees). Shows everything actually on disk rather than a git-filtered view. Branch browsing (refs not checked out) still uses `git ls-tree`. No new dependencies.
+
 ### Docs: comprehensive performance audit
 
 - Rewrote `docs/performance-bottleneck-analysis.md` with a full audit covering all subsystems — state persistence, WebSocket broadcasting, frontend memory, terminal/PTY backpressure, tRPC/API polling, git operations, and React rendering. Documents what shipped since the previous 2026-04-07 audit (lazy diff loading, scoped metadata refresh, terminal backpressure redesign, chat message removal) and identifies remaining medium-severity items (undebounced state broadcasts, uncached workspace snapshots, global project broadcasts, metadata polling cost).
