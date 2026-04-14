@@ -20,7 +20,7 @@ export function createGitTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.Proc
 }
 
 export function initGitRepository(path: string): void {
-	const init = spawnSync("git", ["init"], {
+	const init = spawnSync("git", ["init", "-b", "main"], {
 		cwd: path,
 		stdio: "ignore",
 		env: createGitTestEnv(),

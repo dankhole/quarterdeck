@@ -30,7 +30,7 @@ function runGit(cwd: string, args: string[]): string {
 }
 
 function initRepository(path: string): void {
-	runGit(path, ["init", "-q"]);
+	runGit(path, ["init", "-q", "-b", "main"]);
 	runGit(path, ["config", "user.name", "Test User"]);
 	runGit(path, ["config", "user.email", "test@example.com"]);
 }

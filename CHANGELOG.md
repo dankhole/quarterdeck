@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: git conflict tests fail on CI due to default branch name
+
+- Test helpers (`git init`) didn't specify a branch name, so runners with `init.defaultBranch=master` failed on `checkout main`. Added `-b main` to `git init` in all test `initRepository` functions and the shared `initGitRepository` helper.
+
 ### Fix: permission badge clobbered by terminal focus event
 
 - Selecting a "Waiting for Approval" card no longer clears the permission badge. xterm.js focus reporting (`DECSET 1004`) sends `\x1b[I` when the terminal panel gains focus — `writeInput` was treating this protocol response as user interaction and clearing `latestHookActivity`. Added `isTerminalProtocolResponse()` to filter focus-in/out and DSR cursor position reports from the permission-clearing path.

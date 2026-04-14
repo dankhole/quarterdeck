@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: git conflict tests fail on CI due to default branch name (2026-04-14)
+
+Git conflict and stash tests called `git init -q` without specifying a branch name. On systems where `init.defaultBranch` is `master` (including GitHub Actions macOS runners), the subsequent `checkout main` failed with `pathspec 'main' did not match any file(s) known to git`. All 10 errors in CI #16 traced to this single cause.
+
+Fixed by adding `-b main` to every `git init` call in test code — both the per-file `initRepository` helpers and the shared `initGitRepository` in `test/utilities/git-env.ts`.
+
+**Files**: `test/runtime/git-conflict.test.ts`, `test/runtime/git-conflict-integration.test.ts`, `test/runtime/git-stash.test.ts`, `test/utilities/git-env.ts`.
+
 ## Fix: permission badge clobbered by terminal focus event (2026-04-14)
 
 When a "Waiting for Approval" card was selected, the permission badge immediately flipped to "Ready for review" before the user interacted with the prompt. Root cause: Claude Code enables focus reporting (`DECSET 1004`), so when the terminal panel gains DOM focus on card selection, xterm.js sends `\x1b[I` (focus-in) through `onData`. The server's `writeInput` handler treated any incoming data during the `awaiting_review` + permission state as user interaction and cleared `latestHookActivity`, which removed the permission badge.
