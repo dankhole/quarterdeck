@@ -13,14 +13,14 @@
     "task-management",
     "typescript"
   ],
-  "homepage": "https://bitbucket.build.dkinternal.com/users/d.cole/repos/quarterdeck/browse",
+  "homepage": "https://github.com/dankhole/quarterdeck",
   "bugs": {
-    "url": "https://bitbucket.build.dkinternal.com/users/d.cole/repos/quarterdeck/browse"
+    "url": "https://github.com/dankhole/quarterdeck/issues"
   },
   "author": "Quarterdeck",
   "repository": {
     "type": "git",
-    "url": "ssh://git@bitbucket.build.dkinternal.com/~d.cole/quarterdeck.git"
+    "url": "https://github.com/dankhole/quarterdeck"
   },
   "type": "module",
   "bin": {

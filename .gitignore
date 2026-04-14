@@ -16,4 +16,3 @@ web-ui/.env.*
 docs/archive
 .kanban
 .quarterdeck
-WORK_BRANCH.md

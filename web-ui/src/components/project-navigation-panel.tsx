@@ -414,7 +414,7 @@ function ShortcutsCard(): React.ReactElement {
 	);
 }
 
-const REPO_URL = "https://bitbucket.build.dkinternal.com/users/d.cole/repos/quarterdeck/browse";
+const GITHUB_ISSUES_URL = "https://github.com/dankhole/quarterdeck/issues";
 
 function BetaNotice(): React.ReactElement {
 	return (
@@ -425,7 +425,7 @@ function BetaNotice(): React.ReactElement {
 						Quarterdeck is in beta. Help me improve by sharing your experience.
 					</p>
 					<a
-						href={REPO_URL}
+						href={GITHUB_ISSUES_URL}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="flex items-center gap-1 self-start text-xs font-semibold text-status-orange hover:text-status-orange/80 active:text-status-orange/60 no-underline"
