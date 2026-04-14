@@ -329,12 +329,40 @@ export async function getWorkspaceChangesBetweenRefs(
 	return response;
 }
 
+const FROM_REF_CHANGES_CACHE_MAX_ENTRIES = 32;
+
+interface FromRefChangesCacheEntry {
+	stateKey: string;
+	response: RuntimeWorkspaceChangesResponse;
+	lastAccessedAt: number;
+}
+
+const fromRefChangesCacheByKey = new Map<string, FromRefChangesCacheEntry>();
+
+function pruneFromRefChangesCache(): void {
+	if (fromRefChangesCacheByKey.size <= FROM_REF_CHANGES_CACHE_MAX_ENTRIES) {
+		return;
+	}
+	const entries = Array.from(fromRefChangesCacheByKey.entries()).sort(
+		(left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt,
+	);
+	const removeCount = entries.length - FROM_REF_CHANGES_CACHE_MAX_ENTRIES;
+	for (let index = 0; index < removeCount; index += 1) {
+		const candidate = entries[index];
+		if (!candidate) {
+			break;
+		}
+		fromRefChangesCacheByKey.delete(candidate[0]);
+	}
+}
+
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
 
-	const [trackedChangesOutput, untrackedOutput] = await Promise.all([
+	const [trackedChangesOutput, untrackedOutput, fromHash] = await Promise.all([
 		getGitStdout(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),
 		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
+		getGitStdout(["rev-parse", input.fromRef], repoRoot).catch(() => input.fromRef),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput
@@ -360,6 +388,24 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		};
 	}
 
+	// Build fingerprints for cache validation — detects file content changes between polls.
+	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
+	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
+	const resolvedFromHash = fromHash.trim();
+	const cacheMapKey = `${repoRoot}::${resolvedFromHash}`;
+	const stateKey = buildWorkspaceChangesStateKey({
+		repoRoot,
+		headCommit: resolvedFromHash,
+		trackedChangesOutput,
+		untrackedOutput,
+		fingerprints,
+	});
+	const existing = fromRefChangesCacheByKey.get(cacheMapKey);
+	if (existing && existing.stateKey === stateKey) {
+		existing.lastAccessedAt = Date.now();
+		return existing.response;
+	}
+
 	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", input.fromRef, "--"]);
 	const untrackedLineCounts = await Promise.all(
 		allChanges
@@ -374,11 +420,14 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		),
 	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
-	return {
+	const response: RuntimeWorkspaceChangesResponse = {
 		repoRoot,
 		generatedAt: Date.now(),
 		files,
 	};
+	fromRefChangesCacheByKey.set(cacheMapKey, { stateKey, response, lastAccessedAt: Date.now() });
+	pruneFromRefChangesCache();
+	return response;
 }
 
 // ---------------------------------------------------------------------------

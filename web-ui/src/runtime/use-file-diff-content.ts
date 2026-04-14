@@ -39,6 +39,8 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 	const requestIdRef = useRef(0);
 	const isMountedRef = useRef(true);
 	const cacheRef = useRef(new Map<string, { oldText: string | null; newText: string | null }>());
+	/** When true, the next fetchContent call skips the isLoading flash (stale-while-revalidate). */
+	const isBackgroundRefetchRef = useRef(false);
 
 	// Track the context key — clear cache when context changes.
 	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}`;
@@ -73,7 +75,11 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 		}
 
 		const requestId = ++requestIdRef.current;
-		setResult((prev) => ({ ...prev, isLoading: true }));
+		// Skip loading flash during background refetches (stale-while-revalidate).
+		if (!isBackgroundRefetchRef.current) {
+			setResult((prev) => ({ ...prev, isLoading: true }));
+		}
+		isBackgroundRefetchRef.current = false;
 
 		try {
 			const trpcClient = getRuntimeTrpcClient(workspaceId);
@@ -120,8 +126,10 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 			return;
 		}
 		// Invalidate cached content for the selected file so it gets refetched.
+		// Use background mode to avoid flashing the loading skeleton (stale-while-revalidate).
 		const cacheKey = buildCacheKey(selectedFile.path, mode, fromRef, toRef);
 		cacheRef.current.delete(cacheKey);
+		isBackgroundRefetchRef.current = true;
 		void fetchContent();
 	}, [changesGeneratedAt, fetchContent, fromRef, mode, selectedFile, toRef]);
 

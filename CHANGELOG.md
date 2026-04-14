@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: compare/uncommitted diff tabs flashing on every poll tick
+
+- `getWorkspaceChangesFromRef` now has fingerprint-based LRU caching (matching the existing `getWorkspaceChanges` pattern) — when the working tree hasn't changed between polls, the cached response is returned with a stable `generatedAt`, skipping redundant numstat computation.
+- `useFileDiffContent` uses stale-while-revalidate for poll-triggered refetches — keeps displaying the current diff content instead of flashing a loading skeleton while fresh content loads.
+
 ### Fix: top bar branch context menu missing push/pull actions
 
 - The top bar branch selector popover was missing `onPull` and `onPush` handlers — right-clicking a branch showed checkout, compare, merge, create, and delete but not "Pull from remote" or "Push to remote". The home scope bar and task detail view already had them wired. Added the missing props using the same `runGitAction` pattern with `gitSyncTaskScope` so it targets the correct repo (home or task worktree) depending on context.

@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: compare/uncommitted diff tabs flashing on every poll tick (2026-04-13)
+
+**Root cause:** The lazy diff loading commit (717c6a8d) introduced `useFileDiffContent` with a `changesGeneratedAt` cache invalidation mechanism — when the server response's `generatedAt` changes, the hook deletes the cached content, sets `isLoading: true`, and re-fetches. This works when `generatedAt` is stable across polls (as with `getWorkspaceChanges`, which has fingerprint-based caching). But `getWorkspaceChangesFromRef` had no caching — every 1s poll returned `generatedAt: Date.now()`, triggering a cache invalidation → skeleton flash → re-fetch cycle even when nothing changed. Affected the Compare tab (with "Include uncommitted" checked) and Last Turn tab during running sessions.
+
+**Server fix** (`src/workspace/get-workspace-changes.ts`): Added fingerprint-based LRU cache to `getWorkspaceChangesFromRef`, matching the existing `getWorkspaceChanges` pattern. The cache key is `${repoRoot}::${resolvedFromHash}`, and the state key includes the resolved ref hash, tracked changes output, untracked files output, and file fingerprints (mtime/ctime/size). On cache hit, the same response object (same `generatedAt`) is returned, skipping the numstat computation.
+
+**Frontend fix** (`web-ui/src/runtime/use-file-diff-content.ts`): Added `isBackgroundRefetchRef` — when the `changesGeneratedAt` effect triggers a refetch, it sets the ref to `true` so `fetchContent` skips the `setResult({ isLoading: true })` call. The skeleton only shows on initial load or file switch (no prior content). Stale content stays visible during the ~20ms refetch window (stale-while-revalidate).
+
+Files: `src/workspace/get-workspace-changes.ts`, `web-ui/src/runtime/use-file-diff-content.ts`.
+
 ## Fix: top bar branch context menu missing push/pull actions (2026-04-13)
 
 The `BranchSelectorPopover` in the top bar (`App.tsx:1098`) was not receiving `onPull` or `onPush` props, so right-clicking any branch only showed checkout, compare, merge, create, delete, pin, and copy — but not "Pull from remote" or "Push to remote". The home scope bar (`App.tsx:1476`) and card detail view (`card-detail-view.tsx:458-459`) already passed these handlers.
