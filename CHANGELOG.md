@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: file browser branch dropdown cleanup
+
+- Disabled right-click context menus on the file browser's branch dropdown (`BranchSelectorPopover`) via a new `disableContextMenu` prop — the top bar dropdown retains context menus. Renamed local App.tsx aliases from ambiguous `home*` prefix (`homeBranchActions`, `homeResolvedScope`, etc.) to `fileBrowser*` to clarify they're scoped to the file browser, not the top bar.
+
 ### Feature: editable worktree system prompt
 
 - The hardcoded worktree context prompt appended to Claude agent sessions via `--append-system-prompt` is now a user-editable template stored in global config (`worktreeSystemPromptTemplate`). Supports `{{cwd}}`, `{{workspace_path}}`, and `{{detached_head_note}}` placeholders resolved at launch time. A collapsible editor in Settings > Agent lets users customize the prompt and reset to the built-in default. Only applies to worktree sessions — non-worktree behavior is unchanged.

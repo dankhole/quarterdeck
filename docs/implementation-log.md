@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: file browser branch dropdown cleanup (2026-04-14)
+
+Disabled right-click context menus on the home view (file browser) branch dropdown and renamed ambiguous local variable prefixes in App.tsx.
+
+**Context menu suppression**: `BranchSelectorPopover` and `BranchItem` gained a `disableContextMenu?: boolean` prop. When set, `BranchItem` returns the row button directly without the `ContextMenu.Root` wrapper, and the detached HEAD row renders as a plain `<div>`. Applied to the home view instance only — the top bar and task detail dropdowns are unchanged.
+
+**Variable rename**: Local App.tsx aliases `homeScopeMode`, `homeResolvedScope`, `homeSwitchToHome`, `homeReturnToContextual`, `homeSelectBranchView`, and `homeBranchActions` renamed to `fileBrowser*` prefix. These control the file browser's scope and branch operations — the `home*` prefix was ambiguous since the top bar also serves the home context. `homeGitSummary` was left as-is since it represents the main working tree's git state (a data concept from the store, not a UI component identity).
+
+**Files**: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`, `web-ui/src/App.tsx`.
+
 ## Feature: editable worktree system prompt (2026-04-14)
 
 The hardcoded worktree context in `worktree-context.ts` is now a user-editable template stored in global config. The default template matches the previous hardcoded text exactly, so existing behavior is preserved.

@@ -60,6 +60,8 @@ interface BranchSelectorPopoverProps {
 	pinnedBranches?: string[];
 	/** When provided, shows "Pin to top" / "Unpin" in the branch right-click menu. */
 	onTogglePinBranch?: (branchName: string) => void;
+	/** When true, suppresses right-click context menus on branch items. */
+	disableContextMenu?: boolean;
 	trigger: React.ReactNode;
 }
 
@@ -79,6 +81,7 @@ export function BranchSelectorPopover({
 	onPush,
 	pinnedBranches,
 	onTogglePinBranch,
+	disableContextMenu,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
 	const [query, setQuery] = useState("");
@@ -221,54 +224,62 @@ export function BranchSelectorPopover({
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
 									Working tree
 								</div>
-								<ContextMenu.Root>
-									<ContextMenu.Trigger asChild>
-										<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
-											<Locate size={12} className="shrink-0 text-status-orange" />
-											<span className="truncate font-mono text-status-orange">
-												HEAD ({detachedRef.name})
-											</span>
-											<Check size={12} className="shrink-0 text-accent ml-auto" />
-										</div>
-									</ContextMenu.Trigger>
-									{onPull || onPush ? (
-										<ContextMenu.Portal>
-											<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
-												{/* Uses onSelect + preventDefault instead of Radix `disabled` prop because
-												   Radix disabled blocks pointer events, which prevents the wrapping Tooltip
-												   from showing. */}
-												{onPull ? (
-													<Tooltip
-														content="Cannot pull on a detached HEAD — checkout a branch first"
-														side="right"
-													>
-														<ContextMenu.Item
-															className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
-															onSelect={(e) => e.preventDefault()}
+								{disableContextMenu ? (
+									<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
+										<Locate size={12} className="shrink-0 text-status-orange" />
+										<span className="truncate font-mono text-status-orange">HEAD ({detachedRef.name})</span>
+										<Check size={12} className="shrink-0 text-accent ml-auto" />
+									</div>
+								) : (
+									<ContextMenu.Root>
+										<ContextMenu.Trigger asChild>
+											<div className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary">
+												<Locate size={12} className="shrink-0 text-status-orange" />
+												<span className="truncate font-mono text-status-orange">
+													HEAD ({detachedRef.name})
+												</span>
+												<Check size={12} className="shrink-0 text-accent ml-auto" />
+											</div>
+										</ContextMenu.Trigger>
+										{onPull || onPush ? (
+											<ContextMenu.Portal>
+												<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+													{/* Uses onSelect + preventDefault instead of Radix `disabled` prop because
+													   Radix disabled blocks pointer events, which prevents the wrapping Tooltip
+													   from showing. */}
+													{onPull ? (
+														<Tooltip
+															content="Cannot pull on a detached HEAD — checkout a branch first"
+															side="right"
 														>
-															<ArrowDown size={14} className="text-text-secondary" />
-															Pull from remote
-														</ContextMenu.Item>
-													</Tooltip>
-												) : null}
-												{onPush ? (
-													<Tooltip
-														content="Cannot push from a detached HEAD — checkout a branch first"
-														side="right"
-													>
-														<ContextMenu.Item
-															className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
-															onSelect={(e) => e.preventDefault()}
+															<ContextMenu.Item
+																className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
+																onSelect={(e) => e.preventDefault()}
+															>
+																<ArrowDown size={14} className="text-text-secondary" />
+																Pull from remote
+															</ContextMenu.Item>
+														</Tooltip>
+													) : null}
+													{onPush ? (
+														<Tooltip
+															content="Cannot push from a detached HEAD — checkout a branch first"
+															side="right"
 														>
-															<ArrowUp size={14} className="text-text-secondary" />
-															Push to remote
-														</ContextMenu.Item>
-													</Tooltip>
-												) : null}
-											</ContextMenu.Content>
-										</ContextMenu.Portal>
-									) : null}
-								</ContextMenu.Root>
+															<ContextMenu.Item
+																className={cn(CONTEXT_MENU_ITEM_CLASS, "opacity-50 cursor-not-allowed")}
+																onSelect={(e) => e.preventDefault()}
+															>
+																<ArrowUp size={14} className="text-text-secondary" />
+																Push to remote
+															</ContextMenu.Item>
+														</Tooltip>
+													) : null}
+												</ContextMenu.Content>
+											</ContextMenu.Portal>
+										) : null}
+									</ContextMenu.Root>
+								)}
 							</>
 						) : null}
 						{pinnedLocal.length > 0 ? (
@@ -283,6 +294,7 @@ export function BranchSelectorPopover({
 										isCurrent={gitRef.name === currentBranch}
 										worktreeTaskTitle={worktreeBranches.get(gitRef.name)}
 										isPinned
+										disableContextMenu={disableContextMenu}
 										onSelect={handleSelectBranch}
 										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
@@ -308,6 +320,7 @@ export function BranchSelectorPopover({
 										gitRef={gitRef}
 										isCurrent={gitRef.name === currentBranch}
 										worktreeTaskTitle={worktreeBranches.get(gitRef.name)}
+										disableContextMenu={disableContextMenu}
 										onSelect={handleSelectBranch}
 										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
@@ -333,6 +346,7 @@ export function BranchSelectorPopover({
 										gitRef={gitRef}
 										isCurrent={false}
 										worktreeTaskTitle={undefined}
+										disableContextMenu={disableContextMenu}
 										onSelect={handleSelectBranch}
 										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
@@ -398,6 +412,7 @@ function BranchItem({
 	isCurrent,
 	worktreeTaskTitle,
 	isPinned,
+	disableContextMenu,
 	onSelect,
 	onCheckout,
 	onCompare,
@@ -413,6 +428,7 @@ function BranchItem({
 	isCurrent: boolean;
 	worktreeTaskTitle: string | undefined;
 	isPinned?: boolean;
+	disableContextMenu?: boolean;
 	onSelect: (name: string) => void;
 	onCheckout?: (name: string) => void;
 	onCompare?: (name: string) => void;
@@ -427,58 +443,62 @@ function BranchItem({
 	const isLocked = worktreeTaskTitle !== undefined;
 	const shortName = gitRef.name.replace(/^origin\//, "");
 
+	const rowButton = (
+		<button
+			type="button"
+			onClick={() => onSelect(gitRef.name)}
+			className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
+		>
+			<GitBranch size={12} className="shrink-0" />
+			<TruncateTooltip content={gitRef.name} side="top">
+				<span className="flex-1 truncate">{shortName}</span>
+			</TruncateTooltip>
+			{gitRef.behind && gitRef.behind > 0 ? (
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
+					<ArrowDown size={10} />
+					{gitRef.behind}
+				</span>
+			) : null}
+			{gitRef.ahead && gitRef.ahead > 0 ? (
+				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-green">
+					<ArrowUp size={10} />
+					{gitRef.ahead}
+				</span>
+			) : null}
+			{isCurrent ? <Check size={12} className="shrink-0 text-accent" /> : null}
+			{isLocked ? (
+				<Tooltip content={`Checked out by Task: ${worktreeTaskTitle}`} side="right">
+					<span className="text-[10px] text-text-tertiary">in use</span>
+				</Tooltip>
+			) : onCheckout ? (
+				<Tooltip content="Checkout this branch" side="right">
+					<span
+						role="button"
+						tabIndex={0}
+						onClick={(e) => {
+							e.stopPropagation();
+							onCheckout(gitRef.name);
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.stopPropagation();
+								onCheckout(gitRef.name);
+							}
+						}}
+						className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary hover:bg-surface-3"
+					>
+						<LogIn size={12} />
+					</span>
+				</Tooltip>
+			) : null}
+		</button>
+	);
+
+	if (disableContextMenu) return rowButton;
+
 	return (
 		<ContextMenu.Root>
-			<ContextMenu.Trigger asChild>
-				<button
-					type="button"
-					onClick={() => onSelect(gitRef.name)}
-					className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
-				>
-					<GitBranch size={12} className="shrink-0" />
-					<TruncateTooltip content={gitRef.name} side="top">
-						<span className="flex-1 truncate">{shortName}</span>
-					</TruncateTooltip>
-					{gitRef.behind && gitRef.behind > 0 ? (
-						<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
-							<ArrowDown size={10} />
-							{gitRef.behind}
-						</span>
-					) : null}
-					{gitRef.ahead && gitRef.ahead > 0 ? (
-						<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-green">
-							<ArrowUp size={10} />
-							{gitRef.ahead}
-						</span>
-					) : null}
-					{isCurrent ? <Check size={12} className="shrink-0 text-accent" /> : null}
-					{isLocked ? (
-						<Tooltip content={`Checked out by Task: ${worktreeTaskTitle}`} side="right">
-							<span className="text-[10px] text-text-tertiary">in use</span>
-						</Tooltip>
-					) : onCheckout ? (
-						<Tooltip content="Checkout this branch" side="right">
-							<span
-								role="button"
-								tabIndex={0}
-								onClick={(e) => {
-									e.stopPropagation();
-									onCheckout(gitRef.name);
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") {
-										e.stopPropagation();
-										onCheckout(gitRef.name);
-									}
-								}}
-								className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary hover:bg-surface-3"
-							>
-								<LogIn size={12} />
-							</span>
-						</Tooltip>
-					) : null}
-				</button>
-			</ContextMenu.Trigger>
+			<ContextMenu.Trigger asChild>{rowButton}</ContextMenu.Trigger>
 			<ContextMenu.Portal>
 				<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
 					{onCheckout ? (

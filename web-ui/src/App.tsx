@@ -281,11 +281,11 @@ export default function App(): ReactElement {
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {
-		scopeMode: homeScopeMode,
-		resolvedScope: homeResolvedScope,
-		switchToHome: homeSwitchToHome,
-		returnToContextual: homeReturnToContextual,
-		selectBranchView: homeSelectBranchView,
+		scopeMode: fileBrowserScopeMode,
+		resolvedScope: fileBrowserResolvedScope,
+		switchToHome: fileBrowserSwitchToHome,
+		returnToContextual: fileBrowserReturnToContextual,
+		selectBranchView: fileBrowserSelectBranchView,
 	} = useScopeContext({
 		selectedTaskId: null,
 		selectedCard: null,
@@ -327,14 +327,14 @@ export default function App(): ReactElement {
 	// onConflictDetected fires asynchronously from a mutation, never during render.
 	const navigateToGitViewRef = useRef<(() => void) | null>(null);
 
-	const homeBranchActions = useBranchActions({
+	const fileBrowserBranchActions = useBranchActions({
 		workspaceId: currentProjectId,
 		board,
-		selectBranchView: homeSelectBranchView,
+		selectBranchView: fileBrowserSelectBranchView,
 		homeGitSummary,
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
-		onCheckoutSuccess: homeReturnToContextual,
+		onCheckoutSuccess: fileBrowserReturnToContextual,
 		onConflictDetected: () => navigateToGitViewRef.current?.(),
 	});
 
@@ -370,9 +370,9 @@ export default function App(): ReactElement {
 	// Home-scope file browser data + tree state
 	const homeFileBrowserData = useFileBrowserData({
 		workspaceId: currentProjectId,
-		taskId: homeResolvedScope?.type === "task" ? homeResolvedScope.taskId : null,
-		baseRef: homeResolvedScope?.type === "task" ? homeResolvedScope.baseRef : undefined,
-		ref: homeResolvedScope?.type === "branch_view" ? homeResolvedScope.ref : undefined,
+		taskId: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.taskId : null,
+		baseRef: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.baseRef : undefined,
+		ref: fileBrowserResolvedScope?.type === "branch_view" ? fileBrowserResolvedScope.ref : undefined,
 	});
 
 	const {
@@ -1069,7 +1069,7 @@ export default function App(): ReactElement {
 			workspaceHint={navbarWorkspaceHint}
 			runtimeHint={navbarRuntimeHint}
 			selectedTaskId={selectedCard?.card.id ?? null}
-			scopeType={selectedCard ? "task" : (homeResolvedScope?.type ?? "home")}
+			scopeType={selectedCard ? "task" : (fileBrowserResolvedScope?.type ?? "home")}
 			taskTitle={selectedCard?.card.title ?? null}
 			onToggleTerminal={
 				hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
@@ -1310,7 +1310,7 @@ export default function App(): ReactElement {
 									<GitHistoryView
 										workspaceId={currentProjectId}
 										gitHistory={gitHistory}
-										onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+										onCreateBranch={fileBrowserBranchActions.handleCreateBranchFrom}
 										onPullLatest={() => {
 											void runGitAction("pull", gitHistoryTaskScope);
 										}}
@@ -1445,7 +1445,7 @@ export default function App(): ReactElement {
 																onCheckoutBranch={(branch) => {
 																	void switchHomeBranch(branch);
 																}}
-																onCreateBranch={homeBranchActions.handleCreateBranchFrom}
+																onCreateBranch={fileBrowserBranchActions.handleCreateBranchFrom}
 																onPullLatest={() => {
 																	void runGitAction("pull");
 																}}
@@ -1460,8 +1460,8 @@ export default function App(): ReactElement {
 													key={currentProjectId ?? "no-project"}
 													scopeBar={
 														<ScopeBar
-															resolvedScope={homeResolvedScope}
-															scopeMode={homeScopeMode}
+															resolvedScope={fileBrowserResolvedScope}
+															scopeMode={fileBrowserScopeMode}
 															homeGitSummary={homeGitSummary}
 															taskTitle={null}
 															taskBranch={null}
@@ -1470,32 +1470,32 @@ export default function App(): ReactElement {
 															isDetachedHead={
 																homeGitSummary?.currentBranch === null && homeGitSummary !== null
 															}
-															onSwitchToHome={homeSwitchToHome}
-															onReturnToContextual={homeReturnToContextual}
+															onSwitchToHome={fileBrowserSwitchToHome}
+															onReturnToContextual={fileBrowserReturnToContextual}
 															branchPillSlot={
 																<BranchSelectorPopover
-																	isOpen={homeBranchActions.isBranchPopoverOpen}
-																	onOpenChange={homeBranchActions.setBranchPopoverOpen}
-																	branches={homeBranchActions.branches}
-																	currentBranch={homeBranchActions.currentBranch}
-																	worktreeBranches={homeBranchActions.worktreeBranches}
-																	onSelectBranchView={homeBranchActions.handleSelectBranchView}
-																	onCheckoutBranch={homeBranchActions.handleCheckoutBranch}
+																	isOpen={fileBrowserBranchActions.isBranchPopoverOpen}
+																	onOpenChange={fileBrowserBranchActions.setBranchPopoverOpen}
+																	branches={fileBrowserBranchActions.branches}
+																	currentBranch={fileBrowserBranchActions.currentBranch}
+																	worktreeBranches={fileBrowserBranchActions.worktreeBranches}
+																	onSelectBranchView={fileBrowserBranchActions.handleSelectBranchView}
+																	onCheckoutBranch={fileBrowserBranchActions.handleCheckoutBranch}
 																	onCompareWithBranch={(branch) =>
 																		openGitCompare({ targetRef: branch })
 																	}
-																	onMergeBranch={homeBranchActions.handleMergeBranch}
-																	onCreateBranch={homeBranchActions.handleCreateBranchFrom}
-																	onDeleteBranch={homeBranchActions.handleDeleteBranch}
+																	onMergeBranch={fileBrowserBranchActions.handleMergeBranch}
+																	onCreateBranch={fileBrowserBranchActions.handleCreateBranchFrom}
+																	onDeleteBranch={fileBrowserBranchActions.handleDeleteBranch}
 																	onPull={
-																		homeResolvedScope?.type !== "branch_view"
+																		fileBrowserResolvedScope?.type !== "branch_view"
 																			? (branch) => {
 																					void runGitAction("pull", null, branch);
 																				}
 																			: undefined
 																	}
 																	onPush={
-																		homeResolvedScope?.type !== "branch_view"
+																		fileBrowserResolvedScope?.type !== "branch_view"
 																			? (branch) => {
 																					void runGitAction("push", null, branch);
 																				}
@@ -1503,20 +1503,21 @@ export default function App(): ReactElement {
 																	}
 																	pinnedBranches={pinnedBranches}
 																	onTogglePinBranch={handleTogglePinBranch}
+																	disableContextMenu
 																	trigger={
 																		<BranchPillTrigger
 																			label={
-																				homeResolvedScope?.type === "branch_view"
-																					? homeResolvedScope.ref
+																				fileBrowserResolvedScope?.type === "branch_view"
+																					? fileBrowserResolvedScope.ref
 																					: (homeGitSummary?.currentBranch ?? "unknown")
 																			}
 																			aheadCount={
-																				homeResolvedScope?.type === "branch_view"
+																				fileBrowserResolvedScope?.type === "branch_view"
 																					? undefined
 																					: homeGitSummary?.aheadCount
 																			}
 																			behindCount={
-																				homeResolvedScope?.type === "branch_view"
+																				fileBrowserResolvedScope?.type === "branch_view"
 																					? undefined
 																					: homeGitSummary?.behindCount
 																			}
@@ -1525,8 +1526,11 @@ export default function App(): ReactElement {
 																/>
 															}
 															onCheckoutBrowsingBranch={
-																homeResolvedScope?.type === "branch_view"
-																	? () => homeBranchActions.handleCheckoutBranch(homeResolvedScope.ref)
+																fileBrowserResolvedScope?.type === "branch_view"
+																	? () =>
+																			fileBrowserBranchActions.handleCheckoutBranch(
+																				fileBrowserResolvedScope.ref,
+																			)
 																	: undefined
 															}
 														/>
@@ -1706,11 +1710,11 @@ export default function App(): ReactElement {
 						onConfirm={handleConfirmTrashWarning}
 					/>
 					<CheckoutConfirmationDialog
-						state={homeBranchActions.checkoutDialogState}
-						onClose={homeBranchActions.closeCheckoutDialog}
-						onConfirmCheckout={homeBranchActions.handleConfirmCheckout}
-						onStashAndCheckout={homeBranchActions.handleStashAndCheckout}
-						isStashingAndCheckingOut={homeBranchActions.isStashingAndCheckingOut}
+						state={fileBrowserBranchActions.checkoutDialogState}
+						onClose={fileBrowserBranchActions.closeCheckoutDialog}
+						onConfirmCheckout={fileBrowserBranchActions.handleConfirmCheckout}
+						onStashAndCheckout={fileBrowserBranchActions.handleStashAndCheckout}
+						isStashingAndCheckingOut={fileBrowserBranchActions.isStashingAndCheckingOut}
 					/>
 					<CheckoutConfirmationDialog
 						state={topbarBranchActions.checkoutDialogState}
@@ -1721,10 +1725,10 @@ export default function App(): ReactElement {
 						isStashingAndCheckingOut={topbarBranchActions.isStashingAndCheckingOut}
 					/>
 					<CreateBranchDialog
-						state={homeBranchActions.createBranchDialogState}
+						state={fileBrowserBranchActions.createBranchDialogState}
 						workspaceId={currentProjectId}
-						onClose={homeBranchActions.closeCreateBranchDialog}
-						onBranchCreated={homeBranchActions.handleBranchCreated}
+						onClose={fileBrowserBranchActions.closeCreateBranchDialog}
+						onBranchCreated={fileBrowserBranchActions.handleBranchCreated}
 					/>
 					<CreateBranchDialog
 						state={topbarBranchActions.createBranchDialogState}
@@ -1733,14 +1737,14 @@ export default function App(): ReactElement {
 						onBranchCreated={topbarBranchActions.handleBranchCreated}
 					/>
 					<DeleteBranchDialog
-						open={homeBranchActions.deleteBranchDialogState.type === "open"}
+						open={fileBrowserBranchActions.deleteBranchDialogState.type === "open"}
 						branchName={
-							homeBranchActions.deleteBranchDialogState.type === "open"
-								? homeBranchActions.deleteBranchDialogState.branchName
+							fileBrowserBranchActions.deleteBranchDialogState.type === "open"
+								? fileBrowserBranchActions.deleteBranchDialogState.branchName
 								: ""
 						}
-						onCancel={homeBranchActions.closeDeleteBranchDialog}
-						onConfirm={homeBranchActions.handleConfirmDeleteBranch}
+						onCancel={fileBrowserBranchActions.closeDeleteBranchDialog}
+						onConfirm={fileBrowserBranchActions.handleConfirmDeleteBranch}
 					/>
 					<DeleteBranchDialog
 						open={topbarBranchActions.deleteBranchDialogState.type === "open"}
@@ -1753,15 +1757,15 @@ export default function App(): ReactElement {
 						onConfirm={topbarBranchActions.handleConfirmDeleteBranch}
 					/>
 					<MergeBranchDialog
-						open={homeBranchActions.mergeBranchDialogState.type === "open"}
+						open={fileBrowserBranchActions.mergeBranchDialogState.type === "open"}
 						branchName={
-							homeBranchActions.mergeBranchDialogState.type === "open"
-								? homeBranchActions.mergeBranchDialogState.branchName
+							fileBrowserBranchActions.mergeBranchDialogState.type === "open"
+								? fileBrowserBranchActions.mergeBranchDialogState.branchName
 								: ""
 						}
-						currentBranch={homeBranchActions.currentBranch ?? "current branch"}
-						onCancel={homeBranchActions.closeMergeBranchDialog}
-						onConfirm={homeBranchActions.handleConfirmMergeBranch}
+						currentBranch={fileBrowserBranchActions.currentBranch ?? "current branch"}
+						onCancel={fileBrowserBranchActions.closeMergeBranchDialog}
+						onConfirm={fileBrowserBranchActions.handleConfirmMergeBranch}
 					/>
 					<MergeBranchDialog
 						open={topbarBranchActions.mergeBranchDialogState.type === "open"}
