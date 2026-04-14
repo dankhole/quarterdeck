@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-04-13
+
 ### Fix: compare/uncommitted diff tabs flashing on every poll tick
 
 - `getWorkspaceChangesFromRef` now has fingerprint-based LRU caching (matching the existing `getWorkspaceChanges` pattern) — when the working tree hasn't changed between polls, the cached response is returned with a stable `generatedAt`, skipping redundant numstat computation.
