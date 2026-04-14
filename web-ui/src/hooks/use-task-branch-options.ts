@@ -43,11 +43,11 @@ export function useTaskBranchOptions({
 
 		append(workspaceGit.currentBranch, "(current)");
 		const mainCandidate = workspaceGit.branches.includes("main") ? "main" : workspaceGit.defaultBranch;
-		append(mainCandidate, mainCandidate && mainCandidate !== workspaceGit.currentBranch ? "(default)" : undefined);
+		append(mainCandidate);
 		for (const branch of workspaceGit.branches) {
 			append(branch);
 		}
-		append(workspaceGit.defaultBranch, workspaceGit.defaultBranch ? "(default)" : undefined);
+		append(workspaceGit.defaultBranch);
 
 		return options;
 	}, [workspaceGit]);

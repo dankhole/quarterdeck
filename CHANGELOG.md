@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: base ref dropdown not resetting to user's default on dialog open
+
+- The create task dialog now resets the base ref dropdown to the user's default (pinned or auto-detected) each time it opens, instead of retaining whatever branch was used for the previous task.
+- Removed the misleading "(default)" label from git-detected branches in the dropdown — it was independent of the user's pinned default and couldn't be overridden, causing confusion when both were visible. The pin icon is the authoritative default indicator.
+- Added todo #20 and `docs/refactor-default-branch.md` documenting the three independent default-branch systems and a plan to unify them.
+
 ### Refactor: file browser branch dropdown cleanup
 
 - Disabled right-click context menus on the file browser's branch dropdown (`BranchSelectorPopover`) via a new `disableContextMenu` prop — the top bar dropdown retains context menus. Renamed local App.tsx aliases from ambiguous `home*` prefix (`homeBranchActions`, `homeResolvedScope`, etc.) to `fileBrowser*` to clarify they're scoped to the file browser, not the top bar.

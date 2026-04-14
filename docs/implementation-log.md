@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: base ref dropdown not resetting to user's default on dialog open (2026-04-14)
+
+**Root cause:** `handleOpenCreateTask` in `use-task-editor.ts` did not reset `newTaskBranchRef` when opening the create task dialog. After creating a task with branch X, the state persisted — the effect at line 156 only set it when empty, and the validity effect at line 148 only reset it when the value wasn't in the options list. So reopening the dialog showed the previous task's branch, not the user's default.
+
+**Fix (use-task-editor.ts):** Added `setNewTaskBranchRef(resolvedDefaultTaskBranchRef)` to `handleOpenCreateTask` and added `resolvedDefaultTaskBranchRef` to the callback's dependency array. Now the dropdown always opens with the correct default (config pin → last-used → git-detected).
+
+**"(default)" label removal (use-task-branch-options.ts):** The "(default)" suffix on dropdown options was derived from git's `detectGitDefaultBranch()` (server-side `origin/HEAD` detection), completely independent of the user's pinned default (`configDefaultBaseRef`). When the user pinned e.g. `develop`, the dropdown would select `develop` but still show `main (default)` — two conflicting "default" indicators. Removed the label entirely; the pin icon in `BranchSelectDropdown` is the authoritative indicator. Full unification of the three default-branch systems (git detection, dropdown label, config pin) tracked in todo #20.
+
+**Docs:** Added `docs/refactor-default-branch.md` documenting the three independent default-branch resolution paths, where they diverge (including CLI's `resolveTaskBaseRef` and home terminal ignoring the config pin), and a proposed unification plan.
+
+**Files:** `web-ui/src/hooks/use-task-editor.ts`, `web-ui/src/hooks/use-task-branch-options.ts`, `docs/todo.md`, `docs/refactor-default-branch.md`.
+
 ## Refactor: file browser branch dropdown cleanup (2026-04-14)
 
 Disabled right-click context menus on the home view (file browser) branch dropdown and renamed ambiguous local variable prefixes in App.tsx.

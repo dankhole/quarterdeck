@@ -247,8 +247,9 @@ export function useTaskEditor({
 		setEditTaskImages([]);
 		setCreateFeatureBranch(false);
 		setBranchName("");
+		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 		setIsInlineTaskCreateOpen(true);
-	}, []);
+	}, [resolvedDefaultTaskBranchRef]);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);

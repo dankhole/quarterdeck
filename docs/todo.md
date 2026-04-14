@@ -179,3 +179,7 @@ The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the
 
 This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
 
+## 20. Unify default branch resolution
+
+"Default branch" is determined in three independent places — git auto-detection (`detectGitDefaultBranch`), the "(default)" dropdown label (`useTaskBranchOptions`), and the user-pinned config (`defaultBaseRef`) — with no shared logic. When the user pins a branch, the dropdown selects correctly but the "(default)" label still points at the git-detected branch, and the CLI (`resolveTaskBaseRef`) ignores the pin entirely. Unify into a single resolution chain (config pin → git detection → fallback) used by all consumers, and make the "(default)" label follow the pin. Full analysis at [docs/refactor-default-branch.md](refactor-default-branch.md).
+
