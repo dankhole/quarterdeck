@@ -157,15 +157,7 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 - Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
 - Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (todo #6)
 
-## 18. Commit sidebar performance
-
-Committing from the sidebar is noticeably slow — there's a delay after clicking the commit button, and then a further delay before the file list refreshes to reflect the new state. Investigate and fix both:
-
-- **Commit execution latency**: Profile the commit path from button click through the tRPC call to the git commit completing. Check whether the commit is waiting on unnecessary work (full status refresh, lock contention, diff recomputation) before or during the actual `git commit`.
-- **Post-commit file list refresh**: After the commit completes, the staged/unstaged file list takes too long to update. Check whether it's re-scanning the entire worktree, re-running expensive git commands sequentially, or waiting on a full state persistence cycle before refreshing the UI.
-- Consider optimistic UI updates — clear the staged files immediately on commit success and refresh in the background.
-
-## 19. File browser and diff viewer performance
+## 18. File browser and diff viewer performance
 
 The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
 
@@ -173,7 +165,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 
-## 20. Investigate deeper App.tsx state architecture refactor
+## 19. Investigate deeper App.tsx state architecture refactor
 
 The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
 

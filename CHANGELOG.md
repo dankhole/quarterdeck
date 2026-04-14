@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Perf: commit sidebar — scoped metadata refresh, batched numstat, skip redundant probes
+
+- **Scoped metadata refresh**: Git-only operations (commit, discard, stash push/pop/apply/drop) now call `requestTaskRefresh` or `requestHomeRefresh` instead of rebuilding and broadcasting the full workspace state snapshot and probing every task on the board. Follows the existing `mergeBranch` pattern. Added `requestHomeRefresh` to the metadata monitor for home-scoped operations.
+- **Batched numstat**: `getWorkspaceChanges`, `getWorkspaceChangesBetweenRefs`, and `getWorkspaceChangesFromRef` now run a single `git diff --numstat` for all files instead of spawning one per file. For N changed files, this reduces git process spawns from N to 1 for the numstat phase.
+- **Skip redundant initialSummary**: `runGitSyncAction` now defers the expensive `getGitSyncSummary` probe when action is push/fetch without an explicit branch — the dirty-tree guard is pull-only and `isOtherBranch` is trivially false.
+- **Commit+push path**: Eliminated transient intermediate metadata broadcast — now refreshes once after push instead of once after commit and once after push.
+
 ### Fix: DPR change listener now repairs terminal rendering
 
 - The DPR change listener (monitor moves, zoom, display setting changes) previously only sent a resize to the server, leaving the glyph texture atlas stale — producing blurry text until the next task switch. Now calls the full canvas repair sequence (dimension bounce, `clearTextureAtlas()`, repaint) so DPR changes are handled immediately.

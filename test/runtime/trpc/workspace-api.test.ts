@@ -202,6 +202,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -255,6 +256,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -293,6 +295,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		const response = await api.loadChanges(
@@ -321,6 +324,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -344,6 +348,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		await api.loadChanges(
@@ -373,6 +378,7 @@ describe("createWorkspaceApi loadChanges", () => {
 			buildWorkspaceStateSnapshot: vi.fn(),
 			setFocusedTask: vi.fn(),
 			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
 		});
 
 		const response = await api.loadChanges(
@@ -394,6 +400,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 		buildWorkspaceStateSnapshot: vi.fn(),
 		setFocusedTask: vi.fn(),
 		requestTaskRefresh: vi.fn(),
+		requestHomeRefresh: vi.fn(),
 		...overrides,
 	};
 }
@@ -731,7 +738,7 @@ describe("createWorkspaceApi commitSelectedFiles", () => {
 		expect(gitSyncMocks.commitSelectedFiles).not.toHaveBeenCalled();
 	});
 
-	it("broadcasts state update on success", async () => {
+	it("refreshes home git metadata on success (home-scoped commit)", async () => {
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
@@ -748,7 +755,8 @@ describe("createWorkspaceApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 
 	it("returns error on git failure", async () => {
@@ -824,7 +832,7 @@ describe("createWorkspaceApi discardFile", () => {
 		expect(gitSyncMocks.discardSingleFile).not.toHaveBeenCalled();
 	});
 
-	it("broadcasts state update on success", async () => {
+	it("refreshes task git metadata on success (task-scoped discard)", async () => {
 		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.discardSingleFile.mockResolvedValue({
 			ok: true,
@@ -841,6 +849,7 @@ describe("createWorkspaceApi discardFile", () => {
 			fileStatus: "modified",
 		});
 
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 });

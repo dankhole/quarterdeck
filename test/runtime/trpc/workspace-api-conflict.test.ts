@@ -142,6 +142,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 		buildWorkspaceStateSnapshot: vi.fn(),
 		setFocusedTask: vi.fn(),
 		requestTaskRefresh: vi.fn(),
+		requestHomeRefresh: vi.fn(),
 		...overrides,
 	};
 }

@@ -83,6 +83,7 @@ export interface CreateWorkspaceApiDependencies {
 	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
 	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
+	requestHomeRefresh: (workspaceId: string) => void;
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────────
@@ -183,6 +184,20 @@ function createGitOutputErrorResponse(error: unknown): RuntimeGitDiscardResponse
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
 	const broadcastStateUpdate = (scope: { workspaceId: string; workspacePath: string }) => {
 		void deps.broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
+	};
+
+	// Lightweight refresh for git-only operations (commit, discard, stash) that don't
+	// change board state or sessions. Refreshes only the affected metadata scope instead
+	// of rebuilding + broadcasting the full workspace state snapshot and probing all tasks.
+	const refreshGitMetadata = (
+		scope: { workspaceId: string },
+		taskScope: { taskId: string; baseRef: string } | null,
+	) => {
+		if (taskScope) {
+			deps.requestTaskRefresh(scope.workspaceId, taskScope.taskId);
+		} else {
+			deps.requestHomeRefresh(scope.workspaceId);
+		}
 	};
 
 	return {
@@ -380,7 +395,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					);
 				}
 				const response = await discardGitChanges({ cwd });
-				if (response.ok) broadcastStateUpdate(workspaceScope);
+				if (response.ok) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return createGitOutputErrorResponse(error);
@@ -402,11 +417,12 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					message: input.message,
 				});
 				if (response.ok) {
-					broadcastStateUpdate(workspaceScope);
-
 					// Push after successful commit if requested, reusing the existing git sync infrastructure.
 					if (input.pushAfterCommit) {
 						const pushResult = await runGitSyncAction({ cwd: commitCwd, action: "push" });
+						// Refresh after push — skip the intermediate post-commit refresh to avoid
+						// a transient stale broadcast that the post-push refresh immediately supersedes.
+						refreshGitMetadata(workspaceScope, taskScope);
 						return {
 							...response,
 							pushOk: pushResult.ok,
@@ -415,6 +431,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 							summary: pushResult.summary,
 						};
 					}
+					refreshGitMetadata(workspaceScope, taskScope);
 				}
 				return response;
 			} catch (error) {
@@ -436,7 +453,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					path: input.path,
 					fileStatus: input.fileStatus,
 				});
-				if (response.ok) broadcastStateUpdate(workspaceScope);
+				if (response.ok) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return createGitOutputErrorResponse(error);
@@ -780,12 +797,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 		stashPush: async (workspaceScope, input) => {
 			try {
-				const cwd = await resolveWorkingDir(
-					workspaceScope.workspacePath,
-					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
-				);
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
 				const response = await stashPush({ cwd, paths: input.paths, message: input.message });
-				if (response.ok) broadcastStateUpdate(workspaceScope);
+				if (response.ok) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashPushResponse;
@@ -806,12 +821,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 		stashPop: async (workspaceScope, input) => {
 			try {
-				const cwd = await resolveWorkingDir(
-					workspaceScope.workspacePath,
-					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
-				);
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
 				const response = await stashPop({ cwd, index: input.index });
-				if (response.ok || response.conflicted) broadcastStateUpdate(workspaceScope);
+				if (response.ok || response.conflicted) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return { ok: false, conflicted: false, error: errorMessage(error) } satisfies RuntimeStashPopApplyResponse;
@@ -820,12 +833,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 		stashApply: async (workspaceScope, input) => {
 			try {
-				const cwd = await resolveWorkingDir(
-					workspaceScope.workspacePath,
-					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
-				);
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
 				const response = await stashApply({ cwd, index: input.index });
-				if (response.ok || response.conflicted) broadcastStateUpdate(workspaceScope);
+				if (response.ok || response.conflicted) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return { ok: false, conflicted: false, error: errorMessage(error) } satisfies RuntimeStashPopApplyResponse;
@@ -834,12 +845,10 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 		stashDrop: async (workspaceScope, input) => {
 			try {
-				const cwd = await resolveWorkingDir(
-					workspaceScope.workspacePath,
-					normalizeOptionalTaskWorkspaceScopeInput(input.taskScope),
-				);
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope);
+				const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
 				const response = await stashDrop({ cwd, index: input.index });
-				if (response.ok) broadcastStateUpdate(workspaceScope);
+				if (response.ok) refreshGitMetadata(workspaceScope, taskScope);
 				return response;
 			} catch (error) {
 				return { ok: false, error: errorMessage(error) } satisfies RuntimeStashDropResponse;

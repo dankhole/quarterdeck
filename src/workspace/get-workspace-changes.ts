@@ -8,7 +8,7 @@ import type {
 } from "../core/api-contract";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
-import { countLines, getGitStdout, parseNumstatLine, resolveRepoRoot } from "./git-utils";
+import { countLines, getGitStdout, resolveRepoRoot } from "./git-utils";
 
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
 
@@ -169,24 +169,43 @@ function fallbackStats(oldText: string | null, newText: string | null): DiffStat
 	};
 }
 
-/** Run `git diff --numstat <args>` and parse the first result line. */
-async function readDiffNumstat(repoRoot: string, args: string[]): Promise<DiffStat | null> {
+/**
+ * Run a single `git diff --numstat` for all files at once and return a lookup map.
+ * This replaces N individual per-file numstat calls with one batched command.
+ * Numstat output format: `additions\tdeletions\tpath` (one line per file).
+ * Binary files output `-\t-\tpath` which parses to { additions: 0, deletions: 0 }.
+ */
+async function batchDiffNumstat(repoRoot: string, args: string[]): Promise<Map<string, DiffStat>> {
+	const result = new Map<string, DiffStat>();
 	try {
 		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
+		for (const rawLine of output.split("\n")) {
+			const line = rawLine.trim();
+			if (!line) continue;
+			const parts = line.split("\t");
+			if (parts.length < 3) continue;
+			const additions = Number.parseInt(parts[0] ?? "", 10);
+			const deletions = Number.parseInt(parts[1] ?? "", 10);
+			// The path is the last tab-separated field (handles rename output).
+			const path = parts[parts.length - 1];
+			if (path) {
+				result.set(path, {
+					additions: Number.isFinite(additions) ? additions : 0,
+					deletions: Number.isFinite(deletions) ? deletions : 0,
+				});
+			}
 		}
-		return parseNumstatLine(firstLine);
 	} catch {
-		return null;
+		// Fall through — callers use fallbackStats for missing entries.
 	}
+	return result;
 }
 
-async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promise<RuntimeWorkspaceFileChange> {
+async function buildFileChange(
+	repoRoot: string,
+	entry: NameStatusEntry,
+	batchedStats: Map<string, DiffStat>,
+): Promise<RuntimeWorkspaceFileChange> {
 	const basePath = entry.previousPath ?? entry.path;
 	const oldText =
 		entry.status === "added" || entry.status === "untracked" ? null : await readHeadFile(repoRoot, basePath);
@@ -194,7 +213,7 @@ async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promis
 	const stats =
 		entry.status === "untracked"
 			? { additions: countLines(newText ?? ""), deletions: 0 }
-			: ((await readDiffNumstat(repoRoot, ["HEAD", "--", entry.path])) ?? fallbackStats(oldText, newText));
+			: (batchedStats.get(entry.path) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,
@@ -212,12 +231,12 @@ async function buildFileChangeBetweenRefs(
 	entry: NameStatusEntry,
 	fromRef: string,
 	toRef: string,
+	batchedStats: Map<string, DiffStat>,
 ): Promise<RuntimeWorkspaceFileChange> {
 	const basePath = entry.previousPath ?? entry.path;
 	const oldText = entry.status === "added" ? null : await readFileAtRef(repoRoot, fromRef, basePath);
 	const newText = entry.status === "deleted" ? null : await readFileAtRef(repoRoot, toRef, entry.path);
-	const stats =
-		(await readDiffNumstat(repoRoot, [fromRef, toRef, "--", entry.path])) ?? fallbackStats(oldText, newText);
+	const stats = batchedStats.get(entry.path) ?? fallbackStats(oldText, newText);
 
 	return {
 		path: entry.path,
@@ -234,6 +253,7 @@ async function buildFileChangeFromRef(
 	repoRoot: string,
 	entry: NameStatusEntry,
 	fromRef: string,
+	batchedStats: Map<string, DiffStat>,
 ): Promise<RuntimeWorkspaceFileChange> {
 	const basePath = entry.previousPath ?? entry.path;
 	const oldText =
@@ -244,7 +264,7 @@ async function buildFileChangeFromRef(
 	const stats =
 		entry.status === "untracked"
 			? { additions: countLines(newText ?? ""), deletions: 0 }
-			: ((await readDiffNumstat(repoRoot, [fromRef, "--", entry.path])) ?? fallbackStats(oldText, newText));
+			: (batchedStats.get(entry.path) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,
@@ -305,7 +325,14 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 		return existing.response;
 	}
 
-	const files = await Promise.all(allChanges.map((entry) => buildFileChange(repoRoot, entry)));
+	// Batch numstat for all tracked files in one git command instead of N per-file calls.
+	const trackedEntries = allChanges.filter((entry) => entry.status !== "untracked");
+	const numstatMap =
+		trackedEntries.length > 0
+			? await batchDiffNumstat(repoRoot, ["HEAD", "--", ...trackedEntries.map((e) => e.path)])
+			: new Map<string, DiffStat>();
+
+	const files = await Promise.all(allChanges.map((entry) => buildFileChange(repoRoot, entry, numstatMap)));
 	files.sort((left, right) => left.path.localeCompare(right.path));
 	const response: RuntimeWorkspaceChangesResponse = {
 		repoRoot,
@@ -339,8 +366,17 @@ export async function getWorkspaceChangesBetweenRefs(
 		};
 	}
 
+	const numstatMap = await batchDiffNumstat(repoRoot, [
+		input.fromRef,
+		input.toRef,
+		"--",
+		...trackedChanges.map((e) => e.path),
+	]);
+
 	const files = await Promise.all(
-		trackedChanges.map((entry) => buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef)),
+		trackedChanges.map((entry) =>
+			buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef, numstatMap),
+		),
 	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
 
@@ -382,7 +418,15 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		};
 	}
 
-	const files = await Promise.all(allChanges.map((entry) => buildFileChangeFromRef(repoRoot, entry, input.fromRef)));
+	const trackedForNumstat = allChanges.filter((entry) => entry.status !== "untracked");
+	const numstatMap =
+		trackedForNumstat.length > 0
+			? await batchDiffNumstat(repoRoot, [input.fromRef, "--", ...trackedForNumstat.map((e) => e.path)])
+			: new Map<string, DiffStat>();
+
+	const files = await Promise.all(
+		allChanges.map((entry) => buildFileChangeFromRef(repoRoot, entry, input.fromRef, numstatMap)),
+	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
 	return {
 		repoRoot,

@@ -45,6 +45,7 @@ export interface WorkspaceMetadataMonitor {
 	}) => Promise<RuntimeWorkspaceMetadata>;
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
 	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
+	requestHomeRefresh: (workspaceId: string) => void;
 	setPollIntervals: (
 		workspaceId: string,
 		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
@@ -347,6 +348,9 @@ export function createWorkspaceMetadataMonitor(
 					broadcastIfChanged(workspaceId, entry, previous);
 				});
 			}
+		},
+		requestHomeRefresh: (workspaceId) => {
+			void refreshHome(workspaceId);
 		},
 		setPollIntervals: (workspaceId, intervals) => {
 			const entry = workspaces.get(workspaceId);

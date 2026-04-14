@@ -156,6 +156,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
 				setFocusedTask: deps.runtimeStateHub.setFocusedTask,
 				requestTaskRefresh: deps.runtimeStateHub.requestTaskRefresh,
+				requestHomeRefresh: deps.runtimeStateHub.requestHomeRefresh,
 			}),
 			projectsApi: createProjectsApi({
 				getActiveWorkspacePath: deps.workspaceRegistry.getActiveWorkspacePath,

@@ -17,11 +17,17 @@ export async function runGitSyncAction(options: {
 	/** When set, targets a specific branch instead of the currently checked-out one. */
 	branch?: string | null;
 }): Promise<RuntimeGitSyncResponse> {
-	const initialSummary = await getGitSyncSummary(options.cwd);
 	const targetBranch = options.branch?.trim() || null;
-	const isOtherBranch = targetBranch !== null && targetBranch !== initialSummary.currentBranch;
 
-	if (options.action === "pull" && !isOtherBranch && initialSummary.changedFiles > 0) {
+	// The initial summary is only needed when:
+	// - pull: dirty-tree guard checks changedFiles
+	// - explicit branch: isOtherBranch determines push target / fetch strategy
+	// For push/fetch without a target branch, skip the expensive probe.
+	const needsInitialProbe = options.action === "pull" || targetBranch !== null;
+	const initialSummary = needsInitialProbe ? await getGitSyncSummary(options.cwd) : null;
+	const isOtherBranch = targetBranch !== null && targetBranch !== initialSummary?.currentBranch;
+
+	if (options.action === "pull" && !isOtherBranch && initialSummary && initialSummary.changedFiles > 0) {
 		return {
 			ok: false,
 			action: options.action,

@@ -151,6 +151,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 		buildWorkspaceStateSnapshot: vi.fn(),
 		setFocusedTask: vi.fn(),
 		requestTaskRefresh: vi.fn(),
+		requestHomeRefresh: vi.fn(),
 		...overrides,
 	};
 }
@@ -199,6 +200,22 @@ describe("createWorkspaceApi stash endpoints", () => {
 		});
 	});
 
+	// ─── Test 1b: stashPush refreshes task git metadata on success ─────────
+	it("stashPush refreshes task git metadata on success (task-scoped)", async () => {
+		gitSyncMocks.stashPush.mockResolvedValue({ ok: true });
+
+		const deps = createWorkspaceDeps();
+		const api = createWorkspaceApi(deps);
+
+		await api.stashPush(defaultScope, {
+			taskScope: { taskId: "task-1", baseRef: "main" },
+			paths: [],
+		});
+
+		expect(deps.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
+	});
+
 	// ─── Test 2: stashPush uses home repo for null taskScope ──────────────
 	it("stashPush uses home repo for null taskScope", async () => {
 		const pushResponse: RuntimeStashPushResponse = { ok: true };
@@ -222,8 +239,8 @@ describe("createWorkspaceApi stash endpoints", () => {
 		});
 	});
 
-	// ─── Test 3: stashPush broadcasts state update on success ─────────────
-	it("stashPush broadcasts state update on success", async () => {
+	// ─── Test 3: stashPush refreshes home git metadata on success ─────────
+	it("stashPush refreshes home git metadata on success", async () => {
 		const pushResponse: RuntimeStashPushResponse = { ok: true };
 		gitSyncMocks.stashPush.mockResolvedValue(pushResponse);
 
@@ -235,7 +252,8 @@ describe("createWorkspaceApi stash endpoints", () => {
 			paths: [],
 		});
 
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 
 	// ─── Test 4: stashList returns entries from git-sync ──────────────────
@@ -260,8 +278,8 @@ describe("createWorkspaceApi stash endpoints", () => {
 		expect(gitSyncMocks.stashList).toHaveBeenCalledWith("/tmp/repo");
 	});
 
-	// ─── Test 5: stashPop calls stashPop and broadcasts ───────────────────
-	it("stashPop calls stashPop and broadcasts", async () => {
+	// ─── Test 5: stashPop calls stashPop and refreshes metadata ───────────
+	it("stashPop calls stashPop and refreshes metadata", async () => {
 		const popResponse: RuntimeStashPopApplyResponse = { ok: true, conflicted: false };
 		gitSyncMocks.stashPop.mockResolvedValue(popResponse);
 
@@ -276,11 +294,11 @@ describe("createWorkspaceApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashPop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
-	// ─── Test 6: stashApply calls stashApply and broadcasts ───────────────
-	it("stashApply calls stashApply and broadcasts", async () => {
+	// ─── Test 6: stashApply calls stashApply and refreshes metadata ───────
+	it("stashApply calls stashApply and refreshes metadata", async () => {
 		const applyResponse: RuntimeStashPopApplyResponse = { ok: true, conflicted: false };
 		gitSyncMocks.stashApply.mockResolvedValue(applyResponse);
 
@@ -295,11 +313,11 @@ describe("createWorkspaceApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashApply).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 1 });
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
-	// ─── Test 7: stashDrop calls stashDrop and broadcasts ─────────────────
-	it("stashDrop calls stashDrop and broadcasts", async () => {
+	// ─── Test 7: stashDrop calls stashDrop and refreshes metadata ─────────
+	it("stashDrop calls stashDrop and refreshes metadata", async () => {
 		const dropResponse: RuntimeStashDropResponse = { ok: true };
 		gitSyncMocks.stashDrop.mockResolvedValue(dropResponse);
 
@@ -313,7 +331,7 @@ describe("createWorkspaceApi stash endpoints", () => {
 
 		expect(result.ok).toBe(true);
 		expect(gitSyncMocks.stashDrop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
 	// ─── Test 8: stashShow returns diff ───────────────────────────────────

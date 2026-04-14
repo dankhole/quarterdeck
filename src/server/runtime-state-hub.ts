@@ -62,6 +62,7 @@ export interface RuntimeStateHub {
 	) => void;
 	setFocusedTask: (workspaceId: string, taskId: string | null) => void;
 	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
+	requestHomeRefresh: (workspaceId: string) => void;
 	setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => void;
 	broadcastDebugLoggingState: (enabled: boolean) => void;
 	close: () => Promise<void>;
@@ -502,6 +503,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		},
 		requestTaskRefresh: (workspaceId: string, taskId: string) => {
 			workspaceMetadataMonitor.requestTaskRefresh(workspaceId, taskId);
+		},
+		requestHomeRefresh: (workspaceId: string) => {
+			workspaceMetadataMonitor.requestHomeRefresh(workspaceId);
 		},
 		setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => {
 			workspaceMetadataMonitor.setPollIntervals(workspaceId, intervals);

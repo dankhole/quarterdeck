@@ -2,6 +2,28 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Perf: commit sidebar — scoped metadata refresh, batched numstat, skip redundant probes (2026-04-13)
+
+Three performance optimizations for the commit sidebar (closes todo #18):
+
+**1. Scoped metadata refresh** — The biggest win. Previously, every git-only operation (commit, discard, stash) called `broadcastStateUpdate` which: built a full `RuntimeWorkspaceStateResponse` snapshot (disk I/O for board + sessions), sent it to all WebSocket clients, then called `workspaceMetadataMonitor.updateWorkspaceState` which ran `refreshWorkspace` — probing git state for the home repo AND every tracked task on the board. With N tasks, that's O(N) unnecessary git spawns per commit.
+
+Now git-only operations call `refreshGitMetadata(scope, taskScope)` which routes to `requestTaskRefresh` (task-scoped) or `requestHomeRefresh` (home-scoped). These refresh only the affected metadata scope via the monitor's existing narrow-refresh API. The monitor's `onMetadataUpdated` callback sends `workspace_metadata_updated` to clients, which bumps `stateVersion` and triggers the file list refetch — same end result, far less work.
+
+Added `requestHomeRefresh` to `WorkspaceMetadataMonitor` interface/impl, `RuntimeStateHub` interface/impl, and wired through `runtime-server.ts` to `workspace-api.ts` deps. Board-wide operations (checkout, merge, branch create/delete) still use the full `broadcastStateUpdate`.
+
+Affected handlers: `commitSelectedFiles`, `discardGitChanges`, `discardFile`, `stashPush`, `stashPop`, `stashApply`, `stashDrop`.
+
+**2. Batched numstat** — `getWorkspaceChanges` and its variants (`getWorkspaceChangesBetweenRefs`, `getWorkspaceChangesFromRef`) previously spawned a per-file `git diff --numstat HEAD -- <path>` for each changed file. With N files, that's N git process spawns. Now a single `batchDiffNumstat` call runs `git diff --numstat HEAD -- file1 file2 ...` and parses the multi-line output into a `Map<path, DiffStat>` lookup. Binary files (`-\t-\tpath`) parse to `{additions: 0, deletions: 0}`, matching prior behavior. Untracked files are excluded from the batch (they compute additions via `countLines`).
+
+Removed the per-file `readDiffNumstat` helper and the `parseNumstatLine` import (no longer needed here — inline parsing is simpler for the batch case).
+
+**3. Skip redundant initialSummary** — `runGitSyncAction` previously called `getGitSyncSummary` unconditionally before every git operation. This runs `probeGitWorkspaceState` (2 git commands + filesystem stats) + `git diff --numstat HEAD`. The summary was only needed for: (a) the dirty-tree guard (pull-only), and (b) `isOtherBranch` detection (needs `currentBranch` when an explicit branch is specified). For push/fetch without an explicit branch, neither applies. Now gated on `needsInitialProbe = action === "pull" || targetBranch !== null`.
+
+**4. Commit+push path fix** — Previously fired `refreshGitMetadata` twice: once after commit (producing a transient aheadCount+1 state) and once after push. The first refresh is wasteful and could be dropped by the monitor's `homeRefreshInFlight` guard. Now refreshes once, after the push completes.
+
+Files: `src/workspace/git-sync.ts`, `src/workspace/get-workspace-changes.ts`, `src/trpc/workspace-api.ts`, `src/server/runtime-state-hub.ts`, `src/server/workspace-metadata-monitor.ts`, `src/server/runtime-server.ts`, `test/runtime/trpc/workspace-api.test.ts`, `test/runtime/trpc/workspace-api-stash.test.ts`, `test/runtime/trpc/workspace-api-conflict.test.ts`.
+
 ## Fix: DPR change listener + remove dead scrollOnEraseInDisplay plumbing (2026-04-13)
 
 **DPR listener fix:** The `listenForDprChange()` handler in `persistent-terminal-manager.ts` only called `requestResize()`, which sends correct dimensions to the server but doesn't invalidate xterm.js's stale glyph texture atlas. After a monitor move or zoom, text stayed blurry until the next task switch (which triggers `mount()` → `repairRendererCanvas()`). Changed the handler to call `repairRendererCanvas("dpr-change")` directly, which includes the full three-step repair: dimension bounce, `clearTextureAtlas()`, `refresh()`, plus a `forceResize()`. The `!this.visibleContainer` guard in `repairRendererCanvas` prevents work on parked terminals, and `unmount()` clears the DPR listener anyway, so the guard is belt-and-suspenders.
