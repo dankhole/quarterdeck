@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: top bar branch context menu missing push/pull actions
+
+- The top bar branch selector popover was missing `onPull` and `onPush` handlers — right-clicking a branch showed checkout, compare, merge, create, and delete but not "Pull from remote" or "Push to remote". The home scope bar and task detail view already had them wired. Added the missing props using the same `runGitAction` pattern with `gitSyncTaskScope` so it targets the correct repo (home or task worktree) depending on context.
+
 ### Perf: lazy diff content loading — metadata-only polling, on-demand file content
 
 - **Metadata-only file lists**: `getWorkspaceChanges`, `getWorkspaceChangesBetweenRefs`, and `getWorkspaceChangesFromRef` now return `oldText: null, newText: null` for every file. File stats come from a single batch `git diff --numstat` call via new `parseNumstatPerFile` parser (handles renames and binary files). Polling drops from O(3N) git process spawns to O(4).

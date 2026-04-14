@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: top bar branch context menu missing push/pull actions (2026-04-13)
+
+The `BranchSelectorPopover` in the top bar (`App.tsx:1098`) was not receiving `onPull` or `onPush` props, so right-clicking any branch only showed checkout, compare, merge, create, delete, pin, and copy — but not "Pull from remote" or "Push to remote". The home scope bar (`App.tsx:1476`) and card detail view (`card-detail-view.tsx:458-459`) already passed these handlers.
+
+**Fix**: Added `onPull` and `onPush` to the top bar instance, using `runGitAction("pull"|"push", gitSyncTaskScope ?? null, branch)` — the same pattern as the adjacent fetch/pull/push icon buttons. `gitSyncTaskScope` ensures the action targets the task worktree when a task is selected, or home when nothing is selected.
+
+**Files**: `web-ui/src/App.tsx`
+
 ## Perf: lazy diff content loading — metadata-only polling, on-demand file content (2026-04-13)
 
 The git view tabs (Uncommitted, Last Turn, Compare) polled `getChanges` every 1 second, which loaded full file content (`oldText`/`newText` via `git show` + disk reads) for every changed file. With 20 files, that was 40-60 git process spawns per second plus large JSON payloads — the root cause of the slow loading.

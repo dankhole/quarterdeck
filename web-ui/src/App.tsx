@@ -1107,6 +1107,12 @@ export default function App(): ReactElement {
 							onMergeBranch={topbarBranchActions.handleMergeBranch}
 							onCreateBranch={topbarBranchActions.handleCreateBranchFrom}
 							onDeleteBranch={topbarBranchActions.handleDeleteBranch}
+							onPull={(branch) => {
+								void runGitAction("pull", gitSyncTaskScope ?? null, branch);
+							}}
+							onPush={(branch) => {
+								void runGitAction("push", gitSyncTaskScope ?? null, branch);
+							}}
 							pinnedBranches={pinnedBranches}
 							onTogglePinBranch={handleTogglePinBranch}
 							trigger={
