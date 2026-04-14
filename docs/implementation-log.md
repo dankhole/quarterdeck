@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: commit sidebar improvements — stash relocated, generate-message button (2026-04-14)
+
+Two changes to the commit sidebar panel (`commit-panel.tsx`):
+
+**Layout restructure**: Moved the Stash button group (Stash + message toggle) and Discard All button above the commit message textarea. The old layout had all buttons in a single row at the bottom — stash, commit, commit & push, and discard all crammed together. The new layout creates a clear visual separation: stash/discard are "save work" actions at the top of the bottom section, commit message + commit buttons are below. The stash message collapsible input moves with its button.
+
+**Generate commit message button**: Added a Sparkles icon button positioned absolutely in the top-right corner of the commit message textarea (same icon/pattern used by `inline-title-editor.tsx` for title regeneration and `task-create-dialog.tsx` for branch name generation). Clicking it calls the new `generateCommitMessage` tRPC mutation, which:
+1. Resolves the working directory for the task scope via `getDiffText` (new workspace API method)
+2. Runs `git diff HEAD -- <selected paths>` to get the unified diff text
+3. Truncates to 3000 chars and sends to the LLM client (`callLlm`) with a commit-message-specific system prompt
+4. Returns the generated message, which populates the textarea (user can edit before committing)
+
+The generator follows the same pattern as `title-generator.ts` and `summary-generator.ts`: system prompt with strict output rules, `callLlm()` with rate limiting, returns `string | null`, never throws. Uses 150 max tokens (vs 20 for titles, 60 for summaries) and 7s timeout. The system prompt requests imperative mood, max 72-char summary line, and optional bullet points for non-trivial changes.
+
+The hook (`use-commit-panel.ts`) adds `isGeneratingMessage` state and a `generateMessage` callback that guards against duplicate in-flight calls and shows toast feedback on failure. The button is disabled when no files are selected or generation is in flight, and shows a Spinner during generation.
+
+Updated todo #15 to reflect that the explicit generate button is done — what remains is auto-fill-on-open behavior and integration with agent session context. Removed todo #26 (fully completed) and renumbered #27-#30 → #26-#29.
+
+**Files**: `src/title/commit-message-generator.ts` (new), `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `web-ui/src/hooks/use-commit-panel.ts`, `docs/todo.md`, `CHANGELOG.md`.
+
 ## Feature: per-event scoped notification beeps (2026-04-14)
 
 Added per-event-type "other projects only" suppression for notification sounds. Previously `audibleNotificationsOnlyWhenHidden` was the only scoping mechanism — it suppressed all sounds when the tab was focused. The new `audibleNotificationSuppressCurrentProject` config field is an object with `{ permission, review, failure, completion }` booleans, matching the shape of `audibleNotificationEvents`. Each event type can independently be set to only beep for tasks in other projects.

@@ -10,6 +10,7 @@ import {
 	GitCompare,
 	MessageSquare,
 	Minus,
+	Sparkles,
 	Undo2,
 	X,
 } from "lucide-react";
@@ -163,6 +164,8 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		isPushing,
 		isDiscarding,
 		isStashing,
+		isGeneratingMessage,
+		generateMessage,
 		stashMessage,
 		setStashMessage,
 		stashChanges,
@@ -242,7 +245,7 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 				)}
 			</div>
 
-			{/* Bottom section — commit message + buttons + inline error */}
+			{/* Bottom section — stash/discard, then commit message + commit buttons */}
 			<div className="shrink-0 border-t border-border p-3 flex flex-col gap-2">
 				{lastError ? (
 					<div className="rounded-md border border-status-red/40 bg-status-red/10 text-[12px]">
@@ -270,52 +273,10 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 						) : null}
 					</div>
 				) : null}
-				<textarea
-					value={message}
-					onChange={(e) => setMessage(e.target.value)}
-					placeholder="Commit message"
-					rows={3}
-					className="bg-surface-2 border border-border rounded-md p-2 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y min-h-[4.5rem] focus:outline-none focus:border-border-focus"
-				/>
-				{/* Stash message — collapsible input */}
-				{stashMessageVisible ? (
-					<div className="flex items-center gap-1.5">
-						<input
-							type="text"
-							value={stashMessage}
-							onChange={(e) => setStashMessage(e.target.value)}
-							placeholder="Stash message (optional)"
-							className="flex-1 bg-surface-2 border border-border rounded-md px-2 py-1 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-border-focus"
-						/>
-						<button
-							type="button"
-							className="p-1 rounded text-text-tertiary hover:text-text-primary cursor-pointer"
-							onClick={() => {
-								setStashMessageVisible(false);
-								setStashMessage("");
-							}}
-						>
-							<X size={14} />
-						</button>
-					</div>
-				) : null}
-				<div className="flex gap-2">
-					<Button variant="primary" size="sm" disabled={!canCommit} onClick={() => void commitFiles()}>
-						{isCommitting && !isPushing ? <Spinner size={14} /> : "Commit"}
-					</Button>
-					<Tooltip
-						content={
-							canCommit && !canPush ? "Push unavailable on detached HEAD" : "Commit selected files and push"
-						}
-					>
-						<span className="inline-flex">
-							<Button variant="default" size="sm" disabled={!canPush} onClick={() => void commitAndPush()}>
-								{isPushing ? <Spinner size={14} /> : "Commit & Push"}
-							</Button>
-						</span>
-					</Tooltip>
-					{hasFiles ? (
-						<>
+				{/* Stash & discard row — above commit to separate "save work" from "commit" */}
+				{hasFiles ? (
+					<>
+						<div className="flex gap-2">
 							<div className="flex items-center gap-0.5">
 								<Button
 									variant="default"
@@ -344,8 +305,72 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 							>
 								{isDiscarding ? <Spinner size={14} /> : "Discard All"}
 							</Button>
-						</>
-					) : null}
+						</div>
+						{/* Stash message — collapsible input */}
+						{stashMessageVisible ? (
+							<div className="flex items-center gap-1.5">
+								<input
+									type="text"
+									value={stashMessage}
+									onChange={(e) => setStashMessage(e.target.value)}
+									placeholder="Stash message (optional)"
+									className="flex-1 bg-surface-2 border border-border rounded-md px-2 py-1 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-border-focus"
+								/>
+								<button
+									type="button"
+									className="p-1 rounded text-text-tertiary hover:text-text-primary cursor-pointer"
+									onClick={() => {
+										setStashMessageVisible(false);
+										setStashMessage("");
+									}}
+								>
+									<X size={14} />
+								</button>
+							</div>
+						) : null}
+					</>
+				) : null}
+				{/* Commit message + generate button */}
+				<div className="relative">
+					<textarea
+						value={message}
+						onChange={(e) => setMessage(e.target.value)}
+						placeholder="Commit message"
+						rows={3}
+						className="w-full bg-surface-2 border border-border rounded-md p-2 pr-8 text-[13px] text-text-primary placeholder:text-text-tertiary resize-y min-h-[4.5rem] focus:outline-none focus:border-border-focus"
+					/>
+					<Tooltip content="Generate commit message from diff">
+						<button
+							type="button"
+							className={cn(
+								"absolute top-2 right-2 p-1 rounded cursor-pointer",
+								isGeneratingMessage
+									? "text-accent"
+									: "text-text-tertiary hover:text-text-secondary hover:bg-surface-3",
+							)}
+							disabled={isGeneratingMessage || selectedPaths.length === 0}
+							onClick={() => void generateMessage()}
+						>
+							{isGeneratingMessage ? <Spinner size={14} /> : <Sparkles size={14} />}
+						</button>
+					</Tooltip>
+				</div>
+				{/* Commit buttons */}
+				<div className="flex gap-2">
+					<Button variant="primary" size="sm" disabled={!canCommit} onClick={() => void commitFiles()}>
+						{isCommitting && !isPushing ? <Spinner size={14} /> : "Commit"}
+					</Button>
+					<Tooltip
+						content={
+							canCommit && !canPush ? "Push unavailable on detached HEAD" : "Commit selected files and push"
+						}
+					>
+						<span className="inline-flex">
+							<Button variant="default" size="sm" disabled={!canPush} onClick={() => void commitAndPush()}>
+								{isPushing ? <Spinner size={14} /> : "Commit & Push"}
+							</Button>
+						</span>
+					</Tooltip>
 				</div>
 			</div>
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: commit sidebar improvements — stash relocated, generate-message button
+
+- Stash and Discard All buttons moved above the commit message textarea, visually separating "save/discard work" actions from "commit" actions. Stash is now immediately accessible without scrolling past the message input.
+- Added a Sparkles (generate) button in the top-right corner of the commit message textarea. Sends the selected files' diff to the LLM pipeline (same Haiku model used for title and summary generation) and populates the textarea with the result. The message is fully editable before committing. Gracefully falls back when LLM is not configured — button shows a warning toast instead of failing silently.
+- New backend: `generateCommitMessage` tRPC mutation, `commit-message-generator.ts` generator module, `getDiffText` workspace API helper.
+
 ### Feature: per-event scoped notification beeps
 
 - Each notification event type (permission, review, failure, completion) can independently be configured to only beep for tasks in other projects, suppressing sounds for the currently viewed project. The settings dialog notifications section now displays events in a two-column grid with "Enabled" and "Other projects only" columns per event type.

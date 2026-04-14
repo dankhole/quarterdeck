@@ -28,6 +28,8 @@ export interface UseCommitPanelResult {
 	isDiscarding: boolean;
 	isRollingBack: boolean;
 	isStashing: boolean;
+	isGeneratingMessage: boolean;
+	generateMessage: () => Promise<void>;
 	stashMessage: string;
 	setStashMessage: (msg: string) => void;
 	stashChanges: () => Promise<void>;
@@ -65,6 +67,9 @@ export function useCommitPanel(
 
 	// Stash message — separate from commit message.
 	const [stashMessage, setStashMessage] = useState("");
+
+	// Commit message generation.
+	const [isGeneratingMessage, setIsGeneratingMessage] = useState(false);
 
 	// Last error — shown inline in the commit panel so large hook output is readable.
 	const [lastError, setLastError] = useState<string | null>(null);
@@ -330,6 +335,28 @@ export function useCommitPanel(
 		}
 	}, [workspaceId, isStashing, taskScope, selectedPaths, files?.length, stashMessage]);
 
+	// Generate commit message via LLM.
+	const generateMessage = useCallback(async () => {
+		if (!workspaceId || isGeneratingMessage || selectedPaths.length === 0) return;
+		setIsGeneratingMessage(true);
+		try {
+			const trpcClient = getRuntimeTrpcClient(workspaceId);
+			const result = await trpcClient.workspace.generateCommitMessage.mutate({
+				taskScope,
+				paths: selectedPaths,
+			});
+			if (result.ok && result.message) {
+				setMessage(result.message);
+			} else {
+				showAppToast({ intent: "warning", message: "Could not generate commit message.", timeout: 4000 });
+			}
+		} catch {
+			showAppToast({ intent: "danger", message: "Commit message generation failed.", timeout: 5000 });
+		} finally {
+			setIsGeneratingMessage(false);
+		}
+	}, [workspaceId, isGeneratingMessage, selectedPaths, taskScope]);
+
 	return {
 		files,
 		selectedPaths,
@@ -347,6 +374,8 @@ export function useCommitPanel(
 		isDiscarding,
 		isRollingBack,
 		isStashing,
+		isGeneratingMessage,
+		generateMessage,
 		stashMessage,
 		setStashMessage,
 		stashChanges,

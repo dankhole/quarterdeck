@@ -57,7 +57,13 @@ import {
 	runGitCheckoutAction,
 	runGitSyncAction,
 } from "../workspace/git-sync";
-import { assertValidGitRef, getFileContentAtRef, listFilesAtRef, validateGitPath } from "../workspace/git-utils";
+import {
+	assertValidGitRef,
+	getFileContentAtRef,
+	getGitStdout,
+	listFilesAtRef,
+	validateGitPath,
+} from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
 import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
@@ -860,6 +866,16 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null),
 			);
 			return await getCommitDiff({ cwd, commitHash: input.commitHash });
+		},
+
+		getDiffText: async (workspaceScope, taskScope, paths) => {
+			const cwd = await resolveWorkingDir(workspaceScope.workspacePath, taskScope);
+			// Get unified diff for selected paths (or all changes if no paths specified).
+			const args = ["diff", "HEAD", "--"];
+			if (paths && paths.length > 0) {
+				args.push(...paths);
+			}
+			return await getGitStdout(args, cwd);
 		},
 
 		notifyTaskTitleUpdated: (workspaceScope, taskId, title) => {

@@ -245,6 +245,11 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
+		getDiffText: (
+			scope: RuntimeTrpcWorkspaceScope,
+			taskScope: { taskId: string; baseRef: string } | null,
+			paths?: string[],
+		) => Promise<string>;
 		notifyTaskTitleUpdated: (scope: RuntimeTrpcWorkspaceScope, taskId: string, title: string) => void;
 		setTaskDisplaySummary: (
 			scope: RuntimeTrpcWorkspaceScope,

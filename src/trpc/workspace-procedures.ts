@@ -62,6 +62,7 @@ import {
 } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
 import { findCardInBoard } from "../core/task-board-mutations";
+import { generateCommitMessage } from "../title/commit-message-generator";
 import { generateDisplaySummary } from "../title/summary-generator";
 import { generateBranchName, generateTaskTitle } from "../title/title-generator";
 import { t, workspaceProcedure } from "./app-router-init";
@@ -379,6 +380,24 @@ export const workspaceRouter = t.router({
 		.mutation(async ({ input }) => {
 			const branchName = await generateBranchName(input.prompt);
 			return { ok: branchName !== null, branchName };
+		}),
+	// User-triggered — client guards against duplicate in-flight calls via isGenerating state.
+	generateCommitMessage: workspaceProcedure
+		.input(
+			z.object({
+				taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+				paths: z.array(z.string()).optional(),
+			}),
+		)
+		.output(z.object({ ok: z.boolean(), message: z.string().nullable() }))
+		.mutation(async ({ ctx, input }) => {
+			const taskScope = input.taskScope ?? null;
+			const diffText = await ctx.workspaceApi.getDiffText(ctx.workspaceScope, taskScope, input.paths);
+			if (!diffText.trim()) {
+				return { ok: false, message: null };
+			}
+			const message = await generateCommitMessage(diffText);
+			return { ok: message !== null, message };
 		}),
 	stashPush: workspaceProcedure
 		.input(runtimeStashPushRequestSchema)
