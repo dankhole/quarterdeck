@@ -221,15 +221,11 @@ The `web-ui/src/hooks/` folder has 57+ files in a flat structure. Group related 
 
 The trash/clear button in the debug logging window doesn't actually stop or clear log output — logs keep streaming after clicking it. It should stop the log stream and clear the current output.
 
-## 31. Branch name click in top bar dropdown should open context menu
-
-Clicking a branch name in the top bar branch dropdown closes the dropdown instead of opening the branch's context menu. It should open the right-click context menu (checkout, compare, copy, etc.) on click as well, not just on right-click.
-
-## 32. Title generation timeouts in logs
+## 31. Title generation timeouts in logs
 
 Title generation frequently times out — visible in debug logs. Doesn't seem to affect the UI (titles still appear), but the timeout errors are noisy. Investigate whether the timeout is too aggressive, or if there's a redundant/stale code path triggering it.
 
-## 33. Keep task base ref in sync with branch changes
+## 32. Keep task base ref in sync with branch changes
 
 When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.
 

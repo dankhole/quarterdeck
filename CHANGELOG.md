@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: branch name click in dropdown opens context menu instead of closing
+
+- Left-clicking a branch row in the top bar branch dropdown now opens the context menu (checkout, compare, merge, copy, etc.) instead of immediately navigating to that branch's file view and closing the dropdown. The old file-browsing action is available as "Browse files" — the first item in the context menu. The `disableContextMenu` codepath (file browser dropdown) retains the original direct-select behavior.
+
 ### Fix: git conflict tests fail on CI due to default branch name
 
 - Test helpers (`git init`) didn't specify a branch name, so runners with `init.defaultBranch=master` failed on `checkout main`. Added `-b main` to `git init` in all test `initRepository` functions and the shared `initGitRepository` helper.

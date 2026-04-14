@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: branch name click in dropdown opens context menu (2026-04-14)
+
+Left-clicking a branch row in `BranchSelectorPopover` immediately called `onSelect` → navigated to that branch's file view and closed the popover. The context menu (checkout, compare, merge, copy name, pin, delete, etc.) was only accessible via right-click — a non-obvious interaction pattern.
+
+Changed the left-click handler to dispatch a synthetic `contextmenu` event at the cursor position, which Radix `ContextMenu.Root` picks up to show the menu at the click location. Added a "Browse files" item (with `Eye` icon) as the first context menu entry so the old navigation action remains one click away. When `disableContextMenu` is true (file browser dropdown), the original direct-select behavior is preserved via an early return.
+
+The inline checkout icon button (`LogIn`) continues to work — its `stopPropagation()` prevents the synthetic event dispatch on the parent button.
+
+Closes todo #31.
+
+**Files**: `web-ui/src/components/detail-panels/branch-selector-popover.tsx`.
+
 ## Fix: git conflict tests fail on CI due to default branch name (2026-04-14)
 
 Git conflict and stash tests called `git init -q` without specifying a branch name. On systems where `init.defaultBranch` is `master` (including GitHub Actions macOS runners), the subsequent `checkout main` failed with `pathspec 'main' did not match any file(s) known to git`. All 10 errors in CI #16 traced to this single cause.

@@ -7,6 +7,7 @@ import {
 	Check,
 	ChevronDown,
 	ClipboardCopy,
+	Eye,
 	GitBranch,
 	GitBranchPlus,
 	GitCompareArrows,
@@ -442,11 +443,29 @@ function BranchItem({
 }): React.ReactElement {
 	const isLocked = worktreeTaskTitle !== undefined;
 	const shortName = gitRef.name.replace(/^origin\//, "");
+	const rowRef = useRef<HTMLButtonElement>(null);
 
 	const rowButton = (
 		<button
+			ref={rowRef}
 			type="button"
-			onClick={() => onSelect(gitRef.name)}
+			onClick={(e) => {
+				if (disableContextMenu) {
+					onSelect(gitRef.name);
+					return;
+				}
+				// Open context menu on left-click by dispatching a synthetic contextmenu event
+				// at the click position so Radix ContextMenu picks it up.
+				e.preventDefault();
+				e.stopPropagation();
+				const syntheticEvent = new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: e.clientX,
+					clientY: e.clientY,
+				});
+				rowRef.current?.dispatchEvent(syntheticEvent);
+			}}
 			className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
 		>
 			<GitBranch size={12} className="shrink-0" />
@@ -501,6 +520,10 @@ function BranchItem({
 			<ContextMenu.Trigger asChild>{rowButton}</ContextMenu.Trigger>
 			<ContextMenu.Portal>
 				<ContextMenu.Content className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+					<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onSelect(gitRef.name)}>
+						<Eye size={14} className="text-text-secondary" />
+						Browse files
+					</ContextMenu.Item>
 					{onCheckout ? (
 						<ContextMenu.Item
 							className={cn(CONTEXT_MENU_ITEM_CLASS, isLocked && "opacity-50 cursor-not-allowed")}
