@@ -66,6 +66,7 @@ export interface StartTaskSessionRequest {
 	statuslineEnabled?: boolean;
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
+	worktreeSystemPromptTemplate?: string;
 }
 
 export interface StartShellSessionRequest {

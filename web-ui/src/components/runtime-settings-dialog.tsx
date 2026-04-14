@@ -226,7 +226,12 @@ export function RuntimeSettingsDialog({
 						{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
 
-					<AgentSection {...sectionProps} agents={supportedAgents} configLoaded={config !== null} />
+					<AgentSection
+						{...sectionProps}
+						agents={supportedAgents}
+						configLoaded={config !== null}
+						config={config}
+					/>
 					<AiFeaturesSection {...sectionProps} llmConfigured={config?.llmConfigured ?? false} />
 					<NotificationsSection {...sectionProps} />
 					<TerminalSection {...sectionProps} />

@@ -35,6 +35,7 @@ export interface AgentAdapterLaunchInput {
 	statuslineEnabled?: boolean;
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
+	worktreeSystemPromptTemplate?: string;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -269,6 +270,7 @@ const claudeAdapter: AgentSessionAdapter = {
 			const worktreeContext = await buildWorktreeContextPrompt({
 				cwd: input.cwd,
 				workspacePath: input.workspacePath,
+				template: input.worktreeSystemPromptTemplate,
 			});
 			if (worktreeContext) {
 				args.push("--append-system-prompt", worktreeContext);

@@ -16,6 +16,7 @@ import {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	DEFAULT_PROMPT_SHORTCUTS,
+	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 } from "./config-defaults";
 import {
 	buildSparseGlobalConfigPayload,
@@ -56,6 +57,7 @@ type RuntimeGlobalConfigFileShape = Partial<GlobalConfigFieldValues> & {
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
+	worktreeSystemPromptTemplate?: string;
 };
 
 // The fully resolved config state: registry fields plus special fields plus metadata.
@@ -71,8 +73,10 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	hiddenDefaultPromptShortcuts: string[];
 	commitPromptTemplate: string;
 	openPrPromptTemplate: string;
+	worktreeSystemPromptTemplate: string;
 	commitPromptTemplateDefault: string;
 	openPrPromptTemplateDefault: string;
+	worktreeSystemPromptTemplateDefault: string;
 }
 
 // Partial update input: registry fields plus special fields.
@@ -86,6 +90,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	hiddenDefaultPromptShortcuts?: string[];
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
+	worktreeSystemPromptTemplate?: string;
 }
 
 const CONFIG_FILENAME = "config.json";
@@ -107,8 +112,10 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	hiddenDefaultPromptShortcuts: [],
 	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+	worktreeSystemPromptTemplate: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 	commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+	worktreeSystemPromptTemplateDefault: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 };
 
 export { DEFAULT_PROMPT_SHORTCUTS } from "./config-defaults";
@@ -388,8 +395,13 @@ function toRuntimeConfigState({
 			globalConfig?.openPrPromptTemplate,
 			DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 		),
+		worktreeSystemPromptTemplate: normalizePromptTemplate(
+			globalConfig?.worktreeSystemPromptTemplate,
+			DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
+		),
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+		worktreeSystemPromptTemplateDefault: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 	};
 }
 
@@ -433,6 +445,7 @@ async function writeRuntimeGlobalConfigFile(
 		audibleNotificationEvents?: AudibleNotificationEventsShape;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
+		worktreeSystemPromptTemplate?: string;
 	},
 ): Promise<void> {
 	const existing = await readRuntimeConfigFile<Record<string, unknown>>(configPath);
@@ -514,6 +527,18 @@ async function writeRuntimeGlobalConfigFile(
 		openPrPromptTemplate !== DEFAULT_OPEN_PR_PROMPT_TEMPLATE
 	) {
 		payload.openPrPromptTemplate = openPrPromptTemplate;
+	}
+
+	// worktreeSystemPromptTemplate
+	const worktreeSystemPromptTemplate =
+		config.worktreeSystemPromptTemplate === undefined
+			? DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.worktreeSystemPromptTemplate, DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE);
+	if (
+		(existing !== null && Object.hasOwn(existing, "worktreeSystemPromptTemplate")) ||
+		worktreeSystemPromptTemplate !== DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE
+	) {
+		payload.worktreeSystemPromptTemplate = worktreeSystemPromptTemplate;
 	}
 
 	// audibleNotificationEvents
@@ -625,8 +650,10 @@ function createRuntimeConfigStateFromValues(
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplate: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+		worktreeSystemPromptTemplate: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
 		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
+		worktreeSystemPromptTemplateDefault: DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 	};
 }
 
@@ -720,6 +747,8 @@ async function applyConfigUpdates({
 		updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel;
 	const nextCommitPromptTemplate = updates.commitPromptTemplate ?? current.commitPromptTemplate;
 	const nextOpenPrPromptTemplate = updates.openPrPromptTemplate ?? current.openPrPromptTemplate;
+	const nextWorktreeSystemPromptTemplate =
+		updates.worktreeSystemPromptTemplate ?? current.worktreeSystemPromptTemplate;
 	const nextAudibleNotificationEvents = updates.audibleNotificationEvents
 		? normalizeAudibleNotificationEvents({
 				...current.audibleNotificationEvents,
@@ -740,6 +769,7 @@ async function applyConfigUpdates({
 		nextSelectedShortcutLabel !== current.selectedShortcutLabel ||
 		nextCommitPromptTemplate !== current.commitPromptTemplate ||
 		nextOpenPrPromptTemplate !== current.openPrPromptTemplate ||
+		nextWorktreeSystemPromptTemplate !== current.worktreeSystemPromptTemplate ||
 		JSON.stringify(nextPromptShortcuts) !== JSON.stringify(current.promptShortcuts) ||
 		JSON.stringify(nextHiddenDefaults) !== JSON.stringify(current.hiddenDefaultPromptShortcuts) ||
 		nextAudibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
@@ -761,6 +791,7 @@ async function applyConfigUpdates({
 		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
 		commitPromptTemplate: nextCommitPromptTemplate,
 		openPrPromptTemplate: nextOpenPrPromptTemplate,
+		worktreeSystemPromptTemplate: nextWorktreeSystemPromptTemplate,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
 	});
 	if (projectConfigPath !== null) {

@@ -47,6 +47,7 @@ export interface SettingsFormValues {
 	homeRepoPollMs: number;
 	worktreeAddParentGitDir: boolean;
 	worktreeAddQuarterdeckDir: boolean;
+	worktreeSystemPromptTemplate: string;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
@@ -93,6 +94,7 @@ export function resolveInitialValues(
 		homeRepoPollMs: config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs,
 		worktreeAddParentGitDir: config?.worktreeAddParentGitDir ?? CONFIG_DEFAULTS.worktreeAddParentGitDir,
 		worktreeAddQuarterdeckDir: config?.worktreeAddQuarterdeckDir ?? CONFIG_DEFAULTS.worktreeAddQuarterdeckDir,
+		worktreeSystemPromptTemplate: config?.worktreeSystemPromptTemplate ?? "",
 		shortcuts: config?.shortcuts ?? [],
 	};
 }

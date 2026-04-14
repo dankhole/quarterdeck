@@ -240,3 +240,17 @@ Report:
 - Whether the target worktree was synced (if checked out elsewhere)
 
 **Do NOT push without asking.**`;
+
+// Default system prompt template appended to worktree agent sessions via
+// --append-system-prompt. Uses mustache-style placeholders that are resolved
+// at launch time:
+//   {{cwd}}                – the worktree working directory
+//   {{workspace_path}}     – the main repository directory
+//   {{detached_head_note}} – conditional note when HEAD is detached (or empty)
+export const DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE = `You are working in a git worktree.
+- Your working directory is {{cwd}}. Shell commands reset to this path between invocations.
+- The main repository is at {{workspace_path}}. Other agents may be running in parallel worktrees on the same repo.
+- Do not check out branches, commit, push, or run destructive git operations (reset --hard, clean -fdx, force push) unless explicitly asked.
+- Do not modify files outside your worktree unless explicitly asked.{{detached_head_note}}
+- This worktree shares the git object database with the main repo. To read any file from another branch without leaving the worktree, use \`git show <ref>:<path>\` (e.g. \`git show main:CLAUDE.md\`, \`git show main:docs/guide.md\`). Prefer this over trying to navigate to the parent repo directory.
+- When spawning subagents, include the above worktree context in their prompts.`;

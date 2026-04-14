@@ -195,6 +195,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			statuslineEnabled: request.statuslineEnabled,
 			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
+			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);

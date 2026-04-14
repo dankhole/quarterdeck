@@ -40,8 +40,10 @@ export const runtimeConfigResponseSchema = z.object({
 	audibleNotificationsOnlyWhenHidden: z.boolean(),
 	commitPromptTemplate: z.string(),
 	openPrPromptTemplate: z.string(),
+	worktreeSystemPromptTemplate: z.string(),
 	commitPromptTemplateDefault: z.string(),
 	openPrPromptTemplateDefault: z.string(),
+	worktreeSystemPromptTemplateDefault: z.string(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
@@ -88,6 +90,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	skipCherryPickConfirmation: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
+	worktreeSystemPromptTemplate: z.string().optional(),
 	audibleNotificationsEnabled: z.boolean().optional(),
 	audibleNotificationVolume: z.number().min(0).max(1).optional(),
 	audibleNotificationEvents: z

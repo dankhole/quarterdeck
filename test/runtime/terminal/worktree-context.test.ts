@@ -78,4 +78,39 @@ describe("buildWorktreeContextPrompt", () => {
 		expect(result).toContain("You are working in a git worktree.");
 		expect(result).not.toContain("detached HEAD");
 	});
+
+	it("renders a custom template with placeholders", async () => {
+		readGitHeadInfoMock.mockResolvedValue({ branch: "feature", headCommit: "abc", isDetached: false });
+
+		const result = await buildWorktreeContextPrompt({
+			cwd: "/worktrees/task-4",
+			workspacePath: "/repo",
+			template: "CWD={{cwd}} REPO={{workspace_path}} NOTE={{detached_head_note}}",
+		});
+
+		expect(result).toBe("CWD=/worktrees/task-4 REPO=/repo NOTE=");
+	});
+
+	it("renders detached_head_note placeholder when HEAD is detached", async () => {
+		readGitHeadInfoMock.mockResolvedValue({ branch: null, headCommit: "abc", isDetached: true });
+
+		const result = await buildWorktreeContextPrompt({
+			cwd: "/worktrees/task-5",
+			workspacePath: "/repo",
+			template: "Hello{{detached_head_note}}",
+		});
+
+		expect(result).toContain("Hello");
+		expect(result).toContain("detached HEAD state");
+	});
+
+	it("returns empty for custom template when not in a worktree", async () => {
+		const result = await buildWorktreeContextPrompt({
+			cwd: "/repo",
+			workspacePath: "/repo",
+			template: "Custom prompt for {{cwd}}",
+		});
+
+		expect(result).toBe("");
+	});
 });

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feature: editable worktree system prompt
+
+- The hardcoded worktree context prompt appended to Claude agent sessions via `--append-system-prompt` is now a user-editable template stored in global config (`worktreeSystemPromptTemplate`). Supports `{{cwd}}`, `{{workspace_path}}`, and `{{detached_head_note}}` placeholders resolved at launch time. A collapsible editor in Settings > Agent lets users customize the prompt and reset to the built-in default. Only applies to worktree sessions — non-worktree behavior is unchanged.
+
 ### Docs: todo roadmap updates
 
 - Replaced the Go backend rewrite todo with a standalone desktop app (Electron/Tauri) todo — browser-tab limitations (duplicate connections, no window management, no OS integration) are the bigger pain point.

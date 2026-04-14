@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE } from "../config/config-defaults";
 import { createTaggedLogger } from "../core/debug-logger";
 import { readGitHeadInfo } from "../workspace/git-utils";
 
@@ -7,10 +8,18 @@ const log = createTaggedLogger("worktree-context");
 export interface WorktreeContextInput {
 	cwd: string;
 	workspacePath?: string;
+	/** User-editable template. Falls back to the built-in default when omitted. */
+	template?: string;
 }
 
 /**
- * Build an appended system prompt that orients an agent inside a git worktree.
+ * Render the worktree system prompt from a template.
+ *
+ * Supported placeholders:
+ *   {{cwd}}                – the worktree working directory
+ *   {{workspace_path}}     – the main repository directory
+ *   {{detached_head_note}} – conditional note when HEAD is detached (or empty)
+ *
  * Returns an empty string when the agent is running directly in the main repo
  * (i.e. not in a worktree), so callers can skip injection with a simple truthy check.
  */
@@ -30,13 +39,10 @@ export async function buildWorktreeContextPrompt(input: WorktreeContextInput): P
 		log.debug("failed to read git HEAD info for worktree context", { cwd, error });
 	}
 
-	return [
-		"You are working in a git worktree.",
-		`- Your working directory is ${cwd}. Shell commands reset to this path between invocations.`,
-		`- The main repository is at ${workspacePath}. Other agents may be running in parallel worktrees on the same repo.`,
-		"- Do not check out branches, commit, push, or run destructive git operations (reset --hard, clean -fdx, force push) unless explicitly asked.",
-		`- Do not modify files outside your worktree unless explicitly asked.${detachedNote}`,
-		"- This worktree shares the git object database with the main repo. To read any file from another branch without leaving the worktree, use `git show <ref>:<path>` (e.g. `git show main:CLAUDE.md`, `git show main:docs/guide.md`). Prefer this over trying to navigate to the parent repo directory.",
-		"- When spawning subagents, include the above worktree context in their prompts.",
-	].join("\n");
+	const template = input.template ?? DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE;
+
+	return template
+		.replace(/\{\{cwd\}\}/g, cwd)
+		.replace(/\{\{workspace_path\}\}/g, workspacePath)
+		.replace(/\{\{detached_head_note\}\}/g, detachedNote);
 }

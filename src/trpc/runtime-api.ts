@@ -190,6 +190,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 					worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 					worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
+					worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 					env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 				});
 
@@ -460,6 +461,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 						worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 						worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
+						worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 						env: card.baseRef ? { QUARTERDECK_BASE_REF: card.baseRef } : undefined,
 					};
 				};

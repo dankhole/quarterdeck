@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: editable worktree system prompt (2026-04-14)
+
+The hardcoded worktree context in `worktree-context.ts` is now a user-editable template stored in global config. The default template matches the previous hardcoded text exactly, so existing behavior is preserved.
+
+**Template system**: `buildWorktreeContextPrompt` now accepts an optional `template` parameter. When provided, it renders the template by replacing `{{cwd}}`, `{{workspace_path}}`, and `{{detached_head_note}}` placeholders with runtime values. Falls back to the built-in default when omitted (backwards compatible with all existing call sites and tests).
+
+**Config plumbing**: Follows the `commitPromptTemplate` pattern — `worktreeSystemPromptTemplate` is a special-cased string field with a `*Default` companion for the frontend reset button. Sparse persistence only writes to `config.json` when the value differs from the default.
+
+**Launch pipeline**: Threaded through `runtime-api.ts` → `session-manager-types.ts` → `session-manager.ts` → `agent-session-adapters.ts` → `buildWorktreeContextPrompt`. Both `startTaskSession` call sites in `runtime-api.ts` (initial start and worktree migration restart) pass the template.
+
+**Frontend**: Added `worktreeSystemPromptTemplate` to `SettingsFormValues` and `resolveInitialValues` in `use-settings-form.ts`. The Agent section in `runtime-settings-dialog.tsx` has a collapsible "Worktree system prompt" editor with a textarea, placeholder documentation, and a "Reset to default" link (visible only when customized). Flows through the standard Save button.
+
+**Files**: `src/prompts/prompt-templates.ts`, `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/core/api/config.ts`, `src/config/agent-registry.ts`, `src/terminal/worktree-context.ts`, `src/terminal/agent-session-adapters.ts`, `src/terminal/session-manager-types.ts`, `src/terminal/session-manager.ts`, `src/trpc/runtime-api.ts`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/components/settings/agent-section.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/terminal/worktree-context.test.ts`.
+
 ## Docs: todo roadmap updates (2026-04-14)
 
 Replaced todo #1 (Go backend rewrite) with a standalone desktop app todo (Electron/Tauri). The Go rewrite was motivated by performance and single-binary distribution, but the browser-tab problem is a more pressing architectural limitation — duplicate WebSocket connections from multiple tabs, no window lifecycle control, no OS integration (notifications, deep links, system tray), and the two-process launch experience (server + open URL). The new todo captures the motivation, approach options (Electron vs Tauri), and key design decisions (sidecar vs embedded backend, multi-project windowing model).
