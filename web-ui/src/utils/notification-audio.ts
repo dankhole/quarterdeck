@@ -1,4 +1,4 @@
-export type AudibleNotificationEventType = "permission" | "review" | "failure" | "completion";
+export type AudibleNotificationEventType = "permission" | "review" | "failure";
 
 interface ToneDefinition {
 	/** Frequency in Hz for each beat. */
@@ -17,11 +17,6 @@ const TONE_DEFINITIONS: Record<AudibleNotificationEventType, ToneDefinition> = {
 	},
 	review: {
 		frequencies: [440],
-		beatDuration: 0.15,
-		beatGap: 0,
-	},
-	completion: {
-		frequencies: [523],
 		beatDuration: 0.15,
 		beatGap: 0,
 	},

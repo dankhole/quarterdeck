@@ -39,14 +39,12 @@ export interface SettingsFormValues {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
 	audibleNotificationSuppressCurrentProject: {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	focusedTaskPollMs: number;
 	backgroundTaskPollMs: number;
@@ -126,23 +124,13 @@ function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues): boole
 	// Notification events — field-by-field
 	const ae = a.audibleNotificationEvents;
 	const be = b.audibleNotificationEvents;
-	if (
-		ae.permission !== be.permission ||
-		ae.review !== be.review ||
-		ae.failure !== be.failure ||
-		ae.completion !== be.completion
-	) {
+	if (ae.permission !== be.permission || ae.review !== be.review || ae.failure !== be.failure) {
 		return false;
 	}
 	// Suppress current project — field-by-field
 	const as = a.audibleNotificationSuppressCurrentProject;
 	const bs = b.audibleNotificationSuppressCurrentProject;
-	if (
-		as.permission !== bs.permission ||
-		as.review !== bs.review ||
-		as.failure !== bs.failure ||
-		as.completion !== bs.completion
-	) {
+	if (as.permission !== bs.permission || as.review !== bs.review || as.failure !== bs.failure) {
 		return false;
 	}
 	// Shortcuts — custom structural equality

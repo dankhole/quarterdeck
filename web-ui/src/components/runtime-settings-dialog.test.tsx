@@ -259,8 +259,8 @@ describe("RuntimeSettingsDialog", () => {
 		const volumeSlider = document.body.querySelector('input[type="range"]');
 		expect(volumeSlider).toBeInstanceOf(HTMLInputElement);
 
-		// 4 event checkboxes.
-		for (const key of ["permission", "review", "failure", "completion"]) {
+		// 3 event checkboxes.
+		for (const key of ["permission", "review", "failure"]) {
 			const checkbox = document.getElementById(`audible-notification-${key}`);
 			expect(checkbox).not.toBeNull();
 		}
@@ -291,7 +291,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(volumeSlider.disabled).toBe(true);
 
 		// Event checkboxes should be disabled.
-		for (const key of ["permission", "review", "failure", "completion"]) {
+		for (const key of ["permission", "review", "failure"]) {
 			const checkbox = document.getElementById(`audible-notification-${key}`) as HTMLButtonElement;
 			expect(checkbox.dataset.disabled).toBeDefined();
 		}
@@ -342,7 +342,6 @@ describe("RuntimeSettingsDialog", () => {
 			permission: true,
 			review: true,
 			failure: true,
-			completion: true,
 		});
 	});
 
@@ -351,7 +350,7 @@ describe("RuntimeSettingsDialog", () => {
 			...savedConfig,
 			audibleNotificationsEnabled: false,
 			audibleNotificationVolume: 0.3,
-			audibleNotificationEvents: { permission: false, review: true, failure: false, completion: true },
+			audibleNotificationEvents: { permission: false, review: true, failure: false },
 		};
 
 		await act(async () => {
@@ -378,8 +377,5 @@ describe("RuntimeSettingsDialog", () => {
 
 		const failureCheckbox = document.getElementById("audible-notification-failure") as HTMLButtonElement;
 		expect(failureCheckbox.dataset.state).toBe("unchecked");
-
-		const completionCheckbox = document.getElementById("audible-notification-completion") as HTMLButtonElement;
-		expect(completionCheckbox.dataset.state).toBe("checked");
 	});
 });

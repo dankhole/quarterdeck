@@ -117,17 +117,6 @@ describe("NotificationAudioPlayer", () => {
 		expect(ctx.createGain).toHaveBeenCalledTimes(1);
 	});
 
-	it("play creates oscillator and gain nodes for completion (1 beat)", () => {
-		const player = new NotificationAudioPlayer();
-		player.ensureContext();
-		const ctx = mockAudioContextInstance!;
-
-		player.play("completion", 0.5);
-
-		expect(ctx.createOscillator).toHaveBeenCalledTimes(1);
-		expect(ctx.createGain).toHaveBeenCalledTimes(1);
-	});
-
 	it("play creates oscillator and gain nodes for failure (3 beats)", () => {
 		const player = new NotificationAudioPlayer();
 		player.ensureContext();

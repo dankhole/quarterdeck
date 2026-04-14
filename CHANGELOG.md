@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: simplify notification settings — merge completion into review
+
+- Removed the separate "Completion" notification event. Successful agent exits now use the "Review" sound and setting, since both mean "task needs your attention." The notification settings grid drops from 4 rows to 3 (Permission, Review, Failure).
+- Renamed the confusing "Other projects only" column header to "Mute focused project" for clarity.
+- Updated the Review event description from "Task is ready for review" to "Task finished or needs attention" to reflect its broader scope.
+
 ### Fix: un-trash no longer flashes error state during reconnect
 
 - Un-trashing a card no longer shows a red "Error" status pill while the session reconnects. The race was between `startTaskSession` (async spawn in-flight) and `recoverStaleSession` (triggered by the terminal WebSocket connecting before the spawn completes). A `pendingSessionStart` flag on `ProcessEntry` now guards both `recoverStaleSession` and the reconciliation sweep from clobbering the session state during the async gap.

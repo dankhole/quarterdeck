@@ -105,9 +105,8 @@ export function AiFeaturesSection({
 
 const NOTIFICATION_EVENTS = [
 	["permission", "Permissions", "Task is waiting for approval"],
-	["review", "Review", "Task is ready for review"],
+	["review", "Review", "Task finished or needs attention"],
 	["failure", "Failure", "Agent session failed or errored"],
-	["completion", "Completion", "Task completed successfully"],
 ] as const;
 
 export function NotificationsSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
@@ -157,7 +156,7 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 				<div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-2 items-center text-[13px]">
 					{/* Header row */}
 					<span className="text-text-tertiary text-[12px] font-medium">Enabled</span>
-					<span className="text-text-tertiary text-[12px] font-medium">Other projects only</span>
+					<span className="text-text-tertiary text-[12px] font-medium">Mute focused project</span>
 					<span />
 					{/* Event rows */}
 					{NOTIFICATION_EVENTS.map(([key, label, description]) => (

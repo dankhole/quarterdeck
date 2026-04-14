@@ -11,7 +11,6 @@ interface UseAudibleNotificationsOptions {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
 	/** Per-event suppression for tasks in the currently viewed project. */
@@ -19,7 +18,6 @@ interface UseAudibleNotificationsOptions {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	/** Maps task IDs to their workspace/project IDs. */
 	notificationWorkspaceIds: Record<string, string>;
@@ -49,9 +47,8 @@ function getSettleWindowMs(summary: RuntimeTaskSessionSummary): number {
 	return SETTLE_WINDOW_IMMEDIATE_MS;
 }
 
-/** Higher number = higher priority. Failure beats permission beats review/completion. */
+/** Higher number = higher priority. Failure beats permission beats review. */
 const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
-	completion: 0,
 	review: 0,
 	permission: 1,
 	failure: 2,
@@ -86,7 +83,7 @@ function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): AudibleNo
 			case "attention":
 				return "review";
 			case "exit":
-				return summary.exitCode === 0 ? "completion" : "failure";
+				return summary.exitCode === 0 ? "review" : "failure";
 			case "error":
 				return "failure";
 			case "interrupted":

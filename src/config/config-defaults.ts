@@ -30,14 +30,12 @@ export const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 	permission: true,
 	review: true,
 	failure: true,
-	completion: true,
 };
 
 export const DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT: AudibleNotificationSuppressCurrentProject = {
 	permission: false,
 	review: false,
 	failure: false,
-	completion: false,
 };
 
 export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [

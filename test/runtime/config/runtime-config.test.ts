@@ -295,13 +295,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 					skipCherryPickConfirmation: false,
 					audibleNotificationsEnabled: true,
 					audibleNotificationVolume: 0.7,
-					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+					audibleNotificationEvents: { permission: true, review: true, failure: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					audibleNotificationSuppressCurrentProject: {
 						permission: false,
 						review: false,
 						failure: false,
-						completion: false,
 					},
 					focusedTaskPollMs: 2000,
 					backgroundTaskPollMs: 5000,
@@ -368,13 +367,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 					skipCherryPickConfirmation: false,
 					audibleNotificationsEnabled: true,
 					audibleNotificationVolume: 0.7,
-					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+					audibleNotificationEvents: { permission: true, review: true, failure: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					audibleNotificationSuppressCurrentProject: {
 						permission: false,
 						review: false,
 						failure: false,
-						completion: false,
 					},
 					focusedTaskPollMs: 2000,
 					backgroundTaskPollMs: 5000,
@@ -429,13 +427,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 					skipCherryPickConfirmation: false,
 					audibleNotificationsEnabled: true,
 					audibleNotificationVolume: 0.7,
-					audibleNotificationEvents: { permission: true, review: true, failure: true, completion: true },
+					audibleNotificationEvents: { permission: true, review: true, failure: true },
 					audibleNotificationsOnlyWhenHidden: true,
 					audibleNotificationSuppressCurrentProject: {
 						permission: false,
 						review: false,
 						failure: false,
-						completion: false,
 					},
 					focusedTaskPollMs: 2000,
 					backgroundTaskPollMs: 5000,
@@ -546,7 +543,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 					permission: true,
 					review: true,
 					failure: true,
-					completion: true,
 				});
 			});
 		} finally {
@@ -568,7 +564,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const updated = await updateRuntimeConfig(tempProject, null, {
 					audibleNotificationsEnabled: false,
 					audibleNotificationVolume: 0.3,
-					audibleNotificationEvents: { permission: false, review: true, failure: false, completion: true },
+					audibleNotificationEvents: { permission: false, review: true, failure: false },
 				});
 				expect(updated.audibleNotificationsEnabled).toBe(false);
 				expect(updated.audibleNotificationVolume).toBe(0.3);
@@ -576,7 +572,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 					permission: false,
 					review: true,
 					failure: false,
-					completion: true,
 				});
 
 				const reloaded = await loadRuntimeConfig(tempProject);
@@ -586,7 +581,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 					permission: false,
 					review: true,
 					failure: false,
-					completion: true,
 				});
 			});
 		} finally {
@@ -617,7 +611,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(state.audibleNotificationEvents.permission).toBe(false);
 				expect(state.audibleNotificationEvents.review).toBe(true);
 				expect(state.audibleNotificationEvents.failure).toBe(true);
-				expect(state.audibleNotificationEvents.completion).toBe(true);
 			});
 		} finally {
 			cleanupProject();
@@ -650,7 +643,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 					permission: true,
 					review: true,
 					failure: true,
-					completion: true,
 				});
 			});
 		} finally {

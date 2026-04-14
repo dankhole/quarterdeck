@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: simplify notification settings — merge completion into review (2026-04-14)
+
+Removed the `completion` notification event type entirely, folding its behavior into `review`. The two events were confusing because both fire when a task lands in `awaiting_review` — the only difference was whether the agent exited cleanly (completion) vs. hit a hook (review). Users had to manage separate toggles for what is functionally the same intent: "tell me when this task needs my attention."
+
+In `resolveSessionSoundEvent`, successful exit (`reviewReason: "exit"`, `exitCode: 0`) now returns `"review"` instead of `"completion"`. The completion tone definition (523 Hz single beat) was removed from `notification-audio.ts`, so successful exits play the review tone (440 Hz single beat). The `EVENT_PRIORITY` map dropped from 4 entries to 3.
+
+On the config side, `completion` was removed from `AudibleNotificationEvents`, `AudibleNotificationSuppressCurrentProject`, all normalization functions, the Zod schemas in `api/config.ts`, the defaults in `config-defaults.ts`, and the change-detection/sparse-write logic in `runtime-config.ts`. Existing user configs with `completion` keys are harmlessly ignored by the normalizers (they only read known keys).
+
+The settings UI grid in `display-sections.tsx` dropped from 4 rows to 3. The Review row description changed from "Task is ready for review" to "Task finished or needs attention." The column header "Other projects only" was renamed to "Mute focused project" for clarity.
+
+**Files**: `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/core/api/config.ts`, `web-ui/src/utils/notification-audio.ts`, `web-ui/src/hooks/use-audible-notifications.ts`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/components/settings/display-sections.tsx`, plus 4 test files.
+
 ## Fix: un-trash no longer flashes error state during reconnect (2026-04-14)
 
 When a card was un-trashed, the UI status pill immediately showed a red "Error" badge for a moment before the session successfully reconnected. Root cause was a race condition in the async gap within `startTaskSession`: the method sets `entry.restartRequest` synchronously, then `await`s `prepareAgentLaunch` (which writes system prompts to disk). During that async gap, the terminal WebSocket connects (React re-renders → terminal panel mounts → WS connect), which calls `recoverStaleSession(taskId)`. That method saw `entry.active === null` (process not yet spawned) and `entry.restartRequest` set, matching the "stale session" branch that unconditionally set `reviewReason: "error"` and scheduled a redundant auto-restart.

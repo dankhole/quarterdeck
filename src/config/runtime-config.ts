@@ -35,7 +35,6 @@ interface AudibleNotificationEventsShape {
 	permission?: boolean;
 	review?: boolean;
 	failure?: boolean;
-	completion?: boolean;
 }
 
 interface RuntimeProjectConfigFileShape {
@@ -46,14 +45,12 @@ export interface AudibleNotificationEvents {
 	permission: boolean;
 	review: boolean;
 	failure: boolean;
-	completion: boolean;
 }
 
 export interface AudibleNotificationSuppressCurrentProject {
 	permission: boolean;
 	review: boolean;
 	failure: boolean;
-	completion: boolean;
 }
 
 // The on-disk JSON shape: all fields optional, registry fields plus special fields.
@@ -288,8 +285,6 @@ function normalizeAudibleNotificationEvents(
 			typeof value?.permission === "boolean" ? value.permission : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.permission,
 		review: typeof value?.review === "boolean" ? value.review : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.review,
 		failure: typeof value?.failure === "boolean" ? value.failure : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.failure,
-		completion:
-			typeof value?.completion === "boolean" ? value.completion : DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.completion,
 	};
 }
 
@@ -309,10 +304,6 @@ function normalizeAudibleNotificationSuppressCurrentProject(
 			typeof value?.failure === "boolean"
 				? value.failure
 				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.failure,
-		completion:
-			typeof value?.completion === "boolean"
-				? value.completion
-				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.completion,
 	};
 }
 
@@ -588,8 +579,7 @@ async function writeRuntimeGlobalConfigFile(
 		(existing !== null && Object.hasOwn(existing, "audibleNotificationEvents")) ||
 		audibleNotificationEvents.permission !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.permission ||
 		audibleNotificationEvents.review !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.review ||
-		audibleNotificationEvents.failure !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.failure ||
-		audibleNotificationEvents.completion !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.completion
+		audibleNotificationEvents.failure !== DEFAULT_AUDIBLE_NOTIFICATION_EVENTS.failure
 	) {
 		payload.audibleNotificationEvents = audibleNotificationEvents;
 	}
@@ -606,9 +596,7 @@ async function writeRuntimeGlobalConfigFile(
 		audibleNotificationSuppressCurrentProject.review !==
 			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.review ||
 		audibleNotificationSuppressCurrentProject.failure !==
-			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.failure ||
-		audibleNotificationSuppressCurrentProject.completion !==
-			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.completion
+			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.failure
 	) {
 		payload.audibleNotificationSuppressCurrentProject = audibleNotificationSuppressCurrentProject;
 	}
@@ -845,15 +833,12 @@ async function applyConfigUpdates({
 		nextAudibleNotificationEvents.permission !== current.audibleNotificationEvents.permission ||
 		nextAudibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
 		nextAudibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
-		nextAudibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
 		nextAudibleNotificationSuppressCurrentProject.permission !==
 			current.audibleNotificationSuppressCurrentProject.permission ||
 		nextAudibleNotificationSuppressCurrentProject.review !==
 			current.audibleNotificationSuppressCurrentProject.review ||
 		nextAudibleNotificationSuppressCurrentProject.failure !==
 			current.audibleNotificationSuppressCurrentProject.failure ||
-		nextAudibleNotificationSuppressCurrentProject.completion !==
-			current.audibleNotificationSuppressCurrentProject.completion ||
 		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts)) ||
 		pinnedBranchesChanged;
 

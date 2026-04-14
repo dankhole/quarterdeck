@@ -53,14 +53,12 @@ interface HookProps {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
 	audibleNotificationSuppressCurrentProject: {
 		permission: boolean;
 		review: boolean;
 		failure: boolean;
-		completion: boolean;
 	};
 	notificationWorkspaceIds: Record<string, string>;
 	currentProjectId: string | null;
@@ -75,14 +73,12 @@ function defaultProps(): HookProps {
 			permission: true,
 			review: true,
 			failure: true,
-			completion: true,
 		},
 		audibleNotificationsOnlyWhenHidden: true,
 		audibleNotificationSuppressCurrentProject: {
 			permission: false,
 			review: false,
 			failure: false,
-			completion: false,
 		},
 		notificationWorkspaceIds: {},
 		currentProjectId: null,
@@ -270,7 +266,7 @@ describe("useAudibleNotifications", () => {
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
-	it("plays completion sound when session exits successfully", async () => {
+	it("plays review sound when session exits successfully", async () => {
 		const props = defaultProps();
 
 		await act(async () => {
@@ -301,7 +297,7 @@ describe("useAudibleNotifications", () => {
 		});
 
 		flushSettleWindow();
-		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
+		expect(playMock).toHaveBeenCalledWith("review", 0.7);
 	});
 
 	// --- Master toggle ---
@@ -344,7 +340,7 @@ describe("useAudibleNotifications", () => {
 	it("does not play permission sound when permission event is disabled", async () => {
 		const props = {
 			...defaultProps(),
-			audibleNotificationEvents: { permission: false, review: true, failure: true, completion: true },
+			audibleNotificationEvents: { permission: false, review: true, failure: true },
 		};
 
 		await act(async () => {
@@ -390,7 +386,7 @@ describe("useAudibleNotifications", () => {
 	it("does not play review sound when review event is disabled", async () => {
 		const props = {
 			...defaultProps(),
-			audibleNotificationEvents: { permission: true, review: false, failure: true, completion: true },
+			audibleNotificationEvents: { permission: true, review: false, failure: true },
 		};
 
 		await act(async () => {
@@ -436,7 +432,7 @@ describe("useAudibleNotifications", () => {
 	it("does not play failure sound when failure event is disabled", async () => {
 		const props = {
 			...defaultProps(),
-			audibleNotificationEvents: { permission: true, review: true, failure: false, completion: true },
+			audibleNotificationEvents: { permission: true, review: true, failure: false },
 		};
 
 		await act(async () => {
@@ -469,10 +465,10 @@ describe("useAudibleNotifications", () => {
 		expect(playMock).not.toHaveBeenCalled();
 	});
 
-	it("does not play completion sound when completion event is disabled", async () => {
+	it("does not play review sound for successful exit when review event is disabled", async () => {
 		const props = {
 			...defaultProps(),
-			audibleNotificationEvents: { permission: true, review: true, failure: true, completion: false },
+			audibleNotificationEvents: { permission: true, review: false, failure: true },
 		};
 
 		await act(async () => {
@@ -680,7 +676,7 @@ describe("useAudibleNotifications", () => {
 
 		flushSettleWindow();
 		expect(playMock).toHaveBeenCalledTimes(2);
-		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
+		expect(playMock).toHaveBeenCalledWith("review", 0.7);
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
@@ -1212,7 +1208,7 @@ describe("useAudibleNotifications", () => {
 		flushSettleWindow();
 		expect(playMock).toHaveBeenCalledTimes(2);
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
-		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
+		expect(playMock).toHaveBeenCalledWith("review", 0.7);
 	});
 
 	// --- Suppress current project (per-event) ---
@@ -1224,7 +1220,6 @@ describe("useAudibleNotifications", () => {
 				permission: false,
 				review: false,
 				failure: true,
-				completion: false,
 			},
 			currentProjectId: "project-a",
 			notificationWorkspaceIds: { "task-1": "project-a" },
@@ -1267,7 +1262,6 @@ describe("useAudibleNotifications", () => {
 				permission: false,
 				review: true,
 				failure: false,
-				completion: true,
 			},
 			currentProjectId: "project-a",
 			notificationWorkspaceIds: { "task-1": "project-a" },
@@ -1311,7 +1305,6 @@ describe("useAudibleNotifications", () => {
 				permission: true,
 				review: true,
 				failure: true,
-				completion: true,
 			},
 			currentProjectId: "project-a",
 			notificationWorkspaceIds: { "task-1": "project-b" },
@@ -1354,7 +1347,6 @@ describe("useAudibleNotifications", () => {
 				permission: true,
 				review: true,
 				failure: true,
-				completion: true,
 			},
 			currentProjectId: "project-a",
 			notificationWorkspaceIds: { "task-local": "project-a", "task-remote": "project-b" },
@@ -1396,6 +1388,6 @@ describe("useAudibleNotifications", () => {
 		flushSettleWindow();
 		// Only the remote task should beep.
 		expect(playMock).toHaveBeenCalledTimes(1);
-		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
+		expect(playMock).toHaveBeenCalledWith("review", 0.7);
 	});
 });
