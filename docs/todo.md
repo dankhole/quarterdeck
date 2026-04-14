@@ -184,10 +184,6 @@ Sections are independent and ordered by priority with a dependency graph in the 
 
 The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as an escape hatch, but WebGL is the default and the better experience. Remove the toggle from settings, the `setWebGLRenderer` method, the `updateGlobalTerminalWebGLRenderer` plumbing, and always load the WebGL addon. Keep the `onContextLoss` handler so a lost WebGL context doesn't crash the terminal.
 
-## Un-trash shows error state while reconnecting
-
-When a card is un-trashed, the UI status pill immediately shows error while it attempts to reconnect the session. It should show idle (or a reconnecting state) during the attempt, and only show error if the reconnect actually fails.
-
 ## Three-dot diff option in compare view
 
 Add an option in the compare view to use three-dot diff (`...`) — showing only the changes introduced on the branch since it diverged from the base, excluding changes that happened on the base since. Currently compare shows a two-dot diff which includes both sides.

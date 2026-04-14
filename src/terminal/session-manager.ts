@@ -201,38 +201,46 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		teardownActiveSession(entry);
+		entry.pendingSessionStart = true;
 
 		const cols = normalizeDimension(request.cols, 120);
 		const rows = normalizeDimension(request.rows, 40);
-		const terminalStateMirror = new TerminalStateMirror(cols, rows, {
-			onInputResponse: (data) => {
-				if (!entry.active || hasLiveOutputListener(entry)) {
-					return;
-				}
-				entry.active.session.write(data);
-			},
-			scrollback: 10_000,
-		});
+		let terminalStateMirror: TerminalStateMirror;
+		let launch: Awaited<ReturnType<typeof prepareAgentLaunch>>;
+		try {
+			terminalStateMirror = new TerminalStateMirror(cols, rows, {
+				onInputResponse: (data) => {
+					if (!entry.active || hasLiveOutputListener(entry)) {
+						return;
+					}
+					entry.active.session.write(data);
+				},
+				scrollback: 10_000,
+			});
 
-		const launch = await prepareAgentLaunch({
-			taskId: request.taskId,
-			agentId: request.agentId,
-			binary: request.binary,
-			args: request.args,
-			autonomousModeEnabled: request.autonomousModeEnabled,
-			cwd: request.cwd,
-			prompt: request.prompt,
-			images: request.images,
-			startInPlanMode: request.startInPlanMode,
-			resumeConversation: request.resumeConversation,
-			env: request.env,
-			workspaceId: request.workspaceId,
-			workspacePath: request.workspacePath,
-			statuslineEnabled: request.statuslineEnabled,
-			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
-			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
-			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
-		});
+			launch = await prepareAgentLaunch({
+				taskId: request.taskId,
+				agentId: request.agentId,
+				binary: request.binary,
+				args: request.args,
+				autonomousModeEnabled: request.autonomousModeEnabled,
+				cwd: request.cwd,
+				prompt: request.prompt,
+				images: request.images,
+				startInPlanMode: request.startInPlanMode,
+				resumeConversation: request.resumeConversation,
+				env: request.env,
+				workspaceId: request.workspaceId,
+				workspacePath: request.workspacePath,
+				statuslineEnabled: request.statuslineEnabled,
+				worktreeAddParentGitDir: request.worktreeAddParentGitDir,
+				worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
+				worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
+			});
+		} catch (error) {
+			entry.pendingSessionStart = false;
+			throw error;
+		}
 
 		const env = buildTerminalEnvironment(request.env, launch.env);
 		const commandBinary = launch.binary ?? request.binary;
@@ -282,6 +290,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				binary: commandBinary,
 				error: errorMessage,
 			});
+			entry.pendingSessionStart = false;
 			if (launch.cleanup) {
 				void launch.cleanup().catch(() => {});
 			}
@@ -315,6 +324,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		});
 
 		entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust, launch });
+		entry.pendingSessionStart = false;
 		entry.terminalStateMirror = terminalStateMirror;
 
 		const summary = this.store.update(request.taskId, {
@@ -478,6 +488,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return null;
 		}
 		if (entry?.active || (summary.state !== "running" && summary.state !== "awaiting_review")) {
+			return summary;
+		}
+
+		// A session start is already in-flight (awaiting prepareAgentLaunch / PtySession.spawn).
+		// Don't clobber the summary — the start will set the correct state when it completes.
+		if (entry?.pendingSessionStart) {
 			return summary;
 		}
 

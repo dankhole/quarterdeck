@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: un-trash no longer flashes error state during reconnect
+
+- Un-trashing a card no longer shows a red "Error" status pill while the session reconnects. The race was between `startTaskSession` (async spawn in-flight) and `recoverStaleSession` (triggered by the terminal WebSocket connecting before the spawn completes). A `pendingSessionStart` flag on `ProcessEntry` now guards both `recoverStaleSession` and the reconciliation sweep from clobbering the session state during the async gap.
+
 ### Feature: inline scrollable diffs with last-viewed persistence
 
 - The compare, uncommitted, and last turn tabs in the git view now show all file diffs inline in a single scrollable list — no need to click individual files on the left to load their diffs. Diffs load progressively with per-file loading skeletons that fill in as each file's content arrives.

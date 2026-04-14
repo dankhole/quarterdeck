@@ -41,13 +41,19 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 
 function createEntry(
 	summaryOverrides: Partial<RuntimeTaskSessionSummary> = {},
-	options: { active?: unknown; restartRequest?: unknown; pendingAutoRestart?: unknown } = {},
+	options: {
+		active?: unknown;
+		restartRequest?: unknown;
+		pendingAutoRestart?: unknown;
+		pendingSessionStart?: boolean;
+	} = {},
 ): ReconciliationEntry {
 	return {
 		summary: createSummary(summaryOverrides),
 		active: "active" in options ? options.active : {},
 		restartRequest: options.restartRequest !== undefined ? options.restartRequest : null,
 		pendingAutoRestart: options.pendingAutoRestart !== undefined ? options.pendingAutoRestart : null,
+		pendingSessionStart: options.pendingSessionStart ?? false,
 	};
 }
 
@@ -325,6 +331,14 @@ describe("checkProcesslessActiveSession", () => {
 			{ active: null, restartRequest: { kind: "task" } },
 		);
 		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+	});
+
+	it("returns null when pendingSessionStart is true (session spawn in-flight)", () => {
+		const entry = createEntry(
+			{ state: "awaiting_review", reviewReason: "attention" },
+			{ active: null, restartRequest: { kind: "task" }, pendingSessionStart: true },
+		);
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 });
 

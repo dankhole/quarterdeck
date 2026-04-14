@@ -25,6 +25,7 @@ export interface ReconciliationEntry {
 	active: unknown;
 	restartRequest: unknown;
 	pendingAutoRestart: unknown;
+	pendingSessionStart: boolean;
 }
 
 export type ReconciliationCheck = (entry: ReconciliationEntry, nowMs: number) => ReconciliationAction | null;
@@ -131,7 +132,7 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	if (!entry.restartRequest) {
 		return null;
 	}
-	if (entry.pendingAutoRestart) {
+	if (entry.pendingAutoRestart || entry.pendingSessionStart) {
 		return null;
 	}
 	// Skip review states that were already classified by the onExit handler:

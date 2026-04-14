@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: un-trash no longer flashes error state during reconnect (2026-04-14)
+
+When a card was un-trashed, the UI status pill immediately showed a red "Error" badge for a moment before the session successfully reconnected. Root cause was a race condition in the async gap within `startTaskSession`: the method sets `entry.restartRequest` synchronously, then `await`s `prepareAgentLaunch` (which writes system prompts to disk). During that async gap, the terminal WebSocket connects (React re-renders → terminal panel mounts → WS connect), which calls `recoverStaleSession(taskId)`. That method saw `entry.active === null` (process not yet spawned) and `entry.restartRequest` set, matching the "stale session" branch that unconditionally set `reviewReason: "error"` and scheduled a redundant auto-restart.
+
+Added a `pendingSessionStart: boolean` flag to `ProcessEntry`. The flag is set to `true` immediately before the async work begins (after `teardownActiveSession`, before `prepareAgentLaunch`) and cleared to `false` on all exit paths: successful spawn (after `entry.active` is assigned), `PtySession.spawn` failure (catch block), and `prepareAgentLaunch` failure (wrapping try/catch). Both `recoverStaleSession` and `checkProcesslessActiveSession` (the reconciliation sweep check) now early-return when the flag is true, preserving the existing summary state instead of clobbering it.
+
+The `ReconciliationEntry` interface was extended with the new field and wired through the sweep in `session-reconciliation-sweep.ts`. One new test case added to verify `checkProcesslessActiveSession` returns null during a pending start.
+
+**Files**: `src/terminal/session-manager-types.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-reconciliation.ts`, `src/terminal/session-reconciliation-sweep.ts`, `test/runtime/terminal/session-reconciliation.test.ts`. Commit `152d479b`.
+
 ## Feature: inline scrollable diffs with last-viewed persistence (2026-04-14)
 
 Replaced the single-file-at-a-time diff loading model in the git view with batch loading that shows all file diffs inline in a scrollable list. Previously, the user had to click a file in the left-side tree to load its diff on the right — now all diffs render immediately (with progressive loading skeletons) and the file tree becomes a scroll-to navigator.

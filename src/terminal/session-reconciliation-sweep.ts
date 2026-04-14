@@ -72,6 +72,7 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext, repoPath
 						active: entry.active,
 						restartRequest: entry.restartRequest,
 						pendingAutoRestart: entry.pendingAutoRestart,
+						pendingSessionStart: entry.pendingSessionStart,
 					},
 					nowMs,
 				);
