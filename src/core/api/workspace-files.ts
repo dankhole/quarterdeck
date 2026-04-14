@@ -31,6 +31,25 @@ export const runtimeWorkspaceChangesResponseSchema = z.object({
 });
 export type RuntimeWorkspaceChangesResponse = z.infer<typeof runtimeWorkspaceChangesResponseSchema>;
 
+export const runtimeFileDiffRequestSchema = z.object({
+	taskId: z.string().nullable(),
+	baseRef: z.string().optional(),
+	mode: runtimeWorkspaceChangesModeSchema.optional(),
+	fromRef: z.string().optional(),
+	toRef: z.string().optional(),
+	path: z.string().min(1),
+	previousPath: z.string().optional(),
+	status: runtimeWorkspaceFileStatusSchema,
+});
+export type RuntimeFileDiffRequest = z.infer<typeof runtimeFileDiffRequestSchema>;
+
+export const runtimeFileDiffResponseSchema = z.object({
+	path: z.string(),
+	oldText: z.string().nullable(),
+	newText: z.string().nullable(),
+});
+export type RuntimeFileDiffResponse = z.infer<typeof runtimeFileDiffResponseSchema>;
+
 export const runtimeWorkspaceFileSearchRequestSchema = z.object({
 	query: z.string(),
 	limit: z.number().int().positive().optional(),

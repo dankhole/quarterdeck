@@ -13,6 +13,8 @@ import {
 	runtimeConflictResolveRequestSchema,
 	runtimeFileContentRequestSchema,
 	runtimeFileContentResponseSchema,
+	runtimeFileDiffRequestSchema,
+	runtimeFileDiffResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCherryPickRequestSchema,
@@ -173,6 +175,12 @@ export const workspaceRouter = t.router({
 		.output(runtimeWorkspaceChangesResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.workspaceApi.loadChanges(ctx.workspaceScope, input);
+		}),
+	getFileDiff: workspaceProcedure
+		.input(runtimeFileDiffRequestSchema)
+		.output(runtimeFileDiffResponseSchema)
+		.query(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.loadFileDiff(ctx.workspaceScope, input);
 		}),
 	ensureWorktree: workspaceProcedure
 		.input(runtimeWorktreeEnsureRequestSchema)

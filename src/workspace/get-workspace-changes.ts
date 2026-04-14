@@ -8,7 +8,7 @@ import type {
 } from "../core/api-contract";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
-import { countLines, getGitStdout, resolveRepoRoot } from "./git-utils";
+import { countLines, getGitStdout, parseNumstatPerFile, resolveRepoRoot } from "./git-utils";
 
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
 
@@ -40,6 +40,32 @@ interface ChangesFromRefInput {
 interface DiffStat {
 	additions: number;
 	deletions: number;
+}
+
+const REF_CHANGES_CACHE_MAX_ENTRIES = 64;
+
+interface RefChangesCacheEntry {
+	response: RuntimeWorkspaceChangesResponse;
+	lastAccessedAt: number;
+}
+
+const refChangesCacheByKey = new Map<string, RefChangesCacheEntry>();
+
+function pruneRefChangesCache(): void {
+	if (refChangesCacheByKey.size <= REF_CHANGES_CACHE_MAX_ENTRIES) {
+		return;
+	}
+	const entries = Array.from(refChangesCacheByKey.entries()).sort(
+		(left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt,
+	);
+	const removeCount = entries.length - REF_CHANGES_CACHE_MAX_ENTRIES;
+	for (let index = 0; index < removeCount; index += 1) {
+		const candidate = entries[index];
+		if (!candidate) {
+			break;
+		}
+		refChangesCacheByKey.delete(candidate[0]);
+	}
 }
 
 function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
@@ -150,131 +176,37 @@ async function readWorkingTreeFile(repoRoot: string, path: string): Promise<stri
 	}
 }
 
-function fallbackStats(oldText: string | null, newText: string | null): DiffStat {
-	if (oldText == null && newText == null) {
-		return { additions: 0, deletions: 0 };
-	}
-	if (oldText == null) {
-		return { additions: countLines(newText ?? ""), deletions: 0 };
-	}
-	if (newText == null) {
-		return { additions: 0, deletions: countLines(oldText) };
-	}
-
-	const oldLines = countLines(oldText);
-	const newLines = countLines(newText);
-	return {
-		additions: Math.max(newLines - oldLines, 0),
-		deletions: Math.max(oldLines - newLines, 0),
-	};
-}
-
-/**
- * Run a single `git diff --numstat` for all files at once and return a lookup map.
- * This replaces N individual per-file numstat calls with one batched command.
- * Numstat output format: `additions\tdeletions\tpath` (one line per file).
- * Binary files output `-\t-\tpath` which parses to { additions: 0, deletions: 0 }.
- */
-async function batchDiffNumstat(repoRoot: string, args: string[]): Promise<Map<string, DiffStat>> {
-	const result = new Map<string, DiffStat>();
+/** Run `git diff --numstat <args>` in batch and return per-file stats. */
+async function batchReadNumstat(repoRoot: string, args: string[]): Promise<Map<string, DiffStat>> {
 	try {
 		const output = await getGitStdout(["diff", "--numstat", ...args], repoRoot);
-		for (const rawLine of output.split("\n")) {
-			const line = rawLine.trim();
-			if (!line) continue;
-			const parts = line.split("\t");
-			if (parts.length < 3) continue;
-			const additions = Number.parseInt(parts[0] ?? "", 10);
-			const deletions = Number.parseInt(parts[1] ?? "", 10);
-			// The path is the last tab-separated field (handles rename output).
-			const path = parts[parts.length - 1];
-			if (path) {
-				result.set(path, {
-					additions: Number.isFinite(additions) ? additions : 0,
-					deletions: Number.isFinite(deletions) ? deletions : 0,
-				});
-			}
-		}
+		return parseNumstatPerFile(output);
 	} catch {
-		// Fall through — callers use fallbackStats for missing entries.
+		return new Map();
 	}
-	return result;
 }
 
-async function buildFileChange(
-	repoRoot: string,
-	entry: NameStatusEntry,
-	batchedStats: Map<string, DiffStat>,
-): Promise<RuntimeWorkspaceFileChange> {
-	const basePath = entry.previousPath ?? entry.path;
-	const oldText =
-		entry.status === "added" || entry.status === "untracked" ? null : await readHeadFile(repoRoot, basePath);
-	const newText = entry.status === "deleted" ? null : await readWorkingTreeFile(repoRoot, entry.path);
-	const stats =
-		entry.status === "untracked"
-			? { additions: countLines(newText ?? ""), deletions: 0 }
-			: (batchedStats.get(entry.path) ?? fallbackStats(oldText, newText));
-
+/** Build a metadata-only file change entry (no oldText/newText). */
+function buildFileMetadata(entry: NameStatusEntry, stats: DiffStat | undefined): RuntimeWorkspaceFileChange {
 	return {
 		path: entry.path,
 		previousPath: entry.previousPath,
 		status: entry.status,
-		additions: stats.additions,
-		deletions: stats.deletions,
-		oldText,
-		newText,
+		additions: stats?.additions ?? 0,
+		deletions: stats?.deletions ?? 0,
+		oldText: null,
+		newText: null,
 	};
 }
 
-async function buildFileChangeBetweenRefs(
-	repoRoot: string,
-	entry: NameStatusEntry,
-	fromRef: string,
-	toRef: string,
-	batchedStats: Map<string, DiffStat>,
-): Promise<RuntimeWorkspaceFileChange> {
-	const basePath = entry.previousPath ?? entry.path;
-	const oldText = entry.status === "added" ? null : await readFileAtRef(repoRoot, fromRef, basePath);
-	const newText = entry.status === "deleted" ? null : await readFileAtRef(repoRoot, toRef, entry.path);
-	const stats = batchedStats.get(entry.path) ?? fallbackStats(oldText, newText);
-
-	return {
-		path: entry.path,
-		previousPath: entry.previousPath,
-		status: entry.status,
-		additions: stats.additions,
-		deletions: stats.deletions,
-		oldText,
-		newText,
-	};
-}
-
-async function buildFileChangeFromRef(
-	repoRoot: string,
-	entry: NameStatusEntry,
-	fromRef: string,
-	batchedStats: Map<string, DiffStat>,
-): Promise<RuntimeWorkspaceFileChange> {
-	const basePath = entry.previousPath ?? entry.path;
-	const oldText =
-		entry.status === "added" || entry.status === "untracked"
-			? null
-			: await readFileAtRef(repoRoot, fromRef, basePath);
-	const newText = entry.status === "deleted" ? null : await readWorkingTreeFile(repoRoot, entry.path);
-	const stats =
-		entry.status === "untracked"
-			? { additions: countLines(newText ?? ""), deletions: 0 }
-			: (batchedStats.get(entry.path) ?? fallbackStats(oldText, newText));
-
-	return {
-		path: entry.path,
-		previousPath: entry.previousPath,
-		status: entry.status,
-		additions: stats.additions,
-		deletions: stats.deletions,
-		oldText,
-		newText,
-	};
+/** Count lines in an untracked file (for additions stat). */
+async function countUntrackedFileLines(repoRoot: string, path: string): Promise<number> {
+	try {
+		const content = await readFile(join(repoRoot, path), "utf8");
+		return countLines(content);
+	} catch {
+		return 0;
+	}
 }
 
 export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
@@ -325,14 +257,19 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 		return existing.response;
 	}
 
-	// Batch numstat for all tracked files in one git command instead of N per-file calls.
-	const trackedEntries = allChanges.filter((entry) => entry.status !== "untracked");
-	const numstatMap =
-		trackedEntries.length > 0
-			? await batchDiffNumstat(repoRoot, ["HEAD", "--", ...trackedEntries.map((e) => e.path)])
-			: new Map<string, DiffStat>();
-
-	const files = await Promise.all(allChanges.map((entry) => buildFileChange(repoRoot, entry, numstatMap)));
+	const numstatMap = await batchReadNumstat(repoRoot, ["HEAD", "--"]);
+	const untrackedLineCounts = await Promise.all(
+		allChanges
+			.filter((entry) => entry.status === "untracked")
+			.map(async (entry) => ({ path: entry.path, lines: await countUntrackedFileLines(repoRoot, entry.path) })),
+	);
+	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
+	const files = allChanges.map((entry) =>
+		buildFileMetadata(
+			entry,
+			entry.status === "untracked" ? untrackedStatsMap.get(entry.path) : numstatMap.get(entry.path),
+		),
+	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
 	const response: RuntimeWorkspaceChangesResponse = {
 		repoRoot,
@@ -353,6 +290,18 @@ export async function getWorkspaceChangesBetweenRefs(
 ): Promise<RuntimeWorkspaceChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
 
+	// Resolve refs to commit hashes so branch names that advance don't serve stale cache.
+	const [fromHash, toHash] = await Promise.all([
+		getGitStdout(["rev-parse", input.fromRef], repoRoot).catch(() => input.fromRef),
+		getGitStdout(["rev-parse", input.toRef], repoRoot).catch(() => input.toRef),
+	]);
+	const cacheKey = `${repoRoot}::${fromHash}::${toHash}`;
+	const cached = refChangesCacheByKey.get(cacheKey);
+	if (cached) {
+		cached.lastAccessedAt = Date.now();
+		return cached.response;
+	}
+
 	const trackedChangesOutput = await getGitStdout(
 		["diff", "--name-status", "--find-renames", input.fromRef, input.toRef, "--"],
 		repoRoot,
@@ -366,25 +315,18 @@ export async function getWorkspaceChangesBetweenRefs(
 		};
 	}
 
-	const numstatMap = await batchDiffNumstat(repoRoot, [
-		input.fromRef,
-		input.toRef,
-		"--",
-		...trackedChanges.map((e) => e.path),
-	]);
-
-	const files = await Promise.all(
-		trackedChanges.map((entry) =>
-			buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef, numstatMap),
-		),
-	);
+	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", input.fromRef, input.toRef, "--"]);
+	const files = trackedChanges.map((entry) => buildFileMetadata(entry, numstatMap.get(entry.path)));
 	files.sort((left, right) => left.path.localeCompare(right.path));
 
-	return {
+	const response: RuntimeWorkspaceChangesResponse = {
 		repoRoot,
 		generatedAt: Date.now(),
 		files,
 	};
+	refChangesCacheByKey.set(cacheKey, { response, lastAccessedAt: Date.now() });
+	pruneRefChangesCache();
+	return response;
 }
 
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
@@ -418,14 +360,18 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		};
 	}
 
-	const trackedForNumstat = allChanges.filter((entry) => entry.status !== "untracked");
-	const numstatMap =
-		trackedForNumstat.length > 0
-			? await batchDiffNumstat(repoRoot, [input.fromRef, "--", ...trackedForNumstat.map((e) => e.path)])
-			: new Map<string, DiffStat>();
-
-	const files = await Promise.all(
-		allChanges.map((entry) => buildFileChangeFromRef(repoRoot, entry, input.fromRef, numstatMap)),
+	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", input.fromRef, "--"]);
+	const untrackedLineCounts = await Promise.all(
+		allChanges
+			.filter((entry) => entry.status === "untracked")
+			.map(async (entry) => ({ path: entry.path, lines: await countUntrackedFileLines(repoRoot, entry.path) })),
+	);
+	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
+	const files = allChanges.map((entry) =>
+		buildFileMetadata(
+			entry,
+			entry.status === "untracked" ? untrackedStatsMap.get(entry.path) : numstatMap.get(entry.path),
+		),
 	);
 	files.sort((left, right) => left.path.localeCompare(right.path));
 	return {
@@ -433,4 +379,45 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		generatedAt: Date.now(),
 		files,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Single-file content loading (on-demand)
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceFileDiffInput {
+	cwd: string;
+	path: string;
+	previousPath?: string;
+	status: RuntimeWorkspaceFileStatus;
+	fromRef?: string;
+	toRef?: string;
+}
+
+export async function getWorkspaceFileDiff(
+	input: WorkspaceFileDiffInput,
+): Promise<{ path: string; oldText: string | null; newText: string | null }> {
+	const repoRoot = await resolveRepoRoot(input.cwd);
+	const basePath = input.previousPath ?? input.path;
+	const isNew = input.status === "added" || input.status === "untracked";
+	const isDeleted = input.status === "deleted";
+
+	let oldText: string | null = null;
+	let newText: string | null = null;
+
+	if (input.fromRef && input.toRef) {
+		// Between two refs
+		if (!isNew) oldText = await readFileAtRef(repoRoot, input.fromRef, basePath);
+		if (!isDeleted) newText = await readFileAtRef(repoRoot, input.toRef, input.path);
+	} else if (input.fromRef) {
+		// Ref vs working tree
+		if (!isNew) oldText = await readFileAtRef(repoRoot, input.fromRef, basePath);
+		if (!isDeleted) newText = await readWorkingTreeFile(repoRoot, input.path);
+	} else {
+		// HEAD vs working tree (uncommitted)
+		if (!isNew) oldText = await readHeadFile(repoRoot, basePath);
+		if (!isDeleted) newText = await readWorkingTreeFile(repoRoot, input.path);
+	}
+
+	return { path: input.path, oldText, newText };
 }

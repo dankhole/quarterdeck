@@ -39,7 +39,18 @@ function getFileRows(source: GitCommitDiffSource, path: string): UnifiedDiffRow[
 	if (!file) {
 		return [];
 	}
+	// Content is loaded on-demand — skip diff computation when content hasn't been fetched yet.
+	if (file.oldText == null && file.newText == null && file.status !== "added") {
+		return [];
+	}
 	return buildUnifiedDiffRows(file.oldText, file.newText ?? "");
+}
+
+function isWorkingCopyFileContentPending(source: GitCommitDiffSource, path: string): boolean {
+	if (source.type !== "working-copy") return false;
+	const file = source.files.find((f) => f.path === path);
+	if (!file) return false;
+	return file.oldText == null && file.newText == null && file.status !== "added";
 }
 
 function getFileStats(source: GitCommitDiffSource, path: string): { additions: number; deletions: number } {
@@ -415,6 +426,24 @@ export function GitCommitDiffPanel({
 											) : null}
 											{!isBinaryFile && rows.length > 0 ? (
 												<ReadOnlyUnifiedDiff rows={rows} path={path} />
+											) : !isBinaryFile && isWorkingCopyFileContentPending(diffSource, path) ? (
+												selectedPath === path ? (
+													<div className="px-4 py-5">
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "92%" }} />
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "80%" }} />
+														<div className="kb-skeleton h-3 rounded-sm" style={{ width: "86%" }} />
+													</div>
+												) : (
+													<div
+														style={{
+															padding: "12px",
+															fontSize: 12,
+															color: "var(--color-text-tertiary)",
+														}}
+													>
+														Select file to view diff
+													</div>
+												)
 											) : !isBinaryFile ? (
 												<div
 													style={{

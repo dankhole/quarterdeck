@@ -28,6 +28,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceFileChange,
 } from "@/runtime/types";
+import { useFileDiffContent } from "@/runtime/use-file-diff-content";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
@@ -413,6 +414,39 @@ export function GitView({
 		return null;
 	}, [activeTab, uncommittedChanges, lastTurnChanges, compareChanges]);
 
+	// On-demand file content loading
+	const selectedFileForDiff = useMemo(() => {
+		if (!activeFiles || !selectedPath) return null;
+		return activeFiles.find((f) => f.path === selectedPath) ?? null;
+	}, [activeFiles, selectedPath]);
+
+	const activeChangesGeneratedAt = useMemo(() => {
+		if (activeTab === "uncommitted") return uncommittedChanges?.generatedAt ?? null;
+		if (activeTab === "last_turn") return lastTurnChanges?.generatedAt ?? null;
+		if (activeTab === "compare") return compareChanges?.generatedAt ?? null;
+		return null;
+	}, [activeTab, uncommittedChanges, lastTurnChanges, compareChanges]);
+
+	const fileDiff = useFileDiffContent({
+		workspaceId: currentProjectId,
+		taskId,
+		baseRef,
+		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
+		fromRef: activeTab === "compare" ? compare.targetRef : undefined,
+		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
+		selectedFile: selectedFileForDiff,
+		changesGeneratedAt: activeChangesGeneratedAt,
+	});
+
+	const enrichedFiles = useMemo(() => {
+		if (!activeFiles || !selectedPath) return activeFiles;
+		return activeFiles.map((f) => {
+			if (f.path !== selectedPath) return f;
+			if (fileDiff.oldText == null && fileDiff.newText == null) return f;
+			return { ...f, oldText: fileDiff.oldText, newText: fileDiff.newText };
+		});
+	}, [activeFiles, selectedPath, fileDiff.oldText, fileDiff.newText]);
+
 	const isRuntimeAvailable =
 		activeTab === "uncommitted"
 			? uncommittedAvailable
@@ -626,7 +660,7 @@ export function GitView({
 								}}
 							>
 								<DiffViewerPanel
-									workspaceFiles={isRuntimeAvailable ? activeFiles : null}
+									workspaceFiles={isRuntimeAvailable ? enrichedFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
 									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}
@@ -634,6 +668,7 @@ export function GitView({
 									comments={diffComments}
 									onCommentsChange={setDiffComments}
 									navigateToFile={navigateToFile}
+									isContentLoading={fileDiff.isLoading}
 								/>
 							</div>
 						</>

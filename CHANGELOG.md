@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Perf: lazy diff content loading — metadata-only polling, on-demand file content
+
+- **Metadata-only file lists**: `getWorkspaceChanges`, `getWorkspaceChangesBetweenRefs`, and `getWorkspaceChangesFromRef` now return `oldText: null, newText: null` for every file. File stats come from a single batch `git diff --numstat` call via new `parseNumstatPerFile` parser (handles renames and binary files). Polling drops from O(3N) git process spawns to O(4).
+- **On-demand content loading**: New `getFileDiff` tRPC endpoint loads `oldText`/`newText` for a single file. Frontend `useFileDiffContent` hook fetches content when the user selects a file, with an in-memory cache so revisiting is instant.
+- **Ref-based comparison cache**: `getWorkspaceChangesBetweenRefs` caches responses keyed by resolved commit hashes (via `git rev-parse`), so branch names that advance don't serve stale data. LRU eviction at 64 entries.
+- **Loading state**: `DiffViewerPanel` shows a skeleton while content loads. Git history working-copy view shows "Select file to view diff" for non-selected files.
+- **Path traversal guard**: `loadFileDiff` validates paths with `validateGitPath` to prevent `..` traversal via `readWorkingTreeFile`.
+
 ### Perf: commit sidebar — scoped metadata refresh, batched numstat, skip redundant probes
 
 - **Scoped metadata refresh**: Git-only operations (commit, discard, stash push/pop/apply/drop) now call `requestTaskRefresh` or `requestHomeRefresh` instead of rebuilding and broadcasting the full workspace state snapshot and probing every task on the board. Follows the existing `mergeBranch` pattern. Added `requestHomeRefresh` to the metadata monitor for home-scoped operations.

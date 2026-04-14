@@ -36,6 +36,7 @@ export function DiffViewerPanel({
 	onCommentsChange,
 	viewMode = "unified",
 	navigateToFile,
+	isContentLoading,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
@@ -47,6 +48,7 @@ export function DiffViewerPanel({
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
 	navigateToFile?: (nav: FileNavigation) => void;
+	isContentLoading?: boolean;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 
@@ -262,43 +264,53 @@ export function DiffViewerPanel({
 											className="rounded-b-md border-x border-b border-border bg-surface-1"
 											style={{ overflow: "hidden" }}
 										>
-											{group.entries.map((entry) => (
-												<div key={entry.id} className="kb-diff-entry">
-													{entry.isBinary ? null : viewMode === "split" ? (
-														<SplitDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
-															onUpdateComment={(lineNumber, variant, text) =>
-																handleUpdateComment(group.path, lineNumber, variant, text)
-															}
-															onDeleteComment={(lineNumber, variant) =>
-																handleDeleteComment(group.path, lineNumber, variant)
-															}
-														/>
-													) : (
-														<UnifiedDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
-															onUpdateComment={(lineNumber, variant, text) =>
-																handleUpdateComment(group.path, lineNumber, variant, text)
-															}
-															onDeleteComment={(lineNumber, variant) =>
-																handleDeleteComment(group.path, lineNumber, variant)
-															}
-														/>
-													)}
+											{isContentLoading && selectedPath === group.path ? (
+												<div className="px-4 py-6">
+													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "95%" }} />
+													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "82%" }} />
+													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "90%" }} />
+													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "78%" }} />
+													<div className="kb-skeleton h-3 rounded-sm" style={{ width: "85%" }} />
 												</div>
-											))}
+											) : (
+												group.entries.map((entry) => (
+													<div key={entry.id} className="kb-diff-entry">
+														{entry.isBinary ? null : viewMode === "split" ? (
+															<SplitDiff
+																path={group.path}
+																oldText={entry.oldText}
+																newText={entry.newText}
+																comments={comments}
+																onAddComment={(lineNumber, lineText, variant) =>
+																	handleAddComment(group.path, lineNumber, lineText, variant)
+																}
+																onUpdateComment={(lineNumber, variant, text) =>
+																	handleUpdateComment(group.path, lineNumber, variant, text)
+																}
+																onDeleteComment={(lineNumber, variant) =>
+																	handleDeleteComment(group.path, lineNumber, variant)
+																}
+															/>
+														) : (
+															<UnifiedDiff
+																path={group.path}
+																oldText={entry.oldText}
+																newText={entry.newText}
+																comments={comments}
+																onAddComment={(lineNumber, lineText, variant) =>
+																	handleAddComment(group.path, lineNumber, lineText, variant)
+																}
+																onUpdateComment={(lineNumber, variant, text) =>
+																	handleUpdateComment(group.path, lineNumber, variant, text)
+																}
+																onDeleteComment={(lineNumber, variant) =>
+																	handleDeleteComment(group.path, lineNumber, variant)
+																}
+															/>
+														)}
+													</div>
+												))
+											)}
 										</div>
 									) : null}
 								</section>

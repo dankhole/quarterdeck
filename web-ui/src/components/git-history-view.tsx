@@ -19,7 +19,8 @@ import {
 } from "@/resize/use-git-history-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitCommit } from "@/runtime/types";
+import type { RuntimeGitCommit, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import { useFileDiffContent } from "@/runtime/use-file-diff-content";
 import { useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
@@ -275,6 +276,37 @@ export function GitHistoryView({
 		[displayCommitsPanelWidth, displayRefsPanelWidth, setCommitsPanelWidth, startCommitsPanelResize],
 	);
 
+	// Lazy file content loading for working-copy view in git history
+	const wcSelectedFile = useMemo((): RuntimeWorkspaceFileChange | null => {
+		if (gitHistory.viewMode !== "working-copy" || !gitHistory.selectedDiffPath || !gitHistory.diffSource) {
+			return null;
+		}
+		if (gitHistory.diffSource.type !== "working-copy") return null;
+		return gitHistory.diffSource.files.find((f) => f.path === gitHistory.selectedDiffPath) ?? null;
+	}, [gitHistory.viewMode, gitHistory.selectedDiffPath, gitHistory.diffSource]);
+
+	// changesGeneratedAt omitted: the git history working-copy view is a one-shot load (no polling),
+	// so cached diff content doesn't go stale between polls like in git-view.tsx.
+	const wcFileDiff = useFileDiffContent({
+		workspaceId,
+		taskId: taskScope?.taskId ?? null,
+		baseRef: taskScope?.baseRef ?? null,
+		mode: "working_copy",
+		selectedFile: wcSelectedFile,
+	});
+
+	const enrichedDiffSource = useMemo(() => {
+		if (!gitHistory.diffSource || gitHistory.diffSource.type !== "working-copy" || !gitHistory.selectedDiffPath) {
+			return gitHistory.diffSource;
+		}
+		if (wcFileDiff.oldText == null && wcFileDiff.newText == null) return gitHistory.diffSource;
+		const enrichedFiles = gitHistory.diffSource.files.map((f) => {
+			if (f.path !== gitHistory.selectedDiffPath) return f;
+			return { ...f, oldText: wcFileDiff.oldText, newText: wcFileDiff.newText };
+		});
+		return { type: "working-copy" as const, files: enrichedFiles };
+	}, [gitHistory.diffSource, gitHistory.selectedDiffPath, wcFileDiff.oldText, wcFileDiff.newText]);
+
 	if (!workspaceId) {
 		return (
 			<div
@@ -339,7 +371,7 @@ export function GitHistoryView({
 					className="z-10"
 				/>
 				<GitCommitDiffPanel
-					diffSource={gitHistory.diffSource}
+					diffSource={enrichedDiffSource}
 					isLoading={gitHistory.isDiffLoading}
 					errorMessage={gitHistory.diffErrorMessage}
 					selectedPath={gitHistory.selectedDiffPath}

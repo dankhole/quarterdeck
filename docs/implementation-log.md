@@ -2,6 +2,35 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Perf: lazy diff content loading — metadata-only polling, on-demand file content (2026-04-13)
+
+The git view tabs (Uncommitted, Last Turn, Compare) polled `getChanges` every 1 second, which loaded full file content (`oldText`/`newText` via `git show` + disk reads) for every changed file. With 20 files, that was 40-60 git process spawns per second plus large JSON payloads — the root cause of the slow loading.
+
+**Fix: two-phase approach** — separate the file list (fast polling) from file content (on-demand for the selected file).
+
+**Backend** (`src/workspace/get-workspace-changes.ts`):
+- All three `getWorkspaceChanges*` functions now return `oldText: null, newText: null` via `buildFileMetadata()`. File stats come from batch `git diff --numstat` via `batchReadNumstat()` → `parseNumstatPerFile()` (new function in `git-utils.ts` that handles normal lines, binary files, and rename `{old => new}` paths). Untracked files still read the file for line counting but don't include content.
+- New `getWorkspaceFileDiff()` loads content for a single file — reuses existing `readHeadFile`, `readFileAtRef`, `readWorkingTreeFile` helpers. Three modes: HEAD vs working tree, ref vs working tree, ref vs ref.
+- `getWorkspaceChangesBetweenRefs` gained a ref-resolved LRU cache (64 entries) — resolves branch names to commit hashes via `git rev-parse` before caching so branch advances don't serve stale data.
+
+**API** (`src/core/api/workspace-files.ts`, `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`):
+- New `getFileDiff` tRPC query with `runtimeFileDiffRequestSchema` / `runtimeFileDiffResponseSchema`. The `loadFileDiff` handler mirrors `loadChanges` for cwd/ref resolution (including `last_turn` checkpoint lookup). Path traversal guard via `validateGitPath`.
+
+**Frontend** (`web-ui/src/runtime/use-file-diff-content.ts` [new], `web-ui/src/components/git-view.tsx`):
+- `useFileDiffContent` hook fetches content for the selected file via `getFileDiff`. Content cache (`Map` keyed by `path::mode::fromRef::toRef`) makes revisiting instant. Race protection via `requestIdRef`. Cache invalidates on context change or `changesGeneratedAt` bump.
+- `git-view.tsx` merges fetched content into `enrichedFiles` for `DiffViewerPanel`. `FileTreePanel` still gets metadata-only `activeFiles`.
+
+**DiffViewerPanel** (`web-ui/src/components/detail-panels/diff-viewer-panel.tsx`):
+- New `isContentLoading` prop shows skeleton bars while content loads for the selected file.
+
+**Git history** (`web-ui/src/components/git-history-view.tsx`, `web-ui/src/components/git-history/git-commit-diff-panel.tsx`):
+- `git-history-view.tsx` uses `useFileDiffContent` for working-copy view, enriches selected file in `enrichedDiffSource`.
+- `git-commit-diff-panel.tsx` detects pending working-copy content via `isWorkingCopyFileContentPending()` — shows skeleton for selected file, "Select file to view diff" for others.
+
+**Cleanup**: Removed dead `parseNumstatLine` from `git-utils.ts` (replaced by `parseNumstatPerFile`).
+
+Files: `src/workspace/get-workspace-changes.ts`, `src/workspace/git-utils.ts`, `src/core/api/workspace-files.ts`, `src/trpc/workspace-api.ts`, `src/trpc/workspace-procedures.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/runtime/use-file-diff-content.ts`, `web-ui/src/components/git-view.tsx`, `web-ui/src/components/detail-panels/diff-viewer-panel.tsx`, `web-ui/src/components/git-history-view.tsx`, `web-ui/src/components/git-history/git-commit-diff-panel.tsx`.
+
 ## Fix: restore terminal buffer on task switch, reduce spurious SIGWINCHs (2026-04-13)
 
 **Root cause investigation:** Terminal rendering degraded while agents were active in parked terminals — status bar artifacts above the current position, off-by-one input bar. Manual resize or "re-sync terminal content" always fixed it, but task switch did not. Investigation revealed three issues:

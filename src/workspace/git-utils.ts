@@ -301,21 +301,62 @@ export function parseNumstatTotals(output: string): { additions: number; deletio
 }
 
 /**
- * Parse a single numstat line into per-file additions/deletions.
- * Returns `null` if the line is empty or unparseable.
+ * Extract the destination path from a `git diff --numstat` path field.
+ *
+ * Without `--find-renames` the path is plain (`src/foo.ts`).
+ * With `--find-renames` renames appear as either:
+ *   - `oldpath => newpath`                  (simple)
+ *   - `prefix/{oldname => newname}/suffix`  (brace notation)
+ *
+ * Returns the **new** (destination) path in all cases.
  */
-export function parseNumstatLine(line: string): { additions: number; deletions: number } | null {
-	const trimmed = line.trim();
-	if (!trimmed) {
-		return null;
+function extractNumstatDestPath(raw: string): string {
+	const arrowIdx = raw.indexOf(" => ");
+	if (arrowIdx === -1) {
+		return raw;
 	}
-	const [addedRaw, deletedRaw] = trimmed.split("\t");
-	const additions = Number.parseInt(addedRaw ?? "", 10);
-	const deletions = Number.parseInt(deletedRaw ?? "", 10);
-	return {
-		additions: Number.isFinite(additions) ? additions : 0,
-		deletions: Number.isFinite(deletions) ? deletions : 0,
-	};
+	const braceOpen = raw.lastIndexOf("{", arrowIdx);
+	if (braceOpen !== -1) {
+		const braceClose = raw.indexOf("}", arrowIdx);
+		if (braceClose !== -1) {
+			const prefix = raw.slice(0, braceOpen);
+			const newPart = raw.slice(arrowIdx + 4, braceClose);
+			const suffix = raw.slice(braceClose + 1);
+			return `${prefix}${newPart}${suffix}`;
+		}
+	}
+	return raw.slice(arrowIdx + 4);
+}
+
+/**
+ * Parse multi-line `git diff --numstat` output into per-file stats.
+ * Returns a Map keyed by the destination path (the new path for renames).
+ * Binary files (`-\t-\tpath`) are recorded as `{ additions: 0, deletions: 0 }`.
+ */
+export function parseNumstatPerFile(output: string): Map<string, { additions: number; deletions: number }> {
+	const result = new Map<string, { additions: number; deletions: number }>();
+	for (const rawLine of output.split("\n")) {
+		const line = rawLine.trim();
+		if (!line) {
+			continue;
+		}
+		const firstTab = line.indexOf("\t");
+		const secondTab = line.indexOf("\t", firstTab + 1);
+		if (firstTab === -1 || secondTab === -1) {
+			continue;
+		}
+		const addedRaw = line.slice(0, firstTab);
+		const deletedRaw = line.slice(firstTab + 1, secondTab);
+		const pathRaw = line.slice(secondTab + 1);
+		const path = extractNumstatDestPath(pathRaw);
+		const additions = Number.parseInt(addedRaw, 10);
+		const deletions = Number.parseInt(deletedRaw, 10);
+		result.set(path, {
+			additions: Number.isFinite(additions) ? additions : 0,
+			deletions: Number.isFinite(deletions) ? deletions : 0,
+		});
+	}
+	return result;
 }
 
 /**

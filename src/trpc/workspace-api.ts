@@ -34,6 +34,7 @@ import {
 	getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
+	getWorkspaceFileDiff,
 } from "../workspace/get-workspace-changes";
 import { cherryPickCommit } from "../workspace/git-cherry-pick";
 import {
@@ -56,7 +57,7 @@ import {
 	runGitCheckoutAction,
 	runGitSyncAction,
 } from "../workspace/git-sync";
-import { assertValidGitRef, getFileContentAtRef, listFilesAtRef } from "../workspace/git-utils";
+import { assertValidGitRef, getFileContentAtRef, listFilesAtRef, validateGitPath } from "../workspace/git-utils";
 import { readWorkspaceFile } from "../workspace/read-workspace-file";
 import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
@@ -572,6 +573,89 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				});
 			}
 			return await getWorkspaceChanges(taskCwd);
+		},
+
+		loadFileDiff: async (workspaceScope, input) => {
+			const emptyResult = { path: input.path, oldText: null, newText: null };
+
+			if (!validateGitPath(input.path)) {
+				throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid file path." });
+			}
+			if (input.previousPath && !validateGitPath(input.previousPath)) {
+				throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid previous path." });
+			}
+
+			// Ref-based comparison (Compare tab)
+			if (input.fromRef) {
+				assertValidGitRef(input.fromRef, "fromRef");
+				if (input.toRef) assertValidGitRef(input.toRef, "toRef");
+
+				let cwd = workspaceScope.workspacePath;
+				if (input.taskId) {
+					const resolved = await tryResolveTaskCwd(
+						workspaceScope.workspacePath,
+						input.taskId,
+						input.baseRef ?? "",
+					);
+					if (!resolved) return emptyResult;
+					cwd = resolved;
+				}
+
+				return await getWorkspaceFileDiff({
+					cwd,
+					path: input.path,
+					previousPath: input.previousPath,
+					status: input.status,
+					fromRef: input.fromRef,
+					toRef: input.toRef,
+				});
+			}
+
+			// Home repo uncommitted (no task)
+			if (!input.taskId) {
+				return await getWorkspaceFileDiff({
+					cwd: workspaceScope.workspacePath,
+					path: input.path,
+					previousPath: input.previousPath,
+					status: input.status,
+				});
+			}
+
+			// Task-scoped
+			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
+			const taskCwd = await tryResolveTaskCwd(
+				workspaceScope.workspacePath,
+				normalizedInput.taskId,
+				normalizedInput.baseRef,
+			);
+			if (!taskCwd) return emptyResult;
+
+			if (normalizedInput.mode === "last_turn") {
+				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
+					workspaceScope.workspaceId,
+					workspaceScope.workspacePath,
+				);
+				const summary = terminalManager.store.getSummary(normalizedInput.taskId);
+				const fromCheckpoint = summary?.previousTurnCheckpoint;
+				const toCheckpoint = summary?.latestTurnCheckpoint;
+				if (!toCheckpoint) return emptyResult;
+
+				return await getWorkspaceFileDiff({
+					cwd: taskCwd,
+					path: input.path,
+					previousPath: input.previousPath,
+					status: input.status,
+					fromRef: summary?.state === "running" || !fromCheckpoint ? toCheckpoint.commit : fromCheckpoint.commit,
+					toRef: summary?.state === "running" || !fromCheckpoint ? undefined : toCheckpoint.commit,
+				});
+			}
+
+			return await getWorkspaceFileDiff({
+				cwd: taskCwd,
+				path: input.path,
+				previousPath: input.previousPath,
+				status: input.status,
+			});
 		},
 
 		// Called by the UI's ensureTaskWorkspace (use-task-sessions.ts) for restore-from-trash.

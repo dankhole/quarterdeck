@@ -15,6 +15,8 @@ import type {
 	RuntimeDebugResetAllStateResponse,
 	RuntimeFileContentRequest,
 	RuntimeFileContentResponse,
+	RuntimeFileDiffRequest,
+	RuntimeFileDiffResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCherryPickRequest,
@@ -196,6 +198,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceChangesRequest,
 		) => Promise<RuntimeWorkspaceChangesResponse>;
+		loadFileDiff: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeFileDiffRequest,
+		) => Promise<RuntimeFileDiffResponse>;
 		ensureWorktree: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorktreeEnsureRequest,
