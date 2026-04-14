@@ -9,6 +9,12 @@
 - **Skip redundant initialSummary**: `runGitSyncAction` now defers the expensive `getGitSyncSummary` probe when action is push/fetch without an explicit branch — the dirty-tree guard is pull-only and `isOtherBranch` is trivially false.
 - **Commit+push path**: Eliminated transient intermediate metadata broadcast — now refreshes once after push instead of once after commit and once after push.
 
+### Fix: restore terminal buffer on task switch, reduce spurious SIGWINCHs
+
+- While a terminal is parked, the agent writes output continuously (status bar redraws, tool output, cursor movements). On task switch, the canvas repair fixed rendering but relied on a force SIGWINCH to make the agent redraw — which only triggers a lightweight refresh when dimensions haven't changed, leaving accumulated artifacts (stale status bar rows, off-by-one positioning). `mount()` now calls `requestRestore()` to atomically replace the buffer from the server's headless mirror.
+- Canvas repair in `mount()` is now synchronous instead of RAF-deferred — eliminates the one-frame stale render between DOM move and repair.
+- The `forceResize()` on state transitions now only fires on the first transition into an active state (from null/"starting"), not on transitions between active states (running ↔ awaiting_review). Sending a same-dimensions SIGWINCH while the agent is mid-layout (e.g. setting up an input prompt) was causing intermittent off-by-one artifacts.
+
 ### Fix: DPR change listener now repairs terminal rendering
 
 - The DPR change listener (monitor moves, zoom, display setting changes) previously only sent a resize to the server, leaving the glyph texture atlas stale — producing blurry text until the next task switch. Now calls the full canvas repair sequence (dimension bounce, `clearTextureAtlas()`, repaint) so DPR changes are handled immediately.

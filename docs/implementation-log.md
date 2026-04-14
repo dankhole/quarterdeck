@@ -2,6 +2,25 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: restore terminal buffer on task switch, reduce spurious SIGWINCHs (2026-04-13)
+
+**Root cause investigation:** Terminal rendering degraded while agents were active in parked terminals — status bar artifacts above the current position, off-by-one input bar. Manual resize or "re-sync terminal content" always fixed it, but task switch did not. Investigation revealed three issues:
+
+1. The canvas repair (`repairRendererCanvas`) fixes rendering (texture atlas, canvas pixel dimensions) but not buffer content. The `forceResize()` sends a same-dimensions SIGWINCH, but TUI agents (Claude Code) treat same-dimensions SIGWINCH as a lightweight refresh — they query `TIOCGWINSZ`, see the same size, and skip the expensive tear-down/rebuild. Accumulated artifacts persist. Manual resize works because actual dimension changes trigger the full redraw path. Re-sync works because it atomically replaces the buffer from the server's headless mirror.
+
+2. The canvas repair was RAF-deferred, causing one frame of stale rendering (wrong texture atlas, CSS-scaled canvas) between DOM move and repair.
+
+3. The `forceResize()` on state transitions fired on every `running` ↔ `awaiting_review` transition. Each same-dimensions SIGWINCH could interrupt the agent's ink TUI mid-layout — e.g. during input prompt setup — causing off-by-one artifacts. This was intermittent and correlated with the force SIGWINCH machinery being added.
+
+**Changes:**
+
+- `mount()` now calls `requestRestore()` after canvas repair when the container changes. The server pauses live output, serializes the headless mirror state, and the client does `terminal.reset()` + writes the snapshot. On first mount (initial restore not yet complete) this is a no-op. (`persistent-terminal-manager.ts:714`)
+- Canvas repair runs synchronously instead of in a RAF. `appendChild` updates the layout tree immediately and `fitAddon.fit()` forces synchronous reflow via `getBoundingClientRect()`. (`persistent-terminal-manager.ts:703`)
+- State transition `forceResize()` now only fires when `previousState` is not `"running"` or `"awaiting_review"` — i.e. only on the first transition into an active state, not on transitions between active states. (`persistent-terminal-manager.ts:556-558`)
+- Updated `docs/terminal-visual-bugs.md` with the buffer restoration analysis and marked the DPR bug as fixed.
+
+Files: `web-ui/src/terminal/persistent-terminal-manager.ts`, `docs/terminal-visual-bugs.md`.
+
 ## Perf: commit sidebar — scoped metadata refresh, batched numstat, skip redundant probes (2026-04-13)
 
 Three performance optimizations for the commit sidebar (closes todo #18):

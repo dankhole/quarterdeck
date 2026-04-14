@@ -550,9 +550,16 @@ export class PersistentTerminal {
 				// When a session newly starts, the server PTY may not have had our
 				// terminal dimensions — the resize sent during the earlier restore
 				// may have been silently dropped because the PTY didn't exist yet.
+				// Only fire on the first transition INTO an active state (from null,
+				// "starting", etc.), not on transitions between active states. Sending
+				// a same-dimensions SIGWINCH while the agent is already running can
+				// interrupt TUI layout mid-redraw (e.g. input prompt setup), causing
+				// off-by-one artifacts.
 				if (
 					this.visibleContainer &&
 					payload.summary.state !== previousState &&
+					previousState !== "running" &&
+					previousState !== "awaiting_review" &&
 					(payload.summary.state === "running" || payload.summary.state === "awaiting_review")
 				) {
 					this.forceResize();
@@ -684,19 +691,27 @@ export class PersistentTerminal {
 			// New container — previous resize may have targeted a different
 			// (or parked) container, or been silently dropped.
 			this.invalidateResize();
-			// Canvas repair after DOM move — see repairRendererCanvas() for
-			// why each step is needed. Deferred to a RAF so the container has
-			// its final layout dimensions before we measure.
+			// Canvas repair after DOM move — fixes stale texture atlas and
+			// canvas pixel dimensions caused by the parking-root reparent.
+			// Runs synchronously: appendChild updates the layout tree immediately
+			// and fitAddon.fit() forces a synchronous reflow via
+			// getBoundingClientRect(), so container dimensions are available.
 			if (this.deferredResizeRaf !== null) {
 				cancelAnimationFrame(this.deferredResizeRaf);
-			}
-			this.deferredResizeRaf = requestAnimationFrame(() => {
 				this.deferredResizeRaf = null;
-				if (this.disposed || this.visibleContainer !== container) {
-					return;
-				}
-				this.repairRendererCanvas("mount");
-			});
+			}
+			this.repairRendererCanvas("mount");
+			// Request a fresh buffer snapshot from the server's headless mirror.
+			// The canvas repair above fixes rendering (textures, pixel dimensions)
+			// but not buffer content. While this terminal was parked, the agent
+			// was actively writing output — status bar redraws, tool output, cursor
+			// movements. A same-dimensions SIGWINCH only triggers a lightweight TUI
+			// refresh from the agent, which doesn't clear accumulated artifacts
+			// (stale status bar rows, off-by-one positioning). The restore atomically
+			// replaces the buffer, bypassing the agent's redraw path entirely.
+			// On first mount (initial restore not yet complete) this is a no-op —
+			// the socket-connection restore handles that case.
+			this.requestRestore();
 		}
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();

@@ -58,9 +58,9 @@ This goes away entirely with the visibility toggle approach (no DOM move = no st
 
 ### When canvas repair runs
 
-- `mount()` RAF callback — after DOM re-parent on task switch
+- `mount()` — synchronous, immediately after DOM re-parent on task switch
 - `resetRenderer()` — user-initiated "Reset terminal rendering" button
-- Does NOT run on DPR change — `listenForDprChange()` only calls `requestResize()`, not `repairRendererCanvas()`. Monitor switches get right dimensions but stale glyph textures. **This is a known unfixed bug.**
+- `listenForDprChange()` handler — on monitor switch / zoom (DPR change)
 
 ## Resize epoch dedup fix
 
@@ -78,11 +78,21 @@ WebGL renderer rasterizes glyphs into a texture atlas on an opaque canvas, produ
 
 A toggle exists in settings (`terminalWebGLRenderer`). Canvas 2D uses `fillText()` which may produce crisper text. Needs A/B comparison by the user.
 
-## DPR change handling (unfixed)
+## DPR change handling (fixed)
 
-`listenForDprChange()` creates a `matchMedia` query for the current DPR. When it fires (monitor switch), it calls `requestResize()` but NOT `repairRendererCanvas()`. The dimensions update but glyph textures remain stale — blurry text until the next task switch triggers mount's canvas repair.
+`listenForDprChange()` creates a `matchMedia` query for the current DPR. When it fires (monitor switch), it now calls `repairRendererCanvas("dprChange")` which clears the stale glyph textures and repaints at the new DPR, in addition to sending updated dimensions.
 
-Fix: call `repairRendererCanvas("dprChange")` from the DPR handler.
+## Buffer restoration on task switch
+
+### Problem
+
+While a terminal is parked (not visible), the agent continues writing output — status bar redraws, tool results, cursor movements. The xterm.js buffer processes all of this correctly at the parked dimensions. On task switch, the canvas repair fixes rendering (textures, pixel dimensions) and sends a force SIGWINCH. But when the terminal dimensions haven't changed, TUI agents (Claude Code) treat the SIGWINCH as a lightweight refresh rather than a full redraw — they query `TIOCGWINSZ`, see the same size, and skip the expensive tear-down/rebuild. Accumulated artifacts (stale status bar rows, off-by-one cursor positioning) persist.
+
+Manual resize works because the actual dimension change triggers the agent's full TUI redraw path. Re-sync works because it atomically replaces the buffer from the server's headless mirror.
+
+### Fix
+
+`mount()` now calls `requestRestore()` when the container changes. This requests a fresh buffer snapshot from the server, which pauses live output, serializes the headless mirror state, and sends it to the client. The client resets the terminal and writes the snapshot, producing a clean buffer that matches the server's authoritative state. No agent cooperation is needed — the buffer is replaced entirely on the client side.
 
 ## Files
 
