@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: permission badge clobbered by terminal focus event
+
+- Selecting a "Waiting for Approval" card no longer clears the permission badge. xterm.js focus reporting (`DECSET 1004`) sends `\x1b[I` when the terminal panel gains focus — `writeInput` was treating this protocol response as user interaction and clearing `latestHookActivity`. Added `isTerminalProtocolResponse()` to filter focus-in/out and DSR cursor position reports from the permission-clearing path.
+
 ### Refactor: file browser uses filesystem listing for on-disk repos
 
 - The file browser tree now lists files via `fs.readdir` instead of `git ls-files` when viewing on-disk repos (home and task worktrees). Shows everything actually on disk rather than a git-filtered view. Branch browsing (refs not checked out) still uses `git ls-tree`. No new dependencies.

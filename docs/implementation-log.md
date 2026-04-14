@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: permission badge clobbered by terminal focus event (2026-04-14)
+
+When a "Waiting for Approval" card was selected, the permission badge immediately flipped to "Ready for review" before the user interacted with the prompt. Root cause: Claude Code enables focus reporting (`DECSET 1004`), so when the terminal panel gains DOM focus on card selection, xterm.js sends `\x1b[I` (focus-in) through `onData`. The server's `writeInput` handler treated any incoming data during the `awaiting_review` + permission state as user interaction and cleared `latestHookActivity`, which removed the permission badge.
+
+Added `isTerminalProtocolResponse()` to `session-manager.ts` — a byte-level check that recognizes focus-in/out (`\x1b[I` / `\x1b[O`) and DSR cursor position reports (`\x1b[r;cR`). The permission-clearing path now skips these automatic terminal protocol responses.
+
+**Files**: `src/terminal/session-manager.ts`.
+
 ## Refactor: file browser uses filesystem listing for on-disk repos (2026-04-14)
 
 `listAllWorkspaceFiles` in `src/workspace/search-workspace-files.ts` previously used `git ls-files --cached --others --exclude-standard` to populate the file browser tree. This filtered out gitignored files, which meant the file browser didn't show what was actually on disk.

@@ -59,6 +59,42 @@ export type { StartShellSessionRequest, StartTaskSessionRequest };
 
 const sessionLog = createTaggedLogger("session-mgr");
 
+const ESC = 0x1b;
+const CSI_BRACKET = 0x5b; // [
+
+/**
+ * Detects whether a writeInput buffer is entirely a terminal protocol response
+ * (not user input). xterm.js sends these automatically through onData — e.g.
+ * focus-in/out events when focus reporting is enabled, or DSR cursor position
+ * reports. These should not be treated as user interaction.
+ *
+ * Known sequences:
+ *   \x1b[I    — focus-in  (DECSET 1004)
+ *   \x1b[O    — focus-out (DECSET 1004)
+ *   \x1b[r;cR — DSR cursor position report
+ */
+function isTerminalProtocolResponse(data: Buffer): boolean {
+	if (data.length < 3 || data[0] !== ESC || data[1] !== CSI_BRACKET) {
+		return false;
+	}
+	const finalByte = data[data.length - 1] as number;
+	// Focus-in (\x1b[I) and focus-out (\x1b[O) — exactly 3 bytes.
+	if (data.length === 3 && (finalByte === 0x49 /* I */ || finalByte === 0x4f) /* O */) {
+		return true;
+	}
+	// DSR cursor position report: \x1b[<digits>;<digits>R
+	if (finalByte === 0x52 /* R */) {
+		for (let i = 2; i < data.length - 1; i++) {
+			const byte = data[i] as number;
+			if (byte !== 0x3b /* ; */ && (byte < 0x30 || byte > 0x39) /* 0-9 */) {
+				return false;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
 // TUI apps (Codex) can query OSC 10/11 before the browser terminal is attached
 // and ready to answer. We intercept those startup probes during early PTY output,
 // synthesize foreground/background color replies, then disable the filter once a
@@ -475,10 +511,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// the permission prompt (approving/denying). This unblocks the permission-
 		// aware transition guard in hooks-api so the next PostToolUse to_in_progress
 		// hook can move the task back to running.
+		//
+		// Guard: skip clearing for terminal protocol responses (focus-in/out events,
+		// DSR cursor position reports). xterm.js sends these automatically — e.g.
+		// focus-in (\x1b[I) fires when the terminal panel gains DOM focus during
+		// task selection. Without this guard, selecting a "Waiting for Approval"
+		// card clears the permission metadata and the badge flips to "Ready for
+		// review" before the user has interacted with the prompt.
 		if (
 			summary?.state === "awaiting_review" &&
 			summary.latestHookActivity != null &&
-			isPermissionActivity(summary.latestHookActivity)
+			isPermissionActivity(summary.latestHookActivity) &&
+			!isTerminalProtocolResponse(data)
 		) {
 			this.store.update(taskId, { latestHookActivity: null });
 		}
