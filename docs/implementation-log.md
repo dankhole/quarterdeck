@@ -2,6 +2,12 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Docs: todo roadmap updates (2026-04-14)
+
+Replaced todo #1 (Go backend rewrite) with a standalone desktop app todo (Electron/Tauri). The Go rewrite was motivated by performance and single-binary distribution, but the browser-tab problem is a more pressing architectural limitation — duplicate WebSocket connections from multiple tabs, no window lifecycle control, no OS integration (notifications, deep links, system tray), and the two-process launch experience (server + open URL). The new todo captures the motivation, approach options (Electron vs Tauri), and key design decisions (sidecar vs embedded backend, multi-project windowing model).
+
+**Files**: `docs/todo.md`
+
 ## Fix: compare/uncommitted diff tabs flashing on every poll tick (2026-04-13)
 
 **Root cause:** The lazy diff loading commit (717c6a8d) introduced `useFileDiffContent` with a `changesGeneratedAt` cache invalidation mechanism — when the server response's `generatedAt` changes, the hook deletes the cached content, sets `isLoading: true`, and re-fetches. This works when `generatedAt` is stable across polls (as with `getWorkspaceChanges`, which has fingerprint-based caching). But `getWorkspaceChangesFromRef` had no caching — every 1s poll returned `generatedAt: Date.now()`, triggering a cache invalidation → skeleton flash → re-fetch cycle even when nothing changed. Affected the Compare tab (with "Include uncommitted" checked) and Last Turn tab during running sessions.

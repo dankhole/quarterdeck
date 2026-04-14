@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs: todo roadmap updates
+
+- Replaced the Go backend rewrite todo with a standalone desktop app (Electron/Tauri) todo — browser-tab limitations (duplicate connections, no window management, no OS integration) are the bigger pain point.
+
 ## [0.8.0] — 2026-04-13
 
 ### Fix: compare/uncommitted diff tabs flashing on every poll tick

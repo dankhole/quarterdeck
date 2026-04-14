@@ -2,22 +2,26 @@
 
 Ordered hardest-first so easy items at the bottom are less likely to cause merge conflicts.
 
-## 1. Rewrite backend in Go
+## 1. Standalone desktop app (Electron/Tauri)
 
-Rewrite the Node.js/TypeScript runtime server in Go for better performance, concurrency, and single-binary distribution. A comprehensive research doc exists at [docs/research/2026-04-06-go-backend-conversion-guide.md](research/2026-04-06-go-backend-conversion-guide.md) covering all 34 API routes, WebSocket protocols, PTY management, state persistence, and agent adapters — use it as the primary reference, though it may drift as the Node backend evolves.
+Move from a browser-based UI to a standalone desktop application, similar to how VS Code works. The current architecture — a Node.js server with a separate Vite dev server and the user opening a browser tab — has inherent limitations: no control over window management, tab lifecycle, or OS-level integration.
 
 **Motivation**:
-- Go's goroutine model is a natural fit for the core workload: process orchestration, concurrent file I/O, and WebSocket streaming
-- Single static binary simplifies distribution (no Node.js runtime dependency)
-- Better resource usage under high concurrency (10+ agents)
+- Eliminate the browser-tab problem: multiple tabs hitting the same server cause duplicate WebSocket connections, state conflicts, and confusion about which tab is "the real one"
+- Native window management — proper multi-window support (e.g. pop out a terminal into its own window), window restore on launch, system tray
+- OS integration — file associations, deep links (`quarterdeck://open?project=...`), native notifications instead of browser permissions, global hotkeys
+- Single launch experience — `quarterdeck` opens the app, not "start a server then open a URL"
+- Offline-first without the "is my server running?" question
 
-**Approach**:
-- The frontend (React/Vite) stays as-is — only the backend changes
-- Replace tRPC with a typed HTTP/WebSocket API (e.g. `chi` or stdlib mux + `gorilla/websocket`)
-- Replace node-pty with Go PTY libraries (`creack/pty`)
-- Port the state persistence layer (JSON files + file-system locks) directly — the Go equivalent is straightforward
-- Port the agent adapter system (Claude, Codex) — these are mostly CLI argument builders
-- The research doc is organized module-by-module to support incremental porting
+**Approach options**:
+- **Electron** — proven path (VS Code, Cursor). The existing React frontend drops in as-is. The Node.js backend runs in the main process or a forked worker. Downside: bundle size, memory overhead.
+- **Tauri** — Rust shell, smaller footprint, native webview. Frontend stays React. Backend would need to either stay as a sidecar Node process or be ported to Rust. Lighter than Electron but less mature ecosystem.
+
+**Key decisions to make**:
+- Electron vs Tauri (or something else)
+- Whether the backend stays as a Node.js process (sidecar/fork) or gets embedded
+- How to handle the transition period — support both standalone and browser mode, or cut over?
+- Multi-project windowing model — one window per project, or tabbed projects within a single window?
 
 ## 2. Fix session persistence across restart and un-trash
 
