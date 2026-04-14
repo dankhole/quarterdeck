@@ -44,6 +44,16 @@ The hook (`use-commit-panel.ts`) adds `isGeneratingMessage` state and a `generat
 
 **Files**: `src/title/commit-message-generator.ts` (new), `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `web-ui/src/hooks/use-commit-panel.ts`.
 
+## Docs: C#-style readability refactoring roadmap (2026-04-14)
+
+Created `docs/refactor-csharp-readability.md` — a comprehensive 8-section plan to make the codebase navigable like a well-structured C# solution. The codebase author is a C# developer and found the TypeScript patterns (factory-closures, inline callbacks, anonymous arrow functions in object literals) hard to trace compared to C#'s class-based, interface-driven style.
+
+The doc covers: (1) `neverthrow` for typed Result errors, `mitt` for typed event emitter with `onDid*`/`onWill*` naming; (2) explicit return types and named types to replace `ReturnType<typeof ...>` gymnastics; (3) IDisposable + DisposableStore — VS Code's lifecycle pattern for automatic cleanup of subscriptions, timers, and child resources; (4) convert `RuntimeStateHub` from 552-line factory-closure to class with workspace Map colocating; (5) convert `RuntimeApi` from 612-line factory to class + split 11 handlers into `src/trpc/handlers/`; (6) shared service interfaces (`ITerminalManagerProvider`, `IRuntimeBroadcaster`, `IWorkspaceResolver`, `IRuntimeConfigProvider`) to eliminate 8 duplicated ad-hoc dependency interfaces; (7) message factory functions + typed WebSocket dispatch map; (8) split App.tsx (1,818 lines) into ~6 Context providers.
+
+Each section is self-contained with before/after code, file change lists, dependency info, and risk assessment. Sections are ordered by priority with a dependency graph and phased execution plan. Replaced todo #18 (App.tsx investigation) with the broader roadmap.
+
+**Files**: `docs/refactor-csharp-readability.md` (new), `docs/todo.md` (updated #18).
+
 ## Feature: per-event scoped notification beeps (2026-04-14)
 
 Added per-event-type "other projects only" suppression for notification sounds. Previously `audibleNotificationsOnlyWhenHidden` was the only scoping mechanism — it suppressed all sounds when the tab was focused. The new `audibleNotificationSuppressCurrentProject` config field is an object with `{ permission, review, failure, completion }` booleans, matching the shape of `audibleNotificationEvents`. Each event type can independently be set to only beep for tasks in other projects.

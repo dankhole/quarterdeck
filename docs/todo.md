@@ -140,7 +140,7 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 
 **Missing — core gaps:**
 - **Conversation history in UI**: Claude exposes chat messages via API; Codex has no equivalent. The sidebar chat view is blank for Codex tasks. Need to either parse Codex session logs into a chat-like format or build a Codex-specific history endpoint.
-- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (see "Per-task session identity" todo above). If Codex adds session ID targeting, wire it up.
+- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (see "Per-task session identity" above). If Codex adds session ID targeting, wire it up.
 - **Hook configuration**: Claude gets a full `settings.json` with hook matchers (`PreToolUse`, `PostToolUse`, etc.). Codex gets nothing — the wrapper is a thin pass-through. Need to define what Codex-side hook configuration looks like and whether it can support the same granularity.
 - **Error diagnostics**: If session logs aren't written or rollout file discovery fails, failures are silent. Add explicit error reporting when both log sources fail, and surface it in the UI.
 
@@ -148,7 +148,7 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 - No Codex-specific documentation or setup guide
 - No version detection or capability checking beyond `isBinaryAvailableOnPath()`
 - Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
-- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (see "Fix agent state tracking bugs" todo above)
+- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (see "Fix agent state tracking bugs" above)
 
 ## File browser and diff viewer performance
 
@@ -158,15 +158,23 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 
-## Investigate deeper App.tsx state architecture refactor
+## Readability refactoring roadmap (C#-style navigability)
 
-The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
+Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
 
-- **React Context providers** — split state into domain-specific contexts (board, sessions, config, git). Standard React, no new deps. Risk: re-render cascades if contexts aren't split granularly enough.
-- **Zustand or Jotai** — lightweight external stores. Components subscribe to slices, minimal re-renders. Risk: migration cost, new dependency, coexistence with the existing Immer reducer.
-- **Expand the `useSyncExternalStore` pattern** — already used for workspace metadata. Could generalize to board state and sessions. Risk: more boilerplate than Zustand, but zero new deps.
+**Backend (sections 1-7):**
+1. Adopt `neverthrow` (typed Result errors) and `mitt` (typed event emitter) — replace copy-pasted try/catch and hand-rolled listener patterns
+2. Add explicit return types and named types — replace `ReturnType<typeof ...>` gymnastics with navigable type definitions
+3. IDisposable + DisposableStore — VS Code's lifecycle pattern (~80 lines) that makes cleanup automatic and composable instead of 8-step manual teardown
+4. Convert `RuntimeStateHub` from 552-line factory-closure to class — 7 closure Maps become private fields, 130-line nested handler becomes pipeline of named methods, colocate 6 flat Maps into typed workspace context objects
+5. Convert `RuntimeApi` from 612-line factory to class + split 11 handlers into individual files under `src/trpc/handlers/`
+6. Define shared service interfaces (`ITerminalManagerProvider`, `IRuntimeBroadcaster`, `IWorkspaceResolver`, `IRuntimeConfigProvider`) — eliminate 8 duplicated ad-hoc dependency interfaces, make the dependency graph visible via constructor signatures
+7. Message factory functions + typed WebSocket dispatch map — replace inline spread/ternary construction and 110-line if/else dispatch chain
 
-This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
+**Frontend (section 8):**
+8. Split App.tsx (1,818 lines, 40+ hooks) into ~6 Context providers — eliminates 55-prop components, kills the `useBoardInteractions` wiring hub, drops App.tsx to ~200 lines
+
+Sections are independent and ordered by priority with a dependency graph in the doc.
 
 ## Unify default branch resolution
 

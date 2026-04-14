@@ -3,7 +3,7 @@
 # Terminal Rendering Investigation
 
 **Date**: 2026-04-11
-**Status**: WebGL toggle landed and active. HTML chat view experiment removed (see todo #16).
+**Status**: WebGL toggle landed and active. HTML chat view experiment removed (see "Revisit HTML chat view concept" in todo.md).
 **Branch**: `feat/terminal-hybrid-rendering` (working branch), landed on local `main`
 
 ## Problem Statement
@@ -53,7 +53,7 @@ Lets users switch between xterm.js's WebGL renderer and its built-in canvas 2D r
 **Config**: `terminalChatViewEnabled` — removed from codebase
 **Location**: Was in Settings > Terminal > "Experimental: HTML chat view"
 
-This experiment was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. See todo #16 for the concept revisit note. The history below is preserved for context.
+This experiment was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. See "Revisit HTML chat view concept" in todo.md for the concept revisit note. The history below is preserved for context.
 
 **Status**: Removed. Went through two iterations before removal.
 

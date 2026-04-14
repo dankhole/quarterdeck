@@ -1,8 +1,8 @@
 # Agent State Tracking — Issues, Architecture, and Refactor Plan
 
-**Status:** All three patches (A, B, C) implemented. Session manager decomposition complete (different module names than originally planned — see note below). Remaining open bugs are in todo #6.
+**Status:** All three patches (A, B, C) implemented. Session manager decomposition complete (different module names than originally planned — see note below). Remaining open bugs are in the "Fix agent state tracking bugs" todo item.
 **Date:** 2026-04-11 (patches landed 2026-04-12, decomposition shipped in 0.7.2)
-**Related:** todo #6 (consolidated — non-hook operations, notification beeps)
+**Related:** "Fix agent state tracking bugs" in todo.md (consolidated — non-hook operations, notification beeps)
 
 ---
 
