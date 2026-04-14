@@ -81,11 +81,11 @@ const runtimeRouter = t.router({
 	resetAllState: t.procedure.output(runtimeDebugResetAllStateResponseSchema).mutation(async ({ ctx }) => {
 		return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
 	}),
-	setDebugLogging: t.procedure
-		.input(z.object({ enabled: z.boolean() }))
-		.output(z.object({ ok: z.boolean(), enabled: z.boolean() }))
+	setLogLevel: t.procedure
+		.input(z.object({ level: z.enum(["debug", "info", "warn", "error"]) }))
+		.output(z.object({ ok: z.boolean(), level: z.enum(["debug", "info", "warn", "error"]) }))
 		.mutation(({ ctx, input }) => {
-			return ctx.runtimeApi.setDebugLogging(input.enabled);
+			return ctx.runtimeApi.setLogLevel(input.level);
 		}),
 	flagTaskForDebug: workspaceProcedure
 		.input(z.object({ taskId: z.string(), note: z.string().optional() }))

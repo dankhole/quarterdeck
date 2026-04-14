@@ -101,7 +101,7 @@ export type RuntimeStateStreamDebugLogBatchMessage = z.infer<typeof runtimeState
 
 export const runtimeStateStreamDebugLoggingStateMessageSchema = z.object({
 	type: z.literal("debug_logging_state"),
-	enabled: z.boolean(),
+	level: runtimeDebugLogLevelSchema,
 	recentEntries: z.array(runtimeDebugLogEntrySchema).optional(),
 });
 export type RuntimeStateStreamDebugLoggingStateMessage = z.infer<

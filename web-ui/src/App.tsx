@@ -146,7 +146,7 @@ export default function App(): ReactElement {
 		notificationWorkspaceIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
-		debugLoggingEnabled,
+		logLevel,
 		debugLogEntries,
 		streamError,
 		isRuntimeDisconnected,
@@ -217,7 +217,7 @@ export default function App(): ReactElement {
 	});
 	const debugLogging = useDebugLogging({
 		currentProjectId,
-		debugLoggingEnabled,
+		logLevel,
 		debugLogEntries,
 	});
 	const {
@@ -1607,12 +1607,14 @@ export default function App(): ReactElement {
 						<DebugLogPanel
 							entries={debugLogging.filteredEntries}
 							entryCount={debugLogging.entryCount}
+							logLevel={debugLogging.logLevel}
 							levelFilter={debugLogging.levelFilter}
 							sourceFilter={debugLogging.sourceFilter}
 							searchText={debugLogging.searchText}
 							showConsoleCapture={debugLogging.showConsoleCapture}
 							availableTags={debugLogging.availableTags}
 							disabledTags={debugLogging.disabledTags}
+							onSetLogLevel={debugLogging.setLogLevel}
 							onSetLevelFilter={debugLogging.setLevelFilter}
 							onSetSourceFilter={debugLogging.setSourceFilter}
 							onSetSearchText={debugLogging.setSearchText}
@@ -1622,7 +1624,6 @@ export default function App(): ReactElement {
 							onDisableAllTags={debugLogging.disableAllTags}
 							onClear={debugLogging.clearLogEntries}
 							onClose={debugLogging.closeDebugLogPanel}
-							onStopLogging={debugLogging.stopLogging}
 						/>
 					) : null}
 					<RuntimeSettingsDialog

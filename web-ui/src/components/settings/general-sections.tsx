@@ -143,8 +143,8 @@ export function TroubleshootingSection({
 				Reset sidebar, split pane, and terminal resize customizations back to their defaults.
 			</p>
 			<p className="text-text-secondary text-[13px] mt-3 mb-0">
-				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the debug log
-				panel. Debug logging activates automatically when the panel is opened.
+				Press <kbd className="font-mono text-xs bg-surface-3 px-1 rounded">Cmd+Shift+D</kbd> to toggle the log
+				panel. The log level can be changed from the panel header.
 			</p>
 		</>
 	);

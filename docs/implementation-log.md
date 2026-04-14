@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: log level setting replaces boolean debug toggle (2026-04-14)
+
+The debug logger's `debugLoggingEnabled` boolean was too coarse — either full verbose output or nothing. Replaced with a four-level threshold (`debug` < `info` < `warn` < `error`) using a severity comparison in `emit()`. The `setDebugLoggingEnabled`/`isDebugLoggingEnabled` functions are kept as compatibility wrappers.
+
+Added `logLevel` as a persisted config field via `enumField<LogLevel>()` in `global-config-fields.ts` (new field helper that validates against an allowed set). Applied at startup in `cli.ts` and on config save in `runtime-api.ts`.
+
+The debug log panel was decoupled from server-side logging. Previously, opening the panel auto-enabled server debug logging and "Stop logging" disabled it. Now the panel is purely a viewer — opening/closing doesn't change what the server captures. A "capture:" dropdown in the panel header calls the new `setLogLevel` tRPC endpoint (replaces `setDebugLogging`). The WebSocket `debug_logging_state` message changed from `{ enabled: boolean }` to `{ level: string }` and always includes recent entries. Client-side console capture now activates when the panel is open, not when "debug logging is enabled".
+
+The `use-debug-logging` hook was rewritten: removed `toggleDebugLogging`, `stopLogging`, `isToggling`, and the `debugLoggingEnabled` coupling. Added `setLogLevel` callback. `use-runtime-state-stream` and `use-project-navigation` changed from `debugLoggingEnabled: boolean` to `logLevel: string`.
+
+**Files**: `src/core/debug-logger.ts`, `src/config/global-config-fields.ts`, `src/config/config-defaults.ts`, `src/core/api/config.ts`, `src/core/api/streams.ts`, `src/cli.ts`, `src/trpc/runtime-api.ts`, `src/trpc/app-router.ts`, `src/trpc/app-router-context.ts`, `src/server/runtime-state-hub.ts`, `src/server/runtime-server.ts`, `web-ui/src/hooks/use-debug-logging.ts`, `web-ui/src/components/debug-log-panel.tsx`, `web-ui/src/runtime/use-runtime-state-stream.ts`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/hooks/use-project-navigation.ts`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/components/settings/general-sections.tsx`, `web-ui/src/App.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/debug-logger.test.ts`, `test/runtime/config/runtime-config.test.ts`.
+
 ## Fix: arrow key task navigation suppressed when terminal is focused (2026-04-14)
 
 The `useHotkeys` bindings for up/down/left/right in `CardDetailView` navigate between tasks in the selected column. The `ignoreEventWhen` guard called `isTypingTarget()`, which only checked for INPUT, TEXTAREA, and contentEditable elements. xterm.js terminals receive keyboard focus on their internal canvas/div — none of which match those checks — so arrow keys fired the task navigation handler even while the user was interacting with a terminal.

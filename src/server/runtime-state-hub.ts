@@ -19,7 +19,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
 import type { DebugLogEntry } from "../core/debug-logger";
-import { getRecentDebugLogEntries, isDebugLoggingEnabled, onDebugLogEntry } from "../core/debug-logger";
+import { getLogLevel, getRecentDebugLogEntries, onDebugLogEntry } from "../core/debug-logger";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createWorkspaceMetadataMonitor, type WorkspaceMetadataPollIntervals } from "./workspace-metadata-monitor";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
@@ -64,7 +64,7 @@ export interface RuntimeStateHub {
 	requestTaskRefresh: (workspaceId: string, taskId: string) => void;
 	requestHomeRefresh: (workspaceId: string) => void;
 	setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => void;
-	broadcastDebugLoggingState: (enabled: boolean) => void;
+	broadcastLogLevel: (level: string) => void;
 	close: () => Promise<void>;
 }
 
@@ -335,11 +335,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 	});
 
-	const broadcastDebugLoggingState = (enabled: boolean) => {
+	const broadcastLogLevel = (level: string) => {
 		const payload: RuntimeStateStreamDebugLoggingStateMessage = {
 			type: "debug_logging_state",
-			enabled,
-			...(enabled ? { recentEntries: getRecentDebugLogEntries() } : undefined),
+			level: level as RuntimeStateStreamDebugLoggingStateMessage["level"],
+			recentEntries: getRecentDebugLogEntries(),
 		};
 		for (const client of runtimeStateClients) {
 			sendRuntimeStateMessage(client, payload);
@@ -433,13 +433,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 							// Non-fatal: metadata arrives on the next poll cycle.
 						});
 				}
-				// Send current debug logging state so newly connected clients
-				// can enable their panel if debug logging is active.
-				const debugEnabled = isDebugLoggingEnabled();
+				// Send current log level so newly connected clients can show it.
 				sendRuntimeStateMessage(client, {
 					type: "debug_logging_state",
-					enabled: debugEnabled,
-					...(debugEnabled ? { recentEntries: getRecentDebugLogEntries() } : undefined),
+					level: getLogLevel(),
+					recentEntries: getRecentDebugLogEntries(),
 				} satisfies RuntimeStateStreamDebugLoggingStateMessage);
 
 				if (workspace.removedRequestedWorkspacePath) {
@@ -510,7 +508,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => {
 			workspaceMetadataMonitor.setPollIntervals(workspaceId, intervals);
 		},
-		broadcastDebugLoggingState,
+		broadcastLogLevel,
 		close: async () => {
 			unsubscribeDebugLog();
 			if (debugLogBroadcastTimer) {

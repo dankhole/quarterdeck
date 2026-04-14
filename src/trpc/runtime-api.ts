@@ -19,7 +19,7 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
-import { createTaggedLogger, isDebugLoggingEnabled, setDebugLoggingEnabled } from "../core/debug-logger";
+import { createTaggedLogger, type DebugLogLevel, getLogLevel, setLogLevel } from "../core/debug-logger";
 import { emitSessionEvent, setEventLogEnabled } from "../core/event-log";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
@@ -51,7 +51,7 @@ export interface CreateRuntimeApiDependencies {
 		workspaceId: string,
 		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
 	) => void;
-	broadcastDebugLoggingState?: (enabled: boolean) => void;
+	broadcastLogLevel?: (level: DebugLogLevel) => void;
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
@@ -111,6 +111,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 			}
 			setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
+			setLogLevel(nextRuntimeConfig.logLevel as DebugLogLevel);
+			deps.broadcastLogLevel?.(nextRuntimeConfig.logLevel as DebugLogLevel);
 			return buildConfigResponse(nextRuntimeConfig);
 		},
 		startTaskSession: async (workspaceScope, input) => {
@@ -316,10 +318,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 			}
 		},
-		setDebugLogging: (enabled) => {
-			setDebugLoggingEnabled(enabled);
-			deps.broadcastDebugLoggingState?.(enabled);
-			return { ok: true, enabled: isDebugLoggingEnabled() };
+		setLogLevel: (level) => {
+			setLogLevel(level as DebugLogLevel);
+			deps.broadcastLogLevel?.(level as DebugLogLevel);
+			return { ok: true, level: getLogLevel() };
 		},
 		flagTaskForDebug: async (workspaceScope, input) => {
 			const terminalManager = await deps.getScopedTerminalManager(workspaceScope);

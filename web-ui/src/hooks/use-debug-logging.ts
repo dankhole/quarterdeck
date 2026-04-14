@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { setDebugLogging } from "@/runtime/runtime-config-query";
+import { setLogLevel as setLogLevelOnServer } from "@/runtime/runtime-config-query";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { registerClientLogCallback, setClientLoggingEnabled } from "@/utils/client-logger";
@@ -8,9 +8,10 @@ import { setGlobalErrorCallback } from "@/utils/global-error-capture";
 
 export type DebugLogLevelFilter = "all" | "debug" | "info" | "warn" | "error";
 export type DebugLogSourceFilter = "all" | "server" | "client";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface UseDebugLoggingResult {
-	debugLoggingEnabled: boolean;
+	logLevel: LogLevel;
 	isDebugLogPanelOpen: boolean;
 	filteredEntries: RuntimeDebugLogEntry[];
 	entryCount: number;
@@ -18,16 +19,14 @@ export interface UseDebugLoggingResult {
 	sourceFilter: DebugLogSourceFilter;
 	searchText: string;
 	showConsoleCapture: boolean;
-	isToggling: boolean;
 	/** All unique tags seen in the current log entries. */
 	availableTags: string[];
 	/** Tags currently disabled (filtered out). */
 	disabledTags: Set<string>;
-	toggleDebugLogging: () => void;
+	setLogLevel: (level: LogLevel) => void;
 	openDebugLogPanel: () => void;
 	closeDebugLogPanel: () => void;
 	toggleDebugLogPanel: () => void;
-	stopLogging: () => void;
 	clearLogEntries: () => void;
 	setLevelFilter: (level: DebugLogLevelFilter) => void;
 	setSourceFilter: (source: DebugLogSourceFilter) => void;
@@ -61,11 +60,11 @@ function persistDisabledTags(tags: Set<string>): void {
 
 export function useDebugLogging({
 	currentProjectId,
-	debugLoggingEnabled,
+	logLevel,
 	debugLogEntries,
 }: {
 	currentProjectId: string | null;
-	debugLoggingEnabled: boolean;
+	logLevel: LogLevel;
 	debugLogEntries: RuntimeDebugLogEntry[];
 }): UseDebugLoggingResult {
 	const [isDebugLogPanelOpen, setIsDebugLogPanelOpen] = useState(false);
@@ -75,7 +74,6 @@ export function useDebugLogging({
 	// Console-intercepted entries (React dev warnings, library noise, etc.) are hidden
 	// by default. Users opt in via the "Show console" toggle in the filter bar.
 	const [showConsoleCapture, setShowConsoleCapture] = useState(false);
-	const [isToggling, setIsToggling] = useState(false);
 	const [clientEntries, setClientEntries] = useState<RuntimeDebugLogEntry[]>([]);
 	const [clearedAt, setClearedAt] = useState(0);
 	const [disabledTags, setDisabledTags] = useState<Set<string>>(loadDisabledTags);
@@ -149,55 +147,19 @@ export function useDebugLogging({
 		setDisabledTags(all);
 	}, [allEntries]);
 
-	const toggleDebugLogging = useCallback(() => {
-		if (isToggling) return;
-		setIsToggling(true);
-		void setDebugLogging(currentProjectId, !debugLoggingEnabled)
-			.catch(() => {
+	// Change the persisted log level on the server.
+	const setLogLevelAction = useCallback(
+		(level: LogLevel) => {
+			void setLogLevelOnServer(currentProjectId, level).catch(() => {
 				// Best effort.
-			})
-			.finally(() => setIsToggling(false));
-	}, [currentProjectId, debugLoggingEnabled, isToggling]);
+			});
+		},
+		[currentProjectId],
+	);
 
-	const openDebugLogPanel = useCallback(() => {
-		setIsDebugLogPanelOpen(true);
-		if (!debugLoggingEnabled && !isToggling) {
-			setIsToggling(true);
-			void setDebugLogging(currentProjectId, true)
-				.catch(() => {})
-				.finally(() => setIsToggling(false));
-		}
-	}, [currentProjectId, debugLoggingEnabled, isToggling]);
-
+	const openDebugLogPanel = useCallback(() => setIsDebugLogPanelOpen(true), []);
 	const closeDebugLogPanel = useCallback(() => setIsDebugLogPanelOpen(false), []);
-
-	/** Disable server-side logging and close the panel. */
-	const stopLogging = useCallback(() => {
-		setIsDebugLogPanelOpen(false);
-		// Immediately disable client-side capture so entries don't accumulate
-		// during the server round-trip.
-		setClientLoggingEnabled(false);
-		registerClientLogCallback(null);
-		setGlobalErrorCallback(null);
-		if (debugLoggingEnabled && !isToggling) {
-			setIsToggling(true);
-			void setDebugLogging(currentProjectId, false)
-				.catch(() => {})
-				.finally(() => setIsToggling(false));
-		}
-	}, [currentProjectId, debugLoggingEnabled, isToggling]);
-
-	const toggleDebugLogPanel = useCallback(() => {
-		setIsDebugLogPanelOpen((open) => {
-			if (!open && !debugLoggingEnabled && !isToggling) {
-				setIsToggling(true);
-				void setDebugLogging(currentProjectId, true)
-					.catch(() => {})
-					.finally(() => setIsToggling(false));
-			}
-			return !open;
-		});
-	}, [currentProjectId, debugLoggingEnabled, isToggling]);
+	const toggleDebugLogPanel = useCallback(() => setIsDebugLogPanelOpen((open) => !open), []);
 
 	const clearLogEntries = useCallback(() => {
 		setClearedAt(Date.now());
@@ -206,7 +168,7 @@ export function useDebugLogging({
 
 	const addClientLogEntry = useCallback(
 		(level: RuntimeDebugLogEntry["level"], tag: string, message: string, data?: unknown) => {
-			if (!debugLoggingEnabled) return;
+			if (!isDebugLogPanelOpen) return;
 			const entry: RuntimeDebugLogEntry = {
 				id: `c${++clientEntryId}`,
 				timestamp: Date.now(),
@@ -218,16 +180,17 @@ export function useDebugLogging({
 			};
 			setClientEntries((prev) => [...prev, entry].slice(-500));
 		},
-		[debugLoggingEnabled],
+		[isDebugLogPanelOpen],
 	);
 
-	// Wire the client-side logger module so it pushes entries to our state.
+	// Wire the client-side logger module when the panel is open.
 	useEffect(() => {
-		setClientLoggingEnabled(debugLoggingEnabled);
-		if (debugLoggingEnabled) {
+		if (isDebugLogPanelOpen) {
+			setClientLoggingEnabled(true);
 			registerClientLogCallback(addClientLogEntry);
 			setGlobalErrorCallback(addClientLogEntry);
 		} else {
+			setClientLoggingEnabled(false);
 			registerClientLogCallback(null);
 			setGlobalErrorCallback(null);
 		}
@@ -236,10 +199,10 @@ export function useDebugLogging({
 			setGlobalErrorCallback(null);
 			setClientLoggingEnabled(false);
 		};
-	}, [debugLoggingEnabled, addClientLogEntry]);
+	}, [isDebugLogPanelOpen, addClientLogEntry]);
 
 	return {
-		debugLoggingEnabled,
+		logLevel,
 		isDebugLogPanelOpen,
 		filteredEntries,
 		entryCount: allEntries.length,
@@ -247,14 +210,12 @@ export function useDebugLogging({
 		sourceFilter,
 		searchText,
 		showConsoleCapture,
-		isToggling,
 		availableTags,
 		disabledTags,
-		toggleDebugLogging,
+		setLogLevel: setLogLevelAction,
 		openDebugLogPanel,
 		closeDebugLogPanel,
 		toggleDebugLogPanel,
-		stopLogging,
 		clearLogEntries,
 		setLevelFilter,
 		setSourceFilter,

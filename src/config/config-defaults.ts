@@ -15,6 +15,8 @@ import {
 import { getGlobalConfigDefaults } from "./global-config-fields";
 import type { AudibleNotificationEvents } from "./runtime-config";
 
+export type { LogLevel } from "./global-config-fields";
+
 export {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,

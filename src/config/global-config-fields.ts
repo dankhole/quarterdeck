@@ -17,6 +17,9 @@
 // import RuntimeConfigSaveRequest from the Zod schema — no manual sync needed.
 // The dirty check, reset, and save payload are handled by useSettingsForm.
 
+export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
 const MIN_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 60_000;
 
@@ -82,6 +85,18 @@ function pollField(defaultValue: number): ConfigField<number> {
 	return { defaultValue, normalize: normalizePollInterval };
 }
 
+function enumField<T extends string>(defaultValue: T, allowed: readonly T[]): ConfigField<T> {
+	return {
+		defaultValue,
+		normalize: (value: unknown, fallback: T): T => {
+			if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+				return value as T;
+			}
+			return fallback;
+		},
+	};
+}
+
 // --- Field registry ---
 // Every field here gets automatic normalize/merge/serialize/dirty-check support.
 // Fields NOT in this registry (selectedAgentId, selectedShortcutLabel,
@@ -116,6 +131,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	worktreeAddQuarterdeckDir: boolField(false),
 	showRunningTaskEmergencyActions: boolField(false),
 	eventLogEnabled: boolField(false),
+	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	defaultBaseRef: stringField(""),
 } as const;
 

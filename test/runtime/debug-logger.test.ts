@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	_resetDebugLoggerForTests,
 	createTaggedLogger,
+	getLogLevel,
 	getRecentDebugLogEntries,
 	isDebugLoggingEnabled,
 	onDebugLogEntry,
 	setDebugLoggingEnabled,
+	setLogLevel,
 } from "../../src/core/debug-logger";
 
 describe("debug-logger", () => {
@@ -18,30 +20,115 @@ describe("debug-logger", () => {
 		vi.restoreAllMocks();
 	});
 
-	describe("enable / disable", () => {
+	describe("log level", () => {
+		it("defaults to warn", () => {
+			expect(getLogLevel()).toBe("warn");
+		});
+
+		it("can be set to any level", () => {
+			setLogLevel("debug");
+			expect(getLogLevel()).toBe("debug");
+			setLogLevel("info");
+			expect(getLogLevel()).toBe("info");
+			setLogLevel("error");
+			expect(getLogLevel()).toBe("error");
+		});
+	});
+
+	describe("enable / disable (legacy API)", () => {
 		it("starts disabled", () => {
 			expect(isDebugLoggingEnabled()).toBe(false);
 		});
 
-		it("can be enabled and disabled", () => {
+		it("setDebugLoggingEnabled(true) sets level to debug", () => {
 			setDebugLoggingEnabled(true);
 			expect(isDebugLoggingEnabled()).toBe(true);
+			expect(getLogLevel()).toBe("debug");
+		});
+
+		it("setDebugLoggingEnabled(false) sets level to warn", () => {
+			setDebugLoggingEnabled(true);
 			setDebugLoggingEnabled(false);
+			expect(isDebugLoggingEnabled()).toBe(false);
+			expect(getLogLevel()).toBe("warn");
+		});
+
+		it("isDebugLoggingEnabled returns true for debug and info levels", () => {
+			setLogLevel("debug");
+			expect(isDebugLoggingEnabled()).toBe(true);
+			setLogLevel("info");
+			expect(isDebugLoggingEnabled()).toBe(true);
+			setLogLevel("warn");
+			expect(isDebugLoggingEnabled()).toBe(false);
+			setLogLevel("error");
 			expect(isDebugLoggingEnabled()).toBe(false);
 		});
 	});
 
-	describe("emit (no-op when disabled)", () => {
-		it("does not record entries when disabled", () => {
+	describe("emit gating by level", () => {
+		beforeEach(() => {
+			vi.spyOn(console, "debug").mockImplementation(() => {});
+			vi.spyOn(console, "info").mockImplementation(() => {});
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+		});
+
+		it("at warn level: only warn and error are emitted", () => {
+			setLogLevel("warn");
+			const log = createTaggedLogger("test");
+			log.debug("d");
+			log.info("i");
+			log.warn("w");
+			log.error("e");
+			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			expect(levels).toEqual(["warn", "error"]);
+		});
+
+		it("at info level: info, warn, error are emitted", () => {
+			setLogLevel("info");
+			const log = createTaggedLogger("test");
+			log.debug("d");
+			log.info("i");
+			log.warn("w");
+			log.error("e");
+			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			expect(levels).toEqual(["info", "warn", "error"]);
+		});
+
+		it("at debug level: all levels are emitted", () => {
+			setLogLevel("debug");
+			const log = createTaggedLogger("test");
+			log.debug("d");
+			log.info("i");
+			log.warn("w");
+			log.error("e");
+			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			expect(levels).toEqual(["debug", "info", "warn", "error"]);
+		});
+
+		it("at error level: only error is emitted", () => {
+			setLogLevel("error");
+			const log = createTaggedLogger("test");
+			log.debug("d");
+			log.info("i");
+			log.warn("w");
+			log.error("e");
+			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			expect(levels).toEqual(["error"]);
+		});
+
+		it("does not record entries when below threshold", () => {
+			setLogLevel("warn");
 			const log = createTaggedLogger("test");
 			log.debug("should be ignored");
+			log.info("should be ignored");
 			expect(getRecentDebugLogEntries()).toHaveLength(0);
 		});
 	});
 
 	describe("emit (enabled)", () => {
 		beforeEach(() => {
-			setDebugLoggingEnabled(true);
+			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
 			vi.spyOn(console, "info").mockImplementation(() => {});
 			vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -108,7 +195,7 @@ describe("debug-logger", () => {
 
 	describe("ring buffer overflow", () => {
 		beforeEach(() => {
-			setDebugLoggingEnabled(true);
+			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
 		});
 
@@ -126,7 +213,7 @@ describe("debug-logger", () => {
 
 	describe("listeners", () => {
 		beforeEach(() => {
-			setDebugLoggingEnabled(true);
+			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
 		});
 
@@ -166,7 +253,7 @@ describe("debug-logger", () => {
 
 	describe("safeSerializeData", () => {
 		beforeEach(() => {
-			setDebugLoggingEnabled(true);
+			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
 		});
 
@@ -200,7 +287,7 @@ describe("debug-logger", () => {
 
 	describe("getRecentDebugLogEntries", () => {
 		beforeEach(() => {
-			setDebugLoggingEnabled(true);
+			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
 		});
 

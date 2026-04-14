@@ -62,7 +62,7 @@ export interface UseRuntimeStateStreamResult {
 	notificationWorkspaceIds: Record<string, string>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
-	debugLoggingEnabled: boolean;
+	logLevel: "debug" | "info" | "warn" | "error";
 	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -78,7 +78,7 @@ interface RuntimeStateStreamStore {
 	notificationWorkspaceIds: Record<string, string>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
-	debugLoggingEnabled: boolean;
+	logLevel: "debug" | "info" | "warn" | "error";
 	debugLogEntries: RuntimeDebugLogEntry[];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -104,7 +104,7 @@ type RuntimeStateStreamAction =
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
 	| { type: "task_notification"; workspaceId: string; summaries: RuntimeTaskSessionSummary[] }
-	| { type: "debug_logging_state"; enabled: boolean; recentEntries?: RuntimeDebugLogEntry[] }
+	| { type: "debug_logging_state"; level: "debug" | "info" | "warn" | "error"; recentEntries?: RuntimeDebugLogEntry[] }
 	| { type: "debug_log_batch"; entries: RuntimeDebugLogEntry[] }
 	| { type: "debug_log_clear" }
 	| { type: "stream_error"; message: string }
@@ -120,7 +120,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		notificationWorkspaceIds: {},
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
-		debugLoggingEnabled: false,
+		logLevel: "warn",
 		debugLogEntries: [],
 		streamError: null,
 		isRuntimeDisconnected: false,
@@ -210,7 +210,7 @@ function runtimeStateStreamReducer(
 				: state.notificationWorkspaceIds,
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			latestTaskTitleUpdate: state.latestTaskTitleUpdate,
-			debugLoggingEnabled: state.debugLoggingEnabled,
+			logLevel: state.logLevel,
 			debugLogEntries: state.debugLogEntries,
 			streamError: null,
 			isRuntimeDisconnected: false,
@@ -294,8 +294,8 @@ function runtimeStateStreamReducer(
 		const merged = [...state.debugLogEntries, ...newEntries].slice(-DEBUG_LOG_ENTRIES_MAX);
 		return {
 			...state,
-			debugLoggingEnabled: action.enabled,
-			debugLogEntries: action.enabled ? merged : state.debugLogEntries,
+			logLevel: action.level,
+			debugLogEntries: merged,
 		};
 	}
 	if (action.type === "debug_log_batch") {
@@ -486,7 +486,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 					if (payload.type === "debug_logging_state") {
 						dispatch({
 							type: "debug_logging_state",
-							enabled: payload.enabled,
+							level: payload.level,
 							recentEntries: payload.recentEntries,
 						});
 						return;
@@ -552,7 +552,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		notificationWorkspaceIds: state.notificationWorkspaceIds,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
-		debugLoggingEnabled: state.debugLoggingEnabled,
+		logLevel: state.logLevel,
 		debugLogEntries: state.debugLogEntries,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,

@@ -123,7 +123,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeMigrateTaskWorkingDirectoryRequest,
 		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
-		setDebugLogging: (enabled: boolean) => { ok: boolean; enabled: boolean };
+		setLogLevel: (level: "debug" | "info" | "warn" | "error") => {
+			ok: boolean;
+			level: "debug" | "info" | "warn" | "error";
+		};
 		flagTaskForDebug: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: { taskId: string; note?: string },

@@ -26,12 +26,12 @@ export async function resetRuntimeDebugState(workspaceId: string | null): Promis
 	return await trpcClient.runtime.resetAllState.mutate();
 }
 
-export async function setDebugLogging(
+export async function setLogLevel(
 	workspaceId: string | null,
-	enabled: boolean,
-): Promise<{ ok: boolean; enabled: boolean }> {
+	level: "debug" | "info" | "warn" | "error",
+): Promise<{ ok: boolean; level: "debug" | "info" | "warn" | "error" }> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
-	return await trpcClient.runtime.setDebugLogging.mutate({ enabled });
+	return await trpcClient.runtime.setLogLevel.mutate({ level });
 }
 
 export async function openFileOnHost(workspaceId: string | null, filePath: string): Promise<void> {

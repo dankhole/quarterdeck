@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feature: log level setting replaces boolean debug toggle
+
+- The runtime debug logger now uses a four-level threshold (`debug`, `info`, `warn`, `error`) instead of an on/off boolean. Default is `warn` — only warnings and errors are captured. Setting `info` captures informational messages like orphan cleanup without the full debug firehose.
+- The log level is persisted in `config.json` as `logLevel` and applied at startup.
+- The debug log panel (Cmd+Shift+D) is now a pure viewer — opening/closing it no longer toggles server-side logging. A "capture:" dropdown in the panel header changes the runtime log level. A "show:" label clarifies the filter bar is for local display filtering only.
+- The `setDebugLogging` boolean tRPC endpoint is replaced by `setLogLevel` which accepts a level string.
+
 ### Fix: arrow key task navigation suppressed when terminal is focused
 
 - Arrow keys (up/down/left/right) no longer navigate between tasks when an xterm.js terminal has focus. The `isTypingTarget` guard in `CardDetailView` now checks `closest(".xterm")` in addition to INPUT/TEXTAREA/contentEditable, so keystrokes inside terminals go to the terminal instead of cycling the selected card.

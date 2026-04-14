@@ -362,6 +362,7 @@ async function startServer(): Promise<{
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
 		{ listWorkspaceIndexEntries },
 		{ initEventLog, setEventLogEnabled },
+		{ setLogLevel },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -373,6 +374,7 @@ async function startServer(): Promise<{
 		import("./fs/lock-cleanup.js"),
 		import("./state/workspace-state.js"),
 		import("./core/event-log.js"),
+		import("./core/debug-logger.js"),
 	]);
 
 	const cleanupWarn = (message: string): void => {
@@ -419,7 +421,9 @@ async function startServer(): Promise<{
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 		},
 	});
-	setEventLogEnabled(workspaceRegistry.getActiveRuntimeConfig().eventLogEnabled);
+	const activeConfig = workspaceRegistry.getActiveRuntimeConfig();
+	setEventLogEnabled(activeConfig.eventLogEnabled);
+	setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
 		getActivePollIntervals: () => {

@@ -1,10 +1,10 @@
-import { Bug, Monitor, Power, Trash2, X } from "lucide-react";
+import { Bug, Monitor, Trash2, X } from "lucide-react";
 import { type ReactElement, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { DebugLogLevelFilter, DebugLogSourceFilter } from "@/hooks/use-debug-logging";
+import type { DebugLogLevelFilter, DebugLogSourceFilter, LogLevel } from "@/hooks/use-debug-logging";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
@@ -92,12 +92,14 @@ function TagFilterChip({
 export function DebugLogPanel({
 	entries,
 	entryCount,
+	logLevel,
 	levelFilter,
 	sourceFilter,
 	searchText,
 	showConsoleCapture,
 	availableTags,
 	disabledTags,
+	onSetLogLevel,
 	onSetLevelFilter,
 	onSetSourceFilter,
 	onSetSearchText,
@@ -107,16 +109,17 @@ export function DebugLogPanel({
 	onDisableAllTags,
 	onClear,
 	onClose,
-	onStopLogging,
 }: {
 	entries: RuntimeDebugLogEntry[];
 	entryCount: number;
+	logLevel: LogLevel;
 	levelFilter: DebugLogLevelFilter;
 	sourceFilter: DebugLogSourceFilter;
 	searchText: string;
 	showConsoleCapture: boolean;
 	availableTags: string[];
 	disabledTags: Set<string>;
+	onSetLogLevel: (level: LogLevel) => void;
 	onSetLevelFilter: (level: DebugLogLevelFilter) => void;
 	onSetSourceFilter: (source: DebugLogSourceFilter) => void;
 	onSetSearchText: (text: string) => void;
@@ -126,7 +129,6 @@ export function DebugLogPanel({
 	onDisableAllTags: () => void;
 	onClear: () => void;
 	onClose: () => void;
-	onStopLogging: () => void;
 }): ReactElement {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const isAtBottomRef = useRef(true);
@@ -181,8 +183,21 @@ export function DebugLogPanel({
 				{/* Header */}
 				<div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-surface-1 shrink-0">
 					<Bug size={14} className="text-text-secondary" />
-					<span className="text-xs font-medium text-text-primary whitespace-nowrap">Debug Log</span>
+					<span className="text-xs font-medium text-text-primary whitespace-nowrap">Log</span>
 					<span className="text-xs text-text-tertiary">({entryCount})</span>
+
+					<span className="text-[10px] text-text-tertiary ml-1">capture:</span>
+					<select
+						value={logLevel}
+						onChange={(e) => onSetLogLevel(e.target.value as LogLevel)}
+						className="text-[11px] bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary"
+						aria-label="Server log level"
+					>
+						<option value="debug">Debug</option>
+						<option value="info">Info</option>
+						<option value="warn">Warn</option>
+						<option value="error">Error</option>
+					</select>
 
 					<div className="flex-1" />
 
@@ -204,15 +219,6 @@ export function DebugLogPanel({
 							aria-label="Clear logs"
 						/>
 					</Tooltip>
-					<Tooltip content="Stop logging and close">
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<Power size={14} />}
-							onClick={onStopLogging}
-							aria-label="Stop logging"
-						/>
-					</Tooltip>
 					<Tooltip content="Close panel">
 						<Button
 							variant="ghost"
@@ -226,6 +232,7 @@ export function DebugLogPanel({
 
 				{/* Filters */}
 				<div className="flex items-center gap-1.5 px-2 py-1 border-b border-border bg-surface-1/50 shrink-0">
+					<span className="text-[10px] text-text-tertiary">show:</span>
 					<select
 						value={levelFilter}
 						onChange={(e) => onSetLevelFilter(e.target.value as DebugLogLevelFilter)}
@@ -300,7 +307,7 @@ export function DebugLogPanel({
 				<div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
 					{entries.length === 0 ? (
 						<div className="flex items-center justify-center h-full text-xs text-text-tertiary">
-							No log entries. Debug logging is active — entries will appear here.
+							No log entries yet. Set a lower log level to capture more.
 						</div>
 					) : (
 						entries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
