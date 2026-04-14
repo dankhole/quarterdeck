@@ -28,7 +28,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceFileChange,
 } from "@/runtime/types";
-import { useFileDiffContent } from "@/runtime/use-file-diff-content";
+import { useAllFileDiffContent } from "@/runtime/use-all-file-diff-content";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
@@ -58,6 +58,38 @@ function loadGitViewTab(): GitViewTab {
 
 function persistGitViewTab(tab: GitViewTab): void {
 	writeLocalStorageItem(LocalStorageKey.GitViewActiveTab, tab);
+}
+
+// --- Last-selected-path persistence ---
+
+/** Module-level cache of last viewed file per scope+tab key. */
+const lastSelectedPathByScope = new Map<string, string>();
+
+/** Hydrate in-memory cache from localStorage once at module load. */
+(function hydrateLastSelectedPathCache(): void {
+	const raw = readLocalStorageItem(LocalStorageKey.GitViewLastSelectedPath);
+	if (!raw) return;
+	try {
+		const parsed: Record<string, string> = JSON.parse(raw);
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof value === "string") {
+				lastSelectedPathByScope.set(key, value);
+			}
+		}
+	} catch {
+		// Ignore corrupt data.
+	}
+})();
+
+function persistLastSelectedPathToStorage(): void {
+	writeLocalStorageItem(
+		LocalStorageKey.GitViewLastSelectedPath,
+		JSON.stringify(Object.fromEntries(lastSelectedPathByScope)),
+	);
+}
+
+function lastSelectedPathScopeKey(taskId: string | null, tab: GitViewTab): string {
+	return `${taskId ?? "__home__"}::${tab}`;
 }
 
 // --- Empty/Loading panels ---
@@ -274,16 +306,31 @@ export function GitView({
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE),
 	);
-	const [selectedPath, setSelectedPath] = useState<string | null>(null);
+	const [selectedPath, setSelectedPathRaw] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 	const isDocumentVisible = useDocumentVisibility();
 
+	const taskId = selectedCard?.card.id ?? null;
+
+	// --- Selected path with persistence ---
+
+	const setSelectedPath = useCallback(
+		(path: string | null) => {
+			setSelectedPathRaw(path);
+			if (path) {
+				const scopeKey = lastSelectedPathScopeKey(taskId, activeTab);
+				lastSelectedPathByScope.set(scopeKey, path);
+				persistLastSelectedPathToStorage();
+			}
+		},
+		[taskId, activeTab],
+	);
+
 	// --- Conflict resolution ---
 
-	const taskId = selectedCard?.card.id ?? null;
 	const conflictResolution = useConflictResolution({
 		taskId,
 		workspaceId: currentProjectId,
@@ -370,7 +417,10 @@ export function GitView({
 	useEffect(() => {
 		if (pendingFileNavigation?.targetView === "git") {
 			setActiveTab("uncommitted");
-			setSelectedPath(pendingFileNavigation.filePath);
+			// Use raw setter — the tab is being switched simultaneously, so the persisting wrapper
+			// would record under the old tab's scope key. The auto-select effect will persist it
+			// correctly on the next render once activeTab has settled to "uncommitted".
+			setSelectedPathRaw(pendingFileNavigation.filePath);
 			onFileNavigationConsumed?.();
 		}
 	}, [pendingFileNavigation, onFileNavigationConsumed, setActiveTab]);
@@ -414,38 +464,16 @@ export function GitView({
 		return null;
 	}, [activeTab, uncommittedChanges, lastTurnChanges, compareChanges]);
 
-	// On-demand file content loading
-	const selectedFileForDiff = useMemo(() => {
-		if (!activeFiles || !selectedPath) return null;
-		return activeFiles.find((f) => f.path === selectedPath) ?? null;
-	}, [activeFiles, selectedPath]);
-
-	const activeChangesGeneratedAt = useMemo(() => {
-		if (activeTab === "uncommitted") return uncommittedChanges?.generatedAt ?? null;
-		if (activeTab === "last_turn") return lastTurnChanges?.generatedAt ?? null;
-		if (activeTab === "compare") return compareChanges?.generatedAt ?? null;
-		return null;
-	}, [activeTab, uncommittedChanges, lastTurnChanges, compareChanges]);
-
-	const fileDiff = useFileDiffContent({
+	// Batch diff content loading — fetches diffs for ALL files progressively.
+	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
 		workspaceId: currentProjectId,
 		taskId,
 		baseRef,
 		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
 		fromRef: activeTab === "compare" ? compare.targetRef : undefined,
 		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
-		selectedFile: selectedFileForDiff,
-		changesGeneratedAt: activeChangesGeneratedAt,
+		files: activeFiles,
 	});
-
-	const enrichedFiles = useMemo(() => {
-		if (!activeFiles || !selectedPath) return activeFiles;
-		return activeFiles.map((f) => {
-			if (f.path !== selectedPath) return f;
-			if (fileDiff.oldText == null && fileDiff.newText == null) return f;
-			return { ...f, oldText: fileDiff.oldText, newText: fileDiff.newText };
-		});
-	}, [activeFiles, selectedPath, fileDiff.oldText, fileDiff.newText]);
 
 	const isRuntimeAvailable =
 		activeTab === "uncommitted"
@@ -456,7 +484,7 @@ export function GitView({
 	const isChangesPending = isRuntimeAvailable && activeFiles === null && !(activeTab === "compare" && !hasCompareRefs);
 	const hasNoChanges = isRuntimeAvailable && activeFiles !== null && activeFiles.length === 0;
 
-	// Auto-select first file when file list changes
+	// Auto-select file when file list changes: restore last-viewed from cache, or fall back to first file.
 	const availablePaths = useMemo(() => {
 		if (!activeFiles || activeFiles.length === 0) return [];
 		return activeFiles.map((file) => file.path);
@@ -464,8 +492,15 @@ export function GitView({
 
 	useEffect(() => {
 		if (selectedPath && availablePaths.includes(selectedPath)) return;
-		setSelectedPath(availablePaths[0] ?? null);
-	}, [availablePaths, selectedPath]);
+		// Try to restore the last-viewed file for this scope+tab.
+		const scopeKey = lastSelectedPathScopeKey(taskId, activeTab);
+		const remembered = lastSelectedPathByScope.get(scopeKey);
+		if (remembered && availablePaths.includes(remembered)) {
+			setSelectedPathRaw(remembered);
+			return;
+		}
+		setSelectedPathRaw(availablePaths[0] ?? null);
+	}, [availablePaths, selectedPath, taskId, activeTab]);
 
 	// --- File rollback (uncommitted tab only) ---
 
@@ -510,12 +545,12 @@ export function GitView({
 	// --- Reset on context switches ---
 
 	useEffect(() => {
-		setSelectedPath(null);
+		setSelectedPathRaw(null);
 		setDiffComments(new Map());
 	}, [taskId]);
 
 	useEffect(() => {
-		setSelectedPath(null);
+		setSelectedPathRaw(null);
 		// Don't reset to uncommitted if we're navigating to compare via external request
 		if (!pendingCompareNavigation) {
 			setActiveTab("uncommitted");
@@ -668,7 +703,7 @@ export function GitView({
 									comments={diffComments}
 									onCommentsChange={setDiffComments}
 									navigateToFile={navigateToFile}
-									isContentLoading={fileDiff.isLoading}
+									fileLoadingState={fileLoadingState}
 								/>
 							</div>
 						</>

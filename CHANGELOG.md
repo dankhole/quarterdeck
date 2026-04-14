@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feature: inline scrollable diffs with last-viewed persistence
+
+- The compare, uncommitted, and last turn tabs in the git view now show all file diffs inline in a single scrollable list — no need to click individual files on the left to load their diffs. Diffs load progressively with per-file loading skeletons that fill in as each file's content arrives.
+- The file tree panel becomes a jump-to navigator: clicking a file scrolls to its diff section, and the tree highlight follows the scroll position.
+- Switching away from a git view tab and back restores the last-viewed file position instead of resetting to the top. Persistence is scoped per task and per tab, stored in localStorage.
+- Scroll-sync ping-pong (where scrolling in the compare view snapped the file selection back to the first file) is eliminated by removing the single-file fetch chain that caused the re-render cycle.
+
 ### Feature: commit sidebar improvements — stash relocated, generate-message button
 
 - Stash and Discard All buttons moved above the commit message textarea, visually separating "save/discard work" actions from "commit" actions. Stash is now immediately accessible without scrolling past the message input.

@@ -2,6 +2,30 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: inline scrollable diffs with last-viewed persistence (2026-04-14)
+
+Replaced the single-file-at-a-time diff loading model in the git view with batch loading that shows all file diffs inline in a scrollable list. Previously, the user had to click a file in the left-side tree to load its diff on the right — now all diffs render immediately (with progressive loading skeletons) and the file tree becomes a scroll-to navigator.
+
+**New hook: `useAllFileDiffContent`** (`web-ui/src/runtime/use-all-file-diff-content.ts`). Fetches diff content for ALL files in the workspace changes list sequentially via the existing `workspace.getFileDiff` tRPC endpoint. Key design decisions:
+- Sequential fetching (not parallel) to avoid overwhelming the runtime server with concurrent git processes.
+- Per-context cache keyed by `workspaceId::taskId::baseRef::mode::fromRef::toRef`. Cache clears on context change (different task/workspace/mode/refs).
+- Fingerprint-based invalidation instead of `generatedAt` timestamps. The server sets `generatedAt: Date.now()` on every poll response, which changes every cycle. Using a fingerprint of file paths+statuses+counts detects actual content changes without false invalidation. When the fingerprint changes, cached diffs are cleared and re-fetched in background mode (stale-while-revalidate) to avoid skeleton flash.
+- Incremental state updates — `setEnrichedFiles` and `setFileLoadingState` update after each file completes, so diffs appear progressively.
+- AbortController cancellation — when the file list changes or context switches, in-flight fetches are aborted immediately.
+- Exports `FileLoadingState` type (per-file loaded/loading sets) consumed by `DiffViewerPanel`.
+
+**`git-view.tsx` changes**: Replaced `useFileDiffContent` (single-file) import with `useAllFileDiffContent`. Removed `selectedFileForDiff` memo, `fileDiff` hook call, single-file `enrichedFiles` enrichment memo, and `activeChangesGeneratedAt` memo. The `DiffViewerPanel` now receives `fileLoadingState` instead of `isContentLoading`. State split: `selectedPath` → `setSelectedPathRaw` (raw setter for programmatic resets) + `setSelectedPath` (wrapper that also persists to localStorage). Context-switch resets and external file navigation use the raw setter to avoid persisting null or writing under the wrong tab scope key.
+
+**Last-viewed-file persistence**: Module-level `lastSelectedPathByScope` Map backed by `LocalStorageKey.GitViewLastSelectedPath`, hydrated from localStorage on module load via IIFE. Keyed by `taskId::tab` (e.g. `"task-abc::uncommitted"`). The auto-select effect checks the cache before falling back to the first file. Pattern mirrors `use-file-browser-data.ts`.
+
+**`DiffViewerPanel` changes** (`diff-viewer-panel.tsx`): Added optional `fileLoadingState?: FileLoadingState` prop. Added `isFileLoading(path)` callback that checks: loaded set → loading set → content presence → pending fetch. Falls back to legacy `isContentLoading` prop when `fileLoadingState` is not provided (backward compat for `git-history-view.tsx` which still uses the single-file hook via `GitCommitDiffPanel`). Skeleton rendering is now per-file based on `isFileLoading(group.path)`.
+
+**Scroll sync**: `useDiffScrollSync` was not modified. The ping-pong bug was caused by the single-file fetch chain (scroll → select → fetch → file list change → auto-select first file), not by the scroll sync hook itself. With all diffs loaded inline, the chain is broken.
+
+Closes todo "Compare / uncommitted work scroll and navigation improvements".
+
+**Files**: `web-ui/src/runtime/use-all-file-diff-content.ts` (new), `web-ui/src/components/git-view.tsx`, `web-ui/src/components/detail-panels/diff-viewer-panel.tsx`, `web-ui/src/storage/local-storage-store.ts`.
+
 ## Feature: commit sidebar improvements — stash relocated, generate-message button (2026-04-14)
 
 Two changes to the commit sidebar panel (`commit-panel.tsx`):
@@ -18,9 +42,7 @@ The generator follows the same pattern as `title-generator.ts` and `summary-gene
 
 The hook (`use-commit-panel.ts`) adds `isGeneratingMessage` state and a `generateMessage` callback that guards against duplicate in-flight calls and shows toast feedback on failure. The button is disabled when no files are selected or generation is in flight, and shows a Spinner during generation.
 
-Updated todo #15 to reflect that the explicit generate button is done — what remains is auto-fill-on-open behavior and integration with agent session context. Removed todo #26 (fully completed) and renumbered #27-#30 → #26-#29.
-
-**Files**: `src/title/commit-message-generator.ts` (new), `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `web-ui/src/hooks/use-commit-panel.ts`, `docs/todo.md`, `CHANGELOG.md`.
+**Files**: `src/title/commit-message-generator.ts` (new), `src/trpc/workspace-procedures.ts`, `src/trpc/workspace-api.ts`, `src/trpc/app-router-context.ts`, `web-ui/src/components/detail-panels/commit-panel.tsx`, `web-ui/src/hooks/use-commit-panel.ts`.
 
 ## Feature: per-event scoped notification beeps (2026-04-14)
 

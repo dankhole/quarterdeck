@@ -1,7 +1,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronDown, ChevronRight, Command, CornerDownLeft, Undo2 } from "lucide-react";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
@@ -11,6 +11,7 @@ import { useDiffComments } from "@/hooks/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/use-diff-scroll-sync";
 import type { FileNavigation } from "@/hooks/use-git-navigation";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
 
@@ -37,6 +38,7 @@ export function DiffViewerPanel({
 	viewMode = "unified",
 	navigateToFile,
 	isContentLoading,
+	fileLoadingState,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
@@ -48,7 +50,10 @@ export function DiffViewerPanel({
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
 	navigateToFile?: (nav: FileNavigation) => void;
+	/** @deprecated Use fileLoadingState instead. Kept for backward compatibility (git-history-view). */
 	isContentLoading?: boolean;
+	/** Per-file loading state from useAllFileDiffContent. When provided, shows per-file skeletons. */
+	fileLoadingState?: FileLoadingState;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 
@@ -132,6 +137,30 @@ export function DiffViewerPanel({
 		onAddToTerminal,
 		onSendToTerminal,
 	});
+
+	/** Returns true when a file's diff content hasn't loaded yet. */
+	const isFileLoading = useCallback(
+		(path: string): boolean => {
+			// New per-file loading state (batch mode from git-view).
+			if (fileLoadingState) {
+				// If the file is in the loaded set, it's done.
+				if (fileLoadingState.loaded.has(path)) return false;
+				// If it's in the loading set, it's actively being fetched.
+				if (fileLoadingState.loading.has(path)) return true;
+				// Not in either set yet — check if the file has content already (from cache).
+				const group = groupedByPath.find((g) => g.path === path);
+				if (group) {
+					const hasContent = group.entries.some((e) => e.oldText != null || e.newText !== "");
+					if (hasContent) return false;
+				}
+				// No content and not loaded — it's pending fetch.
+				return true;
+			}
+			// Legacy single-file mode (git-history-view).
+			return isContentLoading === true && selectedPath === path;
+		},
+		[fileLoadingState, isContentLoading, selectedPath, groupedByPath],
+	);
 
 	return (
 		<div
@@ -264,7 +293,7 @@ export function DiffViewerPanel({
 											className="rounded-b-md border-x border-b border-border bg-surface-1"
 											style={{ overflow: "hidden" }}
 										>
-											{isContentLoading && selectedPath === group.path ? (
+											{isFileLoading(group.path) ? (
 												<div className="px-4 py-6">
 													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "95%" }} />
 													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "82%" }} />
