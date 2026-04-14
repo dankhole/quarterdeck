@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: arrow key task navigation suppressed when terminal is focused (2026-04-14)
+
+The `useHotkeys` bindings for up/down/left/right in `CardDetailView` navigate between tasks in the selected column. The `ignoreEventWhen` guard called `isTypingTarget()`, which only checked for INPUT, TEXTAREA, and contentEditable elements. xterm.js terminals receive keyboard focus on their internal canvas/div — none of which match those checks — so arrow keys fired the task navigation handler even while the user was interacting with a terminal.
+
+Added `target.closest(".xterm") != null` to `isTypingTarget()`. The `.xterm` class is the standard root class xterm.js applies to its container element (already referenced in `globals.css` for scrollbar styling). When any element inside an xterm instance is the event target, the arrow key hotkeys are now suppressed and keystrokes pass through to the terminal.
+
+Closes todo #24 (previously #25 before renumbering from earlier todo removals).
+
+**Files**: `web-ui/src/components/card-detail-view.tsx`.
+
 ## Fix: trash confirmation dialog always shown (2026-04-14)
 
 The trash confirmation dialog was only shown when the workspace metadata snapshot reported `changedFiles > 0`. Three cases bypassed the dialog entirely: snapshot not yet loaded (`null`), `changedFiles` is `null` (metadata fetch in progress), or `changedFiles === 0` (no uncommitted work). This made the confirmation feel inconsistent — sometimes you'd get asked, sometimes the task just vanished.

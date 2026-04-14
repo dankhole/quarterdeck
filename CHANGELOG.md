@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: arrow key task navigation suppressed when terminal is focused
+
+- Arrow keys (up/down/left/right) no longer navigate between tasks when an xterm.js terminal has focus. The `isTypingTarget` guard in `CardDetailView` now checks `closest(".xterm")` in addition to INPUT/TEXTAREA/contentEditable, so keystrokes inside terminals go to the terminal instead of cycling the selected card.
+
 ### Fix: trash confirmation dialog always shown
 
 - The trash button on task cards now always shows a confirmation dialog before trashing, regardless of whether the task has uncommitted changes. Previously the dialog was only shown when the workspace snapshot reported changed files — tasks with no changes, or whose snapshot hadn't loaded yet, were trashed immediately without asking. The dialog adapts its message: tasks with uncommitted changes get the full warning about worktree deletion and patch capture; clean tasks get a simpler "are you sure?" prompt.

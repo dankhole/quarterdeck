@@ -192,36 +192,32 @@ Three related issues in the compare and uncommitted work views:
 - **Uncommitted work should remember last-viewed file**: When switching back to the uncommitted work tab, it should restore the file the user was last looking at, not reset to the top.
 - **Scroll in compare swaps selected file**: Scrolling in the compare view sometimes jumps the left-side file selection back to the first file in the list. Likely a side effect of the single-file-at-a-time model — goes away if all diffs are shown inline.
 
-## 24. Arrow keys should not navigate outside of terminals
-
-Arrow keys currently change the selected task or navigate the UI when focus is outside a terminal. They should be inert outside of terminal panels — task/view navigation should only happen via explicit clicks or keyboard shortcuts, not arrow keys.
-
-## 25. Three-dot diff option in compare view
+## 24. Three-dot diff option in compare view
 
 Add an option in the compare view to use three-dot diff (`...`) — showing only the changes introduced on the branch since it diverged from the base, excluding changes that happened on the base since. Currently compare shows a two-dot diff which includes both sides.
 
-## 26. Revisit periodic orphaned entity cleanup
+## 25. Revisit periodic orphaned entity cleanup
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.
 
-## 27. Commit sidebar improvements
+## 26. Commit sidebar improvements
 
 - **Move stash button to the top** of the commit sidebar for easier access.
 - **Generate commit message button**: Add a button to auto-generate a commit message from the diff. (Todo #15 covers the auto-fill-on-open approach — this is an explicit generate/regenerate action.)
 
-## 28. Organize web-ui hooks directory
+## 27. Organize web-ui hooks directory
 
 The `web-ui/src/hooks/` folder has 57+ files in a flat structure. Group related hooks into subdirectories by domain (e.g. `hooks/terminal/`, `hooks/git/`, `hooks/settings/`, `hooks/board/`).
 
-## 29. Debug logging window trash button doesn't stop logging
+## 28. Debug logging window trash button doesn't stop logging
 
 The trash/clear button in the debug logging window doesn't actually stop or clear log output — logs keep streaming after clicking it. It should stop the log stream and clear the current output.
 
-## 30. Title generation timeouts in logs
+## 29. Title generation timeouts in logs
 
 Title generation frequently times out — visible in debug logs. Doesn't seem to affect the UI (titles still appear), but the timeout errors are noisy. Investigate whether the timeout is too aggressive, or if there's a redundant/stale code path triggering it.
 
-## 31. Keep task base ref in sync with branch changes
+## 30. Keep task base ref in sync with branch changes
 
 When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.
 
