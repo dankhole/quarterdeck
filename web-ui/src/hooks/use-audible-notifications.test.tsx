@@ -56,6 +56,14 @@ interface HookProps {
 		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
+	audibleNotificationSuppressCurrentProject: {
+		permission: boolean;
+		review: boolean;
+		failure: boolean;
+		completion: boolean;
+	};
+	notificationWorkspaceIds: Record<string, string>;
+	currentProjectId: string | null;
 }
 
 function defaultProps(): HookProps {
@@ -70,6 +78,14 @@ function defaultProps(): HookProps {
 			completion: true,
 		},
 		audibleNotificationsOnlyWhenHidden: true,
+		audibleNotificationSuppressCurrentProject: {
+			permission: false,
+			review: false,
+			failure: false,
+			completion: false,
+		},
+		notificationWorkspaceIds: {},
+		currentProjectId: null,
 	};
 }
 
@@ -1196,6 +1212,190 @@ describe("useAudibleNotifications", () => {
 		flushSettleWindow();
 		expect(playMock).toHaveBeenCalledTimes(2);
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
+	});
+
+	// --- Suppress current project (per-event) ---
+
+	it("suppresses failure for current-project tasks when failure suppress is enabled", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationSuppressCurrentProject: {
+				permission: false,
+				review: false,
+				failure: true,
+				completion: false,
+			},
+			currentProjectId: "project-a",
+			notificationWorkspaceIds: { "task-1": "project-a" },
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		expect(playMock).not.toHaveBeenCalled();
+	});
+
+	it("plays non-suppressed event types for current-project tasks", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationSuppressCurrentProject: {
+				permission: false,
+				review: true,
+				failure: false,
+				completion: true,
+			},
+			currentProjectId: "project-a",
+			notificationWorkspaceIds: { "task-1": "project-a" },
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		// failure is not suppressed, so it should play
+		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+	});
+
+	it("plays sounds for other-project tasks even when suppress is enabled", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationSuppressCurrentProject: {
+				permission: true,
+				review: true,
+				failure: true,
+				completion: true,
+			},
+			currentProjectId: "project-a",
+			notificationWorkspaceIds: { "task-1": "project-b" },
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
+	});
+
+	it("suppresses current-project and plays other-project in same batch", async () => {
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationSuppressCurrentProject: {
+				permission: true,
+				review: true,
+				failure: true,
+				completion: true,
+			},
+			currentProjectId: "project-a",
+			notificationWorkspaceIds: { "task-local": "project-a", "task-remote": "project-b" },
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-local": createMockSession({ taskId: "task-local", state: "running" }),
+						"task-remote": createMockSession({ taskId: "task-remote", state: "running" }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-local": createMockSession({
+							taskId: "task-local",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+						"task-remote": createMockSession({
+							taskId: "task-remote",
+							state: "awaiting_review",
+							reviewReason: "exit",
+							exitCode: 0,
+						}),
+					}}
+				/>,
+			);
+		});
+
+		flushSettleWindow();
+		// Only the remote task should beep.
+		expect(playMock).toHaveBeenCalledTimes(1);
 		expect(playMock).toHaveBeenCalledWith("completion", 0.7);
 	});
 });

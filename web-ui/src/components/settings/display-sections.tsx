@@ -152,26 +152,38 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 					{Math.round(fields.audibleNotificationVolume * 100)}%
 				</span>
 			</div>
-			<div className="flex flex-col gap-2 mt-3">
-				{NOTIFICATION_EVENTS.map(([key, label, description]) => (
-					<div key={key} className={cn("flex items-center gap-2 text-[13px]", masterOff && "opacity-40")}>
-						<SettingsCheckbox
-							id={`audible-notification-${key}`}
-							checked={fields.audibleNotificationEvents[key]}
-							onCheckedChange={(v) =>
+			{/* Per-event grid: Enabled | Other projects only | Event label */}
+			<div className={cn("mt-3", masterOff && "opacity-40")}>
+				<div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-2 items-center text-[13px]">
+					{/* Header row */}
+					<span className="text-text-tertiary text-[12px] font-medium">Enabled</span>
+					<span className="text-text-tertiary text-[12px] font-medium">Other projects only</span>
+					<span />
+					{/* Event rows */}
+					{NOTIFICATION_EVENTS.map(([key, label, description]) => (
+						<NotificationEventRow
+							key={key}
+							eventKey={key}
+							label={label}
+							description={description}
+							enabled={fields.audibleNotificationEvents[key]}
+							suppressCurrentProject={fields.audibleNotificationSuppressCurrentProject[key]}
+							onEnabledChange={(v) =>
 								setField("audibleNotificationEvents", {
 									...fields.audibleNotificationEvents,
 									[key]: v,
 								})
 							}
+							onSuppressChange={(v) =>
+								setField("audibleNotificationSuppressCurrentProject", {
+									...fields.audibleNotificationSuppressCurrentProject,
+									[key]: v,
+								})
+							}
 							disabled={masterOff}
 						/>
-						<label htmlFor={`audible-notification-${key}`} className="flex items-center gap-1 cursor-pointer">
-							<span className="text-text-primary">{label}</span>
-							<span className="text-text-tertiary">— {description}</span>
-						</label>
-					</div>
-				))}
+					))}
+				</div>
 			</div>
 			<div className="mt-3">
 				<Button
@@ -185,6 +197,53 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 					Test sound
 				</Button>
 			</div>
+		</>
+	);
+}
+
+function NotificationEventRow({
+	eventKey,
+	label,
+	description,
+	enabled,
+	suppressCurrentProject,
+	onEnabledChange,
+	onSuppressChange,
+	disabled,
+}: {
+	eventKey: string;
+	label: string;
+	description: string;
+	enabled: boolean;
+	suppressCurrentProject: boolean;
+	onEnabledChange: (v: boolean) => void;
+	onSuppressChange: (v: boolean) => void;
+	disabled: boolean;
+}): React.ReactElement {
+	const rowOff = disabled || !enabled;
+	return (
+		<>
+			<SettingsCheckbox
+				id={`audible-notification-${eventKey}`}
+				checked={enabled}
+				onCheckedChange={onEnabledChange}
+				disabled={disabled}
+			/>
+			<div className="flex justify-center">
+				<SettingsCheckbox
+					id={`audible-notification-suppress-${eventKey}`}
+					checked={suppressCurrentProject}
+					onCheckedChange={onSuppressChange}
+					disabled={rowOff}
+				/>
+			</div>
+			<label
+				htmlFor={`audible-notification-${eventKey}`}
+				className={cn("flex items-center gap-1 cursor-pointer", rowOff && "opacity-40")}
+			>
+				<span className="text-text-primary">{label}</span>
+				<span className="text-text-tertiary">— {description}</span>
+			</label>
 		</>
 	);
 }

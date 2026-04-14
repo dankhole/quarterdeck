@@ -13,6 +13,7 @@ import { detectInstalledCommands } from "./agent-registry";
 import {
 	DEFAULT_AGENT_ID,
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,
+	DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT,
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	DEFAULT_PROMPT_SHORTCUTS,
@@ -48,6 +49,13 @@ export interface AudibleNotificationEvents {
 	completion: boolean;
 }
 
+export interface AudibleNotificationSuppressCurrentProject {
+	permission: boolean;
+	review: boolean;
+	failure: boolean;
+	completion: boolean;
+}
+
 // The on-disk JSON shape: all fields optional, registry fields plus special fields.
 type RuntimeGlobalConfigFileShape = Partial<GlobalConfigFieldValues> & {
 	selectedAgentId?: RuntimeAgentId;
@@ -55,6 +63,7 @@ type RuntimeGlobalConfigFileShape = Partial<GlobalConfigFieldValues> & {
 	promptShortcuts?: Array<{ label: string; prompt: string }>;
 	hiddenDefaultPromptShortcuts?: string[];
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
+	audibleNotificationSuppressCurrentProject?: AudibleNotificationEventsShape;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
 	worktreeSystemPromptTemplate?: string;
@@ -67,6 +76,7 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	selectedAgentId: RuntimeAgentId;
 	selectedShortcutLabel: string | null;
 	audibleNotificationEvents: AudibleNotificationEvents;
+	audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 	shortcuts: RuntimeProjectShortcut[];
 	pinnedBranches: string[];
 	promptShortcuts: PromptShortcut[];
@@ -84,6 +94,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutLabel?: string | null;
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
+	audibleNotificationSuppressCurrentProject?: AudibleNotificationEventsShape;
 	shortcuts?: RuntimeProjectShortcut[];
 	pinnedBranches?: string[];
 	promptShortcuts?: PromptShortcut[];
@@ -106,6 +117,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	selectedAgentId: DEFAULT_AGENT_ID,
 	selectedShortcutLabel: null,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
+	audibleNotificationSuppressCurrentProject: { ...DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT },
 	shortcuts: [],
 	pinnedBranches: [],
 	promptShortcuts: [],
@@ -281,6 +293,29 @@ function normalizeAudibleNotificationEvents(
 	};
 }
 
+function normalizeAudibleNotificationSuppressCurrentProject(
+	value: AudibleNotificationEventsShape | null | undefined,
+): AudibleNotificationSuppressCurrentProject {
+	return {
+		permission:
+			typeof value?.permission === "boolean"
+				? value.permission
+				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.permission,
+		review:
+			typeof value?.review === "boolean"
+				? value.review
+				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.review,
+		failure:
+			typeof value?.failure === "boolean"
+				? value.failure
+				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.failure,
+		completion:
+			typeof value?.completion === "boolean"
+				? value.completion
+				: DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.completion,
+	};
+}
+
 function normalizeShortcutLabel(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
@@ -383,6 +418,9 @@ function toRuntimeConfigState({
 		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
 		selectedShortcutLabel: normalizeShortcutLabel(globalConfig?.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(globalConfig?.audibleNotificationEvents),
+		audibleNotificationSuppressCurrentProject: normalizeAudibleNotificationSuppressCurrentProject(
+			globalConfig?.audibleNotificationSuppressCurrentProject,
+		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 		pinnedBranches: normalizePinnedBranches(pinnedBranches),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(globalConfig?.hiddenDefaultPromptShortcuts),
@@ -443,6 +481,7 @@ async function writeRuntimeGlobalConfigFile(
 		promptShortcuts?: PromptShortcut[];
 		hiddenDefaultPromptShortcuts?: string[];
 		audibleNotificationEvents?: AudibleNotificationEventsShape;
+		audibleNotificationSuppressCurrentProject?: AudibleNotificationEventsShape;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
 		worktreeSystemPromptTemplate?: string;
@@ -555,6 +594,25 @@ async function writeRuntimeGlobalConfigFile(
 		payload.audibleNotificationEvents = audibleNotificationEvents;
 	}
 
+	// audibleNotificationSuppressCurrentProject
+	const audibleNotificationSuppressCurrentProject = normalizeAudibleNotificationSuppressCurrentProject(
+		config.audibleNotificationSuppressCurrentProject ??
+			(existing as RuntimeGlobalConfigFileShape | null)?.audibleNotificationSuppressCurrentProject,
+	);
+	if (
+		(existing !== null && Object.hasOwn(existing, "audibleNotificationSuppressCurrentProject")) ||
+		audibleNotificationSuppressCurrentProject.permission !==
+			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.permission ||
+		audibleNotificationSuppressCurrentProject.review !==
+			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.review ||
+		audibleNotificationSuppressCurrentProject.failure !==
+			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.failure ||
+		audibleNotificationSuppressCurrentProject.completion !==
+			DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT.completion
+	) {
+		payload.audibleNotificationSuppressCurrentProject = audibleNotificationSuppressCurrentProject;
+	}
+
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
 		lock: null,
 	});
@@ -630,6 +688,7 @@ function createRuntimeConfigStateFromValues(
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutLabel: string | null;
 		audibleNotificationEvents: AudibleNotificationEvents;
+		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
 		promptShortcuts: PromptShortcut[];
@@ -644,6 +703,9 @@ function createRuntimeConfigStateFromValues(
 		selectedAgentId: normalizeAgentId(input.selectedAgentId),
 		selectedShortcutLabel: normalizeShortcutLabel(input.selectedShortcutLabel),
 		audibleNotificationEvents: normalizeAudibleNotificationEvents(input.audibleNotificationEvents),
+		audibleNotificationSuppressCurrentProject: normalizeAudibleNotificationSuppressCurrentProject(
+			input.audibleNotificationSuppressCurrentProject,
+		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
 		pinnedBranches: normalizePinnedBranches(input.pinnedBranches),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
@@ -665,6 +727,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		selectedAgentId: current.selectedAgentId,
 		selectedShortcutLabel: current.selectedShortcutLabel,
 		audibleNotificationEvents: current.audibleNotificationEvents,
+		audibleNotificationSuppressCurrentProject: current.audibleNotificationSuppressCurrentProject,
 		shortcuts: [],
 		pinnedBranches: [],
 		promptShortcuts: current.promptShortcuts,
@@ -702,6 +765,7 @@ export async function saveRuntimeConfig(
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutLabel: string | null;
 		audibleNotificationEvents: AudibleNotificationEvents;
+		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
 		promptShortcuts: PromptShortcut[];
@@ -755,6 +819,12 @@ async function applyConfigUpdates({
 				...updates.audibleNotificationEvents,
 			})
 		: current.audibleNotificationEvents;
+	const nextAudibleNotificationSuppressCurrentProject = updates.audibleNotificationSuppressCurrentProject
+		? normalizeAudibleNotificationSuppressCurrentProject({
+				...current.audibleNotificationSuppressCurrentProject,
+				...updates.audibleNotificationSuppressCurrentProject,
+			})
+		: current.audibleNotificationSuppressCurrentProject;
 	const nextShortcuts = projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts;
 	const nextPinnedBranches = workspaceId ? (updates.pinnedBranches ?? current.pinnedBranches) : current.pinnedBranches;
 	const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
@@ -776,6 +846,14 @@ async function applyConfigUpdates({
 		nextAudibleNotificationEvents.review !== current.audibleNotificationEvents.review ||
 		nextAudibleNotificationEvents.failure !== current.audibleNotificationEvents.failure ||
 		nextAudibleNotificationEvents.completion !== current.audibleNotificationEvents.completion ||
+		nextAudibleNotificationSuppressCurrentProject.permission !==
+			current.audibleNotificationSuppressCurrentProject.permission ||
+		nextAudibleNotificationSuppressCurrentProject.review !==
+			current.audibleNotificationSuppressCurrentProject.review ||
+		nextAudibleNotificationSuppressCurrentProject.failure !==
+			current.audibleNotificationSuppressCurrentProject.failure ||
+		nextAudibleNotificationSuppressCurrentProject.completion !==
+			current.audibleNotificationSuppressCurrentProject.completion ||
 		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts)) ||
 		pinnedBranchesChanged;
 
@@ -793,6 +871,7 @@ async function applyConfigUpdates({
 		openPrPromptTemplate: nextOpenPrPromptTemplate,
 		worktreeSystemPromptTemplate: nextWorktreeSystemPromptTemplate,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
+		audibleNotificationSuppressCurrentProject: nextAudibleNotificationSuppressCurrentProject,
 	});
 	if (projectConfigPath !== null) {
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
@@ -809,6 +888,7 @@ async function applyConfigUpdates({
 		selectedAgentId: nextSelectedAgentId,
 		selectedShortcutLabel: nextSelectedShortcutLabel,
 		audibleNotificationEvents: nextAudibleNotificationEvents,
+		audibleNotificationSuppressCurrentProject: nextAudibleNotificationSuppressCurrentProject,
 		shortcuts: nextShortcuts,
 		pinnedBranches: nextPinnedBranches,
 		promptShortcuts: nextPromptShortcuts,

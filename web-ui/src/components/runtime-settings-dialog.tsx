@@ -207,7 +207,7 @@ export function RuntimeSettingsDialog({
 
 	return (
 		<>
-			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "600px" }}>
+			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "960px" }}>
 				<DialogHeader title="Settings" icon={<Settings size={16} />} />
 				<DialogBody>
 					<h5 className="font-semibold text-text-primary m-0">Global</h5>

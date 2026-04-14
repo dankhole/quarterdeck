@@ -46,6 +46,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	audibleNotificationVolume: CONFIG_DEFAULTS.audibleNotificationVolume,
 	audibleNotificationEvents: { ...CONFIG_DEFAULTS.audibleNotificationEvents },
 	audibleNotificationsOnlyWhenHidden: CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
+	audibleNotificationSuppressCurrentProject: { ...CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject },
 	commitPromptTemplate: "",
 	openPrPromptTemplate: "",
 	worktreeSystemPromptTemplate: "",

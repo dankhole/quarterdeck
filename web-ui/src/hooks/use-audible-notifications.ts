@@ -14,6 +14,17 @@ interface UseAudibleNotificationsOptions {
 		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
+	/** Per-event suppression for tasks in the currently viewed project. */
+	audibleNotificationSuppressCurrentProject: {
+		permission: boolean;
+		review: boolean;
+		failure: boolean;
+		completion: boolean;
+	};
+	/** Maps task IDs to their workspace/project IDs. */
+	notificationWorkspaceIds: Record<string, string>;
+	/** The currently viewed project ID. */
+	currentProjectId: string | null;
 	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
 	suppressedTaskIds?: ReadonlySet<string>;
 }
@@ -101,6 +112,9 @@ export function useAudibleNotifications({
 	audibleNotificationVolume,
 	audibleNotificationEvents,
 	audibleNotificationsOnlyWhenHidden,
+	audibleNotificationSuppressCurrentProject,
+	notificationWorkspaceIds,
+	currentProjectId,
 	suppressedTaskIds,
 }: UseAudibleNotificationsOptions): void {
 	const previousColumnsRef = useRef<Map<string, TaskColumn>>(new Map());
@@ -108,17 +122,33 @@ export function useAudibleNotifications({
 	const pendingSoundsRef = useRef<Map<string, PendingSound>>(new Map());
 	const latestVolumeRef = useRef(audibleNotificationVolume);
 	const latestEventsRef = useRef(audibleNotificationEvents);
+	const latestSuppressRef = useRef(audibleNotificationSuppressCurrentProject);
+	const latestWorkspaceIdsRef = useRef(notificationWorkspaceIds);
+	const latestProjectIdRef = useRef(currentProjectId);
 	latestVolumeRef.current = audibleNotificationVolume;
 	latestEventsRef.current = audibleNotificationEvents;
+	latestSuppressRef.current = audibleNotificationSuppressCurrentProject;
+	latestWorkspaceIdsRef.current = notificationWorkspaceIds;
+	latestProjectIdRef.current = currentProjectId;
 
 	const fireSound = (taskId: string) => {
 		const pending = pendingSoundsRef.current.get(taskId);
 		if (!pending) return;
 		pendingSoundsRef.current.delete(taskId);
-		if (latestEventsRef.current[pending.eventType]) {
-			notificationAudioPlayer.ensureContext();
-			notificationAudioPlayer.play(pending.eventType, latestVolumeRef.current);
+		const eventType = pending.eventType;
+		if (!latestEventsRef.current[eventType]) return;
+		// Per-event suppress: skip if this event type is suppressed for the current project
+		// and the task belongs to that project.
+		const projectId = latestProjectIdRef.current;
+		if (
+			projectId != null &&
+			latestSuppressRef.current[eventType] &&
+			latestWorkspaceIdsRef.current[taskId] === projectId
+		) {
+			return;
 		}
+		notificationAudioPlayer.ensureContext();
+		notificationAudioPlayer.play(eventType, latestVolumeRef.current);
 	};
 
 	// Single detection path: column-based transitions with settle window.

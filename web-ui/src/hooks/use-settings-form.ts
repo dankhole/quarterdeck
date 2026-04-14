@@ -42,6 +42,12 @@ export interface SettingsFormValues {
 		completion: boolean;
 	};
 	audibleNotificationsOnlyWhenHidden: boolean;
+	audibleNotificationSuppressCurrentProject: {
+		permission: boolean;
+		review: boolean;
+		failure: boolean;
+		completion: boolean;
+	};
 	focusedTaskPollMs: number;
 	backgroundTaskPollMs: number;
 	homeRepoPollMs: number;
@@ -89,6 +95,9 @@ export function resolveInitialValues(
 		},
 		audibleNotificationsOnlyWhenHidden:
 			config?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden,
+		audibleNotificationSuppressCurrentProject: config?.audibleNotificationSuppressCurrentProject ?? {
+			...CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject,
+		},
 		focusedTaskPollMs: config?.focusedTaskPollMs ?? CONFIG_DEFAULTS.focusedTaskPollMs,
 		backgroundTaskPollMs: config?.backgroundTaskPollMs ?? CONFIG_DEFAULTS.backgroundTaskPollMs,
 		homeRepoPollMs: config?.homeRepoPollMs ?? CONFIG_DEFAULTS.homeRepoPollMs,
@@ -105,11 +114,16 @@ export function resolveInitialValues(
 
 function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues): boolean {
 	// Primitive fields — reference equality (object/array fields need a skip + custom check above)
+	const objectKeys = new Set<keyof SettingsFormValues>([
+		"audibleNotificationEvents",
+		"audibleNotificationSuppressCurrentProject",
+		"shortcuts",
+	]);
 	for (const key of Object.keys(a) as Array<keyof SettingsFormValues>) {
-		if (key === "audibleNotificationEvents" || key === "shortcuts") continue;
+		if (objectKeys.has(key)) continue;
 		if (a[key] !== b[key]) return false;
 	}
-	// Notification events — field-by-field (matches prior 4-field comparison)
+	// Notification events — field-by-field
 	const ae = a.audibleNotificationEvents;
 	const be = b.audibleNotificationEvents;
 	if (
@@ -117,6 +131,17 @@ function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues): boole
 		ae.review !== be.review ||
 		ae.failure !== be.failure ||
 		ae.completion !== be.completion
+	) {
+		return false;
+	}
+	// Suppress current project — field-by-field
+	const as = a.audibleNotificationSuppressCurrentProject;
+	const bs = b.audibleNotificationSuppressCurrentProject;
+	if (
+		as.permission !== bs.permission ||
+		as.review !== bs.review ||
+		as.failure !== bs.failure ||
+		as.completion !== bs.completion
 	) {
 		return false;
 	}

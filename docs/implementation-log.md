@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: per-event scoped notification beeps (2026-04-14)
+
+Added per-event-type "other projects only" suppression for notification sounds. Previously `audibleNotificationsOnlyWhenHidden` was the only scoping mechanism — it suppressed all sounds when the tab was focused. The new `audibleNotificationSuppressCurrentProject` config field is an object with `{ permission, review, failure, completion }` booleans, matching the shape of `audibleNotificationEvents`. Each event type can independently be set to only beep for tasks in other projects.
+
+The config field follows the `audibleNotificationEvents` pattern — a special-case object (not a registry field) with its own normalizer, serializer, and merge logic in `runtime-config.ts`. The full pipeline: `global-config-fields.ts` (not here — special case), `config-defaults.ts` (default all-false), `runtime-config.ts` (type + normalize + read/write/merge), `api/config.ts` (Zod schemas), `agent-registry.ts` (response builder), `use-settings-form.ts` (form type + initial values + dirty check).
+
+The settings dialog was widened from 600px to 960px. The notifications section replaces the flat checkbox list with a CSS grid (`grid-cols-[auto_auto_1fr]`) — "Enabled" and "Other projects only" column headers above per-event rows. Each row's "Other projects only" checkbox is disabled when its event is disabled. Extracted `NotificationEventRow` component for each row.
+
+The suppression check happens at sound-fire time in `fireSound()` (after the settle window), not at detection time. This uses refs (`latestSuppressRef`, `latestWorkspaceIdsRef`, `latestProjectIdRef`) rather than effect dependencies, so the check uses current values at fire time — if the user switches projects during the 500ms settle window, the correct project is used. The effect dependency array was simplified back to `[audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden, notificationSessions, suppressedTaskIds]` since the per-event suppress is ref-based.
+
+Closes todo #21.
+
+**Files**: `src/config/config-defaults.ts`, `src/config/runtime-config.ts`, `src/config/agent-registry.ts`, `src/core/api/config.ts`, `web-ui/src/hooks/use-settings-form.ts`, `web-ui/src/hooks/use-audible-notifications.ts`, `web-ui/src/components/settings/display-sections.tsx`, `web-ui/src/components/runtime-settings-dialog.tsx`, `web-ui/src/App.tsx`, `web-ui/src/test-utils/runtime-config-factory.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/hooks/use-audible-notifications.test.tsx`.
+
 ## Feature: log level setting replaces boolean debug toggle (2026-04-14)
 
 The debug logger's `debugLoggingEnabled` boolean was too coarse — either full verbose output or nothing. Replaced with a four-level threshold (`debug` < `info` < `warn` < `error`) using a severity comparison in `emit()`. The `setDebugLoggingEnabled`/`isDebugLoggingEnabled` functions are kept as compatibility wrappers.

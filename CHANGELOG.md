@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: per-event scoped notification beeps
+
+- Each notification event type (permission, review, failure, completion) can independently be configured to only beep for tasks in other projects, suppressing sounds for the currently viewed project. The settings dialog notifications section now displays events in a two-column grid with "Enabled" and "Other projects only" columns per event type.
+- Settings dialog widened from 600px to 960px to accommodate the grid layout.
+- The per-event suppress check runs at sound-fire time (after the settle window), so switching projects during the window uses the correct project context.
+
 ### Feature: log level setting replaces boolean debug toggle
 
 - The runtime debug logger now uses a four-level threshold (`debug`, `info`, `warn`, `error`) instead of an on/off boolean. Default is `warn` — only warnings and errors are captured. Setting `info` captures informational messages like orphan cleanup without the full debug firehose.

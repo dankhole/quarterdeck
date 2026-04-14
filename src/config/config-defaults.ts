@@ -13,7 +13,7 @@ import {
 	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 } from "../prompts/prompt-templates";
 import { getGlobalConfigDefaults } from "./global-config-fields";
-import type { AudibleNotificationEvents } from "./runtime-config";
+import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./runtime-config";
 
 export type { LogLevel } from "./global-config-fields";
 
@@ -33,6 +33,13 @@ export const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 	completion: true,
 };
 
+export const DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT: AudibleNotificationSuppressCurrentProject = {
+	permission: false,
+	review: false,
+	failure: false,
+	completion: false,
+};
+
 export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
 	{
 		label: "Commit",
@@ -49,4 +56,5 @@ export const CONFIG_DEFAULTS = {
 	...getGlobalConfigDefaults(),
 	selectedAgentId: DEFAULT_AGENT_ID,
 	audibleNotificationEvents: { ...DEFAULT_AUDIBLE_NOTIFICATION_EVENTS },
+	audibleNotificationSuppressCurrentProject: { ...DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT },
 };

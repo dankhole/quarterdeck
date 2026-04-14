@@ -440,6 +440,9 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
 	const audibleNotificationsOnlyWhenHidden =
 		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
+	const audibleNotificationSuppressCurrentProject =
+		runtimeProjectConfig?.audibleNotificationSuppressCurrentProject ??
+		CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject;
 
 	const trashTaskIdSet = useMemo(() => {
 		const trashColumn = board.columns.find((col) => col.id === "trash");
@@ -452,6 +455,9 @@ export default function App(): ReactElement {
 		audibleNotificationVolume,
 		audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden,
+		audibleNotificationSuppressCurrentProject,
+		notificationWorkspaceIds,
+		currentProjectId,
 		suppressedTaskIds: trashTaskIdSet,
 	});
 

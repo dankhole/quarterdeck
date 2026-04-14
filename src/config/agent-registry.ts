@@ -130,6 +130,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		projectConfigPath: runtimeConfig.projectConfigPath,
 		llmConfigured: isLlmConfigured(),
 		audibleNotificationEvents: runtimeConfig.audibleNotificationEvents,
+		audibleNotificationSuppressCurrentProject: runtimeConfig.audibleNotificationSuppressCurrentProject,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		worktreeSystemPromptTemplate: runtimeConfig.worktreeSystemPromptTemplate,

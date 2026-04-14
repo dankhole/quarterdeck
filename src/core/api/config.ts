@@ -38,6 +38,12 @@ export const runtimeConfigResponseSchema = z.object({
 		completion: z.boolean(),
 	}),
 	audibleNotificationsOnlyWhenHidden: z.boolean(),
+	audibleNotificationSuppressCurrentProject: z.object({
+		permission: z.boolean(),
+		review: z.boolean(),
+		failure: z.boolean(),
+		completion: z.boolean(),
+	}),
 	commitPromptTemplate: z.string(),
 	openPrPromptTemplate: z.string(),
 	worktreeSystemPromptTemplate: z.string(),
@@ -103,6 +109,14 @@ export const runtimeConfigSaveRequestSchema = z.object({
 		})
 		.optional(),
 	audibleNotificationsOnlyWhenHidden: z.boolean().optional(),
+	audibleNotificationSuppressCurrentProject: z
+		.object({
+			permission: z.boolean(),
+			review: z.boolean(),
+			failure: z.boolean(),
+			completion: z.boolean(),
+		})
+		.optional(),
 	focusedTaskPollMs: z.number().min(500).max(60000).optional(),
 	backgroundTaskPollMs: z.number().min(500).max(60000).optional(),
 	homeRepoPollMs: z.number().min(500).max(60000).optional(),
