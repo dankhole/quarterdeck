@@ -1,6 +1,8 @@
 # Test Coverage
 
-Baseline captured 2026-04-08.
+Baseline captured 2026-04-08. Percentage breakdowns below are from that snapshot and are likely stale — significant refactoring has occurred since (session manager decomposition, 11 hooks extracted from App.tsx, code duplication cleanup, new modules like `src/core/api/`, `src/state/workspace-state-index.ts`, etc.). Re-run coverage to get current numbers.
+
+The strategic guidance (prioritization, what-not-to-test, reusability for backend rewrite) remains current.
 
 ## Running coverage
 
@@ -19,14 +21,14 @@ Both generate three report formats:
 
 `coverage/` directories are gitignored.
 
-## Current baseline
+## Baseline (2026-04-08, likely stale)
 
 | Suite | Statements | Branches | Functions | Lines | Tests |
 |-------|-----------|----------|-----------|-------|-------|
 | Runtime (`src/`) | 52.7% | 43.4% | 52.3% | 52.8% | 395 |
 | Web-UI (`web-ui/src/`) | 35.8% | 30.3% | 33.6% | 35.7% | 320 |
 
-All 715 tests pass. Runtime executes in ~29s, web-ui in ~7s.
+As of 2026-04-13: 684 runtime tests across 63 test files, 56 web-ui test files.
 
 ## Coverage by module
 
@@ -62,23 +64,25 @@ All 715 tests pass. Runtime executes in ~29s, web-ui in ~7s.
 | `src/stores/` | 38% | 25% | 47% | workspace-metadata-store untested |
 | `src/terminal/` | 13% | 8% | 9% | persistent-terminal-manager at 1% |
 
-## 0% coverage files (no tests at all)
+## 0% coverage files (no tests at all, from 2026-04-08 baseline)
+
+Note: Several files below have been decomposed since the baseline. `commands/task.ts` was split into `task-board-helpers.ts`, `task-lifecycle-handlers.ts`, `task-workspace.ts`. `trpc/app-router.ts` was split into `app-router-context.ts`, `app-router-init.ts`, `workspace-procedures.ts`. Coverage for decomposed modules may differ from the original monolithic files.
 
 ### Runtime
 
 | File | Lines | Priority | Why |
 |------|-------|----------|-----|
-| `commands/task.ts` | 1068 | High | Entire CLI task subcommand — large, complex |
+| `commands/task.ts` (+ extracted modules) | ~1068 total | High | CLI task subcommand — split into focused modules but likely still untested |
 | `server/runtime-server.ts` | 218 | Medium | HTTP bootstrap; partially hit by integration tests |
 | `server/runtime-state-hub.ts` | 432 | High | WebSocket broadcast hub — core data flow |
-| `server/workspace-metadata-monitor.ts` | 392 | Medium | File watcher for workspace changes |
+| `server/workspace-metadata-monitor.ts` (+ `workspace-metadata-loaders.ts`) | ~500 total | Medium | File watcher for workspace changes, decomposed |
 | `server/workspace-registry.ts` | 376 | High | Workspace lifecycle management |
 | `server/assets.ts` | 77 | Low | Static asset serving |
 | `server/browser.ts` | 11 | Low | `open()` wrapper |
 | `server/shell.ts` | 1 | Low | Re-export |
-| `trpc/app-router.ts` | 476 | Medium | Router composition + subscription handlers |
+| `trpc/app-router.ts` (+ extracted modules) | ~476 total | Medium | Router composition + subscription handlers, decomposed |
 | `trpc/projects-api.ts` | 168 | Medium | Only untested tRPC router |
-| `workspace/get-workspace-changes.ts` | 483 | High | Git diff generation — data correctness critical |
+| `workspace/get-workspace-changes.ts` | ~230 | High | Git diff generation — data correctness critical (reduced from 483 lines after refactor) |
 | `workspace/initialize-repo.ts` | 40 | Low | One-time repo init |
 | `workspace/read-workspace-file.ts` | 88 | Low | File reader utility |
 | `terminal/terminal-session-service.ts` | Large | High | Session orchestrator — ties everything together |
@@ -86,29 +90,23 @@ All 715 tests pass. Runtime executes in ~29s, web-ui in ~7s.
 
 ### Web-UI
 
+Note: 60 hook files now exist (up from ~30 at baseline). Many new hooks were extracted from `App.tsx` and `use-board-interactions.ts` — these are likely untested. New high-value targets include `use-task-start.ts`, `use-task-lifecycle.ts`, `use-trash-workflow.ts`, `use-session-column-sync.ts`, and `use-file-diff-content.ts`.
+
 | File | Lines | Priority | Why |
 |------|-------|----------|-----|
 | `runtime/use-runtime-state-stream.ts` | 416 | High | Core data subscription — drives all live updates |
 | `runtime/use-workspace-persistence.ts` | 144 | High | Board state persistence |
-| `runtime/workspace-state-query.ts` | 26 | Low | Query wrapper |
-| `runtime/runtime-config-query.ts` | 43 | Low | Query wrapper |
-| `runtime/trpc-client.ts` | 38 | Low | Client setup |
-| `runtime/types.ts` | Small | Low | Type-only |
+| `runtime/use-file-diff-content.ts` | 133 | Medium | On-demand diff loading (new) |
+| `hooks/use-task-start.ts` | 251 | High | Task start orchestration (new, extracted from board interactions) |
+| `hooks/use-task-lifecycle.ts` | 193 | High | Stop/restart/resume (new, extracted) |
+| `hooks/use-trash-workflow.ts` | 383 | High | Trash/untrash/hard-delete (new, extracted) |
 | `hooks/use-programmatic-card-moves.ts` | 183 | Medium | Automated card movement logic |
 | `hooks/use-review-ready-notifications.ts` | 214 | Medium | Browser notification orchestration |
-| `hooks/use-title-actions.ts` | 27 | Low | Title update actions |
-| `hooks/use-task-branch-options.ts` | 37 | Low | Branch option computation |
-| `hooks/use-migrate-working-directory.ts` | 36 | Low | Migration dialog logic |
-| `hooks/use-open-workspace.ts` | 82 | Low | Workspace opener |
-| `hooks/use-quarterdeck-access-gate.ts` | 1 | Low | Tiny guard |
-| `terminal/persistent-terminal-manager.ts` | 805 | High | Terminal lifecycle — largest untested file |
+| `terminal/persistent-terminal-manager.ts` | ~400 | High | Terminal lifecycle (reduced from 805 after extraction of `terminal-registry.ts` and `terminal-socket-utils.ts`) |
+| `terminal/terminal-registry.ts` | 137 | Medium | Terminal instance management (new) |
 | `terminal/terminal-input.ts` | Medium | Medium | Paste-mode input handling |
 | `stores/workspace-metadata-store.ts` | Large | Medium | External store for workspace data |
-| `utils/notification-badge-sync.ts` | 74 | Low | Badge count sync |
-| `utils/notification-permission.ts` | 42 | Low | Permission request |
-| `resize/layout-customizations.tsx` | 70 | Low | Layout presets |
-| `resize/resizable-bottom-pane.tsx` | 147 | Low | Resizable pane component |
-| Most `components/` without tests | Varies | Low | Presentation-heavy |
+| Most `components/` without tests | Varies | Low | Presentation-heavy; 71 component files total now |
 
 ## How to improve coverage
 

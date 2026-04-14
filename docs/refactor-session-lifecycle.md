@@ -1,9 +1,8 @@
 # Agent State Tracking — Issues, Architecture, and Refactor Plan
 
-**Status:** Patches A & B implemented, stalled-session detection added, structural refactor pending
-**Date:** 2026-04-11 (patches landed 2026-04-12)
-**Related:** todo #6 (consolidated — permission race, non-hook operations, notification beeps, hook timeouts)
-**Supersedes:** `docs/handoff-stuck-running-fix.md` (can be deleted once this is adopted)
+**Status:** All three patches (A, B, C) implemented. Session manager decomposition complete (different module names than originally planned — see note below). Remaining open bugs are in todo #6.
+**Date:** 2026-04-11 (patches landed 2026-04-12, decomposition shipped in 0.7.2)
+**Related:** todo #6 (consolidated — non-hook operations, notification beeps)
 
 ---
 
@@ -214,30 +213,38 @@ This works because `writeInput` (`session-manager.ts:822-835`) fires synchronous
 
 ---
 
-## Structural Refactor Plan
+## Structural Decomposition (Completed)
 
-`TerminalSessionManager` (`src/terminal/session-manager.ts`) has grown to ~1,350 lines and conflates seven responsibilities. Every bug fix adds another special case to the one giant file. The refactor decomposes it into focused modules.
+The session manager decomposition shipped in v0.7.2. The final module structure differs from the original plan (below) — it followed the natural seams in the code rather than the planned phase boundaries.
 
-The refactor does NOT fix the bugs above — it makes the code structure cleaner so that fixes are safer, easier to test, and less likely to introduce side effects. Sequence: targeted patches first, then refactor.
+### What Shipped
 
-### Current Structure Problems
+`session-manager.ts` went from ~1,350 lines to ~788 lines. Eight focused modules were extracted:
 
-- **`ActiveProcessState`** mixes PTY concerns (session, cols, rows), workspace trust concerns (buffers, timers, auto-confirm), Codex-specific concerns (deferred input, prompt state), protocol filtering, output transition detection, and interrupt recovery — all in one interface.
-- **`applySessionEventWithSideEffects`** is a wrapper coordinating side effects the reducer can't express. Side effects are scattered across the manager rather than declared alongside transitions.
-- **`hooks-api.ts`** duplicates permission-guard logic from `session-reconciliation.ts`. `canTransitionTaskForHookEvent` re-implements guard conditions that live in the reducer.
-- **Both** the manager and reconciliation can trigger recovery paths for processless sessions.
-- **Diagnostic logging** was retrofitted tactically (tags `[hooks]`, `[hooks:cli]`, `[session-mgr]`) rather than designed in.
+| File | Lines | Responsibility |
+|------|-------|----------------|
+| `session-manager-types.ts` | 254 | Shared types and interfaces (`ActiveProcessState`, etc.) |
+| `session-summary-store.ts` | 440 | Hook activity, summaries, checkpoints, notify/emit |
+| `session-reconciliation.ts` | 206 | Periodic health checks (10s sweep) |
+| `session-reconciliation-sweep.ts` | 180 | Sweep logic (dead process, processless, stale hooks) |
+| `session-workspace-trust.ts` | 153 | Workspace trust auto-confirmation |
+| `session-state-machine.ts` | 128 | Pure state machine reducer |
+| `session-auto-restart.ts` | 105 | Auto-restart on crash/reconnect |
+| `session-interrupt-recovery.ts` | 70 | Interrupt recovery timer |
 
-### Band-aid History (all from 2026-04-11)
+### Original Plan (Historical)
 
-| Commit | Fix | Root cause |
-|--------|-----|------------|
-| `4ad5f0ff` | Dead state, timer leak, hook retry, diagnostic logging | 4 separate bugs in one commit |
-| `f5e8c972` | Recover stale review sessions instead of dropping to idle | Processless recovery logic incomplete |
-| `03f08f81` | Transition to running immediately on prompt submit | UI latency workaround |
-| `d339a99a` | Emergency restart/trash for stuck tasks | Escape hatch bypassing state machine |
-| `2a8732c5` | Suppress failure beep when trashing running task | Side-effect not cleaned up on transition |
-| `e4222f3e` | Extract SessionSummaryStore | Partial decomposition |
+The plan below was the design document. It was not followed exactly — the actual decomposition used different module names and boundaries. Preserved here for context on the design reasoning.
+
+<details>
+<summary>Original phased refactor plan</summary>
+
+### Current Structure Problems (at time of planning)
+
+- **`ActiveProcessState`** mixed PTY concerns, workspace trust, Codex-specific concerns, protocol filtering, output detection, and interrupt recovery in one interface.
+- **`applySessionEventWithSideEffects`** was a wrapper coordinating side effects the reducer can't express.
+- **`hooks-api.ts`** duplicated permission-guard logic from `session-reconciliation.ts`.
+- **Both** the manager and reconciliation could trigger recovery paths for processless sessions.
 
 ### Target Architecture
 
@@ -250,126 +257,9 @@ TerminalSessionManager (coordinator, ~250-300 lines)
   |-- SessionReconciler (unchanged, already extracted)
 ```
 
-### Phase 1: Enrich the State Machine
+Phases 1-6 covered: enriching the state machine, extracting PTY process management, summary management, timer management, coordinator refactor, and permission guard consolidation. Key risk areas included preserving `onData` synchronous ordering, the `transitionToReview` same-tick invariant, and test fixture coupling via the `entries` map.
 
-**Risk:** Low
-**Files:** `session-state-machine.ts`, `session-manager.ts`, `hooks-api.ts`
-
-Make the state machine the single source of truth for what happens on each transition, including declarative side-effect tags.
-
-```typescript
-export interface SessionTransitionResult {
-   changed: boolean;
-   patch: Partial<RuntimeTaskSessionSummary>;
-   sideEffects: {
-      clearAttentionBuffer: boolean;
-      clearHookActivity: boolean;
-      resetCodexPromptState: boolean;
-   };
-}
-```
-
-Move `canTransitionTaskForHookEvent` into `session-state-machine.ts` as an exported function. `hooks-api.ts` imports it instead of re-implementing the guard conditions.
-
-### Phase 2: Extract PTY Process Management
-
-**Risk:** Medium
-**Files:** New `pty-process-manager.ts` (~400-500 lines), `session-manager.ts`
-
-Extract all PTY spawn/exit/data handling into a focused class:
-- `ActiveProcessState` interface and construction
-- PTY spawn logic (`startTaskSession`, `startShellSession`)
-- `onData` callback pipeline: terminal protocol filtering, workspace trust detection, Codex deferred input, output transition detection, listener fan-out
-- `onExit` callback: timer cleanup, side-effect application, auto-restart check
-- `writeInput` with interrupt detection
-- `resize`, `pauseOutput`, `resumeOutput` pass-through
-
-**Critical invariant**: The `onData` callback does workspace trust detection, state transitions, and listener notification in a specific synchronous order within one tick. `applySessionEvent` must run before listener `onOutput` callbacks so state is updated before the UI sees new terminal output.
-
-### Phase 3: Extract Session Summary Management
-
-**Risk:** Low (can run in parallel with Phase 4)
-**Files:** New `session-summary-manager.ts` (~250-300 lines), `session-manager.ts`
-
-Move all summary CRUD: `applyHookActivity`, `appendConversationSummary`, `setDisplaySummary`, `applyTurnCheckpoint`. Dedup the notify+emit pattern that appears ~10 times.
-
-### Phase 4: Extract Timer Management
-
-**Risk:** Low (can run in parallel with Phase 3)
-**Files:** New `session-timer-manager.ts` (~100-150 lines), `session-manager.ts`
-
-Consolidate interrupt recovery and auto-restart: `scheduleInterruptRecovery`, `shouldAutoRestart`, `scheduleAutoRestart`, rate limiting. Key invariant: timers must be cleared on every state transition.
-
-### Phase 5: Refactor the Coordinator
-
-**Risk:** Medium
-**Files:** `session-manager.ts` (rewrite from ~1,350 to ~250-300 lines)
-
-Reduce `TerminalSessionManager` to a thin coordinator. The `entries` map and `TerminalSessionService` interface stay exactly as-is to preserve test fixtures and consumers.
-
-### Phase 6: Consolidate Permission Guards
-
-**Risk:** Low
-**Files:** `hooks-api.ts`, `session-summary-manager.ts`
-
-Unify `canTransitionTaskForHookEvent` (moved to state machine in Phase 1) and the permission-guard metadata protection into a single `shouldGuardPermissionActivity()` function.
-
-### Phase Dependency Order
-
-```
-Phase 1 (state machine enrichment)
-   |
-   v
-Phase 3 (summary manager) ----+---- Phase 4 (timer manager)
-   |                           |
-   v                           v
-Phase 2 (PTY process manager)
-   |
-   v
-Phase 5 (coordinator refactor)
-   |
-   v
-Phase 6 (permission guard cleanup)
-```
-
-### Risk Areas
-
-1. **Event ordering in `onData` (Phase 2)**: Extraction must preserve the synchronous ordering of workspace trust detection → state transitions → listener notification within one tick.
-
-2. **Same-tick invariant for `transitionToReview` (Phase 5)**: `transitionToReview` must NOT clear `latestHookActivity` because `hooks-api.ts` calls `applyHookActivity` in the same synchronous tick after the transition. Guarded by test at line 135 of `session-manager.test.ts`.
-
-3. **Auto-restart async scheduling (Phase 4)**: `scheduleAutoRestart` creates a Promise (async microtask). The timer manager must preserve this exact scheduling — no additional await points.
-
-4. **`writeInput` interrupt detection (Phase 2 + 5)**: The coordinator calls `ptyManager.writeInput()` then `timerManager.scheduleInterruptRecovery()` — must remain synchronous within the same call.
-
-5. **Test fixture coupling (all phases)**: Existing tests reach into `TerminalSessionManager` internals via `as unknown as { entries: Map<...> }`. The `entries` map stays on the coordinator to avoid rewriting test fixtures.
-
-### Test Strategy
-
-- All existing tests in `test/runtime/terminal/session-manager*.test.ts` and `test/runtime/terminal/session-reconciliation.test.ts` must pass unchanged throughout all phases.
-- New unit tests for each extracted module: `session-state-machine.test.ts` (enriched `sideEffects`), `session-summary-manager.test.ts`, `session-timer-manager.test.ts`.
-- PTY process manager uses existing integration-style tests that mock `PtySession.spawn`.
-
-### Files Summary
-
-**New files:**
-
-| File | Lines | Content |
-|------|-------|---------|
-| `src/terminal/pty-process-manager.ts` | ~400-500 | Spawn, exit, data routing, workspace trust, Codex quirks |
-| `src/terminal/session-summary-manager.ts` | ~250-300 | Hook activity, summaries, checkpoints, notify/emit pattern |
-| `src/terminal/session-timer-manager.ts` | ~100-150 | Interrupt recovery, auto-restart, rate limiting |
-
-**Modified files:**
-
-| File | Change |
-|------|--------|
-| `src/terminal/session-state-machine.ts` | Enrich with side-effect declarations, add `canTransitionTaskForHookEvent` |
-| `src/terminal/session-manager.ts` | Reduce from ~1,350 to ~250-300 lines (thin coordinator) |
-| `src/trpc/hooks-api.ts` | Import from state machine, delegate permission guard |
-
-**Unchanged (verified compatible):**
-`session-reconciliation.ts`, `terminal-session-service.ts`, `pty-session.ts`, `ws-server.ts`, `workspace-registry.ts`, `runtime-state-hub.ts`, `shutdown-coordinator.ts`
+</details>
 
 ---
 

@@ -2,6 +2,8 @@
 
 Quick reference for what everything is called, what it looks like, and where to find it.
 
+For the full layout architecture (auto-coupling rules, persistence, how to add new views), see [ui-layout-architecture.md](ui-layout-architecture.md).
+
 ---
 
 ## Canonical Names
@@ -9,9 +11,9 @@ Quick reference for what everything is called, what it looks like, and where to 
 These are the agreed-upon names for UI regions. Use these consistently in specs, code comments, and conversation.
 
 - **Top Bar** — horizontal bar across the top (project path, git buttons, settings)
-- **Sidebar** — thin vertical icon strip (40px) with tab buttons
-- **Side Panel** — resizable panel next to the sidebar (project nav, task column, changes, files)
-- **Main View** — the large content area right of the side panel (board or agent terminal)
+- **Sidebar** — thin vertical icon strip (40px) with two button groups: main views (top) and sidebar panels (bottom)
+- **Side Panel** — resizable panel next to the sidebar (projects, task column, commit)
+- **Main View** — the large content area right of the side panel
 - **Agent Terminal** — the task's chat/terminal that fills the main view when a task is selected
 - **Home Terminal** — resizable bottom terminal on the home view
 - **Detail Terminal** — resizable bottom terminal on the task detail view
@@ -21,50 +23,73 @@ These are the agreed-upon names for UI regions. Use these consistently in specs,
 
 ## Top-Level Layout
 
-The sidebar is always visible. The main view changes based on whether a task is selected.
-
-Home tab active (no task selected):
+The UI has two independent selection dimensions rendered in the sidebar toolbar. Main view (top group) controls the large content area. Sidebar (bottom group) controls the left panel. They are independent — changing one does not clear the other (with a few auto-coupling exceptions documented in `ui-layout-architecture.md`).
 
 ```
-┌──┬────────────────┬──────────────────────────────┐
-│  │                │ Top Bar                      │
-│🏠│  Side Panel     ├──────────────────────────────┤
-│──│                │                              │
-│📋│ Project nav +   │  Main View                   │
-│🔀│ agent section  │  (Board / Git History)        │
-│📁│                │                              │
-│  │                ├──────────────────────────────┤
-│  │                │ Home Terminal (opt, bottom)   │
-└──┴────────────────┴──────────────────────────────┘
+┌─────────────┐
+│  Home        │  <- main view (left-border accent when active)
+│  Terminal    │
+│  Files       │
+│  Git         │
+│──────────────│  <- divider
+│  Projects    │  <- sidebar panel (filled bg when active)
+│  Board       │
+│  Commit      │
+└──────────────┘
 ```
 
-Task-tied tab active (task selected):
+Home main view + Projects sidebar (default, no task selected):
 
 ```
-┌──┬────────────────┬──────────────────────────────┐
-│  │                │ Top Bar                      │
-│🏠│  Side Panel     ├──────────────────────────────┤
-│──│                │                              │
-│📋│ Task Column /   │  Main View                   │
-│🔀│ Changes /      │  (Agent Terminal)             │
-│📁│ Files          │                              │
-│  │                ├──────────────────────────────┤
-│  │                │ Detail Terminal (opt, bottom) │
-└──┴────────────────┴──────────────────────────────┘
++--+----------------+------------------------------+
+|  |                | Top Bar                      |
+|Ho|  Side Panel     +------------------------------+
+|Te|                |                              |
+|Fi| Project nav +   |  Main View                   |
+|Gi| agent section  |  (Board / Git History)        |
+|--|                |                              |
+|Pr|                +------------------------------+
+|Bo|                | Home Terminal (opt, bottom)   |
+|Co|                |                              |
++--+----------------+------------------------------+
 ```
 
-Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bottom, greyed out when no task)
+Terminal main view + Board sidebar (task selected):
+
+```
++--+----------------+------------------------------+
+|  |                | Top Bar                      |
+|Ho|  Side Panel     +------------------------------+
+|Te|                |                              |
+|Fi| Task Column     |  Main View                   |
+|Gi| (stacked cards) |  (Agent Terminal)             |
+|--|                |                              |
+|Pr|                +------------------------------+
+|Bo|                | Detail Terminal (opt, bottom) |
+|Co|                |                              |
++--+----------------+------------------------------+
+```
 
 ---
 
-## Sidebar Tabs
+## Sidebar Toolbar
 
-| Tab | ID | Icon | Tied to task? | Side panel content | Main view content |
-|---|---|---|---|---|---|
-| Home | `home` | Home icon | No | Project nav (project list) | Board / Git History |
-| Task Column | `task_column` | Grid icon | Yes | Stacked columns, selected task highlighted | Agent Terminal |
-| Changes | `changes` | Git compare icon | Yes | Diff viewer + file tree | Agent Terminal |
-| Files | `files` | Folder icon | Yes | File browser | Agent Terminal |
+### Main Views (top group)
+
+| View | ID | Icon | Main view content |
+|---|---|---|---|
+| Home | `home` | Home | Board (kanban columns) |
+| Terminal | `terminal` | Terminal | Agent terminal (task) or empty (no task) |
+| Files | `files` | Folder | File browser (task worktree) |
+| Git | `git` | GitBranch | Git view with sub-tabs: Uncommitted, Last Turn, Compare |
+
+### Sidebar Panels (bottom group)
+
+| Panel | ID | Icon | Side panel content |
+|---|---|---|---|
+| Projects | `projects` | LayoutList | Project list with task count badges |
+| Board | `task_column` | Columns3 | Stacked board columns, selected task highlighted |
+| Commit | `commit` | GitCommitVertical | Staged/unstaged changes, commit message, push |
 
 ---
 
@@ -88,7 +113,7 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 
 | What you see | Name | Component | File |
 |---|---|---|---|
-| The kanban board with 4 columns (Backlog, In Progress, Review, Trash) | **Board** | `QuarterdeckBoard` | `components/quarterdeck-board.tsx` |
+| The kanban board with columns (Backlog, In Progress, Review, Trash) | **Board** | `QuarterdeckBoard` | `components/quarterdeck-board.tsx` |
 | Single column on the board | **Board column** | `BoardColumn` | `components/board-column.tsx` |
 | A task card on the board | **Card** / **task card** | `BoardCard` | `components/board-card.tsx` |
 | SVG lines connecting dependent tasks | **Dependency lines** | `DependencyOverlay` | `components/dependencies/dependency-overlay.tsx` |
@@ -100,13 +125,14 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 |---|---|---|---|
 | All board columns stacked vertically with selected task highlighted | **Task Column** | `ColumnContextPanel` | `components/detail-panels/column-context-panel.tsx` |
 
-### Changes Tab (Side Panel)
+### Git Main View (Side Panel: Commit)
 
 | What you see | Name | Component | File |
 |---|---|---|---|
 | Diff viewer showing file changes for the task | **Changes panel** | `DiffViewerPanel` | `components/detail-panels/diff-viewer-panel.tsx` |
+| Split (side-by-side) diff rendering | **Diff split** | `DiffSplit` | `components/detail-panels/diff-split.tsx` |
+| Unified diff rendering | **Diff unified** | `DiffUnified` | `components/detail-panels/diff-unified.tsx` |
 | File tree listing changed files (left side of changes) | **File tree** (diff) | `FileTreePanel` | `components/detail-panels/file-tree-panel.tsx` |
-| "All Changes" / "Last Turn" toggle above the diff | **Diff toolbar** | `DiffToolbar` | `components/card-detail-view.tsx` (private) |
 
 ### Files Tab (Side Panel)
 
@@ -149,6 +175,10 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 |---|---|---|---|
 | Colored dot/icon indicating column status | **Column indicator** | `ColumnIndicator` | `components/ui/column-indicator.tsx` |
 | Syntax-highlighted diff blocks | **Diff renderer** | `DiffRenderer` | `components/shared/diff-renderer.tsx` |
+| Diff parsing and hunk extraction | **Diff parser** | `parseDiff` | `components/shared/diff-parser.ts` |
+| Diff syntax highlighting | **Diff highlighting** | `highlightDiff` | `components/shared/diff-highlighting.ts` |
+| Reusable confirmation dialog (Radix AlertDialog) | **Confirmation dialog** | `ConfirmationDialog` | `components/ui/confirmation-dialog.tsx` |
+| Settings form controls (switch, checkbox, select) | **Settings controls** | various | `components/ui/settings-controls.tsx` |
 | Searchable dropdown (branches, open targets, etc.) | **Search dropdown** | `SearchSelectDropdown` | `components/search-select-dropdown.tsx` |
 | Autocomplete popup in the prompt composer | **Completion picker** | `InlineCompletionPicker` | `components/inline-completion-picker.tsx` |
 | Textarea with file mentions and image paste | **Prompt composer** | `TaskPromptComposer` | `components/task-prompt-composer.tsx` |
@@ -157,6 +187,8 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 
 ### Key Hooks
 
+60 hook files in `web-ui/src/hooks/`. The most important ones for understanding data flow:
+
 | What it does | Hook | File |
 |---|---|---|
 | Manages which project is active, URL sync, add/remove | `useProjectNavigation` | `hooks/use-project-navigation.ts` |
@@ -164,5 +196,10 @@ Sidebar tab groups: Home (top, always enabled) | Task Column, Changes, Files (bo
 | Sidebar tab selection + side panel ratio (localStorage) | `useCardDetailLayout` | `resize/use-card-detail-layout.ts` |
 | Home + detail terminal open/close/expand state | `useTerminalPanels` | `hooks/use-terminal-panels.ts` |
 | Board mutations (drag, trash, start, restore, etc.) | `useBoardInteractions` | `hooks/use-board-interactions.ts` |
-| Task session start/stop/input | `useTaskSessions` | `hooks/use-task-sessions.ts` |
+| DnD handler extracted from board interactions | `useBoardDragHandler` | `hooks/use-board-drag-handler.ts` |
+| Task start orchestration (worktree, agent, dialog) | `useTaskStart` | `hooks/use-task-start.ts` |
+| Task lifecycle (stop, restart, resume) | `useTaskLifecycle` | `hooks/use-task-lifecycle.ts` |
+| Trash/untrash/hard-delete workflow | `useTrashWorkflow` | `hooks/use-trash-workflow.ts` |
+| Session-to-column sync (hook-driven card moves) | `useSessionColumnSync` | `hooks/use-session-column-sync.ts` |
 | WebSocket state stream (projects, workspace, sessions) | `useRuntimeStateStream` | `runtime/use-runtime-state-stream.ts` |
+| On-demand diff content loading | `useFileDiffContent` | `runtime/use-file-diff-content.ts` |

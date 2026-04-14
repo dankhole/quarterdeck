@@ -1,7 +1,7 @@
 # Performance Bottleneck Analysis: Multiple Concurrent Agents
 
 **Date**: 2026-04-07
-**Status**: Analysis complete, no recommendations implemented yet (as of 2026-04-12). Referenced by todo #3.
+**Status**: Analysis complete. Two recommendations shipped (lazy diff loading, scoped metadata refresh). Remaining items unaddressed as of 2026-04-13. Referenced by todo #3.
 
 Investigation into why Quarterdeck slows down as more agents run simultaneously.
 
@@ -178,7 +178,15 @@ These reduce the impact of the bottlenecks without code changes:
 
 ---
 
-## Implementation Priority
+## What Has Shipped Since This Analysis
+
+Two significant performance improvements landed that address the diff/polling bottleneck (not in the original list but identified later in todo #3):
+
+1. **Lazy diff content loading** (commit `717c6a8d`): The `getChanges` endpoint now returns metadata-only file lists (path, status, additions, deletions) with `oldText: null, newText: null`. File content loads on-demand via `getFileDiff` when the user selects a file. Polling drops from O(3N) git spawns to O(4), response payloads from ~400KB to ~2KB for 20 changed files.
+
+2. **Scoped metadata refresh** (commit `22e9dcb7`): Commit sidebar uses batched `git diff --numstat` and skips redundant probes, reducing git operations during active development.
+
+## Remaining Implementation Priority
 
 1. **Debounce state broadcasts** (highest impact, lowest risk) — add a 100-200ms batching window to `broadcastRuntimeWorkspaceStateUpdated`, similar to the existing task session summary pattern
 2. **Debounce state persistence** — batch checkpoint writes within a short window to reduce lock contention

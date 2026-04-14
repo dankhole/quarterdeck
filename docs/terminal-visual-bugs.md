@@ -1,7 +1,7 @@
 # Terminal Visual Bugs and Rendering
 
 **Date**: 2026-04-13
-**Status**: Off-by-1 root cause identified and fixed on branch, merged fixes for canvas repair and resize dedup
+**Status**: All documented bugs fixed and merged. This doc is now a reference for terminal rendering mechanics — canvas repair, resize protocol, DPR handling, and buffer restoration.
 
 ## The off-by-1 TUI rendering bug
 
@@ -20,7 +20,7 @@ The kernel only sends SIGWINCH to the agent when PTY dimensions actually change.
 
 Verified empirically: `pty.resize(80, 24)` on a PTY already at 80x24 does NOT produce SIGWINCH. Only a different size triggers it.
 
-### Fix (on branch `fix/terminal-reset-button-and-debug-logging`, commit `85193933`)
+### Fix (merged)
 
 Added a `force` flag to the resize control message protocol. The client sets `force: true` only from `forceResize()` — called on task switch and state transitions. The server checks `force && dimensionsUnchanged` and sends SIGWINCH directly to the agent process via `process.kill(pid, 'SIGWINCH')`.
 
@@ -68,7 +68,7 @@ This goes away entirely with the visibility toggle approach (no DOM move = no st
 
 `requestResize()` used to update dedup state (`lastSentCols`, `lastSentRows`, `lastSatisfiedResizeEpoch`) before attempting to send the resize message. `sendControlMessage()` silently returned if the socket wasn't open. The system believed it sent the resize but didn't. Future calls with the same dimensions were deduped, leaving the PTY at stale dimensions.
 
-### Fix (on main, commit `b7b0f459`)
+### Fix (merged)
 
 `sendControlMessage()` returns `boolean`. Dedup state only updates when the message actually reaches the socket. If the socket isn't open, state stays stale so the next call retries.
 
