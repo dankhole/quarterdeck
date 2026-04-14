@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: remove drag-and-drop from sidebar task column
+
+- Sidebar task cards are no longer draggable — the `DragDropContext`, `Droppable`, and `Draggable` wrappers are removed from the column context panel. Cards are still clickable, hoverable, and support all existing actions (start, trash, pin, edit, etc.). Main board drag-and-drop is unaffected.
+
 ### Fix: base ref dropdown not resetting to user's default on dialog open
 
 - The create task dialog now resets the base ref dropdown to the user's default (pinned or auto-detected) each time it opens, instead of retaining whatever branch was used for the previous task.

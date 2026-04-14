@@ -68,7 +68,6 @@ export interface UseBoardInteractionsResult {
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
 	handleStartTask: (taskId: string) => void;
 	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
-	handleDetailTaskDragEnd: (result: DropResult) => void;
 	handleCardSelect: (taskId: string) => void;
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
@@ -217,7 +216,7 @@ export function useBoardInteractions({
 	});
 
 	// ── Drag and drop ────────────────────────────────────────────────────
-	const { handleDragEnd, handleDetailTaskDragEnd } = useBoardDragHandler({
+	const { handleDragEnd } = useBoardDragHandler({
 		board,
 		setBoard,
 		setSelectedTaskId,
@@ -362,7 +361,6 @@ export function useBoardInteractions({
 		handleDragEnd,
 		handleStartTask,
 		handleStartAllBacklogTasks,
-		handleDetailTaskDragEnd,
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,

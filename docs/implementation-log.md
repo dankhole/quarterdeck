@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: remove drag-and-drop from sidebar task column (2026-04-14)
+
+Removed all `@hello-pangea/dnd` infrastructure from the sidebar column context panel. Tasks in the sidebar don't need to be dragged between columns — all state transitions happen through hook events and button actions.
+
+**BoardCard** (`web-ui/src/components/board-card.tsx`): Added a `draggable` prop (default `true`). When `false`, the card renders via `renderShell()` without the `Draggable` wrapper — no `DragDropContext` ancestor required. The `renderShell` function is shared between both paths, accepting optional `DraggableProvided` and `DraggableStateSnapshot` params. The draggable path passes them from the `Draggable` render prop; the non-draggable path omits them (optional chaining handles undefined).
+
+**ColumnContextPanel** (`web-ui/src/components/detail-panels/column-context-panel.tsx`): Removed `DragDropContext`, `Droppable`, `BeforeCapture`/`DropResult` imports. Removed `activeDragSourceColumnId` state, `handleBeforeCapture`/`handleDragEnd` callbacks, `isCardDropDisabled` logic, and `onTaskDragEnd` prop. The `Droppable` wrapper around each column section is replaced with a plain `<div>`. All `BoardCard` instances receive `draggable={false}`.
+
+**Prop chain cleanup**: Removed `onTaskDragEnd` from `CardDetailView` and `App.tsx`. Removed `handleDetailTaskDragEnd` from `use-board-drag-handler.ts` and `use-board-interactions.ts`.
+
+**Files**: `web-ui/src/components/board-card.tsx`, `web-ui/src/components/detail-panels/column-context-panel.tsx`, `web-ui/src/components/detail-panels/column-context-panel.test.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/components/card-detail-view.test.tsx`, `web-ui/src/App.tsx`, `web-ui/src/hooks/use-board-drag-handler.ts`, `web-ui/src/hooks/use-board-interactions.ts`.
+
 ## Fix: base ref dropdown not resetting to user's default on dialog open (2026-04-14)
 
 **Root cause:** `handleOpenCreateTask` in `use-task-editor.ts` did not reset `newTaskBranchRef` when opening the create task dialog. After creating a task with branch X, the state persisted — the effect at line 156 only set it when empty, and the validity effect at line 148 only reset it when the value wasn't in the options list. So reopening the dialog showed the previous task's branch, not the user's default.

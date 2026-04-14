@@ -1,4 +1,3 @@
-import type { DropResult } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -91,7 +90,6 @@ export function CardDetailView({
 	taskSessions,
 	onSessionSummary,
 	onCardSelect,
-	onTaskDragEnd,
 	onCreateTask,
 	onStartAllTasks,
 	onClearTrash,
@@ -147,7 +145,6 @@ export function CardDetailView({
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onCardSelect: (taskId: string) => void;
 	onCardDoubleClick?: (taskId: string) => void;
-	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
@@ -349,7 +346,6 @@ export function CardDetailView({
 								onCardSelect={onCardSelect}
 								onCardDoubleClick={onCardDoubleClick}
 								taskSessions={taskSessions}
-								onTaskDragEnd={onTaskDragEnd}
 								onCreateTask={onCreateTask}
 								onStartAllTasks={onStartAllTasks}
 								onClearTrash={onClearTrash}

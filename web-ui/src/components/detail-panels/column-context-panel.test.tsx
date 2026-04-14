@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,15 +32,8 @@ vi.mock("@/components/board-card", () => ({
 	},
 }));
 
-vi.mock("@hello-pangea/dnd", () => ({
-	DragDropContext: ({ children }: { children: ReactNode }): React.ReactElement => <>{children}</>,
-	Droppable: ({
-		children,
-	}: {
-		children: (provided: { innerRef: (element: HTMLDivElement | null) => void; droppableProps: object }) => ReactNode;
-	}): React.ReactElement => {
-		return <>{children({ innerRef: () => {}, droppableProps: {} })}</>;
-	},
+vi.mock("@/state/sort-column-cards", () => ({
+	sortColumnCards: (cards: unknown[]) => cards,
 }));
 
 function createCard(id: string, prompt: string) {
@@ -126,7 +118,6 @@ describe("ColumnContextPanel", () => {
 						selection={createSelection(columns, "task-2")}
 						onCardSelect={() => {}}
 						taskSessions={{}}
-						onTaskDragEnd={() => {}}
 					/>
 				</CardActionsProvider>,
 			);
@@ -145,7 +136,6 @@ describe("ColumnContextPanel", () => {
 						selection={createSelection(columns, "task-3")}
 						onCardSelect={() => {}}
 						taskSessions={{}}
-						onTaskDragEnd={() => {}}
 					/>
 				</CardActionsProvider>,
 			);

@@ -207,7 +207,6 @@ describe("CardDetailView", () => {
 					taskSessions={{}}
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -235,7 +234,6 @@ describe("CardDetailView", () => {
 					taskSessions={{}}
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}
@@ -263,7 +261,6 @@ describe("CardDetailView", () => {
 					taskSessions={{}}
 					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
 					bottomTerminalSummary={null}

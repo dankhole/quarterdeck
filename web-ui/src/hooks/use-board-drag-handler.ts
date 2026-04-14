@@ -34,7 +34,6 @@ interface UseBoardDragHandlerInput {
 
 export interface UseBoardDragHandlerResult {
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
-	handleDetailTaskDragEnd: (result: DropResult) => void;
 }
 
 export function useBoardDragHandler({
@@ -128,12 +127,5 @@ export function useBoardDragHandler({
 		],
 	);
 
-	const handleDetailTaskDragEnd = useCallback(
-		(result: DropResult) => {
-			handleDragEnd(result);
-		},
-		[handleDragEnd],
-	);
-
-	return { handleDragEnd, handleDetailTaskDragEnd };
+	return { handleDragEnd };
 }

@@ -731,7 +731,6 @@ export default function App(): ReactElement {
 		handleDragEnd,
 		handleStartTask,
 		handleStartAllBacklogTasks,
-		handleDetailTaskDragEnd,
 		handleCardSelect,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
@@ -1296,7 +1295,6 @@ export default function App(): ReactElement {
 							onSessionSummary={upsertSession}
 							onCardSelect={handleCardSelect}
 							onCardDoubleClick={handleCardDoubleClick}
-							onTaskDragEnd={handleDetailTaskDragEnd}
 							onCreateTask={handleOpenCreateTask}
 							onStartAllTasks={handleStartAllBacklogTasksFromBoard}
 							onClearTrash={handleOpenClearTrash}
