@@ -233,25 +233,21 @@ export function useLinkedBacklogTaskActions({
 				);
 			};
 
+			const isNonIsolated = selection.card.useWorktree === false;
+
 			if (options?.skipWorkingChangeWarning) {
 				moveSelectionIfOptimisticMoveIsConfirmed();
 				await performMoveTaskToTrash(selection.card, boardSnapshot);
 				return;
 			}
 
-			// Check for uncommitted changes and show confirmation dialog if needed
-			const isNonIsolated = selection.card.useWorktree === false;
-			const snapshot = getTaskWorkspaceSnapshot(taskId);
-			if (
-				snapshot != null &&
-				snapshot.changedFiles != null &&
-				snapshot.changedFiles > 0 &&
-				onRequestTrashConfirmation
-			) {
+			// Always show confirmation dialog before trashing
+			if (onRequestTrashConfirmation) {
+				const snapshot = getTaskWorkspaceSnapshot(taskId);
 				const workspaceInfo = getTaskWorkspaceInfo(taskId);
 				const viewModel: TaskTrashWarningViewModel = {
 					taskTitle: selection.card.title ?? "Untitled task",
-					fileCount: snapshot.changedFiles,
+					fileCount: snapshot?.changedFiles ?? 0,
 					workspaceInfo,
 					isNonIsolated,
 				};

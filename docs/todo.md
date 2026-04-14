@@ -180,15 +180,11 @@ The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as a
 
 Add options to suppress notification beeps for tasks in the currently viewed project or when the browser tab is focused. Use cases: only beep for background projects you're not watching, or only beep when you've tabbed away. Could be a setting like "Beep only for: all tasks / other projects / when tab unfocused" or separate toggles for each.
 
-## 22. Trash button skips confirmation dialog inconsistently
-
-The trash button on task cards sometimes immediately trashes without showing the "are you sure" confirmation dialog. Should always show the confirmation.
-
-## 23. Un-trash shows error state while reconnecting
+## 22. Un-trash shows error state while reconnecting
 
 When a card is un-trashed, the UI status pill immediately shows error while it attempts to reconnect the session. It should show idle (or a reconnecting state) during the attempt, and only show error if the reconnect actually fails.
 
-## 24. Compare / uncommitted work scroll and navigation improvements
+## 23. Compare / uncommitted work scroll and navigation improvements
 
 Three related issues in the compare and uncommitted work views:
 
@@ -196,36 +192,36 @@ Three related issues in the compare and uncommitted work views:
 - **Uncommitted work should remember last-viewed file**: When switching back to the uncommitted work tab, it should restore the file the user was last looking at, not reset to the top.
 - **Scroll in compare swaps selected file**: Scrolling in the compare view sometimes jumps the left-side file selection back to the first file in the list. Likely a side effect of the single-file-at-a-time model — goes away if all diffs are shown inline.
 
-## 25. Arrow keys should not navigate outside of terminals
+## 24. Arrow keys should not navigate outside of terminals
 
 Arrow keys currently change the selected task or navigate the UI when focus is outside a terminal. They should be inert outside of terminal panels — task/view navigation should only happen via explicit clicks or keyboard shortcuts, not arrow keys.
 
-## 26. Three-dot diff option in compare view
+## 25. Three-dot diff option in compare view
 
 Add an option in the compare view to use three-dot diff (`...`) — showing only the changes introduced on the branch since it diverged from the base, excluding changes that happened on the base since. Currently compare shows a two-dot diff which includes both sides.
 
-## 27. Revisit periodic orphaned entity cleanup
+## 26. Revisit periodic orphaned entity cleanup
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.
 
-## 28. Commit sidebar improvements
+## 27. Commit sidebar improvements
 
 - **Move stash button to the top** of the commit sidebar for easier access.
 - **Generate commit message button**: Add a button to auto-generate a commit message from the diff. (Todo #15 covers the auto-fill-on-open approach — this is an explicit generate/regenerate action.)
 
-## 29. Organize web-ui hooks directory
+## 28. Organize web-ui hooks directory
 
 The `web-ui/src/hooks/` folder has 57+ files in a flat structure. Group related hooks into subdirectories by domain (e.g. `hooks/terminal/`, `hooks/git/`, `hooks/settings/`, `hooks/board/`).
 
-## 30. Debug logging window trash button doesn't stop logging
+## 29. Debug logging window trash button doesn't stop logging
 
 The trash/clear button in the debug logging window doesn't actually stop or clear log output — logs keep streaming after clicking it. It should stop the log stream and clear the current output.
 
-## 31. Title generation timeouts in logs
+## 30. Title generation timeouts in logs
 
 Title generation frequently times out — visible in debug logs. Doesn't seem to affect the UI (titles still appear), but the timeout errors are noisy. Investigate whether the timeout is too aggressive, or if there's a redundant/stale code path triggering it.
 
-## 32. Keep task base ref in sync with branch changes
+## 31. Keep task base ref in sync with branch changes
 
 When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.
 

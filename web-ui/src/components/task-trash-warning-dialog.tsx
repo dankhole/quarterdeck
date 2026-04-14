@@ -22,11 +22,19 @@ export function TaskTrashWarningDialog({
 	onCancel: () => void;
 	onConfirm: () => void;
 }): ReactElement {
+	const hasChanges = (warning?.fileCount ?? 0) > 0;
+	const title = warning?.isNonIsolated
+		? "Trash task?"
+		: hasChanges
+			? "Trash task with uncommitted changes?"
+			: "Trash task?";
+	const confirmLabel = warning?.isNonIsolated || !hasChanges ? "Move to Trash" : "Move to Trash Anyway";
+
 	return (
 		<ConfirmationDialog
 			open={open}
-			title={warning?.isNonIsolated ? "Trash task?" : "Trash task with uncommitted changes?"}
-			confirmLabel={warning?.isNonIsolated ? "Move to Trash" : "Move to Trash Anyway"}
+			title={title}
+			confirmLabel={confirmLabel}
 			confirmVariant="danger"
 			onCancel={onCancel}
 			onConfirm={onConfirm}
@@ -41,7 +49,7 @@ export function TaskTrashWarningDialog({
 						affected.
 					</p>
 				</>
-			) : (
+			) : hasChanges ? (
 				<>
 					<AlertDialogDescription>
 						{warning
@@ -59,6 +67,11 @@ export function TaskTrashWarningDialog({
 					) : null}
 					<p>The patch file is saved automatically — no action needed to preserve your work.</p>
 				</>
+			) : (
+				<AlertDialogDescription>
+					Are you sure you want to move {warning?.taskTitle ?? "this task"} to Trash? This will stop the session
+					and delete the worktree.
+				</AlertDialogDescription>
 			)}
 		</ConfirmationDialog>
 	);

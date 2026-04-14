@@ -564,10 +564,9 @@ describe("useLinkedBacklogTaskActions", () => {
 			expect(nextSnapshot.board.columns.find((c) => c.id === "trash")?.cards[0]?.id).toBe("task-2");
 		});
 
-		it("skips confirmation when changedFiles is 0", async () => {
+		it("shows confirmation when changedFiles is 0", async () => {
 			let latestSnapshot: HookSnapshot | null = null;
 			const onRequestTrashConfirmation = vi.fn();
-			const cleanupTaskWorkspace = vi.fn(async () => null);
 			getTaskWorkspaceSnapshotMock.mockReturnValue({
 				taskId: "task-2",
 				path: "/tmp/task-2",
@@ -581,7 +580,6 @@ describe("useLinkedBacklogTaskActions", () => {
 				root.render(
 					<HookHarness
 						onRequestTrashConfirmation={onRequestTrashConfirmation}
-						cleanupTaskWorkspace={cleanupTaskWorkspace}
 						onSnapshot={(snapshot) => {
 							latestSnapshot = snapshot;
 						}}
@@ -595,22 +593,28 @@ describe("useLinkedBacklogTaskActions", () => {
 				await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
 			});
 
-			expect(onRequestTrashConfirmation).not.toHaveBeenCalled();
+			expect(onRequestTrashConfirmation).toHaveBeenCalledTimes(1);
+			expect(onRequestTrashConfirmation).toHaveBeenCalledWith(
+				expect.objectContaining({ fileCount: 0 }),
+				expect.objectContaining({ id: "task-2" }),
+				"review",
+				false,
+			);
+
+			// Task should NOT have been trashed — dialog intercepts
 			const nextSnapshot = requireSnapshot(latestSnapshot);
-			expect(nextSnapshot.board.columns.find((c) => c.id === "trash")?.cards[0]?.id).toBe("task-2");
+			expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
 		});
 
-		it("skips confirmation when snapshot is null", async () => {
+		it("shows confirmation when snapshot is null", async () => {
 			let latestSnapshot: HookSnapshot | null = null;
 			const onRequestTrashConfirmation = vi.fn();
-			const cleanupTaskWorkspace = vi.fn(async () => null);
 			getTaskWorkspaceSnapshotMock.mockReturnValue(null);
 
 			await act(async () => {
 				root.render(
 					<HookHarness
 						onRequestTrashConfirmation={onRequestTrashConfirmation}
-						cleanupTaskWorkspace={cleanupTaskWorkspace}
 						onSnapshot={(snapshot) => {
 							latestSnapshot = snapshot;
 						}}
@@ -624,15 +628,22 @@ describe("useLinkedBacklogTaskActions", () => {
 				await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
 			});
 
-			expect(onRequestTrashConfirmation).not.toHaveBeenCalled();
+			expect(onRequestTrashConfirmation).toHaveBeenCalledTimes(1);
+			expect(onRequestTrashConfirmation).toHaveBeenCalledWith(
+				expect.objectContaining({ fileCount: 0 }),
+				expect.objectContaining({ id: "task-2" }),
+				"review",
+				false,
+			);
+
+			// Task should NOT have been trashed — dialog intercepts
 			const nextSnapshot = requireSnapshot(latestSnapshot);
-			expect(nextSnapshot.board.columns.find((c) => c.id === "trash")?.cards[0]?.id).toBe("task-2");
+			expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
 		});
 
-		it("skips confirmation when changedFiles is null", async () => {
+		it("shows confirmation when changedFiles is null", async () => {
 			let latestSnapshot: HookSnapshot | null = null;
 			const onRequestTrashConfirmation = vi.fn();
-			const cleanupTaskWorkspace = vi.fn(async () => null);
 			getTaskWorkspaceSnapshotMock.mockReturnValue({
 				taskId: "task-2",
 				path: "/tmp/task-2",
@@ -646,7 +657,6 @@ describe("useLinkedBacklogTaskActions", () => {
 				root.render(
 					<HookHarness
 						onRequestTrashConfirmation={onRequestTrashConfirmation}
-						cleanupTaskWorkspace={cleanupTaskWorkspace}
 						onSnapshot={(snapshot) => {
 							latestSnapshot = snapshot;
 						}}
@@ -660,9 +670,17 @@ describe("useLinkedBacklogTaskActions", () => {
 				await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
 			});
 
-			expect(onRequestTrashConfirmation).not.toHaveBeenCalled();
+			expect(onRequestTrashConfirmation).toHaveBeenCalledTimes(1);
+			expect(onRequestTrashConfirmation).toHaveBeenCalledWith(
+				expect.objectContaining({ fileCount: 0 }),
+				expect.objectContaining({ id: "task-2" }),
+				"review",
+				false,
+			);
+
+			// Task should NOT have been trashed — dialog intercepts
 			const nextSnapshot = requireSnapshot(latestSnapshot);
-			expect(nextSnapshot.board.columns.find((c) => c.id === "trash")?.cards[0]?.id).toBe("task-2");
+			expect(nextSnapshot.board.columns.find((c) => c.id === "review")?.cards).toHaveLength(1);
 		});
 
 		it("updates selection when trashing a task that is already in trash from optimistic move", async () => {

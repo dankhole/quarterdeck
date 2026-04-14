@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: trash confirmation dialog always shown (2026-04-14)
+
+The trash confirmation dialog was only shown when the workspace metadata snapshot reported `changedFiles > 0`. Three cases bypassed the dialog entirely: snapshot not yet loaded (`null`), `changedFiles` is `null` (metadata fetch in progress), or `changedFiles === 0` (no uncommitted work). This made the confirmation feel inconsistent — sometimes you'd get asked, sometimes the task just vanished.
+
+Root cause was the condition in `requestMoveTaskToTrash` (`use-linked-backlog-task-actions.ts:243-260`) which gated `onRequestTrashConfirmation` on `snapshot != null && snapshot.changedFiles != null && snapshot.changedFiles > 0`. Changed this to always call `onRequestTrashConfirmation` when the callback is provided, with `fileCount` falling back to 0. The `skipWorkingChangeWarning` escape hatch (used by auto-review actions and programmatic moves) still bypasses the dialog.
+
+Updated `TaskTrashWarningDialog` to handle the no-changes case with a third variant: simpler "Are you sure?" message and "Move to Trash" button (vs the more alarming "Move to Trash Anyway" used when uncommitted changes exist).
+
+Updated three tests that previously asserted confirmation was skipped (changedFiles 0, null snapshot, null changedFiles) to assert confirmation is now shown with `fileCount: 0`.
+
+Closes todo #22.
+
+**Files**: `web-ui/src/hooks/use-linked-backlog-task-actions.ts`, `web-ui/src/components/task-trash-warning-dialog.tsx`, `web-ui/src/hooks/use-linked-backlog-task-actions.test.tsx`.
+
 ## Fix: branch name click in dropdown opens context menu (2026-04-14)
 
 Left-clicking a branch row in `BranchSelectorPopover` immediately called `onSelect` → navigated to that branch's file view and closed the popover. The context menu (checkout, compare, merge, copy name, pin, delete, etc.) was only accessible via right-click — a non-obvious interaction pattern.

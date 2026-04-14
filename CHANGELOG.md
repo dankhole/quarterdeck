@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: trash confirmation dialog always shown
+
+- The trash button on task cards now always shows a confirmation dialog before trashing, regardless of whether the task has uncommitted changes. Previously the dialog was only shown when the workspace snapshot reported changed files — tasks with no changes, or whose snapshot hadn't loaded yet, were trashed immediately without asking. The dialog adapts its message: tasks with uncommitted changes get the full warning about worktree deletion and patch capture; clean tasks get a simpler "are you sure?" prompt.
+
 ### Fix: branch name click in dropdown opens context menu instead of closing
 
 - Left-clicking a branch row in the top bar branch dropdown now opens the context menu (checkout, compare, merge, copy, etc.) instead of immediately navigating to that branch's file view and closing the dropdown. The old file-browsing action is available as "Browse files" — the first item in the context menu. The `disableContextMenu` codepath (file browser dropdown) retains the original direct-select behavior.
