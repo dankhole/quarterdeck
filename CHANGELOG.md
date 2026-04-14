@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs: comprehensive performance audit
+
+- Rewrote `docs/performance-bottleneck-analysis.md` with a full audit covering all subsystems — state persistence, WebSocket broadcasting, frontend memory, terminal/PTY backpressure, tRPC/API polling, git operations, and React rendering. Documents what shipped since the previous 2026-04-07 audit (lazy diff loading, scoped metadata refresh, terminal backpressure redesign, chat message removal) and identifies remaining medium-severity items (undebounced state broadcasts, uncached workspace snapshots, global project broadcasts, metadata polling cost).
+
 ### Fix: remove drag-and-drop from sidebar task column
 
 - Sidebar task cards are no longer draggable — the `DragDropContext`, `Droppable`, and `Draggable` wrappers are removed from the column context panel. Cards are still clickable, hoverable, and support all existing actions (start, trash, pin, edit, etc.). Main board drag-and-drop is unaffected.
@@ -10,7 +14,7 @@
 
 - The create task dialog now resets the base ref dropdown to the user's default (pinned or auto-detected) each time it opens, instead of retaining whatever branch was used for the previous task.
 - Removed the misleading "(default)" label from git-detected branches in the dropdown — it was independent of the user's pinned default and couldn't be overridden, causing confusion when both were visible. The pin icon is the authoritative default indicator.
-- Added todo #20 and `docs/refactor-default-branch.md` documenting the three independent default-branch systems and a plan to unify them.
+- Added todo #19 and `docs/refactor-default-branch.md` documenting the three independent default-branch systems and a plan to unify them.
 
 ### Refactor: file browser branch dropdown cleanup
 

@@ -2,6 +2,25 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Docs: comprehensive performance audit (2026-04-14)
+
+Replaced the 2026-04-07 performance bottleneck analysis with a full audit covering all major subsystems. The previous audit identified 6 issues; this one audits 10 areas with specific file/line references.
+
+**Key findings vs previous audit:**
+- **Lock contention** (was HIGH → now LOW): `lock: null` optimization + single-writer rule eliminates convoy scenario during UI-connected operation.
+- **Broadcast fan-out** (was HIGH → now MEDIUM): Workspace-scoped with early-exit, but state broadcasts still not debounced and snapshots rebuilt from disk on every broadcast.
+- **Chat messages** (was MEDIUM → N/A): `taskChatMessagesByTaskId` removed. Replaced by bounded `notificationSessions` (monotonic but small — one entry per notifying task).
+- **Terminal backpressure** (was MEDIUM → RESOLVED): Per-viewer isolation with independent buffering, pause state, and resume timers.
+- **Terminal cache** (was MEDIUM-LOW → LOW): Proper disposal on task delete and workspace switch.
+- **New: Metadata polling** (MEDIUM): 4-5 git commands per task probe with pLimit(3) concurrency. No adaptive backoff when tab hidden.
+- **New: File browser polling** (LOW): Hardcoded 5s interval lacks `isDocumentVisible` guard that git-view already uses.
+
+**Prioritized recommendations:** (1) debounce state broadcasts 50-100ms, (2) cache workspace snapshots with short TTL, (3) add visibility guard to file browser polling, (4) scope project broadcasts to workspace clients, (5) pause metadata polling when UI hidden.
+
+Also removed completed todo #3 (performance audit) from `docs/todo.md` and renumbered remaining items (#4→#3 through #19→#18) with cross-reference updates.
+
+**Files**: `docs/performance-bottleneck-analysis.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`
+
 ## Fix: remove drag-and-drop from sidebar task column (2026-04-14)
 
 Removed all `@hello-pangea/dnd` infrastructure from the sidebar column context panel. Tasks in the sidebar don't need to be dragged between columns — all state transitions happen through hook events and button actions.
@@ -20,7 +39,7 @@ Removed all `@hello-pangea/dnd` infrastructure from the sidebar column context p
 
 **Fix (use-task-editor.ts):** Added `setNewTaskBranchRef(resolvedDefaultTaskBranchRef)` to `handleOpenCreateTask` and added `resolvedDefaultTaskBranchRef` to the callback's dependency array. Now the dropdown always opens with the correct default (config pin → last-used → git-detected).
 
-**"(default)" label removal (use-task-branch-options.ts):** The "(default)" suffix on dropdown options was derived from git's `detectGitDefaultBranch()` (server-side `origin/HEAD` detection), completely independent of the user's pinned default (`configDefaultBaseRef`). When the user pinned e.g. `develop`, the dropdown would select `develop` but still show `main (default)` — two conflicting "default" indicators. Removed the label entirely; the pin icon in `BranchSelectDropdown` is the authoritative indicator. Full unification of the three default-branch systems (git detection, dropdown label, config pin) tracked in todo #20.
+**"(default)" label removal (use-task-branch-options.ts):** The "(default)" suffix on dropdown options was derived from git's `detectGitDefaultBranch()` (server-side `origin/HEAD` detection), completely independent of the user's pinned default (`configDefaultBaseRef`). When the user pinned e.g. `develop`, the dropdown would select `develop` but still show `main (default)` — two conflicting "default" indicators. Removed the label entirely; the pin icon in `BranchSelectDropdown` is the authoritative indicator. Full unification of the three default-branch systems (git detection, dropdown label, config pin) tracked in todo #19.
 
 **Docs:** Added `docs/refactor-default-branch.md` documenting the three independent default-branch resolution paths, where they diverge (including CLI's `resolveTaskBaseRef` and home terminal ignoring the config pin), and a proposed unification plan.
 

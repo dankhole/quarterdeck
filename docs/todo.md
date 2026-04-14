@@ -31,18 +31,7 @@ Three overlapping problems with session continuity:
 - ~~**Auto-trashing on graceful shutdown**~~: **Fixed.** Graceful shutdown preserves cards in their columns and marks sessions as "interrupted". The UI no longer auto-trashes interrupted sessions — the server owns the interrupted→review transition via `autorestart.denied`.
 - **Un-trash doesn't reliably auto-resume**: After un-trashing a task, the terminal sometimes shows the original prompt but not the rest of the conversation context. Manually typing `/resume` works and brings back the full session. Investigate why auto-resume doesn't reliably trigger on un-trash.
 
-## 3. Performance audit for concurrent agents
-
-Audit and address performance bottlenecks that emerge when running many agents simultaneously. An earlier analysis exists at [docs/performance-bottleneck-analysis.md](performance-bottleneck-analysis.md) but is likely out of date — use it as a starting point, not a source of truth. Key areas to re-evaluate:
-
-- State persistence lock contention under concurrent checkpoint writes
-- WebSocket broadcast fan-out scaling with multiple agents and browser tabs
-- Frontend memory growth (chat messages, terminal cache) over long sessions
-- PTY output fanout and shared backpressure across viewers
-- ~~Large diffs cause noticeable UI lag~~ — **Fixed.** The `getChanges` endpoint now returns metadata-only file lists (path, status, additions, deletions) with `oldText: null, newText: null`. File content loads on-demand via a new `getFileDiff` endpoint when the user selects a file. Polling goes from O(3N) git process spawns to O(4), and response payloads drop from ~400KB to ~2KB for 20 changed files.
-- Profile real-world usage with 5–10 concurrent agents to identify any new bottlenecks introduced since the earlier analysis
-
-## 4. Branch management in git view
+## 3. Branch management in git view
 
 Add branch operations within the git view. The branch pill, git stats, fetch/pull/push, and right-click context menus already exist — this is about adding the interactive git operations on top.
 
@@ -73,14 +62,14 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Branch context menu in `GitRefsPanel` (git history view) — extend with the same actions
 - Git view tab bar or toolbar — stash controls, conflict state indicator, abort button
 
-## 5. Per-task session identity for non-isolated tasks
+## 4. Per-task session identity for non-isolated tasks
 
 The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorkspace` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
 
 - **Session clobbering**: `--continue` picks the most recent conversation by CWD. Non-isolated tasks sharing the home repo all compete for the same "most recent" session. A warning toast now discloses this limitation on restore and restart, but there's no per-task session targeting.
 - **Possible fix**: If Claude Code adds a `--session-id` or `--resume <id>` flag in the future, Quarterdeck could store the session ID per task and resume the correct conversation. Until then, this is a known limitation for non-isolated tasks.
 
-## 6. Fix agent state tracking bugs
+## 5. Fix agent state tracking bugs
 
 Multiple related bugs where the UI shows the wrong task state. A comprehensive analysis and refactor plan exists at [docs/refactor-session-lifecycle.md](refactor-session-lifecycle.md) — it covers root causes, targeted patches, and a structural decomposition of `session-manager.ts`.
 
@@ -93,52 +82,52 @@ Multiple related bugs where the UI shows the wrong task state. A comprehensive a
 - **Non-hook operations stick in wrong state** (medium): Auto-compact, plugin reload, and `/resume` produce no hook events. Compact and plugin reload get stuck in "running"; `/resume` after review doesn't transition back to running.
 - **Notification beep count wrong for rapid transitions** (low): When a task goes to review then quickly to needs-input, wrong beep count plays. Debounce/settle window issues cause double-beeps for single events or single beeps for multiple events.
 
-## 7. Client-side project switch optimizations
+## 6. Client-side project switch optimizations
 
 Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Preload-on-hover is done. Remaining client-side strategy to make switching feel instant:
 
 - **Stale-while-revalidate**: Cache board state per project in memory. On switch, show the cached version immediately while fresh data loads. Requires careful gating of `canPersistWorkspaceState` and `workspaceRevision` to prevent stale data from being persisted back to disk.
 
-## 8. Upstream sync: periodic review of cline/kanban (recurring)
+## 7. Upstream sync: periodic review of cline/kanban (recurring)
 
 Periodically review the upstream [cline/kanban](https://github.com/cline/kanban) project for recent bug fixes and improvements worth reimplementing. The codebase has diverged significantly (200+ commits, `cline-sdk/` removed entirely) so most changes need reimplementation rather than direct cherry-picks. Roughly half of upstream output is Cline SDK/account work that will never apply; the other half is shared UI/UX where ideas are portable even if code isn't.
 
 **Cadence:** Check weekly-ish. Run `git fetch upstream && git log upstream/main --oneline --since="<last check date>"` and evaluate new commits.
 **Tracker:** [docs/upstream-sync.md](upstream-sync.md) — living doc with Adopted / Backlog / Decided against sections. Update it after each review.
 
-## 9. Audit CI/CD and deployment infrastructure
+## 8. Audit CI/CD and deployment infrastructure
 
 Review the existing GitHub Actions workflows (`ci.yml`, `test.yml`, `publish.yml`), issue templates, CODEOWNERS, and the changelog extraction script. Decide what's still relevant from the upstream fork, what needs updating (e.g. Slack webhook, CODEOWNERS), and whether anything is missing (e.g. automated changelog generation, release notes workflow).
 
-## 10. Publish to npm
+## 9. Publish to npm
 
 Register the `quarterdeck` package on npm, configure OIDC trusted publishing for the GitHub repo, and do the first publish via the existing `publish.yml` workflow. Once published, update the README install instructions to use `npx quarterdeck` / `npm i -g quarterdeck` instead of the current clone-and-build steps.
 
-## 11. Archive stale docs (recurring)
+## 10. Archive stale docs (recurring)
 
 Periodically read through docs in `docs/` (research, plans, specs, top-level) and archive anything that's for completed work. Clean up stale or outdated documents. Docs accumulate as features ship — this isn't a one-time task.
 
-## 12. UI branch/status indicators desync when agent leaves worktree
+## 11. UI branch/status indicators desync when agent leaves worktree
 
 When `worktreeAddQuarterdeckDir` is enabled, agents can `cd` out of their assigned worktree into other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the wrong branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
 
-## 13. "Shared" indicator on task cards should update when agent moves to shared directory
+## 12. "Shared" indicator on task cards should update when agent moves to shared directory
 
 Task cards show a "shared" badge when a task is operating in the shared home workspace instead of an isolated worktree. When `worktreeAddQuarterdeckDir` is enabled, an agent that was started in an isolated worktree can `cd` into shared directories — at that point the task is effectively operating in shared space, but the card still shows as isolated. The "shared" indicator should react to the agent's actual working directory, not just the initial launch config.
 
-## 14. Add clarification when multiple worktrees share the same detached HEAD hash
+## 13. Add clarification when multiple worktrees share the same detached HEAD hash
 
 When tasks are created without a feature branch, their worktrees are all detached at the same base commit. The status bar, card branch pill, and branch dropdown all show the same short commit hash, which looks like a bug. Add a tooltip or subtle label at these display points explaining that the worktrees are independent copies detached from the same base ref — changes in one won't affect others. Consider showing "detached from {baseRef}" instead of just the raw hash.
 
-## 15. Revisit HTML chat view concept
+## 14. Revisit HTML chat view concept
 
 The experimental HTML chat view (`terminalChatViewEnabled`) was removed because the implementation was incomplete and noisy — it stripped ANSI formatting and read from xterm's buffer, but output was unreliable for full-screen TUIs like Claude Code. Revisit the concept at some point: rendering agent output as styled HTML instead of a terminal canvas could enable better text selection, search, copy/paste, and accessibility. Would need a fundamentally different approach — likely parsing the agent's structured output (if available) rather than scraping the terminal buffer.
 
-## 16. Commit sidebar: Auto-generated commit messages
+## 15. Commit sidebar: Auto-generated commit messages
 
 Auto-generate a default commit message in the commit sidebar from the task title and diff summary (changed file names, additions/deletions count). The message should be pre-filled but fully editable before committing. Consider using the task description and branch name as additional context for message generation.
 
-## 17. Full Codex support
+## 16. Full Codex support
 
 Codex has basic launch, event parsing, and workspace trust working, but it's far from feature parity with Claude. The infrastructure is "make it run" — this is about "make it first-class."
 
@@ -151,7 +140,7 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 
 **Missing — core gaps:**
 - **Conversation history in UI**: Claude exposes chat messages via API; Codex has no equivalent. The sidebar chat view is blank for Codex tasks. Need to either parse Codex session logs into a chat-like format or build a Codex-specific history endpoint.
-- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (todo #5). If Codex adds session ID targeting, wire it up.
+- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (todo #4). If Codex adds session ID targeting, wire it up.
 - **Hook configuration**: Claude gets a full `settings.json` with hook matchers (`PreToolUse`, `PostToolUse`, etc.). Codex gets nothing — the wrapper is a thin pass-through. Need to define what Codex-side hook configuration looks like and whether it can support the same granularity.
 - **Error diagnostics**: If session logs aren't written or rollout file discovery fails, failures are silent. Add explicit error reporting when both log sources fail, and surface it in the UI.
 
@@ -159,9 +148,9 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 - No Codex-specific documentation or setup guide
 - No version detection or capability checking beyond `isBinaryAvailableOnPath()`
 - Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
-- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (todo #6)
+- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (todo #5)
 
-## 18. File browser and diff viewer performance
+## 17. File browser and diff viewer performance
 
 The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
 
@@ -169,7 +158,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 
-## 19. Investigate deeper App.tsx state architecture refactor
+## 18. Investigate deeper App.tsx state architecture refactor
 
 The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the root issue: App.tsx is the single wiring hub because all state lives in React and flows down as props. Investigate options for decoupling state from the component tree so components can subscribe directly:
 
@@ -179,7 +168,7 @@ The custom hook extraction (done in 0.7.2) reduces file size but doesn't fix the
 
 This is an investigation — evaluate each option against the codebase's actual coupling patterns before committing to one. The right answer depends on which state domains are most heavily prop-drilled and how many components would benefit.
 
-## 20. Unify default branch resolution
+## 19. Unify default branch resolution
 
 "Default branch" is determined in three independent places — git auto-detection (`detectGitDefaultBranch`), the "(default)" dropdown label (`useTaskBranchOptions`), and the user-pinned config (`defaultBaseRef`) — with no shared logic. When the user pins a branch, the dropdown selects correctly but the "(default)" label still points at the git-detected branch, and the CLI (`resolveTaskBaseRef`) ignores the pin entirely. Unify into a single resolution chain (config pin → git detection → fallback) used by all consumers, and make the "(default)" label follow the pin. Full analysis at [docs/refactor-default-branch.md](refactor-default-branch.md).
 
