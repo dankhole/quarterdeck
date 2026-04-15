@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: begin App.tsx context provider extraction — DialogContext
+
+- Introduced `DialogContext` (`web-ui/src/providers/dialog-provider.tsx`) — the first step of the App.tsx provider split described in `docs/refactor-csharp-readability.md` section 8. Defines a typed context for all dialog open/close state, debug tools, and debug logging.
+- Extracted `DebugShelf` component (`web-ui/src/components/debug-shelf.tsx`) — renders the DebugLogPanel and DebugDialog by reading from `useDialogContext()` instead of receiving 25+ props from App.tsx. Removes ~30 lines of inline JSX from App.tsx.
+- App.tsx constructs the `DialogContextValue` via `useMemo` and provides it inline. Hooks stay in App.tsx for now — child components can opt into context reads incrementally.
+
 ### Perf: replace per-task xterm instances with fixed 4-slot terminal pool
 
 - Terminals are no longer created and destroyed per task. A pool of 4 pre-allocated `TerminalSlot` instances is reused across tasks via `connectToTask`/`disconnectFromTask`. Only the currently viewed task (ACTIVE) and the previously viewed task (PREVIOUS) keep live WebSocket connections — all other slots are free for warmup or rotation.

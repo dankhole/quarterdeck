@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: begin App.tsx context provider extraction — DialogContext (2026-04-14)
+
+First incremental step of the App.tsx provider split (section 8 of `docs/refactor-csharp-readability.md`). The goal is to progressively move state from App.tsx into React Context providers so child components can `useContext()` instead of receiving props drilled through 4-5 layers.
+
+**Approach**: Rather than hoisting hooks into a `<DialogProvider>` component (which would break same-component consumers like `useAppHotkeys` that read `handleOpenSettings`), the context value is constructed in App.tsx via `useMemo` and provided inline via `<DialogContext.Provider>`. This lets child components opt into context reads while the hooks stay put — zero risk of breaking the data flow.
+
+**What moved**: The `DebugLogPanel` (22 prop lines) and `DebugDialog` (6 prop lines) JSX blocks were extracted into a `DebugShelf` component that reads from `useDialogContext()`. These two were chosen because they depend exclusively on dialog/debug state with no cross-dependencies on board, terminal, or git state.
+
+**Files**: `web-ui/src/providers/dialog-provider.tsx` (new, 52 lines — context shape + consumer hook), `web-ui/src/components/debug-shelf.tsx` (new, 53 lines — DebugLogPanel + DebugDialog rendering), `web-ui/src/App.tsx` (modified — added context value construction, wrapped JSX in provider, replaced inline debug JSX with `<DebugShelf />`; net -32 lines from JSX, +48 total including context plumbing).
+
 ## Perf: replace per-task xterm instances with fixed 4-slot terminal pool (2026-04-14)
 
 Replaced the unbounded `Map<string, PersistentTerminal>` registry (one xterm Terminal + two WebSockets per task) with a fixed pool of 4 `TerminalSlot` instances that are connected/disconnected as tasks are viewed. The old system created terminals on demand and never released them until a project switch — with 10+ running agents, this meant 10+ xterm canvases, 20+ WebSockets, and 10× scrollback buffers all alive simultaneously.
