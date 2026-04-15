@@ -147,9 +147,10 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle"]);
 				expect(managedTrash).toEqual([]);
 
-				// Sessions with persisted state are marked interrupted.
+				// Running sessions are marked interrupted on shutdown.
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
-				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
+				// Idle sessions are not actively working — left as-is.
+				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
 				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
@@ -162,7 +163,8 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(indexedInProgress.map((card) => card.id)).toEqual(["indexed-missing-session"]);
 				expect(indexedReview.map((card) => card.id)).toEqual(["indexed-awaiting-review"]);
 				expect(indexedTrash).toEqual([]);
-				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
+				// awaiting_review with terminal review reason ("hook") is preserved.
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("awaiting_review");
 				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
 			} finally {
 				cleanup();

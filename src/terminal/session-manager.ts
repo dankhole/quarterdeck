@@ -8,7 +8,7 @@
 //   session-interrupt-recovery.ts — interrupt detection and recovery
 //   session-auto-restart.ts      — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic reconciliation sweep
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
 import { cleanStaleIndexLockForWorktree } from "../fs/lock-cleanup";
@@ -96,6 +96,24 @@ function isTerminalProtocolResponse(data: Buffer): boolean {
 	return false;
 }
 
+/**
+ * Review reasons that represent completed agent work or an explicit review
+ * request. These sessions should survive a server restart without being
+ * re-marked as interrupted — the agent's work products are in the worktree
+ * and the review state is meaningful.
+ */
+const TERMINAL_REVIEW_REASONS = new Set<RuntimeTaskSessionReviewReason>([
+	"hook",
+	"exit",
+	"error",
+	"attention",
+	"stalled",
+]);
+
+function isTerminalReviewReason(reason: RuntimeTaskSessionReviewReason): boolean {
+	return TERMINAL_REVIEW_REASONS.has(reason);
+}
+
 // TUI apps (Codex) can query OSC 10/11 before the browser terminal is attached
 // and ready to answer. We intercept those startup probes during early PTY output,
 // synthesize foreground/background color replies, then disable the filter once a
@@ -132,10 +150,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 	 * Hydrate both the summary store and the process entry map from a persisted
 	 * session record. Called once during workspace bootstrap.
 	 *
-	 * Sessions persisted as "running" or "awaiting_review" are processless
-	 * survivors — the server died or the workspace was evicted from memory.
-	 * Mark them as interrupted so resumeInterruptedSessions can auto-restart
-	 * them with --continue when the first viewer connects.
+	 * Sessions persisted as "running" are crash survivors — the server died
+	 * while the agent was actively working. Mark them as interrupted so
+	 * resumeInterruptedSessions can auto-restart them with --continue when the
+	 * first viewer connects.
+	 *
+	 * Sessions persisted as "awaiting_review" fall into two categories:
+	 *   - Terminal review reasons (hook, exit, error, attention, stalled):
+	 *     the agent finished or explicitly requested review. Preserve as-is.
+	 *   - Non-terminal (interrupted, or null): the server died mid-restart
+	 *     cycle. Mark as interrupted for auto-resume.
 	 */
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		this.store.hydrateFromRecord(record);
@@ -143,7 +167,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			if (!this.entries.has(taskId)) {
 				this.entries.set(taskId, createProcessEntry(taskId));
 			}
-			if (summary.state === "running" || summary.state === "awaiting_review") {
+			const shouldInterrupt =
+				summary.state === "running" ||
+				(summary.state === "awaiting_review" && !isTerminalReviewReason(summary.reviewReason));
+			if (shouldInterrupt) {
 				this.store.update(taskId, {
 					state: "interrupted",
 					reviewReason: "interrupted",

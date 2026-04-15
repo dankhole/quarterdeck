@@ -425,7 +425,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		expect(spawnedSessions).toHaveLength(1);
 	});
 
-	it("hydrated awaiting_review entries are marked interrupted for resume", () => {
+	it("hydrated awaiting_review entries with terminal review reasons are preserved", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -434,8 +434,24 @@ describe("recoverStaleSession with launched sessions", () => {
 			}),
 		});
 
-		// Hydration converts awaiting_review → interrupted so
-		// resumeInterruptedSessions can restart them on first viewer connect.
+		// Terminal review reasons (hook, exit, error, etc.) represent completed
+		// agent work and are preserved across server restarts.
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.reviewReason).toBe("hook");
+	});
+
+	it("hydrated awaiting_review entries with non-terminal review reasons are marked interrupted", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+			}),
+		});
+
+		// Non-terminal review reasons indicate the session was mid-restart.
+		// Mark as interrupted so resumeInterruptedSessions can restart them.
 		const summary = manager.store.getSummary("task-1");
 		expect(summary?.state).toBe("interrupted");
 		expect(summary?.reviewReason).toBe("interrupted");

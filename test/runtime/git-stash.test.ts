@@ -584,7 +584,7 @@ describe.sequential("dirtyTree detection", () => {
 		const { path: repoPath, cleanup: cleanupRepo } = createTempDir("quarterdeck-git-stash-pull-dirty-");
 		try {
 			// Create a bare remote repo
-			runGit(bareDir, ["init", "-q", "--bare"]);
+			runGit(bareDir, ["init", "-q", "--bare", "-b", "main"]);
 
 			// Clone it to get a repo with a remote
 			spawnSync("git", ["clone", "-q", bareDir, repoPath], {

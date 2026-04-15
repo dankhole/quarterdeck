@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: preserve terminal review reasons across server restart (2026-04-15)
+
+**Problem:** Two CI test failures since Apr 12. (1) `git-stash.test.ts` dirtyTree test failed on CI because `git init --bare` didn't specify `-b main`, so the bare repo defaulted to `master` and `git push -u origin main` failed. (2) The `skip-shutdown-cleanup` integration test expected `awaiting_review` sessions with `reviewReason: "hook"` to survive a restart, but `hydrateFromRecord` (changed in `4c2bd593` on Apr 15) started marking all `awaiting_review` sessions as `interrupted` unconditionally.
+
+**Root cause:** `hydrateFromRecord` in `session-manager.ts` and `persistInterruptedSessions` / `shouldInterruptSessionOnShutdown` in `shutdown-coordinator.ts` treated all `awaiting_review` sessions the same — marking them `interrupted` for auto-resume. But sessions with terminal review reasons (`hook`, `exit`, `error`, `attention`, `stalled`) represent completed agent work and should survive restarts. Only `running` sessions and `awaiting_review` sessions with non-terminal reasons (`interrupted`, `null`) are genuinely stale.
+
+**Fix:**
+1. `session-manager.ts`: Added `isTerminalReviewReason()` helper. `hydrateFromRecord` now only marks sessions as interrupted when the review reason is non-terminal.
+2. `shutdown-coordinator.ts`: `shouldInterruptSessionOnShutdown` now checks for terminal review reasons. `persistInterruptedSessions` also filters through this check before overwriting.
+3. `git-stash.test.ts`: Added `-b main` to `git init --bare` call.
+4. Updated assertions in 4 test files to match new behavior: `session-manager-reconciliation.test.ts`, `session-manager-interrupt-recovery.test.ts`, `runtime-state-stream.integration.test.ts`, `shutdown-coordinator.integration.test.ts`.
+
+**Files:** `src/terminal/session-manager.ts`, `src/server/shutdown-coordinator.ts`, `test/runtime/git-stash.test.ts`, `test/integration/runtime-state-stream.integration.test.ts`, `test/integration/shutdown-coordinator.integration.test.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`, `test/runtime/terminal/session-manager-reconciliation.test.ts`
+
 ## Fix: reconnect terminal WebSockets after sleep/wake (2026-04-15)
 
 **Problem:** After a computer sleeps and wakes, clicking a task showed a blank/frozen terminal even though the agent was still running (prompt shortcuts still worked). Trashing and untrashing didn't help. Changing projects did fix it (because that forces a full re-mount of the terminal pool).

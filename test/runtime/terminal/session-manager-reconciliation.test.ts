@@ -296,10 +296,10 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
-	it("hydrated awaiting_review sessions become interrupted, reconciliation moves to review (35)", async () => {
+	it("hydrated awaiting_review sessions with terminal review reasons are preserved (35)", async () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		// Hydration now converts awaiting_review → interrupted so
-		// resumeInterruptedSessions can restart them on first viewer connect.
+		// Sessions with terminal review reasons (exit, hook, error, etc.)
+		// represent completed agent work and are preserved across restarts.
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "awaiting_review",
@@ -309,7 +309,33 @@ describe("reconciliation sweep lifecycle", () => {
 			}),
 		});
 
-		// After hydration, state is interrupted (not awaiting_review/exit)
+		// Terminal review reason preserved — not re-marked as interrupted
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
+
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		// No reconciliation action needed — session stays as-is
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
+
+		manager.stopReconciliation();
+	});
+
+	it("hydrated awaiting_review sessions with non-terminal review reasons become interrupted (35b)", async () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		// Sessions with reviewReason "interrupted" or null were mid-restart —
+		// mark them interrupted so resumeInterruptedSessions can restart them.
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				pid: null,
+				exitCode: null,
+			}),
+		});
+
 		expect(manager.store.getSummary("task-1")?.state).toBe("interrupted");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
@@ -317,7 +343,6 @@ describe("reconciliation sweep lifecycle", () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		// Reconciliation's checkInterruptedNoRestart moves it to awaiting_review
-		// since there's no pending auto-restart.
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 

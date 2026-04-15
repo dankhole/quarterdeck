@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fix: preserve terminal review reasons across server restart
+
+- Sessions in `awaiting_review` with a terminal review reason (`hook`, `exit`, `error`, `attention`, `stalled`) now survive server restarts and shutdowns — they represent completed agent work or explicit review requests. Previously, both `hydrateFromRecord` (startup) and the shutdown coordinator unconditionally overwrote them to `interrupted`, losing the meaningful review state.
+- Only `running` sessions and `awaiting_review` sessions with non-terminal reasons (`interrupted`, `null`) are marked interrupted for auto-resume.
+
+### Fix: CI test failures — bare repo branch name, stale hydration assertions
+
+- Fixed `git-stash.test.ts` `dirtyTree` test: bare repo `git init` missing `-b main` caused `push origin main` to fail on CI runners with `init.defaultBranch=master`.
+- Updated 4 test files with assertions that expected `awaiting_review` → `interrupted` after hydration to match the new preserve-terminal-reasons behavior.
+
 ### Fix: reconnect terminal WebSockets after sleep/wake
 
 - After a computer sleeps and wakes, WebSocket connections die but the terminal pool still held slot references for the task. `acquireForTask()` and `ensureDedicatedTerminal()` returned the existing slot without reconnecting, leaving the terminal blank despite a live agent session. Added `ensureConnected()` to `TerminalSlot` and a `visibilitychange` reconnection path so terminals auto-recover on wake.

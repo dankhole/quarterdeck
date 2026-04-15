@@ -34,7 +34,7 @@ async function persistInterruptedSessions(
 	};
 	for (const taskId of interruptedTaskIds) {
 		const summary = options?.resolveSummary?.(taskId) ?? workspaceState.sessions[taskId] ?? null;
-		if (summary) {
+		if (summary && shouldInterruptSessionOnShutdown(summary)) {
 			nextSessions[taskId] = {
 				...summary,
 				state: "interrupted",
@@ -50,11 +50,18 @@ async function persistInterruptedSessions(
 	});
 }
 
+/** Review reasons that represent completed agent work — preserve across shutdown. */
+const TERMINAL_REVIEW_REASONS = new Set(["hook", "exit", "error", "attention", "stalled"]);
+
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
 	if (summary.state === "running") {
 		return true;
 	}
-	return summary.state === "awaiting_review";
+	if (summary.state === "awaiting_review") {
+		// Terminal review reasons represent completed agent work — don't overwrite.
+		return !TERMINAL_REVIEW_REASONS.has(summary.reviewReason as string);
+	}
+	return false;
 }
 
 function collectShutdownInterruptedTaskIds(
