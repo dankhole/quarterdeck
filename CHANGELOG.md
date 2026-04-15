@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-04-15
+
 ### Fix: preserve terminal review reasons across server restart
 
 - Sessions in `awaiting_review` with a terminal review reason (`hook`, `exit`, `error`, `attention`, `stalled`) now survive server restarts and shutdowns — they represent completed agent work or explicit review requests. Previously, both `hydrateFromRecord` (startup) and the shutdown coordinator unconditionally overwrote them to `interrupted`, losing the meaningful review state.
