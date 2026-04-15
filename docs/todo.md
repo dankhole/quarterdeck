@@ -173,7 +173,7 @@ Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.m
 - ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
 **Frontend (section 8):**
-8. Split App.tsx into ~6 Context providers — in progress: ~~DialogContext~~, ~~ProjectContext~~, ~~BoardContext~~, ~~GitContext~~ done; TerminalProvider, InteractionsProvider, AppProviders compositor remain
+8. Split App.tsx into ~6 Context providers — in progress: ~~DialogContext~~, ~~ProjectContext~~, ~~BoardContext~~, ~~GitContext~~, ~~TerminalContext~~, ~~InteractionsContext~~, ~~AppProviders compositor~~ done; state migration into providers and App.tsx slimdown remain
 
 Sections are independent and ordered by priority with a dependency graph in the doc.
 

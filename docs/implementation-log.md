@@ -2,6 +2,32 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: complete provider shapes and AppProviders compositor (2026-04-15)
+
+Phase 8, step 5 of the readability roadmap. Completes all 6 provider context shapes and the compositor, leaving state migration as the remaining work.
+
+**What changed:**
+- Created `web-ui/src/providers/terminal-provider.tsx` — defines `TerminalContextValue` interface referencing `UseTerminalPanelsResult` and `UseTerminalConnectionReadyResult` field types, plus derived metadata (`homeTerminalSummary`, `homeTerminalSubtitle`, `showHomeBottomTerminal`, `detailTerminalSummary`, `detailTerminalSubtitle`). Consumer hook: `useTerminalContext()`.
+- Created `web-ui/src/providers/interactions-provider.tsx` — defines `InteractionsContextValue` interface referencing `UseBoardInteractionsResult` and `UseTaskStartActionsResult` field types. Consumer hook: `useInteractionsContext()`.
+- Created `web-ui/src/providers/app-providers.tsx` — compositor component that nests all 6 providers in dependency order: Project → Board → Terminal → Git → Interactions → Dialog. Accepts all 6 context values as props.
+- Updated `web-ui/src/App.tsx`:
+  - Imports changed from direct context objects (`BoardContext`, `DialogContext`, etc.) to type-only imports + `AppProviders` compositor
+  - Added `terminalContextValue` and `interactionsContextValue` via `useMemo<>()` blocks
+  - Destructured `homeTerminalShellBinary` and `cancelPendingRestart` from `useTerminalPanels` (previously unused, now needed for context completeness)
+  - Return statement simplified from 4 inline `.Provider` wrappers + 4 closing tags to single `<AppProviders>` + `</AppProviders>`
+
+**What did NOT change:**
+- All state and hooks remain in App.tsx — providers are still shapes only, not state owners
+- No props removed from child components yet — that happens when state migrates into providers
+
+**Files touched:**
+- `web-ui/src/providers/app-providers.tsx` (new)
+- `web-ui/src/providers/terminal-provider.tsx` (new)
+- `web-ui/src/providers/interactions-provider.tsx` (new)
+- `web-ui/src/App.tsx` (modified — imports, 2 new useMemo blocks, simplified return)
+- `docs/todo.md` (updated phase 8 status)
+- `CHANGELOG.md` (new entry)
+
 ## Refactor: extract GitContext provider from App.tsx (2026-04-15)
 
 Phase 8, step 4 of the readability roadmap (`docs/refactor-csharp-readability.md` section 8). Fourth context provider extraction from App.tsx, following DialogContext, ProjectContext, and BoardContext.

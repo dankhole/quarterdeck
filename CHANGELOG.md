@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Refactor: complete provider shapes and AppProviders compositor — phase 8 step 5
+
+- Created `TerminalContext` (`web-ui/src/providers/terminal-provider.tsx`) — context shape for terminal panel state (`useTerminalPanels` result), connection readiness (`useTerminalConnectionReady`), and derived metadata (home/detail terminal summaries, subtitles, visibility flag).
+- Created `InteractionsContext` (`web-ui/src/providers/interactions-provider.tsx`) — context shape for board interactions (`useBoardInteractions` result: drag/drop, trash workflow, task lifecycle) and task start actions (`useTaskStartActions` result).
+- Created `AppProviders` compositor (`web-ui/src/providers/app-providers.tsx`) — composes all 6 context providers in dependency order (Project → Board → Terminal → Git → Interactions → Dialog). App.tsx return statement simplified from 4 inline `.Provider` wrappers to a single `<AppProviders>` component.
+- All 6 provider shapes now exist; remaining phase 8 work is migrating state/hooks from App.tsx into each provider component.
+
 ### Refactor: extract GitContext provider from App.tsx — phase 8 step 4
 
 - Introduced `GitContext` (`web-ui/src/providers/git-provider.tsx`) — owns all git-related state: git actions (`runGitAction`, `switchHomeBranch`, loading/error state), git history toggle, git navigation (`pendingCompareNavigation`, `pendingFileNavigation`, `navigateToFile`, `navigateToGitView`), home file browser scope context, and the derived `gitSyncTaskScope`.
