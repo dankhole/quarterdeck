@@ -20,6 +20,7 @@ import {
 } from "../core/api-validation";
 import { createTaggedLogger, type DebugLogLevel, getLogLevel, setLogLevel } from "../core/debug-logger";
 import { emitSessionEvent, setEventLogEnabled } from "../core/event-log";
+import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../core/service-interfaces";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { openInBrowser } from "../server/browser";
 import { loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
@@ -37,19 +38,15 @@ import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
 export interface CreateRuntimeApiDependencies {
+	config: IRuntimeConfigProvider;
+	broadcaster: Pick<
+		IRuntimeBroadcaster,
+		"broadcastRuntimeWorkspaceStateUpdated" | "setPollIntervals" | "broadcastLogLevel"
+	>;
 	getActiveWorkspaceId: () => string | null;
-	getActiveRuntimeConfig?: () => RuntimeConfigState;
-	loadScopedRuntimeConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigState>;
-	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
-	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
-	setPollIntervals?: (
-		workspaceId: string,
-		intervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number },
-	) => void;
-	broadcastLogLevel?: (level: DebugLogLevel) => void;
 }
 
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
@@ -64,13 +61,13 @@ class RuntimeApiImpl implements RuntimeApi {
 	// ── Config ────────────────────────────────────────────────────────────
 
 	async loadConfig(workspaceScope: RuntimeTrpcWorkspaceScope | null) {
-		const activeRuntimeConfig = this.deps.getActiveRuntimeConfig?.();
+		const activeRuntimeConfig = this.deps.config.getActiveRuntimeConfig();
 		if (!workspaceScope && !activeRuntimeConfig) {
 			throw new Error("No active runtime config provider is available.");
 		}
 		let scopedRuntimeConfig: RuntimeConfigState;
 		if (workspaceScope) {
-			scopedRuntimeConfig = await this.deps.loadScopedRuntimeConfig(workspaceScope);
+			scopedRuntimeConfig = await this.deps.config.loadScopedRuntimeConfig(workspaceScope);
 		} else if (activeRuntimeConfig) {
 			scopedRuntimeConfig = activeRuntimeConfig;
 		} else {
@@ -89,7 +86,7 @@ class RuntimeApiImpl implements RuntimeApi {
 				parsed,
 			);
 		} else {
-			const activeRuntimeConfig = this.deps.getActiveRuntimeConfig?.();
+			const activeRuntimeConfig = this.deps.config.getActiveRuntimeConfig();
 			if (!activeRuntimeConfig) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
@@ -99,13 +96,13 @@ class RuntimeApiImpl implements RuntimeApi {
 			nextRuntimeConfig = await updateGlobalRuntimeConfig(activeRuntimeConfig, parsed);
 		}
 		if (workspaceScope && workspaceScope.workspaceId === this.deps.getActiveWorkspaceId()) {
-			this.deps.setActiveRuntimeConfig(nextRuntimeConfig);
+			this.deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 		}
 		if (!workspaceScope) {
-			this.deps.setActiveRuntimeConfig(nextRuntimeConfig);
+			this.deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 		}
-		if (this.deps.setPollIntervals && workspaceScope) {
-			this.deps.setPollIntervals(workspaceScope.workspaceId, {
+		if (workspaceScope) {
+			this.deps.broadcaster.setPollIntervals(workspaceScope.workspaceId, {
 				focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
 				backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
 				homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
@@ -113,7 +110,7 @@ class RuntimeApiImpl implements RuntimeApi {
 		}
 		setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
 		setLogLevel(nextRuntimeConfig.logLevel as DebugLogLevel);
-		this.deps.broadcastLogLevel?.(nextRuntimeConfig.logLevel as DebugLogLevel);
+		this.deps.broadcaster.broadcastLogLevel(nextRuntimeConfig.logLevel as DebugLogLevel);
 		return this.buildConfigResponse(nextRuntimeConfig);
 	}
 
@@ -122,7 +119,7 @@ class RuntimeApiImpl implements RuntimeApi {
 	async startTaskSession(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
 		try {
 			const body = parseTaskSessionStartRequest(input);
-			const scopedRuntimeConfig = await this.deps.loadScopedRuntimeConfig(workspaceScope);
+			const scopedRuntimeConfig = await this.deps.config.loadScopedRuntimeConfig(workspaceScope);
 			const useWorktree = body.useWorktree !== false;
 			// Prefer the persisted working directory if it still exists on disk.
 			const state = await loadWorkspaceState(workspaceScope.workspacePath);
@@ -333,7 +330,7 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	setLogLevel(level: "debug" | "info" | "warn" | "error") {
 		setLogLevel(level as DebugLogLevel);
-		this.deps.broadcastLogLevel?.(level as DebugLogLevel);
+		this.deps.broadcaster.broadcastLogLevel(level as DebugLogLevel);
 		return { ok: true, level: getLogLevel() };
 	}
 
@@ -440,7 +437,7 @@ class RuntimeApiImpl implements RuntimeApi {
 			let scopedRuntimeConfig: RuntimeConfigState | undefined;
 
 			if (wasRunning) {
-				scopedRuntimeConfig = await this.deps.loadScopedRuntimeConfig(workspaceScope);
+				scopedRuntimeConfig = await this.deps.config.loadScopedRuntimeConfig(workspaceScope);
 				resolved = resolveAgentCommand(scopedRuntimeConfig) ?? undefined;
 				if (!resolved) {
 					log("no agent command configured");
@@ -559,7 +556,7 @@ class RuntimeApiImpl implements RuntimeApi {
 
 				// Broadcast the state change so the metadata monitor picks up the new
 				// workingDirectory immediately instead of waiting for the next poll.
-				void this.deps.broadcastRuntimeWorkspaceStateUpdated(
+				void this.deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated(
 					workspaceScope.workspaceId,
 					workspaceScope.workspacePath,
 				);

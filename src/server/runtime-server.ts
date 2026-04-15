@@ -31,7 +31,6 @@ export interface CreateRuntimeServerDependencies {
 	workspaceRegistry: WorkspaceRegistry;
 	runtimeStateHub: RuntimeStateHub;
 	warn: (message: string) => void;
-	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
@@ -111,7 +110,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	};
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
-		await deps.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+		await deps.workspaceRegistry.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
@@ -119,51 +118,35 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			requestedWorkspaceId: scope.requestedWorkspaceId,
 			workspaceScope: scope.workspaceScope,
 			runtimeApi: createRuntimeApi({
+				config: deps.workspaceRegistry,
+				broadcaster: deps.runtimeStateHub,
 				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
-				getActiveRuntimeConfig: deps.workspaceRegistry.getActiveRuntimeConfig,
-				loadScopedRuntimeConfig: deps.workspaceRegistry.loadScopedRuntimeConfig,
-				setActiveRuntimeConfig: deps.workspaceRegistry.setActiveRuntimeConfig,
 				getScopedTerminalManager,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
-				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
-				setPollIntervals: deps.runtimeStateHub.setPollIntervals,
-				broadcastLogLevel: deps.runtimeStateHub.broadcastLogLevel,
 			}),
 			workspaceApi: createWorkspaceApi({
-				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
-				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
-				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
-				broadcastTaskTitleUpdated: deps.runtimeStateHub.broadcastTaskTitleUpdated,
-				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
-				setFocusedTask: deps.runtimeStateHub.setFocusedTask,
-				requestTaskRefresh: deps.runtimeStateHub.requestTaskRefresh,
-				requestHomeRefresh: deps.runtimeStateHub.requestHomeRefresh,
+				terminals: deps.workspaceRegistry,
+				broadcaster: deps.runtimeStateHub,
+				data: deps.workspaceRegistry,
 			}),
 			projectsApi: createProjectsApi({
-				getActiveWorkspacePath: deps.workspaceRegistry.getActiveWorkspacePath,
-				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
-				rememberWorkspace: deps.workspaceRegistry.rememberWorkspace,
-				setActiveWorkspace: deps.workspaceRegistry.setActiveWorkspace,
-				clearActiveWorkspace: deps.workspaceRegistry.clearActiveWorkspace,
+				workspaces: deps.workspaceRegistry,
+				terminals: deps.workspaceRegistry,
+				broadcaster: deps.runtimeStateHub,
+				data: deps.workspaceRegistry,
 				resolveProjectInputPath: deps.resolveProjectInputPath,
 				assertPathIsDirectory: deps.assertPathIsDirectory,
 				hasGitRepository: deps.hasGitRepository,
-				summarizeProjectTaskCounts: deps.workspaceRegistry.summarizeProjectTaskCounts,
-				createProjectSummary: deps.workspaceRegistry.createProjectSummary,
-				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
-				getTerminalManagerForWorkspace: deps.workspaceRegistry.getTerminalManagerForWorkspace,
 				disposeWorkspace: deps.disposeWorkspace,
 				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
 				warn: deps.warn,
-				buildProjectsPayload: deps.workspaceRegistry.buildProjectsPayload,
 				pickDirectoryPathFromSystemDialog: deps.pickDirectoryPathFromSystemDialog,
 			}),
 			hooksApi: createHooksApi({
-				getWorkspacePathById: deps.workspaceRegistry.getWorkspacePathById,
-				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
-				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
-				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
+				workspaces: deps.workspaceRegistry,
+				terminals: deps.workspaceRegistry,
+				broadcaster: deps.runtimeStateHub,
 			}),
 		};
 	};

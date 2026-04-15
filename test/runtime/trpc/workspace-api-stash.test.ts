@@ -144,14 +144,21 @@ import { createWorkspaceApi } from "../../../src/trpc/workspace-api";
 
 function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 	return {
-		ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
-		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-		broadcastRuntimeProjectsUpdated: vi.fn(),
-		broadcastTaskTitleUpdated: vi.fn(),
-		buildWorkspaceStateSnapshot: vi.fn(),
-		setFocusedTask: vi.fn(),
-		requestTaskRefresh: vi.fn(),
-		requestHomeRefresh: vi.fn(),
+		terminals: {
+			getTerminalManagerForWorkspace: vi.fn(() => null),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
+		},
+		broadcaster: {
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			setFocusedTask: vi.fn(),
+			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
+		},
+		data: {
+			buildWorkspaceStateSnapshot: vi.fn(),
+		},
 		...overrides,
 	};
 }
@@ -212,8 +219,8 @@ describe("createWorkspaceApi stash endpoints", () => {
 			paths: [],
 		});
 
-		expect(deps.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 
 	// ─── Test 2: stashPush uses home repo for null taskScope ──────────────
@@ -252,8 +259,8 @@ describe("createWorkspaceApi stash endpoints", () => {
 			paths: [],
 		});
 
-		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 
 	// ─── Test 4: stashList returns entries from git-sync ──────────────────
@@ -294,7 +301,7 @@ describe("createWorkspaceApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashPop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
 	// ─── Test 6: stashApply calls stashApply and refreshes metadata ───────
@@ -313,7 +320,7 @@ describe("createWorkspaceApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashApply).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 1 });
-		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
 	// ─── Test 7: stashDrop calls stashDrop and refreshes metadata ─────────
@@ -331,7 +338,7 @@ describe("createWorkspaceApi stash endpoints", () => {
 
 		expect(result.ok).toBe(true);
 		expect(gitSyncMocks.stashDrop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
 	});
 
 	// ─── Test 8: stashShow returns diff ───────────────────────────────────

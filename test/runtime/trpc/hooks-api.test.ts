@@ -77,10 +77,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -104,10 +106,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -147,10 +151,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -180,10 +186,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -210,10 +218,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const longMessage = "A".repeat(100);
@@ -245,10 +255,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -278,10 +290,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -318,10 +332,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -353,10 +369,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -396,10 +414,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -430,10 +450,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -465,10 +487,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -506,10 +530,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		await api.ingest({
@@ -549,10 +575,12 @@ describe("createHooksApi", () => {
 
 		const broadcastTaskReadyForReview = vi.fn();
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview,
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview },
 			captureTaskTurnCheckpoint: vi.fn(async () => ({
 				turn: 1,
 				ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
@@ -606,10 +634,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -645,10 +675,12 @@ describe("createHooksApi", () => {
 
 		const broadcastRuntimeWorkspaceStateUpdated = vi.fn();
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated,
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated, broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -692,10 +724,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		});
 
 		const response = await api.ingest({
@@ -745,10 +779,12 @@ describe("createHooksApi", () => {
 		const deleteTaskTurnCheckpointRef = vi.fn(async () => undefined);
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 			captureTaskTurnCheckpoint,
 			deleteTaskTurnCheckpointRef,
 		});
@@ -802,10 +838,12 @@ describe("createHooksApi", () => {
 		});
 
 		const api = createHooksApi({
-			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastTaskReadyForReview: vi.fn(),
+			workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			},
+			broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 			captureTaskTurnCheckpoint,
 			deleteTaskTurnCheckpointRef: vi.fn(async () => undefined),
 		});

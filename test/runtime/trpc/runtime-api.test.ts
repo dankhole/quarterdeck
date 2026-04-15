@@ -156,14 +156,22 @@ function createDeps(flat: Record<string, unknown> = {}) {
 			manager[key] = value;
 		}
 	}
+	const runtimeConfig = createTestRuntimeConfigState();
 	return {
+		config: {
+			getActiveRuntimeConfig: vi.fn(() => runtimeConfig),
+			loadScopedRuntimeConfig: vi.fn(async () => runtimeConfig),
+			setActiveRuntimeConfig: vi.fn(),
+		},
+		broadcaster: {
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			setPollIntervals: vi.fn(),
+			broadcastLogLevel: vi.fn(),
+		},
 		getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-		loadScopedRuntimeConfig: vi.fn(async () => createTestRuntimeConfigState()),
-		setActiveRuntimeConfig: vi.fn(),
 		getScopedTerminalManager: vi.fn(async () => manager as never),
 		resolveInteractiveShellCommand: vi.fn(),
 		runCommand: vi.fn(),
-		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
 	};
 }
 
@@ -381,14 +389,13 @@ describe("createRuntimeApi startTaskSession", () => {
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
 			applyTurnCheckpoint: vi.fn(),
 		};
-		const api = createRuntimeApi({
-			...createDeps(terminalManager),
-			loadScopedRuntimeConfig: vi.fn(async () => {
-				const runtimeConfigState = createTestRuntimeConfigState();
-				runtimeConfigState.selectedAgentId = "codex";
-				return runtimeConfigState;
-			}),
+		const deps = createDeps(terminalManager);
+		deps.config.loadScopedRuntimeConfig = vi.fn(async () => {
+			const runtimeConfigState = createTestRuntimeConfigState();
+			runtimeConfigState.selectedAgentId = "codex";
+			return runtimeConfigState;
 		});
+		const api = createRuntimeApi(deps);
 
 		const images = [
 			{

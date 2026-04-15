@@ -1,10 +1,11 @@
-import type {
-	RuntimeBoardData,
-	RuntimeProjectAddResponse,
-	RuntimeProjectSummary,
-	RuntimeProjectTaskCounts,
-} from "../core/api-contract";
+import type { RuntimeBoardData, RuntimeProjectAddResponse } from "../core/api-contract";
 import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core/api-validation";
+import type {
+	IRuntimeBroadcaster,
+	ITerminalManagerProvider,
+	IWorkspaceDataProvider,
+	IWorkspaceResolver,
+} from "../core/service-interfaces";
 import {
 	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
@@ -25,39 +26,26 @@ interface DisposeWorkspaceOptions {
 }
 
 export interface CreateProjectsApiDependencies {
-	getActiveWorkspacePath: () => string | null;
-	getActiveWorkspaceId: () => string | null;
-	rememberWorkspace: (workspaceId: string, repoPath: string) => void;
-	setActiveWorkspace: (workspaceId: string, repoPath: string) => Promise<void>;
-	clearActiveWorkspace: () => void;
+	workspaces: IWorkspaceResolver;
+	terminals: ITerminalManagerProvider;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectsUpdated">;
+	data: IWorkspaceDataProvider;
 	resolveProjectInputPath: (inputPath: string, cwd: string) => string;
 	assertPathIsDirectory: (path: string) => Promise<void>;
 	hasGitRepository: (path: string) => boolean;
-	summarizeProjectTaskCounts: (workspaceId: string, repoPath: string) => Promise<RuntimeProjectTaskCounts>;
-	createProjectSummary: (project: {
-		workspaceId: string;
-		repoPath: string;
-		taskCounts: RuntimeProjectTaskCounts;
-	}) => RuntimeProjectSummary;
-	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void> | void;
-	getTerminalManagerForWorkspace: (workspaceId: string) => TerminalSessionManager | null;
 	disposeWorkspace: (
 		workspaceId: string,
 		options?: DisposeWorkspaceOptions,
 	) => { terminalManager: TerminalSessionManager | null; workspacePath: string | null };
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
-	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<{
-		currentProjectId: string | null;
-		projects: RuntimeProjectSummary[];
-	}>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
 	return {
 		listProjects: async (preferredWorkspaceId) => {
-			const payload = await deps.buildProjectsPayload(preferredWorkspaceId);
+			const payload = await deps.data.buildProjectsPayload(preferredWorkspaceId);
 			return {
 				currentProjectId: payload.currentProjectId,
 				projects: payload.projects,
@@ -68,7 +56,8 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			const preferredWorkspaceContext = preferredWorkspaceId
 				? await loadWorkspaceContextById(preferredWorkspaceId)
 				: null;
-			const resolveBasePath = preferredWorkspaceContext?.repoPath ?? deps.getActiveWorkspacePath() ?? process.cwd();
+			const resolveBasePath =
+				preferredWorkspaceContext?.repoPath ?? deps.workspaces.getActiveWorkspacePath() ?? process.cwd();
 			try {
 				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
 				await deps.assertPathIsDirectory(projectPath);
@@ -107,20 +96,20 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					}
 				}
 				const context = await loadWorkspaceContext(projectPath);
-				deps.rememberWorkspace(context.workspaceId, context.repoPath);
+				deps.workspaces.rememberWorkspace(context.workspaceId, context.repoPath);
 				const projectsAfterAdd = await listWorkspaceIndexEntries();
-				const activeWorkspaceId = deps.getActiveWorkspaceId();
+				const activeWorkspaceId = deps.workspaces.getActiveWorkspaceId();
 				const hasActiveWorkspace = activeWorkspaceId
 					? projectsAfterAdd.some((project) => project.workspaceId === activeWorkspaceId)
 					: false;
 				if (!hasActiveWorkspace) {
-					await deps.setActiveWorkspace(context.workspaceId, context.repoPath);
+					await deps.workspaces.setActiveWorkspace(context.workspaceId, context.repoPath);
 				}
-				const taskCounts = await deps.summarizeProjectTaskCounts(context.workspaceId, context.repoPath);
-				void deps.broadcastRuntimeProjectsUpdated(context.workspaceId);
+				const taskCounts = await deps.data.summarizeProjectTaskCounts(context.workspaceId, context.repoPath);
+				void deps.broadcaster.broadcastRuntimeProjectsUpdated(context.workspaceId);
 				return {
 					ok: true,
-					project: deps.createProjectSummary({
+					project: deps.data.createProjectSummary({
 						workspaceId: context.workspaceId,
 						repoPath: context.repoPath,
 						taskCounts,
@@ -157,7 +146,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					// Best effort: if board state cannot be read, skip worktree cleanup IDs.
 				}
 
-				const removedTerminalManager = deps.getTerminalManagerForWorkspace(body.projectId);
+				const removedTerminalManager = deps.terminals.getTerminalManagerForWorkspace(body.projectId);
 				if (removedTerminalManager) {
 					removedTerminalManager.markInterruptedAndStopAll();
 				}
@@ -171,16 +160,16 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					stopTerminalSessions: false,
 				});
 
-				if (deps.getActiveWorkspaceId() === body.projectId) {
+				if (deps.workspaces.getActiveWorkspaceId() === body.projectId) {
 					const remaining = await listWorkspaceIndexEntries();
 					const fallbackWorkspace = remaining[0];
 					if (fallbackWorkspace) {
-						await deps.setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
+						await deps.workspaces.setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
 					} else {
-						deps.clearActiveWorkspace();
+						deps.workspaces.clearActiveWorkspace();
 					}
 				}
-				void deps.broadcastRuntimeProjectsUpdated(deps.getActiveWorkspaceId());
+				void deps.broadcaster.broadcastRuntimeProjectsUpdated(deps.workspaces.getActiveWorkspaceId());
 				if (taskIdsToCleanup.size > 0) {
 					const cleanupTaskIds = Array.from(taskIdsToCleanup);
 					void (async () => {
@@ -240,7 +229,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			try {
 				const body = parseProjectReorderRequest(input);
 				await updateProjectOrder(body.projectOrder);
-				void deps.broadcastRuntimeProjectsUpdated(deps.getActiveWorkspaceId());
+				void deps.broadcaster.broadcastRuntimeProjectsUpdated(deps.workspaces.getActiveWorkspaceId());
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

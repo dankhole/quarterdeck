@@ -8,6 +8,12 @@ import type {
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
 import { emitSessionEvent } from "../core/event-log";
+import type {
+	IRuntimeConfigProvider,
+	ITerminalManagerProvider,
+	IWorkspaceDataProvider,
+	IWorkspaceResolver,
+} from "../core/service-interfaces";
 import {
 	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
@@ -52,18 +58,11 @@ export interface RemovedWorkspaceNotice {
 	message: string;
 }
 
-export interface WorkspaceRegistry {
-	getActiveWorkspaceId: () => string | null;
-	getActiveWorkspacePath: () => string | null;
-	getWorkspacePathById: (workspaceId: string) => string | null;
-	rememberWorkspace: (workspaceId: string, repoPath: string) => void;
-	getActiveRuntimeConfig: () => RuntimeConfigState;
-	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
-	loadScopedRuntimeConfig: (scope: WorkspaceRegistryScope) => Promise<RuntimeConfigState>;
-	getTerminalManagerForWorkspace: (workspaceId: string) => TerminalSessionManager | null;
-	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
-	setActiveWorkspace: (workspaceId: string, repoPath: string) => Promise<void>;
-	clearActiveWorkspace: () => void;
+export interface WorkspaceRegistry
+	extends IWorkspaceResolver,
+		ITerminalManagerProvider,
+		IRuntimeConfigProvider,
+		IWorkspaceDataProvider {
 	disposeWorkspace: (
 		workspaceId: string,
 		options?: DisposeWorkspaceRegistryOptions,
@@ -71,17 +70,6 @@ export interface WorkspaceRegistry {
 		terminalManager: TerminalSessionManager | null;
 		workspacePath: string | null;
 	};
-	summarizeProjectTaskCounts: (workspaceId: string, repoPath: string) => Promise<RuntimeProjectTaskCounts>;
-	createProjectSummary: (input: {
-		workspaceId: string;
-		repoPath: string;
-		taskCounts: RuntimeProjectTaskCounts;
-	}) => RuntimeProjectSummary;
-	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
-	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<{
-		currentProjectId: string | null;
-		projects: RuntimeProjectSummary[];
-	}>;
 	resolveWorkspaceForStream: (
 		requestedWorkspaceId: string | null,
 		options?: {

@@ -195,14 +195,19 @@ describe("createWorkspaceApi loadChanges", () => {
 		};
 
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		await api.loadChanges(
@@ -249,14 +254,19 @@ describe("createWorkspaceApi loadChanges", () => {
 		};
 
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => terminalManager as never),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		await api.loadChanges(
@@ -288,14 +298,19 @@ describe("createWorkspaceApi loadChanges", () => {
 		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(emptyResponse);
 
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		const response = await api.loadChanges(
@@ -317,14 +332,19 @@ describe("createWorkspaceApi loadChanges", () => {
 
 	it("diffs fromRef against working tree when toRef is omitted (task-scoped)", async () => {
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		await api.loadChanges(
@@ -341,14 +361,19 @@ describe("createWorkspaceApi loadChanges", () => {
 
 	it("diffs fromRef against working tree when toRef is omitted (home repo)", async () => {
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		await api.loadChanges(
@@ -371,14 +396,19 @@ describe("createWorkspaceApi loadChanges", () => {
 		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(emptyResponse);
 
 		const api = createWorkspaceApi({
-			ensureTerminalManagerForWorkspace: vi.fn(),
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			broadcastRuntimeProjectsUpdated: vi.fn(),
-			broadcastTaskTitleUpdated: vi.fn(),
-			buildWorkspaceStateSnapshot: vi.fn(),
-			setFocusedTask: vi.fn(),
-			requestTaskRefresh: vi.fn(),
-			requestHomeRefresh: vi.fn(),
+			terminals: {
+				getTerminalManagerForWorkspace: vi.fn(() => null),
+				ensureTerminalManagerForWorkspace: vi.fn(),
+			},
+			broadcaster: {
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastRuntimeProjectsUpdated: vi.fn(),
+				broadcastTaskTitleUpdated: vi.fn(),
+				setFocusedTask: vi.fn(),
+				requestTaskRefresh: vi.fn(),
+				requestHomeRefresh: vi.fn(),
+			},
+			data: { buildWorkspaceStateSnapshot: vi.fn() },
 		});
 
 		const response = await api.loadChanges(
@@ -393,14 +423,19 @@ describe("createWorkspaceApi loadChanges", () => {
 
 function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 	return {
-		ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
-		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-		broadcastRuntimeProjectsUpdated: vi.fn(),
-		broadcastTaskTitleUpdated: vi.fn(),
-		buildWorkspaceStateSnapshot: vi.fn(),
-		setFocusedTask: vi.fn(),
-		requestTaskRefresh: vi.fn(),
-		requestHomeRefresh: vi.fn(),
+		terminals: {
+			getTerminalManagerForWorkspace: vi.fn(() => null),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
+		},
+		broadcaster: {
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			setFocusedTask: vi.fn(),
+			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
+		},
+		data: { buildWorkspaceStateSnapshot: vi.fn() },
 		...overrides,
 	};
 }
@@ -755,8 +790,8 @@ describe("createWorkspaceApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(deps.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 
 	it("returns error on git failure", async () => {
@@ -849,7 +884,7 @@ describe("createWorkspaceApi discardFile", () => {
 			fileStatus: "modified",
 		});
 
-		expect(deps.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated).not.toHaveBeenCalled();
 	});
 });

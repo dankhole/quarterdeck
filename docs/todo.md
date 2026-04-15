@@ -169,8 +169,8 @@ Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.m
 - ~~Convert `RuntimeStateHub` to class~~ — 550-line factory → `RuntimeStateHubImpl` extending `Disposable`
 - ~~Convert `RuntimeApi` to class~~ — 615-line factory → `RuntimeApiImpl` class (handler file split deferred)
 - Split `RuntimeApi` handlers into individual files under `src/trpc/handlers/`
-- Define shared service interfaces (`ITerminalManagerProvider`, `IRuntimeBroadcaster`, `IWorkspaceResolver`, `IRuntimeConfigProvider`) — eliminate 8 duplicated ad-hoc dependency interfaces, make the dependency graph visible via constructor signatures
-- Message factory functions + typed WebSocket dispatch map — replace inline spread/ternary construction and 110-line if/else dispatch chain
+- ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider` replace 4 bespoke dependency bags
+- ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
 **Frontend (section 8):**
 8. Split App.tsx into ~6 Context providers — in progress: ~~DialogContext~~, ~~ProjectContext~~, ~~BoardContext~~ done; TerminalProvider, GitProvider, InteractionsProvider, AppProviders compositor remain

@@ -8,8 +8,8 @@ import type {
 import { parseHookIngestRequest } from "../core/api-validation";
 import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
+import type { IRuntimeBroadcaster, ITerminalManagerProvider, IWorkspaceResolver } from "../core/service-interfaces";
 import { loadWorkspaceContextById } from "../state/workspace-state";
-import type { TerminalSessionManager } from "../terminal/session-manager";
 import { isPermissionActivity } from "../terminal/session-reconciliation";
 import { canReturnToRunning } from "../terminal/session-state-machine";
 import type { SessionSummaryStore } from "../terminal/session-summary-store";
@@ -44,10 +44,9 @@ function applyConversationSummaryFromMetadata(
 }
 
 export interface CreateHooksApiDependencies {
-	getWorkspacePathById: (workspaceId: string) => string | null;
-	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
-	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
-	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
+	workspaces: Pick<IWorkspaceResolver, "getWorkspacePathById">;
+	terminals: ITerminalManagerProvider;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeWorkspaceStateUpdated" | "broadcastTaskReadyForReview">;
 	captureTaskTurnCheckpoint?: (input: {
 		cwd: string;
 		taskId: string;
@@ -88,7 +87,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
 				};
 				log.info("Hook ingest received", { taskId, ...hookReceivedData });
-				const knownWorkspacePath = deps.getWorkspacePathById(workspaceId);
+				const knownWorkspacePath = deps.workspaces.getWorkspacePathById(workspaceId);
 				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
 				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
 				if (!workspacePath) {
@@ -98,7 +97,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				const manager = await deps.ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
+				const manager = await deps.terminals.ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
 				const { store } = manager;
 				const summary = store.getSummary(taskId);
 				if (!summary) {
@@ -250,9 +249,9 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// triggered retries while the state transition has already succeeded.
 				// The checkpoint fires in the background and applies via store.update
 				// which triggers onChange listeners for downstream consumers.
-				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				void deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				if (event === "to_review") {
-					deps.broadcastTaskReadyForReview(workspaceId, taskId);
+					deps.broadcaster.broadcastTaskReadyForReview(workspaceId, taskId);
 
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;

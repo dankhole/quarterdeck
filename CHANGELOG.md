@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Refactor: C#-style readability — phase 3 (shared service interfaces, message factories, dispatch map)
+
+- Created 5 shared service interfaces in `src/core/service-interfaces.ts` (`IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider`) — replaces 4 bespoke `Create*Dependencies` bags that each re-declared the same function signatures. `RuntimeStateHub` extends `IRuntimeBroadcaster`; `WorkspaceRegistry` extends the 4 workspace interfaces. API consumers accept nested `{ config, broadcaster, terminals, workspaces, data }` objects instead of flat function plucking.
+- Extracted 11 message factory functions into `src/server/runtime-state-messages.ts` — all 14 inline `satisfies` object constructions in `RuntimeStateHub` replaced with one-liner factory calls.
+- Created typed WebSocket dispatch map (`web-ui/src/runtime/runtime-stream-dispatch.ts`) — compiler-enforced handler map keyed by message type replaces the 110-line if/else chain in `use-runtime-state-stream.ts`. Adding a new message type causes a compile error until a handler is added.
+- Simplified `runtime-server.ts` wiring from 42 individually plucked functions to passing service objects directly. Removed redundant `ensureTerminalManagerForWorkspace` from server deps (available via `workspaceRegistry`).
+
 ### Fix: terminal scroll flash when switching to stale tasks
 
 - Switching to a task whose terminal slot was evicted from the pool caused the entire chat history to visibly scroll past as xterm rendered the restore snapshot. mount() now defers visibility when restoreCompleted is false — the terminal stays hidden until the snapshot is fully written and scrolled to bottom, then appears instantly.

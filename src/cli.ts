@@ -461,7 +461,6 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		warn: (message) => {
 			console.warn(`[quarterdeck] ${message}`);
 		},
-		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
 		runCommand: runScopedCommand,
 		resolveProjectInputPath,

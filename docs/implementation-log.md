@@ -2,6 +2,35 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: C#-style readability phase 3 — shared service interfaces and message factories (2026-04-14)
+
+Phase 3 of the 8-item readability roadmap (`docs/refactor-csharp-readability.md`, items 6 & 7). Makes the dependency graph visible via shared interfaces and centralizes message construction.
+
+**Shared service interfaces (`src/core/service-interfaces.ts`):**
+- `IRuntimeBroadcaster` (9 methods) — broadcasting to browser clients. Implemented by `RuntimeStateHub`.
+- `ITerminalManagerProvider` (2 methods) — terminal manager access per workspace. Implemented by `WorkspaceRegistry`.
+- `IWorkspaceResolver` (6 methods) — workspace identity/path resolution. Implemented by `WorkspaceRegistry`.
+- `IRuntimeConfigProvider` (3 methods) — config load/save at global and workspace scope. Implemented by `WorkspaceRegistry`.
+- `IWorkspaceDataProvider` (4 methods) — workspace/project snapshot building. Implemented by `WorkspaceRegistry`.
+
+`RuntimeStateHub` interface now `extends IRuntimeBroadcaster` — 9 duplicate method signatures removed. `WorkspaceRegistry` interface now extends all 4 workspace-side interfaces — ~20 duplicate signatures removed.
+
+All 4 API consumers restructured:
+- `CreateRuntimeApiDependencies`: 11 flat deps → `{ config, broadcaster, getActiveWorkspaceId, getScopedTerminalManager, resolveInteractiveShellCommand, runCommand }`
+- `CreateWorkspaceApiDependencies`: 8 flat deps → `{ terminals, broadcaster, data }`
+- `CreateHooksApiDependencies`: 6 flat deps → `{ workspaces, terminals, broadcaster, captureTaskTurnCheckpoint?, deleteTaskTurnCheckpointRef? }`
+- `CreateProjectsApiDependencies`: 16 flat deps → `{ workspaces, terminals, broadcaster, data, resolveProjectInputPath, assertPathIsDirectory, hasGitRepository, disposeWorkspace, collectProjectWorktreeTaskIdsForRemoval, warn, pickDirectoryPathFromSystemDialog }`
+
+`runtime-server.ts` wiring simplified — passes `deps.workspaceRegistry` and `deps.runtimeStateHub` as service objects instead of plucking 42 individual functions. Removed `ensureTerminalManagerForWorkspace` from `CreateRuntimeServerDependencies`.
+
+**Message factory functions (`src/server/runtime-state-messages.ts`):**
+11 factory functions (`buildSnapshotMessage`, `buildWorkspaceStateUpdatedMessage`, `buildWorkspaceMetadataUpdatedMessage`, `buildProjectsUpdatedMessage`, `buildTaskSessionsUpdatedMessage`, `buildTaskReadyForReviewMessage`, `buildTaskTitleUpdatedMessage`, `buildTaskNotificationMessage`, `buildErrorMessage`, `buildDebugLoggingStateMessage`, `buildDebugLogBatchMessage`). All 14 inline `satisfies` object constructions in `RuntimeStateHub` replaced with one-liner calls.
+
+**WebSocket dispatch map (`web-ui/src/runtime/runtime-stream-dispatch.ts`):**
+Typed handler map keyed by `RuntimeStateStreamMessage["type"]`. Compiler enforces completeness — every discriminant must have a handler. `StreamDispatchContext` provides mutable connection state (`activeWorkspaceId`, reconnect trigger). Replaces the 110-line sequential if/else chain in `use-runtime-state-stream.ts`. `resolveProjectIdAfterProjectsUpdate` moved here.
+
+**Files**: `src/core/service-interfaces.ts` (new), `src/server/runtime-state-messages.ts` (new), `web-ui/src/runtime/runtime-stream-dispatch.ts` (new), `src/server/runtime-state-hub.ts`, `src/server/workspace-registry.ts`, `src/server/runtime-server.ts`, `src/cli.ts`, `src/trpc/runtime-api.ts`, `src/trpc/workspace-api.ts`, `src/trpc/hooks-api.ts`, `src/trpc/projects-api.ts`, `web-ui/src/runtime/use-runtime-state-stream.ts`, `test/runtime/trpc/hooks-api.test.ts`, `test/runtime/trpc/runtime-api.test.ts`, `test/runtime/trpc/workspace-api.test.ts`, `test/runtime/trpc/workspace-api-conflict.test.ts`, `test/runtime/trpc/workspace-api-stash.test.ts`
+
 ## Fix: terminal scroll flash when switching to stale tasks (2026-04-14)
 
 When switching to a task whose terminal pool slot had been evicted, the full restore snapshot was written to xterm while the terminal element was already visible. xterm renders `terminal.write()` data incrementally across animation frames, so the user saw the entire chat history scroll past before landing at the bottom.

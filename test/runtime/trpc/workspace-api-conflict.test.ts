@@ -135,14 +135,21 @@ import { createWorkspaceApi } from "../../../src/trpc/workspace-api";
 
 function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 	return {
-		ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
-		broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-		broadcastRuntimeProjectsUpdated: vi.fn(),
-		broadcastTaskTitleUpdated: vi.fn(),
-		buildWorkspaceStateSnapshot: vi.fn(),
-		setFocusedTask: vi.fn(),
-		requestTaskRefresh: vi.fn(),
-		requestHomeRefresh: vi.fn(),
+		terminals: {
+			getTerminalManagerForWorkspace: vi.fn(() => null),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({}) as never),
+		},
+		broadcaster: {
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			broadcastTaskTitleUpdated: vi.fn(),
+			setFocusedTask: vi.fn(),
+			requestTaskRefresh: vi.fn(),
+			requestHomeRefresh: vi.fn(),
+		},
+		data: {
+			buildWorkspaceStateSnapshot: vi.fn(),
+		},
 		...overrides,
 	};
 }
@@ -300,6 +307,6 @@ describe("createWorkspaceApi conflict resolution", () => {
 			resolution: "theirs",
 		});
 
-		expect(deps.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
 	});
 });
