@@ -2,6 +2,27 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feat: state backup system with periodic snapshots (2026-04-14)
+
+Motivated by a full `~/.quarterdeck/` wipe incident on 2026-04-14 that destroyed all board state, settings, and session history across all projects. Backups are stored in `~/.quarterdeck-backups/` (sibling directory) so they survive the thing they protect against.
+
+**Core module (`src/state/state-backup.ts`):**
+`createBackup()` copies critical state files into a timestamped directory. The manifest (`manifest.json`) is written last as a commit signal — incomplete backups (crash during copy) have no manifest and are ignored by `listBackups()`. Failed backups clean up their partial directory. `restoreBackup()` copies files back from a backup into `~/.quarterdeck/`, creating directories as needed. `pruneBackups()` retains the N most recent (default 10).
+
+**Periodic backups:**
+`startPeriodicBackups(intervalMinutes)` starts an `unref`'d interval timer. Each tick computes a fingerprint from mtime+size of all state files — if nothing changed since the last backup, it skips. Race condition on first tick handled: if the initial async fingerprint capture hasn't completed yet, the tick captures it and returns without creating a redundant backup.
+
+**CLI (`src/commands/backup.ts`):**
+`quarterdeck backup create` (manual), `quarterdeck backup list` (show all with timestamp/trigger/workspace count), `quarterdeck backup restore [name]` (defaults to most recent).
+
+**Server integration (`src/cli.ts`):**
+Startup backup created non-blocking (fire-and-forget) in Phase 4 before any mutations. Periodic timer started from `activeConfig.backupIntervalMinutes`. Timer stopped in shutdown handler.
+
+**Config field (`src/config/global-config-fields.ts`):**
+`backupIntervalMinutes: numField(30)` — added to field registry, Zod response/save schemas, and test fixtures.
+
+**Files**: `src/state/state-backup.ts` (new), `src/commands/backup.ts` (new), `src/cli.ts`, `src/config/global-config-fields.ts`, `src/core/api/config.ts`, `test/runtime/config/runtime-config.test.ts`, `web-ui/src/test-utils/runtime-config-factory.ts`
+
 ## Refactor: C#-style readability phase 3 — shared service interfaces and message factories (2026-04-14)
 
 Phase 3 of the 8-item readability roadmap (`docs/refactor-csharp-readability.md`, items 6 & 7). Makes the dependency graph visible via shared interfaces and centralizes message construction.

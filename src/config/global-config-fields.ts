@@ -133,6 +133,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	eventLogEnabled: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	defaultBaseRef: stringField(""),
+	backupIntervalMinutes: numField(30),
 } as const;
 
 // --- Derived types ---

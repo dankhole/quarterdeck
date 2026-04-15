@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Feat: state backup system with periodic snapshots
+
+- Added automatic state backup system that snapshots critical files (`config.json`, `workspaces/index.json`, per-workspace `board.json`, `sessions.json`, `meta.json`, `pinned-branches.json`) to `~/.quarterdeck-backups/` — a sibling directory that survives a wipe of `~/.quarterdeck/`.
+- Backups are created automatically on server startup and periodically (default every 30 minutes, configurable via `backupIntervalMinutes`). Periodic backups use mtime+size fingerprinting to skip no-op snapshots when nothing has changed.
+- CLI commands: `quarterdeck backup create` (manual snapshot), `quarterdeck backup list` (show available backups), `quarterdeck backup restore [name]` (restore from a backup). Automatic pruning retains the 10 most recent backups.
+- Backup location overridable via `QUARTERDECK_BACKUP_HOME` environment variable.
+
 ### Refactor: C#-style readability — phase 3 (shared service interfaces, message factories, dispatch map)
 
 - Created 5 shared service interfaces in `src/core/service-interfaces.ts` (`IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider`) — replaces 4 bespoke `Create*Dependencies` bags that each re-declared the same function signatures. `RuntimeStateHub` extends `IRuntimeBroadcaster`; `WorkspaceRegistry` extends the 4 workspace interfaces. API consumers accept nested `{ config, broadcaster, terminals, workspaces, data }` objects instead of flat function plucking.

@@ -69,6 +69,7 @@ export const runtimeConfigResponseSchema = z.object({
 	eventLogEnabled: z.boolean(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
 	defaultBaseRef: z.string(),
+	backupIntervalMinutes: z.number(),
 	llmConfigured: z.boolean(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
@@ -125,5 +126,6 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	eventLogEnabled: z.boolean().optional(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
 	defaultBaseRef: z.string().optional(),
+	backupIntervalMinutes: z.number().min(0).optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;

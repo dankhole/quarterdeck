@@ -4,6 +4,7 @@ import { createServer as createNetServer, Socket as NetSocket } from "node:net";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
+import { registerBackupCommand } from "./commands/backup";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
 import { registerTaskCommand } from "./commands/task";
@@ -365,6 +366,7 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		{ listWorkspaceIndexEntries },
 		{ initEventLog, setEventLogEnabled },
 		{ setLogLevel },
+		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -377,6 +379,7 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		import("./state/workspace-state.js"),
 		import("./core/event-log.js"),
 		import("./core/debug-logger.js"),
+		import("./state/state-backup.js"),
 	]);
 
 	const cleanupWarn = (message: string): void => {
@@ -426,6 +429,16 @@ async function startServer(): Promise<RuntimeServerHandle> {
 	const activeConfig = workspaceRegistry.getActiveRuntimeConfig();
 	setEventLogEnabled(activeConfig.eventLogEnabled);
 	setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
+
+	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
+	createBackup({ trigger: "startup" })
+		.then((path) => {
+			if (path) {
+				console.log(`[quarterdeck] Startup backup created: ${path}`);
+			}
+		})
+		.catch(() => {});
+	startPeriodicBackups(activeConfig.backupIntervalMinutes);
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
 		getActivePollIntervals: () => {
@@ -476,6 +489,7 @@ async function startServer(): Promise<RuntimeServerHandle> {
 	};
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
+		stopPeriodicBackups();
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
@@ -637,6 +651,7 @@ function createProgram(invocationArgs: string[]): Command {
 	registerTaskCommand(program);
 	registerHooksCommand(program);
 	registerStatuslineCommand(program);
+	registerBackupCommand(program);
 
 	program
 		.command("mcp")
