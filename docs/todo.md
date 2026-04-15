@@ -187,7 +187,7 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 
 ## Organize web-ui hooks directory
 
-The `web-ui/src/hooks/` folder has 57+ files in a flat structure. Group related hooks into subdirectories by domain (e.g. `hooks/terminal/`, `hooks/git/`, `hooks/settings/`, `hooks/board/`).
+Full plan at [docs/refactor-hooks-directory.md](refactor-hooks-directory.md). Three phases: subdirectory reorg (mechanical file moves into board/git/terminal/project/notifications), domain logic extraction (separate pure TS modules from React wiring), and conventions update to `web-ui-conventions.md` to prevent re-bloating. Phase 1 is ~2 hours of mechanical work best done in a low-activity window.
 
 ## Keep task base ref in sync with branch changes
 
