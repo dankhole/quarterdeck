@@ -2,6 +2,33 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: split RuntimeApi handlers into individual files (2026-04-14)
+
+Completes section 5 of the readability roadmap (`docs/refactor-csharp-readability.md`). The class conversion to `RuntimeApiImpl` was done in phase 2, but all 11 handler methods were still in one 620-line file. This split extracts each handler into its own file under `src/trpc/handlers/`, leaving `RuntimeApiImpl` as a ~90-line thin dispatcher.
+
+**Handler files created (`src/trpc/handlers/`):**
+- `load-config.ts` — config loading at global or workspace scope
+- `save-config.ts` — config save with poll interval + log level broadcast
+- `start-task-session.ts` — agent session startup with worktree resolution, branch awareness, turn checkpoints
+- `stop-task-session.ts` — session stop with optional wait-for-exit
+- `send-task-session-input.ts` — write text input to a running session
+- `start-shell-session.ts` — interactive shell session in workspace or task worktree
+- `run-command.ts` — one-shot command execution
+- `set-log-level.ts` — debug log level change + broadcast
+- `flag-task-for-debug.ts` — emit debug event for a task session
+- `open-file.ts` — open file in system browser/editor
+- `migrate-task-working-directory.ts` — isolate/de-isolate task between main checkout and worktree (largest handler, ~260 lines)
+
+Each handler exports a standalone async function with an explicit `*Deps` interface declaring only the dependencies it actually uses. `RuntimeApiImpl` methods become one-liner delegations that pass `this.deps`.
+
+**What did NOT change:**
+- `CreateRuntimeApiDependencies` interface — unchanged, still the full dependency bag for the class
+- `app-router.ts` — unchanged, still calls `ctx.runtimeApi.*` methods
+- `app-router-context.ts` — unchanged, the `RuntimeApi` type contract is the same
+- Test file (`test/runtime/trpc/runtime-api.test.ts`) — unchanged, tests exercise `createRuntimeApi()` which returns the same `RuntimeApiImpl` instance. The vi.mock paths point at the same source modules the handlers import, so mocks work without modification.
+
+**Files**: `src/trpc/runtime-api.ts` (rewritten from 620 → ~90 lines), `src/trpc/handlers/` (11 new files)
+
 ## Feat: state backup system with periodic snapshots (2026-04-14)
 
 Motivated by a full `~/.quarterdeck/` wipe incident on 2026-04-14 that destroyed all board state, settings, and session history across all projects. Backups are stored in `~/.quarterdeck-backups/` (sibling directory) so they survive the thing they protect against.

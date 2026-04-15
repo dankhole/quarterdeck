@@ -15,6 +15,7 @@
 - Extracted 11 message factory functions into `src/server/runtime-state-messages.ts` — all 14 inline `satisfies` object constructions in `RuntimeStateHub` replaced with one-liner factory calls.
 - Created typed WebSocket dispatch map (`web-ui/src/runtime/runtime-stream-dispatch.ts`) — compiler-enforced handler map keyed by message type replaces the 110-line if/else chain in `use-runtime-state-stream.ts`. Adding a new message type causes a compile error until a handler is added.
 - Simplified `runtime-server.ts` wiring from 42 individually plucked functions to passing service objects directly. Removed redundant `ensureTerminalManagerForWorkspace` from server deps (available via `workspaceRegistry`).
+- Split `RuntimeApiImpl` handler methods into 11 individual files under `src/trpc/handlers/` — `RuntimeApiImpl` is now a ~90-line thin dispatcher that delegates to standalone handler functions, each with explicit dependency interfaces. Completes section 5 of the readability roadmap.
 
 ### Fix: terminal scroll flash when switching to stale tasks
 

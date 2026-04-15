@@ -167,8 +167,8 @@ Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.m
 - ~~Named types~~ — replaced `ReturnType<typeof>` gymnastics across 11 sites with navigable named types
 - ~~IDisposable + DisposableStore~~ — created `src/core/disposable.ts` (~70 lines), adopted by RuntimeStateHub
 - ~~Convert `RuntimeStateHub` to class~~ — 550-line factory → `RuntimeStateHubImpl` extending `Disposable`
-- ~~Convert `RuntimeApi` to class~~ — 615-line factory → `RuntimeApiImpl` class (handler file split deferred)
-- Split `RuntimeApi` handlers into individual files under `src/trpc/handlers/`
+- ~~Convert `RuntimeApi` to class~~ — 615-line factory → `RuntimeApiImpl` class
+- ~~Split `RuntimeApi` handlers into individual files under `src/trpc/handlers/`~~ — 11 handler files, `RuntimeApiImpl` is a thin dispatcher
 - ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider` replace 4 bespoke dependency bags
 - ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
