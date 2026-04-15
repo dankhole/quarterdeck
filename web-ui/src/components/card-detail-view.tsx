@@ -1,6 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useMemo, useRef } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 import { ConflictBanner } from "@/components/conflict-banner";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
@@ -69,18 +68,6 @@ function TaskBranchStatus({
 				</span>
 			) : null}
 		</div>
-	);
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-	if (!(target instanceof HTMLElement)) {
-		return false;
-	}
-	return (
-		target.tagName === "INPUT" ||
-		target.tagName === "TEXTAREA" ||
-		target.isContentEditable ||
-		target.closest(".xterm") != null
 	);
 }
 
@@ -267,32 +254,6 @@ export function CardDetailView({
 	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
 	const isTaskSidePanelOpen = sidebar === "task_column" || sidebar === "commit";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
-
-	const handleSelectAdjacentCard = useCallback(
-		(step: number) => {
-			const cards = selection.column.cards;
-			const currentIndex = cards.findIndex((card) => card.id === selection.card.id);
-			if (currentIndex === -1) return;
-			const nextIndex = (currentIndex + step + cards.length) % cards.length;
-			const nextCard = cards[nextIndex];
-			if (nextCard) onCardSelect(nextCard.id);
-		},
-		[onCardSelect, selection.card.id, selection.column.cards],
-	);
-
-	useHotkeys(
-		"up,left",
-		() => handleSelectAdjacentCard(-1),
-		{ ignoreEventWhen: (event) => isTypingTarget(event.target), preventDefault: true },
-		[handleSelectAdjacentCard],
-	);
-
-	useHotkeys(
-		"down,right",
-		() => handleSelectAdjacentCard(1),
-		{ ignoreEventWhen: (event) => isTypingTarget(event.target), preventDefault: true },
-		[handleSelectAdjacentCard],
-	);
 
 	// The component renders as a wrapper div whose children are the side panel + right column.
 	// The wrapper is a flex row that fills the parent container.

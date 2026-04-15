@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: remove arrow key task cycling
+
+- Removed the `useHotkeys` bindings that cycled task selection on up/down/left/right arrow keys. The original fix (suppressing inside `.xterm`) was too narrow — focus could land on the terminal panel wrapper, toolbar, or other elements outside the `.xterm` DOM, causing arrow keys to unexpectedly switch the selected task. Removed the feature entirely: `isTypingTarget` helper, `handleSelectAdjacentCard` callback, both hotkey bindings, and the `react-hotkeys-hook` import from `card-detail-view.tsx`.
+
 ### Refactor: complete provider shapes and AppProviders compositor — phase 8 step 5
 
 - Created `TerminalContext` (`web-ui/src/providers/terminal-provider.tsx`) — context shape for terminal panel state (`useTerminalPanels` result), connection readiness (`useTerminalConnectionReady`), and derived metadata (home/detail terminal summaries, subtitles, visibility flag).

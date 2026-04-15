@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: remove arrow key task cycling (2026-04-15)
+
+Arrow keys (up/down/left/right) were bound via `useHotkeys` to cycle through task cards in `CardDetailView`. A previous fix (commit 43e08617) added a `.xterm` closest check to suppress this inside terminals, but the guard was too narrow — focus on the terminal panel wrapper (`kb-terminal-container`), toolbar buttons, or other non-xterm elements still triggered task cycling. Rather than expanding the guard to cover every possible focus target, removed the feature entirely.
+
+**Removed:**
+- `isTypingTarget()` helper function
+- `handleSelectAdjacentCard` callback
+- Two `useHotkeys` bindings (`up,left` and `down,right`)
+- `react-hotkeys-hook` import (no other usages in this file)
+
+**Also removed:** "Debug logging window trash button doesn't stop logging" todo item (doc cleanup).
+
+**Files touched:**
+- `web-ui/src/components/card-detail-view.tsx` (removed ~25 lines)
+- `docs/todo.md` (removed debug logging todo)
+- `CHANGELOG.md` (new entry)
+
 ## Refactor: complete provider shapes and AppProviders compositor (2026-04-15)
 
 Phase 8, step 5 of the readability roadmap. Completes all 6 provider context shapes and the compositor, leaving state migration as the remaining work.
