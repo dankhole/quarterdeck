@@ -36,15 +36,17 @@ Four small fixes to the terminal pool landed in the same commit:
 
 **Files**: `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/use-persistent-terminal-session.ts`, `web-ui/src/App.tsx`.
 
-## Refactor: begin App.tsx context provider extraction — DialogContext (2026-04-14)
+## Refactor: App.tsx context provider extraction — DialogContext + ProjectContext (2026-04-14)
 
-First incremental step of the App.tsx provider split (section 8 of `docs/refactor-csharp-readability.md`). The goal is to progressively move state from App.tsx into React Context providers so child components can `useContext()` instead of receiving props drilled through 4-5 layers.
+Steps 1 and 2 of the App.tsx provider split (section 8 of `docs/refactor-csharp-readability.md`). The goal is to progressively move state from App.tsx into React Context providers so child components can `useContext()` instead of receiving props drilled through 4-5 layers.
 
-**Approach**: Rather than hoisting hooks into a `<DialogProvider>` component (which would break same-component consumers like `useAppHotkeys` that read `handleOpenSettings`), the context value is constructed in App.tsx via `useMemo` and provided inline via `<DialogContext.Provider>`. This lets child components opt into context reads while the hooks stay put — zero risk of breaking the data flow.
+**Approach**: Rather than hoisting hooks into provider components (which would break same-component consumers like `useAppHotkeys` that read `handleOpenSettings`), context values are constructed in App.tsx via `useMemo` and provided inline. This lets child components opt into context reads while the hooks stay put — zero risk of breaking the data flow.
 
-**What moved**: The `DebugLogPanel` (22 prop lines) and `DebugDialog` (6 prop lines) JSX blocks were extracted into a `DebugShelf` component that reads from `useDialogContext()`. These two were chosen because they depend exclusively on dialog/debug state with no cross-dependencies on board, terminal, or git state.
+**Step 1 — DialogContext**: The `DebugLogPanel` (22 prop lines) and `DebugDialog` (6 prop lines) JSX blocks were extracted into a `DebugShelf` component that reads from `useDialogContext()`. These two were chosen because they depend exclusively on dialog/debug state with no cross-dependencies on board, terminal, or git state.
 
-**Files**: `web-ui/src/providers/dialog-provider.tsx` (new, 52 lines — context shape + consumer hook), `web-ui/src/components/debug-shelf.tsx` (new, 53 lines — DebugLogPanel + DebugDialog rendering), `web-ui/src/App.tsx` (modified — added context value construction, wrapped JSX in provider, replaced inline debug JSX with `<DebugShelf />`; net -32 lines from JSX, +48 total including context plumbing).
+**Step 2 — ProjectContext**: Introduces `ProjectContext` containing everything from `useProjectNavigation` (24 fields), both `useRuntimeProjectConfig` results (current project + settings scope), `useStartupOnboarding`, `useQuarterdeckAccessGate`, all config-derived booleans/values (shortcuts, pinned branches, notification settings, terminal config, etc.), and config mutation callbacks (`handleTogglePinBranch`, `handleSkipTaskCheckoutConfirmationChange`, `handleSetDefaultBaseRef`, `saveTrashWorktreeNoticeDismissed`). The `ProjectContextValue` interface uses indexed access types (`UseProjectNavigationResult["currentProjectId"]`) to stay in sync with hook return types. `agentCommand` declaration was moved earlier in App.tsx since the `projectContextValue` useMemo references it. Extracted `ProjectDialogs` component to render `StartupOnboardingDialog` and `GitInitDialog` from context.
+
+**Files**: `web-ui/src/providers/dialog-provider.tsx` (new), `web-ui/src/components/debug-shelf.tsx` (new), `web-ui/src/providers/project-provider.tsx` (new, 104 lines — context shape + consumer hook), `web-ui/src/components/project-dialogs.tsx` (new, 48 lines — StartupOnboardingDialog + GitInitDialog rendering), `web-ui/src/App.tsx` (modified — added both context value constructions, wrapped JSX in both providers, replaced inline dialogs with extracted components).
 
 ## Perf: replace per-task xterm instances with fixed 4-slot terminal pool (2026-04-14)
 
