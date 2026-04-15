@@ -1,5 +1,6 @@
 import type { ITerminalOptions } from "@xterm/xterm";
 
+import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-slot";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 
 interface CreateQuarterdeckTerminalOptionsInput {
@@ -19,7 +20,7 @@ export function createQuarterdeckTerminalOptions({
 	cursorColor,
 	fontWeight,
 	isMacPlatform,
-	scrollback = 10_000,
+	scrollback = TERMINAL_SCROLLBACK,
 	terminalBackgroundColor,
 }: CreateQuarterdeckTerminalOptionsInput): ITerminalOptions {
 	return {

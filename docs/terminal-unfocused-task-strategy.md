@@ -1,7 +1,7 @@
 # Terminal Unfocused Task Strategy
 
 **Date**: 2026-04-13
-**Status**: Design documented, not yet implemented
+**Status**: Part 1 (visibility toggle) and Part 2 (IO socket management) implemented
 
 ## Problem
 

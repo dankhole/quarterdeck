@@ -2,6 +2,24 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Perf: replace per-task xterm instances with fixed 4-slot terminal pool (2026-04-14)
+
+Replaced the unbounded `Map<string, PersistentTerminal>` registry (one xterm Terminal + two WebSockets per task) with a fixed pool of 4 `TerminalSlot` instances that are connected/disconnected as tasks are viewed. The old system created terminals on demand and never released them until a project switch — with 10+ running agents, this meant 10+ xterm canvases, 20+ WebSockets, and 10× scrollback buffers all alive simultaneously.
+
+**Architecture**: `terminal-pool.ts` manages pool state via a role state machine (FREE → PRELOADING → READY → ACTIVE → PREVIOUS). `terminal-slot.ts` (renamed from `persistent-terminal-manager.ts`) is the xterm wrapper class, now with `connectToTask()`/`disconnectFromTask()` lifecycle methods instead of being permanently bound to one task at construction. The key design decision in `disconnectFromTask` is synchronous state clearing (sockets, taskId, subscribers, callbacks) before the async write-queue drain, with a post-await guard (`if (!this.taskId) terminal.reset()`) that prevents the async tail from clobbering a new connection if the pool reuses the slot immediately.
+
+**Warmup**: Hovering a board card calls `warmup(taskId, workspaceId)` which allocates a FREE slot, opens WebSockets, and begins the restore handshake (PRELOADING). When the server restore completes, the slot transitions to READY. If `acquireForTask` is called (user clicks the card), PRELOADING or READY promotes directly to ACTIVE without a new socket connection. If the user moves away, the warmup auto-cancels after 3 seconds. Eviction priority: FREE → oldest PRELOADING → oldest READY. ACTIVE and PREVIOUS are never evicted.
+
+**Server-side change**: `ws-server.ts` output listener now only buffers `pendingOutputChunks` when `viewerState.ioSocket` is non-null. Previously, output was buffered unconditionally for every registered viewer, even those whose IO socket was intentionally closed (pool-evicted slots). Over long agent sessions this caused unbounded memory growth. The restore snapshot on reconnect provides full terminal state, making the buffered chunks redundant.
+
+**Scrollback**: Reduced from 10,000 to 3,000 on both client (`terminal-slot.ts:TERMINAL_SCROLLBACK`) and server (`session-manager.ts`, `terminal-state-mirror.ts`). With 4 pre-allocated terminals this is 12K lines total vs 100K+ in the old system.
+
+**Dedicated terminals**: Home shell and dev shells (identified by `isDedicatedTerminalTaskId`) are managed separately in `dedicatedTerminals` Map, outside the pool. They have their own create/dispose lifecycle and are cleaned up per-workspace on project switch.
+
+**Rotation**: A 3-minute interval replaces the oldest FREE slot with a fresh `TerminalSlot` to prevent xterm.js canvas/WebGL resource staleness over long sessions.
+
+**Files**: `web-ui/src/terminal/terminal-pool.ts` (new, 650 lines), `web-ui/src/terminal/terminal-slot.ts` (renamed+modified, 1155 lines), `web-ui/src/terminal/terminal-pool.test.ts` (new, 912 lines), `web-ui/src/terminal/terminal-registry.ts` (deleted), `web-ui/src/terminal/use-persistent-terminal-session.ts` (bifurcated into dedicated/pool paths), `web-ui/src/terminal/use-persistent-terminal-session.test.tsx` (updated), `src/terminal/ws-server.ts`, `src/terminal/session-manager.ts`, `src/terminal/terminal-state-mirror.ts`, `web-ui/src/App.tsx`, `web-ui/src/components/board-card.tsx`, `web-ui/src/components/board-column.tsx`, `web-ui/src/state/card-actions-context.tsx`, `web-ui/src/hooks/use-project-switch-cleanup.ts`, plus terminal-options, display-sections, and other import updates.
+
 ## Fix: simplify notification settings — merge completion into review (2026-04-14)
 
 Removed the `completion` notification event type entirely, folding its behavior into `review`. The two events were confusing because both fire when a task lands in `awaiting_review` — the only difference was whether the agent exited cleanly (completion) vs. hit a hook (review). Users had to manage separate toggles for what is functionally the same intent: "tell me when this task needs my attention."

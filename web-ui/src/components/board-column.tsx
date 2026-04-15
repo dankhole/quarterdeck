@@ -60,6 +60,8 @@ export function BoardColumn({
 		onTogglePinTask,
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
+		onTerminalWarmup,
+		onTerminalCancelWarmup,
 		onFlagForDebug,
 	} = useStableCardActions();
 	const {
@@ -195,6 +197,8 @@ export function BoardColumn({
 											uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 											showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 											onRequestDisplaySummary={onRequestDisplaySummary}
+											onTerminalWarmup={onTerminalWarmup}
+											onTerminalCancelWarmup={onTerminalCancelWarmup}
 											onFlagForDebug={onFlagForDebug}
 											onClick={() => {
 												if (column.id === "backlog") {

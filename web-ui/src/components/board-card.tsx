@@ -177,6 +177,8 @@ export function BoardCard({
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	onRequestDisplaySummary,
+	onTerminalWarmup,
+	onTerminalCancelWarmup,
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
@@ -207,6 +209,8 @@ export function BoardCard({
 	isMigrateLoading?: boolean;
 	onFlagForDebug?: (taskId: string) => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
+	onTerminalWarmup?: (taskId: string) => void;
+	onTerminalCancelWarmup?: (taskId: string) => void;
 	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	isDependencySource?: boolean;
@@ -373,6 +377,7 @@ export function BoardCard({
 					setIsHovered(true);
 					onDependencyPointerEnter?.(card.id);
 					onRequestDisplaySummary?.(card.id);
+					onTerminalWarmup?.(card.id);
 				}}
 				onMouseMove={() => {
 					if (!isDependencyLinking) {
@@ -380,7 +385,10 @@ export function BoardCard({
 					}
 					onDependencyPointerEnter?.(card.id);
 				}}
-				onMouseLeave={() => setIsHovered(false)}
+				onMouseLeave={() => {
+					setIsHovered(false);
+					onTerminalCancelWarmup?.(card.id);
+				}}
 			>
 				<Tooltip content={effectiveTooltip ?? undefined} side="top">
 					<div

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { setTerminalFontWeight, setTerminalWebGLRenderer } from "@/terminal/terminal-registry";
+import { setTerminalFontWeight, setTerminalWebGLRenderer } from "@/terminal/terminal-pool";
 
 interface UseTerminalConfigSyncInput {
 	terminalFontWeight: number;

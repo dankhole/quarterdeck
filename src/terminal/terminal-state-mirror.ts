@@ -4,7 +4,8 @@ import headlessTerminalModule from "@xterm/headless";
 const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
 const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
 
-const TERMINAL_SCROLLBACK = 10_000;
+/** Must match web-ui/src/terminal/terminal-slot.ts TERMINAL_SCROLLBACK */
+const TERMINAL_SCROLLBACK = 3_000;
 
 /**
  * Minimum scrollback for the headless xterm terminal, even when snapshot
@@ -31,7 +32,7 @@ interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
 	/**
 	 * Scrollback line count for the mirror terminal and snapshot serialization.
-	 * Defaults to {@link TERMINAL_SCROLLBACK} (10,000). The terminal itself
+	 * Defaults to {@link TERMINAL_SCROLLBACK} (3,000). The terminal itself
 	 * always gets at least {@link MINIMUM_TERMINAL_SCROLLBACK} lines to avoid
 	 * an xterm.js 6.x circular-buffer crash.
 	 */

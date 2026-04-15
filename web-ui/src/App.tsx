@@ -101,9 +101,12 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
+import { cancelWarmupPersistentTerminal, initPool, warmupPersistentTerminal } from "@/terminal/terminal-pool";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 import { isApprovalState } from "@/utils/session-status";
+
+initPool();
 
 /** Noop for useBranchActions selectBranchView — the topbar pill uses checkout as its primary action. */
 const topbarBranchViewNoop = (_ref: string) => {};
@@ -231,6 +234,18 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
 		runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 		llmConfigured,
+	);
+	const handleTerminalWarmup = useCallback(
+		(taskId: string) => {
+			if (currentProjectId) warmupPersistentTerminal(currentProjectId, taskId);
+		},
+		[currentProjectId],
+	);
+	const handleTerminalCancelWarmup = useCallback(
+		(taskId: string) => {
+			if (currentProjectId) cancelWarmupPersistentTerminal(currentProjectId, taskId);
+		},
+		[currentProjectId],
 	);
 	const showTrashWorktreeNotice =
 		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
@@ -989,6 +1004,8 @@ export default function App(): ReactElement {
 			onTogglePinTask: handleToggleTaskPinned,
 			onMigrateWorkingDirectory: handleMigrateWorkingDirectory,
 			onRequestDisplaySummary: handleRequestDisplaySummary,
+			onTerminalWarmup: handleTerminalWarmup,
+			onTerminalCancelWarmup: handleTerminalCancelWarmup,
 			onFlagForDebug: runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
 		}),
 		[
@@ -1003,6 +1020,8 @@ export default function App(): ReactElement {
 			handleToggleTaskPinned,
 			handleMigrateWorkingDirectory,
 			handleRequestDisplaySummary,
+			handleTerminalWarmup,
+			handleTerminalCancelWarmup,
 			handleFlagForDebug,
 			runtimeProjectConfig?.eventLogEnabled,
 		],

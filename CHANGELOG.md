@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Perf: replace per-task xterm instances with fixed 4-slot terminal pool
+
+- Terminals are no longer created and destroyed per task. A pool of 4 pre-allocated `TerminalSlot` instances is reused across tasks via `connectToTask`/`disconnectFromTask`. Only the currently viewed task (ACTIVE) and the previously viewed task (PREVIOUS) keep live WebSocket connections — all other slots are free for warmup or rotation.
+- Hovering a task card pre-connects a pool slot (PRELOADING → READY), so clicking it shows the terminal near-instantly instead of waiting for WebSocket handshake + restore.
+- Scrollback reduced from 10,000 to 3,000 lines on both client and server mirrors — sufficient for agent sessions and significantly lighter with 4 concurrent terminals.
+- Server-side (`ws-server.ts`): output chunks are no longer buffered for viewers whose IO socket is intentionally disconnected, preventing unbounded memory growth during long sessions.
+- Dedicated terminals (home shell, dev shells) remain outside the pool with their own lifecycle.
+- Proactive slot rotation every 3 minutes replaces the oldest idle slot to prevent xterm canvas/WebGL resource staleness in long sessions.
+- Project switch cleanup properly releases all pool slots and disposes all dedicated terminals.
+
 ### Fix: simplify notification settings — merge completion into review
 
 - Removed the separate "Completion" notification event. Successful agent exits now use the "Review" sound and setting, since both mean "task needs your attention." The notification settings grid drops from 4 rows to 3 (Permission, Review, Failure).

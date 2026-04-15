@@ -20,7 +20,7 @@ import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runt
 import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/terminal-registry";
+import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/terminal-pool";
 import type { BoardCard, CardSelection } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 

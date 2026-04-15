@@ -3,7 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
-import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/terminal-registry";
+import {
+	acquireForTask,
+	disposeDedicatedTerminal,
+	ensureDedicatedTerminal,
+	isDedicatedTerminalTaskId,
+	releaseTask,
+} from "@/terminal/terminal-pool";
+import type { TerminalSlot } from "@/terminal/terminal-slot";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
@@ -17,7 +24,6 @@ interface UsePersistentTerminalSessionInput {
 	sessionStartedAt?: number | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
-	scrollback?: number;
 }
 
 export interface UsePersistentTerminalSessionResult {
@@ -40,10 +46,9 @@ export function usePersistentTerminalSession({
 	sessionStartedAt = null,
 	terminalBackgroundColor,
 	cursorColor,
-	scrollback,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
-	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
+	const terminalRef = useRef<TerminalSlot | null>(null);
 	const callbackRef = useRef<{
 		onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 		onConnectionReady?: (taskId: string) => void;
@@ -67,27 +72,108 @@ export function usePersistentTerminalSession({
 	};
 
 	useEffect(() => {
-		if (!enabled) {
-			const previousSession = previousSessionRef.current;
-			if (previousSession) {
-				disposePersistentTerminal(previousSession.workspaceId, previousSession.taskId);
+		const isDedicated = isDedicatedTerminalTaskId(taskId);
+
+		// --- Dedicated path (home shell, dev shells) ---
+		if (isDedicated) {
+			if (!enabled) {
+				const previousSession = previousSessionRef.current;
+				if (previousSession) {
+					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
+				}
+				terminalRef.current?.unmount(containerRef.current);
+				terminalRef.current = null;
+				previousSessionRef.current = null;
+				setLastError(null);
+				setIsStopping(false);
+				return;
 			}
+
+			if (!workspaceId) {
+				const previousSession = previousSessionRef.current;
+				if (previousSession) {
+					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
+				}
+				terminalRef.current?.unmount(containerRef.current);
+				terminalRef.current = null;
+				previousSessionRef.current = null;
+				setLastError("No project selected.");
+				return;
+			}
+			const container = containerRef.current;
+			if (!container) {
+				return;
+			}
+			const previousSession = previousSessionRef.current;
+			const didSessionRestart =
+				previousSession !== null &&
+				previousSession.workspaceId === workspaceId &&
+				previousSession.taskId === taskId &&
+				previousSession.sessionStartedAt !== sessionStartedAt;
+
+			const terminal = ensureDedicatedTerminal({
+				taskId,
+				workspaceId,
+				cursorColor,
+				terminalBackgroundColor,
+			});
+			if (didSessionRestart) {
+				terminal.reset();
+			}
+			previousSessionRef.current = {
+				workspaceId,
+				taskId,
+				sessionStartedAt,
+			};
+			terminalRef.current = terminal;
+			const unsubscribe = terminal.subscribe({
+				onConnectionReady: (connectedTaskId) => {
+					callbackRef.current.onConnectionReady?.(connectedTaskId);
+				},
+				onLastError: setLastError,
+				onSummary: (summary) => {
+					callbackRef.current.onSummary?.(summary);
+				},
+				onExit: (exitTaskId, exitCode) => {
+					callbackRef.current.onExit?.(exitTaskId, exitCode);
+				},
+			});
+			terminal.mount(
+				container,
+				{
+					cursorColor,
+					terminalBackgroundColor,
+				},
+				{
+					autoFocus,
+					isVisible,
+				},
+			);
+			setLastError(null);
+			setIsStopping(false);
+			return () => {
+				unsubscribe();
+				terminal.unmount(container);
+				if (terminalRef.current === terminal) {
+					terminalRef.current = null;
+				}
+			};
+		}
+
+		// --- Pool path (regular agent task terminals) ---
+		if (!enabled) {
+			releaseTask(taskId);
 			terminalRef.current?.unmount(containerRef.current);
 			terminalRef.current = null;
-			previousSessionRef.current = null;
 			setLastError(null);
 			setIsStopping(false);
 			return;
 		}
 
 		if (!workspaceId) {
-			const previousSession = previousSessionRef.current;
-			if (previousSession) {
-				disposePersistentTerminal(previousSession.workspaceId, previousSession.taskId);
-			}
+			releaseTask(taskId);
 			terminalRef.current?.unmount(containerRef.current);
 			terminalRef.current = null;
-			previousSessionRef.current = null;
 			setLastError("No project selected.");
 			return;
 		}
@@ -95,28 +181,8 @@ export function usePersistentTerminalSession({
 		if (!container) {
 			return;
 		}
-		const previousSession = previousSessionRef.current;
-		const didSessionRestart =
-			previousSession !== null &&
-			previousSession.workspaceId === workspaceId &&
-			previousSession.taskId === taskId &&
-			previousSession.sessionStartedAt !== sessionStartedAt;
 
-		const terminal = ensurePersistentTerminal({
-			taskId,
-			workspaceId,
-			cursorColor,
-			terminalBackgroundColor,
-			scrollback,
-		});
-		if (didSessionRestart) {
-			terminal.reset();
-		}
-		previousSessionRef.current = {
-			workspaceId,
-			taskId,
-			sessionStartedAt,
-		};
+		const terminal = acquireForTask(taskId, workspaceId);
 		terminalRef.current = terminal;
 		const unsubscribe = terminal.subscribe({
 			onConnectionReady: (connectedTaskId) => {
@@ -150,17 +216,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [
-		autoFocus,
-		cursorColor,
-		enabled,
-		isVisible,
-		scrollback,
-		sessionStartedAt,
-		taskId,
-		terminalBackgroundColor,
-		workspaceId,
-	]);
+	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {

@@ -380,7 +380,15 @@ export function createTerminalWebSocketBridge({
 						viewerState.ioState.enqueueOutput(chunk);
 						continue;
 					}
-					viewerState.pendingOutputChunks.push(chunk);
+					// Only buffer if an IO socket is connected but restore hasn't
+					// completed yet (the brief window between connect and restore).
+					// When IO is fully disconnected (ioSocket === null), skip queuing —
+					// the restore snapshot on reconnect provides full terminal state,
+					// making these chunks redundant. This prevents unbounded memory
+					// growth for viewers whose IO socket was intentionally suspended.
+					if (viewerState.ioSocket) {
+						viewerState.pendingOutputChunks.push(chunk);
+					}
 				}
 			},
 		});

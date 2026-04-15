@@ -215,7 +215,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					entry.active.session.write(data);
 				},
-				scrollback: 10_000,
+				scrollback: 3_000,
 			});
 
 			launch = await prepareAgentLaunch({

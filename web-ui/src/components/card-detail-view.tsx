@@ -502,7 +502,6 @@ export function CardDetailView({
 									panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 									terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 									taskColumnId={selection.column.id}
-									scrollback={10_000}
 								/>
 							</div>
 						</div>

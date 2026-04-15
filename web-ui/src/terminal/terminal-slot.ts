@@ -34,13 +34,15 @@ import {
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
-const log = createClientLogger("persistent-terminal");
+const log = createClientLogger("terminal-slot");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
 const FONT_READY_TIMEOUT_MS = 3000;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
+/** Scrollback buffer size shared by pool slots and dedicated terminals. Keep in sync with session-manager.ts server-side headless mirror. */
+export const TERMINAL_SCROLLBACK = 3_000;
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 let currentTerminalWebGLRenderer: boolean = CONFIG_DEFAULTS.terminalWebGLRenderer;
@@ -61,12 +63,6 @@ interface PersistentTerminalSubscriber {
 interface MountPersistentTerminalOptions {
 	autoFocus?: boolean;
 	isVisible?: boolean;
-}
-
-export interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
-	taskId: string;
-	workspaceId: string;
-	scrollback?: number;
 }
 
 function getParkingRoot(): HTMLDivElement {
@@ -91,10 +87,6 @@ function getParkingRoot(): HTMLDivElement {
 	return root;
 }
 
-export function buildKey(workspaceId: string, taskId: string): string {
-	return `${workspaceId}:${taskId}`;
-}
-
 /** Update the global font weight state used when constructing new terminals. */
 export function updateGlobalTerminalFontWeight(weight: number): void {
 	currentTerminalFontWeight = weight;
@@ -105,7 +97,8 @@ export function updateGlobalTerminalWebGLRenderer(enabled: boolean): void {
 	currentTerminalWebGLRenderer = enabled;
 }
 
-export class PersistentTerminal {
+export class TerminalSlot {
+	readonly slotId: number;
 	private readonly terminal: Terminal;
 	private readonly fitAddon = new FitAddon();
 	private readonly hostElement: HTMLDivElement;
@@ -117,6 +110,8 @@ export class PersistentTerminal {
 	// still share the same taskId backed PTY.
 	private readonly clientId = generateTerminalClientId();
 	private appearance: PersistentTerminalAppearance;
+	private taskId: string | null = null;
+	private workspaceId: string | null = null;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
 	private resizeObserver: ResizeObserver | null = null;
@@ -125,6 +120,8 @@ export class PersistentTerminal {
 	private dprMediaQuery: MediaQueryList | null = null;
 	private dprChangeHandler: (() => void) | null = null;
 	private visibleContainer: HTMLDivElement | null = null;
+	/** The container the hostElement is physically appended to in the DOM. */
+	private mountedContainer: HTMLDivElement | null = null;
 	private ioSocket: WebSocket | null = null;
 	private controlSocket: WebSocket | null = null;
 	private connectionReady = false;
@@ -140,19 +137,20 @@ export class PersistentTerminal {
 	private lastSentRows = 0;
 	private deferredResizeRaf: number | null = null;
 	private disposed = false;
+	/** One-shot callback fired when notifyConnectionReady() runs, then cleared. */
+	private onceConnectionReadyCallback: (() => void) | null = null;
 
-	constructor(
-		private readonly taskId: string,
-		private readonly workspaceId: string,
-		appearance: PersistentTerminalAppearance,
-		scrollback?: number,
-	) {
+	constructor(slotId: number, appearance: PersistentTerminalAppearance) {
+		this.slotId = slotId;
 		this.appearance = appearance;
 		this.parkingRoot = getParkingRoot();
 		this.hostElement = document.createElement("div");
 		Object.assign(this.hostElement.style, {
 			width: "100%",
 			height: "100%",
+			position: "absolute",
+			inset: "0",
+			visibility: "hidden",
 		});
 		this.parkingRoot.appendChild(this.hostElement);
 		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
@@ -162,7 +160,7 @@ export class PersistentTerminal {
 				cursorColor: this.appearance.cursorColor,
 				fontWeight: currentTerminalFontWeight,
 				isMacPlatform,
-				scrollback,
+				scrollback: TERMINAL_SCROLLBACK,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
 			}),
 			cols: initialGeometry.cols,
@@ -200,7 +198,106 @@ export class PersistentTerminal {
 		});
 
 		this.openTerminalWhenFontsReady();
-		this.ensureConnected();
+		// No ensureConnected() — the pool controls IO state via connectToTask().
+	}
+
+	/** The task this slot is currently connected to, or null if idle. */
+	get connectedTaskId(): string | null {
+		return this.taskId;
+	}
+
+	/** The workspace this slot is currently connected to, or null if idle. */
+	get connectedWorkspaceId(): string | null {
+		return this.workspaceId;
+	}
+
+	/**
+	 * Connect this slot to a task. Opens IO + control sockets.
+	 * No-op if already connected to the same task.
+	 */
+	connectToTask(taskId: string, workspaceId: string): void {
+		if (this.disposed) {
+			return;
+		}
+		if (this.taskId === taskId && this.workspaceId === workspaceId) {
+			return;
+		}
+		// If already connected to a different task, close existing sockets first
+		// to prevent leaks. The pool normally calls disconnectFromTask before reuse,
+		// but this guard makes the method self-contained.
+		if (this.taskId) {
+			if (this.ioSocket) {
+				const socket = this.ioSocket;
+				this.ioSocket = null;
+				socket.close();
+			}
+			if (this.controlSocket) {
+				const socket = this.controlSocket;
+				this.controlSocket = null;
+				socket.close();
+			}
+		}
+		this.taskId = taskId;
+		this.workspaceId = workspaceId;
+		this.connectIo();
+		this.connectControl();
+	}
+
+	/**
+	 * Disconnect from the current task. Closes sockets, drains write queue,
+	 * resets the terminal buffer, and clears all task-specific state.
+	 * Does NOT touch xterm, DOM, or WebGL.
+	 */
+	async disconnectFromTask(): Promise<void> {
+		if (!this.taskId) {
+			return;
+		}
+		const previousTaskId = this.taskId;
+
+		// Close sockets first (stop new data)
+		if (this.ioSocket) {
+			const socket = this.ioSocket;
+			this.ioSocket = null;
+			socket.close();
+		}
+		if (this.controlSocket) {
+			const socket = this.controlSocket;
+			this.controlSocket = null;
+			socket.close();
+		}
+
+		// Clear ALL task-specific state synchronously before any await.
+		// The pool may reuse this slot immediately via connectToTask() — if state
+		// mutation happened after the await, the async tail would clobber the new
+		// task's connection (taskId, subscribers, buffer).
+		this.connectionReady = false;
+		this.restoreCompleted = false;
+		this.latestSummary = null;
+		this.lastError = null;
+		this.outputTextDecoder = new TextDecoder();
+		clearTerminalGeometry(previousTaskId);
+		this.taskId = null;
+		this.workspaceId = null;
+		this.subscribers.clear();
+		this.onceConnectionReadyCallback = null;
+
+		// Drain the write queue, then reset the buffer. These are safe after
+		// state is cleared — connectToTask opens new sockets and the server
+		// sends a fresh restore snapshot that overwrites the buffer.
+		await this.terminalWriteQueue.catch(() => undefined);
+		// Guard: if a new task connected while we were awaiting, don't reset
+		// its buffer.
+		if (!this.taskId) {
+			this.terminal.reset();
+		}
+	}
+
+	/**
+	 * Register a one-shot callback that fires when notifyConnectionReady() runs.
+	 * Cleared by disconnectFromTask().
+	 */
+	onceConnectionReady(callback: () => void): void {
+		this.onceConnectionReadyCallback = callback;
 	}
 
 	private openTerminalWhenFontsReady(): void {
@@ -252,11 +349,15 @@ export class PersistentTerminal {
 	}
 
 	private notifyExit(code: number | null): void {
+		if (!this.taskId) {
+			return;
+		}
 		if (this.latestSummary?.agentId != null) {
 			return;
 		}
+		const taskId = this.taskId;
 		for (const subscriber of this.subscribers) {
-			subscriber.onExit?.(this.taskId, code);
+			subscriber.onExit?.(taskId, code);
 		}
 	}
 
@@ -280,9 +381,18 @@ export class PersistentTerminal {
 	}
 
 	private notifyConnectionReady(): void {
+		if (!this.taskId) {
+			return;
+		}
 		this.connectionReady = true;
+		const taskId = this.taskId;
 		for (const subscriber of this.subscribers) {
-			subscriber.onConnectionReady?.(this.taskId);
+			subscriber.onConnectionReady?.(taskId);
+		}
+		if (this.onceConnectionReadyCallback) {
+			const cb = this.onceConnectionReadyCallback;
+			this.onceConnectionReadyCallback = null;
+			cb();
 		}
 	}
 
@@ -381,6 +491,9 @@ export class PersistentTerminal {
 	}
 
 	private requestResize(force?: boolean): void {
+		if (!this.connectedTaskId) {
+			return;
+		}
 		if (!this.visibleContainer) {
 			return;
 		}
@@ -393,7 +506,7 @@ export class PersistentTerminal {
 		const bounds = this.visibleContainer.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
-		reportTerminalGeometry(this.taskId, { cols, rows });
+		reportTerminalGeometry(this.connectedTaskId, { cols, rows });
 		// Only mark as sent if the message actually reached the socket.
 		// Otherwise the dedup check above will suppress future attempts
 		// with the same dimensions, leaving the PTY at stale sizes.
@@ -440,6 +553,9 @@ export class PersistentTerminal {
 
 	private connectIo(): void {
 		if (this.ioSocket) {
+			return;
+		}
+		if (!this.taskId || !this.workspaceId) {
 			return;
 		}
 		const ioSocket = new WebSocket(getTerminalWebSocketUrl("io", this.taskId, this.workspaceId, this.clientId));
@@ -498,6 +614,12 @@ export class PersistentTerminal {
 	}
 
 	private connectControl(): void {
+		if (this.controlSocket) {
+			return;
+		}
+		if (!this.taskId || !this.workspaceId) {
+			return;
+		}
 		const controlSocket = new WebSocket(
 			getTerminalWebSocketUrl("control", this.taskId, this.workspaceId, this.clientId),
 		);
@@ -595,18 +717,6 @@ export class PersistentTerminal {
 		};
 	}
 
-	private ensureConnected(): void {
-		if (this.disposed) {
-			return;
-		}
-		if (!this.ioSocket) {
-			this.connectIo();
-		}
-		if (!this.controlSocket) {
-			this.connectControl();
-		}
-	}
-
 	private updateAppearance(appearance: PersistentTerminalAppearance): void {
 		this.appearance = appearance;
 		this.terminal.options.theme = {
@@ -667,7 +777,7 @@ export class PersistentTerminal {
 		if (this.latestSummary) {
 			subscriber.onSummary?.(this.latestSummary);
 		}
-		if (this.connectionReady) {
+		if (this.connectionReady && this.taskId) {
 			subscriber.onConnectionReady?.(this.taskId);
 		}
 		return () => {
@@ -683,13 +793,23 @@ export class PersistentTerminal {
 		if (this.disposed) {
 			return;
 		}
-		this.ensureConnected();
 		this.updateAppearance(appearance);
-		if (this.visibleContainer !== container) {
+
+		const isSameContainer = this.mountedContainer === container && container.isConnected;
+		if (isSameContainer) {
+			// Fast path — same container, just reveal. No DOM move, no canvas repair.
+			log.debug(`slot ${this.slotId} mount — fast path (visibility toggle)`);
+			this.hostElement.style.visibility = "visible";
 			this.visibleContainer = container;
+		} else {
+			// Slow path — first mount, different container, or detached container.
+			// Full DOM move + canvas repair.
+			log.debug(`slot ${this.slotId} mount — slow path (DOM move + canvas repair)`);
+			this.visibleContainer = container;
+			this.mountedContainer = container;
 			container.appendChild(this.hostElement);
-			// New container — previous resize may have targeted a different
-			// (or parked) container, or been silently dropped.
+			this.hostElement.style.visibility = "visible";
+			// Server may have stale dimensions from the previous container.
 			this.invalidateResize();
 			// Canvas repair after DOM move — fixes stale texture atlas and
 			// canvas pixel dimensions caused by the parking-root reparent.
@@ -713,6 +833,7 @@ export class PersistentTerminal {
 			// the socket-connection restore handles that case.
 			this.requestRestore();
 		}
+
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
 		}
@@ -755,9 +876,12 @@ export class PersistentTerminal {
 		if (container && this.visibleContainer !== container) {
 			return;
 		}
+		log.debug(`slot ${this.slotId} unmount — hiding`);
 		this.visibleContainer = null;
-		clearTerminalGeometry(this.taskId);
-		this.parkingRoot.appendChild(this.hostElement);
+		if (this.connectedTaskId) {
+			clearTerminalGeometry(this.connectedTaskId);
+		}
+		this.hostElement.style.visibility = "hidden";
 	}
 
 	get sessionState(): string | null {
@@ -846,7 +970,7 @@ export class PersistentTerminal {
 		// No canvas to fix when the terminal is parked (not mounted in a visible
 		// container). The repair will run on the next mount() instead.
 		if (!this.visibleContainer) {
-			log.debug(`${this.taskId} canvas repair skipped — not visible`, { trigger });
+			log.debug(`slot ${this.slotId} canvas repair skipped — not visible`, { trigger });
 			return;
 		}
 
@@ -869,7 +993,7 @@ export class PersistentTerminal {
 		this.forceResize();
 
 		const elapsed = (performance.now() - t0).toFixed(1);
-		log.debug(`${this.taskId} canvas repair`, {
+		log.debug(`slot ${this.slotId} canvas repair`, {
 			trigger,
 			renderer: this.webglAddon ? "webgl" : "canvas-2d",
 			dpr: window.devicePixelRatio,
@@ -887,7 +1011,7 @@ export class PersistentTerminal {
 		}
 		this.attachWebglAddon();
 		const newRenderer = this.webglAddon ? "webgl" : "canvas-2d";
-		log.info(`${this.taskId} renderer reset`, {
+		log.info(`slot ${this.slotId} renderer reset`, {
 			previous: hadWebgl ? "webgl" : "none",
 			current: newRenderer,
 			dpr: window.devicePixelRatio,
@@ -904,22 +1028,22 @@ export class PersistentTerminal {
 	 */
 	requestRestore(): void {
 		if (this.disposed) {
-			log.warn(`${this.taskId} requestRestore skipped — terminal disposed`);
+			log.warn(`slot ${this.slotId} requestRestore skipped — terminal disposed`);
 			return;
 		}
 		if (!this.restoreCompleted) {
-			log.warn(`${this.taskId} requestRestore skipped — initial restore not yet complete`);
+			log.warn(`slot ${this.slotId} requestRestore skipped — initial restore not yet complete`);
 			return;
 		}
 		const socketState = this.controlSocket?.readyState;
 		if (!this.controlSocket || socketState !== WebSocket.OPEN) {
-			log.warn(`${this.taskId} requestRestore skipped — control socket not open`, {
+			log.warn(`slot ${this.slotId} requestRestore skipped — control socket not open`, {
 				hasSocket: this.controlSocket !== null,
 				readyState: socketState,
 			});
 			return;
 		}
-		log.info(`${this.taskId} requesting restore from server`);
+		log.info(`slot ${this.slotId} requesting restore from server`);
 		this.sendControlMessage({ type: "request_restore" });
 	}
 
@@ -1004,9 +1128,12 @@ export class PersistentTerminal {
 	}
 
 	async stop(): Promise<void> {
+		if (!this.connectedTaskId || !this.connectedWorkspaceId) {
+			return;
+		}
 		this.sendControlMessage({ type: "stop" });
-		const trpcClient = getRuntimeTrpcClient(this.workspaceId);
-		await trpcClient.runtime.stopTaskSession.mutate({ taskId: this.taskId });
+		const trpcClient = getRuntimeTrpcClient(this.connectedWorkspaceId);
+		await trpcClient.runtime.stopTaskSession.mutate({ taskId: this.connectedTaskId });
 	}
 
 	dispose(): void {
@@ -1015,11 +1142,13 @@ export class PersistentTerminal {
 		}
 		this.disposed = true;
 		this.unmount(this.visibleContainer);
+		this.mountedContainer = null;
 		this.ioSocket?.close();
 		this.controlSocket?.close();
 		this.ioSocket = null;
 		this.controlSocket = null;
 		this.subscribers.clear();
+		this.onceConnectionReadyCallback = null;
 		this.terminal.dispose();
 		this.hostElement.remove();
 	}

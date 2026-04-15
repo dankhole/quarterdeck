@@ -15,7 +15,7 @@ import {
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { dumpTerminalDebugInfo } from "@/terminal/terminal-registry";
+import { dumpTerminalDebugInfo } from "@/terminal/terminal-pool";
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 800;

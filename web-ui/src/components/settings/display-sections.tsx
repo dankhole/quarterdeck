@@ -5,7 +5,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { SettingsCheckbox, SettingsSwitch } from "@/components/ui/settings-controls";
-import { resetAllTerminalRenderers, restoreAllTerminals } from "@/terminal/terminal-registry";
+import { resetAllTerminalRenderers, restoreAllTerminals } from "@/terminal/terminal-pool";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -338,10 +338,10 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				size="sm"
 				className="mt-3"
 				onClick={() => {
-					const count = resetAllTerminalRenderers();
+					resetAllTerminalRenderers();
 					showAppToast({
 						intent: "success",
-						message: `Reset rendering for ${count} terminal${count === 1 ? "" : "s"}`,
+						message: "Terminal renderers reset",
 						timeout: 3000,
 					});
 				}}
@@ -356,10 +356,10 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				size="sm"
 				className="mt-3"
 				onClick={() => {
-					const count = restoreAllTerminals();
+					restoreAllTerminals();
 					showAppToast({
 						intent: "success",
-						message: `Restoring ${count} terminal${count === 1 ? "" : "s"} from server`,
+						message: "Restoring terminals from server",
 						timeout: 3000,
 					});
 				}}
