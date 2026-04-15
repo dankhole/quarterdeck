@@ -171,10 +171,12 @@ function CompareBar({
 	branches,
 	worktreeBranches,
 	includeUncommitted,
+	threeDotDiff,
 	onSourceRefChange,
 	onTargetRefChange,
 	onResetToDefaults,
 	onIncludeUncommittedChange,
+	onThreeDotDiffChange,
 	pinnedBranches,
 	onTogglePinBranch,
 }: {
@@ -185,10 +187,12 @@ function CompareBar({
 	branches: RuntimeGitRef[] | null;
 	worktreeBranches: Map<string, string>;
 	includeUncommitted: boolean;
+	threeDotDiff: boolean;
 	onSourceRefChange: (ref: string) => void;
 	onTargetRefChange: (ref: string) => void;
 	onResetToDefaults: () => void;
 	onIncludeUncommittedChange: (value: boolean) => void;
+	onThreeDotDiffChange: (value: boolean) => void;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
 }): React.ReactElement {
@@ -244,8 +248,25 @@ function CompareBar({
 			)}
 
 			<label
-				htmlFor="compare-include-uncommitted"
+				htmlFor="compare-three-dot-diff"
 				className="flex items-center gap-1.5 ml-auto text-[12px] text-text-secondary cursor-pointer select-none"
+			>
+				<RadixCheckbox.Root
+					id="compare-three-dot-diff"
+					checked={threeDotDiff}
+					onCheckedChange={(checked) => onThreeDotDiffChange(checked === true)}
+					className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+				>
+					<RadixCheckbox.Indicator>
+						<Check size={10} className="text-white" />
+					</RadixCheckbox.Indicator>
+				</RadixCheckbox.Root>
+				Only branch changes
+			</label>
+
+			<label
+				htmlFor="compare-include-uncommitted"
+				className="flex items-center gap-1.5 text-[12px] text-text-secondary cursor-pointer select-none"
 			>
 				<RadixCheckbox.Root
 					id="compare-include-uncommitted"
@@ -439,6 +460,8 @@ export function GitView({
 
 	const hasCompareRefs = !!compare.sourceRef && !!compare.targetRef;
 	const compareIncludeUncommitted = compare.includeUncommitted;
+	const compareThreeDot = compare.threeDotDiff;
+	const compareDiffMode = compareThreeDot ? ("three_dot" as const) : ("two_dot" as const);
 	const comparePollInterval =
 		isCompareActive && compareIncludeUncommitted && isDocumentVisible ? POLL_INTERVAL_MS : null;
 	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeWorkspaceChanges(
@@ -449,11 +472,12 @@ export function GitView({
 		taskWorkspaceStateVersion,
 		comparePollInterval,
 		isCompareActive
-			? `compare:${compare.sourceRef}:${compare.targetRef}:${compareIncludeUncommitted ? "wt" : "refs"}`
+			? `compare:${compare.sourceRef}:${compare.targetRef}:${compareIncludeUncommitted ? "wt" : "refs"}:${compareDiffMode}`
 			: null,
 		true,
 		compare.targetRef, // fromRef: what we're comparing against
 		compareIncludeUncommitted ? undefined : compare.sourceRef, // toRef: omit to include working tree
+		compareDiffMode,
 	);
 
 	// Derive active file list for file tree
@@ -472,6 +496,7 @@ export function GitView({
 		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
 		fromRef: activeTab === "compare" ? compare.targetRef : undefined,
 		toRef: activeTab === "compare" && !compareIncludeUncommitted ? compare.sourceRef : undefined,
+		diffMode: activeTab === "compare" ? compareDiffMode : undefined,
 		files: activeFiles,
 	});
 
@@ -638,10 +663,12 @@ export function GitView({
 					branches={compare.branches}
 					worktreeBranches={compare.worktreeBranches}
 					includeUncommitted={compare.includeUncommitted}
+					threeDotDiff={compare.threeDotDiff}
 					onSourceRefChange={compare.setSourceRef}
 					onTargetRefChange={compare.setTargetRef}
 					onResetToDefaults={compare.resetToDefaults}
 					onIncludeUncommittedChange={compare.setIncludeUncommitted}
+					onThreeDotDiffChange={compare.setThreeDotDiff}
 					pinnedBranches={pinnedBranches}
 					onTogglePinBranch={onTogglePinBranch}
 				/>

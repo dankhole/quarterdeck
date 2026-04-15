@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeWorkspaceChangesMode, RuntimeWorkspaceChangesResponse } from "@/runtime/types";
+import type { RuntimeDiffMode, RuntimeWorkspaceChangesMode, RuntimeWorkspaceChangesResponse } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeWorkspaceChangesResult {
@@ -22,11 +22,12 @@ export function useRuntimeWorkspaceChanges(
 	clearOnViewTransition = true,
 	fromRef?: string | null,
 	toRef?: string | null,
+	diffMode?: RuntimeDiffMode | null,
 ): UseRuntimeWorkspaceChangesResult {
 	// workspaceId is always required. The backend handles null taskId (home context) and fromRef/toRef (compare).
 	const hasWorkspaceScope = workspaceId !== null;
 	const normalizedViewKey = viewKey ?? "__default__";
-	const requestKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}:${fromRef ?? ""}:${toRef ?? ""}`;
+	const requestKey = `${workspaceId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}:${fromRef ?? ""}:${toRef ?? ""}:${diffMode ?? ""}`;
 	const previousRequestKeyRef = useRef(requestKey);
 	const isRequestTransitioning = hasWorkspaceScope && previousRequestKeyRef.current !== requestKey;
 	const queryFn = useCallback(async () => {
@@ -41,8 +42,9 @@ export function useRuntimeWorkspaceChanges(
 			mode,
 			...(fromRef ? { fromRef } : {}),
 			...(toRef ? { toRef } : {}),
+			...(diffMode ? { diffMode } : {}),
 		});
-	}, [baseRef, fromRef, mode, normalizedViewKey, taskId, toRef, workspaceId]);
+	}, [baseRef, diffMode, fromRef, mode, normalizedViewKey, taskId, toRef, workspaceId]);
 	const changesQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
 		enabled: hasWorkspaceScope,
 		queryFn,

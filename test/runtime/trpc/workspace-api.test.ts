@@ -355,6 +355,7 @@ describe("createWorkspaceApi loadChanges", () => {
 		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			fromRef: "main",
+			threeDot: false,
 		});
 		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).not.toHaveBeenCalled();
 	});
@@ -384,6 +385,7 @@ describe("createWorkspaceApi loadChanges", () => {
 		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).toHaveBeenCalledWith({
 			cwd: "/tmp/repo",
 			fromRef: "main",
+			threeDot: false,
 		});
 		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).not.toHaveBeenCalled();
 	});

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeFileDiffResponse, RuntimeWorkspaceChangesMode, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type {
+	RuntimeDiffMode,
+	RuntimeFileDiffResponse,
+	RuntimeWorkspaceChangesMode,
+	RuntimeWorkspaceFileChange,
+} from "@/runtime/types";
 
 export interface UseAllFileDiffContentOptions {
 	workspaceId: string | null;
@@ -10,6 +15,7 @@ export interface UseAllFileDiffContentOptions {
 	mode: RuntimeWorkspaceChangesMode;
 	fromRef?: string | null;
 	toRef?: string | null;
+	diffMode?: RuntimeDiffMode | null;
 	/** All files from the changes list. Diffs are fetched for each file progressively. */
 	files: RuntimeWorkspaceFileChange[] | null;
 }
@@ -55,7 +61,7 @@ const EMPTY_LOADING_STATE: FileLoadingState = { loaded: new Set(), loading: new 
  * Results are cached per context and incrementally merged into the file list.
  */
 export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): UseAllFileDiffContentResult {
-	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, files } = options;
+	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode, files } = options;
 
 	const [enrichedFiles, setEnrichedFiles] = useState<RuntimeWorkspaceFileChange[] | null>(null);
 	const [fileLoadingState, setFileLoadingState] = useState<FileLoadingState>(EMPTY_LOADING_STATE);
@@ -67,7 +73,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 	const isBackgroundRefetchRef = useRef(false);
 
 	// Track context so we can clear cache when it changes.
-	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}`;
+	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
 	const prevContextKeyRef = useRef(contextKey);
 	const prevFileFingerprintRef = useRef<string>("");
 
@@ -137,6 +143,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 						status: file.status,
 						...(fromRef ? { fromRef } : {}),
 						...(toRef ? { toRef } : {}),
+						...(diffMode ? { diffMode } : {}),
 					});
 					diff = { oldText: response.oldText, newText: response.newText };
 				} catch {
@@ -165,7 +172,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 				});
 			}
 		},
-		[workspaceId, taskId, baseRef, mode, fromRef, toRef],
+		[workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode],
 	);
 
 	// Main effect: when files change, build enriched list from cache and start fetching uncached diffs.
@@ -228,7 +235,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			abortRef.current?.abort();
 			abortRef.current = null;
 		};
-	}, [files, workspaceId, mode, fromRef, toRef, fetchAllDiffs]);
+	}, [files, workspaceId, mode, fromRef, toRef, diffMode, fetchAllDiffs]);
 
 	return { enrichedFiles: workspaceId && files ? enrichedFiles : null, fileLoadingState };
 }

@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Feature: three-dot diff in compare view (2026-04-15)
+
+Added an "Only branch changes" toggle to the compare view that switches between two-dot and three-dot diff modes. The compare view previously used two-dot diffs (`git diff A B`) which includes all differences between two refs — including changes that landed on the base branch after the feature branch diverged. Three-dot mode shows only branch-introduced changes, matching the PR diff behavior users expect.
+
+**What changed:**
+- `src/core/api/workspace-files.ts` — added `RuntimeDiffMode` enum (`"two_dot" | "three_dot"`) and optional `diffMode` field to both `runtimeWorkspaceChangesRequestSchema` and `runtimeFileDiffRequestSchema`.
+- `src/workspace/get-workspace-changes.ts` — `getWorkspaceChangesBetweenRefs` uses native `git diff A...B` syntax when `threeDot` is true. `getWorkspaceChangesFromRef` computes `git merge-base fromRef HEAD` and substitutes it as the effective fromRef. `getWorkspaceFileDiff` reads old content from merge-base instead of raw fromRef. Cache keys include diff mode.
+- `src/trpc/workspace-api.ts` — `loadChanges` and `loadFileDiff` extract `diffMode` from input and pass `threeDot` boolean to workspace functions.
+- `web-ui/src/hooks/use-git-view-compare.ts` — added `threeDotDiff` state (persisted to localStorage, default `true`) with `setThreeDotDiff` setter.
+- `web-ui/src/components/git-view.tsx` — `CompareBar` renders "Only branch changes" checkbox. Passes `compareDiffMode` to `useRuntimeWorkspaceChanges` and `useAllFileDiffContent`.
+- `web-ui/src/runtime/use-runtime-workspace-changes.ts`, `use-file-diff-content.ts`, `use-all-file-diff-content.ts` — accept `diffMode` parameter, include in request keys, context keys, and tRPC query payloads.
+- `web-ui/src/storage/local-storage-store.ts` — added `CompareThreeDotDiff` storage key.
+- `test/runtime/trpc/workspace-api.test.ts` — updated 2 assertions to expect `threeDot: false` in function calls.
+
 ## Docs: hooks directory refactoring plan (2026-04-15)
 
 Added a comprehensive plan doc for reorganizing the `web-ui/src/hooks/` directory, which has grown to 78 flat files (~17K lines). The investigation mapped all intra-hook dependencies to identify natural domain clusters and catalogued 5 misplaced non-hook files.

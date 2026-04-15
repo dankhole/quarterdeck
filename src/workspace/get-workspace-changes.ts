@@ -30,11 +30,13 @@ interface ChangesBetweenRefsInput {
 	cwd: string;
 	fromRef: string;
 	toRef: string;
+	threeDot?: boolean;
 }
 
 interface ChangesFromRefInput {
 	cwd: string;
 	fromRef: string;
+	threeDot?: boolean;
 }
 
 interface DiffStat {
@@ -289,21 +291,25 @@ export async function getWorkspaceChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkspaceChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
+	const threeDot = input.threeDot ?? false;
 
 	// Resolve refs to commit hashes so branch names that advance don't serve stale cache.
 	const [fromHash, toHash] = await Promise.all([
 		getGitStdout(["rev-parse", input.fromRef], repoRoot).catch(() => input.fromRef),
 		getGitStdout(["rev-parse", input.toRef], repoRoot).catch(() => input.toRef),
 	]);
-	const cacheKey = `${repoRoot}::${fromHash}::${toHash}`;
+	const cacheKey = `${repoRoot}::${fromHash}::${toHash}::${threeDot ? "3dot" : "2dot"}`;
 	const cached = refChangesCacheByKey.get(cacheKey);
 	if (cached) {
 		cached.lastAccessedAt = Date.now();
 		return cached.response;
 	}
 
+	// Three-dot: `git diff A...B` diffs merge-base(A,B) against B — only branch-introduced changes.
+	const diffSpec = threeDot ? [`${input.fromRef}...${input.toRef}`] : [input.fromRef, input.toRef];
+
 	const trackedChangesOutput = await getGitStdout(
-		["diff", "--name-status", "--find-renames", input.fromRef, input.toRef, "--"],
+		["diff", "--name-status", "--find-renames", ...diffSpec, "--"],
 		repoRoot,
 	);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
@@ -315,7 +321,7 @@ export async function getWorkspaceChangesBetweenRefs(
 		};
 	}
 
-	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", input.fromRef, input.toRef, "--"]);
+	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", ...diffSpec, "--"]);
 	const files = trackedChanges.map((entry) => buildFileMetadata(entry, numstatMap.get(entry.path)));
 	files.sort((left, right) => left.path.localeCompare(right.path));
 
@@ -358,11 +364,20 @@ function pruneFromRefChangesCache(): void {
 
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
 	const repoRoot = await resolveRepoRoot(input.cwd);
+	const threeDot = input.threeDot ?? false;
+
+	// For three-dot mode, compute merge-base(fromRef, HEAD) and use it as the effective fromRef.
+	// This shows only changes introduced since divergence, excluding base-side advancement.
+	let effectiveFromRef = input.fromRef;
+	if (threeDot) {
+		const mergeBase = await getGitStdout(["merge-base", input.fromRef, "HEAD"], repoRoot).catch(() => null);
+		if (mergeBase) effectiveFromRef = mergeBase.trim();
+	}
 
 	const [trackedChangesOutput, untrackedOutput, fromHash] = await Promise.all([
-		getGitStdout(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),
+		getGitStdout(["diff", "--name-status", "--find-renames", effectiveFromRef, "--"], repoRoot),
 		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
-		getGitStdout(["rev-parse", input.fromRef], repoRoot).catch(() => input.fromRef),
+		getGitStdout(["rev-parse", effectiveFromRef], repoRoot).catch(() => effectiveFromRef),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput
@@ -392,7 +407,7 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
 	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
 	const resolvedFromHash = fromHash.trim();
-	const cacheMapKey = `${repoRoot}::${resolvedFromHash}`;
+	const cacheMapKey = `${repoRoot}::${resolvedFromHash}::${threeDot ? "3dot" : "2dot"}`;
 	const stateKey = buildWorkspaceChangesStateKey({
 		repoRoot,
 		headCommit: resolvedFromHash,
@@ -406,7 +421,7 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 		return existing.response;
 	}
 
-	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", input.fromRef, "--"]);
+	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", effectiveFromRef, "--"]);
 	const untrackedLineCounts = await Promise.all(
 		allChanges
 			.filter((entry) => entry.status === "untracked")
@@ -441,6 +456,7 @@ export interface WorkspaceFileDiffInput {
 	status: RuntimeWorkspaceFileStatus;
 	fromRef?: string;
 	toRef?: string;
+	threeDot?: boolean;
 }
 
 export async function getWorkspaceFileDiff(
@@ -451,16 +467,25 @@ export async function getWorkspaceFileDiff(
 	const isNew = input.status === "added" || input.status === "untracked";
 	const isDeleted = input.status === "deleted";
 
+	// In three-dot mode, read old content from the merge-base instead of fromRef directly.
+	// This ensures the "before" side matches the divergence point, not the current base tip.
+	let effectiveFromRef = input.fromRef;
+	if (input.threeDot && input.fromRef) {
+		const targetRef = input.toRef ?? "HEAD";
+		const mergeBase = await getGitStdout(["merge-base", input.fromRef, targetRef], repoRoot).catch(() => null);
+		if (mergeBase) effectiveFromRef = mergeBase.trim();
+	}
+
 	let oldText: string | null = null;
 	let newText: string | null = null;
 
-	if (input.fromRef && input.toRef) {
+	if (effectiveFromRef && input.toRef) {
 		// Between two refs
-		if (!isNew) oldText = await readFileAtRef(repoRoot, input.fromRef, basePath);
+		if (!isNew) oldText = await readFileAtRef(repoRoot, effectiveFromRef, basePath);
 		if (!isDeleted) newText = await readFileAtRef(repoRoot, input.toRef, input.path);
-	} else if (input.fromRef) {
+	} else if (effectiveFromRef) {
 		// Ref vs working tree
-		if (!isNew) oldText = await readFileAtRef(repoRoot, input.fromRef, basePath);
+		if (!isNew) oldText = await readFileAtRef(repoRoot, effectiveFromRef, basePath);
 		if (!isDeleted) newText = await readWorkingTreeFile(repoRoot, input.path);
 	} else {
 		// HEAD vs working tree (uncommitted)

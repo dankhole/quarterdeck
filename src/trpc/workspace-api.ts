@@ -516,6 +516,8 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 
 		loadChanges: async (workspaceScope, input) => {
+			const threeDot = input.diffMode === "three_dot";
+
 			// Ref-based comparison (Compare tab / Compare with uncommitted)
 			if (input.fromRef) {
 				assertValidGitRef(input.fromRef, "fromRef");
@@ -533,9 +535,14 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				}
 
 				if (input.toRef) {
-					return await getWorkspaceChangesBetweenRefs({ cwd, fromRef: input.fromRef, toRef: input.toRef });
+					return await getWorkspaceChangesBetweenRefs({
+						cwd,
+						fromRef: input.fromRef,
+						toRef: input.toRef,
+						threeDot,
+					});
 				}
-				return await getWorkspaceChangesFromRef({ cwd, fromRef: input.fromRef });
+				return await getWorkspaceChangesFromRef({ cwd, fromRef: input.fromRef, threeDot });
 			}
 
 			// Home repo uncommitted (no task)
@@ -580,6 +587,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 
 		loadFileDiff: async (workspaceScope, input) => {
 			const emptyResult = { path: input.path, oldText: null, newText: null };
+			const threeDot = input.diffMode === "three_dot";
 
 			if (!validateGitPath(input.path)) {
 				throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid file path." });
@@ -611,6 +619,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 					status: input.status,
 					fromRef: input.fromRef,
 					toRef: input.toRef,
+					threeDot,
 				});
 			}
 

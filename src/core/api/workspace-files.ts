@@ -12,12 +12,16 @@ export const runtimeWorkspaceFileChangeSchema = z.object({
 });
 export type RuntimeWorkspaceFileChange = z.infer<typeof runtimeWorkspaceFileChangeSchema>;
 
+export const runtimeDiffModeSchema = z.enum(["two_dot", "three_dot"]);
+export type RuntimeDiffMode = z.infer<typeof runtimeDiffModeSchema>;
+
 export const runtimeWorkspaceChangesRequestSchema = z.object({
 	taskId: z.string().nullable(),
 	baseRef: z.string().optional(),
 	mode: z.enum(["working_copy", "last_turn"]).optional(),
 	fromRef: z.string().optional(),
 	toRef: z.string().optional(),
+	diffMode: runtimeDiffModeSchema.optional(),
 });
 export type RuntimeWorkspaceChangesRequest = z.infer<typeof runtimeWorkspaceChangesRequestSchema>;
 
@@ -37,6 +41,7 @@ export const runtimeFileDiffRequestSchema = z.object({
 	mode: runtimeWorkspaceChangesModeSchema.optional(),
 	fromRef: z.string().optional(),
 	toRef: z.string().optional(),
+	diffMode: runtimeDiffModeSchema.optional(),
 	path: z.string().min(1),
 	previousPath: z.string().optional(),
 	status: runtimeWorkspaceFileStatusSchema,

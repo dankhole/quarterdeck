@@ -181,10 +181,6 @@ Sections are independent and ordered by priority with a dependency graph in the 
 
 The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as an escape hatch, but WebGL is the default and the better experience. Remove the toggle from settings, the `setWebGLRenderer` method, the `updateGlobalTerminalWebGLRenderer` plumbing, and always load the WebGL addon. Keep the `onContextLoss` handler so a lost WebGL context doesn't crash the terminal.
 
-## Three-dot diff option in compare view
-
-Add an option in the compare view to use three-dot diff (`...`) — showing only the changes introduced on the branch since it diverged from the base, excluding changes that happened on the base since. Currently compare shows a two-dot diff which includes both sides.
-
 ## Revisit periodic orphaned entity cleanup
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.

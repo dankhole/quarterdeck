@@ -36,6 +36,8 @@ export interface UseGitViewCompareResult {
 	worktreeBranches: Map<string, string>;
 	includeUncommitted: boolean;
 	setIncludeUncommitted: (value: boolean) => void;
+	threeDotDiff: boolean;
+	setThreeDotDiff: (value: boolean) => void;
 }
 
 export function useGitViewCompare({
@@ -76,6 +78,15 @@ export function useGitViewCompare({
 	const setIncludeUncommitted = useCallback((value: boolean) => {
 		setIncludeUncommittedState(value);
 		writeLocalStorageItem(LocalStorageKey.CompareIncludeUncommitted, String(value));
+	}, []);
+
+	// "Only branch changes" toggle (three-dot diff) — persisted to localStorage, default true
+	const [threeDotDiff, setThreeDotDiffState] = useState(
+		() => readLocalStorageItem(LocalStorageKey.CompareThreeDotDiff) !== "false",
+	);
+	const setThreeDotDiff = useCallback((value: boolean) => {
+		setThreeDotDiffState(value);
+		writeLocalStorageItem(LocalStorageKey.CompareThreeDotDiff, String(value));
 	}, []);
 
 	// Reset on task/project change
@@ -155,5 +166,7 @@ export function useGitViewCompare({
 		worktreeBranches,
 		includeUncommitted,
 		setIncludeUncommitted,
+		threeDotDiff,
+		setThreeDotDiff,
 	};
 }

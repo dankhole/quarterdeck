@@ -28,6 +28,7 @@ export enum LocalStorageKey {
 	FileBrowserMarkdownPreview = "quarterdeck.file-browser-markdown-preview",
 	DebugLogDisabledTags = "quarterdeck.debug-log-disabled-tags",
 	CompareIncludeUncommitted = "quarterdeck.compare-include-uncommitted",
+	CompareThreeDotDiff = "quarterdeck.compare-three-dot-diff",
 	FileBrowserLastSelectedPath = "quarterdeck.file-browser-last-selected-path",
 	GitViewLastSelectedPath = "quarterdeck.git-view-last-selected-path",
 }

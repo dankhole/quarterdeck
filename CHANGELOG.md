@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: three-dot diff in compare view
+
+- Added "Only branch changes" toggle to the compare bar (default on). When enabled, diffs show only changes the branch introduced since diverging from the base, excluding base-side changes — matching GitHub/GitLab PR diff behavior.
+- Backend uses native `git diff A...B` syntax for ref-to-ref comparisons and `git merge-base` for ref-vs-working-tree. File content loading reads the old side from the merge-base instead of the raw fromRef.
+- Toggle persists to localStorage independently of "Include uncommitted work".
+
 ### Refactor: unify default branch resolution
 
 - Unified three independent "default branch" paths into a single `resolveDefaultBaseRef` function with priority chain: config pin → git detection → fallback.

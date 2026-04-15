@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeFileDiffResponse, RuntimeWorkspaceChangesMode, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type {
+	RuntimeDiffMode,
+	RuntimeFileDiffResponse,
+	RuntimeWorkspaceChangesMode,
+	RuntimeWorkspaceFileChange,
+} from "@/runtime/types";
 
 export interface UseFileDiffContentOptions {
 	workspaceId: string | null;
@@ -10,6 +15,7 @@ export interface UseFileDiffContentOptions {
 	mode: RuntimeWorkspaceChangesMode;
 	fromRef?: string | null;
 	toRef?: string | null;
+	diffMode?: RuntimeDiffMode | null;
 	selectedFile: RuntimeWorkspaceFileChange | null;
 	/** Bumped when the file list changes (e.g. generatedAt from getChanges). Triggers a refetch of the selected file. */
 	changesGeneratedAt?: number | null;
@@ -33,7 +39,7 @@ function buildCacheKey(
 }
 
 export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileDiffContentResult {
-	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, selectedFile, changesGeneratedAt } = options;
+	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode, selectedFile, changesGeneratedAt } = options;
 
 	const [result, setResult] = useState<UseFileDiffContentResult>(EMPTY_RESULT);
 	const requestIdRef = useRef(0);
@@ -43,7 +49,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 	const isBackgroundRefetchRef = useRef(false);
 
 	// Track the context key — clear cache when context changes.
-	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}`;
+	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
 	const prevContextKeyRef = useRef(contextKey);
 
 	useEffect(() => {
@@ -92,6 +98,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 				status: selectedFile.status,
 				...(fromRef ? { fromRef } : {}),
 				...(toRef ? { toRef } : {}),
+				...(diffMode ? { diffMode } : {}),
 			});
 
 			if (!isMountedRef.current || requestIdRef.current !== requestId) {
@@ -107,7 +114,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 			}
 			setResult({ oldText: null, newText: null, isLoading: false });
 		}
-	}, [baseRef, fromRef, mode, selectedFile, taskId, toRef, workspaceId]);
+	}, [baseRef, diffMode, fromRef, mode, selectedFile, taskId, toRef, workspaceId]);
 
 	// Fetch when selected file changes.
 	useEffect(() => {
