@@ -29,6 +29,7 @@ const slotRoles = new Map<TerminalSlot, SlotRole>();
 const slotTaskIds = new Map<string, TerminalSlot>(); // taskId -> slot
 const roleTimestamps = new Map<TerminalSlot, number>();
 const warmupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+let previousEvictionTimer: ReturnType<typeof setTimeout> | null = null;
 // Retained for future destroyPool() cleanup.
 let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
@@ -43,6 +44,9 @@ let poolContainer: HTMLDivElement | null = null;
 const POOL_SIZE = 4;
 const ROTATION_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const WARMUP_TIMEOUT_MS = 3_000;
+/** How long a PREVIOUS slot stays connected before auto-eviction. Keeps instant
+ *  switch-back for quick peeks while stopping hidden WebGL rendering long-term. */
+const PREVIOUS_EVICTION_MS = 30_000;
 
 /** Default appearance for pool slots at init — real appearance is set on show(). */
 const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
@@ -80,6 +84,30 @@ function removeSlotFromTaskIndex(slot: TerminalSlot): string | null {
 		}
 	}
 	return null;
+}
+
+/**
+ * Cancel any pending PREVIOUS eviction timer.
+ */
+function clearPreviousEvictionTimer(): void {
+	if (previousEvictionTimer !== null) {
+		clearTimeout(previousEvictionTimer);
+		previousEvictionTimer = null;
+	}
+}
+
+/**
+ * Schedule auto-eviction of the current PREVIOUS slot. Cancels any existing timer.
+ */
+function schedulePreviousEviction(slot: TerminalSlot): void {
+	clearPreviousEvictionTimer();
+	previousEvictionTimer = setTimeout(() => {
+		previousEvictionTimer = null;
+		if (getRole(slot) === "PREVIOUS") {
+			log.debug(`previous eviction — auto-evicting slot ${slot.slotId} after ${PREVIOUS_EVICTION_MS}ms`);
+			evictSlot(slot);
+		}
+	}, PREVIOUS_EVICTION_MS);
 }
 
 /**
@@ -231,6 +259,10 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 	const existing = slotTaskIds.get(taskId);
 	if (existing) {
 		clearWarmupTimeout(taskId);
+		// If reacquiring the PREVIOUS slot (user switched back), cancel its eviction timer
+		if (getRole(existing) === "PREVIOUS") {
+			clearPreviousEvictionTimer();
+		}
 		setRole(existing, "ACTIVE");
 		log.debug(`acquireForTask — reusing slot ${existing.slotId} for ${taskId}`);
 		return existing;
@@ -245,6 +277,9 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 		// rendering, stale cursor state) so the terminal is clean if the user
 		// switches back before the slot is evicted.
 		currentActive.requestRestore();
+		// Auto-evict after 30s — keeps instant switch-back for quick peeks
+		// while stopping hidden WebGL rendering from burning GPU/WindowServer.
+		schedulePreviousEviction(currentActive);
 		log.debug(`acquireForTask — demoted slot ${currentActive.slotId} to PREVIOUS`);
 	}
 
@@ -254,6 +289,7 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 	for (const slot of slots) {
 		if (getRole(slot) === "PREVIOUS" && slot !== currentActive) {
 			log.debug(`acquireForTask — evicting stale PREVIOUS slot ${slot.slotId}`);
+			clearPreviousEvictionTimer(); // clear timer for the old PREVIOUS
 			evictSlot(slot);
 		}
 	}
@@ -390,11 +426,12 @@ export function releaseTask(taskId: string): void {
  * Release all pool slots to FREE. Clears all warmup timeouts.
  */
 export function releaseAll(): void {
-	// Clear all warmup timeouts
+	// Clear all timers
 	for (const [, timeout] of warmupTimeouts) {
 		clearTimeout(timeout);
 	}
 	warmupTimeouts.clear();
+	clearPreviousEvictionTimer();
 
 	// Disconnect all non-FREE slots
 	for (const slot of slots) {
@@ -670,11 +707,12 @@ export function isTerminalSessionRunning(workspaceId: string, taskId: string): b
 
 /** @internal — test only. Resets all module-level state so tests start clean. */
 export function _resetPoolForTesting(): void {
-	// Clear warmup timeouts
+	// Clear all timers
 	for (const [, timeout] of warmupTimeouts) {
 		clearTimeout(timeout);
 	}
 	warmupTimeouts.clear();
+	clearPreviousEvictionTimer();
 
 	// Dispose all pool slots
 	for (const slot of slots) {

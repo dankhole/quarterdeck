@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Perf: auto-evict PREVIOUS terminal slot after 30 seconds
+
+- Hidden PREVIOUS terminal slots kept their IO WebSocket open indefinitely, causing xterm.js to parse incoming PTY bytes and execute WebGL draw calls into an invisible canvas — driving GPU work and WindowServer compositing overhead. PREVIOUS slots now auto-evict after 30 seconds, closing sockets and stopping rendering. Switching back within 30s still reuses the warm slot instantly; after 30s the slot is reacquired fresh with a server restore.
+
 ### Fix: background terminal re-sync on task switch
 
 - When switching tasks, the previously-active terminal slot is demoted to PREVIOUS but keeps its WebSocket connections open. The xterm buffer could drift into a garbled visual state during this period, which persisted if the user switched back before the slot was evicted. Now `requestRestore()` fires on demotion — re-syncing the buffer from the server's headless mirror while the user isn't looking — so the terminal is clean on return.
