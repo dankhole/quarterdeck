@@ -2,6 +2,15 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: card-detail-view test failures after GitContext extraction (2026-04-15)
+
+The GitContext extraction (abd66b57, phase 8 step 4) added `useGitContext()` to `CardDetailView` but the test file's `renderWithProviders` helper was not updated to include `GitContext.Provider`. All 3 tests failed with "useGitContext must be used within a GitContext.Provider".
+
+**What changed:**
+- `web-ui/src/components/card-detail-view.test.tsx` — imported `GitContext` and `GitContextValue` from `@/providers/git-provider`, added a `noopGitContext` constant satisfying the full `GitContextValue` interface (all fields set to noop/null/empty values), wrapped the test render tree with `<GitContext.Provider value={noopGitContext}>`.
+
+**Files touched:** `web-ui/src/components/card-detail-view.test.tsx`
+
 ## Fix: title generation timeout noise (2026-04-15)
 
 Investigated todo item "Title generation timeouts in logs." The 3-second timeout on title and branch-name generation was too aggressive for Bedrock proxy round-trips — summary generation already used 5s, and commit-message generation used 7s. The timeout `AbortError` was logged at `warn` level, making it noisy in debug logs even though titles eventually appeared (the fire-and-forget path in `workspace-api.ts` just returns `null` and the UI falls back to truncated prompt text).

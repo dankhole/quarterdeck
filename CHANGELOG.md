@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: card-detail-view test failures after GitContext extraction
+
+- Added `GitContext.Provider` with a noop value to the test harness's `renderWithProviders` — the GitContext extraction (phase 8 step 4) added a `useGitContext()` call in `CardDetailView` but the test wrapper was never updated, breaking all 3 tests.
+
 ### Fix: title generation timeout noise
 
 - Bumped title and branch-name generation timeouts from 3s to 5s — matches the summary generator and `callLlm` default fallback. 3s was too aggressive for Bedrock proxy round-trips.

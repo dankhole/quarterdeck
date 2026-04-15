@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardDetailView } from "@/components/card-detail-view";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
+import { GitContext, type GitContextValue } from "@/providers/git-provider";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
@@ -151,12 +152,70 @@ const noopBoardContext: BoardContextValue = {
 	setSelectedTaskId: () => {},
 };
 
+const noopGitContext: GitContextValue = {
+	runningGitAction: null,
+	gitActionError: null,
+	gitActionErrorTitle: "",
+	clearGitActionError: () => {},
+	gitHistory: {
+		viewMode: "commit",
+		refs: [],
+		activeRef: null,
+		refsErrorMessage: null,
+		isRefsLoading: false,
+		workingCopyFileCount: 0,
+		hasWorkingCopy: false,
+		commits: [],
+		totalCommitCount: 0,
+		selectedCommitHash: null,
+		selectedCommit: null,
+		isLogLoading: false,
+		isLoadingMoreCommits: false,
+		logErrorMessage: null,
+		diffSource: null,
+		isDiffLoading: false,
+		diffErrorMessage: null,
+		selectedDiffPath: null,
+		selectWorkingCopy: () => {},
+		selectRef: () => {},
+		selectCommit: () => {},
+		selectDiffPath: () => {},
+		loadMoreCommits: () => {},
+		refresh: () => {},
+	},
+	gitHistoryTaskScope: null,
+	runGitAction: async () => {},
+	switchHomeBranch: async () => {},
+	resetGitActionState: () => {},
+	taskGitActionLoadingByTaskId: {},
+	runAutoReviewGitAction: async () => false,
+	onStashAndRetry: undefined,
+	isStashAndRetryingPull: false,
+	isGitHistoryOpen: false,
+	handleToggleGitHistory: () => {},
+	pendingCompareNavigation: null,
+	pendingFileNavigation: null,
+	openGitCompare: () => {},
+	clearPendingCompareNavigation: () => {},
+	navigateToFile: () => {},
+	clearPendingFileNavigation: () => {},
+	navigateToGitView: () => {},
+	fileBrowserScopeMode: "contextual",
+	fileBrowserResolvedScope: null,
+	fileBrowserSwitchToHome: () => {},
+	fileBrowserReturnToContextual: () => {},
+	fileBrowserSelectBranchView: () => {},
+	gitSyncTaskScope: undefined,
+};
+
 function renderWithProviders(root: Root, ui: ReactNode): void {
 	root.render(
 		<BoardContext.Provider value={noopBoardContext}>
-			<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
-				<TooltipProvider>{ui}</TooltipProvider>
-			</CardActionsProvider>
+			<GitContext.Provider value={noopGitContext}>
+				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+					<TooltipProvider>{ui}</TooltipProvider>
+				</CardActionsProvider>
+			</GitContext.Provider>
 		</BoardContext.Provider>,
 	);
 }
