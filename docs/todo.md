@@ -71,7 +71,7 @@ The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `e
 
 ## Fix agent state tracking bugs
 
-Multiple related bugs where the UI shows the wrong task state. A comprehensive analysis and refactor plan exists at [docs/refactor-session-lifecycle.md](refactor-session-lifecycle.md) — it covers root causes, targeted patches, and a structural decomposition of `session-manager.ts`.
+Multiple related bugs where the UI shows the wrong task state. A comprehensive analysis and refactor plan exists at [docs/archived/refactor-session-lifecycle.md](archived/refactor-session-lifecycle.md) — it covers root causes, targeted patches, and a structural decomposition of `session-manager.ts`.
 
 **Fixed:**
 - ~~**Permission race condition** (high)~~: Stale `PostToolUse` after `PermissionRequest` no longer bounces state back to running. Permission-aware transition guard in `hooks-api.ts` blocks `to_in_progress` during permission state (exempts `UserPromptSubmit`).
@@ -165,7 +165,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 
 ## Readability refactoring roadmap (C#-style navigability)
 
-Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
+Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
 
 **Backend (sections 1-7):**
 - ~~Adopt `neverthrow` and `mitt`~~ — installed, ready for incremental adoption
@@ -250,6 +250,6 @@ The recent `resolveDefaultBaseRef` unification should be functionally tested. Al
 
 Ensure all runtime log output includes timestamps. Audit existing logging paths (console logger, JSONL event log, debug ring buffer) and add timestamps where missing.
 
-## Archive current changelog and implementation log
+## ~~Archive current changelog and implementation log~~
 
-Following the pattern of `docs/changelog-through-0.5.0.md` and `docs/implementation-log-through-2026-04-12.md`: date-stamp the current `CHANGELOG.md` entries and `docs/implementation-log.md` entries into new archive files, then start fresh with empty sections in the active files. Bump version number as appropriate.
+**Done** — 0.9.0 release. Archived to `docs/changelog-through-0.8.0.md` and `docs/implementation-log-through-2026-04-15.md`.
