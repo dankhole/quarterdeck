@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Diagnostic: idle session lifecycle logging
+
+- Added 4 structured diagnostic events to trace why agent processes die and sessions drop to idle: `server.started`, `workspace.terminal_manager_created`, `session.autorestart_skipped` (warn), `session.recover_to_idle` (warn). All log to both the console logger (debug ring buffer / WebSocket) and the JSONL event log.
+- `hydrateFromRecord` now marks `awaiting_review` sessions as `interrupted` (same as `running` sessions) during workspace bootstrap, feeding them into `resumeInterruptedSessions` on first viewer connect instead of dropping to idle via `recoverStaleSession`.
+- Added convention to `event-log.ts`: every `emitEvent`/`emitSessionEvent` call should have a corresponding console log unless there's a specific reason to omit it.
+
 ### Feature: three-dot diff in compare view
 
 - Added "Only branch changes" toggle to the compare bar (default on). When enabled, diffs show only changes the branch introduced since diverging from the base, excluding base-side changes — matching GitHub/GitLab PR diff behavior.

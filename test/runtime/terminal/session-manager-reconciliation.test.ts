@@ -296,9 +296,10 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
-	it("completed and interrupted sessions are not modified (35)", async () => {
+	it("hydrated awaiting_review sessions become interrupted, reconciliation moves to review (35)", async () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
-		// Hydrate with a completed session (no active process, no auto-restart risk)
+		// Hydration now converts awaiting_review → interrupted so
+		// resumeInterruptedSessions can restart them on first viewer connect.
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
 				state: "awaiting_review",
@@ -308,13 +309,17 @@ describe("reconciliation sweep lifecycle", () => {
 			}),
 		});
 
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
+		// After hydration, state is interrupted (not awaiting_review/exit)
+		expect(manager.store.getSummary("task-1")?.state).toBe("interrupted");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
+		// Reconciliation's checkInterruptedNoRestart moves it to awaiting_review
+		// since there's no pending auto-restart.
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
 		manager.stopReconciliation();
 	});

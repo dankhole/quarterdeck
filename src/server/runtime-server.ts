@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import { createTaggedLogger } from "../core/debug-logger";
+import { emitEvent } from "../core/event-log";
 import {
 	buildQuarterdeckRuntimeUrl,
 	getQuarterdeckRuntimeHost,
@@ -21,6 +23,8 @@ import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
+
+const serverLog = createTaggedLogger("runtime-server");
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;
@@ -224,6 +228,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	if (!address || typeof address === "string") {
 		throw new Error("Failed to start local server.");
 	}
+	const serverPort = typeof address === "object" ? address.port : null;
+	serverLog.warn("server started", { port: serverPort, pid: process.pid });
+	emitEvent("server.started", { port: serverPort, pid: process.pid });
 	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
 	const url = activeWorkspaceId
 		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)

@@ -2,6 +2,22 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Diagnostic: idle session lifecycle logging (2026-04-15)
+
+Agent sessions are dropping to idle with blank terminals. The root cause is unknown — the primary goal of this change is diagnostic instrumentation to trace why agent processes die out from under active tasks.
+
+**4 diagnostic events added** (all log to both console logger and JSONL event log):
+- `server.started` — `src/server/runtime-server.ts` — rules out server restarts as the cause when reviewing logs
+- `workspace.terminal_manager_created` — `src/server/workspace-registry.ts` — captures when terminal managers are created from disk (cold start), including how many sessions were hydrated
+- `session.autorestart_skipped` — `src/terminal/session-manager.ts` — captures the moment a process exits and auto-restart is NOT triggered, with listener count, exit code, and exit state. This is the key diagnostic: if processes are dying and auto-restart is skipped because `listeners.size === 0` (no viewer connected), this event proves it.
+- `session.recover_to_idle` — `src/terminal/session-manager.ts` — captures sessions falling through `recoverStaleSession` to idle, with the state they were in before being dropped
+
+**Secondary fix**: `hydrateFromRecord` now marks `awaiting_review` sessions as `interrupted` (same as `running`) during workspace bootstrap. This feeds them into `resumeInterruptedSessions` on first viewer connect instead of dropping to idle via `recoverStaleSession`. This is a mitigation — the real question is why the processes died in the first place.
+
+**Convention added**: `event-log.ts` "How to add a new event" guide now requires a corresponding console log (`createTaggedLogger`) at every `emitEvent`/`emitSessionEvent` call site, unless there's a specific reason to omit it (e.g. high-frequency health snapshots). The event log may be toggled off; the console logger feeds the live debug ring buffer and WebSocket stream.
+
+**Files touched:** `src/core/event-log.ts`, `src/terminal/session-manager.ts`, `src/server/runtime-server.ts`, `src/server/workspace-registry.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`, `test/runtime/terminal/session-manager-reconciliation.test.ts`
+
 ## Feature: three-dot diff in compare view (2026-04-15)
 
 Added an "Only branch changes" toggle to the compare view that switches between two-dot and three-dot diff modes. The compare view previously used two-dot diffs (`git diff A B`) which includes all differences between two refs — including changes that landed on the base branch after the feature branch diverged. Three-dot mode shows only branch-introduced changes, matching the PR diff behavior users expect.

@@ -425,7 +425,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		expect(spawnedSessions).toHaveLength(1);
 	});
 
-	it("resets hydrated entries to idle even with active state", () => {
+	it("hydrated awaiting_review entries are marked interrupted for resume", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({
 			"task-1": createSummary({
@@ -434,10 +434,10 @@ describe("recoverStaleSession with launched sessions", () => {
 			}),
 		});
 
-		const recovered = manager.recoverStaleSession("task-1");
-
-		// Hydrated entry has no restartRequest — should reset to idle
-		expect(recovered?.state).toBe("idle");
-		expect(recovered?.reviewReason).toBeNull();
+		// Hydration converts awaiting_review → interrupted so
+		// resumeInterruptedSessions can restart them on first viewer connect.
+		const summary = manager.store.getSummary("task-1");
+		expect(summary?.state).toBe("interrupted");
+		expect(summary?.reviewReason).toBe("interrupted");
 	});
 });

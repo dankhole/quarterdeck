@@ -132,13 +132,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 	 * Hydrate both the summary store and the process entry map from a persisted
 	 * session record. Called once during workspace bootstrap.
 	 *
-	 * Sessions persisted as "running" are crash survivors — the server died
-	 * while the agent was actively working. Mark them as interrupted so the UI
-	 * shows the restart button immediately and can auto-restart them.
-	 *
-	 * Sessions in "awaiting_review" were already paused (agent finished or
-	 * errored). Their work products exist in the worktree. Leave them as-is;
-	 * recoverStaleSession will reset them to idle when a viewer connects.
+	 * Sessions persisted as "running" or "awaiting_review" are processless
+	 * survivors — the server died or the workspace was evicted from memory.
+	 * Mark them as interrupted so resumeInterruptedSessions can auto-restart
+	 * them with --continue when the first viewer connects.
 	 */
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		this.store.hydrateFromRecord(record);
@@ -146,7 +143,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			if (!this.entries.has(taskId)) {
 				this.entries.set(taskId, createProcessEntry(taskId));
 			}
-			if (summary.state === "running") {
+			if (summary.state === "running" || summary.state === "awaiting_review") {
 				this.store.update(taskId, {
 					state: "interrupted",
 					reviewReason: "interrupted",
@@ -514,6 +511,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return updated;
 		}
 
+		sessionLog.warn("recovering stale session to idle", {
+			taskId,
+			previousState: summary.state,
+			previousReviewReason: summary.reviewReason,
+			hasRestartRequest: entry?.restartRequest != null,
+			restartRequestKind: entry?.restartRequest?.kind ?? null,
+		});
+		emitSessionEvent(taskId, "session.recover_to_idle", {
+			previousState: summary.state,
+			previousReviewReason: summary.reviewReason,
+			hasRestartRequest: entry?.restartRequest != null,
+			restartRequestKind: entry?.restartRequest?.kind ?? null,
+		});
 		return this.store.recoverStaleSession(taskId);
 	}
 
@@ -776,6 +786,23 @@ export class TerminalSessionManager implements TerminalSessionService {
 			interrupted: currentEntry.active.session.wasInterrupted(),
 		});
 		const doAutoRestart = shouldAutoRestart(currentEntry);
+		if (!doAutoRestart) {
+			sessionLog.warn("auto-restart skipped on exit", {
+				taskId: request.taskId,
+				listenerCount: currentEntry.listeners.size,
+				restartRequestKind: currentEntry.restartRequest?.kind ?? null,
+				exitCode: event.exitCode,
+				exitState: result?.summary?.state ?? null,
+				exitReviewReason: result?.summary?.reviewReason ?? null,
+			});
+			emitSessionEvent(request.taskId, "session.autorestart_skipped", {
+				listenerCount: currentEntry.listeners.size,
+				restartRequestKind: currentEntry.restartRequest?.kind ?? null,
+				exitCode: event.exitCode,
+				exitState: result?.summary?.state ?? null,
+				exitReviewReason: result?.summary?.reviewReason ?? null,
+			});
+		}
 		const exitSummary = result?.summary ?? this.store.getSummary(request.taskId);
 		const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
 

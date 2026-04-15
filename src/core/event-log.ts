@@ -24,9 +24,14 @@
 // 1. Pick a namespaced event name (e.g. "hook.received", "session.exited",
 //    "reconciliation.sweep"). Use dot-separated hierarchy.
 // 2. Call emitSessionEvent or emitEvent at the relevant code point.
-// 3. Include enough data to reconstruct what happened without reading other
+// 3. Also log to a console logger (createTaggedLogger) at the same call site.
+//    The event log writes to disk and may be toggled off — the console logger
+//    feeds the live debug ring buffer and WebSocket stream. Every emitEvent /
+//    emitSessionEvent call should have a corresponding console log unless you
+//    have a specific reason to omit it (e.g. high-frequency health snapshots).
+// 4. Include enough data to reconstruct what happened without reading other
 //    log lines. Timestamps, state before/after, IDs, and error messages.
-// 4. Document the event in docs/forge/2026-04-12-session-lifecycle-refactor/
+// 5. Document the event in docs/forge/2026-04-12-session-lifecycle-refactor/
 //    observability-plan.md (event table) if it's a session lifecycle event.
 //
 // ── How to analyze the log ──────────────────────────────────────────────────

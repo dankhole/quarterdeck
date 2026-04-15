@@ -7,7 +7,8 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
+import { createTaggedLogger } from "../core/debug-logger";
+import { emitEvent, emitSessionEvent } from "../core/event-log";
 import type {
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
@@ -26,6 +27,8 @@ import {
 } from "../state/workspace-state";
 import { TerminalSessionManager } from "../terminal/session-manager";
 import { InMemorySessionSummaryStore } from "../terminal/session-summary-store";
+
+const registryLog = createTaggedLogger("workspace-registry");
 
 export interface WorkspaceRegistryScope {
 	workspaceId: string;
@@ -228,14 +231,18 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		const loading = (async () => {
 			const store = new InMemorySessionSummaryStore();
 			const manager = new TerminalSessionManager(store);
+			let hydratedSessionCount = 0;
 			try {
 				const existingWorkspace = await loadWorkspaceState(repoPath);
 				manager.hydrateFromRecord(existingWorkspace.sessions);
+				hydratedSessionCount = Object.keys(existingWorkspace.sessions).length;
 			} catch {
 				// Workspace state will be created on demand.
 			}
 			manager.startReconciliation(repoPath);
 			terminalManagersByWorkspaceId.set(workspaceId, manager);
+			registryLog.warn("terminal manager created", { workspaceId, repoPath, hydratedSessionCount });
+			emitEvent("workspace.terminal_manager_created", { workspaceId, repoPath, hydratedSessionCount });
 			return manager;
 		})().finally(() => {
 			terminalManagerLoadPromises.delete(workspaceId);
