@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: extract GitContext provider from App.tsx — phase 8 step 4
+
+- Introduced `GitContext` (`web-ui/src/providers/git-provider.tsx`) — owns all git-related state: git actions (`runGitAction`, `switchHomeBranch`, loading/error state), git history toggle, git navigation (`pendingCompareNavigation`, `pendingFileNavigation`, `navigateToFile`, `navigateToGitView`), home file browser scope context, and the derived `gitSyncTaskScope`.
+- `CardDetailView` now reads git navigation, git history, conflict detection, and pull/push callbacks from `useGitContext()` instead of props — removes 12 props (`isGitHistoryOpen`, `onToggleGitHistory`, `pendingCompareNavigation`, `onCompareNavigationConsumed`, `onOpenGitCompare`, `pendingFileNavigation`, `onFileNavigationConsumed`, `navigateToFile`, `onConflictDetected`, `onPullBranch`, `onPushBranch`).
+- Context value constructed in App.tsx via `useMemo`, provider wraps inside `BoardContext.Provider`. Hooks remain in App.tsx — only their return values are exposed via context.
+
 ### Feat: state backup system with periodic snapshots
 
 - Added automatic state backup system that snapshots critical files (`config.json`, `workspaces/index.json`, per-workspace `board.json`, `sessions.json`, `meta.json`, `pinned-branches.json`) to `~/.quarterdeck-backups/` — a sibling directory that survives a wipe of `~/.quarterdeck/`.

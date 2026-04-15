@@ -16,9 +16,9 @@ import { GitView } from "@/components/git-view";
 import { GitBranchStatusControl } from "@/components/top-bar";
 import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
-import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
 import { useScopeContext } from "@/hooks/use-scope-context";
 import { useBoardContext } from "@/providers/board-provider";
+import { useGitContext } from "@/providers/git-provider";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
@@ -101,8 +101,6 @@ export function CardDetailView({
 	inlineTaskEditor,
 	onEditTask,
 	gitHistoryPanel,
-	isGitHistoryOpen,
-	onToggleGitHistory,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
 	bottomTerminalSummary,
@@ -118,7 +116,6 @@ export function CardDetailView({
 	onBottomTerminalToggleExpand,
 	onBottomTerminalRestart,
 	onBottomTerminalExit,
-	// --- New props for sidebar decoupling ---
 	mainView,
 	sidebar,
 	topBar,
@@ -128,18 +125,9 @@ export function CardDetailView({
 	skipHomeCheckoutConfirmation,
 	onSkipTaskCheckoutConfirmationChange,
 	onDeselectTask,
-	pendingCompareNavigation,
-	onCompareNavigationConsumed,
-	onOpenGitCompare,
-	pendingFileNavigation,
-	onFileNavigationConsumed,
-	navigateToFile,
 	onCardDoubleClick,
 	pinnedBranches,
 	onTogglePinBranch,
-	onConflictDetected,
-	onPullBranch,
-	onPushBranch,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -153,8 +141,6 @@ export function CardDetailView({
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
 	gitHistoryPanel?: ReactNode;
-	isGitHistoryOpen?: boolean;
-	onToggleGitHistory?: () => void;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
@@ -170,7 +156,6 @@ export function CardDetailView({
 	onBottomTerminalToggleExpand?: () => void;
 	onBottomTerminalRestart?: () => void;
 	onBottomTerminalExit?: (taskId: string, exitCode: number | null) => void;
-	// --- New props ---
 	mainView: MainViewId;
 	sidebar: SidebarId | null;
 	topBar: ReactNode;
@@ -180,21 +165,22 @@ export function CardDetailView({
 	skipHomeCheckoutConfirmation: boolean;
 	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
 	onDeselectTask: () => void;
-	pendingCompareNavigation?: GitViewCompareNavigation | null;
-	onCompareNavigationConsumed?: () => void;
-	onOpenGitCompare?: (navigation: GitViewCompareNavigation) => void;
-	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
-	onFileNavigationConsumed?: () => void;
-	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
-	onConflictDetected?: () => void;
-	/** Pull a branch from remote. Called with branch name and task scope for worktree-scoped pull. */
-	onPullBranch?: (branch: string) => void;
-	/** Push a branch to remote. Called with branch name and task scope for worktree-scoped push. */
-	onPushBranch?: (branch: string) => void;
 }): React.ReactElement {
 	const { board, sessions: taskSessions, upsertSession: onSessionSummary } = useBoardContext();
+	const {
+		isGitHistoryOpen,
+		handleToggleGitHistory: onToggleGitHistory,
+		pendingCompareNavigation,
+		clearPendingCompareNavigation: onCompareNavigationConsumed,
+		openGitCompare: onOpenGitCompare,
+		pendingFileNavigation,
+		clearPendingFileNavigation: onFileNavigationConsumed,
+		navigateToFile,
+		navigateToGitView,
+		runGitAction,
+	} = useGitContext();
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -251,7 +237,7 @@ export function CardDetailView({
 		taskId: selection.card.id,
 		baseRef: selection.card.baseRef,
 		onCheckoutSuccess: taskReturnToContextual,
-		onConflictDetected,
+		onConflictDetected: navigateToGitView,
 	});
 
 	// Derive what the file browser should show based on scope
@@ -379,7 +365,7 @@ export function CardDetailView({
 			>
 				{topBar}
 				{mainView !== "git" && (
-					<ConflictBanner taskId={selection.card.id} onNavigateToResolver={() => onConflictDetected?.()} />
+					<ConflictBanner taskId={selection.card.id} onNavigateToResolver={navigateToGitView} />
 				)}
 				{mainView === "git" ? (
 					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
@@ -405,7 +391,7 @@ export function CardDetailView({
 										changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
 										additions={taskWorkspaceSnapshot?.additions ?? 0}
 										deletions={taskWorkspaceSnapshot?.deletions ?? 0}
-										isGitHistoryOpen={isGitHistoryOpen ?? false}
+										isGitHistoryOpen={isGitHistoryOpen}
 										onToggleGitHistory={onToggleGitHistory}
 										isDetached={taskWorkspaceInfo?.isDetached ?? false}
 										baseRef={selection.card.baseRef}
@@ -444,16 +430,24 @@ export function CardDetailView({
 												worktreeBranches={taskBranchActions.worktreeBranches}
 												onSelectBranchView={taskBranchActions.handleSelectBranchView}
 												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
-												onCompareWithBranch={
-													onOpenGitCompare
-														? (branch) => onOpenGitCompare({ targetRef: branch })
-														: undefined
-												}
+												onCompareWithBranch={(branch) => onOpenGitCompare({ targetRef: branch })}
 												onMergeBranch={taskBranchActions.handleMergeBranch}
 												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
 												onDeleteBranch={taskBranchActions.handleDeleteBranch}
-												onPull={onPullBranch}
-												onPush={onPushBranch}
+												onPull={(branch) => {
+													void runGitAction(
+														"pull",
+														{ taskId: selection.card.id, baseRef: selection.card.baseRef },
+														branch,
+													);
+												}}
+												onPush={(branch) => {
+													void runGitAction(
+														"push",
+														{ taskId: selection.card.id, baseRef: selection.card.baseRef },
+														branch,
+													);
+												}}
 												pinnedBranches={pinnedBranches}
 												onTogglePinBranch={onTogglePinBranch}
 												trigger={<BranchPillTrigger label={pillBranchLabel} />}

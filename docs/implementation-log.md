@@ -2,6 +2,37 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: extract GitContext provider from App.tsx (2026-04-15)
+
+Phase 8, step 4 of the readability roadmap (`docs/refactor-csharp-readability.md` section 8). Fourth context provider extraction from App.tsx, following DialogContext, ProjectContext, and BoardContext.
+
+**What changed:**
+- Created `web-ui/src/providers/git-provider.tsx` — defines `GitContextValue` interface (30+ fields) and `useGitContext()` consumer hook with null check. Follows the established pattern from `board-provider.tsx`.
+- The context value is constructed in App.tsx via `useMemo` and provided inline as `<GitContext.Provider>`, wrapping inside `BoardContext.Provider` and outside `DialogContext.Provider`.
+- Moved `gitSyncTaskScope` computation earlier in App.tsx (from JSX render section to before the `useMemo`) so it can be included in the context value.
+
+**GitContextValue owns:**
+- `useGitActions` return values: `runningGitAction`, `gitActionError`, `gitActionErrorTitle`, `clearGitActionError`, `gitHistory`, `gitHistoryTaskScope`, `runGitAction`, `switchHomeBranch`, `resetGitActionState`, `taskGitActionLoadingByTaskId`, `runAutoReviewGitAction`, `onStashAndRetry`, `isStashAndRetryingPull`
+- Git history toggle: `isGitHistoryOpen`, `handleToggleGitHistory`
+- `useGitNavigation` return values: `pendingCompareNavigation`, `pendingFileNavigation`, `openGitCompare`, `clearPendingCompareNavigation`, `navigateToFile`, `clearPendingFileNavigation`, `navigateToGitView`
+- Home file browser scope context (`useScopeContext`): `fileBrowserScopeMode`, `fileBrowserResolvedScope`, `fileBrowserSwitchToHome`, `fileBrowserReturnToContextual`, `fileBrowserSelectBranchView`
+- Derived: `gitSyncTaskScope`
+
+**CardDetailView migration:**
+- Removed 11 props: `isGitHistoryOpen`, `onToggleGitHistory`, `pendingCompareNavigation`, `onCompareNavigationConsumed`, `onOpenGitCompare`, `pendingFileNavigation`, `onFileNavigationConsumed`, `navigateToFile`, `onConflictDetected`, `onPullBranch`, `onPushBranch`
+- Added `useGitContext()` destructuring with local aliases to preserve downstream naming (e.g. `clearPendingCompareNavigation` → `onCompareNavigationConsumed`)
+- `onConflictDetected` replaced with `navigateToGitView` from context
+- `onPullBranch`/`onPushBranch` replaced with inline `runGitAction()` calls using `selection.card.id` and `selection.card.baseRef`
+- Simplified `onOpenGitCompare` ternary (no longer optional, always from context)
+
+**What did NOT change:**
+- Hooks stay in App.tsx — the provider only exposes their return values
+- Presentational components (`GitView`, `QuarterdeckBoard`, `ColumnContextPanel`) remain prop-driven
+- `gitHistoryPanel` remains a render prop (complex JSX dependencies on `fileBrowserBranchActions`)
+- `pinnedBranches`, `onTogglePinBranch`, `skipTaskCheckoutConfirmation`, `skipHomeCheckoutConfirmation` remain as props (owned by ProjectContext)
+
+**Files**: `web-ui/src/providers/git-provider.tsx` (new), `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`
+
 ## Refactor: split RuntimeApi handlers into individual files (2026-04-14)
 
 Completes section 5 of the readability roadmap (`docs/refactor-csharp-readability.md`). The class conversion to `RuntimeApiImpl` was done in phase 2, but all 11 handler methods were still in one 620-line file. This split extracts each handler into its own file under `src/trpc/handlers/`, leaving `RuntimeApiImpl` as a ~90-line thin dispatcher.
