@@ -23,14 +23,19 @@ export function useTaskBranchOptions({
 	workspaceGit,
 	configDefaultBaseRef,
 }: UseTaskBranchOptionsInput): UseTaskBranchOptionsResult {
+	const configRef = configDefaultBaseRef?.trim() || "";
+
 	const createTaskBranchOptions = useMemo(() => {
 		if (!workspaceGit) {
 			return [] as TaskBranchOption[];
 		}
 
+		// Resolve the effective default: config pin → git detection.
+		const effectiveDefault = configRef || workspaceGit.defaultBranch;
+
 		const options: TaskBranchOption[] = [];
 		const seen = new Set<string>();
-		const append = (value: string | null, labelSuffix?: string) => {
+		const append = (value: string | null | undefined, labelSuffix?: string) => {
 			if (!value || seen.has(value)) {
 				return;
 			}
@@ -41,18 +46,17 @@ export function useTaskBranchOptions({
 			});
 		};
 
-		append(workspaceGit.currentBranch, "(current)");
-		const mainCandidate = workspaceGit.branches.includes("main") ? "main" : workspaceGit.defaultBranch;
-		append(mainCandidate);
+		const currentIsDefault = workspaceGit.currentBranch != null && workspaceGit.currentBranch === effectiveDefault;
+		append(workspaceGit.currentBranch, currentIsDefault ? "(current, default)" : "(current)");
+		append(effectiveDefault, "(default)");
 		for (const branch of workspaceGit.branches) {
 			append(branch);
 		}
 		append(workspaceGit.defaultBranch);
 
 		return options;
-	}, [workspaceGit]);
+	}, [configRef, workspaceGit]);
 
-	const configRef = configDefaultBaseRef?.trim() || "";
 	const configRefIsValid = configRef !== "" && createTaskBranchOptions.some((opt) => opt.value === configRef);
 
 	const defaultTaskBranchRef = useMemo(() => {

@@ -107,6 +107,7 @@ function HookHarness({
 		currentProjectId: "project-1",
 		selectedCard,
 		workspaceGit: null,
+		configDefaultBaseRef: "",
 		agentCommand: null,
 		shellAutoRestartEnabled: true,
 		findCard: () => null,

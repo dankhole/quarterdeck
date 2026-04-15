@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 
+import { loadRuntimeConfig } from "../config/runtime-config";
 import type { RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import { getQuarterdeckRuntimeOrigin } from "../core/runtime-endpoint";
 import { addTaskDependency, addTaskToColumn, removeTaskDependency, updateTask } from "../core/task-board-mutations";
@@ -115,9 +116,10 @@ async function createTask(input: {
 }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
+	const config = await loadRuntimeConfig(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
 	const created = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (state) => {
-		const resolvedBaseRef = (input.baseRef ?? "").trim() || resolveTaskBaseRef(state);
+		const resolvedBaseRef = (input.baseRef ?? "").trim() || resolveTaskBaseRef(state, config.defaultBaseRef);
 		if (!resolvedBaseRef) {
 			throw new Error("Could not determine task base branch for this workspace.");
 		}

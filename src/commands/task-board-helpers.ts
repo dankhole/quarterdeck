@@ -22,8 +22,24 @@ export function printJson(payload: unknown): void {
 	process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
-export function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
-	return state.git.defaultBranch ?? state.git.currentBranch ?? state.git.branches[0] ?? "";
+/**
+ * Single resolution chain for the default base branch.
+ * Priority: config pin → git auto-detection → first branch → empty.
+ */
+export function resolveDefaultBaseRef(
+	gitDefaultBranch: string | null | undefined,
+	configDefaultBaseRef?: string | null,
+): string {
+	const configPin = configDefaultBaseRef?.trim() || "";
+	if (configPin) {
+		return configPin;
+	}
+	return gitDefaultBranch ?? "";
+}
+
+export function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse, configDefaultBaseRef?: string): string {
+	const resolved = resolveDefaultBaseRef(state.git.defaultBranch, configDefaultBaseRef);
+	return resolved || (state.git.currentBranch ?? state.git.branches[0] ?? "");
 }
 
 export function findTaskRecord(

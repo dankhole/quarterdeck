@@ -66,6 +66,7 @@ interface UseTerminalPanelsInput {
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
+	configDefaultBaseRef: string;
 	agentCommand: string | null;
 	shellAutoRestartEnabled: boolean;
 	findCard: (cardId: string) => BoardCard | null;
@@ -135,6 +136,7 @@ export function useTerminalPanels({
 	currentProjectId,
 	selectedCard,
 	workspaceGit,
+	configDefaultBaseRef,
 	agentCommand,
 	shellAutoRestartEnabled,
 	findCard,
@@ -277,7 +279,7 @@ export function useTerminalPanels({
 				taskId: HOME_TERMINAL_TASK_ID,
 				cols: geometry.cols,
 				rows: geometry.rows,
-				baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
+				baseRef: workspaceGit?.currentBranch ?? (configDefaultBaseRef || workspaceGit?.defaultBranch) ?? "HEAD",
 			});
 			if (!payload.ok || !payload.summary) {
 				throw new Error(payload.error ?? "Could not start terminal session.");
@@ -294,7 +296,13 @@ export function useTerminalPanels({
 		} finally {
 			setIsHomeTerminalStarting(false);
 		}
-	}, [currentProjectId, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
+	}, [
+		configDefaultBaseRef,
+		currentProjectId,
+		upsertSession,
+		workspaceGit?.currentBranch,
+		workspaceGit?.defaultBranch,
+	]);
 
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {

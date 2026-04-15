@@ -840,6 +840,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		selectedCard,
 		workspaceGit,
+		configDefaultBaseRef,
 		agentCommand,
 		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		findCard: findCardStable,
