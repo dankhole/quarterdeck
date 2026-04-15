@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Refactor: unify default branch resolution
+
+- Unified three independent "default branch" paths into a single `resolveDefaultBaseRef` function with priority chain: config pin → git detection → fallback.
+- CLI task creation (`quarterdeck task create`) now respects the user's pinned `defaultBaseRef` config — previously only used git auto-detection.
+- Frontend "(default)" label in the branch dropdown now follows the config pin instead of being hardwired to `"main"`.
+- Home terminal `baseRef` resolution now respects the config pin.
+
 ### Docs: hooks directory refactoring plan
 
 - Added `docs/refactor-hooks-directory.md` — three-phase plan for organizing the 78-file flat `web-ui/src/hooks/` directory. Phase 1: group into domain subdirectories (board, git, terminal, project, notifications). Phase 2: extract domain logic from hooks into pure TS modules (incremental, as-touched). Phase 3: conventions for `web-ui-conventions.md` to prevent re-bloating.
@@ -17,7 +24,7 @@
 
 ### Fix: remove arrow key task cycling
 
-- Removed the `useHotkeys` bindings that cycled task selection on up/down/left/right arrow keys. The original fix (suppressing inside `.xterm`) was too narrow — focus could land on the terminal panel wrapper, toolbar, or other elements outside the `.xterm` DOM, causing arrow keys to unexpectedly switch the selected task. Removed the feature entirely: `isTypingTarget` helper, `handleSelectAdjacentCard` callback, both hotkey bindings, and the `react-hotkeys-hook` import from `card-detail-view.tsx`.
+- Removed the `useHotkeys` bindings that cycled task selection on up/down/left/right arrow keys. The original fix (suppressing inside `.xterm`) was too narrow — focus could land on the terminal panel wrapper, toolbar, or other elements outside the `.xterm` DOM, causing arrow keys to unexpectedly switch the selected task. Removed the feature entirely: `isTypingTarget` helper, `handleSelectAdjacentCard` callback, both hotkey bindings, and the `react-hotkeys-hook` import from `card-detail-view.tsx`. 5007e1de
 
 ### Refactor: complete provider shapes and AppProviders compositor — phase 8 step 5
 

@@ -60,6 +60,20 @@ Arrow keys (up/down/left/right) were bound via `useHotkeys` to cycle through tas
 - `docs/todo.md` (removed debug logging todo)
 - `CHANGELOG.md` (new entry)
 
+## Refactor: unify default branch resolution into single priority chain (2026-04-15)
+
+Three independent "default branch" resolution paths had diverged: git auto-detection (`detectGitDefaultBranch` in `workspace-state-utils.ts`), the frontend dropdown label (hardwired to `"main"` in `use-task-branch-options.ts`), and the CLI fallback (`resolveTaskBaseRef` in `task-board-helpers.ts`). The user's config pin (`defaultBaseRef`) was only respected by the UI dropdown selection — the label, CLI, and home terminal all ignored it.
+
+**What changed:**
+- Added `resolveDefaultBaseRef(gitDefaultBranch, configDefaultBaseRef?)` to `src/commands/task-board-helpers.ts` — single resolver implementing config pin → git detection → empty. `resolveTaskBaseRef` now delegates to it.
+- `src/commands/task.ts` `createTask` — loads config via `loadRuntimeConfig(workspaceRepoPath)` and passes `config.defaultBaseRef` to `resolveTaskBaseRef`.
+- `web-ui/src/hooks/use-task-branch-options.ts` — computes `effectiveDefault` (config pin || git-detected), moves "(default)" label to the effective default instead of hardcoding `"main"`. Shows "(current, default)" combined label when current branch is the effective default.
+- `web-ui/src/hooks/use-terminal-panels.ts` — new `configDefaultBaseRef` input prop. Home terminal `baseRef` resolution chain changed from `currentBranch → gitDefault → "HEAD"` to `currentBranch → (configDefault || gitDefault) → "HEAD"`.
+- `web-ui/src/App.tsx` — passes existing `configDefaultBaseRef` to `useTerminalPanels`.
+
+Files: `src/commands/task-board-helpers.ts`, `src/commands/task.ts`, `web-ui/src/App.tsx`, `web-ui/src/hooks/use-task-branch-options.ts`, `web-ui/src/hooks/use-terminal-panels.ts`, `web-ui/src/hooks/use-terminal-panels.test.tsx`.
+Commit: 651e20d2.
+
 ## Refactor: complete provider shapes and AppProviders compositor (2026-04-15)
 
 Phase 8, step 5 of the readability roadmap. Completes all 6 provider context shapes and the compositor, leaving state migration as the remaining work.

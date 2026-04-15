@@ -177,10 +177,6 @@ Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.m
 
 Sections are independent and ordered by priority with a dependency graph in the doc.
 
-## Unify default branch resolution
-
-"Default branch" is determined in three independent places — git auto-detection (`detectGitDefaultBranch`), the "(default)" dropdown label (`useTaskBranchOptions`), and the user-pinned config (`defaultBaseRef`) — with no shared logic. When the user pins a branch, the dropdown selects correctly but the "(default)" label still points at the git-detected branch, and the CLI (`resolveTaskBaseRef`) ignores the pin entirely. Unify into a single resolution chain (config pin → git detection → fallback) used by all consumers, and make the "(default)" label follow the pin. Full analysis at [docs/refactor-default-branch.md](refactor-default-branch.md).
-
 ## Remove non-WebGL terminal renderer option
 
 The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as an escape hatch, but WebGL is the default and the better experience. Remove the toggle from settings, the `setWebGLRenderer` method, the `updateGlobalTerminalWebGLRenderer` plumbing, and always load the WebGL addon. Keep the `onContextLoss` handler so a lost WebGL context doesn't crash the terminal.
