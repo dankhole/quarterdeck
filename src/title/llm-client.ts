@@ -179,7 +179,11 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 		log.debug("LLM call completed", { durationMs: Date.now() - startTime, resultLength: result.length });
 		return result;
 	} catch (error) {
-		log.warn("LLM call error", { error: error instanceof Error ? error.message : String(error) });
+		const isTimeout = error instanceof DOMException && error.name === "AbortError";
+		const level = isTimeout ? "debug" : "warn";
+		log[level]("LLM call error", {
+			error: isTimeout ? "timeout" : error instanceof Error ? error.message : String(error),
+		});
 		return null;
 	} finally {
 		releaseSlot();

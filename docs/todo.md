@@ -197,10 +197,6 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 
 The `web-ui/src/hooks/` folder has 57+ files in a flat structure. Group related hooks into subdirectories by domain (e.g. `hooks/terminal/`, `hooks/git/`, `hooks/settings/`, `hooks/board/`).
 
-## Title generation timeouts in logs
-
-Title generation frequently times out — visible in debug logs. Doesn't seem to affect the UI (titles still appear), but the timeout errors are noisy. Investigate whether the timeout is too aggressive, or if there's a redundant/stale code path triggering it.
-
 ## Keep task base ref in sync with branch changes
 
 When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.

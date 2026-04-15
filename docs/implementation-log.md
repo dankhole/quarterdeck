@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: title generation timeout noise (2026-04-15)
+
+Investigated todo item "Title generation timeouts in logs." The 3-second timeout on title and branch-name generation was too aggressive for Bedrock proxy round-trips — summary generation already used 5s, and commit-message generation used 7s. The timeout `AbortError` was logged at `warn` level, making it noisy in debug logs even though titles eventually appeared (the fire-and-forget path in `workspace-api.ts` just returns `null` and the UI falls back to truncated prompt text).
+
+**What changed:**
+- `src/title/title-generator.ts` — `timeoutMs` for both `generateTaskTitle` and `generateBranchName` bumped from `3_000` to `5_000`, matching the summary generator and the `callLlm` default fallback.
+- `src/title/llm-client.ts` — catch block now detects `AbortError` (timeout) via `instanceof DOMException && error.name === "AbortError"` and logs at `debug` instead of `warn`. Non-timeout errors remain at `warn`. Log message simplified from verbose `"The operation was aborted due to timeout"` to `"timeout"`.
+
+**What did NOT change:**
+- No retry logic added — callers already handle `null` gracefully.
+- Rate limiter unchanged (5 concurrent, 20/min shared across all generators).
+- Fire-and-forget batching in `workspace-api.ts` unchanged (batches of 3 via `MAX_CONCURRENT_TITLE_REQUESTS`).
+
+**Not a stale code path:** Both invocation sites are active — automatic generation on card creation (`workspace-api.ts:800-821`) and manual regeneration (`workspace-procedures.ts:260-305`).
+
+**Files touched:** `src/title/title-generator.ts`, `src/title/llm-client.ts`
+
 ## Fix: remove arrow key task cycling (2026-04-15)
 
 Arrow keys (up/down/left/right) were bound via `useHotkeys` to cycle through task cards in `CardDetailView`. A previous fix (commit 43e08617) added a `.xterm` closest check to suppress this inside terminals, but the guard was too narrow — focus on the terminal panel wrapper (`kb-terminal-container`), toolbar buttons, or other non-xterm elements still triggered task cycling. Rather than expanding the guard to cover every possible focus target, removed the feature entirely.

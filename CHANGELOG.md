@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: title generation timeout noise
+
+- Bumped title and branch-name generation timeouts from 3s to 5s — matches the summary generator and `callLlm` default fallback. 3s was too aggressive for Bedrock proxy round-trips.
+- Timeout errors (`AbortError`) in `llm-client.ts` now log at `debug` level instead of `warn`. Actual failures (network errors, unexpected exceptions) remain at `warn`.
+
 ### Fix: remove arrow key task cycling
 
 - Removed the `useHotkeys` bindings that cycled task selection on up/down/left/right arrow keys. The original fix (suppressing inside `.xterm`) was too narrow — focus could land on the terminal panel wrapper, toolbar, or other elements outside the `.xterm` DOM, causing arrow keys to unexpectedly switch the selected task. Removed the feature entirely: `isTypingTarget` helper, `handleSelectAdjacentCard` callback, both hotkey bindings, and the `react-hotkeys-hook` import from `card-detail-view.tsx`.

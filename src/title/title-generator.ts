@@ -36,7 +36,7 @@ export async function generateTaskTitle(prompt: string): Promise<string | null> 
 		systemPrompt: TITLE_SYSTEM_PROMPT,
 		userPrompt: prompt.slice(0, MAX_PROMPT_LENGTH),
 		maxTokens: 20,
-		timeoutMs: 3_000,
+		timeoutMs: 5_000,
 	});
 	if (title) {
 		log.info("Title generated", { title });
@@ -51,6 +51,6 @@ export async function generateBranchName(prompt: string): Promise<string | null>
 		systemPrompt: BRANCH_NAME_SYSTEM_PROMPT,
 		userPrompt: prompt.slice(0, MAX_PROMPT_LENGTH),
 		maxTokens: 20,
-		timeoutMs: 3_000,
+		timeoutMs: 5_000,
 	});
 }
