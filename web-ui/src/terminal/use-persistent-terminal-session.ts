@@ -182,7 +182,18 @@ export function usePersistentTerminalSession({
 			return;
 		}
 
+		const previousSession = previousSessionRef.current;
+		const didSessionRestart =
+			previousSession !== null &&
+			previousSession.workspaceId === workspaceId &&
+			previousSession.taskId === taskId &&
+			previousSession.sessionStartedAt !== sessionStartedAt;
+
 		const terminal = acquireForTask(taskId, workspaceId);
+		if (didSessionRestart) {
+			terminal.reset();
+		}
+		previousSessionRef.current = { workspaceId, taskId, sessionStartedAt };
 		terminalRef.current = terminal;
 		const unsubscribe = terminal.subscribe({
 			onConnectionReady: (connectedTaskId) => {

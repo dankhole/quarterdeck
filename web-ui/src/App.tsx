@@ -101,7 +101,7 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
-import { cancelWarmupPersistentTerminal, initPool, warmupPersistentTerminal } from "@/terminal/terminal-pool";
+import { cancelWarmup, initPool, warmup } from "@/terminal/terminal-pool";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 import { isApprovalState } from "@/utils/session-status";
@@ -237,13 +237,13 @@ export default function App(): ReactElement {
 	);
 	const handleTerminalWarmup = useCallback(
 		(taskId: string) => {
-			if (currentProjectId) warmupPersistentTerminal(currentProjectId, taskId);
+			if (currentProjectId) warmup(taskId, currentProjectId);
 		},
 		[currentProjectId],
 	);
 	const handleTerminalCancelWarmup = useCallback(
 		(taskId: string) => {
-			if (currentProjectId) cancelWarmupPersistentTerminal(currentProjectId, taskId);
+			if (currentProjectId) cancelWarmup(taskId);
 		},
 		[currentProjectId],
 	);

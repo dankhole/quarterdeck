@@ -17,6 +17,9 @@
 - Dedicated terminals (home shell, dev shells) remain outside the pool with their own lifecycle.
 - Proactive slot rotation every 3 minutes replaces the oldest idle slot to prevent xterm canvas/WebGL resource staleness in long sessions.
 - Project switch cleanup properly releases all pool slots and disposes all dedicated terminals.
+- Task switch no longer triggers a redundant server restore round-trip — the existing buffer is already current. Canvas repair (dimension bounce + texture rebuild) now completes while hidden, eliminating visible flicker.
+- Session restart detection added to the pool path — stale scrollback from a previous session is cleared when `sessionStartedAt` changes.
+- Deleted compatibility shims (`warmupPersistentTerminal`/`cancelWarmupPersistentTerminal`) and dead `deferredResizeRaf` code.
 
 ### Fix: simplify notification settings — merge completion into review
 

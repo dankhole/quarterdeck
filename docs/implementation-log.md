@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal pool task-switch cleanup and polish (2026-04-14)
+
+Four small fixes to the terminal pool landed in the same commit:
+
+1. **Removed redundant `requestRestore()` on task switch** (`terminal-slot.ts` mount slow path). The server restore round-trip was either a no-op (new connections where `restoreCompleted` is false) or wasteful (PREVIOUS slots whose IO socket stayed open and buffer was already current). This was the main source of task-switch lag — a full network round-trip + buffer rewrite just to get the same content.
+
+2. **Deferred visibility until after canvas repair** (`terminal-slot.ts` mount slow path). The dimension bounce (resize cols-1 then back) and texture atlas rebuild now complete while `visibility: hidden`. Previously the element was revealed first, making the bounce visible as flicker.
+
+3. **Added session restart detection to pool path** (`use-persistent-terminal-session.ts`). The dedicated terminal path already called `terminal.reset()` when `sessionStartedAt` changed, but the pool path didn't. Now both paths clear stale scrollback on restart.
+
+4. **Deleted compatibility shims and dead code**. Removed `warmupPersistentTerminal`/`cancelWarmupPersistentTerminal` from `terminal-pool.ts` (swapped args at the 2 call sites in `App.tsx` instead). Removed `deferredResizeRaf` field and its cancel guards from `terminal-slot.ts` — it was declared but never assigned a non-null value.
+
+**Files**: `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/use-persistent-terminal-session.ts`, `web-ui/src/App.tsx`.
+
 ## Refactor: begin App.tsx context provider extraction — DialogContext (2026-04-14)
 
 First incremental step of the App.tsx provider split (section 8 of `docs/refactor-csharp-readability.md`). The goal is to progressively move state from App.tsx into React Context providers so child components can `useContext()` instead of receiving props drilled through 4-5 layers.

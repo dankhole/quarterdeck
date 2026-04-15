@@ -629,21 +629,3 @@ export function _resetPoolForTesting(): void {
 	initialized = false;
 	nextSlotId = 0;
 }
-
-// ---------------------------------------------------------------------------
-// Compatibility shims
-// ---------------------------------------------------------------------------
-
-/**
- * Compatibility shim: warmup with (workspaceId, taskId) param order.
- */
-export function warmupPersistentTerminal(workspaceId: string, taskId: string): void {
-	warmup(taskId, workspaceId);
-}
-
-/**
- * Compatibility shim: cancel warmup with (workspaceId, taskId) param order.
- */
-export function cancelWarmupPersistentTerminal(_workspaceId: string, taskId: string): void {
-	cancelWarmup(taskId);
-}

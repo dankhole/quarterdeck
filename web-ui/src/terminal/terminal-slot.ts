@@ -135,7 +135,6 @@ export class TerminalSlot {
 	/** Cols/rows we last sent — for within-epoch dedup when dimensions change. */
 	private lastSentCols = 0;
 	private lastSentRows = 0;
-	private deferredResizeRaf: number | null = null;
 	private disposed = false;
 	/** One-shot callback fired when notifyConnectionReady() runs, then cleared. */
 	private onceConnectionReadyCallback: (() => void) | null = null;
@@ -808,7 +807,9 @@ export class TerminalSlot {
 			this.visibleContainer = container;
 			this.mountedContainer = container;
 			container.appendChild(this.hostElement);
-			this.hostElement.style.visibility = "visible";
+			// Keep hidden during canvas repair — the dimension bounce (resize cols-1
+			// then back) and texture atlas rebuild cause visible flicker if the element
+			// is revealed first. Visibility is set after repair completes below.
 			// Server may have stale dimensions from the previous container.
 			this.invalidateResize();
 			// Canvas repair after DOM move — fixes stale texture atlas and
@@ -816,22 +817,15 @@ export class TerminalSlot {
 			// Runs synchronously: appendChild updates the layout tree immediately
 			// and fitAddon.fit() forces a synchronous reflow via
 			// getBoundingClientRect(), so container dimensions are available.
-			if (this.deferredResizeRaf !== null) {
-				cancelAnimationFrame(this.deferredResizeRaf);
-				this.deferredResizeRaf = null;
-			}
 			this.repairRendererCanvas("mount");
-			// Request a fresh buffer snapshot from the server's headless mirror.
-			// The canvas repair above fixes rendering (textures, pixel dimensions)
-			// but not buffer content. While this terminal was parked, the agent
-			// was actively writing output — status bar redraws, tool output, cursor
-			// movements. A same-dimensions SIGWINCH only triggers a lightweight TUI
-			// refresh from the agent, which doesn't clear accumulated artifacts
-			// (stale status bar rows, off-by-one positioning). The restore atomically
-			// replaces the buffer, bypassing the agent's redraw path entirely.
-			// On first mount (initial restore not yet complete) this is a no-op —
-			// the socket-connection restore handles that case.
-			this.requestRestore();
+			// Reveal after repair — no visible dimension bounce or texture rebuild.
+			this.hostElement.style.visibility = "visible";
+			// No requestRestore() here. For new connections, the initial socket
+			// restore handles buffer population (restoreCompleted is false, so
+			// requestRestore would no-op anyway). For PREVIOUS slots being
+			// re-activated, the IO socket stayed open and the buffer already has
+			// current content — a restore would redundantly round-trip to the
+			// server just to rewrite the same data.
 		}
 
 		if (this.resizeObserver) {
@@ -867,10 +861,6 @@ export class TerminalSlot {
 		if (this.resizeTimer !== null) {
 			clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
-		}
-		if (this.deferredResizeRaf !== null) {
-			cancelAnimationFrame(this.deferredResizeRaf);
-			this.deferredResizeRaf = null;
 		}
 		this.clearDprListener();
 		if (container && this.visibleContainer !== container) {
