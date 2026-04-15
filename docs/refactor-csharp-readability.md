@@ -1134,3 +1134,10 @@ Modified files:
 **Phase 3 — Backend polish (items 6-7).** Makes the class conversions feel complete. Service interfaces make the dependency graph visible; message factories clean up the call sites. Lower risk because the hard structural work is done.
 
 **Phase 4 — Frontend (item 8).** The big project. Do it last because it's the highest risk and most time-consuming, but also the biggest payoff for frontend navigability. The backend refactors are completely independent — don't wait for this to start them.
+
+**Phase 5 — Additional class conversions (future).** Four more stateful modules that would benefit from the same factory→class+Disposable treatment applied in phase 2. Not scoped into the original roadmap because the navigability ROI is lower than the core hub/api conversions, but they carry real cleanup debt:
+
+- `src/server/workspace-registry.ts` — owns worktree lifecycle, has 6+ Maps of per-workspace state
+- `src/server/workspace-metadata-monitor.ts` — timers, polling, the 4× identical `if/null/clearInterval` pattern
+- `src/terminal/session-manager.ts` — owns the store `onChange` subscription that currently leaks (return value discarded)
+- `src/terminal/session-reconciliation-sweep.ts` — timer + state tracking, would benefit from `_register()` cleanup
