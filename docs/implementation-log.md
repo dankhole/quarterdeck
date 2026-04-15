@@ -2,6 +2,21 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Docs: hooks directory refactoring plan (2026-04-15)
+
+Added a comprehensive plan doc for reorganizing the `web-ui/src/hooks/` directory, which has grown to 78 flat files (~17K lines). The investigation mapped all intra-hook dependencies to identify natural domain clusters and catalogued 5 misplaced non-hook files.
+
+**What changed:**
+- Created `docs/refactor-hooks-directory.md` with three phases:
+  - Phase 1: Subdirectory reorg — move 5 non-hook files to their proper homes, group hooks into 5 domain subdirectories (board/11 hooks, git/10, terminal/5, project/8, notifications/5), leave 14 cross-cutting hooks flat. Mechanical file moves + ~123 import path updates, no logic changes.
+  - Phase 2: Domain logic extraction — for hooks with substantial business logic, separate into pure TS domain modules (testable without React) and thin hook wrappers. Incremental, as-touched. Priority targets: `use-task-lifecycle`, `use-conflict-resolution`, `use-workspace-sync`.
+  - Phase 3: Conventions — proposed "Hooks architecture" section for `web-ui-conventions.md` codifying directory structure, domain-vs-hook split criteria, and no-barrel-files rule.
+
+**Files touched:**
+- `docs/refactor-hooks-directory.md` (new)
+- `CHANGELOG.md` (new entry)
+- `docs/implementation-log.md` (this entry)
+
 ## Fix: card-detail-view test failures after GitContext extraction (2026-04-15)
 
 The GitContext extraction (abd66b57, phase 8 step 4) added `useGitContext()` to `CardDetailView` but the test file's `renderWithProviders` helper was not updated to include `GitContext.Provider`. All 3 tests failed with "useGitContext must be used within a GitContext.Provider".

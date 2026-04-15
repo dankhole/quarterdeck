@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs: hooks directory refactoring plan
+
+- Added `docs/refactor-hooks-directory.md` — three-phase plan for organizing the 78-file flat `web-ui/src/hooks/` directory. Phase 1: group into domain subdirectories (board, git, terminal, project, notifications). Phase 2: extract domain logic from hooks into pure TS modules (incremental, as-touched). Phase 3: conventions for `web-ui-conventions.md` to prevent re-bloating.
+
 ### Fix: card-detail-view test failures after GitContext extraction
 
 - Added `GitContext.Provider` with a noop value to the test harness's `renderWithProviders` — the GitContext extraction (phase 8 step 4) added a `useGitContext()` call in `CardDetailView` but the test wrapper was never updated, breaking all 3 tests.
