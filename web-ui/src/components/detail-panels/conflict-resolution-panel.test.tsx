@@ -236,7 +236,55 @@ describe("ConflictResolutionPanel", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// 10. Abort button shows consequence text
+	// 10. Complete button enabled when resolved conflicts migrate to auto-merged
+	// -----------------------------------------------------------------------
+	it("Complete button enabled when resolved conflicts appear in autoMergedFiles", () => {
+		// After resolving all conflicts, the next metadata poll re-classifies the
+		// resolved files as "auto-merged" (they show up in `git diff --cached`).
+		// The Complete button must still be enabled — those files should not need
+		// a second review in the auto-merged section.
+		renderPanel(
+			createDefaultProps({
+				conflictState: createConflictState({
+					conflictedFiles: [],
+					autoMergedFiles: ["src/foo.ts", "src/bar.ts"],
+				}),
+				resolvedFiles: new Set(["src/foo.ts", "src/bar.ts"]),
+				reviewedAutoMergedFiles: new Set<string>(),
+			}),
+		);
+
+		const buttons = Array.from(container.querySelectorAll("button"));
+		const completeButton = buttons.find((btn) => btn.textContent?.includes("Complete"));
+		expect(completeButton).toBeDefined();
+		expect(completeButton!.disabled).toBe(false);
+	});
+
+	// -----------------------------------------------------------------------
+	// 11. Resolved conflicts don't appear in auto-merged file list
+	// -----------------------------------------------------------------------
+	it("resolved conflicts are excluded from auto-merged section", () => {
+		renderPanel(
+			createDefaultProps({
+				conflictState: createConflictState({
+					conflictedFiles: [],
+					autoMergedFiles: ["src/foo.ts", "src/other.ts"],
+				}),
+				resolvedFiles: new Set(["src/foo.ts"]),
+				reviewedAutoMergedFiles: new Set<string>(),
+			}),
+		);
+
+		// The auto-merged header should still render (for src/other.ts)
+		expect(container.textContent).toContain("Auto-merged");
+		// src/foo.ts should only appear once (in the resolved-conflicts section), not twice
+		const buttons = Array.from(container.querySelectorAll("button"));
+		const fooButtons = buttons.filter((btn) => btn.textContent?.includes("foo.ts"));
+		expect(fooButtons.length).toBe(1);
+	});
+
+	// -----------------------------------------------------------------------
+	// 12. Abort button shows consequence text
 	// -----------------------------------------------------------------------
 	it("Abort button shows operation name in label", () => {
 		// Merge — abort label should say "Abort Merge"

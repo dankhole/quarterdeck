@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: resolved conflicts reappearing as auto-merged files (2026-04-15)
+
+After resolving a conflict file via "Accept Ours/Theirs", the server runs `git checkout --ours/--theirs && git add`. On the next metadata poll, `computeAutoMergedFiles` (in `src/workspace/git-conflict.ts`) scans `git diff --cached --name-only` and filters out files in the conflicted set. Since the resolved file is no longer unmerged, it gets re-classified as "auto-merged" and sent to the UI in both `resolvedFiles` (local state) and `conflictState.autoMergedFiles` (server state).
+
+In the UI, this caused duplicates in the file list sidebar (file appeared in both the resolved-conflicts section and the auto-merged section). Worse, clicking the file in the auto-merged section hit the `resolvedFiles.has(path)` check in `ConflictDetailPane` first, showing "File resolved" with no "Accept" button. Since the file could never be accepted, `allAutoMergedReviewed` never became true, and the "Complete Merge" button stayed permanently disabled.
+
+**Fix**: Added `effectiveAutoMergedPaths` in `conflict-resolution-panel.tsx` — filters `conflictState.autoMergedFiles` to exclude any path already in `resolvedFiles`. This filtered list drives the file list builder, the completion check, and the progress text. The server-side `computeAutoMergedFiles` is technically correct (the file *is* staged), but the UI needs to distinguish "staged because auto-merged by git" from "staged because the user just resolved it."
+
+**Files touched:** `web-ui/src/components/detail-panels/conflict-resolution-panel.tsx`, `web-ui/src/components/detail-panels/conflict-resolution-panel.test.tsx`
+
 ## Fix: scroll-to-bottom on task switch and warmup resize (2026-04-15)
 
 Two fixes in `web-ui/src/terminal/terminal-slot.ts`:

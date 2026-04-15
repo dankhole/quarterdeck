@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: resolved conflicts reappearing in auto-merged section during merge
+
+- After resolving a conflict file, the next metadata poll re-classified it as "auto-merged" (it appeared in `git diff --cached` but was no longer in the unmerged set). This caused duplicates in the file list and permanently blocked the "Complete Merge" button — the file couldn't be "accepted" in the auto-merged section because the detail pane showed "File resolved" with no action button. Fixed by filtering `resolvedFiles` out of the effective auto-merged list in the UI.
+
 ### Diagnostic: idle session lifecycle logging
 
 - Added 4 structured diagnostic events to trace why agent processes die and sessions drop to idle: `server.started`, `workspace.terminal_manager_created`, `session.autorestart_skipped` (warn), `session.recover_to_idle` (warn). All log to both the console logger (debug ring buffer / WebSocket) and the JSONL event log.

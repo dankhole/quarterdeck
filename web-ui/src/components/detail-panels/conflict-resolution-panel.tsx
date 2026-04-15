@@ -236,9 +236,18 @@ export function ConflictResolutionPanel({
 	const unresolvedCount = conflictState.conflictedFiles.length;
 	const totalConflictFiles = unresolvedCount + resolvedFiles.size;
 	const allConflictsResolved = unresolvedCount === 0;
-	const autoMergedCount = conflictState.autoMergedFiles.length;
+
+	// After resolving a conflict, `git add` stages the file. On the next metadata poll,
+	// computeAutoMergedFiles sees it in `git diff --cached` and — since it's no longer in
+	// the conflicted set — re-classifies it as "auto-merged". Filter those out: files the
+	// user already resolved as conflicts don't need a second review in the auto-merged section.
+	const effectiveAutoMergedPaths = useMemo(
+		() => conflictState.autoMergedFiles.filter((f) => !resolvedFiles.has(f)),
+		[conflictState.autoMergedFiles, resolvedFiles],
+	);
+	const autoMergedCount = effectiveAutoMergedPaths.length;
 	const allAutoMergedReviewed =
-		autoMergedCount === 0 || conflictState.autoMergedFiles.every((f) => reviewedAutoMergedFiles.has(f));
+		autoMergedCount === 0 || effectiveAutoMergedPaths.every((f) => reviewedAutoMergedFiles.has(f));
 	const allReviewed = allConflictsResolved && allAutoMergedReviewed;
 
 	// Build combined file list: unresolved conflicts first, resolved conflicts, then auto-merged.
@@ -255,13 +264,13 @@ export function ConflictResolutionPanel({
 				resolved: true,
 				section: "conflict" as const,
 			}));
-		const autoMerged = conflictState.autoMergedFiles.map((path) => ({
+		const autoMerged = effectiveAutoMergedPaths.map((path) => ({
 			path,
 			resolved: reviewedAutoMergedFiles.has(path),
 			section: "auto_merged" as const,
 		}));
 		return [...unresolved, ...resolved, ...autoMerged];
-	}, [conflictState.conflictedFiles, conflictState.autoMergedFiles, resolvedFiles, reviewedAutoMergedFiles]);
+	}, [conflictState.conflictedFiles, effectiveAutoMergedPaths, resolvedFiles, reviewedAutoMergedFiles]);
 
 	// Banner text
 	const bannerText = useMemo(() => {
@@ -280,9 +289,10 @@ export function ConflictResolutionPanel({
 	const progressText = useMemo(() => {
 		const conflictPart = `${resolvedFiles.size}/${totalConflictFiles} conflicts`;
 		if (autoMergedCount === 0) return `${conflictPart} resolved`;
-		const autoMergedPart = `${reviewedAutoMergedFiles.size}/${autoMergedCount} auto-merged`;
+		const reviewedCount = effectiveAutoMergedPaths.filter((f) => reviewedAutoMergedFiles.has(f)).length;
+		const autoMergedPart = `${reviewedCount}/${autoMergedCount} auto-merged`;
 		return `${conflictPart} resolved, ${autoMergedPart} reviewed`;
-	}, [resolvedFiles.size, totalConflictFiles, autoMergedCount, reviewedAutoMergedFiles.size]);
+	}, [resolvedFiles.size, totalConflictFiles, autoMergedCount, effectiveAutoMergedPaths, reviewedAutoMergedFiles]);
 
 	// Track where the auto-merged section starts for rendering a header.
 	const autoMergedStartIndex = allFiles.findIndex((f) => f.section === "auto_merged");
