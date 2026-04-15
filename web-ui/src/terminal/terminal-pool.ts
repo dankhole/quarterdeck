@@ -259,6 +259,8 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 	const existing = slotTaskIds.get(taskId);
 	if (existing) {
 		clearWarmupTimeout(taskId);
+		// Re-open sockets if they closed (e.g. after sleep/wake).
+		existing.ensureConnected();
 		// If reacquiring the PREVIOUS slot (user switched back), cancel its eviction timer
 		if (getRole(existing) === "PREVIOUS") {
 			clearPreviousEvictionTimer();
@@ -515,6 +517,8 @@ export function ensureDedicatedTerminal(input: EnsureDedicatedTerminalInput): Te
 			cursorColor: input.cursorColor,
 			terminalBackgroundColor: input.terminalBackgroundColor,
 		});
+		// Re-open sockets if they closed (e.g. after sleep/wake).
+		existing.ensureConnected();
 		return existing;
 	}
 

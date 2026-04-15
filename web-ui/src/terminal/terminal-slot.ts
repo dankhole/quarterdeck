@@ -196,11 +196,18 @@ export class TerminalSlot {
 
 		this.openTerminalWhenFontsReady();
 		// Repaint when the browser tab returns to foreground — GPU may have evicted
-		// textures or skipped frames while backgrounded.
+		// textures or skipped frames while backgrounded. Also reconnect dead sockets
+		// (e.g. after the computer wakes from sleep).
 		this.visibilityChangeHandler = () => {
 			if (document.visibilityState === "visible" && this.visibleContainer && !this.disposed) {
 				log.debug(`slot ${this.slotId} tab-return refresh`, { task: this.taskId });
 				this.terminal.refresh(0, this.terminal.rows - 1);
+				// Reconnect sockets that died during sleep/background.
+				if (this.taskId && this.workspaceId && (!this.ioSocket || !this.controlSocket)) {
+					log.info(`slot ${this.slotId} tab-return reconnecting dead sockets`, { task: this.taskId });
+					this.connectIo();
+					this.connectControl();
+				}
 			}
 		};
 		document.addEventListener("visibilitychange", this.visibilityChangeHandler);
@@ -215,6 +222,16 @@ export class TerminalSlot {
 	/** The workspace this slot is currently connected to, or null if idle. */
 	get connectedWorkspaceId(): string | null {
 		return this.workspaceId;
+	}
+
+	/**
+	 * Re-open IO + control sockets if they have been closed (e.g. after sleep).
+	 * No-op if sockets are already open.
+	 */
+	ensureConnected(): void {
+		if (this.disposed || !this.taskId || !this.workspaceId) return;
+		this.connectIo();
+		this.connectControl();
 	}
 
 	/**

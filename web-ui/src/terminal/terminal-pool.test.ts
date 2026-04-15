@@ -10,6 +10,7 @@ interface MockSlot {
 	_workspaceId: string | null;
 	_sessionState: string | null;
 	connectToTask: ReturnType<typeof vi.fn>;
+	ensureConnected: ReturnType<typeof vi.fn>;
 	disconnectFromTask: ReturnType<typeof vi.fn>;
 	onceConnectionReady: ReturnType<typeof vi.fn>;
 	attachToStageContainer: ReturnType<typeof vi.fn>;
@@ -39,6 +40,7 @@ vi.mock("@/terminal/terminal-slot", () => {
 				mock._taskId = taskId;
 				mock._workspaceId = workspaceId;
 			}),
+			ensureConnected: vi.fn(),
 			disconnectFromTask: vi.fn(async () => {
 				mock._taskId = null;
 				mock._workspaceId = null;
@@ -228,11 +230,14 @@ describe("terminal-pool", () => {
 			expect(mockSlot.connectToTask).toHaveBeenCalledWith("task-1", "ws-1");
 		});
 
-		it("for same task returns same slot", () => {
+		it("for same task returns same slot and calls ensureConnected", () => {
 			const slot1 = acquireForTask("task-1", "ws-1");
+			const mock = slot1 as unknown as MockSlot;
+			mock.ensureConnected.mockClear();
 			const slot2 = acquireForTask("task-1", "ws-1");
 			expect(slot1).toBe(slot2);
 			expect(getSlotRole(slot1)).toBe("ACTIVE");
+			expect(mock.ensureConnected).toHaveBeenCalledOnce();
 		});
 
 		it("transitions previous ACTIVE to PREVIOUS", () => {

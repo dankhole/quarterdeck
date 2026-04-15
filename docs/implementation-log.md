@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: reconnect terminal WebSockets after sleep/wake (2026-04-15)
+
+**Problem:** After a computer sleeps and wakes, clicking a task showed a blank/frozen terminal even though the agent was still running (prompt shortcuts still worked). Trashing and untrashing didn't help. Changing projects did fix it (because that forces a full re-mount of the terminal pool).
+
+**Root cause:** OS sleep kills TCP connections, so the IO and control WebSockets in each `TerminalSlot` die. The `onclose` handlers null the socket refs and reset `connectionReady`/`restoreCompleted`. But when the user clicks a task, `acquireForTask()` finds the slot is already assigned to that taskId via `slotTaskIds` and returns it immediately — without checking if the sockets are alive. `show()` sets up visuals but doesn't touch sockets. Result: terminal renders but has no data connection.
+
+The same gap existed in `ensureDedicatedTerminal()` for home/dev shells — it returned existing dedicated terminals without checking socket state.
+
+A secondary gap: if the user was already viewing a task when sleep happened, no React effect re-runs on wake (deps haven't changed), so only the `visibilitychange` event could trigger reconnection — but it only did a visual `refresh()`.
+
+**Fix:** Three changes:
+1. Added `ensureConnected()` method on `TerminalSlot` — calls `connectIo()` and `connectControl()` which already guard against double-open (`if (this.ioSocket) return`), making it idempotent and safe to call anytime.
+2. `acquireForTask()` now calls `existing.ensureConnected()` when reusing a pool slot. `ensureDedicatedTerminal()` does the same for dedicated terminals.
+3. The `visibilitychange` handler now reconnects dead sockets on tab return (`!this.ioSocket || !this.controlSocket`), covering the case where the same task is selected and no React effect fires.
+
+**Files:** `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool.test.ts`
+
 ## Perf: auto-evict PREVIOUS terminal slot after 30s (2026-04-15)
 
 **Problem:** macOS WindowServer was running at ~49% CPU with multiple Quarterdeck agents active. Investigation revealed that hidden PREVIOUS terminal slots (demoted when the user switches tasks) kept their IO WebSocket open indefinitely. xterm.js continued parsing incoming PTY bytes and the WebGL addon executed `gl.drawArrays()` on every write — even though `visibility: hidden` was set. CSS visibility prevents compositing the result, but the GPU draw calls still execute and drive WindowServer work. `requestAnimationFrame` fires for hidden elements (only page-level backgrounding pauses it), so every agent output byte triggered a full render cycle in the invisible canvas.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: reconnect terminal WebSockets after sleep/wake
+
+- After a computer sleeps and wakes, WebSocket connections die but the terminal pool still held slot references for the task. `acquireForTask()` and `ensureDedicatedTerminal()` returned the existing slot without reconnecting, leaving the terminal blank despite a live agent session. Added `ensureConnected()` to `TerminalSlot` and a `visibilitychange` reconnection path so terminals auto-recover on wake.
+
 ### Perf: auto-evict PREVIOUS terminal slot after 30 seconds
 
 - Hidden PREVIOUS terminal slots kept their IO WebSocket open indefinitely, causing xterm.js to parse incoming PTY bytes and execute WebGL draw calls into an invisible canvas — driving GPU work and WindowServer compositing overhead. PREVIOUS slots now auto-evict after 30 seconds, closing sockets and stopping rendering. Switching back within 30s still reuses the warm slot instantly; after 30s the slot is reacquired fresh with a server restore.
