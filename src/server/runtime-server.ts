@@ -112,23 +112,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
 		await deps.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
-	const prepareForStateReset = async (): Promise<void> => {
-		const workspaceIds = new Set<string>();
-		for (const { workspaceId } of deps.workspaceRegistry.listManagedWorkspaces()) {
-			workspaceIds.add(workspaceId);
-		}
-		const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
-		if (activeWorkspaceId) {
-			workspaceIds.add(activeWorkspaceId);
-		}
-		for (const workspaceId of workspaceIds) {
-			deps.disposeWorkspace(workspaceId, {
-				stopTerminalSessions: true,
-			});
-		}
-		deps.workspaceRegistry.clearActiveWorkspace();
-	};
-
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
@@ -143,7 +126,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedTerminalManager,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
-				prepareForStateReset,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				setPollIntervals: deps.runtimeStateHub.setPollIntervals,
 				broadcastLogLevel: deps.runtimeStateHub.broadcastLogLevel,

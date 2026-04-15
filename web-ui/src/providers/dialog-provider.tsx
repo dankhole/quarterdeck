@@ -33,11 +33,9 @@ export interface DialogContextValue {
 	// Debug tools
 	debugModeEnabled: boolean;
 	isDebugDialogOpen: boolean;
-	isResetAllStatePending: boolean;
 	handleOpenDebugDialog: () => void;
 	handleShowStartupOnboardingDialog: () => void;
 	handleDebugDialogOpenChange: (nextOpen: boolean) => void;
-	handleResetAllState: () => void;
 
 	// Debug logging
 	debugLogging: UseDebugLoggingResult;

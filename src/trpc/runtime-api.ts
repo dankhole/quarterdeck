@@ -4,8 +4,7 @@
 // in focused services instead of accumulating here.
 
 import { rm } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { buildRuntimeConfigResponse, type ResolvedAgentCommand, resolveAgentCommand } from "../config/agent-registry";
 import type { RuntimeConfigState } from "../config/runtime-config";
@@ -45,7 +44,6 @@ export interface CreateRuntimeApiDependencies {
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
-	prepareForStateReset?: () => Promise<void>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	setPollIntervals?: (
 		workspaceId: string,
@@ -57,14 +55,7 @@ export interface CreateRuntimeApiDependencies {
 type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 
 class RuntimeApiImpl implements RuntimeApi {
-	private readonly debugResetTargetPaths: readonly string[];
-
-	constructor(private readonly deps: CreateRuntimeApiDependencies) {
-		this.debugResetTargetPaths = [
-			join(homedir(), ".quarterdeck"),
-			join(homedir(), ".quarterdeck", "worktrees"),
-		] as const;
-	}
+	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
 	private buildConfigResponse(runtimeConfig: RuntimeConfigState) {
 		return buildRuntimeConfigResponse(runtimeConfig);
@@ -366,19 +357,6 @@ class RuntimeApiImpl implements RuntimeApi {
 			latestHookEvent: summary.latestHookActivity?.hookEventName ?? null,
 		});
 		return { ok: true };
-	}
-
-	async resetAllState(_workspaceScope: RuntimeTrpcWorkspaceScope | null) {
-		await this.deps.prepareForStateReset?.();
-		await Promise.all(
-			this.debugResetTargetPaths.map(async (path) => {
-				await rm(path, { recursive: true, force: true });
-			}),
-		);
-		return {
-			ok: true,
-			clearedPaths: [...this.debugResetTargetPaths],
-		};
 	}
 
 	async openFile(input: { filePath: string }) {

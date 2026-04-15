@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: remove unauthenticated `resetAllState` endpoint (2026-04-14)
+
+The `runtime.resetAllState` tRPC endpoint (`POST /api/runtime.resetAllState`) had zero authentication — any process on localhost could call it. It recursively deleted `~/.quarterdeck` (all board state, config, settings, event logs) and `~/.quarterdeck/worktrees` (all agent worktrees). Combined with the frontend's `window.location.reload()` post-call, it caused a complete state wipe that appeared as a "tab flash" to the user.
+
+**Root cause of the incident:** The endpoint was exposed as an unguarded tRPC mutation on the runtime server. Since agents spawned by Quarterdeck have full network access to localhost:3500, any agent process could have triggered it. The debug dialog had a two-step confirmation (AlertDialog), but the server-side endpoint had none.
+
+**What was removed:**
+- Backend: `resetAllState` method on `RuntimeApiImpl`, `debugResetTargetPaths` property, `prepareForStateReset` dependency and its implementation in `runtime-server.ts`, `runtimeDebugResetAllStateResponseSchema` + type from `api-contract`
+- Router: `resetAllState` procedure from `app-router.ts`, type signature from `app-router-context.ts`
+- Frontend: `resetRuntimeDebugState()` query helper, `isResetAllStatePending` / `handleResetAllState` state from `use-debug-tools.ts`, reset button + AlertDialog from `debug-dialog.tsx`, prop forwarding from `debug-shelf.tsx`, context fields from `dialog-provider.tsx`, wiring from `App.tsx`
+- Tests: two test cases in `runtime-api.test.ts` (reset teardown ordering, teardown failure abort)
+- Docs: API table row in go-backend-conversion-guide.md
+
+The debug dialog still exists with the "Show onboarding" tool — only the destructive state deletion was removed.
+
+**Files**: `src/core/api/shared.ts`, `src/trpc/app-router.ts`, `src/trpc/app-router-context.ts`, `src/trpc/runtime-api.ts`, `src/server/runtime-server.ts`, `web-ui/src/runtime/runtime-config-query.ts`, `web-ui/src/hooks/use-debug-tools.ts`, `web-ui/src/providers/dialog-provider.tsx`, `web-ui/src/components/debug-dialog.tsx`, `web-ui/src/components/debug-shelf.tsx`, `web-ui/src/App.tsx`, `test/runtime/trpc/runtime-api.test.ts`, `docs/research/2026-04-06-go-backend-conversion-guide.md`
+
 ## Refactor: C#-style readability — phase 1 & 2 (2026-04-14)
 
 Phases 1 and 2 of the readability roadmap (`docs/refactor-csharp-readability.md`), covering the zero-risk foundation and backend class conversions.

@@ -1,5 +1,3 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
@@ -33,11 +31,6 @@ const workspaceStateMocks = vi.hoisted(() => ({
 const taskBoardMutationMocks = vi.hoisted(() => ({
 	findCardInBoard: vi.fn((): Record<string, unknown> | null => null),
 }));
-
-const realFsPromises = await vi.hoisted(async () => {
-	const fs = await import("node:fs/promises");
-	return { rm: fs.rm };
-});
 
 const fsMocks = vi.hoisted(() => ({
 	rm: vi.fn(async () => {}),
@@ -420,81 +413,6 @@ describe("createRuntimeApi startTaskSession", () => {
 				images,
 			}),
 		);
-	});
-
-	it("runs reset teardown before deleting debug state paths", async () => {
-		const originalHome = process.env.HOME;
-		const tempHome = `/tmp/quarterdeck-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-		process.env.HOME = tempHome;
-		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".quarterdeck"), join(tempHome, ".quarterdeck", "worktrees")];
-		for (const path of debugPaths) {
-			mkdirSync(path, { recursive: true });
-			writeFileSync(join(path, "marker.txt"), "present");
-		}
-		const prepareForStateReset = vi.fn(async () => {
-			for (const path of debugPaths) {
-				expect(existsSync(path)).toBe(true);
-			}
-		});
-
-		// resetAllState uses the mocked rm — restore to real for this test.
-		// biome-ignore lint/complexity/noBannedTypes: test mock passthrough to real fs.rm
-		fsMocks.rm.mockImplementation((...args: unknown[]) => (realFsPromises.rm as Function)(...args));
-
-		const api = createRuntimeApi({
-			...createDeps(),
-			prepareForStateReset,
-		});
-
-		try {
-			const response = await api.resetAllState(null);
-
-			expect(response.ok).toBe(true);
-			expect(prepareForStateReset).toHaveBeenCalledTimes(1);
-			for (const path of debugPaths) {
-				expect(existsSync(path)).toBe(false);
-			}
-		} finally {
-			if (originalHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = originalHome;
-			}
-			rmSync(tempHome, { recursive: true, force: true });
-		}
-	});
-
-	it("aborts reset path deletion when teardown fails", async () => {
-		const originalHome = process.env.HOME;
-		const tempHome = `/tmp/quarterdeck-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-		process.env.HOME = tempHome;
-		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".quarterdeck"), join(tempHome, ".quarterdeck", "worktrees")];
-		for (const path of debugPaths) {
-			mkdirSync(path, { recursive: true });
-			writeFileSync(join(path, "marker.txt"), "present");
-		}
-		const api = createRuntimeApi({
-			...createDeps(),
-			prepareForStateReset: vi.fn(async () => {
-				throw new Error("teardown failed");
-			}),
-		});
-
-		try {
-			await expect(api.resetAllState(null)).rejects.toThrow("teardown failed");
-			for (const path of debugPaths) {
-				expect(existsSync(path)).toBe(true);
-			}
-		} finally {
-			if (originalHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = originalHome;
-			}
-			rmSync(tempHome, { recursive: true, force: true });
-		}
 	});
 });
 

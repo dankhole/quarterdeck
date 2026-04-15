@@ -12,7 +12,6 @@ import type {
 	RuntimeConflictFilesRequest,
 	RuntimeConflictFilesResponse,
 	RuntimeConflictResolveRequest,
-	RuntimeDebugResetAllStateResponse,
 	RuntimeFileContentRequest,
 	RuntimeFileContentResponse,
 	RuntimeFileDiffRequest,
@@ -117,7 +116,6 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeCommandRunRequest,
 		) => Promise<RuntimeCommandRunResponse>;
-		resetAllState: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeDebugResetAllStateResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
 		migrateTaskWorkingDirectory: (
 			scope: RuntimeTrpcWorkspaceScope,

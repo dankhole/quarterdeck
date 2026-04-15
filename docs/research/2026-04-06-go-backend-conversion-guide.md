@@ -57,7 +57,6 @@ One middleware: `workspaceProcedure` -- enforces workspace scope is present. Ret
 | `runtime.sendTaskSessionInput` | POST | Yes | Write text to agent PTY stdin |
 | `runtime.startShellSession` | POST | Yes | Spawn interactive shell PTY |
 | `runtime.runCommand` | POST | Yes | Run command synchronously, return stdout/stderr/exitCode |
-| `runtime.resetAllState` | POST | No | Debug: delete all `~/.quarterdeck` state |
 | `runtime.openFile` | POST | No | Open file in system editor |
 
 **Key request/response shapes:**

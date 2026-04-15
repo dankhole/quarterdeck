@@ -1,9 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { notifyError } from "@/components/app-toaster";
-import { resetRuntimeDebugState } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
-import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseDebugToolsParams {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
@@ -14,11 +11,9 @@ interface UseDebugToolsParams {
 interface UseDebugToolsResult {
 	debugModeEnabled: boolean;
 	isDebugDialogOpen: boolean;
-	isResetAllStatePending: boolean;
 	handleOpenDebugDialog: () => void;
 	handleShowStartupOnboardingDialog: () => void;
 	handleDebugDialogOpenChange: (nextOpen: boolean) => void;
-	handleResetAllState: () => void;
 }
 
 export function useDebugTools({
@@ -27,7 +22,6 @@ export function useDebugTools({
 	onOpenStartupOnboardingDialog,
 }: UseDebugToolsParams): UseDebugToolsResult {
 	const [isDebugDialogOpen, setIsDebugDialogOpen] = useState(false);
-	const [isResetAllStatePending, setIsResetAllStatePending] = useState(false);
 	const debugModeEnabled =
 		(settingsRuntimeProjectConfig?.debugModeEnabled ?? runtimeProjectConfig?.debugModeEnabled ?? false) === true;
 
@@ -44,32 +38,11 @@ export function useDebugTools({
 		onOpenStartupOnboardingDialog();
 	}, [onOpenStartupOnboardingDialog]);
 
-	const handleResetAllState = useCallback(() => {
-		if (isResetAllStatePending) {
-			return;
-		}
-		void (async () => {
-			setIsResetAllStatePending(true);
-			try {
-				await resetRuntimeDebugState(null);
-				window.localStorage.clear();
-				window.sessionStorage.clear();
-				window.location.reload();
-			} catch (error) {
-				const message = toErrorMessage(error);
-				notifyError(`Could not reset all state: ${message}`);
-				setIsResetAllStatePending(false);
-			}
-		})();
-	}, [isResetAllStatePending]);
-
 	return {
 		debugModeEnabled,
 		isDebugDialogOpen,
-		isResetAllStatePending,
 		handleOpenDebugDialog,
 		handleShowStartupOnboardingDialog,
 		handleDebugDialogOpenChange,
-		handleResetAllState,
 	};
 }

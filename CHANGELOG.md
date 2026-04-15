@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: remove unauthenticated `resetAllState` endpoint
+
+- Removed the `runtime.resetAllState` tRPC endpoint, which recursively deleted `~/.quarterdeck` and `~/.quarterdeck/worktrees` with no authentication — any process on localhost could call it. Also removed the "Reset all state" button and confirmation dialog from the debug tools UI, the `prepareForStateReset` server callback, the frontend `resetRuntimeDebugState` helper, and all associated types, schemas, and tests.
+
 ### Refactor: C#-style readability — phase 1 & 2 (named types, IDisposable, class conversions)
 
 - Installed `neverthrow` (typed `Result<T,E>`) and `mitt` (typed event emitter) for incremental adoption — no callsite changes yet, packages available for phase 3+.

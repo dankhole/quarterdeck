@@ -80,12 +80,6 @@ export const runtimeOpenFileResponseSchema = z.object({
 });
 export type RuntimeOpenFileResponse = z.infer<typeof runtimeOpenFileResponseSchema>;
 
-export const runtimeDebugResetAllStateResponseSchema = z.object({
-	ok: z.boolean(),
-	clearedPaths: z.array(z.string()),
-});
-export type RuntimeDebugResetAllStateResponse = z.infer<typeof runtimeDebugResetAllStateResponseSchema>;
-
 export const runtimeTaskWorkspaceInfoRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),

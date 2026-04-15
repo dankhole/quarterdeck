@@ -2,11 +2,7 @@
 // Keep TRPC request details here so components and controller hooks can focus
 // on state orchestration instead of transport plumbing.
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type {
-	RuntimeConfigResponse,
-	RuntimeConfigSaveRequest,
-	RuntimeDebugResetAllStateResponse,
-} from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeConfigSaveRequest } from "@/runtime/types";
 
 export async function fetchRuntimeConfig(workspaceId: string | null): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
@@ -19,11 +15,6 @@ export async function saveRuntimeConfig(
 ): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.saveConfig.mutate(nextConfig);
-}
-
-export async function resetRuntimeDebugState(workspaceId: string | null): Promise<RuntimeDebugResetAllStateResponse> {
-	const trpcClient = getRuntimeTrpcClient(workspaceId);
-	return await trpcClient.runtime.resetAllState.mutate();
 }
 
 export async function setLogLevel(

@@ -9,14 +9,8 @@ import { useDialogContext } from "@/providers/dialog-provider";
  * DialogContext. Extracted from App.tsx to reduce its JSX surface.
  */
 export function DebugShelf(): ReactElement | null {
-	const {
-		debugLogging,
-		isDebugDialogOpen,
-		isResetAllStatePending,
-		handleShowStartupOnboardingDialog,
-		handleDebugDialogOpenChange,
-		handleResetAllState,
-	} = useDialogContext();
+	const { debugLogging, isDebugDialogOpen, handleShowStartupOnboardingDialog, handleDebugDialogOpenChange } =
+		useDialogContext();
 
 	return (
 		<>
@@ -46,9 +40,7 @@ export function DebugShelf(): ReactElement | null {
 			<DebugDialog
 				open={isDebugDialogOpen}
 				onOpenChange={handleDebugDialogOpenChange}
-				isResetAllStatePending={isResetAllStatePending}
 				onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
-				onResetAllState={handleResetAllState}
 			/>
 		</>
 	);

@@ -8,7 +8,6 @@ import {
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
-	runtimeDebugResetAllStateResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
 	runtimeMigrateTaskWorkingDirectoryRequestSchema,
@@ -78,9 +77,6 @@ const runtimeRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.runtimeApi.runCommand(ctx.workspaceScope, input);
 		}),
-	resetAllState: t.procedure.output(runtimeDebugResetAllStateResponseSchema).mutation(async ({ ctx }) => {
-		return await ctx.runtimeApi.resetAllState(ctx.workspaceScope);
-	}),
 	setLogLevel: t.procedure
 		.input(z.object({ level: z.enum(["debug", "info", "warn", "error"]) }))
 		.output(z.object({ ok: z.boolean(), level: z.enum(["debug", "info", "warn", "error"]) }))

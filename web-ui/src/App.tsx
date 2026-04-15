@@ -208,11 +208,9 @@ export default function App(): ReactElement {
 	const {
 		debugModeEnabled,
 		isDebugDialogOpen,
-		isResetAllStatePending,
 		handleOpenDebugDialog,
 		handleShowStartupOnboardingDialog,
 		handleDebugDialogOpenChange,
-		handleResetAllState,
 	} = useDebugTools({
 		runtimeProjectConfig,
 		settingsRuntimeProjectConfig,
@@ -588,11 +586,9 @@ export default function App(): ReactElement {
 			handleCreateDialogOpenChange,
 			debugModeEnabled,
 			isDebugDialogOpen,
-			isResetAllStatePending,
 			handleOpenDebugDialog,
 			handleShowStartupOnboardingDialog,
 			handleDebugDialogOpenChange,
-			handleResetAllState,
 			debugLogging,
 		}),
 		[
@@ -608,11 +604,9 @@ export default function App(): ReactElement {
 			handleCreateDialogOpenChange,
 			debugModeEnabled,
 			isDebugDialogOpen,
-			isResetAllStatePending,
 			handleOpenDebugDialog,
 			handleShowStartupOnboardingDialog,
 			handleDebugDialogOpenChange,
-			handleResetAllState,
 			debugLogging,
 		],
 	);
