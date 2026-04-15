@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: compare view branch dropdown left-click
+
+- Left-clicking a branch in the compare bar's source/target dropdowns opened the context menu instead of selecting the branch. Added `disableContextMenu` to both `BranchSelectorPopover` instances in `CompareBar` so left-click performs direct selection.
+
 ### Fix: noisy auto-restart warning on task trash
 
 - Trashing a running task triggers `stopTaskSession` → SIGHUP → exit code 129. The exit handler logged this as a `warn`-level "auto-restart skipped" message even though the skip was intentional. Changed `shouldAutoRestart` to return a discriminated union with a `reason` field (`suppressed` | `no_listeners` | `rate_limited`) so the caller can log intentional suppression at `debug` instead of `warn`. Added `displaySummary` to session exit and auto-restart skip log lines for easier task identification.

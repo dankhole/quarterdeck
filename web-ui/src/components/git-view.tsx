@@ -211,6 +211,7 @@ function CompareBar({
 				worktreeBranches={worktreeBranches}
 				pinnedBranches={pinnedBranches}
 				onTogglePinBranch={onTogglePinBranch}
+				disableContextMenu
 				onSelectBranchView={(ref) => {
 					onSourceRefChange(ref);
 					setSourcePopoverOpen(false);
@@ -228,6 +229,7 @@ function CompareBar({
 				worktreeBranches={worktreeBranches}
 				pinnedBranches={pinnedBranches}
 				onTogglePinBranch={onTogglePinBranch}
+				disableContextMenu
 				onSelectBranchView={(ref) => {
 					onTargetRefChange(ref);
 					setTargetPopoverOpen(false);
