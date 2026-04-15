@@ -49,6 +49,8 @@ function ColumnSection({
 		onTogglePinTask,
 		onMigrateWorkingDirectory,
 		onRequestDisplaySummary,
+		onTerminalWarmup,
+		onTerminalCancelWarmup,
 		onFlagForDebug,
 	} = useStableCardActions();
 	const {
@@ -201,6 +203,8 @@ function ColumnSection({
 								uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 								showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
 								onRequestDisplaySummary={onRequestDisplaySummary}
+								onTerminalWarmup={onTerminalWarmup}
+								onTerminalCancelWarmup={onTerminalCancelWarmup}
 								onFlagForDebug={onFlagForDebug}
 								onClick={() => {
 									if (column.id === "backlog") {

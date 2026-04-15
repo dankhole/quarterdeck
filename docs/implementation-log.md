@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal scroll flash when switching to stale tasks (2026-04-14)
+
+When switching to a task whose terminal pool slot had been evicted, the full restore snapshot was written to xterm while the terminal element was already visible. xterm renders `terminal.write()` data incrementally across animation frames, so the user saw the entire chat history scroll past before landing at the bottom.
+
+**Root cause:** `mount()` in `terminal-slot.ts` unconditionally set `hostElement.style.visibility = "visible"` regardless of whether a restore snapshot was still pending. The restore handler already called `scrollToBottom()` after the write completed, but the terminal was revealed before the write started.
+
+**Fix — deferred visibility:**
+- `mount()` now checks `restoreCompleted` before revealing. When `false` (restore snapshot incoming), the host element stays hidden. The restore handler reveals the terminal after `scrollToBottom()`.
+- For the PREVIOUS→ACTIVE reuse case (switching back to a recently viewed task), `restoreCompleted` is already `true`, so `mount()` reveals immediately — no behavior change.
+- Added `ensureVisible()` helper called from both IO and control socket error/close handlers as a safety net — if the socket dies before the restore message arrives, the terminal is revealed so the user sees the error state instead of a permanently hidden element.
+
+**Fix — warmup stays warm while hovered:**
+- `warmup()` no longer starts a 3s self-destruct timer. The slot stays warm indefinitely while the card is hovered.
+- `cancelWarmup()` (fired on mouseLeave) now starts the 3s grace-period timeout instead of evicting immediately. If `acquireForTask()` is called within the grace window (user clicks shortly after leaving), the timeout is cleared and the warm slot is reused.
+
+**Fix — sidebar warmup parity:**
+- `ColumnContextPanel` (sidebar task list in card detail view) was rendering `BoardCard` components without passing `onTerminalWarmup`/`onTerminalCancelWarmup`. Now destructures both from `useStableCardActions()` and passes them through, matching the main board's `BoardColumn` path.
+
+**Files**: `web-ui/src/terminal/terminal-slot.ts`, `web-ui/src/terminal/terminal-pool.ts`, `web-ui/src/terminal/terminal-pool.test.ts`, `web-ui/src/components/detail-panels/column-context-panel.tsx`
+
 ## Refactor: add BoardContext provider — phase 8 step 3 (2026-04-14)
 
 Third context provider in the App.tsx extraction (section 8 of `docs/refactor-csharp-readability.md`). BoardContext owns board data, task sessions, and task selection — the highest-traffic props drilled from App.tsx through CardDetailView.

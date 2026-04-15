@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: terminal scroll flash when switching to stale tasks
+
+- Switching to a task whose terminal slot was evicted from the pool caused the entire chat history to visibly scroll past as xterm rendered the restore snapshot. mount() now defers visibility when restoreCompleted is false — the terminal stays hidden until the snapshot is fully written and scrolled to bottom, then appears instantly.
+- Socket error/close handlers call ensureVisible() as a safety net so the terminal never stays permanently hidden if the restore message never arrives.
+- Warmup timeout no longer fires while the card is still hovered — the 3s grace period now starts on mouseLeave instead of mouseEnter, so hovering for >3s before clicking still gets a warm slot.
+- Sidebar task cards now trigger terminal warmup on hover, matching the main board cards (was missing onTerminalWarmup/onTerminalCancelWarmup passthrough from CardActionsContext).
+
 ### Fix: remove unauthenticated `resetAllState` endpoint
 
 - Removed the `runtime.resetAllState` tRPC endpoint, which recursively deleted `~/.quarterdeck` and `~/.quarterdeck/worktrees` with no authentication — any process on localhost could call it. Also removed the "Reset all state" button and confirmation dialog from the debug tools UI, the `prepareForStateReset` server callback, the frontend `resetRuntimeDebugState` helper, and all associated types, schemas, and tests.

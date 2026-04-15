@@ -479,6 +479,13 @@ export class TerminalSlot {
 		this.resizeEpoch += 1;
 	}
 
+	/** Reveal the host element if it was deferred during restore. */
+	private ensureVisible(): void {
+		if (this.visibleContainer) {
+			this.hostElement.style.visibility = "visible";
+		}
+	}
+
 	/**
 	 * Invalidate and immediately re-send terminal dimensions with force flag.
 	 * The server sends SIGWINCH even if dimensions haven't changed, ensuring
@@ -596,6 +603,7 @@ export class TerminalSlot {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
+			this.ensureVisible();
 			this.lastError = "Terminal stream failed.";
 			this.notifyLastError();
 		};
@@ -603,6 +611,7 @@ export class TerminalSlot {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
+			this.ensureVisible();
 			this.ioSocket = null;
 			this.outputTextDecoder = new TextDecoder();
 			this.connectionReady = false;
@@ -649,6 +658,11 @@ export class TerminalSlot {
 						this.restoreCompleted = true;
 						this.sendControlMessage({ type: "restore_complete" });
 						this.terminal.scrollToBottom();
+						// Reveal the terminal now that the buffer is populated and
+						// the viewport is scrolled to the bottom. mount() defers
+						// visibility when restoreCompleted is false to avoid the
+						// full history visibly scrolling past during the write.
+						this.ensureVisible();
 						if (this.ioSocket && this.visibleContainer) {
 							this.requestResize();
 						}
@@ -660,6 +674,8 @@ export class TerminalSlot {
 						if (this.disposed || this.controlSocket !== controlSocket) {
 							return;
 						}
+						// Reveal on failure too so the terminal doesn't stay hidden.
+						this.ensureVisible();
 						this.lastError = "Terminal restore failed.";
 						this.notifyLastError();
 					});
@@ -703,6 +719,7 @@ export class TerminalSlot {
 			if (this.disposed || this.controlSocket !== controlSocket) {
 				return;
 			}
+			this.ensureVisible();
 			this.lastError = "Terminal control connection failed.";
 			this.notifyLastError();
 		};
@@ -710,6 +727,7 @@ export class TerminalSlot {
 			if (this.disposed || this.controlSocket !== controlSocket) {
 				return;
 			}
+			this.ensureVisible();
 			this.controlSocket = null;
 			this.lastError = "Terminal control connection closed. Close and reopen to reconnect.";
 			this.notifyLastError();
@@ -794,16 +812,23 @@ export class TerminalSlot {
 		}
 		this.updateAppearance(appearance);
 
+		// Defer visibility when a restore snapshot is pending — the full history
+		// would otherwise scroll past as xterm renders it incrementally. The
+		// restore handler sets visibility = "visible" after scrollToBottom().
+		const shouldReveal = this.restoreCompleted;
+
 		const isSameContainer = this.mountedContainer === container && container.isConnected;
 		if (isSameContainer) {
 			// Fast path — same container, just reveal. No DOM move, no canvas repair.
-			log.debug(`slot ${this.slotId} mount — fast path (visibility toggle)`);
-			this.hostElement.style.visibility = "visible";
+			log.debug(`slot ${this.slotId} mount — fast path (visibility toggle, reveal=${shouldReveal})`);
+			if (shouldReveal) {
+				this.hostElement.style.visibility = "visible";
+			}
 			this.visibleContainer = container;
 		} else {
 			// Slow path — first mount, different container, or detached container.
 			// Full DOM move + canvas repair.
-			log.debug(`slot ${this.slotId} mount — slow path (DOM move + canvas repair)`);
+			log.debug(`slot ${this.slotId} mount — slow path (DOM move + canvas repair, reveal=${shouldReveal})`);
 			this.visibleContainer = container;
 			this.mountedContainer = container;
 			container.appendChild(this.hostElement);
@@ -818,8 +843,10 @@ export class TerminalSlot {
 			// and fitAddon.fit() forces a synchronous reflow via
 			// getBoundingClientRect(), so container dimensions are available.
 			this.repairRendererCanvas("mount");
-			// Reveal after repair — no visible dimension bounce or texture rebuild.
-			this.hostElement.style.visibility = "visible";
+			// Reveal after repair — unless a restore snapshot is still pending.
+			if (shouldReveal) {
+				this.hostElement.style.visibility = "visible";
+			}
 			// No requestRestore() here. For new connections, the initial socket
 			// restore handles buffer population (restoreCompleted is false, so
 			// requestRestore would no-op anyway). For PREVIOUS slots being

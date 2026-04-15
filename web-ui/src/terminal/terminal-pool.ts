@@ -274,20 +274,42 @@ export function warmup(taskId: string, workspaceId: string): void {
 		}
 	});
 
-	// 5. Set 3-second timeout: if acquireForTask not called, cancel warmup
-	clearWarmupTimeout(taskId); // clear any existing timeout
+	// 5. No timeout here — the slot stays warm as long as the caller holds it.
+	//    The timeout starts when cancelWarmup() is called (i.e. mouseLeave),
+	//    giving a grace period before eviction in case the user clicks shortly
+	//    after leaving the card.
+}
+
+/**
+ * Schedule eviction of a warmed-up slot after a grace period.
+ * Called on mouseLeave — if acquireForTask is called within the grace
+ * window (e.g. the user clicks shortly after leaving), the timeout is
+ * cleared and the warm slot is reused.
+ */
+export function cancelWarmup(taskId: string): void {
+	const slot = slotTaskIds.get(taskId);
+	if (!slot) {
+		clearWarmupTimeout(taskId);
+		return;
+	}
+	const role = getRole(slot);
+	if (role !== "PRELOADING" && role !== "READY") {
+		clearWarmupTimeout(taskId);
+		return;
+	}
+	// Already has a pending eviction timeout — leave it running.
+	if (warmupTimeouts.has(taskId)) {
+		return;
+	}
 	const timeoutId = setTimeout(() => {
 		warmupTimeouts.delete(taskId);
-		cancelWarmup(taskId);
+		evictWarmupSlot(taskId);
 	}, WARMUP_TIMEOUT_MS);
 	warmupTimeouts.set(taskId, timeoutId);
 }
 
-/**
- * Cancel a pending warmup for a task. If the slot is PRELOADING or READY,
- * disconnect and set to FREE.
- */
-export function cancelWarmup(taskId: string): void {
+/** Immediately evict a PRELOADING/READY warmup slot. */
+function evictWarmupSlot(taskId: string): void {
 	clearWarmupTimeout(taskId);
 	const slot = slotTaskIds.get(taskId);
 	if (!slot) {

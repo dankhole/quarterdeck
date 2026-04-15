@@ -445,17 +445,16 @@ describe("terminal-pool", () => {
 			expect(getSlotRole(getSlotForTask("task-warm-3")!)).toBe("PRELOADING");
 		});
 
-		it("auto-cancels after 3s if not acquired", () => {
+		it("stays warm indefinitely until cancelWarmup is called", () => {
 			warmup("task-1", "ws-1");
 			const slot = getSlotForTask("task-1")!;
 			expect(getSlotRole(slot)).toBe("PRELOADING");
 
-			vi.advanceTimersByTime(3000);
+			// Well past the old 3s timeout — slot should still be warm.
+			vi.advanceTimersByTime(10_000);
 
-			expect(getSlotForTask("task-1")).toBeNull();
-			expect(getSlotRole(slot)).toBe("FREE");
-			const mockSlot = slot as unknown as MockSlot;
-			expect(mockSlot.disconnectFromTask).toHaveBeenCalled();
+			expect(getSlotForTask("task-1")).not.toBeNull();
+			expect(getSlotRole(slot)).toBe("PRELOADING");
 		});
 	});
 
@@ -468,17 +467,37 @@ describe("terminal-pool", () => {
 			initPool();
 		});
 
-		it("disconnects and returns to FREE", () => {
+		it("starts a grace period then disconnects and returns to FREE", () => {
 			warmup("task-1", "ws-1");
 			const slot = getSlotForTask("task-1")!;
 			expect(getSlotRole(slot)).toBe("PRELOADING");
 
 			cancelWarmup("task-1");
 
+			// Slot is still warm during the grace period.
+			expect(getSlotForTask("task-1")).not.toBeNull();
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+
+			// After the 3s grace period, slot is evicted.
+			vi.advanceTimersByTime(3000);
+
 			expect(getSlotForTask("task-1")).toBeNull();
 			expect(getSlotRole(slot)).toBe("FREE");
 			const mockSlot = slot as unknown as MockSlot;
 			expect(mockSlot.disconnectFromTask).toHaveBeenCalled();
+		});
+
+		it("grace period is cancelled if acquireForTask reuses the slot", () => {
+			warmup("task-1", "ws-1");
+			cancelWarmup("task-1");
+
+			// Acquire before grace period expires — should reuse the warm slot.
+			const slot = acquireForTask("task-1", "ws-1");
+			expect(slot).toBeDefined();
+
+			// Grace period expires — slot should stay ACTIVE, not evicted.
+			vi.advanceTimersByTime(5000);
+			expect(getSlotRole(slot)).toBe("ACTIVE");
 		});
 
 		it("is no-op for non-warming task", () => {
