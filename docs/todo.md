@@ -167,7 +167,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 
 Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
 
-**Backend (sections 1-7):**
+**Backend (sections 1-7):** All done.
 - ~~Adopt `neverthrow` and `mitt`~~ — installed, ready for incremental adoption
 - ~~Named types~~ — replaced `ReturnType<typeof>` gymnastics across 11 sites with navigable named types
 - ~~IDisposable + DisposableStore~~ — created `src/core/disposable.ts` (~70 lines), adopted by RuntimeStateHub
@@ -177,10 +177,19 @@ Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-cs
 - ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider` replace 4 bespoke dependency bags
 - ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
-**Frontend (section 8):**
-8. Split App.tsx into ~6 Context providers — in progress: ~~DialogContext~~, ~~ProjectContext~~, ~~BoardContext~~, ~~GitContext~~, ~~TerminalContext~~, ~~InteractionsContext~~, ~~AppProviders compositor~~ done; state migration into providers and App.tsx slimdown remain
+**Frontend (section 8): Provider migration — in progress.**
 
-Sections are independent and ordered by priority with a dependency graph in the doc.
+App.tsx split into `App` > `AppCore` > `AppContent`. Provider shells created. Hook/state migration into providers is the remaining work. The sequence is:
+
+1. **Step 0: Add context fields** (branch: `refactor/context-provider-fields-for-app-extraction`) — Plan: [docs/plan-app-content-extraction.md](plan-app-content-extraction.md) (Step 0 section)
+2. **AppContent extraction** — Plans: [docs/plan-app-content-extraction.md](plan-app-content-extraction.md), [docs/plan-app-content-extraction-execution.md](plan-app-content-extraction-execution.md)
+3. **Remaining provider migrations** (Board → Terminal → Git → Interactions → collapse AppCore) — Plan: [docs/plan-remaining-provider-migrations.md](plan-remaining-provider-migrations.md)
+4. **Migration order context** — [docs/plan-provider-migration-order.md](plan-provider-migration-order.md)
+
+**After the provider migration**, two follow-up refactors build on it (do in order):
+
+1. **Organize hooks into domain subdirectories** — see "Organize web-ui hooks directory" todo below
+2. **Extract business logic from hooks into plain TS modules** — see "Organize web-ui hooks directory" todo below
 
 ## Remove non-WebGL terminal renderer option
 
@@ -190,9 +199,15 @@ The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as a
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.
 
-## Organize web-ui hooks directory
+## Organize web-ui hooks directory and extract domain logic
 
-Full plan at [docs/refactor-hooks-directory.md](refactor-hooks-directory.md). Three phases: subdirectory reorg (mechanical file moves into board/git/terminal/project/notifications), domain logic extraction (separate pure TS modules from React wiring), and conventions update to `web-ui-conventions.md` to prevent re-bloating. Phase 1 is ~2 hours of mechanical work best done in a low-activity window.
+**Prereq:** Finish the provider migration (see "Readability refactoring roadmap" above) before starting this. The provider migration establishes the context interfaces that this work builds on.
+
+Three phases, done in order:
+
+1. **Subdirectory reorg** — Move 60+ hooks from flat `hooks/` into domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`). Mechanical file moves + import updates, no logic changes. ~2 hours, best done in a low-activity window. Plan: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 1.
+2. **Domain logic extraction** — For hooks with >50 lines of business logic, split into a pure TS domain module (`foo-bar.ts`) and a thin React hook (`use-foo-bar.ts`). The domain module has zero React imports and is testable without `renderHook`. Do incrementally, hook-by-hook. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics (candidates, naming, examples): [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 2.
+3. **Conventions update** — Add "Hooks architecture" section to `web-ui-conventions.md` to codify the domain-module pattern and directory structure. Plan: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 3.
 
 ## Keep task base ref in sync with branch changes
 
