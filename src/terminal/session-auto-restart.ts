@@ -11,19 +11,23 @@ import { cloneSummary } from "./session-summary-store";
 export const AUTO_RESTART_WINDOW_MS = 5_000;
 export const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 
+export type AutoRestartDecision =
+	| { restart: true }
+	| { restart: false; reason: "suppressed" | "no_listeners" | "rate_limited" };
+
 /**
  * Determines if auto-restart should proceed after process exit.
  * Mutates `entry.suppressAutoRestartOnExit` and `entry.autoRestartTimestamps`
  * as side effects (matching original behavior).
  */
-export function shouldAutoRestart(entry: ProcessEntry): boolean {
+export function shouldAutoRestart(entry: ProcessEntry): AutoRestartDecision {
 	const wasSuppressed = entry.suppressAutoRestartOnExit;
 	entry.suppressAutoRestartOnExit = false;
 	if (wasSuppressed) {
-		return false;
+		return { restart: false, reason: "suppressed" };
 	}
 	if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
-		return false;
+		return { restart: false, reason: "no_listeners" };
 	}
 	const currentTime = Date.now();
 	entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(
@@ -33,10 +37,10 @@ export function shouldAutoRestart(entry: ProcessEntry): boolean {
 		emitSessionEvent(entry.taskId, "autorestart.rate_limited", {
 			timestamps: entry.autoRestartTimestamps,
 		});
-		return false;
+		return { restart: false, reason: "rate_limited" };
 	}
 	entry.autoRestartTimestamps.push(currentTime);
-	return true;
+	return { restart: true };
 }
 
 export interface AutoRestartCallbacks {

@@ -768,6 +768,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 		sessionLog.info("task session process exited", {
 			taskId: request.taskId,
+			displaySummary: currentSummaryAtExit?.displaySummary ?? null,
 			exitCode: event.exitCode,
 			trustConfirmCount: exitEventData.trustConfirmCount,
 		});
@@ -785,28 +786,30 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: event.exitCode,
 			interrupted: currentEntry.active.session.wasInterrupted(),
 		});
-		const doAutoRestart = shouldAutoRestart(currentEntry);
-		if (!doAutoRestart) {
-			sessionLog.warn("auto-restart skipped on exit", {
+		const autoRestartDecision = shouldAutoRestart(currentEntry);
+		if (!autoRestartDecision.restart) {
+			const skipData = {
 				taskId: request.taskId,
+				displaySummary: currentSummaryAtExit?.displaySummary ?? null,
+				reason: autoRestartDecision.reason,
 				listenerCount: currentEntry.listeners.size,
 				restartRequestKind: currentEntry.restartRequest?.kind ?? null,
 				exitCode: event.exitCode,
 				exitState: result?.summary?.state ?? null,
 				exitReviewReason: result?.summary?.reviewReason ?? null,
-			});
-			emitSessionEvent(request.taskId, "session.autorestart_skipped", {
-				listenerCount: currentEntry.listeners.size,
-				restartRequestKind: currentEntry.restartRequest?.kind ?? null,
-				exitCode: event.exitCode,
-				exitState: result?.summary?.state ?? null,
-				exitReviewReason: result?.summary?.reviewReason ?? null,
-			});
+			};
+			// Intentional suppression (stop/trash) is expected — log at debug, not warn.
+			if (autoRestartDecision.reason === "suppressed") {
+				sessionLog.debug("auto-restart suppressed on exit", skipData);
+			} else {
+				sessionLog.warn("auto-restart skipped on exit", skipData);
+			}
+			emitSessionEvent(request.taskId, "session.autorestart_skipped", skipData);
 		}
 		const exitSummary = result?.summary ?? this.store.getSummary(request.taskId);
 		const cleanupFn = finalizeProcessExit(currentEntry, exitSummary, event.exitCode);
 
-		if (doAutoRestart) {
+		if (autoRestartDecision.restart) {
 			scheduleAutoRestart(currentEntry, {
 				startTaskSession: (r) => this.startTaskSession(r),
 				updateStore: (id, patch) => this.store.update(id, patch),

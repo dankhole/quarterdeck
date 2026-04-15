@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: noisy auto-restart warning on task trash
+
+- Trashing a running task triggers `stopTaskSession` → SIGHUP → exit code 129. The exit handler logged this as a `warn`-level "auto-restart skipped" message even though the skip was intentional. Changed `shouldAutoRestart` to return a discriminated union with a `reason` field (`suppressed` | `no_listeners` | `rate_limited`) so the caller can log intentional suppression at `debug` instead of `warn`. Added `displaySummary` to session exit and auto-restart skip log lines for easier task identification.
+
 ## [0.9.0] — 2026-04-15
 
 ### Fix: resolved conflicts reappearing in auto-merged section during merge
