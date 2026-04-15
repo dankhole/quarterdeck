@@ -240,6 +240,11 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 	const currentActive = findOldestSlotByRole("ACTIVE");
 	if (currentActive) {
 		setRole(currentActive, "PREVIOUS");
+		// Re-sync the buffer from the server's headless mirror while the user
+		// isn't looking. This repairs any client-side visual drift (garbled
+		// rendering, stale cursor state) so the terminal is clean if the user
+		// switches back before the slot is evicted.
+		currentActive.requestRestore();
 		log.debug(`acquireForTask — demoted slot ${currentActive.slotId} to PREVIOUS`);
 	}
 

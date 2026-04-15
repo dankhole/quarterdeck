@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: background terminal re-sync on task switch
+
+- When switching tasks, the previously-active terminal slot is demoted to PREVIOUS but keeps its WebSocket connections open. The xterm buffer could drift into a garbled visual state during this period, which persisted if the user switched back before the slot was evicted. Now `requestRestore()` fires on demotion — re-syncing the buffer from the server's headless mirror while the user isn't looking — so the terminal is clean on return.
+
 ### Fix: compare view branch dropdown left-click
 
 - Left-clicking a branch in the compare bar's source/target dropdowns opened the context menu instead of selecting the branch. Added `disableContextMenu` to both `BranchSelectorPopover` instances in `CompareBar` so left-click performs direct selection.
