@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { buildTaskSearchParam, parseTaskIdFromSearch } from "@/hooks/app-utils";
 import { findCardSelection } from "@/state/board-state";
-import type { BoardData } from "@/types";
+import type { BoardData, CardSelection } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
 interface UseDetailTaskNavigationInput {
@@ -15,7 +15,7 @@ interface UseDetailTaskNavigationInput {
 
 export interface UseDetailTaskNavigationResult {
 	selectedTaskId: string | null;
-	selectedCard: ReturnType<typeof findCardSelection>;
+	selectedCard: CardSelection | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 }
 

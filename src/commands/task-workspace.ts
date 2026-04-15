@@ -11,6 +11,8 @@ export interface RuntimeWorkspaceMutationResult<T> {
 	value: T;
 }
 
+export type RuntimeTrpcClient = ReturnType<typeof createRuntimeTrpcClient>;
+
 export function createRuntimeTrpcClient(workspaceId: string | null) {
 	return createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
@@ -54,14 +56,12 @@ export async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise
 	return added.project.id;
 }
 
-export async function notifyRuntimeWorkspaceStateUpdated(
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
-): Promise<void> {
+export async function notifyRuntimeWorkspaceStateUpdated(runtimeClient: RuntimeTrpcClient): Promise<void> {
 	await runtimeClient.workspace.notifyStateUpdated.mutate().catch(() => null);
 }
 
 export async function updateRuntimeWorkspaceState<T>(
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	runtimeClient: RuntimeTrpcClient,
 	workspaceRepoPath: string,
 	mutate: (state: RuntimeWorkspaceStateResponse) => RuntimeWorkspaceMutationResult<T>,
 ): Promise<T> {

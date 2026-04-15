@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: C#-style readability — phase 1 & 2 (named types, IDisposable, class conversions)
+
+- Installed `neverthrow` (typed `Result<T,E>`) and `mitt` (typed event emitter) for incremental adoption — no callsite changes yet, packages available for phase 3+.
+- Replaced `ReturnType<typeof>` gymnastics with named types across 11 sites in 9 files — `ResolvedAgentCommand`, `RuntimeConfigState`, `PreparedAgentLaunch`, `RuntimeWorkspaceStateResponse`, `ReconciliationTimer` (new), `RuntimeTrpcClient` (new), `RuntimeServerHandle` (new), `CardSelection`, and direct types for `UseRuntimeStateStreamResult` fields.
+- Created `src/core/disposable.ts` — `IDisposable` interface, `toDisposable()`, `DisposableStore`, and `Disposable` base class (~70 lines). Equivalent to VS Code's lifecycle primitives.
+- Converted `RuntimeStateHub` from 550-line factory-closure to `RuntimeStateHubImpl` class extending `Disposable` — 7 closure Maps/Sets become private readonly fields, 130-line inline WebSocket handler becomes `handleConnection()` pipeline, metadata monitor and debug log subscription managed via `_register()`.
+- Converted `RuntimeApi` from 615-line factory-closure to `RuntimeApiImpl` class — handler methods organized by section (Config, Sessions, Shell, Debug, Migration), `createRuntimeApi()` wrapper preserved for backward compatibility.
+
 ### Refactor: begin App.tsx context provider extraction — DialogContext
 
 - Introduced `DialogContext` (`web-ui/src/providers/dialog-provider.tsx`) — the first step of the App.tsx provider split described in `docs/refactor-csharp-readability.md` section 8. Defines a typed context for all dialog open/close state, debug tools, and debug logging.

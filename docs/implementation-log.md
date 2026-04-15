@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: C#-style readability — phase 1 & 2 (2026-04-14)
+
+Phases 1 and 2 of the readability roadmap (`docs/refactor-csharp-readability.md`), covering the zero-risk foundation and backend class conversions.
+
+**Phase 1 — named types, libraries, IDisposable:**
+
+- Installed `neverthrow` and `mitt` packages. No callsite changes — available for incremental adoption in phases 3+.
+- Replaced 11 `ReturnType<typeof>` sites across 9 files with named type exports. Created three new types: `ReconciliationTimer` (session-reconciliation-sweep.ts), `RuntimeTrpcClient` (task-workspace.ts), `RuntimeServerHandle` (cli.ts). Remaining replacements used existing types: `ResolvedAgentCommand`, `RuntimeConfigState`, `PreparedAgentLaunch`, `RuntimeWorkspaceStateResponse`, `CardSelection`, and direct types from `UseRuntimeStateStreamResult`.
+- Created `src/core/disposable.ts` (~70 lines): `IDisposable` interface, `toDisposable()` wrapper, `DisposableStore` (composite, LIFO dispose), `Disposable` abstract base class with `_register()`. Mirrors VS Code's pattern.
+
+**Phase 2 — class conversions:**
+
+- `RuntimeStateHub` (`src/server/runtime-state-hub.ts`): `createRuntimeStateHub()` factory → `RuntimeStateHubImpl extends Disposable implements RuntimeStateHub`. Seven closure-captured Maps/Sets → private readonly fields visible in IDE class outline. The 130-line inline `on("connection")` handler → `handleConnection()` private method with `parseWorkspaceId()` helper. Metadata monitor and debug log subscription registered via `_register()` for automatic cleanup. Public methods use arrow class fields for stable `this` binding when extracted as refs by runtime-server.ts. The `createRuntimeStateHub()` wrapper is preserved for backward compatibility.
+- `RuntimeApi` (`src/trpc/runtime-api.ts`): `createRuntimeApi()` factory → `RuntimeApiImpl` class. Methods organized into sections (Config, Sessions, Shell, Debug/Utility, Migration). The deps bag becomes a constructor parameter. `createRuntimeApi()` wrapper preserved.
+- Handler file split (section 5 of the roadmap) deferred to a follow-up — the class conversion was the structural prerequisite.
+
+**Key discovery during implementation:** Arrow class fields were required for all public methods on `RuntimeStateHubImpl` because `runtime-server.ts` extracts methods as standalone function references (e.g., `deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated`). Regular class methods lose `this` binding when extracted. This was caught by integration tests (`ECONNRESET` failures).
+
+**Files**: `package.json`, `package-lock.json`, `src/core/disposable.ts` (new), `src/server/runtime-state-hub.ts`, `src/trpc/runtime-api.ts`, `src/cli.ts`, `src/commands/task-lifecycle-handlers.ts`, `src/commands/task-workspace.ts`, `src/server/workspace-registry.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-reconciliation-sweep.ts`, `web-ui/src/hooks/use-detail-task-navigation.ts`, `web-ui/src/hooks/use-project-navigation.ts`.
+
 ## Fix: terminal pool task-switch cleanup and polish (2026-04-14)
 
 Four small fixes to the terminal pool landed in the same commit:

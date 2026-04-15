@@ -163,13 +163,14 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
 
 **Backend (sections 1-7):**
-1. Adopt `neverthrow` (typed Result errors) and `mitt` (typed event emitter) — replace copy-pasted try/catch and hand-rolled listener patterns
-2. Add explicit return types and named types — replace `ReturnType<typeof ...>` gymnastics with navigable type definitions
-3. IDisposable + DisposableStore — VS Code's lifecycle pattern (~80 lines) that makes cleanup automatic and composable instead of 8-step manual teardown
-4. Convert `RuntimeStateHub` from 552-line factory-closure to class — 7 closure Maps become private fields, 130-line nested handler becomes pipeline of named methods, colocate 6 flat Maps into typed workspace context objects
-5. Convert `RuntimeApi` from 612-line factory to class + split 11 handlers into individual files under `src/trpc/handlers/`
-6. Define shared service interfaces (`ITerminalManagerProvider`, `IRuntimeBroadcaster`, `IWorkspaceResolver`, `IRuntimeConfigProvider`) — eliminate 8 duplicated ad-hoc dependency interfaces, make the dependency graph visible via constructor signatures
-7. Message factory functions + typed WebSocket dispatch map — replace inline spread/ternary construction and 110-line if/else dispatch chain
+- ~~Adopt `neverthrow` and `mitt`~~ — installed, ready for incremental adoption
+- ~~Named types~~ — replaced `ReturnType<typeof>` gymnastics across 11 sites with navigable named types
+- ~~IDisposable + DisposableStore~~ — created `src/core/disposable.ts` (~70 lines), adopted by RuntimeStateHub
+- ~~Convert `RuntimeStateHub` to class~~ — 550-line factory → `RuntimeStateHubImpl` extending `Disposable`
+- ~~Convert `RuntimeApi` to class~~ — 615-line factory → `RuntimeApiImpl` class (handler file split deferred)
+- Split `RuntimeApi` handlers into individual files under `src/trpc/handlers/`
+- Define shared service interfaces (`ITerminalManagerProvider`, `IRuntimeBroadcaster`, `IWorkspaceResolver`, `IRuntimeConfigProvider`) — eliminate 8 duplicated ad-hoc dependency interfaces, make the dependency graph visible via constructor signatures
+- Message factory functions + typed WebSocket dispatch map — replace inline spread/ternary construction and 110-line if/else dispatch chain
 
 **Frontend (section 8):**
 8. Split App.tsx (1,818 lines, 40+ hooks) into ~6 Context providers — eliminates 55-prop components, kills the `useBoardInteractions` wiring hub, drops App.tsx to ~200 lines

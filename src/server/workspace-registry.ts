@@ -461,7 +461,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		if (!manager) {
 			return 0;
 		}
-		let state: Awaited<ReturnType<typeof loadWorkspaceState>>;
+		let state: RuntimeWorkspaceStateResponse;
 		try {
 			state = await loadWorkspaceState(workspacePath);
 		} catch {

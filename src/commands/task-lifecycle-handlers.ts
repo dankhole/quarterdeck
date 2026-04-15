@@ -20,6 +20,7 @@ import {
 	createRuntimeTrpcClient,
 	ensureRuntimeWorkspace,
 	notifyRuntimeWorkspaceStateUpdated,
+	type RuntimeTrpcClient,
 	resolveWorkspaceRepoPath,
 	updateRuntimeWorkspaceState,
 } from "./task-workspace";
@@ -75,10 +76,7 @@ function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string)
 	throw new Error(`${commandName} requires either --task-id or --column.`);
 }
 
-async function stopTaskRuntimeSession(
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
-	taskId: string,
-): Promise<void> {
+async function stopTaskRuntimeSession(runtimeClient: RuntimeTrpcClient, taskId: string): Promise<void> {
 	await runtimeClient.runtime.stopTaskSession
 		.mutate({
 			taskId,
@@ -87,7 +85,7 @@ async function stopTaskRuntimeSession(
 }
 
 async function deleteTaskWorkspace(
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	runtimeClient: RuntimeTrpcClient,
 	taskId: string,
 ): Promise<{ removed: boolean; error?: string }> {
 	try {
@@ -197,7 +195,7 @@ async function trashTaskById(input: {
 	taskId: string;
 	projectPath?: string;
 	workspaceRepoPath: string;
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
+	runtimeClient: RuntimeTrpcClient;
 }): Promise<TrashTaskExecutionResult> {
 	const mutation = await mutateWorkspaceState<TrashTaskMutationValue>(input.workspaceRepoPath, (latestState) => {
 		const latestRecord = findTaskRecord(latestState, input.taskId);

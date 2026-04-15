@@ -20,9 +20,10 @@ import type {
 } from "../core/api-contract";
 import type { DebugLogEntry } from "../core/debug-logger";
 import { getLogLevel, getRecentDebugLogEntries, onDebugLogEntry } from "../core/debug-logger";
+import { Disposable, toDisposable } from "../core/disposable";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createWorkspaceMetadataMonitor, type WorkspaceMetadataPollIntervals } from "./workspace-metadata-monitor";
-import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
+import type { WorkspaceRegistry } from "./workspace-registry";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 const DEBUG_LOG_BATCH_MS = 150;
@@ -68,51 +69,157 @@ export interface RuntimeStateHub {
 	close: () => Promise<void>;
 }
 
-export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): RuntimeStateHub {
-	const terminalSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
-	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
-	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
-	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
-	const runtimeStateClients = new Set<WebSocket>();
-	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
-	const resumeAttemptedWorkspaces = new Set<string>();
-	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
-	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
-		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
-			const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-			if (!clients || clients.size === 0) {
-				return;
-			}
-			const payload: RuntimeStateStreamWorkspaceMetadataMessage = {
-				type: "workspace_metadata_updated",
-				workspaceId,
-				workspaceMetadata,
-			};
-			for (const client of clients) {
-				sendRuntimeStateMessage(client, payload);
-			}
-		},
-	});
+export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
+	private readonly terminalSummaryUnsubscribes = new Map<string, () => void>();
+	private readonly pendingSummaries = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
+	private readonly broadcastTimers = new Map<string, NodeJS.Timeout>();
+	private readonly clientsByWorkspace = new Map<string, Set<WebSocket>>();
+	private readonly allClients = new Set<WebSocket>();
+	private readonly clientToWorkspace = new Map<WebSocket, string>();
+	private readonly resumeAttempted = new Set<string>();
+	private readonly wss: WebSocketServer;
+	private readonly metadataMonitor: ReturnType<typeof createWorkspaceMetadataMonitor>;
 
-	const sendRuntimeStateMessage = (client: WebSocket, payload: RuntimeStateStreamMessage) => {
-		if (client.readyState !== WebSocket.OPEN) {
+	// Debug log batching
+	private readonly pendingDebugLogEntries: DebugLogEntry[] = [];
+	private debugLogBroadcastTimer: NodeJS.Timeout | null = null;
+
+	constructor(private readonly deps: CreateRuntimeStateHubDependencies) {
+		super();
+
+		this.wss = new WebSocketServer({ noServer: true });
+		// wss is NOT registered with _register — it requires an async close
+		// with a callback to properly drain connections. Handled in close().
+
+		this.metadataMonitor = createWorkspaceMetadataMonitor({
+			onMetadataUpdated: (workspaceId, workspaceMetadata) => {
+				this.broadcastToWorkspace(workspaceId, {
+					type: "workspace_metadata_updated",
+					workspaceId,
+					workspaceMetadata,
+				} satisfies RuntimeStateStreamWorkspaceMetadataMessage);
+			},
+		});
+		this._register(toDisposable(() => this.metadataMonitor.close()));
+
+		this._register(
+			toDisposable(
+				onDebugLogEntry((entry) => {
+					if (this.allClients.size === 0) {
+						return;
+					}
+					this.pendingDebugLogEntries.push(entry);
+					if (this.debugLogBroadcastTimer === null) {
+						this.debugLogBroadcastTimer = setTimeout(() => this.flushDebugLogEntries(), DEBUG_LOG_BATCH_MS);
+						this.debugLogBroadcastTimer.unref();
+					}
+				}),
+			),
+		);
+
+		this.wss.on("connection", (client: WebSocket, context: unknown) => this.handleConnection(client, context));
+	}
+
+	// ── Public API (arrow fields for stable `this` when passed as refs) ──
+
+	trackTerminalManager = (workspaceId: string, manager: TerminalSessionManager): void => {
+		if (this.terminalSummaryUnsubscribes.has(workspaceId)) {
+			return;
+		}
+		const unsubscribe = manager.store.onChange((summary) => {
+			this.queueSummaryBroadcast(workspaceId, summary);
+		});
+		this.terminalSummaryUnsubscribes.set(workspaceId, unsubscribe);
+	};
+
+	handleUpgrade = (
+		request: IncomingMessage,
+		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
+		head: Buffer,
+		context: { requestedWorkspaceId: string | null },
+	): void => {
+		this.wss.handleUpgrade(request, socket, head, (ws) => {
+			this.wss.emit("connection", ws, context);
+		});
+	};
+
+	disposeWorkspace = (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions): void => {
+		const unsubscribe = this.terminalSummaryUnsubscribes.get(workspaceId);
+		if (unsubscribe) {
+			try {
+				unsubscribe();
+			} catch {
+				// Ignore listener cleanup errors during project removal.
+			}
+		}
+		this.terminalSummaryUnsubscribes.delete(workspaceId);
+		this.disposeSummaryBroadcast(workspaceId);
+		this.resumeAttempted.delete(workspaceId);
+		this.metadataMonitor.disposeWorkspace(workspaceId);
+
+		if (!options?.disconnectClients) {
+			return;
+		}
+
+		const runtimeClients = this.clientsByWorkspace.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			this.clientsByWorkspace.delete(workspaceId);
+			return;
+		}
+
+		for (const runtimeClient of runtimeClients) {
+			if (options.closeClientErrorMessage) {
+				this.send(runtimeClient, {
+					type: "error",
+					message: options.closeClientErrorMessage,
+				} satisfies RuntimeStateStreamErrorMessage);
+			}
+			try {
+				runtimeClient.close();
+			} catch {
+				// Ignore close failures while disposing removed workspace clients.
+			}
+			this.cleanupClient(runtimeClient);
+		}
+		this.clientsByWorkspace.delete(workspaceId);
+	};
+
+	broadcastRuntimeWorkspaceStateUpdated = async (workspaceId: string, workspacePath: string): Promise<void> => {
+		const clients = this.clientsByWorkspace.get(workspaceId);
+		if (!clients || clients.size === 0) {
 			return;
 		}
 		try {
-			client.send(JSON.stringify(payload));
+			const workspaceState = await this.deps.workspaceRegistry.buildWorkspaceStateSnapshot(
+				workspaceId,
+				workspacePath,
+			);
+			const payload: RuntimeStateStreamWorkspaceStateMessage = {
+				type: "workspace_state_updated",
+				workspaceId,
+				workspaceState,
+			};
+			for (const client of clients) {
+				this.send(client, payload);
+			}
+			await this.metadataMonitor.updateWorkspaceState({
+				workspaceId,
+				workspacePath,
+				board: workspaceState.board,
+			});
 		} catch {
-			// Ignore websocket write errors; close handlers clean up disconnected sockets.
+			// Ignore transient state read failures; next update will resync.
 		}
 	};
 
-	const broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
-		if (runtimeStateClients.size === 0) {
+	broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
+		if (this.allClients.size === 0) {
 			return;
 		}
 		try {
-			const payload = await deps.workspaceRegistry.buildProjectsPayload(preferredCurrentProjectId);
-			for (const client of runtimeStateClients) {
-				sendRuntimeStateMessage(client, {
+			const payload = await this.deps.workspaceRegistry.buildProjectsPayload(preferredCurrentProjectId);
+			for (const client of this.allClients) {
+				this.send(client, {
 					type: "projects_updated",
 					currentProjectId: payload.currentProjectId,
 					projects: payload.projects,
@@ -123,175 +230,22 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 	};
 
-	const broadcastTaskNotification = (workspaceId: string, summaries: RuntimeTaskSessionSummary[]) => {
-		if (runtimeStateClients.size === 0) {
-			return;
-		}
-		const payload: RuntimeStateStreamTaskNotificationMessage = {
-			type: "task_notification",
-			workspaceId,
-			summaries,
-		};
-		for (const client of runtimeStateClients) {
-			sendRuntimeStateMessage(client, payload);
-		}
-	};
-
-	const flushTaskSessionSummaries = (workspaceId: string) => {
-		const pending = pendingTaskSessionSummariesByWorkspaceId.get(workspaceId);
-		if (!pending || pending.size === 0) {
-			return;
-		}
-		pendingTaskSessionSummariesByWorkspaceId.delete(workspaceId);
-		const summaries = Array.from(pending.values());
-		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (runtimeClients && runtimeClients.size > 0) {
-			const payload: RuntimeStateStreamTaskSessionsMessage = {
-				type: "task_sessions_updated",
-				workspaceId,
-				summaries,
-			};
-			for (const client of runtimeClients) {
-				sendRuntimeStateMessage(client, payload);
-			}
-		}
-		broadcastTaskNotification(workspaceId, summaries);
-		void broadcastRuntimeProjectsUpdated(workspaceId);
-	};
-
-	const queueTaskSessionSummaryBroadcast = (workspaceId: string, summary: RuntimeTaskSessionSummary) => {
-		const pending =
-			pendingTaskSessionSummariesByWorkspaceId.get(workspaceId) ?? new Map<string, RuntimeTaskSessionSummary>();
-		pending.set(summary.taskId, summary);
-		pendingTaskSessionSummariesByWorkspaceId.set(workspaceId, pending);
-		if (taskSessionBroadcastTimersByWorkspaceId.has(workspaceId)) {
-			return;
-		}
-		const timer = setTimeout(() => {
-			taskSessionBroadcastTimersByWorkspaceId.delete(workspaceId);
-			flushTaskSessionSummaries(workspaceId);
-		}, TASK_SESSION_STREAM_BATCH_MS);
-		timer.unref();
-		taskSessionBroadcastTimersByWorkspaceId.set(workspaceId, timer);
-	};
-
-	const disposeTaskSessionSummaryBroadcast = (workspaceId: string) => {
-		const timer = taskSessionBroadcastTimersByWorkspaceId.get(workspaceId);
-		if (timer) {
-			clearTimeout(timer);
-		}
-		taskSessionBroadcastTimersByWorkspaceId.delete(workspaceId);
-		pendingTaskSessionSummariesByWorkspaceId.delete(workspaceId);
-	};
-
-	const cleanupRuntimeStateClient = (client: WebSocket) => {
-		const workspaceId = runtimeStateWorkspaceIdByClient.get(client);
-		if (workspaceId) {
-			workspaceMetadataMonitor.disconnectWorkspace(workspaceId);
-			const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-			if (clients) {
-				clients.delete(client);
-				if (clients.size === 0) {
-					runtimeStateClientsByWorkspaceId.delete(workspaceId);
-				}
-			}
-		}
-		runtimeStateWorkspaceIdByClient.delete(client);
-		runtimeStateClients.delete(client);
-	};
-
-	const disposeWorkspace = (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions) => {
-		const unsubscribeSummary = terminalSummaryUnsubscribeByWorkspaceId.get(workspaceId);
-		if (unsubscribeSummary) {
-			try {
-				unsubscribeSummary();
-			} catch {
-				// Ignore listener cleanup errors during project removal.
-			}
-		}
-		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
-		disposeTaskSessionSummaryBroadcast(workspaceId);
-		resumeAttemptedWorkspaces.delete(workspaceId);
-		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
-
-		if (!options?.disconnectClients) {
-			return;
-		}
-
-		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			runtimeStateClientsByWorkspaceId.delete(workspaceId);
-			return;
-		}
-
-		for (const runtimeClient of runtimeClients) {
-			if (options.closeClientErrorMessage) {
-				sendRuntimeStateMessage(runtimeClient, {
-					type: "error",
-					message: options.closeClientErrorMessage,
-				} satisfies RuntimeStateStreamErrorMessage);
-			}
-			try {
-				runtimeClient.close();
-			} catch {
-				// Ignore close failures while disposing removed workspace clients.
-			}
-			cleanupRuntimeStateClient(runtimeClient);
-		}
-		runtimeStateClientsByWorkspaceId.delete(workspaceId);
-	};
-
-	const broadcastRuntimeWorkspaceStateUpdated = async (workspaceId: string, workspacePath: string): Promise<void> => {
-		const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!clients || clients.size === 0) {
-			return;
-		}
-		try {
-			const workspaceState = await deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspaceId, workspacePath);
-			const payload: RuntimeStateStreamWorkspaceStateMessage = {
-				type: "workspace_state_updated",
-				workspaceId,
-				workspaceState,
-			};
-			for (const client of clients) {
-				sendRuntimeStateMessage(client, payload);
-			}
-			await workspaceMetadataMonitor.updateWorkspaceState({
-				workspaceId,
-				workspacePath,
-				board: workspaceState.board,
-			});
-		} catch {
-			// Ignore transient state read failures; next update will resync.
-		}
-	};
-
-	const broadcastTaskReadyForReview = (workspaceId: string, taskId: string) => {
-		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			return;
-		}
+	broadcastTaskReadyForReview = (workspaceId: string, taskId: string): void => {
 		const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
 			type: "task_ready_for_review",
 			workspaceId,
 			taskId,
 			triggeredAt: Date.now(),
 		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
-		}
+		this.broadcastToWorkspace(workspaceId, payload);
 	};
 
-	const broadcastTaskTitleUpdated = (
+	broadcastTaskTitleUpdated = (
 		workspaceId: string,
 		taskId: string,
 		title: string,
 		options?: { autoGenerated?: boolean },
-	) => {
-		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			return;
-		}
+	): void => {
 		const payload: RuntimeStateStreamTaskTitleUpdatedMessage = {
 			type: "task_title_updated",
 			workspaceId,
@@ -299,82 +253,220 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			title,
 			...(options?.autoGenerated ? { autoGenerated: true } : undefined),
 		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
-		}
+		this.broadcastToWorkspace(workspaceId, payload);
 	};
 
-	// ── Debug log broadcasting ────────────────────────────────────────────
-	const pendingDebugLogEntries: DebugLogEntry[] = [];
-	let debugLogBroadcastTimer: NodeJS.Timeout | null = null;
-
-	const flushDebugLogEntries = () => {
-		debugLogBroadcastTimer = null;
-		if (pendingDebugLogEntries.length === 0 || runtimeStateClients.size === 0) {
-			pendingDebugLogEntries.length = 0;
-			return;
-		}
-		const entries = pendingDebugLogEntries.splice(0);
-		const payload: RuntimeStateStreamDebugLogBatchMessage = {
-			type: "debug_log_batch",
-			entries,
-		};
-		for (const client of runtimeStateClients) {
-			sendRuntimeStateMessage(client, payload);
-		}
+	setFocusedTask = (workspaceId: string, taskId: string | null): void => {
+		this.metadataMonitor.setFocusedTask(workspaceId, taskId);
 	};
 
-	const unsubscribeDebugLog = onDebugLogEntry((entry) => {
-		if (runtimeStateClients.size === 0) {
-			return;
-		}
-		pendingDebugLogEntries.push(entry);
-		if (debugLogBroadcastTimer === null) {
-			debugLogBroadcastTimer = setTimeout(flushDebugLogEntries, DEBUG_LOG_BATCH_MS);
-			debugLogBroadcastTimer.unref();
-		}
-	});
+	requestTaskRefresh = (workspaceId: string, taskId: string): void => {
+		this.metadataMonitor.requestTaskRefresh(workspaceId, taskId);
+	};
 
-	const broadcastLogLevel = (level: string) => {
+	requestHomeRefresh = (workspaceId: string): void => {
+		this.metadataMonitor.requestHomeRefresh(workspaceId);
+	};
+
+	setPollIntervals = (workspaceId: string, intervals: WorkspaceMetadataPollIntervals): void => {
+		this.metadataMonitor.setPollIntervals(workspaceId, intervals);
+	};
+
+	broadcastLogLevel = (level: string): void => {
 		const payload: RuntimeStateStreamDebugLoggingStateMessage = {
 			type: "debug_logging_state",
 			level: level as RuntimeStateStreamDebugLoggingStateMessage["level"],
 			recentEntries: getRecentDebugLogEntries(),
 		};
-		for (const client of runtimeStateClients) {
-			sendRuntimeStateMessage(client, payload);
+		for (const client of this.allClients) {
+			this.send(client, payload);
 		}
 	};
 
-	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
+	close = async (): Promise<void> => {
+		// Dispose base class resources (metadata monitor, debug log subscription)
+		this.dispose();
+
+		// Dispose debug log resources
+		if (this.debugLogBroadcastTimer) {
+			clearTimeout(this.debugLogBroadcastTimer);
+			this.debugLogBroadcastTimer = null;
+		}
+		this.pendingDebugLogEntries.length = 0;
+
+		// Dispose broadcast timers
+		for (const timer of this.broadcastTimers.values()) {
+			clearTimeout(timer);
+		}
+		this.broadcastTimers.clear();
+		this.pendingSummaries.clear();
+
+		// Dispose terminal summary subscriptions
+		for (const unsubscribe of this.terminalSummaryUnsubscribes.values()) {
+			try {
+				unsubscribe();
+			} catch {
+				// Ignore listener cleanup errors during shutdown.
+			}
+		}
+		this.terminalSummaryUnsubscribes.clear();
+
+		// Terminate all clients
+		for (const client of this.allClients) {
+			try {
+				client.terminate();
+			} catch {
+				// Ignore websocket termination errors during shutdown.
+			}
+		}
+		this.allClients.clear();
+		this.clientsByWorkspace.clear();
+		this.clientToWorkspace.clear();
+
+		// Wait for the WebSocketServer to finish closing (must be last —
+		// it needs connections terminated first for a clean shutdown).
+		await new Promise<void>((resolveClose) => {
+			this.wss.close(() => {
+				resolveClose();
+			});
+		});
+	};
+
+	// ── Private helpers ───────────────────────────────────────────────────
+
+	private send(client: WebSocket, payload: RuntimeStateStreamMessage): void {
+		if (client.readyState !== WebSocket.OPEN) {
+			return;
+		}
+		try {
+			client.send(JSON.stringify(payload));
+		} catch {
+			// Ignore websocket write errors; close handlers clean up disconnected sockets.
+		}
+	}
+
+	private broadcastToWorkspace(workspaceId: string, payload: RuntimeStateStreamMessage): void {
+		const clients = this.clientsByWorkspace.get(workspaceId);
+		if (!clients || clients.size === 0) {
+			return;
+		}
+		for (const client of clients) {
+			this.send(client, payload);
+		}
+	}
+
+	private broadcastTaskNotification(workspaceId: string, summaries: RuntimeTaskSessionSummary[]): void {
+		if (this.allClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamTaskNotificationMessage = {
+			type: "task_notification",
+			workspaceId,
+			summaries,
+		};
+		for (const client of this.allClients) {
+			this.send(client, payload);
+		}
+	}
+
+	private queueSummaryBroadcast(workspaceId: string, summary: RuntimeTaskSessionSummary): void {
+		const pending = this.pendingSummaries.get(workspaceId) ?? new Map<string, RuntimeTaskSessionSummary>();
+		pending.set(summary.taskId, summary);
+		this.pendingSummaries.set(workspaceId, pending);
+		if (this.broadcastTimers.has(workspaceId)) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			this.broadcastTimers.delete(workspaceId);
+			this.flushSummaries(workspaceId);
+		}, TASK_SESSION_STREAM_BATCH_MS);
+		timer.unref();
+		this.broadcastTimers.set(workspaceId, timer);
+	}
+
+	private flushSummaries(workspaceId: string): void {
+		const pending = this.pendingSummaries.get(workspaceId);
+		if (!pending || pending.size === 0) {
+			return;
+		}
+		this.pendingSummaries.delete(workspaceId);
+		const summaries = Array.from(pending.values());
+		const runtimeClients = this.clientsByWorkspace.get(workspaceId);
+		if (runtimeClients && runtimeClients.size > 0) {
+			const payload: RuntimeStateStreamTaskSessionsMessage = {
+				type: "task_sessions_updated",
+				workspaceId,
+				summaries,
+			};
+			for (const client of runtimeClients) {
+				this.send(client, payload);
+			}
+		}
+		this.broadcastTaskNotification(workspaceId, summaries);
+		void this.broadcastRuntimeProjectsUpdated(workspaceId);
+	}
+
+	private disposeSummaryBroadcast(workspaceId: string): void {
+		const timer = this.broadcastTimers.get(workspaceId);
+		if (timer) {
+			clearTimeout(timer);
+		}
+		this.broadcastTimers.delete(workspaceId);
+		this.pendingSummaries.delete(workspaceId);
+	}
+
+	private cleanupClient(client: WebSocket): void {
+		const workspaceId = this.clientToWorkspace.get(client);
+		if (workspaceId) {
+			this.metadataMonitor.disconnectWorkspace(workspaceId);
+			const clients = this.clientsByWorkspace.get(workspaceId);
+			if (clients) {
+				clients.delete(client);
+				if (clients.size === 0) {
+					this.clientsByWorkspace.delete(workspaceId);
+				}
+			}
+		}
+		this.clientToWorkspace.delete(client);
+		this.allClients.delete(client);
+	}
+
+	private flushDebugLogEntries(): void {
+		this.debugLogBroadcastTimer = null;
+		if (this.pendingDebugLogEntries.length === 0 || this.allClients.size === 0) {
+			this.pendingDebugLogEntries.length = 0;
+			return;
+		}
+		const entries = this.pendingDebugLogEntries.splice(0);
+		const payload: RuntimeStateStreamDebugLogBatchMessage = {
+			type: "debug_log_batch",
+			entries,
+		};
+		for (const client of this.allClients) {
+			this.send(client, payload);
+		}
+	}
+
+	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
-			cleanupRuntimeStateClient(client);
+			this.cleanupClient(client);
 		});
 		try {
-			const requestedWorkspaceId =
-				typeof context === "object" &&
-				context !== null &&
-				"requestedWorkspaceId" in context &&
-				typeof (context as { requestedWorkspaceId?: unknown }).requestedWorkspaceId === "string"
-					? (context as { requestedWorkspaceId: string }).requestedWorkspaceId || null
-					: null;
-			const workspace: ResolvedWorkspaceStreamTarget = await deps.workspaceRegistry.resolveWorkspaceForStream(
-				requestedWorkspaceId,
-				{
-					onRemovedWorkspace: ({ workspaceId, message }) => {
-						disposeWorkspace(workspaceId, {
-							disconnectClients: true,
-							closeClientErrorMessage: message,
-						});
-					},
+			const requestedWorkspaceId = this.parseWorkspaceId(context);
+			const workspace = await this.deps.workspaceRegistry.resolveWorkspaceForStream(requestedWorkspaceId, {
+				onRemovedWorkspace: ({ workspaceId, message }) => {
+					this.disposeWorkspace(workspaceId, {
+						disconnectClients: true,
+						closeClientErrorMessage: message,
+					});
 				},
-			);
+			});
 			if (client.readyState !== WebSocket.OPEN) {
-				cleanupRuntimeStateClient(client);
+				this.cleanupClient(client);
 				return;
 			}
 
-			runtimeStateClients.add(client);
+			this.allClients.add(client);
 			let monitorWorkspaceId: string | null = null;
 			let didConnectWorkspaceMonitor = false;
 
@@ -387,20 +479,23 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				if (workspace.workspaceId && workspace.workspacePath) {
 					monitorWorkspaceId = workspace.workspaceId;
 					[projectsPayload, workspaceState] = await Promise.all([
-						deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
-						deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
+						this.deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
+						this.deps.workspaceRegistry.buildWorkspaceStateSnapshot(
+							workspace.workspaceId,
+							workspace.workspacePath,
+						),
 					]);
 				} else {
-					projectsPayload = await deps.workspaceRegistry.buildProjectsPayload(null);
+					projectsPayload = await this.deps.workspaceRegistry.buildProjectsPayload(null);
 					workspaceState = null;
 				}
 				if (client.readyState !== WebSocket.OPEN) {
-					cleanupRuntimeStateClient(client);
+					this.cleanupClient(client);
 					return;
 				}
 				// Workspace metadata is delivered asynchronously via workspace_metadata_updated
 				// after connectWorkspace resolves, avoiding git probe latency on the snapshot.
-				sendRuntimeStateMessage(client, {
+				this.send(client, {
 					type: "snapshot",
 					currentProjectId: projectsPayload.currentProjectId,
 					projects: projectsPayload.projects,
@@ -408,143 +503,86 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					workspaceMetadata: null,
 				} satisfies RuntimeStateStreamSnapshotMessage);
 				if (client.readyState !== WebSocket.OPEN) {
-					cleanupRuntimeStateClient(client);
+					this.cleanupClient(client);
 					return;
 				}
 				if (monitorWorkspaceId) {
-					const workspaceClients =
-						runtimeStateClientsByWorkspaceId.get(monitorWorkspaceId) ?? new Set<WebSocket>();
+					const workspaceClients = this.clientsByWorkspace.get(monitorWorkspaceId) ?? new Set<WebSocket>();
 					workspaceClients.add(client);
-					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
-					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);
+					this.clientsByWorkspace.set(monitorWorkspaceId, workspaceClients);
+					this.clientToWorkspace.set(client, monitorWorkspaceId);
 				}
 				// Connect the workspace metadata monitor after registering the client
 				// so the onMetadataUpdated callback can deliver results to it.
 				if (monitorWorkspaceId && workspace.workspacePath && workspaceState) {
 					didConnectWorkspaceMonitor = true;
-					void workspaceMetadataMonitor
+					void this.metadataMonitor
 						.connectWorkspace({
 							workspaceId: monitorWorkspaceId,
 							workspacePath: workspace.workspacePath,
 							board: workspaceState.board,
-							pollIntervals: deps.getActivePollIntervals(),
+							pollIntervals: this.deps.getActivePollIntervals(),
 						})
 						.catch(() => {
 							// Non-fatal: metadata arrives on the next poll cycle.
 						});
 				}
 				// Send current log level so newly connected clients can show it.
-				sendRuntimeStateMessage(client, {
+				this.send(client, {
 					type: "debug_logging_state",
 					level: getLogLevel(),
 					recentEntries: getRecentDebugLogEntries(),
 				} satisfies RuntimeStateStreamDebugLoggingStateMessage);
 
 				if (workspace.removedRequestedWorkspacePath) {
-					sendRuntimeStateMessage(client, {
+					this.send(client, {
 						type: "error",
 						message: `Project no longer exists on disk and was removed: ${workspace.removedRequestedWorkspacePath}`,
 					} satisfies RuntimeStateStreamErrorMessage);
 				}
 				if (workspace.didPruneProjects) {
-					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
+					void this.broadcastRuntimeProjectsUpdated(workspace.workspaceId);
 				}
 				// Resume interrupted sessions on first UI connection per workspace.
 				// Fire-and-forget — resumed sessions broadcast state changes via
 				// the normal onChange subscription, so the client sees them arrive.
-				if (monitorWorkspaceId && workspace.workspacePath && !resumeAttemptedWorkspaces.has(monitorWorkspaceId)) {
-					resumeAttemptedWorkspaces.add(monitorWorkspaceId);
-					void deps.workspaceRegistry.resumeInterruptedSessions(monitorWorkspaceId, workspace.workspacePath);
+				if (monitorWorkspaceId && workspace.workspacePath && !this.resumeAttempted.has(monitorWorkspaceId)) {
+					this.resumeAttempted.add(monitorWorkspaceId);
+					void this.deps.workspaceRegistry.resumeInterruptedSessions(monitorWorkspaceId, workspace.workspacePath);
 				}
 			} catch (error) {
 				if (didConnectWorkspaceMonitor && monitorWorkspaceId) {
-					workspaceMetadataMonitor.disconnectWorkspace(monitorWorkspaceId);
+					this.metadataMonitor.disconnectWorkspace(monitorWorkspaceId);
 				}
 				const message = error instanceof Error ? error.message : String(error);
-				sendRuntimeStateMessage(client, {
+				this.send(client, {
 					type: "error",
 					message,
 				} satisfies RuntimeStateStreamErrorMessage);
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			sendRuntimeStateMessage(client, {
+			this.send(client, {
 				type: "error",
 				message,
 			} satisfies RuntimeStateStreamErrorMessage);
 			client.close();
 		}
-	});
+	}
 
-	return {
-		trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => {
-			if (terminalSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
-				return;
-			}
-			const unsubscribe = manager.store.onChange((summary) => {
-				queueTaskSessionSummaryBroadcast(workspaceId, summary);
-			});
-			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
-		},
-		handleUpgrade: (request, socket, head, context) => {
-			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
-				runtimeStateWebSocketServer.emit("connection", ws, context);
-			});
-		},
-		disposeWorkspace,
-		broadcastRuntimeWorkspaceStateUpdated,
-		broadcastRuntimeProjectsUpdated,
-		broadcastTaskReadyForReview,
-		broadcastTaskTitleUpdated,
-		setFocusedTask: (workspaceId: string, taskId: string | null) => {
-			workspaceMetadataMonitor.setFocusedTask(workspaceId, taskId);
-		},
-		requestTaskRefresh: (workspaceId: string, taskId: string) => {
-			workspaceMetadataMonitor.requestTaskRefresh(workspaceId, taskId);
-		},
-		requestHomeRefresh: (workspaceId: string) => {
-			workspaceMetadataMonitor.requestHomeRefresh(workspaceId);
-		},
-		setPollIntervals: (workspaceId: string, intervals: WorkspaceMetadataPollIntervals) => {
-			workspaceMetadataMonitor.setPollIntervals(workspaceId, intervals);
-		},
-		broadcastLogLevel,
-		close: async () => {
-			unsubscribeDebugLog();
-			if (debugLogBroadcastTimer) {
-				clearTimeout(debugLogBroadcastTimer);
-				debugLogBroadcastTimer = null;
-			}
-			pendingDebugLogEntries.length = 0;
-			for (const timer of taskSessionBroadcastTimersByWorkspaceId.values()) {
-				clearTimeout(timer);
-			}
-			taskSessionBroadcastTimersByWorkspaceId.clear();
-			pendingTaskSessionSummariesByWorkspaceId.clear();
-			for (const unsubscribe of terminalSummaryUnsubscribeByWorkspaceId.values()) {
-				try {
-					unsubscribe();
-				} catch {
-					// Ignore listener cleanup errors during shutdown.
-				}
-			}
-			terminalSummaryUnsubscribeByWorkspaceId.clear();
-			workspaceMetadataMonitor.close();
-			for (const client of runtimeStateClients) {
-				try {
-					client.terminate();
-				} catch {
-					// Ignore websocket termination errors during shutdown.
-				}
-			}
-			runtimeStateClients.clear();
-			runtimeStateClientsByWorkspaceId.clear();
-			runtimeStateWorkspaceIdByClient.clear();
-			await new Promise<void>((resolveCloseWebSockets) => {
-				runtimeStateWebSocketServer.close(() => {
-					resolveCloseWebSockets();
-				});
-			});
-		},
-	};
+	private parseWorkspaceId(context: unknown): string | null {
+		if (
+			typeof context === "object" &&
+			context !== null &&
+			"requestedWorkspaceId" in context &&
+			typeof (context as { requestedWorkspaceId?: unknown }).requestedWorkspaceId === "string"
+		) {
+			return (context as { requestedWorkspaceId: string }).requestedWorkspaceId || null;
+		}
+		return null;
+	}
+}
+
+export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): RuntimeStateHub {
+	return new RuntimeStateHubImpl(deps);
 }

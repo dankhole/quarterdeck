@@ -150,11 +150,13 @@ export function applyReconciliationAction(
 	}
 }
 
-/** Creates and manages the periodic reconciliation interval timer. */
-export function createReconciliationTimer(ctx: ReconciliationSweepContext): {
+export interface ReconciliationTimer {
 	start(repoPath?: string): void;
 	stop(): void;
-} {
+}
+
+/** Creates and manages the periodic reconciliation interval timer. */
+export function createReconciliationTimer(ctx: ReconciliationSweepContext): ReconciliationTimer {
 	let timer: NodeJS.Timeout | null = null;
 	let storedRepoPath: string | null = null;
 

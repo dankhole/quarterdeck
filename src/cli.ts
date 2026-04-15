@@ -336,11 +336,13 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 	});
 }
 
-async function startServer(): Promise<{
+interface RuntimeServerHandle {
 	url: string;
 	close: () => Promise<void>;
 	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
-}> {
+}
+
+async function startServer(): Promise<RuntimeServerHandle> {
 	/*
 		Server-only modules are loaded lazily because task-oriented subcommands like
 		`quarterdeck task create` and `quarterdeck hooks ingest` do not need the runtime server.
@@ -492,7 +494,7 @@ async function startServer(): Promise<{
 	};
 }
 
-async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaited<ReturnType<typeof startServer>>> {
+async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {
 	if (options.port?.mode !== "auto") {
 		return await startServer();
 	}
@@ -525,7 +527,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Using runtime port ${selectedPort}.`);
 	}
 
-	let runtime: Awaited<ReturnType<typeof startServer>>;
+	let runtime: RuntimeServerHandle;
 	try {
 		runtime = await startServerWithAutoPortRetry(options);
 	} catch (error) {

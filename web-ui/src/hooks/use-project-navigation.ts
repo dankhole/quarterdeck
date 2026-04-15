@@ -4,6 +4,15 @@ import { notifyError, showAppToast } from "@/components/app-toaster";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
 import { preloadProjectWorkspaceState } from "@/runtime/project-preload-cache";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type {
+	RuntimeDebugLogEntry,
+	RuntimeProjectSummary,
+	RuntimeStateStreamTaskReadyForReviewMessage,
+	RuntimeTaskSessionSummary,
+	RuntimeWorkspaceMetadata,
+	RuntimeWorkspaceStateResponse,
+} from "@/runtime/types";
+import type { TaskTitleUpdate } from "@/runtime/use-runtime-state-stream";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -59,15 +68,15 @@ export interface UseProjectNavigationResult {
 	pendingGitInitializationPath: string | null;
 	isInitializingGitProject: boolean;
 	currentProjectId: string | null;
-	projects: ReturnType<typeof useRuntimeStateStream>["projects"];
-	workspaceState: ReturnType<typeof useRuntimeStateStream>["workspaceState"];
-	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
-	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
-	latestTaskTitleUpdate: ReturnType<typeof useRuntimeStateStream>["latestTaskTitleUpdate"];
-	logLevel: ReturnType<typeof useRuntimeStateStream>["logLevel"];
-	debugLogEntries: ReturnType<typeof useRuntimeStateStream>["debugLogEntries"];
-	notificationSessions: ReturnType<typeof useRuntimeStateStream>["notificationSessions"];
-	notificationWorkspaceIds: ReturnType<typeof useRuntimeStateStream>["notificationWorkspaceIds"];
+	projects: RuntimeProjectSummary[];
+	workspaceState: RuntimeWorkspaceStateResponse | null;
+	workspaceMetadata: RuntimeWorkspaceMetadata | null;
+	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
+	latestTaskTitleUpdate: TaskTitleUpdate | null;
+	logLevel: "debug" | "info" | "warn" | "error";
+	debugLogEntries: RuntimeDebugLogEntry[];
+	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
+	notificationWorkspaceIds: Record<string, string>;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;

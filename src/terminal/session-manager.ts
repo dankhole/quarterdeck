@@ -12,6 +12,7 @@ import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
 import { cleanStaleIndexLockForWorktree } from "../fs/lock-cleanup";
+import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
@@ -39,7 +40,7 @@ import {
 	teardownActiveSession,
 } from "./session-manager-types";
 import { isPermissionActivity } from "./session-reconciliation";
-import { createReconciliationTimer } from "./session-reconciliation-sweep";
+import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
 import {
 	cloneSummary,
 	type SessionSummaryStore,
@@ -105,7 +106,7 @@ const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 export class TerminalSessionManager implements TerminalSessionService {
 	readonly store: SessionSummaryStore;
 	private readonly entries = new Map<string, ProcessEntry>();
-	private readonly reconciliation: ReturnType<typeof createReconciliationTimer>;
+	private readonly reconciliation: ReconciliationTimer;
 
 	constructor(store: SessionSummaryStore) {
 		this.store = store;
@@ -206,7 +207,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const cols = normalizeDimension(request.cols, 120);
 		const rows = normalizeDimension(request.rows, 40);
 		let terminalStateMirror: TerminalStateMirror;
-		let launch: Awaited<ReturnType<typeof prepareAgentLaunch>>;
+		let launch: PreparedAgentLaunch;
 		try {
 			terminalStateMirror = new TerminalStateMirror(cols, rows, {
 				onInputResponse: (data) => {
