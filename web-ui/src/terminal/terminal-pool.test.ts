@@ -12,6 +12,9 @@ interface MockSlot {
 	connectToTask: ReturnType<typeof vi.fn>;
 	disconnectFromTask: ReturnType<typeof vi.fn>;
 	onceConnectionReady: ReturnType<typeof vi.fn>;
+	attachToStageContainer: ReturnType<typeof vi.fn>;
+	show: ReturnType<typeof vi.fn>;
+	hide: ReturnType<typeof vi.fn>;
 	dispose: ReturnType<typeof vi.fn>;
 	resetRenderer: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
@@ -41,6 +44,9 @@ vi.mock("@/terminal/terminal-slot", () => {
 				mock._workspaceId = null;
 			}),
 			onceConnectionReady: vi.fn(),
+			attachToStageContainer: vi.fn(),
+			show: vi.fn(),
+			hide: vi.fn(),
 			dispose: vi.fn(),
 			resetRenderer: vi.fn(),
 			requestRestore: vi.fn(),
@@ -133,7 +139,9 @@ vi.mock("@/utils/client-logger", () => ({
 import {
 	_resetPoolForTesting,
 	acquireForTask,
+	attachPoolContainer,
 	cancelWarmup,
+	detachPoolContainer,
 	disposeAllDedicatedTerminalsForWorkspace,
 	disposeDedicatedTerminal,
 	ensureDedicatedTerminal,
@@ -678,6 +686,67 @@ describe("terminal-pool", () => {
 			expect(disposedBeforeCreate).toBe(true);
 			// After rotation: 4 init + 1 rotation = 5 total constructor calls
 			expect(TerminalSlotMock).toHaveBeenCalledTimes(5);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// attachPoolContainer / detachPoolContainer
+	// -----------------------------------------------------------------------
+
+	describe("attachPoolContainer", () => {
+		it("calls attachToStageContainer on all pool slots", () => {
+			initPool();
+			const poolSlots = getCurrentPoolSlots();
+			const container = document.createElement("div");
+
+			attachPoolContainer(container);
+
+			for (const slot of poolSlots) {
+				expect(slot.attachToStageContainer).toHaveBeenCalledWith(container);
+			}
+		});
+
+		it("is idempotent for the same container", () => {
+			initPool();
+			const poolSlots = getCurrentPoolSlots();
+			const container = document.createElement("div");
+
+			attachPoolContainer(container);
+			attachPoolContainer(container);
+
+			for (const slot of poolSlots) {
+				expect(slot.attachToStageContainer).toHaveBeenCalledTimes(1);
+			}
+		});
+
+		it("stages replacement slot after rotation", () => {
+			initPool();
+			const container = document.createElement("div");
+			attachPoolContainer(container);
+
+			// Trigger rotation — new slot should be staged
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			// The 5th TerminalSlot (replacement) should have attachToStageContainer called
+			const allSlots = getPoolSlots();
+			const replacementSlot = allSlots[allSlots.length - 1]!;
+			expect(replacementSlot.attachToStageContainer).toHaveBeenCalledWith(container);
+		});
+	});
+
+	describe("detachPoolContainer", () => {
+		it("clears poolContainer so rotation does not stage", () => {
+			initPool();
+			const container = document.createElement("div");
+			attachPoolContainer(container);
+			detachPoolContainer();
+
+			// Trigger rotation — new slot should NOT have attachToStageContainer called
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			const allSlots = getPoolSlots();
+			const replacementSlot = allSlots[allSlots.length - 1]!;
+			expect(replacementSlot.attachToStageContainer).not.toHaveBeenCalled();
 		});
 	});
 

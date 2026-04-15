@@ -34,6 +34,7 @@ let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
 let nextSlotId = 0;
 const dedicatedTerminals = new Map<string, TerminalSlot>(); // workspaceId:taskId -> TerminalSlot
+let poolContainer: HTMLDivElement | null = null;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,7 +44,7 @@ const POOL_SIZE = 4;
 const ROTATION_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const WARMUP_TIMEOUT_MS = 3_000;
 
-/** Default appearance for pool slots at init — real appearance is set on mount(). */
+/** Default appearance for pool slots at init — real appearance is set on show(). */
 const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
 	cursorColor: "#ffffff",
 	terminalBackgroundColor: "#000000",
@@ -111,16 +112,33 @@ function findOldestSlotByRole(role: SlotRole): TerminalSlot | null {
 }
 
 /**
+ * Find the newest slot with a given role. Returns null if none found.
+ */
+function findNewestSlotByRole(role: SlotRole): TerminalSlot | null {
+	let newest: TerminalSlot | null = null;
+	let newestTime = -1;
+	for (const slot of slots) {
+		if (getRole(slot) === role) {
+			const ts = getTimestamp(slot);
+			if (ts > newestTime) {
+				newestTime = ts;
+				newest = slot;
+			}
+		}
+	}
+	return newest;
+}
+
+/**
  * Find a FREE slot or evict PRELOADING (oldest first), then READY (oldest first).
  * When evicting: cancel warmup timeout, remove from task index, disconnect -> FREE.
  * Returns null if no evictable slot is found.
  */
 function findFreeOrEvict(): TerminalSlot | null {
-	// 1. Look for a FREE slot
-	for (const slot of slots) {
-		if (getRole(slot) === "FREE") {
-			return slot;
-		}
+	// 1. Look for the newest FREE slot — leaves the oldest FREE for rotation to recycle.
+	const free = findNewestSlotByRole("FREE");
+	if (free) {
+		return free;
 	}
 	// 2. Evict oldest PRELOADING
 	const preloading = findOldestSlotByRole("PRELOADING");
@@ -175,6 +193,30 @@ export function initPool(): void {
 	}
 	// Start proactive rotation timer
 	_rotationTimer = setInterval(rotateOldestFreeSlot, ROTATION_INTERVAL_MS);
+}
+
+/**
+ * Register the DOM container for pool terminals. Moves all pool slots
+ * into the container. Called via React ref callback when the terminal
+ * panel mounts. Idempotent for the same container.
+ */
+export function attachPoolContainer(container: HTMLDivElement): void {
+	if (poolContainer === container) return;
+	poolContainer = container;
+	for (const slot of slots) {
+		slot.attachToStageContainer(container);
+	}
+	log.info(`pool container attached — ${slots.length} slots staged`);
+}
+
+/**
+ * Detach the pool container. Called when the terminal panel unmounts.
+ * Slots remain in the (now detached) DOM — harmless. They'll be moved
+ * on the next attachPoolContainer call.
+ */
+export function detachPoolContainer(): void {
+	poolContainer = null;
+	log.info("pool container detached");
 }
 
 /**
@@ -401,6 +443,9 @@ function rotateOldestFreeSlot(): void {
 	const fresh = new TerminalSlot(newSlotId, DEFAULT_POOL_APPEARANCE);
 	slots[idx] = fresh;
 	setRole(fresh, "FREE");
+	if (poolContainer) {
+		fresh.attachToStageContainer(poolContainer);
+	}
 
 	log.debug(`rotation — replaced slot ${oldSlotId} with slot ${newSlotId}`);
 }
@@ -650,4 +695,5 @@ export function _resetPoolForTesting(): void {
 	// Reset flags
 	initialized = false;
 	nextSlotId = 0;
+	poolContainer = null;
 }

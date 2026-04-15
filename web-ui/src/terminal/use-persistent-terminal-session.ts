@@ -5,6 +5,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
 import {
 	acquireForTask,
+	attachPoolContainer,
 	disposeDedicatedTerminal,
 	ensureDedicatedTerminal,
 	isDedicatedTerminalTaskId,
@@ -81,7 +82,7 @@ export function usePersistentTerminalSession({
 				if (previousSession) {
 					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
 				}
-				terminalRef.current?.unmount(containerRef.current);
+				terminalRef.current?.hide();
 				terminalRef.current = null;
 				previousSessionRef.current = null;
 				setLastError(null);
@@ -94,7 +95,7 @@ export function usePersistentTerminalSession({
 				if (previousSession) {
 					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
 				}
-				terminalRef.current?.unmount(containerRef.current);
+				terminalRef.current?.hide();
 				terminalRef.current = null;
 				previousSessionRef.current = null;
 				setLastError("No project selected.");
@@ -138,22 +139,13 @@ export function usePersistentTerminalSession({
 					callbackRef.current.onExit?.(exitTaskId, exitCode);
 				},
 			});
-			terminal.mount(
-				container,
-				{
-					cursorColor,
-					terminalBackgroundColor,
-				},
-				{
-					autoFocus,
-					isVisible,
-				},
-			);
+			terminal.attachToStageContainer(container);
+			terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
 			setLastError(null);
 			setIsStopping(false);
 			return () => {
 				unsubscribe();
-				terminal.unmount(container);
+				terminal.hide();
 				if (terminalRef.current === terminal) {
 					terminalRef.current = null;
 				}
@@ -163,7 +155,7 @@ export function usePersistentTerminalSession({
 		// --- Pool path (regular agent task terminals) ---
 		if (!enabled) {
 			releaseTask(taskId);
-			terminalRef.current?.unmount(containerRef.current);
+			terminalRef.current?.hide();
 			terminalRef.current = null;
 			setLastError(null);
 			setIsStopping(false);
@@ -172,7 +164,7 @@ export function usePersistentTerminalSession({
 
 		if (!workspaceId) {
 			releaseTask(taskId);
-			terminalRef.current?.unmount(containerRef.current);
+			terminalRef.current?.hide();
 			terminalRef.current = null;
 			setLastError("No project selected.");
 			return;
@@ -181,6 +173,9 @@ export function usePersistentTerminalSession({
 		if (!container) {
 			return;
 		}
+
+		// Ensure pool slots are staged in this container (idempotent for same container).
+		attachPoolContainer(container);
 
 		const previousSession = previousSessionRef.current;
 		const didSessionRestart =
@@ -207,22 +202,12 @@ export function usePersistentTerminalSession({
 				callbackRef.current.onExit?.(exitTaskId, exitCode);
 			},
 		});
-		terminal.mount(
-			container,
-			{
-				cursorColor,
-				terminalBackgroundColor,
-			},
-			{
-				autoFocus,
-				isVisible,
-			},
-		);
+		terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
 		setLastError(null);
 		setIsStopping(false);
 		return () => {
 			unsubscribe();
-			terminal.unmount(container);
+			terminal.hide();
 			if (terminalRef.current === terminal) {
 				terminalRef.current = null;
 			}

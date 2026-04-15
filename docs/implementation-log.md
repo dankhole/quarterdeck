@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Fix: scroll-to-bottom on task switch and warmup resize (2026-04-15)
+
+Two fixes in `web-ui/src/terminal/terminal-slot.ts`:
+
+1. **Scroll on show**: `show()` now calls `scrollToBottom()` after `requestResize()` (which runs `fitAddon.fit()`) when the terminal is already restored (`shouldReveal` is true). A `pendingScrollToBottom` one-shot flag re-scrolls after the first ResizeObserver-driven `fit()` reflow that fires ~50ms later. The `visibility = "visible"` reveal is deferred until after fit+scroll to avoid a visible frame at the old scroll position. On the cold path (`restoreCompleted = false`), all of this is skipped — the restore completion handler at line 668-681 handles its own `scrollToBottom()` and reveal.
+
+2. **Warmup resize**: The post-restore resize guard was `this.ioSocket && this.visibleContainer`, which excluded warmup (slot is staged but not visible). Changed to `this.visibleContainer ?? this.stageContainer`. `requestResize()` already supported staged containers (line 510-512), but the guard at the restore completion callsite was preventing it. Now when a slot warms up on mouseover, the restore handler sends the browser's actual dimensions to the server immediately. This eliminates the dimension mismatch between the headless mirror's cols/rows and the browser's current size — the root cause of intermittent TUI layout gaps (blank space between conversation content and the cursor-positioned prompt/status bar).
+
+**Root cause of the gap artifact**: When the browser is resized while a different task is ACTIVE, only the ACTIVE slot's ResizeObserver fires. The other 3 slots' headless mirrors stay at old dimensions. On warmup, the restore snapshot was written at the old cols/rows, and `requestResize()` was skipped because `visibleContainer` was null. The agent never received a SIGWINCH at the correct size until `show()` fired, by which time the snapshot was already rendered at the wrong dimensions.
+
 ## Diagnostic: idle session lifecycle logging (2026-04-15)
 
 Agent sessions are dropping to idle with blank terminals. The root cause is unknown — the primary goal of this change is diagnostic instrumentation to trace why agent processes die out from under active tasks.
@@ -17,6 +27,52 @@ Agent sessions are dropping to idle with blank terminals. The root cause is unkn
 **Convention added**: `event-log.ts` "How to add a new event" guide now requires a corresponding console log (`createTaggedLogger`) at every `emitEvent`/`emitSessionEvent` call site, unless there's a specific reason to omit it (e.g. high-frequency health snapshots). The event log may be toggled off; the console logger feeds the live debug ring buffer and WebSocket stream.
 
 **Files touched:** `src/core/event-log.ts`, `src/terminal/session-manager.ts`, `src/server/runtime-server.ts`, `src/server/workspace-registry.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`, `test/runtime/terminal/session-manager-reconciliation.test.ts`
+
+## Fix: terminal pre-mount architecture — eliminate DOM reparent on task switch (2026-04-15)
+
+Continuation of the terminal scroll flash fix (`fix/terminal-restore-scroll-flash`). The earlier commits on this branch deferred terminal visibility during restore, which fixed the scroll flash. This change eliminates the DOM reparent entirely so `repairRendererCanvas("mount")` (dimension bounce + atlas clear + SIGWINCH) never fires on normal task switch.
+
+**Problem:** `mount()` had a fast/slow path. The slow path (first mount, different container, or detached container) called `container.appendChild(hostElement)` to move the element from the parking root into the terminal container, then ran `repairRendererCanvas("mount")` which sent SIGWINCH to the agent — unnecessary on cold switch where restore overwrites the buffer anyway, and wasteful on warm switch where the buffer was already correct.
+
+**Solution:** Pre-mount all 4 pool slots in a shared container when the React terminal panel mounts. Task switch becomes a pure visibility toggle.
+
+**What changed:**
+
+- `web-ui/src/terminal/terminal-slot.ts`:
+  - Added `stageContainer` field (replaces `mountedContainer`) — the physical DOM parent, set once by pool or dedicated caller
+  - Added `attachToStageContainer(container)` — moves host element into real container, calls `fitAddon.fit()`
+  - `mount()` → `show()` — visibility toggle + `terminal.refresh(0, rows-1)` insurance + ResizeObserver setup. No DOM reparent, no `repairRendererCanvas`, no fast/slow path
+  - `unmount(container)` → `hide()` — visibility toggle + ResizeObserver teardown. No container parameter
+  - `requestResize` guard: `visibleContainer ?? stageContainer` — warmup can send dims while hidden
+  - `repairRendererCanvas` guard: `stageContainer ?? visibleContainer` — DPR handler works on staged slots
+  - `forceResize` first-active guard: `visibleContainer ?? stageContainer` — works during warmup
+  - Added `document.visibilitychange` listener in constructor — `terminal.refresh()` on tab return when visible. Cleanup in `dispose()`
+  - Removed `MountPersistentTerminalOptions` interface, `mountedContainer` field
+
+- `web-ui/src/terminal/terminal-pool.ts`:
+  - Added `poolContainer` module state
+  - Added `attachPoolContainer(container)` — stages all pool slots via `attachToStageContainer`
+  - Added `detachPoolContainer()` — clears container reference
+  - `rotateOldestFreeSlot()` — stages replacement slot if `poolContainer` is set
+  - `_resetPoolForTesting()` — resets `poolContainer`
+
+- `web-ui/src/terminal/use-persistent-terminal-session.ts`:
+  - Pool path: `attachPoolContainer(container)` before `show()`
+  - Dedicated path: `attachToStageContainer(container)` + `show()` directly
+  - All `unmount(container)` → `hide()`
+
+- `web-ui/src/terminal/terminal-pool.test.ts`:
+  - Added `attachToStageContainer`, `show`, `hide` to mock shape
+  - Added tests for `attachPoolContainer` (staging, idempotency, rotation staging) and `detachPoolContainer`
+
+- `web-ui/src/terminal/use-persistent-terminal-session.test.tsx`:
+  - Updated mock shape: `mount`/`unmount` → `show`/`hide` + `attachToStageContainer`
+  - Updated assertions to match new API
+
+- `docs/terminal-restore-visibility.md` — updated DOM reparent section, cheat sheet, call site audit
+- `docs/terminal-pre-mount-cheatsheet.md` — new quick reference for slot lifecycle, SIGWINCH triggers, restore triggers, background health mechanisms, container lifecycle
+
+**SIGWINCH impact:** Normal task switch no longer sends SIGWINCH. First session active transition still sends `forceResize` (correct). DPR change and user-initiated reset still run `repairRendererCanvas` (correct).
 
 ## Feature: three-dot diff in compare view (2026-04-15)
 

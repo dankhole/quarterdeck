@@ -72,6 +72,12 @@
 - Socket error/close handlers call ensureVisible() as a safety net so the terminal never stays permanently hidden if the restore message never arrives.
 - Warmup timeout no longer fires while the card is still hovered — the 3s grace period now starts on mouseLeave instead of mouseEnter, so hovering for >3s before clicking still gets a warm slot.
 - Sidebar task cards now trigger terminal warmup on hover, matching the main board cards (was missing onTerminalWarmup/onTerminalCancelWarmup passthrough from CardActionsContext).
+- Eliminated DOM reparent on task switch via pre-mount architecture: all 4 pool slots are staged in a shared container via `attachPoolContainer()`/`attachToStageContainer()` when the terminal panel mounts. `mount()` replaced with `show()` (visibility toggle + `terminal.refresh()` insurance), `unmount()` replaced with `hide()` (visibility toggle). No `repairRendererCanvas` or SIGWINCH on normal task switch.
+- Added `document.visibilitychange` listener per slot — repaints the visible terminal when the browser tab returns to foreground (handles GPU texture eviction during backgrounding).
+- `requestResize` guard loosened to `visibleContainer ?? stageContainer` so warmup can send correct dimensions to the server before the slot is shown.
+- Pool rotation stages replacement slots into the container if one is registered.
+- `show()` now calls `scrollToBottom()` after `fitAddon.fit()` when the terminal is already restored, so switching tasks snaps to the latest output instead of showing a stale scroll position. Reveal deferred until after fit+scroll to prevent a visible frame at the old position. A one-shot `pendingScrollToBottom` flag re-scrolls after the first ResizeObserver-driven reflow.
+- Post-restore resize guard widened to `visibleContainer ?? stageContainer` so warmup sends correct browser dimensions to the server immediately after restore — eliminates dimension mismatch that caused intermittent TUI layout gaps.
 
 ### Fix: remove unauthenticated `resetAllState` endpoint
 

@@ -6,6 +6,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
 const acquireForTaskMock = vi.hoisted(() => vi.fn());
+const attachPoolContainerMock = vi.hoisted(() => vi.fn());
 const releaseTaskMock = vi.hoisted(() => vi.fn());
 const isDedicatedTerminalTaskIdMock = vi.hoisted(() => vi.fn());
 const ensureDedicatedTerminalMock = vi.hoisted(() => vi.fn());
@@ -14,6 +15,7 @@ const registerTerminalControllerMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/terminal/terminal-pool", () => ({
 	acquireForTask: acquireForTaskMock,
+	attachPoolContainer: attachPoolContainerMock,
 	releaseTask: releaseTaskMock,
 	isDedicatedTerminalTaskId: isDedicatedTerminalTaskIdMock,
 	ensureDedicatedTerminal: ensureDedicatedTerminalMock,
@@ -27,8 +29,9 @@ vi.mock("@/terminal/terminal-controller-registry", () => ({
 function createTerminalSlotMock() {
 	return {
 		subscribe: vi.fn(() => vi.fn()),
-		mount: vi.fn(),
-		unmount: vi.fn(),
+		attachToStageContainer: vi.fn(),
+		show: vi.fn(),
+		hide: vi.fn(),
 		reset: vi.fn(),
 		input: vi.fn(() => true),
 		paste: vi.fn(() => true),
@@ -74,6 +77,7 @@ describe("usePersistentTerminalSession", () => {
 
 	beforeEach(() => {
 		acquireForTaskMock.mockReset();
+		attachPoolContainerMock.mockReset();
 		releaseTaskMock.mockReset();
 		isDedicatedTerminalTaskIdMock.mockReset();
 		ensureDedicatedTerminalMock.mockReset();
@@ -114,7 +118,7 @@ describe("usePersistentTerminalSession", () => {
 		expect(acquireForTaskMock).toHaveBeenCalledWith("task-a", "project-1");
 	});
 
-	it("mounts slot into container", async () => {
+	it("shows slot into container", async () => {
 		const terminal = createTerminalSlotMock();
 		acquireForTaskMock.mockReturnValue(terminal);
 
@@ -122,7 +126,7 @@ describe("usePersistentTerminalSession", () => {
 			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} />);
 		});
 
-		expect(terminal.mount).toHaveBeenCalledTimes(1);
+		expect(terminal.show).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not dispose slot on task switch (pool manages lifecycle)", async () => {
@@ -169,8 +173,8 @@ describe("usePersistentTerminalSession", () => {
 			);
 		});
 
-		expect(terminal.mount).toHaveBeenCalledTimes(1);
-		expect(terminal.unmount).not.toHaveBeenCalled();
+		expect(terminal.show).toHaveBeenCalledTimes(1);
+		expect(terminal.hide).not.toHaveBeenCalled();
 
 		await act(async () => {
 			root.render(
@@ -184,8 +188,8 @@ describe("usePersistentTerminalSession", () => {
 			);
 		});
 
-		expect(terminal.mount).toHaveBeenCalledTimes(1);
-		expect(terminal.unmount).not.toHaveBeenCalled();
+		expect(terminal.show).toHaveBeenCalledTimes(1);
+		expect(terminal.hide).not.toHaveBeenCalled();
 	});
 
 	it("uses dedicated terminal path for home shell", async () => {

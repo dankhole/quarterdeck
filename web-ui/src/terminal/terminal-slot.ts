@@ -60,11 +60,6 @@ interface PersistentTerminalSubscriber {
 	onExit?: (taskId: string, exitCode: number | null) => void;
 }
 
-interface MountPersistentTerminalOptions {
-	autoFocus?: boolean;
-	isVisible?: boolean;
-}
-
 function getParkingRoot(): HTMLDivElement {
 	const existingRoot = document.getElementById(PARKING_ROOT_ID);
 	if (existingRoot instanceof HTMLDivElement) {
@@ -120,8 +115,8 @@ export class TerminalSlot {
 	private dprMediaQuery: MediaQueryList | null = null;
 	private dprChangeHandler: (() => void) | null = null;
 	private visibleContainer: HTMLDivElement | null = null;
-	/** The container the hostElement is physically appended to in the DOM. */
-	private mountedContainer: HTMLDivElement | null = null;
+	/** The container the hostElement is physically in the DOM (set by pool or dedicated caller). */
+	private stageContainer: HTMLDivElement | null = null;
 	private ioSocket: WebSocket | null = null;
 	private controlSocket: WebSocket | null = null;
 	private connectionReady = false;
@@ -136,8 +131,11 @@ export class TerminalSlot {
 	private lastSentCols = 0;
 	private lastSentRows = 0;
 	private disposed = false;
+	/** One-shot: scroll to bottom after the first ResizeObserver-driven fit() reflow in show(). */
+	private pendingScrollToBottom = false;
 	/** One-shot callback fired when notifyConnectionReady() runs, then cleared. */
 	private onceConnectionReadyCallback: (() => void) | null = null;
+	private visibilityChangeHandler: (() => void) | null = null;
 
 	constructor(slotId: number, appearance: PersistentTerminalAppearance) {
 		this.slotId = slotId;
@@ -197,6 +195,15 @@ export class TerminalSlot {
 		});
 
 		this.openTerminalWhenFontsReady();
+		// Repaint when the browser tab returns to foreground — GPU may have evicted
+		// textures or skipped frames while backgrounded.
+		this.visibilityChangeHandler = () => {
+			if (document.visibilityState === "visible" && this.visibleContainer && !this.disposed) {
+				log.debug(`slot ${this.slotId} tab-return refresh`, { task: this.taskId });
+				this.terminal.refresh(0, this.terminal.rows - 1);
+			}
+		};
+		document.addEventListener("visibilitychange", this.visibilityChangeHandler);
 		// No ensureConnected() — the pool controls IO state via connectToTask().
 	}
 
@@ -308,14 +315,14 @@ export class TerminalSlot {
 			}
 			this.terminal.open(this.hostElement);
 			this.attachWebglAddon();
-			if (this.visibleContainer) {
+			if (this.stageContainer ?? this.visibleContainer) {
 				this.fitAddon.fit();
 			}
 		};
 
 		const refitAfterFontsReady = () => {
 			void document.fonts.ready.then(() => {
-				if (!this.disposed && this.visibleContainer) {
+				if (!this.disposed && (this.stageContainer ?? this.visibleContainer)) {
 					this.fitAddon.fit();
 				}
 			});
@@ -500,7 +507,10 @@ export class TerminalSlot {
 		if (!this.connectedTaskId) {
 			return;
 		}
-		if (!this.visibleContainer) {
+		// Allow resize if staged (in real container) even when not visible.
+		// This enables warmup to send correct dimensions before the slot is shown.
+		const container = this.visibleContainer ?? this.stageContainer;
+		if (!container) {
 			return;
 		}
 		this.fitAddon.fit();
@@ -509,7 +519,7 @@ export class TerminalSlot {
 		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows && !force) {
 			return;
 		}
-		const bounds = this.visibleContainer.getBoundingClientRect();
+		const bounds = container.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
 		reportTerminalGeometry(this.connectedTaskId, { cols, rows });
@@ -663,7 +673,7 @@ export class TerminalSlot {
 						// visibility when restoreCompleted is false to avoid the
 						// full history visibly scrolling past during the write.
 						this.ensureVisible();
-						if (this.ioSocket && this.visibleContainer) {
+						if (this.ioSocket && (this.visibleContainer ?? this.stageContainer)) {
 							this.requestResize();
 						}
 						if (this.ioSocket) {
@@ -693,7 +703,7 @@ export class TerminalSlot {
 				// interrupt TUI layout mid-redraw (e.g. input prompt setup), causing
 				// off-by-one artifacts.
 				if (
-					this.visibleContainer &&
+					(this.visibleContainer ?? this.stageContainer) &&
 					payload.summary.state !== previousState &&
 					previousState !== "running" &&
 					previousState !== "awaiting_review" &&
@@ -788,6 +798,26 @@ export class TerminalSlot {
 		return result;
 	}
 
+	/**
+	 * Move this slot's host element into a stage container. Called by the pool
+	 * when a terminal container becomes available. After this call, fitAddon.fit()
+	 * returns real dimensions even when the slot is hidden.
+	 */
+	attachToStageContainer(container: HTMLDivElement): void {
+		if (this.disposed) return;
+		if (this.stageContainer === container) return;
+		const hadPrevious = this.stageContainer !== null;
+		this.stageContainer = container;
+		container.appendChild(this.hostElement);
+		// Size to real container dimensions now that we're in the DOM properly.
+		this.fitAddon.fit();
+		log.debug(`slot ${this.slotId} staged`, {
+			reparent: hadPrevious,
+			cols: this.terminal.cols,
+			rows: this.terminal.rows,
+		});
+	}
+
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
 		this.subscribers.add(subscriber);
 		subscriber.onLastError?.(this.lastError);
@@ -802,11 +832,7 @@ export class TerminalSlot {
 		};
 	}
 
-	mount(
-		container: HTMLDivElement,
-		appearance: PersistentTerminalAppearance,
-		options: MountPersistentTerminalOptions,
-	): void {
+	show(appearance: PersistentTerminalAppearance, options: { autoFocus?: boolean; isVisible?: boolean }): void {
 		if (this.disposed) {
 			return;
 		}
@@ -816,44 +842,18 @@ export class TerminalSlot {
 		// would otherwise scroll past as xterm renders it incrementally. The
 		// restore handler sets visibility = "visible" after scrollToBottom().
 		const shouldReveal = this.restoreCompleted;
+		log.debug(`slot ${this.slotId} show`, {
+			reveal: shouldReveal,
+			staged: this.stageContainer !== null,
+			task: this.taskId,
+		});
 
-		const isSameContainer = this.mountedContainer === container && container.isConnected;
-		if (isSameContainer) {
-			// Fast path — same container, just reveal. No DOM move, no canvas repair.
-			log.debug(`slot ${this.slotId} mount — fast path (visibility toggle, reveal=${shouldReveal})`);
-			if (shouldReveal) {
-				this.hostElement.style.visibility = "visible";
-			}
-			this.visibleContainer = container;
-		} else {
-			// Slow path — first mount, different container, or detached container.
-			// Full DOM move + canvas repair.
-			log.debug(`slot ${this.slotId} mount — slow path (DOM move + canvas repair, reveal=${shouldReveal})`);
-			this.visibleContainer = container;
-			this.mountedContainer = container;
-			container.appendChild(this.hostElement);
-			// Keep hidden during canvas repair — the dimension bounce (resize cols-1
-			// then back) and texture atlas rebuild cause visible flicker if the element
-			// is revealed first. Visibility is set after repair completes below.
-			// Server may have stale dimensions from the previous container.
-			this.invalidateResize();
-			// Canvas repair after DOM move — fixes stale texture atlas and
-			// canvas pixel dimensions caused by the parking-root reparent.
-			// Runs synchronously: appendChild updates the layout tree immediately
-			// and fitAddon.fit() forces a synchronous reflow via
-			// getBoundingClientRect(), so container dimensions are available.
-			this.repairRendererCanvas("mount");
-			// Reveal after repair — unless a restore snapshot is still pending.
-			if (shouldReveal) {
-				this.hostElement.style.visibility = "visible";
-			}
-			// No requestRestore() here. For new connections, the initial socket
-			// restore handles buffer population (restoreCompleted is false, so
-			// requestRestore would no-op anyway). For PREVIOUS slots being
-			// re-activated, the IO socket stayed open and the buffer already has
-			// current content — a restore would redundantly round-trip to the
-			// server just to rewrite the same data.
-		}
+		// Cheap repaint from buffer — insurance against stale canvas frames
+		// from browser tab backgrounding or GPU texture eviction.
+		// No network, no SIGWINCH, no atlas clear.
+		this.terminal.refresh(0, this.terminal.rows - 1);
+
+		this.visibleContainer = this.stageContainer;
 
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
@@ -865,22 +865,45 @@ export class TerminalSlot {
 			this.resizeTimer = setTimeout(() => {
 				this.resizeTimer = null;
 				this.requestResize();
+				if (this.pendingScrollToBottom) {
+					this.pendingScrollToBottom = false;
+					this.terminal.scrollToBottom();
+				}
 			}, RESIZE_DEBOUNCE_MS);
 		});
-		this.resizeObserver.observe(container);
+		if (this.stageContainer) {
+			this.resizeObserver.observe(this.stageContainer);
+		} else {
+			log.warn(`slot ${this.slotId} show — no stageContainer, ResizeObserver not attached`);
+		}
 		this.listenForDprChange();
 		if (options.isVisible !== false) {
+			// Fit + scroll BEFORE revealing to avoid a visible frame at the
+			// old scroll position. fit() may reflow the buffer when cols/rows
+			// change, so scrollToBottom must come after it.
 			this.requestResize();
+			if (shouldReveal) {
+				this.terminal.scrollToBottom();
+				// Arm a one-shot for the first ResizeObserver callback in case
+				// its fit() reflow undoes this scroll.
+				this.pendingScrollToBottom = true;
+			}
 			if (options.autoFocus) {
 				this.terminal.focus();
 			}
 		}
+
+		// Reveal only after fit + scroll are applied.
+		if (shouldReveal) {
+			this.hostElement.style.visibility = "visible";
+		}
 	}
 
-	unmount(container: HTMLDivElement | null): void {
+	hide(): void {
 		if (this.disposed && this.visibleContainer === null) {
 			return;
 		}
+		log.debug(`slot ${this.slotId} hide`, { task: this.taskId });
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
 			this.resizeObserver = null;
@@ -890,10 +913,6 @@ export class TerminalSlot {
 			this.resizeTimer = null;
 		}
 		this.clearDprListener();
-		if (container && this.visibleContainer !== container) {
-			return;
-		}
-		log.debug(`slot ${this.slotId} unmount — hiding`);
 		this.visibleContainer = null;
 		if (this.connectedTaskId) {
 			clearTerminalGeometry(this.connectedTaskId);
@@ -980,14 +999,14 @@ export class TerminalSlot {
 	 * no-op where the button appears to "not do anything".
 	 *
 	 * Called from:
-	 *   - mount() RAF callback — repairs after DOM re-parent (task switch)
+	 *   - DPR change handler — repairs after monitor move or browser zoom
 	 *   - resetRenderer() — user-initiated "Reset terminal rendering" button
 	 */
 	private repairRendererCanvas(trigger: string): void {
-		// No canvas to fix when the terminal is parked (not mounted in a visible
-		// container). The repair will run on the next mount() instead.
-		if (!this.visibleContainer) {
-			log.debug(`slot ${this.slotId} canvas repair skipped — not visible`, { trigger });
+		// No canvas to fix when the terminal is parked (not in any container).
+		// The repair will run on the next show() instead.
+		if (!this.stageContainer && !this.visibleContainer) {
+			log.debug(`slot ${this.slotId} canvas repair skipped — not staged`, { trigger });
 			return;
 		}
 
@@ -1157,9 +1176,14 @@ export class TerminalSlot {
 		if (this.disposed) {
 			return;
 		}
+		log.debug(`slot ${this.slotId} dispose`, { task: this.taskId });
 		this.disposed = true;
-		this.unmount(this.visibleContainer);
-		this.mountedContainer = null;
+		this.hide();
+		this.stageContainer = null;
+		if (this.visibilityChangeHandler) {
+			document.removeEventListener("visibilitychange", this.visibilityChangeHandler);
+			this.visibilityChangeHandler = null;
+		}
 		this.ioSocket?.close();
 		this.controlSocket?.close();
 		this.ioSocket = null;
