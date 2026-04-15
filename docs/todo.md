@@ -173,7 +173,7 @@ Full plan at [docs/refactor-csharp-readability.md](refactor-csharp-readability.m
 - Message factory functions + typed WebSocket dispatch map — replace inline spread/ternary construction and 110-line if/else dispatch chain
 
 **Frontend (section 8):**
-8. Split App.tsx (1,818 lines, 40+ hooks) into ~6 Context providers — eliminates 55-prop components, kills the `useBoardInteractions` wiring hub, drops App.tsx to ~200 lines
+8. Split App.tsx into ~6 Context providers — in progress: ~~DialogContext~~, ~~ProjectContext~~, ~~BoardContext~~ done; TerminalProvider, GitProvider, InteractionsProvider, AppProviders compositor remain
 
 Sections are independent and ordered by priority with a dependency graph in the doc.
 

@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-12 in `implementation-log-through-2026-04-12.md`.
 
+## Refactor: add BoardContext provider — phase 8 step 3 (2026-04-14)
+
+Third context provider in the App.tsx extraction (section 8 of `docs/refactor-csharp-readability.md`). BoardContext owns board data, task sessions, and task selection — the highest-traffic props drilled from App.tsx through CardDetailView.
+
+**What changed:**
+- Created `web-ui/src/providers/board-provider.tsx` — `BoardContextValue` interface with `board`, `setBoard`, `sessions`, `upsertSession`, `selectedTaskId`, `selectedCard`, `setSelectedTaskId`. Context + consumer hook following the same pattern as DialogContext and ProjectContext.
+- `App.tsx`: Added `boardContextValue` useMemo, wrapped JSX tree in `BoardContext.Provider` (between Project and Dialog providers).
+- `card-detail-view.tsx`: Removed 3 props (`taskSessions`, `onSessionSummary`, `board`) from the function signature. These are now read from `useBoardContext()` with local aliases (`sessions: taskSessions`, `upsertSession: onSessionSummary`) to avoid changing downstream usage within the component.
+- `card-detail-view.test.tsx`: Removed the deleted props from all 3 test render calls, added `BoardContext.Provider` with a noop context value to the `renderWithProviders` helper.
+
+**Design decision — what was NOT migrated:** QuarterdeckBoard, GitView, and ColumnContextPanel still receive `board`/`taskSessions` as explicit props. These are presentational components that should stay prop-driven — adding context dependency would break their reusability without meaningful prop-count reduction (their other props are all interaction callbacks from useBoardInteractions). These will naturally migrate when InteractionsProvider is built in a later step.
+
+**Files**: `web-ui/src/providers/board-provider.tsx` (new), `web-ui/src/App.tsx`, `web-ui/src/components/card-detail-view.tsx`, `web-ui/src/components/card-detail-view.test.tsx`
+
 ## Fix: remove unauthenticated `resetAllState` endpoint (2026-04-14)
 
 The `runtime.resetAllState` tRPC endpoint (`POST /api/runtime.resetAllState`) had zero authentication — any process on localhost could call it. It recursively deleted `~/.quarterdeck` (all board state, config, settings, event logs) and `~/.quarterdeck/worktrees` (all agent worktrees). Combined with the frontend's `window.location.reload()` post-call, it caused a complete state wipe that appeared as a "tab flash" to the user.

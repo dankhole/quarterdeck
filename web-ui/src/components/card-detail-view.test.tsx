@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CardDetailView } from "@/components/card-detail-view";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
@@ -108,7 +109,6 @@ const newRequiredProps = {
 	topBar: <div data-testid="top-bar" />,
 	sidePanelRatio: 0.25,
 	setSidePanelRatio: () => {},
-	board: { columns: [], dependencies: [] },
 	skipTaskCheckoutConfirmation: false,
 	skipHomeCheckoutConfirmation: false,
 	onDeselectTask: () => {},
@@ -141,11 +141,23 @@ const noopReactiveState: ReactiveCardState = {
 	showRunningTaskEmergencyActions: false,
 };
 
+const noopBoardContext: BoardContextValue = {
+	board: { columns: [], dependencies: [] },
+	setBoard: () => {},
+	sessions: {},
+	upsertSession: () => {},
+	selectedTaskId: null,
+	selectedCard: null,
+	setSelectedTaskId: () => {},
+};
+
 function renderWithProviders(root: Root, ui: ReactNode): void {
 	root.render(
-		<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
-			<TooltipProvider>{ui}</TooltipProvider>
-		</CardActionsProvider>,
+		<BoardContext.Provider value={noopBoardContext}>
+			<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+				<TooltipProvider>{ui}</TooltipProvider>
+			</CardActionsProvider>
+		</BoardContext.Provider>,
 	);
 }
 
@@ -204,8 +216,6 @@ describe("CardDetailView", () => {
 					selection={createSelection()}
 					currentProjectId="workspace-1"
 					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
@@ -231,8 +241,6 @@ describe("CardDetailView", () => {
 					selection={createSelection()}
 					currentProjectId="workspace-1"
 					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}
@@ -258,8 +266,6 @@ describe("CardDetailView", () => {
 					selection={createSelection()}
 					currentProjectId="workspace-1"
 					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}
 					bottomTerminalTaskId={null}

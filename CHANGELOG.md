@@ -14,13 +14,14 @@
 - Converted `RuntimeStateHub` from 550-line factory-closure to `RuntimeStateHubImpl` class extending `Disposable` — 7 closure Maps/Sets become private readonly fields, 130-line inline WebSocket handler becomes `handleConnection()` pipeline, metadata monitor and debug log subscription managed via `_register()`.
 - Converted `RuntimeApi` from 615-line factory-closure to `RuntimeApiImpl` class — handler methods organized by section (Config, Sessions, Shell, Debug, Migration), `createRuntimeApi()` wrapper preserved for backward compatibility.
 
-### Refactor: begin App.tsx context provider extraction — DialogContext + ProjectContext
+### Refactor: begin App.tsx context provider extraction — DialogContext, ProjectContext, BoardContext
 
 - Introduced `DialogContext` (`web-ui/src/providers/dialog-provider.tsx`) — the first step of the App.tsx provider split described in `docs/refactor-csharp-readability.md` section 8. Defines a typed context for all dialog open/close state, debug tools, and debug logging.
 - Extracted `DebugShelf` component (`web-ui/src/components/debug-shelf.tsx`) — renders the DebugLogPanel and DebugDialog by reading from `useDialogContext()` instead of receiving 25+ props from App.tsx. Removes ~30 lines of inline JSX from App.tsx.
 - Introduced `ProjectContext` (`web-ui/src/providers/project-provider.tsx`) — the second provider in the extraction. Surfaces project navigation, runtime config (both current and settings scope), startup onboarding, access gate, and all config-derived values + mutation callbacks.
 - Extracted `ProjectDialogs` component (`web-ui/src/components/project-dialogs.tsx`) — renders StartupOnboardingDialog and GitInitDialog by reading from `useProjectContext()`.
-- Both contexts are constructed in App.tsx via `useMemo` and provided inline. Hooks stay in App.tsx — child components opt into context reads incrementally.
+- Introduced `BoardContext` (`web-ui/src/providers/board-provider.tsx`) — owns board data, task sessions, and task selection state (`board`, `setBoard`, `sessions`, `upsertSession`, `selectedTaskId`, `selectedCard`, `setSelectedTaskId`). `CardDetailView` now reads `board`, `taskSessions`, and `upsertSession` from context instead of props, removing 3 of its 55 props.
+- All three contexts are constructed in App.tsx via `useMemo` and provided inline. Hooks stay in App.tsx — child components opt into context reads incrementally.
 
 ### Perf: replace per-task xterm instances with fixed 4-slot terminal pool
 

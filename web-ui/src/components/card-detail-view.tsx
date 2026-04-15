@@ -18,6 +18,7 @@ import { useBranchActions } from "@/hooks/use-branch-actions";
 import { useFileBrowserData } from "@/hooks/use-file-browser-data";
 import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
 import { useScopeContext } from "@/hooks/use-scope-context";
+import { useBoardContext } from "@/providers/board-provider";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
@@ -30,7 +31,7 @@ import {
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type BoardData, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 
 /** Branch status slot for the task context git view tab bar. */
 function TaskBranchStatus({
@@ -92,8 +93,6 @@ export function CardDetailView({
 	selection,
 	currentProjectId,
 	sessionSummary,
-	taskSessions,
-	onSessionSummary,
 	onCardSelect,
 	onCreateTask,
 	onStartAllTasks,
@@ -125,7 +124,6 @@ export function CardDetailView({
 	topBar,
 	sidePanelRatio,
 	setSidePanelRatio,
-	board,
 	skipTaskCheckoutConfirmation,
 	skipHomeCheckoutConfirmation,
 	onSkipTaskCheckoutConfirmationChange,
@@ -146,8 +144,6 @@ export function CardDetailView({
 	selection: CardSelection;
 	currentProjectId: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
-	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onCardSelect: (taskId: string) => void;
 	onCardDoubleClick?: (taskId: string) => void;
 	onCreateTask?: () => void;
@@ -180,7 +176,6 @@ export function CardDetailView({
 	topBar: ReactNode;
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
-	board: BoardData;
 	skipTaskCheckoutConfirmation: boolean;
 	skipHomeCheckoutConfirmation: boolean;
 	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
@@ -199,6 +194,7 @@ export function CardDetailView({
 	/** Push a branch to remote. Called with branch name and task scope for worktree-scoped push. */
 	onPushBranch?: (branch: string) => void;
 }): React.ReactElement {
+	const { board, sessions: taskSessions, upsertSession: onSessionSummary } = useBoardContext();
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
