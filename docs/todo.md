@@ -87,6 +87,7 @@ Multiple related bugs where the UI shows the wrong task state. A comprehensive a
 Server-side latency for project switching has been addressed (metadata decoupled from snapshot, file reads parallelized, inactive project task counts cached). Preload-on-hover is done. Remaining client-side strategy to make switching feel instant:
 
 - **Stale-while-revalidate**: Cache board state per project in memory. On switch, show the cached version immediately while fresh data loads. Requires careful gating of `canPersistWorkspaceState` and `workspaceRevision` to prevent stale data from being persisted back to disk.
+- **Keep multiple project boards in memory**: Investigate whether it's feasible to keep task boards for inactive projects hydrated in memory so switching doesn't require a full reload. Even if full state isn't kept, the board layout and task list should be cheap to retain.
 
 ## Upstream sync: periodic review of cline/kanban (recurring)
 
@@ -110,6 +111,8 @@ Periodically read through docs in `docs/` (research, plans, specs, top-level) an
 ## UI branch/status indicators desync when agent leaves worktree
 
 When `worktreeAddQuarterdeckDir` is enabled, agents can `cd` out of their assigned worktree into other directories. The status bar branch pill, task card branch label, and branch selector dropdown all derive their values from the agent's current working directory (via the metadata monitor's git probe), so they start showing the wrong branch state instead of the worktree's. Fix the metadata monitor and/or display logic so that task-scoped UI elements always reflect the assigned worktree path, not wherever the agent's shell happens to be. The statusline (`buildStatuslineCommand`) may also need the same fix.
+
+**Related symptom:** The status bar sometimes shows the wrong project folder — may be the same metadata monitor root cause or a separate project-level resolution bug.
 
 ## "Shared" indicator on task cards should update when agent moves to shared directory
 
@@ -154,9 +157,11 @@ Codex has basic launch, event parsing, and workspace trust working, but it's far
 
 The file browser and diff viewer are laggy, especially for tasks with many changed files or large diffs. Investigate and address:
 
+- **First-open latency**: Opening the compare view or uncommitted-changes view for the first time is noticeably slow. Add debug logging to identify where time is spent (git commands, data serialization, WebSocket transfer, React rendering) before optimizing.
 - **File browser**: Slow to load and navigate. Profile whether the bottleneck is git command execution (status, ls-files), data transfer over WebSocket, or React rendering. Tree expansion and file selection should feel instant.
 - **Diff viewer**: Large diffs cause noticeable UI lag. Full file text (old + new) is sent inline and diff computation happens client-side. Consider server-side diff computation, virtualized rendering for large files, or lazy-loading diffs per file instead of all at once.
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
+- **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
 ## Readability refactoring roadmap (C#-style navigability)
 
@@ -192,3 +197,59 @@ Full plan at [docs/refactor-hooks-directory.md](refactor-hooks-directory.md). Th
 ## Keep task base ref in sync with branch changes
 
 When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.
+
+## Investigate and fix statusline ↓↑ counters vs task card stats
+
+The agent statusline shows `374↓ 207↑` (total input/output tokens from Claude's cost data) and `+0 -0` (total lines added/removed). These don't obviously correspond to what's shown on the task card, and they don't appear to update after a commit. Investigate: what exactly do these counters track, why don't they match the task card's stats, and why don't they refresh on commit? Fix the desync.
+
+## Fix "needs input" yellow dot incorrectly persisting across project switches
+
+The yellow "needs input" indicator on the board icon sometimes shows for projects that don't actually need input. The erroneous state follows the project — switching projects brings the wrong NI status along. Investigate whether this is a stale hook state issue, a project-scoping bug in the notification system, or a UI render bug.
+
+## Investigate inline comments in diff viewer
+
+The diff viewer has some inline comment infrastructure. Investigate how it currently works (or doesn't), what state it's in, and whether it's usable or needs work. Document findings.
+
+## Assess and adjust live terminal WebGL context limit
+
+Browsers support ~8–16 WebGL contexts (varies by browser/GPU). The current limit is 4 live terminals. At least 1 context must be reserved for the shell terminal. Investigate the actual browser limits, measure what happens at the boundary, and adjust the limit if the research supports a higher number.
+
+## "Reset to here" in branch context menu
+
+Add a "Reset to here" action in the top-bar branch context menu that performs `git reset --hard <selected-ref>` on the task's worktree branch. Must include a confirmation dialog ("Are you sure? This will discard all commits after X and any uncommitted changes."). This is per-worktree only — never touches the main repo.
+
+## Don't defocus agent terminal after submitting input
+
+After pressing enter to submit input in the agent chat, keyboard focus should stay on the agent terminal. Currently focus leaves and requires a click to re-engage. When both agent terminal and shell terminal are visible, focus should go to whichever was last clicked — but the default (agent terminal only) should never lose focus on submit.
+
+## Restore sidebar panel state when returning to agent chat
+
+If a sidebar panel (e.g. task column) was open before switching to a full-screen main view (e.g. file browser), it should automatically reopen when navigating back to agent chat. Currently the sidebar state is lost on view switch.
+
+## Remember last viewed file when switching tasks
+
+When switching away from a task and back, the diff viewer / compare view should remember which file was last selected. Currently switching tasks resets the file selection.
+
+## File browser: preserve scroll position
+
+The file browser should save and restore its scroll position when navigating away and back (e.g. switching tabs or tasks). Currently it resets to the top each time.
+
+## Skip trash confirmation when task has no uncommitted or unmerged changes
+
+The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
+
+## Task card hover buttons should have a short delay
+
+Add a brief delay (~200ms) before task card hover action buttons appear. Prevents accidental triggers when the mouse passes over cards while navigating the board.
+
+## Audit default branch resolution for bugs
+
+The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.
+
+## Add timestamps to all runtime logging
+
+Ensure all runtime log output includes timestamps. Audit existing logging paths (console logger, JSONL event log, debug ring buffer) and add timestamps where missing.
+
+## Archive current changelog and implementation log
+
+Following the pattern of `docs/changelog-through-0.5.0.md` and `docs/implementation-log-through-2026-04-12.md`: date-stamp the current `CHANGELOG.md` entries and `docs/implementation-log.md` entries into new archive files, then start fresh with empty sections in the active files. Bump version number as appropriate.
