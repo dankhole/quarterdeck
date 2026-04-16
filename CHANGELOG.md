@@ -41,6 +41,10 @@
 - **Batch 3** — Extracted 7 more domain modules: `notifications/audible-notifications.ts` (column derivation, sound event resolution, settle window, visibility, project suppression), `debug-logging.ts` (log merging, filtering, tag extraction, disabled-tag persistence), `task-editor.ts` (branch ref resolution, plan mode incompatibility, task save validation), `board/review-auto-actions.ts` (auto-review eligibility, column mapping, review card collection, auto-trash mode), `terminal/shell-auto-restart.ts` (rate limiting, restart target parsing, restart eligibility), `board/linked-backlog-task-actions.ts` (dependency error messages, trash warning view model), `shortcut-actions.ts` (label collision detection, shortcut creation validation). 119 new domain-level unit tests across 7 test files.
 - Confirmed `use-board-interactions` and `use-task-start` as pure orchestration hooks — no extractable domain logic. Phase 2 now fully complete: 16 domain modules, 211 domain-level unit tests total.
 
+### Refactor: split audible-notifications test into focused modules
+
+- Split the 1,393-line `use-audible-notifications.test.tsx` into 4 focused test files + shared test utilities module, all under 500 lines. Same 31 tests, same assertions.
+
 ### Refactor: split linked backlog task actions test file
 
 - Split the 1,096-line `use-linked-backlog-task-actions.test.tsx` into a shared test harness (183 lines) and 3 focused test files — core actions (265), trash confirmation dialog (321), worktree notice toast (385). All under the 500-line target. 22 tests, zero behavior change.

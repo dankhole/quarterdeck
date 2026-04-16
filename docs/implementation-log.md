@@ -2,6 +2,30 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split audible-notifications test into focused modules (2026-04-16)
+
+**Problem:** `web-ui/src/hooks/notifications/use-audible-notifications.test.tsx` was 1,393 lines — a single file covering basic sound events, per-event toggles, visibility gating, settle window timing, and project suppression.
+
+**What changed:**
+
+Split into 4 focused test files + 1 shared utilities module:
+
+1. **`audible-notifications-test-utils.tsx`** (125 lines) — Shared `createMockSession` factory, `HookProps` type, `defaultProps`, `HookHarness` component, `setupTestHarness`/`cleanup` lifecycle.
+2. **`audible-notifications-basic.test.tsx`** (439 lines) — 11 tests: permission/review/failure sounds, exit codes, PTY crash, attention, volume, batch updates, cross-workspace.
+3. **`audible-notifications-toggles.test.tsx`** (426 lines) — 10 tests: master toggle, per-event toggles, visibility gating, silent states, initial snapshot, session removal.
+4. **`audible-notifications-settle.test.tsx`** (263 lines) — 5 tests: priority upgrade during settle, cancel on resume, immediate fire for non-hook, settle delay enforcement, AudioContext click listener.
+5. **`audible-notifications-suppress.test.tsx`** (211 lines) — 4 tests: current-project suppression, non-suppressed event passthrough, other-project passthrough, mixed batch.
+
+No test logic changes — same 31 tests, same assertions.
+
+**Files:**
+- `web-ui/src/hooks/notifications/use-audible-notifications.test.tsx` — deleted
+- `web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx` — new shared utilities
+- `web-ui/src/hooks/notifications/audible-notifications-basic.test.tsx` — new
+- `web-ui/src/hooks/notifications/audible-notifications-toggles.test.tsx` — new
+- `web-ui/src/hooks/notifications/audible-notifications-settle.test.tsx` — new
+- `web-ui/src/hooks/notifications/audible-notifications-suppress.test.tsx` — new
+
 ## Refactor: split globals.css into domain-specific stylesheets (2026-04-16)
 
 **Problem:** `web-ui/src/styles/globals.css` was a 920-line god file mixing 9 unrelated concerns — theme tokens, base resets, board layout, diff viewer styles (the largest block at ~300 lines), markdown prose rendering, component-specific styles, keyframe animations, PWA window controls overlay, and utility classes. Finding and editing styles required scrolling through the entire file.
