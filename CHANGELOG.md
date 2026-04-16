@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: awaiting_review sessions reset to idle after server restart
+
+- Sessions in `awaiting_review` with terminal review reasons (hook, exit, error, attention, stalled) were incorrectly recovered to idle after a server restart. The preservation guard in `recoverStaleSession` was gated on `restartRequest` — an in-memory field lost across restarts. Now uses `isTerminalReviewReason` to preserve review state regardless of server lifetime, matching the semantics already used by `hydrateFromRecord`.
+
 ### Refactor: decompose terminal-slot into focused modules
 
 - Broke the 1,227-line `terminal-slot.ts` into 5 files: orchestrator (`terminal-slot.ts`, 749), socket management (`slot-socket-manager.ts`, 239), WebGL rendering (`slot-renderer.ts`, 185), resize handling (`slot-resize-manager.ts`, 115), and write queue (`slot-write-queue.ts`, 65). Zero consumer changes.

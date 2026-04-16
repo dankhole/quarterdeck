@@ -433,6 +433,22 @@ describe("recoverStaleSession with launched sessions", () => {
 		expect(summary?.reviewReason).toBe("hook");
 	});
 
+	it("hydrated awaiting_review with terminal reason survives recoverStaleSession", () => {
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+			}),
+		});
+
+		// Simulates a viewer connecting after server restart — restartRequest is
+		// null because it's in-memory only, but the review state should be preserved.
+		const recovered = manager.recoverStaleSession("task-1");
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("hook");
+	});
+
 	it("hydrated awaiting_review entries with non-terminal review reasons are marked interrupted", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.hydrateFromRecord({

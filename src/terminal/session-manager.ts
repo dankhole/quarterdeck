@@ -534,20 +534,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return summary;
 		}
 
-		if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
-			// The agent already completed or was reviewed — don't restart just
-			// because the backing process died. The worktree has the work product;
-			// the user can review it or manually continue. Only restart for
-			// genuinely unexpected process loss (reason "error" from a crash
-			// during active work).
-			if (summary.reviewReason !== "error") {
-				return summary;
+		// Terminal review reasons (hook, exit, error, attention, stalled) mean the
+		// agent finished or explicitly requested review. Preserve regardless of
+		// whether restartRequest survived a server restart.
+		if (summary.state === "awaiting_review" && isTerminalReviewReason(summary.reviewReason)) {
+			if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart && summary.reviewReason === "error") {
+				scheduleAutoRestart(entry, {
+					startTaskSession: (r) => this.startTaskSession(r),
+					updateStore: (id, patch) => this.store.update(id, patch),
+					applyDenied: () => this.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" }),
+				});
 			}
-			scheduleAutoRestart(entry, {
-				startTaskSession: (r) => this.startTaskSession(r),
-				updateStore: (id, patch) => this.store.update(id, patch),
-				applyDenied: () => this.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" }),
-			});
 			return summary;
 		}
 

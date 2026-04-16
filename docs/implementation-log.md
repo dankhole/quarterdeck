@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: awaiting_review sessions reset to idle after server restart (2026-04-16)
+
+**Problem:** After a server restart, tasks that were legitimately in `awaiting_review` (agent fired `to_review` hook, work complete) were being recovered to `idle` when a viewer reconnected. The user's review card disappeared silently.
+
+**Root cause:** `recoverStaleSession` (session-manager.ts:537) preserved `awaiting_review` state only when `entry.restartRequest?.kind === "task"` — but `restartRequest` is in-memory only (initialized to `null` by `createProcessEntry`). After a server restart, `hydrateFromRecord` correctly preserves the review state in the store, but the subsequent `recoverStaleSession` call (triggered by WebSocket viewer connect in ws-server.ts) falls through the `restartRequest` guard and resets to idle.
+
+The same semantic decision ("is this a terminal review reason?") was already correctly implemented in `hydrateFromRecord` using `isTerminalReviewReason`, but `recoverStaleSession` used a different, narrower guard that depended on ephemeral server-lifetime state.
+
+**Fix:** Restructured `recoverStaleSession` to check `isTerminalReviewReason` first, preserving `awaiting_review` state for terminal reasons regardless of `restartRequest`. The auto-restart path for `error` reason is still gated behind `restartRequest` (it needs the original launch params). Added a test covering the hydrate → viewer connect → `recoverStaleSession` path.
+
+**Files:** `src/terminal/session-manager.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`
+
 ## Refactor: terminal-slot decomposition + loading indicator + perf logging (2026-04-16)
 
 **Problem:** `terminal-slot.ts` was 1,227 lines handling orchestration, WebSocket management, WebGL rendering, resize handling, and a write queue. Users saw an empty background for 50-500ms while the terminal connected/restored. No perf timing existed for warmup, acquire, show, or restore round-trips. The background `requestRestore()` on PREVIOUS demotion repaired the *old* slot proactively but if the agent kept writing after the restore, the buffer drifted again before the user switched back.
