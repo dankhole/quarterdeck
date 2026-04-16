@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split runtime-state-stream integration tests (2026-04-16)
+
+**Problem:** `test/integration/runtime-state-stream.integration.test.ts` was 1,126 lines — a single `describe.sequential` block containing 9 tests covering project discovery, project management, state streaming, hooks, metadata, worktree preservation, and server restart behavior. Too large to navigate and a merge-conflict magnet.
+
+**What changed:** Split into 4 focused test files, each under 500 lines:
+
+1. **`project-discovery.integration.test.ts`** (185 lines, 3 tests) — startup scenarios: no-git directory, home directory launch, first indexed project fallback.
+2. **`project-management.integration.test.ts`** (189 lines, 2 tests) — git init confirmation for non-git projects, active project removal with fallback.
+3. **`state-streaming.integration.test.ts`** (360 lines, 3 tests) — per-project snapshot isolation, hook review event streaming, workspace metadata updates.
+4. **`server-restart.integration.test.ts`** (375 lines, 3 tests) — worktree preservation on base ref advance, review card persistence across restart, skip-shutdown-cleanup flag.
+
+Extracted `createBoard` and `createReviewBoard` helpers into `test/utilities/board-factory.ts` (68 lines) — both functions were duplicated inline in the original file and are now shared.
+
+**Files:**
+- Deleted: `test/integration/runtime-state-stream.integration.test.ts`
+- New: `test/integration/project-discovery.integration.test.ts`, `test/integration/project-management.integration.test.ts`, `test/integration/state-streaming.integration.test.ts`, `test/integration/server-restart.integration.test.ts`, `test/utilities/board-factory.ts`
+
 ## Fix: Windows compatibility — path resolution and signal handling (2026-04-16)
 
 **Problem 1 — `startsWith("/")` for absolute path detection:** Two places used `startsWith("/")` to check if a path is absolute: `git-conflict.ts:55` (resolving the git dir from `git rev-parse --git-dir`) and `state-backup.ts:109` (resolving a backup path-or-name argument). On Windows, absolute paths start with a drive letter (e.g., `C:\`), so these checks would treat Windows absolute paths as relative, producing malformed double-rooted paths like `C:\repo\C:\actual\path`.

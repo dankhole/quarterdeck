@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split runtime-state-stream integration tests into focused files
+
+- Broke the 1,126-line monolithic `runtime-state-stream.integration.test.ts` into 4 sub-500-line files grouped by domain: `project-discovery` (3 tests), `project-management` (2 tests), `state-streaming` (3 tests), `server-restart` (3 tests). Extracted shared board factory helpers (`createBoard`, `createReviewBoard`) into `test/utilities/board-factory.ts`.
+
 ### Fix: Windows compatibility — path resolution and signal handling
 
 - Use `path.isAbsolute()` instead of `startsWith("/")` for detecting absolute paths in git conflict detection and state backup restore — fixes broken path resolution on Windows where absolute paths start with a drive letter.
