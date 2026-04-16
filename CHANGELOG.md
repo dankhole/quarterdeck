@@ -6,6 +6,10 @@
 
 - Switching from agent chat (terminal view) to a full-screen view (file browser, git) and back now automatically reopens the previously-open sidebar panel (e.g. task column). The auto-collapse on view switch saves what was open; returning to terminal restores it. Manual sidebar toggles, home navigation, and project switches clear the saved state so restoration only fires for the specific auto-collapse → return flow.
 
+### Refactor: split runtime-config test file into focused modules
+
+- Split the 951-line `runtime-config.test.ts` into 5 focused test files + shared helpers module, all under 250 lines. Extracted repeated 40-field save payloads into a `createDefaultSavePayload()` factory. No test logic changes — same 28 tests, same assertions.
+
 ## [0.9.2] — 2026-04-15
 
 ### Fix: remember last viewed file when switching tasks

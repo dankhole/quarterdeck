@@ -11,6 +11,32 @@
 **Files:**
 - `web-ui/src/resize/use-card-detail-layout.ts` — added `sidebarBeforeAutoCollapseRef`, save in files/git branch, restore in terminal branch, clear in toggleSidebar/home/project-switch
 
+## Refactor: split runtime-config.test.ts into focused test modules (2026-04-16)
+
+**Problem:** `test/runtime/config/runtime-config.test.ts` was 951 lines — a single file mixing agent auto-selection, config persistence mechanics, audible notification settings, prompt shortcuts, and pinned branches. Well above the 500-line target for test files.
+
+**What changed:**
+
+Split into 5 focused test files + 1 shared helpers module:
+
+1. **`runtime-config-helpers.ts`** (103 lines) — Shared utilities: `withTemporaryEnv` (env isolation), `writeFakeCommand` (fake CLI binaries), `createDefaultSavePayload` (factory for the full config object that was duplicated 3× inline at ~40 fields each).
+2. **`agent-selection.test.ts`** (150 lines) — 5 tests: priority ordering, auto-select + persist, no-CLI fallback, invalid agent normalization, existing config without agent.
+3. **`config-persistence.test.ts`** (248 lines) — 8 tests: global/project scope, default omission on save, empty project config cleanup, shortcut deletion cleanup, partial updates, autonomous mode roundtrip, concurrent writes.
+4. **`audible-notifications.test.ts`** (166 lines) — 5 tests: defaults, roundtrip persistence, partial event merge, backcompat with missing fields, preservation of existing config.
+5. **`prompt-shortcuts.test.ts`** (135 lines) — 5 tests: default shortcuts, persist/load, invalid filtering, all-invalid fallback, non-array normalization.
+6. **`pinned-branches.test.ts`** (115 lines) — 5 tests: workspace read/write, null workspace, unpin cleanup, legacy project config ignore.
+
+No test logic changes — same 28 tests, same assertions. The `createDefaultSavePayload` helper eliminates the repeated 40-field inline objects that were the main source of bloat in the persistence tests.
+
+**Files:**
+- `test/runtime/config/runtime-config.test.ts` — deleted
+- `test/runtime/config/runtime-config-helpers.ts` — new shared helpers
+- `test/runtime/config/agent-selection.test.ts` — new
+- `test/runtime/config/config-persistence.test.ts` — new
+- `test/runtime/config/audible-notifications.test.ts` — new
+- `test/runtime/config/prompt-shortcuts.test.ts` — new
+- `test/runtime/config/pinned-branches.test.ts` — new
+
 ## Fix: remember last viewed file when switching tasks + preserve file browser scroll position (2026-04-15)
 
 **Problem 1 — Git view file selection resets on task switch:** `git-view.tsx:574-577` had a `useEffect([taskId])` that unconditionally set `selectedPath` to `null` when switching tasks. A module-level `lastSelectedPathByScope` Map and auto-select effect already existed to restore the cached path, but the explicit null reset created an intermediate state that interfered with restoration timing.
