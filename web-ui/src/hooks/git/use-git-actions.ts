@@ -15,6 +15,7 @@ import {
 	useTaskWorkspaceSnapshotValue,
 	useTaskWorkspaceStateVersionValue,
 } from "@/stores/workspace-metadata-store";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -309,6 +310,7 @@ export function useGitActions({
 					});
 					return false;
 				}
+				getTerminalController(taskId)?.focus?.();
 				return true;
 			} finally {
 				setTaskGitActionLoading(taskId, action, null);

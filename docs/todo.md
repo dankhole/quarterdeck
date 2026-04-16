@@ -220,10 +220,6 @@ The diff viewer has some inline comment infrastructure. Investigate how it curre
 
 Add a "Reset to here" action in the top-bar branch context menu that performs `git reset --hard <selected-ref>` on the task's worktree branch. Must include a confirmation dialog ("Are you sure? This will discard all commits after X and any uncommitted changes."). This is per-worktree only — never touches the main repo.
 
-## Don't defocus agent terminal after submitting input
-
-After pressing enter to submit input in the agent chat, keyboard focus should stay on the agent terminal. Currently focus leaves and requires a click to re-engage. When both agent terminal and shell terminal are visible, focus should go to whichever was last clicked — but the default (agent terminal only) should never lose focus on submit.
-
 ## Restore sidebar panel state when returning to agent chat
 
 If a sidebar panel (e.g. task column) was open before switching to a full-screen main view (e.g. file browser), it should automatically reopen when navigating back to agent chat. Currently the sidebar state is lost on view switch.

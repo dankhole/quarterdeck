@@ -2,6 +2,22 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: restore terminal focus after programmatic input and task selection (2026-04-15)
+
+**What:** After sending input to the agent terminal via prompt shortcuts, review comments, or git actions, keyboard focus now returns to the terminal. Clicking/double-clicking a task from the column panel also focuses the terminal.
+
+**Why:** `TerminalSlot.input()` and `TerminalSlot.paste()` send data to the PTY via xterm.js but don't call `terminal.focus()`. When triggered from a UI button (prompt shortcut, commit, etc.), DOM focus stayed on the button element. The user had to click the terminal to type again. Similarly, selecting a task from the column panel when already on the terminal view didn't re-focus because no React state change occurred to trigger autoFocus.
+
+**Approach:** Added `focus()` as an optional method on the `TerminalController` interface (following the `waitForLikelyPrompt` precedent). Focus calls are placed at specific call sites rather than inside `sendTaskSessionInput` — the latter has 11+ callers with different focus expectations (e.g., `handleAddReviewComments` pastes text without submitting, so stealing focus would be wrong). For task selection, `handleCardSelectWithFocus` wraps the existing handler to focus when `mainView === "terminal"`, and `handleCardDoubleClick` uses `requestAnimationFrame` to focus after the view switch.
+
+**Files:**
+- `web-ui/src/terminal/terminal-controller-registry.ts` — added `focus?: () => void` to `TerminalController` interface
+- `web-ui/src/terminal/use-persistent-terminal-session.ts` — registered `focus` forwarding to `terminalRef.current?.focus()`
+- `web-ui/src/hooks/use-prompt-shortcuts.ts` — focus after prompt shortcut submit
+- `web-ui/src/hooks/board/use-board-interactions.ts` — focus after review comment submit
+- `web-ui/src/hooks/git/use-git-actions.ts` — focus after git action submit
+- `web-ui/src/App.tsx` — `handleCardSelectWithFocus` for column panel clicks, focus in `handleCardDoubleClick`
+
 ## Fix: reconciliation sweep race prevents session resume after server restart (2026-04-15)
 
 **Root cause:** `checkInterruptedNoRestart` in `session-reconciliation.ts` is a safety net for sessions that failed auto-restart during the current server lifetime. But it also matched sessions hydrated from disk after a restart — those have `state: "interrupted"` with no `pendingAutoRestart`. The sweep fired within the first 10 seconds, applying `autorestart.denied` to move them to `awaiting_review` with `reviewReason: "interrupted"`. When the UI connected shortly after and `resumeInterruptedSessions` ran, it looked for `summary?.state === "interrupted"` (line 477 of workspace-registry.ts) — no match, nothing resumed.

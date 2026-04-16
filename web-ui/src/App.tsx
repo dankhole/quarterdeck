@@ -56,6 +56,7 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { cancelWarmup, initPool, warmup } from "@/terminal/terminal-pool";
 import type { BoardData } from "@/types";
 import { createIdleTaskSession } from "@/utils/app-utils";
@@ -411,10 +412,23 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 		[git.setMainView, setSelectedTaskId],
 	);
 
+	const handleCardSelectWithFocus = useCallback(
+		(taskId: string) => {
+			interactions.handleCardSelect(taskId);
+			if (git.mainView === "terminal") {
+				requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
+			}
+		},
+		[interactions.handleCardSelect, git.mainView],
+	);
+
 	const handleCardDoubleClick = useCallback(
 		(taskId: string) => {
 			interactions.handleCardSelect(taskId);
 			git.setMainView("terminal", { setSelectedTaskId });
+			// Ensure the terminal gets focus even when the task is already selected
+			// and the view is already "terminal" (no re-render to trigger autoFocus).
+			requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
 		},
 		[interactions.handleCardSelect, git.setMainView, setSelectedTaskId],
 	);
@@ -743,7 +757,7 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 							selection={selectedCard}
 							currentProjectId={project.currentProjectId}
 							sessionSummary={detailSession}
-							onCardSelect={interactions.handleCardSelect}
+							onCardSelect={handleCardSelectWithFocus}
 							onCardDoubleClick={handleCardDoubleClick}
 							onCreateTask={handleOpenCreateTask}
 							onStartAllTasks={interactions.handleStartAllBacklogTasksFromBoard}

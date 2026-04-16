@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: restore terminal focus after programmatic input and task selection
+
+- Prompt shortcuts, review comment submission, and git actions (commit/PR) now return keyboard focus to the agent terminal after sending input. Previously focus stayed on the triggering button, requiring a click to re-engage.
+- Clicking or double-clicking a task from the column panel now focuses the agent terminal when the terminal view is active.
+- Added optional `focus()` method to `TerminalController` interface, wired through the persistent terminal session to `TerminalSlot.focus()`.
+
 ### Fix: reconciliation sweep no longer prevents session resume after server restart
 
 - The reconciliation sweep's `checkInterruptedNoRestart` was racing with `resumeInterruptedSessions` — moving hydrated-from-disk sessions from `interrupted` to `awaiting_review` within the first 10-second sweep, before the UI could connect and trigger the resume. By the time the UI connected, the resume filter (`state === "interrupted"`) no longer matched, so tasks never restarted.

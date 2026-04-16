@@ -4,6 +4,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { PromptShortcut } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -88,6 +89,7 @@ export function usePromptShortcuts({
 				}
 
 				setLastUsedLabel(shortcutLabel);
+				getTerminalController(taskId)?.focus?.();
 			} finally {
 				isRunningRef.current = false;
 				setIsRunning(false);

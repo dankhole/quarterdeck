@@ -1,6 +1,7 @@
 export interface TerminalController {
 	input: (text: string) => boolean;
 	paste: (text: string) => boolean;
+	focus?: () => void;
 	waitForLikelyPrompt?: (timeoutMs: number) => Promise<boolean>;
 }
 

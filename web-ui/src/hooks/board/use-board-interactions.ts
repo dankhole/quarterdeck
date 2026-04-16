@@ -15,6 +15,7 @@ import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { findCardSelection, updateTask } from "@/state/board-state";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -257,6 +258,8 @@ export function useBoardInteractions({
 					message: submitted.message ?? "Could not submit review comments to the task session.",
 					timeout: 7000,
 				});
+			} else {
+				getTerminalController(taskId)?.focus?.();
 			}
 		},
 		[sendTaskSessionInput],
