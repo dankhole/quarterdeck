@@ -2,6 +2,15 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: restore sidebar panel state when returning to agent chat (2026-04-16)
+
+**Problem:** When a sidebar panel (e.g. task_column) was open and the user switched to a full-screen main view (files or git), the auto-coupling rule in `setMainView` collapsed the sidebar. Switching back to terminal view did nothing to restore it — the sidebar stayed collapsed, forcing the user to manually reopen it every time.
+
+**Fix:** Added `sidebarBeforeAutoCollapseRef` to `useCardDetailLayout`. When `setMainView("files")` or `setMainView("git")` auto-collapses a non-null, non-commit, non-pinned sidebar, the current sidebar ID is saved to the ref. When `setMainView("terminal")` is called and the sidebar is still null, the saved value is restored. The ref is cleared in four places to prevent stale restoration: (1) manual `toggleSidebar` calls, (2) `setMainView("home")`, (3) project switch reset, (4) after successful restoration. This ensures the restore only fires for the exact auto-collapse → return-to-terminal flow — not after the user has manually changed sidebar state.
+
+**Files:**
+- `web-ui/src/resize/use-card-detail-layout.ts` — added `sidebarBeforeAutoCollapseRef`, save in files/git branch, restore in terminal branch, clear in toggleSidebar/home/project-switch
+
 ## Fix: remember last viewed file when switching tasks + preserve file browser scroll position (2026-04-15)
 
 **Problem 1 — Git view file selection resets on task switch:** `git-view.tsx:574-577` had a `useEffect([taskId])` that unconditionally set `selectedPath` to `null` when switching tasks. A module-level `lastSelectedPathByScope` Map and auto-select effect already existed to restore the cached path, but the explicit null reset created an intermediate state that interfered with restoration timing.

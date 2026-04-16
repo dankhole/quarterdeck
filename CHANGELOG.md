@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: restore sidebar panel state when returning to agent chat
+
+- Switching from agent chat (terminal view) to a full-screen view (file browser, git) and back now automatically reopens the previously-open sidebar panel (e.g. task column). The auto-collapse on view switch saves what was open; returning to terminal restores it. Manual sidebar toggles, home navigation, and project switches clear the saved state so restoration only fires for the specific auto-collapse → return flow.
+
 ## [0.9.2] — 2026-04-15
 
 ### Fix: remember last viewed file when switching tasks

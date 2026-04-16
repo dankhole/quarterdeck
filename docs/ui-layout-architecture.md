@@ -119,7 +119,8 @@ These fire automatically when state changes. They are defaults, not locks — th
 | Trigger | Main view | Sidebar | Other |
 |---------|-----------|---------|-------|
 | `setMainView("home")` | home | projects | Deselects task via callback |
-| `setMainView("files")` or `setMainView("git")` | (set) | auto-collapse | Unless `sidebar === "commit"` or sidebar is pinned |
+| `setMainView("files")` or `setMainView("git")` | (set) | auto-collapse | Unless `sidebar === "commit"` or sidebar is pinned. Saves collapsed sidebar for restoration. |
+| `setMainView("terminal")` | terminal | restore saved | If sidebar was auto-collapsed by files/git, restores it. No-op if user manually changed sidebar since. |
 | Task selected (was on `home`) | terminal | task_column | — |
 | Task selected (was on `terminal`/`files`/`git`) | (unchanged) | (unchanged) | All work with task context |
 | Task deselected (was on `terminal`) | home | projects | Terminal needs a task |

@@ -219,8 +219,3 @@ The diff viewer has some inline comment infrastructure. Investigate how it curre
 ## "Reset to here" in branch context menu
 
 Add a "Reset to here" action in the top-bar branch context menu that performs `git reset --hard <selected-ref>` on the task's worktree branch. Must include a confirmation dialog ("Are you sure? This will discard all commits after X and any uncommitted changes."). This is per-worktree only — never touches the main repo.
-
-## Restore sidebar panel state when returning to agent chat
-
-If a sidebar panel (e.g. task column) was open before switching to a full-screen main view (e.g. file browser), it should automatically reopen when navigating back to agent chat. Currently the sidebar state is lost on view switch.
-

@@ -137,24 +137,39 @@ export function useCardDetailLayout({
 	const sidebarPinnedRef = useRef(sidebarPinned);
 	sidebarPinnedRef.current = sidebarPinned;
 
+	// Tracks sidebar that was auto-collapsed when switching to files/git,
+	// so it can be restored when switching back to terminal.
+	const sidebarBeforeAutoCollapseRef = useRef<SidebarId | null>(null);
+
 	/**
 	 * Set the main view. Auto-coupling rules:
 	 * - "home" → also sets sidebar to "projects" and deselects the task.
 	 * - "files" / "git" → collapse sidebar if not pinned (integrated tree replaces it).
-	 * - "terminal" → no side effects on sidebar or task selection.
+	 *   Remembers the collapsed sidebar for restoration.
+	 * - "terminal" → restores sidebar if it was auto-collapsed by a previous view switch.
 	 */
 	const setMainView = useCallback(
 		(view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => {
 			setMainViewPersist(view);
 			if (view === "home") {
 				setSidebarPersist("projects");
+				sidebarBeforeAutoCollapseRef.current = null;
 				callbacks?.setSelectedTaskId?.(null);
 			} else if (
 				(view === "files" || view === "git") &&
 				sidebarRef.current !== "commit" &&
 				!sidebarPinnedRef.current
 			) {
+				if (sidebarRef.current !== null) {
+					sidebarBeforeAutoCollapseRef.current = sidebarRef.current;
+				}
 				setSidebarPersist(null);
+			} else if (view === "terminal") {
+				const savedSidebar = sidebarBeforeAutoCollapseRef.current;
+				if (savedSidebar && sidebarRef.current === null) {
+					setSidebarPersist(savedSidebar);
+				}
+				sidebarBeforeAutoCollapseRef.current = null;
 			}
 		},
 		[setMainViewPersist, setSidebarPersist],
@@ -167,6 +182,7 @@ export function useCardDetailLayout({
 	 */
 	const toggleSidebar = useCallback(
 		(id: SidebarId) => {
+			sidebarBeforeAutoCollapseRef.current = null;
 			if (id === sidebar) {
 				setSidebarPersist(null);
 				return;
@@ -230,6 +246,7 @@ export function useCardDetailLayout({
 	// for same-project browsing. But a full project switch should always land on the board.
 	useEffect(() => {
 		if (!isProjectSwitching) return;
+		sidebarBeforeAutoCollapseRef.current = null;
 		setMainViewPersist("home");
 		setSidebarPersist("projects");
 	}, [isProjectSwitching, setMainViewPersist, setSidebarPersist]);
