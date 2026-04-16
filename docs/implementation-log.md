@@ -2,6 +2,25 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split session-manager into concern-based modules (2026-04-16)
+
+**Problem:** `src/terminal/session-manager.ts` was 928 lines mixing four distinct concerns — process lifecycle (spawn/exit/restart), output processing (8-stage pipeline), input routing (protocol detection, interrupt handling), and PTY control (resize/pause/attach). Reading the exit handler required understanding the output pipeline, which required understanding workspace trust. No seam to stop at.
+
+**Approach:** Direction A — functional extraction by concern, following the existing companion module pattern (`session-workspace-trust.ts`, `session-auto-restart.ts`, etc.). Free functions with explicit deps interfaces for testability and coupling documentation. The manager stays as the public facade and central coordination hub (`applySessionEventWithSideEffects`).
+
+**Groupings:**
+- `session-lifecycle.ts` (510 lines) — `spawnTaskSession`, `handleTaskSessionExit` (with `resumeConversation` fallback branch), `spawnShellSession`, `recoverStaleSession`, `hydrateSessionEntries`, `isTerminalReviewReason`
+- `session-output-pipeline.ts` (154 lines) — `processTaskSessionOutput` (ordered 8-stage pipeline), `processShellSessionOutput` (shared protocol filter + mirror + broadcast), `disableOutputOscIntercept`
+- `session-input-pipeline.ts` (124 lines) — `processSessionInput` (permission clearing, Codex flagging, interrupt detection), `isTerminalProtocolResponse`
+- `session-manager.ts` (370 lines) — `TerminalSessionManager` class: constructor, `attach`/`getRestoreSnapshot`, thin wrappers for lifecycle and pipeline functions, `resize`/`pauseOutput`/`resumeOutput`, `stopTaskSession`/`markInterruptedAndStopAll`, `applySessionEventWithSideEffects`, `ensureProcessEntry`
+
+**Design decisions:**
+- Shell output handler now calls `processShellSessionOutput` instead of duplicating the protocol filter + mirror + broadcast inline — eliminates the 25-line copy-paste.
+- Exit handler closure: `handleTaskSessionExit` was registered as a callback during spawn and closed over `request`. Now it's an explicit parameter to the extracted function, wired via `onExit: (req, event) => deps.onExit(request, event)`.
+- Request cloning in `startTaskSession` uses inline spread with explicit `images` deep-clone (matching `cloneStartTaskSessionRequest` behavior), not a helper call, since the clone is at the call site not inside the extracted function.
+
+**Files:** `src/terminal/session-manager.ts` (rewritten), `src/terminal/session-lifecycle.ts` (new), `src/terminal/session-output-pipeline.ts` (new), `src/terminal/session-input-pipeline.ts` (new). Zero behavior changes — all 729 tests pass.
+
 ## Refactor: split workspace-api into domain-grouped modules (2026-04-16)
 
 **Problem:** `src/trpc/workspace-api.ts` was 1,092 lines — a single factory function returning 43 methods. Most methods are thin adapter glue (resolve cwd, call domain function, maybe notify, catch errors), but the file size made it expensive for LLM agents to load into context when touching any single method.

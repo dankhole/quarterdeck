@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split session-manager into concern-based modules
+
+- Split the 928-line `TerminalSessionManager` class into 4 files organized by concern — lifecycle (spawn/exit/recovery/hydration, 510 lines), output pipeline (protocol filter → mirror → trust → transition → broadcast, 154 lines), input pipeline (protocol detection → permission clearing → interrupt → PTY write, 124 lines), and the slimmed manager (370 lines, registry + PTY control + state coordination). Follows the existing free-function-with-deps-injection pattern used by the 5 companion modules. Zero behavior changes.
+
 ### Refactor: split workspace-api into domain-grouped modules
 
 - Split the 1,092-line `src/trpc/workspace-api.ts` into 7 focused files grouped by git domain — shared helpers (148 lines), git ops (305), changes/files/history (314), staging/stash (178), conflict resolution (106), state/worktrees (140), and a 21-line coordinator that composes them via spread. Each domain module returns a typed `Pick<>` of the full workspace API interface, validated at compile time. Zero behavior changes.
