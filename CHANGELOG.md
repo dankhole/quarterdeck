@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split globals.css into domain-specific stylesheets
+
+- Split the 920-line `web-ui/src/styles/globals.css` into 9 focused files — `theme.css` (design tokens), `base.css` (resets, scrollbars, focus ring), `board.css` (board layout, card shell, dependencies, navbar), `diff.css` (diff viewer, split view, syntax tokens, readonly), `markdown.css` (rendered prose), `components.css` (project rows, file tree, git history, terminal, toast), `animations.css` (keyframes, skeleton), `pwa.css` (window controls overlay), `utilities.css` (line clamp helpers). `globals.css` is now an 11-line import manifest. No style changes.
+
 ### Feature: stale-while-revalidate board caching for project switches
 
 - Switching between previously visited projects now shows the cached board state immediately instead of a loading spinner. Fresh data loads in the background and seamlessly replaces the cached version. Board state (tasks, columns, sessions, workspace metadata) is cached per project in memory with a 5-minute TTL and 10-entry limit. `canPersistWorkspaceState` stays false until authoritative data arrives, preventing stale data from being written back to disk. Complements the existing preload-on-hover cache (which handles first visits) with longer-lived caching for revisits.

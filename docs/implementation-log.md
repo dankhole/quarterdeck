@@ -2,6 +2,38 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split globals.css into domain-specific stylesheets (2026-04-16)
+
+**Problem:** `web-ui/src/styles/globals.css` was a 920-line god file mixing 9 unrelated concerns — theme tokens, base resets, board layout, diff viewer styles (the largest block at ~300 lines), markdown prose rendering, component-specific styles, keyframe animations, PWA window controls overlay, and utility classes. Finding and editing styles required scrolling through the entire file.
+
+**Fix:** Split into 9 files by domain, each self-contained:
+
+| File | Lines | Domain |
+|------|-------|--------|
+| `theme.css` | 45 | `@theme` design tokens (surfaces, borders, text, status, fonts, radii) |
+| `base.css` | 39 | html/body/root reset, scrollbar styling, focus ring |
+| `board.css` | 145 | Board flex layout, column cards, card shell, dependency overlays/paths, navbar buttons |
+| `diff.css` | 304 | Diff rows, split view grid, inline segments, syntax tokens, entry/header/comments, readonly mode |
+| `markdown.css` | 151 | Rendered markdown headings, lists, tables, code blocks, blockquotes |
+| `components.css` | 143 | Project navigation rows, file tree rows, git history rows, terminal scrollbar, Sonner toast |
+| `animations.css` | 37 | `@keyframes` (overlay, dialog, tooltip, skeleton) + `.kb-skeleton` class |
+| `pwa.css` | 24 | `@media (display-mode: window-controls-overlay)` drag regions |
+| `utilities.css` | 19 | `.kb-line-clamp-{1,2,5}` helpers |
+
+`globals.css` reduced to an 11-line import manifest (`@import "tailwindcss"` + 9 local imports). No style changes — verified via full production build (CSS bundle size unchanged).
+
+**Files:**
+- `web-ui/src/styles/globals.css` — rewritten as import manifest
+- `web-ui/src/styles/theme.css` — new
+- `web-ui/src/styles/base.css` — new
+- `web-ui/src/styles/board.css` — new
+- `web-ui/src/styles/diff.css` — new
+- `web-ui/src/styles/markdown.css` — new
+- `web-ui/src/styles/components.css` — new
+- `web-ui/src/styles/animations.css` — new
+- `web-ui/src/styles/pwa.css` — new
+- `web-ui/src/styles/utilities.css` — new
+
 ## Feature: stale-while-revalidate board caching for project switches (2026-04-16)
 
 **Problem:** Switching between projects showed a full-screen loading spinner while the WebSocket reconnected and the snapshot loaded, even for projects the user had just visited seconds ago. The server-side latency was already optimized, but the client threw away all board state on every project switch and waited for a fresh load.

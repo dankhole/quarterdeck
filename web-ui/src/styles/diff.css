@@ -1,0 +1,304 @@
+/* -- Diff rows -- */
+
+.kb-diff-row {
+	display: grid;
+	grid-template-columns: 2rem minmax(0, 1fr);
+	gap: 8px;
+	padding: 1px 2px 1px 0;
+	line-height: 1.6;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.kb-diff-row:hover {
+	background: var(--color-surface-2);
+}
+
+.kb-diff-row-added:hover {
+	background: rgba(63, 185, 80, 0.25);
+}
+
+.kb-diff-row-removed:hover {
+	background: rgba(248, 81, 73, 0.25);
+}
+
+.kb-diff-line-number {
+	position: relative;
+	text-align: right;
+	user-select: none;
+}
+
+.kb-diff-comment-gutter {
+	position: absolute;
+	inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+}
+
+.kb-diff-row:hover .kb-diff-comment-gutter {
+	display: flex;
+}
+
+.kb-diff-row:hover .kb-diff-line-number-text {
+	opacity: 0;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter {
+	display: flex;
+}
+
+.kb-diff-row-commented .kb-diff-line-number-text {
+	opacity: 0;
+}
+
+.kb-diff-gutter-icon-delete {
+	display: none;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter:hover .kb-diff-gutter-icon-comment {
+	display: none;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter:hover .kb-diff-gutter-icon-delete {
+	display: contents;
+}
+
+.kb-diff-row-commented.kb-diff-row-context {
+	background: var(--color-surface-2);
+}
+
+.kb-diff-row-commented.kb-diff-row-added {
+	background: rgba(63, 185, 80, 0.25);
+}
+
+.kb-diff-row-commented.kb-diff-row-removed {
+	background: rgba(248, 81, 73, 0.25);
+}
+
+.kb-diff-row-added {
+	background: rgba(63, 185, 80, 0.15);
+}
+
+.kb-diff-row-removed {
+	background: rgba(248, 81, 73, 0.15);
+}
+
+.kb-diff-row-context {
+	background: transparent;
+}
+
+.kb-diff-row-noncommentable {
+	cursor: default;
+}
+
+.kb-diff-row-noncommentable:hover .kb-diff-comment-gutter {
+	display: none;
+}
+
+.kb-diff-row-noncommentable:hover .kb-diff-line-number-text {
+	opacity: 1;
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-context:hover {
+	background: transparent;
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-added:hover {
+	background: rgba(63, 185, 80, 0.2);
+}
+
+.kb-diff-row-noncommentable.kb-diff-row-removed:hover {
+	background: rgba(248, 81, 73, 0.2);
+}
+
+/* -- Split diff -- */
+
+.kb-diff-split-grid-shell {
+	position: relative;
+	background: var(--color-surface-1);
+}
+
+.kb-diff-split-grid-backgrounds {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	pointer-events: none;
+}
+
+.kb-diff-split-grid-background-column {
+	background-color: rgba(110, 118, 129, 0.06);
+	background-image: linear-gradient(
+		135deg,
+		rgba(110, 118, 129, 0.18) 25%,
+		transparent 25%,
+		transparent 50%,
+		rgba(110, 118, 129, 0.18) 50%,
+		rgba(110, 118, 129, 0.18) 75%,
+		transparent 75%,
+		transparent
+	);
+	background-size: 12px 12px;
+	background-position: 0 0;
+}
+
+.kb-diff-split-grid-background-column-right {
+	border-left: 1px solid var(--color-border);
+}
+
+.kb-diff-split-grid-content {
+	position: relative;
+	z-index: 1;
+}
+
+.kb-diff-split-grid-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.kb-diff-split-cell {
+	min-width: 0;
+	min-height: 100%;
+}
+
+.kb-diff-split-cell-right {
+	border-left: 1px solid var(--color-border);
+}
+
+.kb-diff-split-cell-filled {
+	background: var(--color-surface-1);
+}
+
+.kb-diff-split-cell-placeholder {
+	background: transparent;
+}
+
+/* -- Inline segments -- */
+
+.kb-diff-segment-added {
+	background: rgba(63, 185, 80, 0.3);
+	border-radius: 2px;
+}
+
+.kb-diff-segment-removed {
+	background: rgba(248, 81, 73, 0.3);
+	border-radius: 2px;
+}
+
+/* -- Diff text + syntax tokens -- */
+
+.kb-diff-text {
+	min-width: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.kb-diff-text .token.comment,
+.kb-diff-text .token.prolog,
+.kb-diff-text .token.doctype,
+.kb-diff-text .token.cdata {
+	color: var(--color-text-tertiary);
+}
+
+.kb-diff-text .token.keyword,
+.kb-diff-text .token.atrule,
+.kb-diff-text .token.selector {
+	color: var(--color-status-blue);
+}
+
+.kb-diff-text .token.string,
+.kb-diff-text .token.char,
+.kb-diff-text .token.inserted {
+	color: var(--color-status-green);
+}
+
+.kb-diff-text .token.number,
+.kb-diff-text .token.boolean,
+.kb-diff-text .token.constant {
+	color: var(--color-status-orange);
+}
+
+.kb-diff-text .token.function,
+.kb-diff-text .token.class-name {
+	color: var(--color-status-blue);
+}
+
+.kb-diff-text .token.operator,
+.kb-diff-text .token.punctuation {
+	color: var(--color-text-secondary);
+}
+
+/* -- Diff entry -- */
+
+.kb-diff-entry {
+	overflow-x: auto;
+	padding-bottom: 4px;
+}
+
+.kb-diff-entry + .kb-diff-entry {
+	border-top: 1px solid var(--color-border);
+}
+
+.kb-diff-file-header {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	border-bottom: 1px solid var(--color-border);
+	font-size: 12px;
+}
+
+.kb-diff-file-header[aria-expanded="false"] {
+	border-radius: var(--radius-md);
+}
+
+.kb-diff-inline-comment {
+	padding: 4px 6px;
+}
+
+.kb-diff-comments-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--color-border);
+	background: var(--color-surface-1);
+}
+
+.kb-diff-comments-count {
+	font-size: 12px;
+}
+
+/* -- Read-only diff -- */
+
+.kb-diff-readonly .kb-diff-row {
+	cursor: default;
+}
+
+.kb-diff-readonly .kb-diff-row:hover {
+	background: inherit;
+}
+
+.kb-diff-readonly .kb-diff-row-added,
+.kb-diff-readonly .kb-diff-row-added:hover {
+	background: rgba(63, 185, 80, 0.15);
+}
+
+.kb-diff-readonly .kb-diff-row-removed,
+.kb-diff-readonly .kb-diff-row-removed:hover {
+	background: rgba(248, 81, 73, 0.15);
+}
+
+.kb-diff-readonly .kb-diff-row-context,
+.kb-diff-readonly .kb-diff-row-context:hover {
+	background: transparent;
+}
+
+.kb-diff-readonly .kb-diff-row:hover .kb-diff-comment-gutter {
+	display: none;
+}
+
+.kb-diff-readonly .kb-diff-row:hover .kb-diff-line-number-text {
+	opacity: 1;
+}

@@ -1,0 +1,39 @@
+html,
+body,
+#root {
+	height: 100%;
+	overflow: hidden;
+	background: var(--color-surface-0);
+	color: var(--color-text-primary);
+}
+
+/* -- Scrollbars -- */
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-surface-4) transparent;
+}
+
+*::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: var(--color-surface-4);
+	border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: var(--color-text-tertiary);
+}
+
+/* -- Focus ring -- */
+
+:focus:not(:focus-visible) {
+	outline: none;
+}

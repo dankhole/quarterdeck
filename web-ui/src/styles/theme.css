@@ -1,0 +1,45 @@
+@theme {
+	/* Surface hierarchy */
+	--color-surface-0: #1F2428;
+	--color-surface-1: #24292E;
+	--color-surface-2: #2D3339;
+	--color-surface-3: #353C43;
+	--color-surface-4: #3E464E;
+
+	/* Borders */
+	--color-border: #30363D;
+	--color-border-bright: #444C56;
+	--color-border-focus: #0084FF;
+	--color-divider: #141820;
+
+	/* Text */
+	--color-text-primary: #E6EDF3;
+	--color-text-secondary: #8B949E;
+	--color-text-tertiary: #6E7681;
+
+	/* Accent / brand */
+	--color-accent: #0084FF;
+	--color-accent-hover: #339DFF;
+
+	/* Status colors */
+	--color-status-blue: #4C9AFF;
+	--color-status-green: #3FB950;
+	--color-status-orange: #D29922;
+	--color-status-red: #F85149;
+	--color-status-purple: #A371F7;
+	--color-status-gold: #D4A72C;
+	--color-status-violet: #8B5CF6;
+	--color-status-rose: #F43F5E;
+	--color-status-cyan: #06B6D4;
+	--color-status-lime: #84CC16;
+
+	/* Typography */
+	--font-sans: "Geist", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+	/* Border radius */
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 8px;
+	--radius-xl: 12px;
+}

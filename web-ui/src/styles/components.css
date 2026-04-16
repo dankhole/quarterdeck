@@ -1,0 +1,143 @@
+/* -- Project navigation rows -- */
+
+.kb-project-row {
+}
+
+.kb-project-row-actions {
+	opacity: 0;
+}
+
+.kb-project-row:hover {
+	background: var(--color-surface-2);
+}
+
+.kb-project-row-selected,
+.kb-project-row-selected:hover {
+	background: #0084FF;
+	color: #fff;
+}
+
+.kb-project-row:hover .kb-project-row-actions {
+	opacity: 1;
+}
+
+/* -- File tree rows -- */
+
+.kb-file-tree-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 4px 8px;
+	border: none;
+	border-radius: var(--radius-md);
+	background: none;
+	text-align: left;
+	font-family: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	color: var(--color-text-secondary);
+}
+
+.kb-file-tree-row:hover:not(.kb-file-tree-row-directory) {
+	background: var(--color-surface-3);
+}
+
+.kb-file-tree-row-directory {
+	cursor: default;
+	color: var(--color-text-tertiary);
+}
+
+.kb-file-tree-row-selected {
+	background: var(--color-accent);
+	color: #fff;
+}
+
+.kb-file-tree-row.kb-file-tree-row-selected:hover {
+	background: var(--color-accent);
+	color: #fff;
+}
+
+/* -- Git history rows -- */
+
+.kb-git-ref-row {
+	background: none;
+}
+
+.kb-git-ref-row + .kb-git-ref-row,
+.kb-git-ref-row + div + .kb-git-ref-row {
+	margin-top: 4px;
+}
+
+.kb-git-ref-row:hover {
+	background: var(--color-surface-3);
+}
+
+.kb-git-ref-row-selected,
+.kb-git-ref-row-selected:hover {
+	background: var(--color-accent);
+	color: #fff;
+}
+
+.kb-git-ref-row-selected-warning,
+.kb-git-ref-row-selected-warning:hover {
+	background: rgba(210, 153, 34, 0.2);
+	color: var(--color-text-primary);
+}
+
+.kb-git-working-copy-header {
+	background: rgba(210, 153, 34, 0.2);
+}
+
+.kb-git-commit-row {
+	background: none;
+}
+
+.kb-git-commit-row:hover {
+	background: var(--color-surface-3);
+}
+
+.kb-git-commit-row-selected,
+.kb-git-commit-row-selected:hover {
+	background: var(--color-accent);
+	color: #fff;
+}
+
+.kb-git-commit-row-selected .kb-git-commit-row-meta,
+.kb-git-commit-row-selected:hover .kb-git-commit-row-meta,
+.kb-git-commit-row-selected .kb-git-commit-row-message,
+.kb-git-commit-row-selected:hover .kb-git-commit-row-message {
+	color: #fff !important;
+}
+
+/* -- Terminal scrollbar -- */
+
+.kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical {
+	width: 10px !important;
+	right: 1px !important;
+}
+
+.kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+	left: 2px !important;
+	width: 6px !important;
+	border-radius: 999px;
+}
+
+/* -- Sonner toast -- */
+
+[data-sonner-toast].toast-with-dismiss-link {
+	flex-wrap: wrap;
+}
+
+[data-sonner-toast].toast-with-dismiss-link [data-cancel] {
+	font-size: 11px;
+	font-weight: normal;
+	padding: 0;
+	margin-left: 0;
+	margin-top: 2px;
+	width: 100%;
+	justify-content: flex-start;
+	color: var(--color-text-tertiary);
+	background: transparent;
+	border: none;
+}
