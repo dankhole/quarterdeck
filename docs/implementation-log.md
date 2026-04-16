@@ -2,6 +2,26 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: extract domain logic from hooks into plain TS modules — Phase 2 (2026-04-15)
+
+**Goal:** Phase 2 of the hooks directory refactoring plan (`docs/refactor-hooks-directory.md`). Extract business logic from React hooks into companion pure TS modules so the logic is readable and testable without React.
+
+**What changed:**
+
+Split 3 priority hooks into domain module + thin React wrapper pairs, following the pattern in `docs/patterns-frontend-service-extraction.md`:
+
+1. **`hooks/board/task-lifecycle.ts`** (from `use-task-lifecycle.ts`) — Extracted 5 functions: `isNonIsolatedTask` (predicate), `buildWorkspaceInfoFromEnsureResponse` (maps ensure response shape to workspace-info shape), `revertOptimisticMoveToInProgress` / `revertOptimisticMoveToReview` (board state reverts when async operations fail), `applyDeferredMoveToInProgress` (non-optimistic column move). The hook now calls these instead of inlining the board manipulation and guard logic.
+
+2. **`hooks/git/conflict-resolution.ts`** (from `use-conflict-resolution.ts`) — Extracted `EMPTY_GIT_SYNC_SUMMARY` constant, `shouldResetOnStepChange` (rebase step-advancement detection), `filterUnresolvedPaths` (set difference for conflict file fetching), `detectExternallyResolvedFiles` (external resolution detection between metadata polls), `buildNoWorkspaceContinueResponse` / `buildNoWorkspaceAbortResponse` (fallback responses). The hook's effects and callbacks now delegate to these for decisions and data transforms.
+
+3. **`hooks/project/workspace-sync.ts`** (from `use-workspace-sync.ts`) — Extracted `mergeTaskSessionSummaries` (was already a standalone function, moved to domain module), `WorkspaceVersion` interface (typed version-tracking shape), `shouldApplyWorkspaceUpdate` (stale revision guard — returns `"apply"` or `"skip"`), `shouldHydrateBoard` (board replacement vs session-only merge decision). The hook's `applyWorkspaceState` callback now calls these instead of inlining the revision comparison logic.
+
+**Testing:** 3 new test files with 29 domain-level unit tests (plain `describe`/`it`, no `renderHook`). All 7 existing hook-level test files continue to pass unchanged. Final count: 62 web-ui test files, 595 tests.
+
+**Files:**
+- New: `web-ui/src/hooks/board/task-lifecycle.ts`, `web-ui/src/hooks/board/task-lifecycle.test.ts`, `web-ui/src/hooks/git/conflict-resolution.ts`, `web-ui/src/hooks/git/conflict-resolution.test.ts`, `web-ui/src/hooks/project/workspace-sync.ts`, `web-ui/src/hooks/project/workspace-sync.test.ts`
+- Modified: `web-ui/src/hooks/board/use-task-lifecycle.ts`, `web-ui/src/hooks/git/use-conflict-resolution.ts`, `web-ui/src/hooks/project/use-workspace-sync.ts`
+
 ## Refactor: extract ConnectedTopBar, HomeView, and AppDialogs from AppContent (2026-04-15)
 
 **What:** Extracted three JSX-heavy sections from `web-ui/src/App.tsx` AppContent (1348 → 820 lines) into dedicated child components, each reading from existing contexts and receiving only hook-local values as props.

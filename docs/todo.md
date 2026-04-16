@@ -201,7 +201,7 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 Three phases, done in order:
 
 1. ~~**Subdirectory reorg**~~ — Done. Moved 78 files into 5 domain subdirectories plus relocated 5 misplaced non-hook files. Pure file moves + import path updates.
-2. **Domain logic extraction** — For hooks with >50 lines of business logic, split into a pure TS domain module (`foo-bar.ts`) and a thin React hook (`use-foo-bar.ts`). The domain module has zero React imports and is testable without `renderHook`. Do incrementally, hook-by-hook. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics (candidates, naming, examples): [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 2.
+2. **Domain logic extraction** — For hooks with >50 lines of business logic, split into a pure TS domain module (`foo-bar.ts`) and a thin React hook (`use-foo-bar.ts`). The domain module has zero React imports and is testable without `renderHook`. Do incrementally, hook-by-hook. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics (candidates, naming, examples): [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 2. **In progress:** 3 priority hooks done (`use-task-lifecycle`, `use-conflict-resolution`, `use-workspace-sync`); ~8 candidates remain for incremental extraction.
 3. **Conventions update** — Add "Hooks architecture" section to `web-ui-conventions.md` to codify the domain-module pattern and directory structure. Plan: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 3.
 
 ## Keep task base ref in sync with branch changes

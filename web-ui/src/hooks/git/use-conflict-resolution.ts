@@ -7,19 +7,16 @@ import type {
 	RuntimeConflictContinueResponse,
 	RuntimeConflictFile,
 	RuntimeConflictState,
-	RuntimeGitSyncSummary,
 } from "@/runtime/types";
 import { useConflictState, useHomeConflictState } from "@/stores/workspace-metadata-store";
 
-const emptySummary: RuntimeGitSyncSummary = {
-	currentBranch: null,
-	upstreamBranch: null,
-	changedFiles: 0,
-	additions: 0,
-	deletions: 0,
-	aheadCount: 0,
-	behindCount: 0,
-};
+import {
+	buildNoWorkspaceAbortResponse,
+	buildNoWorkspaceContinueResponse,
+	detectExternallyResolvedFiles,
+	filterUnresolvedPaths,
+	shouldResetOnStepChange,
+} from "./conflict-resolution";
 
 export interface UseConflictResolutionResult {
 	isActive: boolean;
@@ -63,13 +60,11 @@ export function useConflictResolution(options: {
 	// 4. Reset resolvedFiles and reviewedAutoMergedFiles when currentStep changes (rebase advancing to next commit).
 	useEffect(() => {
 		const currentStep = conflictState?.currentStep ?? null;
-		if (currentStep !== previousStepRef.current) {
-			if (previousStepRef.current !== null && currentStep !== null) {
-				setResolvedFiles(new Set());
-				setReviewedAutoMergedFiles(new Set());
-			}
-			previousStepRef.current = currentStep;
+		if (shouldResetOnStepChange(previousStepRef.current, currentStep)) {
+			setResolvedFiles(new Set());
+			setReviewedAutoMergedFiles(new Set());
 		}
+		previousStepRef.current = currentStep;
 	}, [conflictState?.currentStep]);
 
 	// 5. Reset everything when conflict becomes inactive.
@@ -87,7 +82,7 @@ export function useConflictResolution(options: {
 	useEffect(() => {
 		if (!isActive || !conflictState || !options.workspaceId) return;
 
-		const unresolvedPaths = conflictState.conflictedFiles.filter((f) => !resolvedFilesRef.current.has(f));
+		const unresolvedPaths = filterUnresolvedPaths(conflictState.conflictedFiles, resolvedFilesRef.current);
 		if (unresolvedPaths.length === 0) return;
 
 		let cancelled = false;
@@ -119,23 +114,21 @@ export function useConflictResolution(options: {
 	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.workspaceId]);
 
 	// 7. Detect external resolutions (metadata poll shows fewer conflicted files).
-	//    When conflictedFiles shrinks, add disappeared files to resolvedFiles.
 	const previousConflictedFilesRef = useRef<string[]>([]);
 	useEffect(() => {
 		if (!conflictState) return;
-		const prev = previousConflictedFilesRef.current;
-		const curr = conflictState.conflictedFiles;
-		if (prev.length > 0 && curr.length < prev.length) {
-			const disappeared = prev.filter((f) => !curr.includes(f));
-			if (disappeared.length > 0) {
-				setResolvedFiles((existing) => {
-					const next = new Set(existing);
-					for (const f of disappeared) next.add(f);
-					return next;
-				});
-			}
+		const disappeared = detectExternallyResolvedFiles(
+			previousConflictedFilesRef.current,
+			conflictState.conflictedFiles,
+		);
+		if (disappeared.length > 0) {
+			setResolvedFiles((existing) => {
+				const next = new Set(existing);
+				for (const f of disappeared) next.add(f);
+				return next;
+			});
 		}
-		previousConflictedFilesRef.current = curr;
+		previousConflictedFilesRef.current = conflictState.conflictedFiles;
 	}, [conflictState?.conflictedFiles, conflictState]);
 
 	// 8. Fetch auto-merged file content when autoMergedFiles changes.
@@ -200,7 +193,7 @@ export function useConflictResolution(options: {
 
 	const continueResolution = useCallback(async (): Promise<RuntimeConflictContinueResponse> => {
 		if (!options.workspaceId) {
-			return { ok: false, completed: false, summary: emptySummary, output: "" };
+			return buildNoWorkspaceContinueResponse();
 		}
 		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
 		return await trpcClient.workspace.continueConflictResolution.mutate({
@@ -210,7 +203,7 @@ export function useConflictResolution(options: {
 
 	const abortResolution = useCallback(async (): Promise<RuntimeConflictAbortResponse> => {
 		if (!options.workspaceId) {
-			return { ok: false, summary: emptySummary };
+			return buildNoWorkspaceAbortResponse();
 		}
 		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
 		return await trpcClient.workspace.abortConflictResolution.mutate({

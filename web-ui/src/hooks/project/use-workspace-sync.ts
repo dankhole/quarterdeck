@@ -12,8 +12,14 @@ import { fetchWorkspaceState } from "@/runtime/workspace-state-query";
 import { normalizeBoardData } from "@/state/board-state";
 import { setWorkspacePath as setStoreWorkspacePath } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
-import { selectNewestTaskSessionSummary } from "@/utils/session-summary-utils";
 import { toErrorMessage } from "@/utils/to-error-message";
+
+import {
+	mergeTaskSessionSummaries,
+	shouldApplyWorkspaceUpdate,
+	shouldHydrateBoard,
+	type WorkspaceVersion,
+} from "./workspace-sync";
 
 interface UseWorkspaceSyncInput {
 	currentProjectId: string | null;
@@ -38,20 +44,6 @@ interface UseWorkspaceSyncResult {
 	resetWorkspaceSyncState: () => void;
 }
 
-function mergeTaskSessionSummaries(
-	currentSessions: Record<string, RuntimeTaskSessionSummary>,
-	nextSessions: Record<string, RuntimeTaskSessionSummary>,
-): Record<string, RuntimeTaskSessionSummary> {
-	const mergedSessions = { ...currentSessions };
-	for (const [taskId, summary] of Object.entries(nextSessions)) {
-		const newestSummary = selectNewestTaskSessionSummary(mergedSessions[taskId] ?? null, summary);
-		if (newestSummary) {
-			mergedSessions[taskId] = newestSummary;
-		}
-	}
-	return mergedSessions;
-}
-
 export function useWorkspaceSync({
 	currentProjectId,
 	streamedWorkspaceState,
@@ -68,7 +60,7 @@ export function useWorkspaceSync({
 	const [workspaceRevision, setWorkspaceRevision] = useState<number | null>(null);
 	const [workspaceHydrationNonce, setWorkspaceHydrationNonce] = useState(0);
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
-	const workspaceVersionRef = useRef<{ projectId: string | null; revision: number | null }>({
+	const workspaceVersionRef = useRef<WorkspaceVersion>({
 		projectId: null,
 		revision: null,
 	});
@@ -103,10 +95,10 @@ export function useWorkspaceSync({
 				};
 				return;
 			}
-			const currentVersion = workspaceVersionRef.current;
-			const isSameProject = currentVersion.projectId === currentProjectId;
-			const currentRevision = isSameProject ? currentVersion.revision : null;
-			if (isSameProject && currentRevision !== null && nextWorkspaceState.revision < currentRevision) {
+			if (
+				shouldApplyWorkspaceUpdate(workspaceVersionRef.current, currentProjectId, nextWorkspaceState.revision) ===
+				"skip"
+			) {
 				return;
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
@@ -116,8 +108,7 @@ export function useWorkspaceSync({
 				const incomingSessions = nextWorkspaceState.sessions ?? {};
 				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
 			});
-			const shouldHydrateBoard = !isSameProject || currentRevision !== nextWorkspaceState.revision;
-			if (shouldHydrateBoard) {
+			if (shouldHydrateBoard(workspaceVersionRef.current, currentProjectId, nextWorkspaceState.revision)) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
 				setWorkspaceHydrationNonce((current) => current + 1);

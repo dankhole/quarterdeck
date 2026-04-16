@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract domain logic from hooks into plain TS modules (Phase 2)
+
+- Split 3 priority hooks into domain module + thin React wrapper pairs: `task-lifecycle.ts` (board revert helpers, workspace info mapping, isolation predicate), `conflict-resolution.ts` (step-change detection, unresolved path filtering, external resolution detection), `workspace-sync.ts` (session merging, revision conflict guards, board hydration decisions). Each domain module has zero React imports and is testable with plain `describe`/`it`. Adds 29 new domain-level unit tests across 3 test files. Existing hook-level tests unchanged.
+
 ### Refactor: extract ConnectedTopBar, HomeView, and AppDialogs from AppContent
 
 - Extracted three JSX-heavy sections from AppContent (1348 → 820 lines) into dedicated components. Each reads from existing contexts and receives only hook-local values as props — pure JSX extraction with zero behavior change. ConnectedTopBar (184 lines) owns the TopBar with branch pill and git sync wiring; HomeView (271 lines) owns the loading/empty/board/git/files view switch and bottom terminal; AppDialogs (234 lines) owns all 18 dialog/shelf components.

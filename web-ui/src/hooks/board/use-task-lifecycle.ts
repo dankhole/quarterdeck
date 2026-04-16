@@ -4,9 +4,17 @@ import { useCallback } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
-import { disableTaskAutoReview, getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
+import { disableTaskAutoReview } from "@/state/board-state";
 import { setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+
+import {
+	applyDeferredMoveToInProgress,
+	buildWorkspaceInfoFromEnsureResponse,
+	isNonIsolatedTask,
+	revertOptimisticMoveToInProgress,
+	revertOptimisticMoveToReview,
+} from "./task-lifecycle";
 
 export function showNonIsolatedResumeWarning(): void {
 	showAppToast({
@@ -55,23 +63,14 @@ export function useTaskLifecycle({
 			options?: { optimisticMove?: boolean },
 		): Promise<boolean> => {
 			const optimisticMove = options?.optimisticMove ?? true;
-			const isNonIsolated = task.useWorktree === false;
 
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
-			// Calling ensureTaskWorkspace would create an orphan worktree on disk.
-			if (!isNonIsolated) {
+			if (!isNonIsolatedTask(task)) {
 				const ensured = await ensureTaskWorkspace(task);
 				if (!ensured.ok) {
 					notifyError(ensured.message ?? "Could not set up task workspace.");
 					if (optimisticMove) {
-						setBoard((currentBoard) => {
-							const currentColumnId = getTaskColumnId(currentBoard, taskId);
-							if (currentColumnId !== "in_progress") {
-								return currentBoard;
-							}
-							const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-							return reverted.moved ? reverted.board : currentBoard;
-						});
+						setBoard((board) => revertOptimisticMoveToInProgress(board, taskId, fromColumnId) ?? board);
 					}
 					return false;
 				}
@@ -85,15 +84,7 @@ export function useTaskLifecycle({
 				}
 				if (selectedTaskId === taskId) {
 					if (ensured.response) {
-						setTaskWorkspaceInfo({
-							taskId,
-							path: ensured.response.path,
-							exists: true,
-							baseRef: ensured.response.baseRef,
-							branch: ensured.response.branch ?? null,
-							isDetached: !ensured.response.branch,
-							headCommit: ensured.response.baseCommit,
-						});
+						setTaskWorkspaceInfo(buildWorkspaceInfoFromEnsureResponse(taskId, ensured.response));
 					}
 					const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
 					if (infoAfterEnsure) {
@@ -106,26 +97,12 @@ export function useTaskLifecycle({
 			if (!started.ok) {
 				notifyError(started.message ?? "Could not start task session.");
 				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
+					setBoard((board) => revertOptimisticMoveToInProgress(board, taskId, fromColumnId) ?? board);
 				}
 				return false;
 			}
 			if (!optimisticMove) {
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== fromColumnId) {
-						return currentBoard;
-					}
-					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
-					return moved.moved ? moved.board : currentBoard;
-				});
+				setBoard((board) => applyDeferredMoveToInProgress(board, taskId, fromColumnId) ?? board);
 			}
 			return true;
 		},
@@ -134,27 +111,15 @@ export function useTaskLifecycle({
 
 	const resumeTaskFromTrash = useCallback(
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
-			const isNonIsolated = task.useWorktree === false;
-
 			const revertToTrash = () => {
 				if (!options?.optimisticMoveApplied) {
 					return;
 				}
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "review") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-						insertAtTop: true,
-					});
-					return reverted.moved ? reverted.board : currentBoard;
-				});
+				setBoard((board) => revertOptimisticMoveToReview(board, taskId) ?? board);
 			};
 
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
-			// Calling ensureTaskWorkspace would create an unwanted worktree.
-			if (!isNonIsolated) {
+			if (!isNonIsolatedTask(task)) {
 				const ensured = await ensureTaskWorkspace(task);
 				if (!ensured.ok) {
 					notifyError(ensured.message ?? "Could not set up task workspace.");
@@ -173,12 +138,12 @@ export function useTaskLifecycle({
 
 			const resumed = await startTaskSession(task, { resumeConversation: true, awaitReview: true });
 			if (resumed.ok) {
-				if (isNonIsolated) {
+				if (isNonIsolatedTask(task)) {
 					showNonIsolatedResumeWarning();
 				}
-				setBoard((currentBoard) => {
-					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
-					return disabledAutoReview.updated ? disabledAutoReview.board : currentBoard;
+				setBoard((board) => {
+					const result = disableTaskAutoReview(board, taskId);
+					return result.updated ? result.board : board;
 				});
 				return;
 			}
