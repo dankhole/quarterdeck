@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract ConnectedTopBar, HomeView, and AppDialogs from AppContent
+
+- Extracted three JSX-heavy sections from AppContent (1348 → 820 lines) into dedicated components. Each reads from existing contexts and receives only hook-local values as props — pure JSX extraction with zero behavior change. ConnectedTopBar (184 lines) owns the TopBar with branch pill and git sync wiring; HomeView (271 lines) owns the loading/empty/board/git/files view switch and bottom terminal; AppDialogs (234 lines) owns all 18 dialog/shelf components.
+
 ### Fix: dedicated shell terminals blank after close/reopen
 
 - Closing and reopening a shell terminal (home or detail dev shell) could leave the terminal blank or broken. The xterm canvas was orphaned from the DOM when React unmounted the panel container, causing WebGL context loss. Added `park()` to `TerminalSlot` — moves the host element back to the off-screen parking root before the container is removed, keeping the canvas in the live DOM so it survives the round-trip.

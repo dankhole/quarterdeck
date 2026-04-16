@@ -179,7 +179,7 @@ Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-cs
 
 **Frontend (section 8): Provider migration — done.**
 
-All hooks migrated out of the monolithic App component into 6 focused providers (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). AppCore eliminated. App is now a ~50-line composition root rendering the provider tree. AppContent (~1150 lines) remains as the leaf component with side-effect hooks and JSX.
+All hooks migrated out of the monolithic App component into 6 focused providers (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). AppCore eliminated. App is now a ~50-line composition root rendering the provider tree. AppContent reduced from ~1150 to ~820 lines by extracting three JSX-heavy sections into ConnectedTopBar, HomeView, and AppDialogs components.
 
 **After the provider migration**, two follow-up refactors build on it (do in order):
 

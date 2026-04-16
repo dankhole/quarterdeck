@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: extract ConnectedTopBar, HomeView, and AppDialogs from AppContent (2026-04-15)
+
+**What:** Extracted three JSX-heavy sections from `web-ui/src/App.tsx` AppContent (1348 → 820 lines) into dedicated child components, each reading from existing contexts and receiving only hook-local values as props.
+
+**Why:** AppContent was the remaining monolith after the provider migration — ~1160 lines of hooks + JSX. The hooks/callbacks section (~490 lines) must stay in AppContent, but the three largest JSX blocks were self-contained enough to extract.
+
+**Files touched:**
+- `web-ui/src/App.tsx` — removed 559 lines of inline JSX, added 31 lines of component instantiations + imports
+- `web-ui/src/components/connected-top-bar.tsx` — new (184 lines). TopBar with branch pill, git sync buttons, shortcut/prompt-shortcut wiring. Reads from ProjectContext, BoardContext, GitContext, TerminalContext, DialogContext. Props: `onBack`, shortcut actions, navbar state, git summary, workspace snapshot.
+- `web-ui/src/components/home-view.tsx` — new (271 lines). The else-branch of the selected-card ternary: loading spinner, "no projects" empty state, GitView/FilesView/QuarterdeckBoard three-way switch, bottom home terminal pane. Reads from ProjectContext, BoardContext, GitContext, TerminalContext, InteractionsContext. Props: `topBar` (ReactNode), task editor values, git summary.
+- `web-ui/src/components/app-dialogs.tsx` — new (234 lines). All 18 dialog/shelf components: DebugShelf, RuntimeSettingsDialog, PromptShortcutEditorDialog, TaskCreateDialog, ClearTrashDialog, HardDeleteTaskDialog, TaskTrashWarningDialog, 2× CheckoutConfirmationDialog, 2× CreateBranchDialog, 2× DeleteBranchDialog, 2× MergeBranchDialog, MigrateWorkingDirectoryDialog, ProjectDialogs, GitActionErrorDialog. Reads from all 5 action contexts. Props: `savePromptShortcuts`, migrate dialog state.
+
+**Constraint:** No hooks, callbacks, useMemos, or side effects were moved out of AppContent — pure JSX extraction only.
+
 ## Refactor: organize web-ui hooks into domain subdirectories (2026-04-15)
 
 **Goal:** Phase 1 of the hooks directory refactoring plan (`docs/refactor-hooks-directory.md`). The flat 78-file `web-ui/src/hooks/` directory was unnavigable — finding anything required grep or memorized filenames, and 5 files weren't even hooks.
