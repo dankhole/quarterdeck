@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: clicking agent terminal panel now always focuses terminal for input
+
+- Added click handler to the agent terminal panel wrapper so clicking anywhere in the terminal area (including padding/gutters outside the xterm canvas) focuses the terminal for keyboard input.
+
 ### Refactor: split globals.css into domain-specific stylesheets
 
 - Split the 920-line `web-ui/src/styles/globals.css` into 9 focused files — `theme.css` (design tokens), `base.css` (resets, scrollbars, focus ring), `board.css` (board layout, card shell, dependencies, navbar), `diff.css` (diff viewer, split view, syntax tokens, readonly), `markdown.css` (rendered prose), `components.css` (project rows, file tree, git history, terminal, toast), `animations.css` (keyframes, skeleton), `pwa.css` (window controls overlay), `utilities.css` (line clamp helpers). `globals.css` is now an 11-line import manifest. No style changes.

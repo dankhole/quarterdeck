@@ -2,6 +2,15 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: clicking agent terminal panel always focuses terminal (2026-04-16)
+
+**Problem:** Clicking in the agent terminal main view area outside the xterm canvas (padding, gutters, empty space around the terminal) did not focus the terminal for keyboard input. Only clicks directly on the xterm canvas element triggered xterm's built-in focus behavior.
+
+**Fix:** Added an `onClick` handler to the terminal panel's content wrapper div in `AgentTerminalPanelLayout`. The handler calls `getTerminalController(taskId)?.focus?.()` which delegates to `TerminalSlot.focus()` → `xterm.focus()`. Placed on the outer padding wrapper (not the inner `kb-terminal-container`) so clicks on the 3px padding also trigger focus.
+
+**Files touched:**
+- `web-ui/src/components/detail-panels/agent-terminal-panel.tsx` — added `getTerminalController` import, changed `taskId: _taskId` → `taskId` to use it, added `onClick` handler on terminal content wrapper div
+
 ## Refactor: split audible-notifications test into focused modules (2026-04-16)
 
 **Problem:** `web-ui/src/hooks/notifications/use-audible-notifications.test.tsx` was 1,393 lines — a single file covering basic sound events, per-event toggles, visibility gating, settle window timing, and project suppression.

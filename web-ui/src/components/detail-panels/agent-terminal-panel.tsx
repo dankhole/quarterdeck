@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
 import { describeSessionState, getSessionStatusBadgeStyle, statusBadgeColors } from "@/utils/session-status";
@@ -47,7 +48,7 @@ export interface AgentTerminalPanelProps {
 }
 
 function AgentTerminalPanelLayout({
-	taskId: _taskId,
+	taskId,
 	summary,
 	onSummary: _onSummary,
 	taskColumnId: _taskColumnId = "in_progress",
@@ -235,6 +236,7 @@ function AgentTerminalPanelLayout({
 					display: "flex",
 					flexDirection: "column",
 				}}
+				onClick={() => getTerminalController(taskId)?.focus?.()}
 			>
 				<div
 					ref={containerRef}
