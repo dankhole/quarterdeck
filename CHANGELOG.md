@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feature: stale-while-revalidate board caching for project switches
+
+- Switching between previously visited projects now shows the cached board state immediately instead of a loading spinner. Fresh data loads in the background and seamlessly replaces the cached version. Board state (tasks, columns, sessions, workspace metadata) is cached per project in memory with a 5-minute TTL and 10-entry limit. `canPersistWorkspaceState` stays false until authoritative data arrives, preventing stale data from being written back to disk. Complements the existing preload-on-hover cache (which handles first visits) with longer-lived caching for revisits.
+
 ### Feature: auto-sync task base ref on branch change
 
 - Task base ref now auto-updates when the worktree's branch changes (e.g. checking out a feature branch forked from `develop` updates the base ref from `main` to `develop`). Detection runs during the existing metadata polling cycle — resolves via upstream tracking ref, then falls back to merge-base distance against well-known integration branches. The "from X" label in the top bar is now clickable, opening a popover to manually set the base ref and pin it (preventing auto-updates). Pinned base refs show a lock icon.

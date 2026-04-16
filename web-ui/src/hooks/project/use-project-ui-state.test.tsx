@@ -45,6 +45,7 @@ function HookHarness({ onResult }: { onResult: (result: ReturnType<typeof usePro
 		isInitialRuntimeLoad: false,
 		isAwaitingWorkspaceSnapshot: false,
 		isWorkspaceMetadataPending: true,
+		isServedFromBoardCache: false,
 		hasReceivedSnapshot: true,
 	});
 

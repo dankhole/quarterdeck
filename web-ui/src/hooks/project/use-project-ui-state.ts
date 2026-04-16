@@ -18,6 +18,7 @@ interface UseProjectUiStateInput {
 	isInitialRuntimeLoad: boolean;
 	isAwaitingWorkspaceSnapshot: boolean;
 	isWorkspaceMetadataPending: boolean;
+	isServedFromBoardCache: boolean;
 	hasReceivedSnapshot: boolean;
 }
 
@@ -41,6 +42,7 @@ export function useProjectUiState({
 	isInitialRuntimeLoad,
 	isAwaitingWorkspaceSnapshot,
 	isWorkspaceMetadataPending,
+	isServedFromBoardCache,
 	hasReceivedSnapshot,
 }: UseProjectUiStateInput): UseProjectUiStateResult {
 	const displayedProjects = useMemo(() => {
@@ -68,6 +70,7 @@ export function useProjectUiState({
 	const shouldShowProjectLoadingState =
 		selectedTaskId === null &&
 		!streamError &&
+		!isServedFromBoardCache &&
 		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
 	const isProjectListLoading = !hasReceivedSnapshot && !streamError;
 	const shouldUseNavigationPath = isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;

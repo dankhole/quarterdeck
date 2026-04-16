@@ -5,13 +5,14 @@ import { disposeAllDedicatedTerminalsForWorkspace, releaseAll } from "@/terminal
 
 interface UseProjectSwitchCleanupInput {
 	currentProjectId: string | null;
+	navigationCurrentProjectId: string | null;
 	isProjectSwitching: boolean;
 	resetTaskEditorState: () => void;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	resetGitActionState: () => void;
 	resetProjectNavigationState: () => void;
 	resetTerminalPanelsState: () => void;
-	resetWorkspaceSyncState: () => void;
+	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
 }
 
 /**
@@ -20,6 +21,7 @@ interface UseProjectSwitchCleanupInput {
  */
 export function useProjectSwitchCleanup({
 	currentProjectId,
+	navigationCurrentProjectId,
 	isProjectSwitching,
 	resetTaskEditorState,
 	setIsClearTrashDialogOpen,
@@ -49,13 +51,14 @@ export function useProjectSwitchCleanup({
 		resetWorkspaceMetadataStore();
 	}, [isProjectSwitching]);
 
-	// Reset workspace sync state when switching projects.
+	// Reset workspace sync state when switching projects — pass the target project
+	// so the board cache can restore its data immediately (stale-while-revalidate).
 	useEffect(() => {
 		if (!isProjectSwitching) {
 			return;
 		}
-		resetWorkspaceSyncState();
-	}, [isProjectSwitching, resetWorkspaceSyncState]);
+		resetWorkspaceSyncState(navigationCurrentProjectId);
+	}, [isProjectSwitching, navigationCurrentProjectId, resetWorkspaceSyncState]);
 
 	// Reset task editor state when switching projects.
 	useEffect(() => {

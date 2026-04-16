@@ -1,8 +1,9 @@
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
+import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeTaskSessionSummary,
@@ -27,6 +28,8 @@ interface UseWorkspaceSyncInput {
 	hasNoProjects: boolean;
 	hasReceivedSnapshot: boolean;
 	isDocumentVisible: boolean;
+	boardRef: MutableRefObject<BoardData>;
+	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
@@ -40,8 +43,9 @@ interface UseWorkspaceSyncResult {
 	workspaceHydrationNonce: number;
 	isWorkspaceStateRefreshing: boolean;
 	isWorkspaceMetadataPending: boolean;
+	isServedFromBoardCache: boolean;
 	refreshWorkspaceState: () => Promise<void>;
-	resetWorkspaceSyncState: () => void;
+	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
 }
 
 export function useWorkspaceSync({
@@ -50,6 +54,8 @@ export function useWorkspaceSync({
 	hasNoProjects,
 	hasReceivedSnapshot,
 	isDocumentVisible,
+	boardRef,
+	sessionsRef,
 	setBoard,
 	setSessions,
 	setCanPersistWorkspaceState,
@@ -60,6 +66,7 @@ export function useWorkspaceSync({
 	const [workspaceRevision, setWorkspaceRevision] = useState<number | null>(null);
 	const [workspaceHydrationNonce, setWorkspaceHydrationNonce] = useState(0);
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
+	const [isServedFromBoardCache, setIsServedFromBoardCache] = useState(false);
 	const workspaceVersionRef = useRef<WorkspaceVersion>({
 		projectId: null,
 		revision: null,
@@ -89,6 +96,7 @@ export function useWorkspaceSync({
 				setBoard(createInitialBoardData());
 				setSessions({});
 				setWorkspaceRevision(null);
+				setIsServedFromBoardCache(false);
 				workspaceVersionRef.current = {
 					projectId: currentProjectId,
 					revision: null,
@@ -108,9 +116,9 @@ export function useWorkspaceSync({
 				const incomingSessions = nextWorkspaceState.sessions ?? {};
 				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
 			});
+			const normalizedBoard = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 			if (shouldHydrateBoard(workspaceVersionRef.current, currentProjectId, nextWorkspaceState.revision)) {
-				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
-				setBoard(normalized);
+				setBoard(normalizedBoard);
 				setWorkspaceHydrationNonce((current) => current + 1);
 			}
 			setWorkspaceRevision(nextWorkspaceState.revision);
@@ -120,6 +128,16 @@ export function useWorkspaceSync({
 			};
 			setAppliedWorkspaceProjectId(currentProjectId);
 			setCanPersistWorkspaceState(true);
+			setIsServedFromBoardCache(false);
+			if (currentProjectId) {
+				updateProjectBoardCache(currentProjectId, {
+					board: normalizedBoard,
+					sessions: nextWorkspaceState.sessions ?? {},
+					revision: nextWorkspaceState.revision,
+					workspacePath: nextWorkspaceState.repoPath,
+					workspaceGit: nextWorkspaceState.git,
+				});
+			}
 		},
 		[currentProjectId, setBoard, setCanPersistWorkspaceState, setSessions],
 	);
@@ -157,17 +175,59 @@ export function useWorkspaceSync({
 		}
 	}, [applyWorkspaceState, currentProjectId]);
 
-	const resetWorkspaceSyncState = useCallback(() => {
-		workspaceRefreshRequestIdRef.current += 1;
-		setCanPersistWorkspaceState(false);
-		setWorkspaceRevision(null);
-		setIsWorkspaceStateRefreshing(false);
-		setAppliedWorkspaceProjectId(null);
-		workspaceVersionRef.current = {
-			projectId: currentProjectId,
-			revision: null,
-		};
-	}, [currentProjectId, setCanPersistWorkspaceState]);
+	const resetWorkspaceSyncState = useCallback(
+		(targetProjectId?: string | null) => {
+			const prevProjectId = workspaceVersionRef.current.projectId;
+			const prevRevision = workspaceVersionRef.current.revision;
+			if (prevProjectId && prevRevision != null) {
+				stashProjectBoard(prevProjectId, {
+					board: boardRef.current,
+					sessions: sessionsRef.current,
+					revision: prevRevision,
+					workspacePath: workspacePath,
+					workspaceGit: workspaceGit,
+				});
+			}
+
+			workspaceRefreshRequestIdRef.current += 1;
+			setCanPersistWorkspaceState(false);
+			setIsWorkspaceStateRefreshing(false);
+			setAppliedWorkspaceProjectId(null);
+
+			const restoreId = targetProjectId ?? currentProjectId;
+			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
+			if (cached) {
+				setBoard(cached.board);
+				setSessions(cached.sessions);
+				setWorkspaceRevision(cached.revision);
+				setWorkspacePath(cached.workspacePath);
+				setStoreWorkspacePath(cached.workspacePath);
+				setWorkspaceGit(cached.workspaceGit);
+				workspaceVersionRef.current = {
+					projectId: restoreId,
+					revision: cached.revision,
+				};
+				setIsServedFromBoardCache(true);
+			} else {
+				setWorkspaceRevision(null);
+				workspaceVersionRef.current = {
+					projectId: currentProjectId,
+					revision: null,
+				};
+				setIsServedFromBoardCache(false);
+			}
+		},
+		[
+			boardRef,
+			currentProjectId,
+			sessionsRef,
+			setBoard,
+			setCanPersistWorkspaceState,
+			setSessions,
+			workspaceGit,
+			workspacePath,
+		],
+	);
 
 	useEffect(() => {
 		if (hasNoProjects) {
@@ -195,6 +255,7 @@ export function useWorkspaceSync({
 		workspaceHydrationNonce,
 		isWorkspaceStateRefreshing,
 		isWorkspaceMetadataPending,
+		isServedFromBoardCache,
 		refreshWorkspaceState,
 		resetWorkspaceSyncState,
 	};

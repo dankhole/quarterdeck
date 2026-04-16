@@ -114,6 +114,10 @@ export default function App(): ReactElement {
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
+	const boardRef = useRef(board);
+	boardRef.current = board;
+	const sessionsRef = useRef(sessions);
+	sessionsRef.current = sessions;
 
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
@@ -125,6 +129,8 @@ export default function App(): ReactElement {
 	return (
 		<ProjectProvider
 			onProjectSwitchStart={handleProjectSwitchStart}
+			boardRef={boardRef}
+			sessionsRef={sessionsRef}
 			setBoard={setBoard}
 			setSessions={setSessions}
 			canPersistWorkspaceState={canPersistWorkspaceState}
@@ -210,6 +216,7 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 			!project.streamError,
 		isAwaitingWorkspaceSnapshot,
 		isWorkspaceMetadataPending: project.isWorkspaceMetadataPending,
+		isServedFromBoardCache: project.isServedFromBoardCache,
 		hasReceivedSnapshot: project.hasReceivedSnapshot,
 	});
 
@@ -255,6 +262,7 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 
 	useProjectSwitchCleanup({
 		currentProjectId: project.currentProjectId,
+		navigationCurrentProjectId: project.navigationCurrentProjectId,
 		isProjectSwitching: project.isProjectSwitching,
 		resetTaskEditorState: taskEditor.resetTaskEditorState,
 		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen as Dispatch<SetStateAction<boolean>>,

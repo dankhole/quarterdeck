@@ -1,5 +1,5 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
@@ -112,13 +112,14 @@ export interface ProjectContextValue {
 	workspaceHydrationNonce: number;
 	isWorkspaceStateRefreshing: boolean;
 	isWorkspaceMetadataPending: boolean;
-	resetWorkspaceSyncState: () => void;
+	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
 
 	// --- Document visibility ---
 	isDocumentVisible: boolean;
 
 	// --- Board-level state bridged through for downstream consumers ---
 	canPersistWorkspaceState: boolean;
+	isServedFromBoardCache: boolean;
 
 	// --- Config mutation callbacks ---
 	handleTogglePinBranch: (branchName: string) => void;
@@ -150,6 +151,8 @@ export function useProjectContext(): ProjectContextValue {
 
 export interface ProjectProviderProps {
 	onProjectSwitchStart: () => void;
+	boardRef: MutableRefObject<BoardData>;
+	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	canPersistWorkspaceState: boolean;
@@ -159,6 +162,8 @@ export interface ProjectProviderProps {
 
 export function ProjectProvider({
 	onProjectSwitchStart,
+	boardRef,
+	sessionsRef,
 	setBoard,
 	setSessions,
 	canPersistWorkspaceState,
@@ -244,6 +249,7 @@ export function ProjectProvider({
 		workspaceHydrationNonce,
 		isWorkspaceStateRefreshing,
 		isWorkspaceMetadataPending,
+		isServedFromBoardCache,
 		refreshWorkspaceState,
 		resetWorkspaceSyncState,
 	} = useWorkspaceSync({
@@ -252,6 +258,8 @@ export function ProjectProvider({
 		hasNoProjects,
 		hasReceivedSnapshot,
 		isDocumentVisible,
+		boardRef,
+		sessionsRef,
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
@@ -421,6 +429,7 @@ export function ProjectProvider({
 			resetWorkspaceSyncState,
 			isDocumentVisible,
 			canPersistWorkspaceState,
+			isServedFromBoardCache,
 			handleTogglePinBranch,
 			handleSkipTaskCheckoutConfirmationChange,
 			handleSetDefaultBaseRef,
@@ -498,6 +507,7 @@ export function ProjectProvider({
 			resetWorkspaceSyncState,
 			isDocumentVisible,
 			canPersistWorkspaceState,
+			isServedFromBoardCache,
 			handleTogglePinBranch,
 			handleSkipTaskCheckoutConfirmationChange,
 			handleSetDefaultBaseRef,

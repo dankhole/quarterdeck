@@ -1,8 +1,9 @@
-import { act, useEffect, useState } from "react";
+import { act, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import { useWorkspaceSync } from "@/hooks/project/use-workspace-sync";
+import { clearProjectBoardCache } from "@/runtime/project-board-cache";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
@@ -136,12 +137,18 @@ function HookHarness({
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
+	const boardRef = useRef(board);
+	boardRef.current = board;
+	const sessionsRef = useRef(sessions);
+	sessionsRef.current = sessions;
 	const { refreshWorkspaceState, resetWorkspaceSyncState } = useWorkspaceSync({
 		currentProjectId: "project-a",
 		streamedWorkspaceState,
 		hasNoProjects: false,
 		hasReceivedSnapshot,
 		isDocumentVisible,
+		boardRef,
+		sessionsRef,
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
@@ -176,6 +183,7 @@ describe("useWorkspaceSync", () => {
 	});
 
 	afterEach(() => {
+		clearProjectBoardCache();
 		act(() => {
 			root.unmount();
 		});

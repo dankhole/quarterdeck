@@ -2,6 +2,43 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Feature: stale-while-revalidate board caching for project switches (2026-04-16)
+
+**Problem:** Switching between projects showed a full-screen loading spinner while the WebSocket reconnected and the snapshot loaded, even for projects the user had just visited seconds ago. The server-side latency was already optimized, but the client threw away all board state on every project switch and waited for a fresh load.
+
+**Solution:** A module-scoped board cache (`project-board-cache.ts`) that retains board state per project across switches. The cache holds `BoardData`, sessions, revision, workspace path, and git info — everything needed to display the board immediately. On project switch, the old project's board is stashed into the cache, and the target project's board is restored from cache if available. The loading spinner is suppressed when cached data is being served.
+
+**Key design decisions:**
+
+1. **`canPersistWorkspaceState` stays `false` while serving cached data.** This is the critical safety gate — cached board data is displayed (stale-while-revalidate) but cannot be written back to disk. Only when authoritative data arrives from the server does persistence re-enable. This prevents the scenario where stale cached data overwrites fresher server state.
+
+2. **`workspaceRevision` is set from cache.** The `shouldApplyWorkspaceUpdate` / `shouldHydrateBoard` guards use the cached revision to determine whether incoming data requires a full board hydration. If nothing changed since the cache was stashed, the board stays as-is; if the revision advanced, a full hydration replaces the cached data.
+
+3. **`resetWorkspaceSyncState(targetProjectId)` does both stash and restore in one call.** The target project ID is passed from `useProjectSwitchCleanup`, which has access to `navigationCurrentProjectId` (the project the user clicked on). This avoids the timing issue where `currentProjectId` (from the WebSocket stream) hasn't updated yet.
+
+4. **Cache is populated on every successful `applyWorkspaceState` via `updateProjectBoardCache`.** This means the cache stays fresh as long as the user is on a project — any board mutations that persist successfully also update the cache entry. Cache entries for the current project are updated in-place (via `updateProjectBoardCache`) rather than stashed/restored.
+
+5. **5-minute TTL, 10-entry max.** TTL prevents serving extremely stale data. Max entries prevents unbounded memory growth. Oldest entry is evicted on overflow.
+
+6. **Board data stored normalized.** The cache stores the output of `normalizeBoardData`, not raw server data. This ensures `setBoard(cached.board)` is safe.
+
+**Relationship to preload-on-hover cache:** The two caches serve different scenarios:
+- **Preload cache** (15-second TTL): First visit to a project after hovering. Consumed once on switch.
+- **Board cache** (5-minute TTL): Revisiting a previously loaded project. Persists across multiple switches.
+
+They don't conflict — the preload cache is consumed in the stream reducer, which feeds into `applyWorkspaceState`, which updates the board cache.
+
+**Files:**
+- `web-ui/src/runtime/project-board-cache.ts` — **new**. Module-scoped cache (Map) with stash/restore/update/invalidate/clear operations. TTL check on restore. LRU eviction on overflow.
+- `web-ui/src/runtime/project-board-cache.test.ts` — **new**. 9 unit tests covering stash/restore, TTL expiry, eviction, update-only-existing, invalidate, clear, overwrite.
+- `web-ui/src/hooks/project/use-workspace-sync.ts` — Added `boardRef`/`sessionsRef` inputs, `isServedFromBoardCache` state. `resetWorkspaceSyncState` now accepts `targetProjectId`, stashes old board, restores target from cache. `applyWorkspaceState` clears cache flag and updates cache entry on success.
+- `web-ui/src/hooks/project/use-project-switch-cleanup.ts` — Added `navigationCurrentProjectId` input, passes it to `resetWorkspaceSyncState`.
+- `web-ui/src/hooks/project/use-project-ui-state.ts` — Added `isServedFromBoardCache` input. `shouldShowProjectLoadingState` is now `false` when cached data is being served.
+- `web-ui/src/providers/project-provider.tsx` — Threads `boardRef`/`sessionsRef` to `useWorkspaceSync`, exposes `isServedFromBoardCache` in context.
+- `web-ui/src/App.tsx` — Creates `boardRef`/`sessionsRef` refs, passes to `ProjectProvider`. Passes `isServedFromBoardCache` to `useProjectUiState`.
+- `web-ui/src/hooks/project/use-workspace-sync.test.tsx` — Updated test harness with `boardRef`/`sessionsRef`.
+- `web-ui/src/hooks/project/use-project-ui-state.test.tsx` — Added `isServedFromBoardCache` to test input.
+
 ## Feature: auto-sync task base ref on branch change (2026-04-16)
 
 **Problem:** Task `baseRef` was set at creation via `resolveTaskBaseRef()` and never updated. When a user checked out a different branch in the worktree (e.g. switched from a branch forked from `main` to one forked from `develop`), the "from main" label and behind-base commit count became stale.
