@@ -202,6 +202,7 @@ export function HomeView({
 									rootPath={project.workspacePath}
 									pendingFileNavigation={git.pendingFileNavigation}
 									onFileNavigationConsumed={git.clearPendingFileNavigation}
+									scopeKey={`home-${project.currentProjectId ?? "no-project"}`}
 								/>
 							) : (
 								<QuarterdeckBoard

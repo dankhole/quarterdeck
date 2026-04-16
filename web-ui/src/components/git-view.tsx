@@ -574,9 +574,10 @@ export function GitView({
 	// --- Reset on context switches ---
 
 	useEffect(() => {
-		setSelectedPathRaw(null);
+		const scopeKey = lastSelectedPathScopeKey(taskId, activeTab);
+		setSelectedPathRaw(lastSelectedPathByScope.get(scopeKey) ?? null);
 		setDiffComments(new Map());
-	}, [taskId]);
+	}, [taskId, activeTab]);
 
 	useEffect(() => {
 		setSelectedPathRaw(null);

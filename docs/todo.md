@@ -224,14 +224,6 @@ Add a "Reset to here" action in the top-bar branch context menu that performs `g
 
 If a sidebar panel (e.g. task column) was open before switching to a full-screen main view (e.g. file browser), it should automatically reopen when navigating back to agent chat. Currently the sidebar state is lost on view switch.
 
-## Remember last viewed file when switching tasks
-
-When switching away from a task and back, the diff viewer / compare view should remember which file was last selected. Currently switching tasks resets the file selection.
-
-## File browser: preserve scroll position
-
-The file browser should save and restore its scroll position when navigating away and back (e.g. switching tabs or tasks). Currently it resets to the top each time.
-
 ## Skip trash confirmation when task has no uncommitted or unmerged changes
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.

@@ -426,6 +426,7 @@ export function CardDetailView({
 							rootPath={taskWorkspaceInfo?.path ?? selection.card.workingDirectory}
 							pendingFileNavigation={pendingFileNavigation}
 							onFileNavigationConsumed={onFileNavigationConsumed}
+							scopeKey={`${selection.card.id}-${taskScopeMode}`}
 						/>
 					</div>
 				) : (

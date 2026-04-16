@@ -53,6 +53,9 @@ function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE
 
 const ROW_HEIGHT = 28;
 
+/** Module-level cache of scroll positions per scope key. */
+const scrollPositionByScope = new Map<string, number>();
+
 export function FileBrowserTreePanel({
 	files,
 	selectedPath,
@@ -64,6 +67,7 @@ export function FileBrowserTreePanel({
 	onInitializedExpansion,
 	rootPath,
 	getFileContent,
+	scopeKey,
 }: {
 	files: string[] | null;
 	selectedPath: string | null;
@@ -77,12 +81,25 @@ export function FileBrowserTreePanel({
 	rootPath?: string | null;
 	/** Fetch file content for a given path (used by "Copy file contents" context menu action). */
 	getFileContent?: (path: string) => Promise<RuntimeFileContentResponse | null>;
+	/** Scope key for persisting scroll position across unmount/remount cycles. */
+	scopeKey?: string;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [debouncedQuery, setDebouncedQuery] = useState("");
 	const [focusedIndex, setFocusedIndex] = useState(-1);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+	// Save scroll position on unmount so it can be restored when this scope remounts.
+	useEffect(() => {
+		const ref = scrollContainerRef;
+		const key = scopeKey;
+		return () => {
+			if (key && ref.current) {
+				scrollPositionByScope.set(key, ref.current.scrollTop);
+			}
+		};
+	}, [scopeKey]);
 
 	const copyFileContents = useCallback(
 		async (path: string) => {
@@ -221,6 +238,7 @@ export function FileBrowserTreePanel({
 		getScrollElement: () => scrollContainerRef.current,
 		estimateSize: () => ROW_HEIGHT,
 		overscan: 20,
+		initialOffset: scopeKey ? (scrollPositionByScope.get(scopeKey) ?? 0) : 0,
 	});
 
 	return (

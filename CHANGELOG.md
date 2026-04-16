@@ -2,28 +2,14 @@
 
 ## [Unreleased]
 
-### Fix: restore terminal focus after programmatic input and task selection
+### Fix: remember last viewed file when switching tasks
 
-- Prompt shortcuts, review comment submission, and git actions (commit/PR) now return keyboard focus to the agent terminal after sending input. Previously focus stayed on the triggering button, requiring a click to re-engage.
-- Clicking or double-clicking a task from the column panel now focuses the agent terminal when the terminal view is active.
-- Added optional `focus()` method to `TerminalController` interface, wired through the persistent terminal session to `TerminalSlot.focus()`.
+- Git view now restores the previously selected file when switching back to a task, instead of resetting to the first file. Uses the existing `lastSelectedPathByScope` per-task cache — replaced the unconditional null reset with scope-aware eager restoration on task switch, matching the pattern in `use-file-browser-data.ts`.
 
-### Fix: reconciliation sweep no longer prevents session resume after server restart
+### Fix: preserve file browser scroll position and expanded dirs across navigation
 
-- The reconciliation sweep's `checkInterruptedNoRestart` was racing with `resumeInterruptedSessions` — moving hydrated-from-disk sessions from `interrupted` to `awaiting_review` within the first 10-second sweep, before the UI could connect and trigger the resume. By the time the UI connected, the resume filter (`state === "interrupted"`) no longer matched, so tasks never restarted.
-- Added a `restartRequest` guard: hydrated sessions have `restartRequest=null` (never started this server lifetime), so the sweep now leaves them in `interrupted` for the UI-triggered resume. Sessions that crashed during this lifetime still have `restartRequest` set and are handled as before.
-
-### Fix: task card hover buttons delay
-
-- Added a 200ms delay before task card hover action buttons (pin, edit title, migrate workspace, debug flag, emergency actions) appear. Prevents accidental triggers when the mouse passes over cards while navigating the board. Preload callbacks (dependency, summary, terminal warmup) still fire immediately — only button visibility is delayed.
-
-### Terminal — always use WebGL renderer
-
-- Removed the `terminalWebGLRenderer` config toggle and canvas 2D fallback path. Terminals now always load the WebGL addon for GPU-accelerated rendering. The `onContextLoss` handler is preserved so a lost WebGL context falls back gracefully instead of crashing.
-
-### Fix: "Compare with local tree" from branch context menu now opens the Compare tab
-
-- Selecting "Compare with local tree" from the branch dropdown context menu navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare. The project-change reset effect had `pendingCompareNavigation` in its dependency array — when the navigation was consumed (cleared to `null`), the effect re-fired and overwrote the tab. Switched to reading the value from a ref so consumption doesn't re-trigger the reset.
+- File browser tree panel now saves and restores its scroll position when navigating away and back (switching tasks, toggling views). Uses the virtualizer's `initialOffset` for flash-free restoration with a module-level Map keyed by scope.
+- Expanded directory state and initialization flag are now persisted per scope in `FilesView`, so switching tasks no longer collapses the tree and re-runs initial expansion.
 
 ### Refactor: extract domain logic from hooks into plain TS modules (Phase 2)
 

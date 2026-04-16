@@ -27,6 +27,11 @@ const FILES_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 
 // --- Component ---
 
+/** Module-level cache of expanded directory sets per scope key. */
+const expandedDirsByScope = new Map<string, Set<string>>();
+/** Track which scopes have already run their initial expansion. */
+const initializedExpansionByScope = new Set<string>();
+
 export interface FilesViewProps {
 	/** Pre-built ScopeBar element — parents construct this with their own scope/branch context. */
 	scopeBar: ReactNode;
@@ -38,6 +43,8 @@ export interface FilesViewProps {
 	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
 	/** Called after consuming pendingFileNavigation. */
 	onFileNavigationConsumed?: () => void;
+	/** Scope key for persisting expanded dirs and scroll position across unmount/remount cycles. */
+	scopeKey?: string;
 }
 
 export function FilesView({
@@ -46,16 +53,35 @@ export function FilesView({
 	rootPath,
 	pendingFileNavigation,
 	onFileNavigationConsumed,
+	scopeKey,
 }: FilesViewProps): React.ReactElement {
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE),
 	);
-	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-	const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
+	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
+		() => (scopeKey ? expandedDirsByScope.get(scopeKey) : undefined) ?? new Set(),
+	);
+	const [hasInitializedExpansion, setHasInitializedExpansion] = useState(() =>
+		scopeKey ? initializedExpansionByScope.has(scopeKey) : false,
+	);
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startFileTreeResize } = useResizeDrag();
+
+	// Persist expanded dirs to module-level cache whenever they change.
+	useEffect(() => {
+		if (scopeKey) {
+			expandedDirsByScope.set(scopeKey, expandedDirs);
+		}
+	}, [scopeKey, expandedDirs]);
+
+	const handleInitializedExpansion = useCallback(() => {
+		setHasInitializedExpansion(true);
+		if (scopeKey) {
+			initializedExpansionByScope.add(scopeKey);
+		}
+	}, [scopeKey]);
 
 	// Navigate to a specific file when external file navigation arrives (from commit panel)
 	useEffect(() => {
@@ -89,10 +115,6 @@ export function FilesView({
 
 	const fileTreePercent = `${(fileTreeRatio * 100).toFixed(1)}%`;
 	const contentPercent = `${((1 - fileTreeRatio) * 100).toFixed(1)}%`;
-
-	const handleInitializedExpansion = useCallback(() => {
-		setHasInitializedExpansion(true);
-	}, []);
 
 	// --- Render ---
 
@@ -154,6 +176,7 @@ export function FilesView({
 										onInitializedExpansion={handleInitializedExpansion}
 										rootPath={rootPath}
 										getFileContent={fileBrowserData.getFileContent}
+										scopeKey={scopeKey}
 									/>
 								</div>
 								<ResizeHandle

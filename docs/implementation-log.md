@@ -2,103 +2,25 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
-## Refactor: hooks domain logic extraction batch 2 + Phase 3 conventions (2026-04-15)
+## Fix: remember last viewed file when switching tasks + preserve file browser scroll position (2026-04-15)
 
-**What:** Extracted domain logic from 6 more hooks into standalone, React-free modules with dedicated tests (Phase 2 batch 2). Added "Hooks architecture" conventions section to `docs/web-ui-conventions.md` (Phase 3).
+**Problem 1 — Git view file selection resets on task switch:** `git-view.tsx:574-577` had a `useEffect([taskId])` that unconditionally set `selectedPath` to `null` when switching tasks. A module-level `lastSelectedPathByScope` Map and auto-select effect already existed to restore the cached path, but the explicit null reset created an intermediate state that interfered with restoration timing.
 
-**Why:** Hooks in `web-ui/src/hooks/` blend business logic with React wiring, making them hard to unit-test without `renderHook` and hard to read without filtering out lifecycle boilerplate. Phase 2 batch 1 proved the pattern on 3 priority hooks; this batch covers the remaining high-value candidates. Phase 3 documents the pattern so future hooks follow the same structure.
+**Fix:** Replaced `setSelectedPathRaw(null)` with `setSelectedPathRaw(lastSelectedPathByScope.get(scopeKey) ?? null)` — eager scope-aware restoration matching the pattern in `use-file-browser-data.ts:98-101`. The auto-select effect at L520-530 still serves as the fallback when the cached path doesn't exist in the new task's file list.
 
-**Domain modules extracted:**
-- `git/git-actions.ts` — from `use-git-actions` (691 lines): `matchesWorkspaceInfoSelection`, `deriveLoadingByTaskId`, `computeNextTaskGitActionLoading`, `isTaskGitActionInFlight`, `getGitActionErrorTitle`, `getGitSyncSuccessLabel`, plus types
-- `terminal/terminal-panels.ts` — from `use-terminal-panels` (609 lines): constants, `estimateShellTerminalCols`, `loadBottomTerminalPaneHeight`, `persistBottomTerminalPaneHeight`, `resolveShellTerminalGeometry`, `computeTerminalPaneHeight`, `collapseAllDetailPanels`, plus types
-- `settings-form.ts` — from `use-settings-form` (193 lines): `SettingsFormValues` type, `resolveInitialValues`, `areFormValuesEqual`
-- `git/commit-panel.ts` — from `use-commit-panel` (389 lines): `computeSelectionSync`, `computeSelectedPaths`, `canPerformCommit`, `formatCommitSuccessMessage`
-- `board/trash-workflow.ts` — from `use-trash-workflow` (383 lines): `TrashWarningState`/`HardDeleteDialogState` types, initial state constants, `findTrashTaskIds`
-- `project/project-navigation.ts` — from `use-project-navigation` (378 lines): `parseRemovedProjectPathFromStreamError`, `isDirectoryPickerUnavailableErrorMessage`, `promptForManualProjectPath`
+**Problem 2 — File browser scroll resets to top on navigation:** `FilesView` is keyed by `${taskId}-${scopeMode}` in `card-detail-view.tsx`, so switching tasks or views fully unmounts/remounts the component, destroying all internal state including the scroll container's position and expanded directory set.
 
-**Test metrics:** 6 new test files, 63 new domain-level unit tests. Combined with batch 1: 9 domain modules, 9 test files, 92 domain tests. All hooks re-export moved types for backward compatibility. Existing test suites unchanged.
+**Fix — scroll position:** Added a module-level `scrollPositionByScope` Map in `file-browser-tree-panel.tsx`. A `useEffect` cleanup saves `scrollContainerRef.current.scrollTop` on unmount. On mount, the virtualizer's `initialOffset` option reads from the Map — this sets the correct offset during the first layout calculation, avoiding the visual flash that a post-mount `useEffect` scrollTop assignment would cause (the virtualizer's `_willUpdate` runs in `useLayoutEffect` before `useEffect`, which would otherwise scroll to 0 first).
 
-**Conventions (Phase 3):** Added to `docs/web-ui-conventions.md`: directory structure, domain module vs hook pattern, naming conventions, re-export pattern, reference table. Updated `AGENTS.md` with extraction rule and updated config field checklist pointer.
+**Fix — expanded dirs:** Added module-level `expandedDirsByScope` Map and `initializedExpansionByScope` Set in `files-view.tsx`. `expandedDirs` and `hasInitializedExpansion` are initialized from these caches on mount (via `useState` initializer). A `useEffect` persists `expandedDirs` changes back to the cache. `handleInitializedExpansion` writes to the Set so the auto-expansion effect in `FileBrowserTreePanel` doesn't overwrite restored dirs on remount.
 
 **Files:**
-- New domain modules: `web-ui/src/hooks/git/git-actions.ts`, `git/commit-panel.ts`, `terminal/terminal-panels.ts`, `project/project-navigation.ts`, `board/trash-workflow.ts`, `settings-form.ts`
-- New test files: corresponding `.test.ts` for each domain module
-- Modified hooks: `use-git-actions.ts`, `use-commit-panel.ts`, `use-terminal-panels.ts`, `use-project-navigation.ts`, `use-trash-workflow.ts`, `use-settings-form.ts`
-- Modified test: `project/use-project-navigation.test.ts` (import path update)
-- Docs: `docs/web-ui-conventions.md`, `AGENTS.md`
-
-## Fix: restore terminal focus after programmatic input and task selection (2026-04-15)
-
-**What:** After sending input to the agent terminal via prompt shortcuts, review comments, or git actions, keyboard focus now returns to the terminal. Clicking/double-clicking a task from the column panel also focuses the terminal.
-
-**Why:** `TerminalSlot.input()` and `TerminalSlot.paste()` send data to the PTY via xterm.js but don't call `terminal.focus()`. When triggered from a UI button (prompt shortcut, commit, etc.), DOM focus stayed on the button element. The user had to click the terminal to type again. Similarly, selecting a task from the column panel when already on the terminal view didn't re-focus because no React state change occurred to trigger autoFocus.
-
-**Approach:** Added `focus()` as an optional method on the `TerminalController` interface (following the `waitForLikelyPrompt` precedent). Focus calls are placed at specific call sites rather than inside `sendTaskSessionInput` — the latter has 11+ callers with different focus expectations (e.g., `handleAddReviewComments` pastes text without submitting, so stealing focus would be wrong). For task selection, `handleCardSelectWithFocus` wraps the existing handler to focus when `mainView === "terminal"`, and `handleCardDoubleClick` uses `requestAnimationFrame` to focus after the view switch.
-
-**Files:**
-- `web-ui/src/terminal/terminal-controller-registry.ts` — added `focus?: () => void` to `TerminalController` interface
-- `web-ui/src/terminal/use-persistent-terminal-session.ts` — registered `focus` forwarding to `terminalRef.current?.focus()`
-- `web-ui/src/hooks/use-prompt-shortcuts.ts` — focus after prompt shortcut submit
-- `web-ui/src/hooks/board/use-board-interactions.ts` — focus after review comment submit
-- `web-ui/src/hooks/git/use-git-actions.ts` — focus after git action submit
-- `web-ui/src/App.tsx` — `handleCardSelectWithFocus` for column panel clicks, focus in `handleCardDoubleClick`
-
-## Fix: reconciliation sweep race prevents session resume after server restart (2026-04-15)
-
-**Root cause:** `checkInterruptedNoRestart` in `session-reconciliation.ts` is a safety net for sessions that failed auto-restart during the current server lifetime. But it also matched sessions hydrated from disk after a restart — those have `state: "interrupted"` with no `pendingAutoRestart`. The sweep fired within the first 10 seconds, applying `autorestart.denied` to move them to `awaiting_review` with `reviewReason: "interrupted"`. When the UI connected shortly after and `resumeInterruptedSessions` ran, it looked for `summary?.state === "interrupted"` (line 477 of workspace-registry.ts) — no match, nothing resumed.
-
-**Fix:** Added a `restartRequest` guard to `checkInterruptedNoRestart`. Sessions started this server lifetime always have `restartRequest` set (via `startTaskSession`). Sessions hydrated from disk via `hydrateFromRecord` have `restartRequest: null` because `createProcessEntry()` defaults it to null. The sweep now skips those, leaving them for `resumeInterruptedSessions` to pick up on first UI connection. This mirrors the existing pattern in `checkProcesslessActiveSession` which already checks `entry.restartRequest`.
-
-**Files:**
-- `src/terminal/session-reconciliation.ts` — added `!entry.restartRequest` early return in `checkInterruptedNoRestart`
-- `test/runtime/terminal/session-reconciliation.test.ts` — updated existing tests to pass `restartRequest: {}` for "this-lifetime" scenarios, added test for hydrated-from-disk case
-- `test/runtime/terminal/session-manager-reconciliation.test.ts` — updated integration test assertion: hydrated session now stays `interrupted` through the sweep instead of being moved to `awaiting_review`
-
-## Fix: task card hover buttons delay + todo cleanup (2026-04-15)
-
-**What:** Added a 200ms delay before hover action buttons appear on task cards. Removed two completed todo items ("Add timestamps to all runtime logging" and "Assess and adjust live terminal WebGL context limit") and the now-implemented hover delay item.
-
-**Why:** Users accidentally triggered card actions (pin, edit, trash, restart) when moving the mouse across the board. The buttons appeared instantly on `mouseenter`, making quick passes over cards trigger unintended clicks. The 200ms delay ensures buttons only show for intentional hovers. The todo items were confirmed complete: all three runtime logging paths (console logger, JSONL event log, debug ring buffer) already include timestamps; the WebGL context limit assessment was no longer needed.
-
-**Files:**
-- `web-ui/src/components/board-card.tsx` — added `useRef` for hover timer, delayed `setIsHovered(true)` by 200ms in `onMouseEnter`, clear timer immediately in `onMouseLeave`
-- `docs/todo.md` — removed 3 completed items (timestamps, WebGL limit, hover delay)
-
-## Remove non-WebGL terminal renderer option (2026-04-15)
-
-**What:** Removed the `terminalWebGLRenderer` config toggle. Terminals now always use WebGL rendering — the canvas 2D fallback path and the UI toggle to switch between them are gone.
-
-**Why:** WebGL was already the default and provided the better experience. The toggle existed as an escape hatch but added config plumbing, a settings UI control, and a live-toggle code path across 12 files for a rarely-used option. Removing it simplifies the terminal initialization path and shrinks the config surface.
-
-**What was kept:** The `onContextLoss` handler in `attachWebglAddon()` and the try/catch around addon creation remain — if WebGL is unavailable (e.g. in jsdom tests or headless environments), xterm.js falls back to its built-in canvas 2D renderer automatically.
-
-**Files touched:**
-- `src/config/global-config-fields.ts` — removed `terminalWebGLRenderer` field from registry
-- `src/core/api/config.ts` — removed from response and save request Zod schemas
-- `web-ui/src/hooks/use-settings-form.ts` — removed from form values type and initial values
-- `web-ui/src/hooks/terminal/use-terminal-config-sync.ts` — removed WebGL sync effect
-- `web-ui/src/terminal/terminal-pool.ts` — removed `setTerminalWebGLRenderer` export
-- `web-ui/src/terminal/terminal-slot.ts` — removed global flag, `updateGlobalTerminalWebGLRenderer`, `setWebGLRenderer` method; `attachWebglAddon` no longer checks the flag
-- `web-ui/src/components/settings/display-sections.tsx` — removed "Use WebGL renderer" toggle
-- `web-ui/src/App.tsx` — removed `terminalWebGLRenderer` from config sync call
-- `web-ui/src/providers/project-provider.tsx` — removed from context interface and value
-- `web-ui/src/test-utils/runtime-config-factory.ts`, `web-ui/src/terminal/terminal-pool.test.ts`, `test/runtime/config/runtime-config.test.ts` — removed from test fixtures and mocks
-- `docs/todo.md` — removed completed item
-- `CHANGELOG.md` — added entry
-
-## Fix: "Compare with local tree" from branch context menu opens Compare tab (2026-04-15)
-
-**What:** Clicking "Compare with local tree" from any branch dropdown context menu (top bar, Files scope bar, task detail) navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare.
-
-**Root cause:** `GitView` has two effects that interact with `pendingCompareNavigation`:
-- **Effect A** (line ~434): switches to the Compare tab when `pendingCompareNavigation` becomes truthy.
-- **Effect B** (line ~581): resets to the Uncommitted tab on project changes, with a guard that skips the reset if `pendingCompareNavigation` is truthy.
-
-Effect B had `pendingCompareNavigation` in its dependency array. The sequence: (1) Effect A fires, sets tab to "compare". (2) `useGitViewCompare` consumes the navigation → calls `onNavigationConsumed()` → clears state to `null`. (3) Effect B re-fires because its dependency changed, sees `null`, guard fails, resets tab to "uncommitted" — undoing Effect A.
-
-**Fix:** Added a `pendingCompareNavigationRef` ref that mirrors the prop value. Effect B now reads from the ref (stable identity, no dependency) instead of the prop. The guard still works correctly for actual project changes, but consumption of the navigation no longer re-triggers the effect.
-
-**Files:** `web-ui/src/components/git-view.tsx`
+- `web-ui/src/components/git-view.tsx` — replaced null reset with scope-aware restoration (L574-577)
+- `web-ui/src/components/detail-panels/file-browser-tree-panel.tsx` — added `scopeKey` prop, `scrollPositionByScope` Map, unmount save effect, `initialOffset` on virtualizer
+- `web-ui/src/components/files-view.tsx` — added `scopeKey` prop, `expandedDirsByScope` Map, `initializedExpansionByScope` Set, scope-aware state initialization, persistence effect, updated `handleInitializedExpansion`
+- `web-ui/src/components/card-detail-view.tsx` — passed `scopeKey` to `FilesView`
+- `web-ui/src/components/home-view.tsx` — passed `scopeKey` to `FilesView`
+- `docs/todo.md` — removed both completed items
 
 ## Refactor: extract domain logic from hooks into plain TS modules — Phase 2 (2026-04-15)
 
