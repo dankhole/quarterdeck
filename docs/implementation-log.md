@@ -2,6 +2,21 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split hooks-api test into domain-focused files (2026-04-16)
+
+**Problem:** `test/runtime/trpc/hooks-api.test.ts` was 888 lines covering 5 unrelated behavioral domains (basic transitions, conversation summaries, permission metadata guard, permission-aware transition guard, turn checkpoints) plus misplaced `isPermissionActivity` tests that belong to `session-reconciliation.ts`. Every test repeated a 7-line `createHooksApi({...})` setup block.
+
+**Changes:** Split into `test/runtime/trpc/hooks-api/` subdirectory:
+- `_helpers.ts` (84 lines) — shared factories (`createMockManager`, `createSummary`, `permissionActivity`, `nullFilledActivity`) plus new `createTestApi(manager, overrides?)` that eliminates the boilerplate dependency injection from every test.
+- `transitions.test.ts` (62 lines) — ineligible hook no-ops, activity metadata storage.
+- `summaries.test.ts` (144 lines) — `appendConversationSummary`, `setDisplaySummary` fallback, truncation, edge cases.
+- `permission-guard.test.ts` (350 lines) — both permission suites: metadata guard (blocks non-permission hooks from clobbering permission state) and transition guard (blocks stale `PostToolUse` during permission review).
+- `checkpoints.test.ts` (105 lines) — turn checkpoint capture and ordering guarantees.
+
+Moved `isPermissionActivity` tests (6 tests, 43 lines) to `test/runtime/terminal/is-permission-activity.test.ts` where the source function lives.
+
+**Files:** deleted `test/runtime/trpc/hooks-api.test.ts`, created `test/runtime/trpc/hooks-api/_helpers.ts`, `test/runtime/trpc/hooks-api/transitions.test.ts`, `test/runtime/trpc/hooks-api/summaries.test.ts`, `test/runtime/trpc/hooks-api/permission-guard.test.ts`, `test/runtime/trpc/hooks-api/checkpoints.test.ts`, `test/runtime/terminal/is-permission-activity.test.ts`. All 25 tests pass.
+
 ## Refactor: split board-state.test.ts into domain-focused modules (2026-04-16)
 
 **Problem:** `board-state.test.ts` was 899 lines with two `describe` blocks. The first — "board dependency state" — was a 562-line catch-all mixing dependency lifecycle, drag-and-drop rules, normalization, and task mutations under one misleading name. Finding tests for a specific function required scanning the entire file.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split hooks-api test into domain-focused files
+
+- Split the 888-line `hooks-api.test.ts` monolith into a `hooks-api/` subdirectory with 4 focused test files — transitions, conversation summaries, permission guard, and turn checkpoints — plus a shared `_helpers.ts` with test factories and a `createTestApi` helper that eliminates boilerplate. Moved misplaced `isPermissionActivity` tests to `test/runtime/terminal/`.
+
 ### Refactor: split board-state test file into domain-focused modules
 
 - Split the 899-line `board-state.test.ts` monolith into 4 focused test files — dependencies (10 tests), drag (8 tests), normalization (6 tests), and mutations (12 tests) — plus a shared helpers module. All 36 tests preserved.
