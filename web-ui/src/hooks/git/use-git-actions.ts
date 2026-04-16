@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
-import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git-history/use-git-history-data";
+import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git/history";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import {
 	computeNextTaskGitActionLoading,

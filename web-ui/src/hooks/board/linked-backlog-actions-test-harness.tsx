@@ -2,7 +2,7 @@ import { act, type Dispatch, type SetStateAction, useEffect, useState } from "re
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach } from "vitest";
 
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
 

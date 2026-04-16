@@ -1,0 +1,585 @@
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { GitBranchStatusControl } from "@/components/app/top-bar";
+import { showAppToast } from "@/components/app-toaster";
+import { ConflictBanner, FilesView, GitView } from "@/components/git";
+import {
+	BranchPillTrigger,
+	BranchSelectorPopover,
+	CheckoutConfirmationDialog,
+	CommitPanel,
+	CreateBranchDialog,
+	DeleteBranchDialog,
+	MergeBranchDialog,
+	ScopeBar,
+} from "@/components/git/panels";
+import { AgentTerminalPanel, ColumnContextPanel } from "@/components/terminal";
+import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
+import { useBoardContext } from "@/providers/board-provider";
+import { useGitContext } from "@/providers/git-provider";
+import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
+import { ResizeHandle } from "@/resize/resize-handle";
+import type { MainViewId, SidebarId } from "@/resize/use-card-detail-layout";
+import { useResizeDrag } from "@/resize/use-resize-drag";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useStableCardActions } from "@/state/card-actions-context";
+import {
+	useHomeGitSummaryValue,
+	useTaskWorkspaceInfoValue,
+	useTaskWorkspaceSnapshotValue,
+} from "@/stores/workspace-metadata-store";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
+import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+
+/** Branch status slot for the task context git view tab bar. */
+function TaskBranchStatus({
+	branchLabel,
+	changedFiles,
+	additions,
+	deletions,
+	isGitHistoryOpen,
+	onToggleGitHistory,
+	isDetached,
+	baseRef,
+}: {
+	branchLabel: string;
+	changedFiles: number;
+	additions: number;
+	deletions: number;
+	isGitHistoryOpen: boolean;
+	onToggleGitHistory?: () => void;
+	isDetached: boolean;
+	baseRef: string | null | undefined;
+}): React.ReactElement {
+	return (
+		<div className="flex items-center gap-1">
+			<GitBranchStatusControl
+				branchLabel={branchLabel}
+				changedFiles={changedFiles}
+				additions={additions}
+				deletions={deletions}
+				onToggleGitHistory={onToggleGitHistory}
+				isGitHistoryOpen={isGitHistoryOpen}
+			/>
+			{isDetached && baseRef ? (
+				<span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
+					based on <span className="font-mono">{baseRef}</span>
+				</span>
+			) : null}
+		</div>
+	);
+}
+
+/**
+ * Renders the task detail area: side panel (for task-tied tabs) + right column (TopBar + main content).
+ * Returns a Fragment — its children are direct flex items of the parent container.
+ * The sidebar toolbar is NOT rendered here — it lives in App.tsx.
+ */
+export function CardDetailView({
+	selection,
+	currentProjectId,
+	sessionSummary,
+	onCardSelect,
+	onCreateTask,
+	onStartAllTasks,
+	onClearTrash,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	gitHistoryPanel,
+	bottomTerminalOpen,
+	bottomTerminalTaskId,
+	bottomTerminalSummary,
+	bottomTerminalSubtitle,
+	onBottomTerminalClose,
+	onBottomTerminalCollapse,
+	bottomTerminalPaneHeight,
+	onBottomTerminalPaneHeightChange,
+	onBottomTerminalConnectionReady,
+	bottomTerminalAgentCommand,
+	onBottomTerminalSendAgentCommand,
+	isBottomTerminalExpanded,
+	onBottomTerminalToggleExpand,
+	onBottomTerminalRestart,
+	onBottomTerminalExit,
+	mainView,
+	sidebar,
+	topBar,
+	sidePanelRatio,
+	setSidePanelRatio,
+	skipTaskCheckoutConfirmation,
+	skipHomeCheckoutConfirmation,
+	onSkipTaskCheckoutConfirmationChange,
+	onDeselectTask,
+	onCardDoubleClick,
+	pinnedBranches,
+	onTogglePinBranch,
+}: {
+	selection: CardSelection;
+	currentProjectId: string | null;
+	sessionSummary: RuntimeTaskSessionSummary | null;
+	onCardSelect: (taskId: string) => void;
+	onCardDoubleClick?: (taskId: string) => void;
+	onCreateTask?: () => void;
+	onStartAllTasks?: () => void;
+	onClearTrash?: () => void;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCard) => void;
+	gitHistoryPanel?: ReactNode;
+	bottomTerminalOpen: boolean;
+	bottomTerminalTaskId: string | null;
+	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
+	bottomTerminalSubtitle?: string | null;
+	onBottomTerminalClose: () => void;
+	onBottomTerminalCollapse?: () => void;
+	bottomTerminalPaneHeight?: number;
+	onBottomTerminalPaneHeightChange?: (height: number) => void;
+	onBottomTerminalConnectionReady?: (taskId: string) => void;
+	bottomTerminalAgentCommand?: string | null;
+	onBottomTerminalSendAgentCommand?: () => void;
+	isBottomTerminalExpanded?: boolean;
+	onBottomTerminalToggleExpand?: () => void;
+	onBottomTerminalRestart?: () => void;
+	onBottomTerminalExit?: (taskId: string, exitCode: number | null) => void;
+	mainView: MainViewId;
+	sidebar: SidebarId | null;
+	topBar: ReactNode;
+	sidePanelRatio: number;
+	setSidePanelRatio: (ratio: number) => void;
+	skipTaskCheckoutConfirmation: boolean;
+	skipHomeCheckoutConfirmation: boolean;
+	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
+	onDeselectTask: () => void;
+	pinnedBranches?: string[];
+	onTogglePinBranch?: (branchName: string) => void;
+}): React.ReactElement {
+	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
+	const {
+		isGitHistoryOpen,
+		handleToggleGitHistory: onToggleGitHistory,
+		pendingCompareNavigation,
+		clearPendingCompareNavigation: onCompareNavigationConsumed,
+		openGitCompare: onOpenGitCompare,
+		pendingFileNavigation,
+		clearPendingFileNavigation: onFileNavigationConsumed,
+		navigateToFile,
+		navigateToGitView,
+		runGitAction,
+	} = useGitContext();
+	const { startDrag: startSidePanelResize } = useResizeDrag();
+	const { onCancelAutomaticTaskAction } = useStableCardActions();
+	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
+	const mainRowRef = useRef<HTMLDivElement | null>(null);
+
+	const handleSidePanelSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = detailLayoutRef.current;
+			if (!container) return;
+			// No toolbar subtraction — toolbar is rendered by App.tsx outside this component
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = sidePanelRatio;
+			startSidePanelResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setSidePanelRatio(startRatio + deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setSidePanelRatio(startRatio + deltaRatio);
+				},
+			});
+		},
+		[setSidePanelRatio, startSidePanelResize, sidePanelRatio],
+	);
+
+	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selection.card.id, selection.card.baseRef);
+	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selection.card.id);
+	const homeGitSummary = useHomeGitSummaryValue();
+
+	const {
+		scopeMode: taskScopeMode,
+		resolvedScope: taskResolvedScope,
+		returnToContextual: taskReturnToContextual,
+		selectBranchView: taskSelectBranchView,
+	} = useScopeContext({
+		selectedTaskId: selection.card.id,
+		selectedCard: selection.card,
+		currentProjectId,
+	});
+
+	const taskBranchActions = useBranchActions({
+		workspaceId: currentProjectId,
+		board,
+		selectBranchView: taskSelectBranchView,
+		homeGitSummary,
+		taskBranch: taskWorkspaceInfo?.branch ?? selection.card.branch ?? null,
+		taskChangedFiles: taskWorkspaceSnapshot?.changedFiles ?? 0,
+		skipTaskCheckoutConfirmation,
+		skipHomeCheckoutConfirmation,
+		taskId: selection.card.id,
+		baseRef: selection.card.baseRef,
+		onCheckoutSuccess: taskReturnToContextual,
+		onConflictDetected: navigateToGitView,
+	});
+
+	// Derive what the file browser should show based on scope
+	const fileBrowserTaskId = taskResolvedScope?.type === "task" ? taskResolvedScope.taskId : null;
+	const fileBrowserBaseRef = taskResolvedScope?.type === "task" ? taskResolvedScope.baseRef : undefined;
+	const fileBrowserRef = taskResolvedScope?.type === "branch_view" ? taskResolvedScope.ref : undefined;
+
+	const fileBrowserData = useFileBrowserData({
+		workspaceId: currentProjectId,
+		taskId: fileBrowserTaskId,
+		baseRef: fileBrowserBaseRef,
+		ref: fileBrowserRef,
+	});
+
+	// Branch pill label: branch name for named-branch worktrees, short commit hash for headless,
+	// browsed ref for branch_view. Null only when workspace info hasn't loaded yet (genuinely initializing).
+	const pillBranchLabel = useMemo(() => {
+		if (taskResolvedScope?.type === "branch_view") {
+			return taskResolvedScope.ref;
+		}
+		if (taskWorkspaceInfo?.branch) return taskWorkspaceInfo.branch;
+		// When workspace info reports detached HEAD, skip stale card.branch and show commit hash
+		if (taskWorkspaceInfo?.isDetached) return taskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
+		return selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
+	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
+
+	const taskId = selection.card.id;
+
+	const handleAddToTerminal = useCallback(
+		async (text: string) => {
+			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			if (!result.ok) {
+				showAppToast({
+					intent: "danger",
+					message: result.message ?? "Could not paste review comments into the terminal.",
+					timeout: 7000,
+				});
+			}
+		},
+		[sendTaskSessionInput, taskId],
+	);
+
+	const handleSendToTerminal = useCallback(
+		async (text: string) => {
+			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			if (!result.ok) {
+				showAppToast({
+					intent: "danger",
+					message: result.message ?? "Could not paste review comments into the terminal.",
+					timeout: 7000,
+				});
+				return;
+			}
+			await new Promise<void>((resolve) => setTimeout(resolve, 200));
+			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+			if (!submitted.ok) {
+				showAppToast({
+					intent: "danger",
+					message: submitted.message ?? "Could not submit review comments.",
+					timeout: 7000,
+				});
+			} else {
+				getTerminalController(taskId)?.focus?.();
+			}
+		},
+		[sendTaskSessionInput, taskId],
+	);
+
+	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
+	const isTaskSidePanelOpen = sidebar === "task_column" || sidebar === "commit";
+	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
+
+	// The component renders as a wrapper div whose children are the side panel + right column.
+	// The wrapper is a flex row that fills the parent container.
+	return (
+		<div
+			ref={detailLayoutRef}
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				minHeight: 0,
+				overflow: "hidden",
+				background: "var(--color-surface-0)",
+			}}
+		>
+			{/* Task-tied side panel — only when a task tab is active */}
+			{isTaskSidePanelOpen ? (
+				<>
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							flex: `0 0 ${sidePanelPercent}`,
+							minWidth: 0,
+							minHeight: 0,
+							overflow: "hidden",
+						}}
+					>
+						{sidebar === "commit" ? (
+							<CommitPanel
+								workspaceId={currentProjectId ?? ""}
+								taskId={selection.card.id}
+								baseRef={selection.card.baseRef}
+								navigateToFile={navigateToFile}
+							/>
+						) : (
+							<ColumnContextPanel
+								selection={selection}
+								onCardSelect={onCardSelect}
+								onCardDoubleClick={onCardDoubleClick}
+								taskSessions={taskSessions}
+								onCreateTask={onCreateTask}
+								onStartAllTasks={onStartAllTasks}
+								onClearTrash={onClearTrash}
+								editingTaskId={editingTaskId}
+								inlineTaskEditor={inlineTaskEditor}
+								onEditTask={onEditTask}
+								panelWidth="100%"
+							/>
+						)}
+					</div>
+					<ResizeHandle
+						orientation="vertical"
+						ariaLabel="Resize side panel"
+						onMouseDown={handleSidePanelSeparatorMouseDown}
+						className="z-10"
+					/>
+				</>
+			) : null}
+
+			{/* Right column — TopBar + main content */}
+			<div
+				style={{
+					display: "flex",
+					flexDirection: "column",
+					flex: "1 1 0",
+					minWidth: 0,
+					minHeight: 0,
+					overflow: "hidden",
+				}}
+			>
+				{topBar}
+				{mainView !== "git" && (
+					<ConflictBanner taskId={selection.card.id} onNavigateToResolver={navigateToGitView} />
+				)}
+				{mainView === "git" ? (
+					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<GitView
+							currentProjectId={currentProjectId}
+							selectedCard={selection}
+							sessionSummary={sessionSummary}
+							homeGitSummary={homeGitSummary}
+							board={board}
+							pendingCompareNavigation={pendingCompareNavigation}
+							onCompareNavigationConsumed={onCompareNavigationConsumed}
+							pendingFileNavigation={pendingFileNavigation}
+							onFileNavigationConsumed={onFileNavigationConsumed}
+							navigateToFile={navigateToFile}
+							branchStatusSlot={
+								taskWorkspaceInfo || taskWorkspaceSnapshot ? (
+									<TaskBranchStatus
+										branchLabel={
+											taskWorkspaceInfo?.branch ??
+											taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ??
+											"initializing"
+										}
+										changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
+										additions={taskWorkspaceSnapshot?.additions ?? 0}
+										deletions={taskWorkspaceSnapshot?.deletions ?? 0}
+										isGitHistoryOpen={isGitHistoryOpen}
+										onToggleGitHistory={onToggleGitHistory}
+										isDetached={taskWorkspaceInfo?.isDetached ?? false}
+										baseRef={selection.card.baseRef}
+									/>
+								) : undefined
+							}
+							gitHistoryPanel={gitHistoryPanel}
+							pinnedBranches={pinnedBranches}
+							onTogglePinBranch={onTogglePinBranch}
+							onAddToTerminal={handleAddToTerminal}
+							onSendToTerminal={handleSendToTerminal}
+						/>
+					</div>
+				) : mainView === "files" ? (
+					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<FilesView
+							key={`${selection.card.id}-${taskScopeMode}`}
+							scopeBar={
+								<ScopeBar
+									resolvedScope={taskResolvedScope}
+									scopeMode={taskScopeMode}
+									homeGitSummary={homeGitSummary}
+									taskTitle={selection.card.title}
+									taskBranch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
+									taskBaseRef={selection.card.baseRef}
+									behindBaseCount={taskWorkspaceSnapshot?.behindBaseCount ?? null}
+									isDetachedHead={taskWorkspaceInfo?.isDetached ?? false}
+									taskIsDetached={taskWorkspaceInfo?.isDetached ?? false}
+									onSwitchToHome={onDeselectTask}
+									onReturnToContextual={taskReturnToContextual}
+									branchPillSlot={
+										pillBranchLabel ? (
+											<BranchSelectorPopover
+												isOpen={taskBranchActions.isBranchPopoverOpen}
+												onOpenChange={taskBranchActions.setBranchPopoverOpen}
+												branches={taskBranchActions.branches}
+												currentBranch={taskBranchActions.currentBranch}
+												worktreeBranches={taskBranchActions.worktreeBranches}
+												onSelectBranchView={taskBranchActions.handleSelectBranchView}
+												onCheckoutBranch={taskBranchActions.handleCheckoutBranch}
+												onCompareWithBranch={(branch) => onOpenGitCompare({ targetRef: branch })}
+												onMergeBranch={taskBranchActions.handleMergeBranch}
+												onCreateBranch={taskBranchActions.handleCreateBranchFrom}
+												onDeleteBranch={taskBranchActions.handleDeleteBranch}
+												onPull={(branch) => {
+													void runGitAction(
+														"pull",
+														{ taskId: selection.card.id, baseRef: selection.card.baseRef },
+														branch,
+													);
+												}}
+												onPush={(branch) => {
+													void runGitAction(
+														"push",
+														{ taskId: selection.card.id, baseRef: selection.card.baseRef },
+														branch,
+													);
+												}}
+												pinnedBranches={pinnedBranches}
+												onTogglePinBranch={onTogglePinBranch}
+												trigger={<BranchPillTrigger label={pillBranchLabel} />}
+											/>
+										) : undefined
+									}
+									onCheckoutBrowsingBranch={
+										taskResolvedScope?.type === "branch_view"
+											? () => taskBranchActions.handleCheckoutBranch(taskResolvedScope.ref)
+											: undefined
+									}
+								/>
+							}
+							fileBrowserData={fileBrowserData}
+							rootPath={taskWorkspaceInfo?.path ?? selection.card.workingDirectory}
+							pendingFileNavigation={pendingFileNavigation}
+							onFileNavigationConsumed={onFileNavigationConsumed}
+							scopeKey={`${selection.card.id}-${taskScopeMode}`}
+						/>
+					</div>
+				) : (
+					<>
+						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+							<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0 }}>
+								<AgentTerminalPanel
+									taskId={selection.card.id}
+									workspaceId={currentProjectId}
+									terminalEnabled={isTaskTerminalEnabled}
+									summary={sessionSummary}
+									onSummary={onSessionSummary}
+									showSessionToolbar={false}
+									autoFocus
+									onCancelAutomaticAction={
+										selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
+											? () => onCancelAutomaticTaskAction(selection.card.id)
+											: undefined
+									}
+									cancelAutomaticActionLabel={
+										selection.card.autoReviewEnabled === true
+											? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+											: null
+									}
+									panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+									terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+									taskColumnId={selection.column.id}
+								/>
+							</div>
+						</div>
+						{bottomTerminalOpen && bottomTerminalTaskId ? (
+							<ResizableBottomPane
+								minHeight={200}
+								initialHeight={bottomTerminalPaneHeight}
+								onHeightChange={onBottomTerminalPaneHeightChange}
+								onCollapse={onBottomTerminalCollapse}
+							>
+								<div
+									style={{
+										display: "flex",
+										flex: "1 1 0",
+										minWidth: 0,
+										paddingLeft: 12,
+										paddingRight: 12,
+									}}
+								>
+									<AgentTerminalPanel
+										key={`detail-shell-${bottomTerminalTaskId}`}
+										taskId={bottomTerminalTaskId}
+										workspaceId={currentProjectId}
+										summary={bottomTerminalSummary}
+										onSummary={onSessionSummary}
+										showSessionToolbar={false}
+										autoFocus
+										onClose={onBottomTerminalClose}
+										minimalHeaderTitle="Terminal"
+										minimalHeaderSubtitle={bottomTerminalSubtitle}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+										onConnectionReady={onBottomTerminalConnectionReady}
+										agentCommand={bottomTerminalAgentCommand}
+										onSendAgentCommand={onBottomTerminalSendAgentCommand}
+										isExpanded={isBottomTerminalExpanded}
+										onToggleExpand={onBottomTerminalToggleExpand}
+										onRestart={onBottomTerminalRestart}
+										onExit={onBottomTerminalExit}
+									/>
+								</div>
+							</ResizableBottomPane>
+						) : null}
+					</>
+				)}
+			</div>
+			<CheckoutConfirmationDialog
+				state={taskBranchActions.checkoutDialogState}
+				onClose={taskBranchActions.closeCheckoutDialog}
+				onConfirmCheckout={taskBranchActions.handleConfirmCheckout}
+				onSkipTaskConfirmationChange={onSkipTaskCheckoutConfirmationChange}
+				onStashAndCheckout={taskBranchActions.handleStashAndCheckout}
+				isStashingAndCheckingOut={taskBranchActions.isStashingAndCheckingOut}
+			/>
+			<CreateBranchDialog
+				state={taskBranchActions.createBranchDialogState}
+				workspaceId={currentProjectId}
+				onClose={taskBranchActions.closeCreateBranchDialog}
+				onBranchCreated={taskBranchActions.handleBranchCreated}
+			/>
+			<DeleteBranchDialog
+				open={taskBranchActions.deleteBranchDialogState.type === "open"}
+				branchName={
+					taskBranchActions.deleteBranchDialogState.type === "open"
+						? taskBranchActions.deleteBranchDialogState.branchName
+						: ""
+				}
+				onCancel={taskBranchActions.closeDeleteBranchDialog}
+				onConfirm={taskBranchActions.handleConfirmDeleteBranch}
+			/>
+			<MergeBranchDialog
+				open={taskBranchActions.mergeBranchDialogState.type === "open"}
+				branchName={
+					taskBranchActions.mergeBranchDialogState.type === "open"
+						? taskBranchActions.mergeBranchDialogState.branchName
+						: ""
+				}
+				currentBranch={taskBranchActions.currentBranch ?? "current branch"}
+				onCancel={taskBranchActions.closeMergeBranchDialog}
+				onConfirm={taskBranchActions.handleConfirmMergeBranch}
+			/>
+		</div>
+	);
+}

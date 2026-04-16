@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
 
-import type { RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
-import { useAppDialogs } from "@/hooks/use-app-dialogs";
-import { type UseDebugLoggingResult, useDebugLogging } from "@/hooks/use-debug-logging";
-import { useDebugTools } from "@/hooks/use-debug-tools";
+import type { RuntimeSettingsSection } from "@/components/settings";
+import { useAppDialogs } from "@/hooks/app";
+import { type UseDebugLoggingResult, useDebugLogging, useDebugTools } from "@/hooks/debug";
 import { useBoardContext } from "@/providers/board-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";

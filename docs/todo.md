@@ -166,10 +166,10 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 
 Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folders.md). Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.
 
-- **Phase 1** — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves.
-- **Phase 2** — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves.
+- ~~**Phase 1**~~ — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves. Done.
+- ~~**Phase 2**~~ — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves. Done.
 - **Phase 3** — Decompose 7 oversized components (board-card 784L, git-view 757L, task-create-dialog 725L, branch-selector-popover 698L, project-navigation-panel 679L, top-bar 624L, card-detail-view 587L) into sub-components targeting ~400 lines max.
-- **Phase 4** — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`.
+- ~~**Phase 4**~~ — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`. Done.
 
 ## Readability refactoring roadmap (C#-style navigability) — completed
 

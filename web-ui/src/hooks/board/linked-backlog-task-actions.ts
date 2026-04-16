@@ -1,4 +1,4 @@
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskTrashWarningViewModel } from "@/components/task";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 

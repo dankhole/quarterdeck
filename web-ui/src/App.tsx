@@ -5,38 +5,39 @@
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { Dispatch, ReactElement, MouseEvent as ReactMouseEvent, ReactNode, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppDialogs } from "@/components/app-dialogs";
+import {
+	AppDialogs,
+	ConnectedTopBar,
+	HomeView,
+	ProjectNavigationPanel,
+	QuarterdeckAccessBlockedFallback,
+	RuntimeDisconnectedFallback,
+} from "@/components/app";
 import { showAppToast } from "@/components/app-toaster";
-import { CardDetailView } from "@/components/card-detail-view";
-import { ConnectedTopBar } from "@/components/connected-top-bar";
-import { CommitPanel } from "@/components/detail-panels/commit-panel";
-import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/detail-panels/detail-toolbar";
-import { GitHistoryView } from "@/components/git-history-view";
-import { HomeView } from "@/components/home-view";
-import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
-import { QuarterdeckAccessBlockedFallback } from "@/components/quarterdeck-access-blocked-fallback";
-import { RuntimeDisconnectedFallback } from "@/components/runtime-disconnected-fallback";
-import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
+import { GitHistoryView } from "@/components/git";
+import { CommitPanel } from "@/components/git/panels";
+import { CardDetailView, TaskInlineCreateCard } from "@/components/task";
+import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/terminal";
 import { createInitialBoardData } from "@/data/board-data";
-import { useBoardMetadataSync } from "@/hooks/board/use-board-metadata-sync";
-import { useAudibleNotifications } from "@/hooks/notifications/use-audible-notifications";
-import { useFocusedTaskNotification } from "@/hooks/notifications/use-focused-task-notification";
-import { useReviewReadyNotifications } from "@/hooks/notifications/use-review-ready-notifications";
-import { useStreamErrorHandler } from "@/hooks/notifications/use-stream-error-handler";
-import { useProjectSwitchCleanup } from "@/hooks/project/use-project-switch-cleanup";
-import { useProjectUiState } from "@/hooks/project/use-project-ui-state";
-import { useMigrateTaskDialog } from "@/hooks/terminal/use-migrate-task-dialog";
-import { useTerminalConfigSync } from "@/hooks/terminal/use-terminal-config-sync";
-import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
-import { useDisplaySummaryOnHover } from "@/hooks/use-display-summary";
-import { useEscapeHandler } from "@/hooks/use-escape-handler";
-import { useNavbarState } from "@/hooks/use-navbar-state";
-import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
-import { useShortcutActions } from "@/hooks/use-shortcut-actions";
-import { useTaskBaseRefSync } from "@/hooks/use-task-base-ref-sync";
-import { useTaskTitleSync } from "@/hooks/use-task-title-sync";
-import { useTaskWorkingDirectorySync } from "@/hooks/use-task-working-directory-sync";
-import { useTitleActions } from "@/hooks/use-title-actions";
+import { useAppHotkeys, useEscapeHandler, useNavbarState } from "@/hooks/app";
+import {
+	useBoardMetadataSync,
+	useDisplaySummaryOnHover,
+	usePromptShortcuts,
+	useTaskBaseRefSync,
+	useTaskTitleSync,
+	useTaskWorkingDirectorySync,
+	useTitleActions,
+} from "@/hooks/board";
+import {
+	useAudibleNotifications,
+	useFocusedTaskNotification,
+	useReviewReadyNotifications,
+	useStreamErrorHandler,
+} from "@/hooks/notifications";
+import { useProjectSwitchCleanup, useProjectUiState } from "@/hooks/project";
+import { useShortcutActions } from "@/hooks/settings";
+import { useMigrateTaskDialog, useTerminalConfigSync } from "@/hooks/terminal";
 import { BoardProvider, useBoardContext } from "@/providers/board-provider";
 import { DialogProvider, useDialogContext } from "@/providers/dialog-provider";
 import { GitProvider, useGitContext } from "@/providers/git-provider";

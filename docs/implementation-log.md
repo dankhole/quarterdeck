@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: frontend feature folders and barrel exports — Phases 1, 2, 4 (2026-04-16)
+
+**Problem:** `web-ui/src/components/` had 48 files at root level mixing board, git, task, settings, debug, and shell components. `hooks/` had 15 orphan files outside domain subdirectories. Every import was a direct file path with no barrel re-exports, leading to verbose multi-line import blocks.
+
+**Phase 1 — Sort orphan hooks:** Moved 15 hooks and their domain modules + tests from `hooks/` root into `hooks/app/` (4 files), `hooks/debug/` (4 files), `hooks/settings/` (6 files), and existing `hooks/board/` (8 files) and `hooks/git/` (2 files). Updated ~30 import sites.
+
+**Phase 2 — Group components:** Created 6 new feature directories under `components/`: `app/` (13 files), `board/` (6 + `dependencies/` subdir), `task/` (15 files), `git/` (8 + renamed `history/` + `panels/` subdirs), `terminal/` (4 files), `debug/` (3 files). Moved 4 files into existing `settings/`. Renamed `detail-panels/` → `git/panels/`, `git-history/` → `git/history/`. Components root now has only `app-toaster.ts`, `open-workspace-button.tsx`, `search-select-dropdown.tsx` plus `shared/` and `ui/`.
+
+**Phase 4 — Barrel exports:** Added 17 `index.ts` files: 9 in `components/` (`app/`, `board/`, `task/`, `git/`, `git/panels/`, `git/history/`, `terminal/`, `settings/`, `debug/`) and 8 in `hooks/` (`app/`, `board/`, `git/`, `terminal/`, `project/`, `notifications/`, `settings/`, `debug/`). Updated 14 external consumers to use barrel imports — consolidating e.g. 6 separate `@/components/app/*` imports into one `@/components/app` import. Phase 3 (component decomposition) deferred.
+
+**Files touched:** ~140 files renamed/moved, ~40 files with import path updates, 17 new `index.ts` barrel files. Zero logic changes — all import paths verified via `npm run web:typecheck` after each batch. All 787 web-ui tests pass.
+
 ## Fix: awaiting_review sessions reset to idle after server restart (2026-04-16)
 
 **Problem:** After a server restart, tasks that were legitimately in `awaiting_review` (agent fired `to_review` hook, work complete) were being recovered to `idle` when a viewer reconnected. The user's review card disappeared silently.

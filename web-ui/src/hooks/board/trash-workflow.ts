@@ -6,7 +6,7 @@
  * orchestration.
  */
 
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskTrashWarningViewModel } from "@/components/task";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
 // ---------------------------------------------------------------------------

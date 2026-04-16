@@ -2,9 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
 	type CheckoutDialogState,
+	type CreateBranchDialogState,
 	resolveCheckoutDialogState,
-} from "@/components/detail-panels/checkout-confirmation-dialog";
-import type { CreateBranchDialogState } from "@/components/detail-panels/create-branch-dialog";
+} from "@/components/git/panels";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";

@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useMemo } from "react";
-import type { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import type { ProjectNavigationPanel } from "@/components/app";
 import type { BoardData } from "@/types";
 import { countTasksByColumn } from "@/utils/app-utils";
 

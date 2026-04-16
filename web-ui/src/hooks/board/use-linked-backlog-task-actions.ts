@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { toast } from "sonner";
 import { showAppToast } from "@/components/app-toaster";
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskTrashWarningViewModel } from "@/components/task";
 import { buildTrashWarningViewModel, getDependencyAddErrorMessage } from "@/hooks/board/linked-backlog-task-actions";
 import { getDetailTerminalTaskId } from "@/hooks/terminal/use-terminal-panels";
 import {

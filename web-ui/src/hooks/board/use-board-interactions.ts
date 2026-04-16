@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect } from "react";
 
 import { notifyError } from "@/components/app-toaster";
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import type { TaskTrashWarningViewModel } from "@/components/task";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/board/use-programmatic-card-moves";

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: frontend feature folders and barrel exports (Phases 1, 2, 4)
+
+- **Phase 1 — Hook reorganization:** Sorted 15 orphan hooks from `hooks/` root into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and 4 existing dirs). Pure file moves + import path updates.
+- **Phase 2 — Component grouping:** Moved 48 root-level component files from `components/` root into 6 feature directories (`app/`, `board/`, `task/`, `git/`, `terminal/`, `debug/`) plus 2 into existing `settings/`. Renamed `detail-panels/` to `git/panels/` and `git-history/` to `git/history/`. Components root now has only 4 cross-cutting files plus `shared/` and `ui/`.
+- **Phase 4 — Barrel exports:** Added 17 `index.ts` barrel files across all feature directories in `components/` and `hooks/`. Updated 14 consumer files (App.tsx, main.tsx, all 6 providers, app-dialogs, home-view, card-detail-view, and 5 hook files) to use consolidated barrel imports. Phase 3 (component decomposition) deferred.
+
 ### Fix: awaiting_review sessions reset to idle after server restart
 
 - Sessions in `awaiting_review` with terminal review reasons (hook, exit, error, attention, stalled) were incorrectly recovered to idle after a server restart. The preservation guard in `recoverStaleSession` was gated on `restartRequest` — an in-memory field lost across restarts. Now uses `isTerminalReviewReason` to preserve review state regardless of server lifetime, matching the semantics already used by `hydrateFromRecord`.

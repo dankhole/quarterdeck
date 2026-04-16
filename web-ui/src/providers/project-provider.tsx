@@ -2,13 +2,15 @@ import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { showAppToast } from "@/components/app-toaster";
-import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
-import type { UseProjectNavigationResult } from "@/hooks/project/use-project-navigation";
-import { useProjectNavigation } from "@/hooks/project/use-project-navigation";
-import { useQuarterdeckAccessGate } from "@/hooks/project/use-quarterdeck-access-gate";
-import type { UseStartupOnboardingResult } from "@/hooks/project/use-startup-onboarding";
-import { useStartupOnboarding } from "@/hooks/project/use-startup-onboarding";
-import { useWorkspaceSync } from "@/hooks/project/use-workspace-sync";
+import { useDocumentVisibility } from "@/hooks/notifications";
+import {
+	type UseProjectNavigationResult,
+	type UseStartupOnboardingResult,
+	useProjectNavigation,
+	useQuarterdeckAccessGate,
+	useStartupOnboarding,
+	useWorkspaceSync,
+} from "@/hooks/project";
 import { isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type {

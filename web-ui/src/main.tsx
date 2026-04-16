@@ -2,7 +2,7 @@ import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 
 import App from "@/App";
-import { AppErrorBoundary } from "@/components/app-error-boundary";
+import { AppErrorBoundary } from "@/components/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { installGlobalErrorCapture } from "@/utils/global-error-capture";
 import "@/styles/globals.css";

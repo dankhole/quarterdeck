@@ -1,5 +1,5 @@
 // Shared props interface for all settings dialog sections.
-import type { SettingsFormValues } from "@/hooks/use-settings-form";
+import type { SettingsFormValues } from "@/hooks/settings/use-settings-form";
 
 export interface SettingsSectionProps {
 	fields: SettingsFormValues;
