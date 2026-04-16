@@ -1,6 +1,6 @@
 {
   "name": "quarterdeck",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {
     "access": "public",

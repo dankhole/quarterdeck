@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-04-16
+
 ### Refactor: split session-manager into concern-based modules
 
 - Split the 928-line `TerminalSessionManager` class into 4 files organized by concern — lifecycle (spawn/exit/recovery/hydration, 510 lines), output pipeline (protocol filter → mirror → trust → transition → broadcast, 154 lines), input pipeline (protocol detection → permission clearing → interrupt → PTY write, 124 lines), and the slimmed manager (370 lines, registry + PTY control + state coordination). Follows the existing free-function-with-deps-injection pattern used by the 5 companion modules. Zero behavior changes.
