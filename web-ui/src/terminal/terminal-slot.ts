@@ -3,53 +3,36 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type {
-	RuntimeTaskSessionSummary,
-	RuntimeTerminalWsClientMessage,
-	RuntimeTerminalWsServerMessage,
-} from "@/runtime/types";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { SlotRenderer } from "@/terminal/slot-renderer";
+import { SlotResizeManager } from "@/terminal/slot-resize-manager";
+import { SlotSocketManager } from "@/terminal/slot-socket-manager";
+import { SlotWriteQueue } from "@/terminal/slot-write-queue";
+import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
-import {
-	createQuarterdeckTerminalOptions,
-	TERMINAL_FONT_SIZE,
-	TERMINAL_PRIMARY_FONT,
-} from "@/terminal/terminal-options";
+import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import {
 	appendTerminalHeuristicText,
 	hasInterruptAcknowledgement,
 	hasLikelyShellPrompt,
 } from "@/terminal/terminal-prompt-heuristics";
-import {
-	decodeTerminalSocketChunk,
-	generateTerminalClientId,
-	getTerminalSocketChunkByteLength,
-	getTerminalSocketWriteData,
-	getTerminalWebSocketUrl,
-	isCopyShortcut,
-} from "@/terminal/terminal-socket-utils";
+import { generateTerminalClientId, isCopyShortcut } from "@/terminal/terminal-socket-utils";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
 
 const log = createClientLogger("terminal-slot");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
-const RESIZE_DEBOUNCE_MS = 50;
-const FONT_READY_TIMEOUT_MS = 3000;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
-/** Scrollback buffer size shared by pool slots and dedicated terminals. Keep in sync with session-manager.ts server-side headless mirror. */
-export const TERMINAL_SCROLLBACK = 1_500;
+
+export { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
+export type { PersistentTerminalAppearance } from "@/terminal/terminal-options";
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
-
-export interface PersistentTerminalAppearance {
-	cursorColor: string;
-	terminalBackgroundColor: string;
-}
 
 interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
@@ -103,35 +86,22 @@ export class TerminalSlot {
 	private workspaceId: string | null = null;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
-	private resizeObserver: ResizeObserver | null = null;
-	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
-	private webglAddon: WebglAddon | null = null;
-	private dprMediaQuery: MediaQueryList | null = null;
-	private dprChangeHandler: (() => void) | null = null;
+	private readonly resizer: SlotResizeManager;
+	private readonly renderer: SlotRenderer;
 	private visibleContainer: HTMLDivElement | null = null;
 	/** The container the hostElement is physically in the DOM (set by pool or dedicated caller). */
 	private stageContainer: HTMLDivElement | null = null;
-	private ioSocket: WebSocket | null = null;
-	private controlSocket: WebSocket | null = null;
-	private connectionReady = false;
-	private restoreCompleted = false;
+	private readonly sockets: SlotSocketManager;
 	/** Deferred focus — set by show() when autoFocus is requested before restore completes. */
 	private pendingAutoFocus = false;
-	private outputTextDecoder = new TextDecoder();
-	private terminalWriteQueue: Promise<void> = Promise.resolve();
-	/** Bumped on any lifecycle event where the server may not know our dimensions. */
-	private resizeEpoch = 0;
-	/** The epoch that was current when we last successfully sent a resize message. */
-	private lastSatisfiedResizeEpoch = -1;
-	/** Cols/rows we last sent — for within-epoch dedup when dimensions change. */
-	private lastSentCols = 0;
-	private lastSentRows = 0;
+	private readonly writeQueue: SlotWriteQueue;
 	private disposed = false;
-	/** One-shot: scroll to bottom after the first ResizeObserver-driven fit() reflow in show(). */
-	private pendingScrollToBottom = false;
 	/** One-shot callback fired when notifyConnectionReady() runs, then cleared. */
 	private onceConnectionReadyCallback: (() => void) | null = null;
 	private visibilityChangeHandler: (() => void) | null = null;
+	private connectTimestamp: number | null = null;
+	private showTimestamp: number | null = null;
+	private restoreRequestTimestamp: number | null = null;
 
 	constructor(slotId: number, appearance: PersistentTerminalAppearance) {
 		this.slotId = slotId;
@@ -159,20 +129,47 @@ export class TerminalSlot {
 			cols: initialGeometry.cols,
 			rows: initialGeometry.rows,
 		});
+		this.sockets = new SlotSocketManager(this.slotId, this.clientId, {
+			enqueueWrite: (data, options) => {
+				void this.writeQueue.enqueue(data, options);
+			},
+			onRestore: (snapshot, cols, rows) => this.handleRestore(snapshot, cols, rows),
+			onState: (payload) => this.handleState(payload),
+			onExit: (code) => this.handleExit(code),
+			onError: (message) => {
+				void this.writeQueue.enqueue(`\r\n[quarterdeck] ${message}\r\n`);
+			},
+			onConnectionReady: () => this.notifyConnectionReady(),
+			onLastError: (message) => {
+				this.lastError = message;
+				this.notifyLastError();
+			},
+			ensureVisible: () => this.ensureVisible(),
+			invalidateResize: () => this.resizer.invalidate(),
+			requestResize: () => this.resizer.request(),
+			getVisibleContainer: () => this.visibleContainer,
+			getStageContainer: () => this.stageContainer,
+			isDisposed: () => this.disposed,
+		});
+		this.writeQueue = new SlotWriteQueue(this.terminal, {
+			sendControlMessage: (msg) => this.sockets.sendControl(msg),
+			notifyOutputText: (text) => this.notifyOutputText(text),
+			isDisposed: () => this.disposed,
+		});
 		this.terminal.loadAddon(this.fitAddon);
 		this.terminal.loadAddon(new ClipboardAddon());
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
 		this.terminal.onData((data) => {
-			this.sendIoData(data);
+			this.sockets.sendIo(data);
 		});
 		this.terminal.onBinary((data) => {
 			const bytes = new Uint8Array(data.length);
 			for (let index = 0; index < data.length; index += 1) {
 				bytes[index] = data.charCodeAt(index) & 0xff;
 			}
-			this.sendIoData(bytes);
+			this.sockets.sendIo(bytes);
 		});
 		this.terminal.attachCustomKeyEventHandler((event) => {
 			if (event.key === "Enter" && event.shiftKey) {
@@ -190,7 +187,20 @@ export class TerminalSlot {
 			return true;
 		});
 
-		this.openTerminalWhenFontsReady();
+		this.renderer = new SlotRenderer(this.slotId, this.terminal, this.hostElement, this.fitAddon, {
+			forceResize: () => this.forceResize(),
+			getStageContainer: () => this.stageContainer,
+			getVisibleContainer: () => this.visibleContainer,
+			isDisposed: () => this.disposed,
+		});
+		this.resizer = new SlotResizeManager(this.terminal, this.fitAddon, {
+			sendControlMessage: (msg) => this.sockets.sendControl(msg),
+			reportGeometry: reportTerminalGeometry,
+			getConnectedTaskId: () => this.connectedTaskId,
+			getVisibleContainer: () => this.visibleContainer,
+			getStageContainer: () => this.stageContainer,
+		});
+		this.renderer.openWhenFontsReady();
 		// Repaint when the browser tab returns to foreground — GPU may have evicted
 		// textures or skipped frames while backgrounded. Also reconnect dead sockets
 		// (e.g. after the computer wakes from sleep).
@@ -199,10 +209,10 @@ export class TerminalSlot {
 				log.debug(`slot ${this.slotId} tab-return refresh`, { task: this.taskId });
 				this.terminal.refresh(0, this.terminal.rows - 1);
 				// Reconnect sockets that died during sleep/background.
-				if (this.taskId && this.workspaceId && (!this.ioSocket || !this.controlSocket)) {
+				if (this.taskId && this.workspaceId && (!this.sockets.hasIoSocket || !this.sockets.hasControlSocket)) {
 					log.info(`slot ${this.slotId} tab-return reconnecting dead sockets`, { task: this.taskId });
-					this.connectIo();
-					this.connectControl();
+					this.sockets.connectIo(this.taskId, this.workspaceId);
+					this.sockets.connectControl(this.taskId, this.workspaceId);
 				}
 			}
 		};
@@ -226,14 +236,10 @@ export class TerminalSlot {
 	 */
 	ensureConnected(): void {
 		if (this.disposed || !this.taskId || !this.workspaceId) return;
-		this.connectIo();
-		this.connectControl();
+		this.sockets.connectIo(this.taskId, this.workspaceId);
+		this.sockets.connectControl(this.taskId, this.workspaceId);
 	}
 
-	/**
-	 * Connect this slot to a task. Opens IO + control sockets.
-	 * No-op if already connected to the same task.
-	 */
 	connectToTask(taskId: string, workspaceId: string): void {
 		if (this.disposed) {
 			return;
@@ -241,72 +247,40 @@ export class TerminalSlot {
 		if (this.taskId === taskId && this.workspaceId === workspaceId) {
 			return;
 		}
-		// If already connected to a different task, close existing sockets first
-		// to prevent leaks. The pool normally calls disconnectFromTask before reuse,
-		// but this guard makes the method self-contained.
 		if (this.taskId) {
-			if (this.ioSocket) {
-				const socket = this.ioSocket;
-				this.ioSocket = null;
-				socket.close();
-			}
-			if (this.controlSocket) {
-				const socket = this.controlSocket;
-				this.controlSocket = null;
-				socket.close();
-			}
+			this.sockets.closeAll();
 		}
 		this.taskId = taskId;
 		this.workspaceId = workspaceId;
-		this.connectIo();
-		this.connectControl();
+		this.connectTimestamp = performance.now();
+		this.sockets.connectIo(taskId, workspaceId);
+		this.sockets.connectControl(taskId, workspaceId);
 	}
 
-	/**
-	 * Disconnect from the current task. Closes sockets, drains write queue,
-	 * resets the terminal buffer, and clears all task-specific state.
-	 * Does NOT touch xterm, DOM, or WebGL.
-	 */
 	async disconnectFromTask(): Promise<void> {
 		if (!this.taskId) {
 			return;
 		}
 		const previousTaskId = this.taskId;
 
-		// Close sockets first (stop new data)
-		if (this.ioSocket) {
-			const socket = this.ioSocket;
-			this.ioSocket = null;
-			socket.close();
-		}
-		if (this.controlSocket) {
-			const socket = this.controlSocket;
-			this.controlSocket = null;
-			socket.close();
-		}
+		this.sockets.closeAll();
 
 		// Clear ALL task-specific state synchronously before any await.
 		// The pool may reuse this slot immediately via connectToTask() — if state
 		// mutation happened after the await, the async tail would clobber the new
 		// task's connection (taskId, subscribers, buffer).
-		this.connectionReady = false;
-		this.restoreCompleted = false;
+		this.sockets.resetConnectionState();
 		this.pendingAutoFocus = false;
 		this.latestSummary = null;
 		this.lastError = null;
-		this.outputTextDecoder = new TextDecoder();
+		this.restoreRequestTimestamp = null;
 		clearTerminalGeometry(previousTaskId);
 		this.taskId = null;
 		this.workspaceId = null;
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
 
-		// Drain the write queue, then reset the buffer. These are safe after
-		// state is cleared — connectToTask opens new sockets and the server
-		// sends a fresh restore snapshot that overwrites the buffer.
-		await this.terminalWriteQueue.catch(() => undefined);
-		// Guard: if a new task connected while we were awaiting, don't reset
-		// its buffer.
+		await this.writeQueue.drain();
 		if (!this.taskId) {
 			this.terminal.reset();
 		}
@@ -318,51 +292,6 @@ export class TerminalSlot {
 	 */
 	onceConnectionReady(callback: () => void): void {
 		this.onceConnectionReadyCallback = callback;
-	}
-
-	private openTerminalWhenFontsReady(): void {
-		const fontCheckString = `${TERMINAL_FONT_SIZE}px '${TERMINAL_PRIMARY_FONT}'`;
-
-		const openAndAttachWebgl = () => {
-			if (this.disposed) {
-				return;
-			}
-			this.terminal.open(this.hostElement);
-			this.attachWebglAddon();
-			if (this.stageContainer ?? this.visibleContainer) {
-				this.fitAddon.fit();
-			}
-		};
-
-		const refitAfterFontsReady = () => {
-			void document.fonts.ready.then(() => {
-				if (!this.disposed && (this.stageContainer ?? this.visibleContainer)) {
-					this.fitAddon.fit();
-				}
-			});
-		};
-
-		if (document.fonts.check(fontCheckString)) {
-			openAndAttachWebgl();
-		} else {
-			const timeout = new Promise<void>((r) => setTimeout(r, FONT_READY_TIMEOUT_MS));
-			void Promise.race([document.fonts.ready, timeout]).then(openAndAttachWebgl);
-			refitAfterFontsReady();
-		}
-	}
-
-	private attachWebglAddon(): void {
-		try {
-			const webglAddon = new WebglAddon();
-			webglAddon.onContextLoss(() => {
-				webglAddon.dispose();
-				this.webglAddon = null;
-			});
-			this.terminal.loadAddon(webglAddon);
-			this.webglAddon = webglAddon;
-		} catch {
-			// Fall back to the default renderer when WebGL is unavailable.
-		}
 	}
 
 	private notifyExit(code: number | null): void {
@@ -401,7 +330,19 @@ export class TerminalSlot {
 		if (!this.taskId) {
 			return;
 		}
-		this.connectionReady = true;
+		this.sockets.connectionReady = true;
+		if (this.connectTimestamp !== null) {
+			log.debug(`[perf] slot ${this.slotId} connect-to-ready`, {
+				elapsedMs: (performance.now() - this.connectTimestamp).toFixed(1),
+			});
+			this.connectTimestamp = null;
+		}
+		if (this.showTimestamp !== null) {
+			log.debug(`[perf] slot ${this.slotId} show-to-interactive`, {
+				elapsedMs: (performance.now() - this.showTimestamp).toFixed(1),
+			});
+			this.showTimestamp = null;
+		}
 		const taskId = this.taskId;
 		for (const subscriber of this.subscribers) {
 			subscriber.onConnectionReady?.(taskId);
@@ -413,90 +354,6 @@ export class TerminalSlot {
 		}
 	}
 
-	/**
-	 * Send a message on the control WebSocket. Returns true if the message was
-	 * actually sent, false if the socket was missing or not open. Callers that
-	 * update dedup state (e.g. requestResize) must check the return value and
-	 * avoid marking the message as "sent" when it was silently dropped.
-	 */
-	private sendControlMessage(message: RuntimeTerminalWsClientMessage): boolean {
-		if (!this.controlSocket || this.controlSocket.readyState !== WebSocket.OPEN) {
-			return false;
-		}
-		this.controlSocket.send(JSON.stringify(message));
-		return true;
-	}
-
-	private sendIoData(data: string | Uint8Array): boolean {
-		if (!this.ioSocket || this.ioSocket.readyState !== WebSocket.OPEN) {
-			return false;
-		}
-		this.ioSocket.send(data);
-		return true;
-	}
-
-	private enqueueTerminalWrite(
-		data: string | Uint8Array,
-		options: {
-			ackBytes?: number;
-			notifyText?: string | null;
-		} = {},
-	): Promise<void> {
-		const ackBytes = options.ackBytes ?? 0;
-		const notifyText = options.notifyText ?? null;
-		this.terminalWriteQueue = this.terminalWriteQueue
-			.catch(() => undefined)
-			.then(
-				async () =>
-					await new Promise<void>((resolve) => {
-						if (this.disposed) {
-							resolve();
-							return;
-						}
-						this.terminal.write(data, () => {
-							if (notifyText) {
-								this.notifyOutputText(notifyText);
-							}
-							if (ackBytes > 0) {
-								this.sendControlMessage({
-									type: "output_ack",
-									bytes: ackBytes,
-								});
-							}
-							resolve();
-						});
-					}),
-			);
-		return this.terminalWriteQueue;
-	}
-
-	private async applyRestore(
-		snapshot: string,
-		cols: number | null | undefined,
-		rows: number | null | undefined,
-	): Promise<void> {
-		// Server connection is fresh/reconnected and doesn't know our dimensions.
-		this.invalidateResize();
-		await this.terminalWriteQueue.catch(() => undefined);
-		this.terminal.reset();
-		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
-			this.terminal.resize(cols, rows);
-		}
-		if (!snapshot) {
-			return;
-		}
-		await this.enqueueTerminalWrite(snapshot);
-	}
-
-	/**
-	 * Mark the current resize state as stale. The next requestResize() will
-	 * unconditionally send dimensions to the server, even if cols/rows
-	 * haven't changed since the last send.
-	 */
-	private invalidateResize(): void {
-		this.resizeEpoch += 1;
-	}
-
 	/** Reveal the host element if it was deferred during restore. */
 	private ensureVisible(): void {
 		if (this.visibleContainer) {
@@ -504,276 +361,73 @@ export class TerminalSlot {
 		}
 	}
 
-	/**
-	 * Invalidate and immediately re-send terminal dimensions with force flag.
-	 * The server sends SIGWINCH even if dimensions haven't changed, ensuring
-	 * TUI agents redraw after task switch.
-	 */
 	private forceResize(): void {
-		this.invalidateResize();
-		this.requestResize(true);
+		this.resizer.force();
 	}
 
-	private requestResize(force?: boolean): void {
-		if (!this.connectedTaskId) {
-			return;
+	private async handleRestore(
+		snapshot: string,
+		cols: number | null | undefined,
+		rows: number | null | undefined,
+	): Promise<void> {
+		const t0 = performance.now();
+		this.resizer.invalidate();
+		await this.writeQueue.drain();
+		this.terminal.reset();
+		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
+			this.terminal.resize(cols, rows);
 		}
-		// Allow resize if staged (in real container) even when not visible.
-		// This enables warmup to send correct dimensions before the slot is shown.
-		const container = this.visibleContainer ?? this.stageContainer;
-		if (!container) {
-			return;
+		if (snapshot) {
+			await this.writeQueue.enqueue(snapshot);
 		}
-		this.fitAddon.fit();
-		const { cols, rows } = this.terminal;
-		const epochSatisfied = this.lastSatisfiedResizeEpoch === this.resizeEpoch;
-		if (epochSatisfied && cols === this.lastSentCols && rows === this.lastSentRows && !force) {
-			return;
-		}
-		const bounds = container.getBoundingClientRect();
-		const pixelWidth = Math.round(bounds.width);
-		const pixelHeight = Math.round(bounds.height);
-		reportTerminalGeometry(this.connectedTaskId, { cols, rows });
-		// Only mark as sent if the message actually reached the socket.
-		// Otherwise the dedup check above will suppress future attempts
-		// with the same dimensions, leaving the PTY at stale sizes.
-		const sent = this.sendControlMessage({
-			type: "resize",
-			cols,
-			rows,
-			pixelWidth: pixelWidth > 0 ? pixelWidth : undefined,
-			pixelHeight: pixelHeight > 0 ? pixelHeight : undefined,
-			force: force || undefined,
+		log.debug(`[perf] slot ${this.slotId} restore applied`, {
+			elapsedMs: (performance.now() - t0).toFixed(1),
+			snapshotLength: snapshot.length,
 		});
-		if (sent) {
-			this.lastSentCols = cols;
-			this.lastSentRows = rows;
-			this.lastSatisfiedResizeEpoch = this.resizeEpoch;
-		}
-	}
-
-	private listenForDprChange(): void {
-		this.clearDprListener();
-		const dpr = window.devicePixelRatio;
-		const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
-		const handler = () => {
-			// DPR changed (monitor move, zoom, display settings) — the glyph
-			// texture atlas is now stale. A plain requestResize() would send
-			// correct dimensions but leave blurry text. repairRendererCanvas()
-			// clears the atlas, repaints, and includes a force-resize.
-			this.repairRendererCanvas("dpr-change");
-			// Re-register for the next DPR change since the query matched against the old value.
-			this.listenForDprChange();
-		};
-		mq.addEventListener("change", handler, { once: true });
-		this.dprMediaQuery = mq;
-		this.dprChangeHandler = handler;
-	}
-
-	private clearDprListener(): void {
-		if (this.dprMediaQuery && this.dprChangeHandler) {
-			this.dprMediaQuery.removeEventListener("change", this.dprChangeHandler);
-		}
-		this.dprMediaQuery = null;
-		this.dprChangeHandler = null;
-	}
-
-	private connectIo(): void {
-		if (this.ioSocket) {
-			return;
-		}
-		if (!this.taskId || !this.workspaceId) {
-			return;
-		}
-		const ioSocket = new WebSocket(getTerminalWebSocketUrl("io", this.taskId, this.workspaceId, this.clientId));
-		ioSocket.binaryType = "arraybuffer";
-		// No browser-side restoreCompleted gate needed here — the server buffers output
-		// in pendingOutputChunks until restore_complete is acknowledged, so IO data only
-		// arrives after the restore snapshot has been applied. See ws-server.ts onOutput.
-		ioSocket.addEventListener("message", (event) => {
-			if (this.disposed || this.ioSocket !== ioSocket) {
-				return;
-			}
-			const writeData = getTerminalSocketWriteData(event.data);
-			if (!writeData) {
-				return;
-			}
-			const decoded = decodeTerminalSocketChunk(this.outputTextDecoder, event.data);
-			void this.enqueueTerminalWrite(writeData, {
-				ackBytes: getTerminalSocketChunkByteLength(event.data),
-				notifyText: decoded || null,
+		if (this.restoreRequestTimestamp !== null) {
+			log.debug(`[perf] slot ${this.slotId} restore round-trip`, {
+				elapsedMs: (performance.now() - this.restoreRequestTimestamp).toFixed(1),
 			});
-		});
-		this.ioSocket = ioSocket;
-		ioSocket.onopen = () => {
-			if (this.disposed || this.ioSocket !== ioSocket) {
-				return;
-			}
-			this.lastError = null;
-			this.notifyLastError();
-			// Socket reconnected — server may have lost our dimensions.
-			this.invalidateResize();
-			if (this.restoreCompleted && this.visibleContainer) {
-				this.requestResize();
-			}
-			if (this.restoreCompleted) {
-				this.notifyConnectionReady();
-			}
-		};
-		ioSocket.onerror = () => {
-			if (this.disposed || this.ioSocket !== ioSocket) {
-				return;
-			}
-			this.ensureVisible();
-			this.lastError = "Terminal stream failed.";
-			this.notifyLastError();
-		};
-		ioSocket.onclose = () => {
-			if (this.disposed || this.ioSocket !== ioSocket) {
-				return;
-			}
-			this.ensureVisible();
-			this.ioSocket = null;
-			this.outputTextDecoder = new TextDecoder();
-			this.connectionReady = false;
-			this.restoreCompleted = false;
-			this.lastError = "Terminal stream closed. Close and reopen to reconnect.";
-			this.notifyLastError();
-		};
+			this.restoreRequestTimestamp = null;
+		}
+		// Post-restore: fit BEFORE reveal so scroll position is correct.
+		if (this.sockets.hasIoSocket && (this.visibleContainer ?? this.stageContainer)) {
+			this.resizer.request();
+		}
+		this.terminal.scrollToBottom();
+		this.ensureVisible();
+		if (this.pendingAutoFocus) {
+			this.pendingAutoFocus = false;
+			this.terminal.focus();
+		}
+		if (this.sockets.hasIoSocket) {
+			this.notifyConnectionReady();
+		}
 	}
 
-	private connectControl(): void {
-		if (this.controlSocket) {
-			return;
+	private handleState(payload: { type: "state"; summary: RuntimeTaskSessionSummary }): void {
+		const previousState = this.latestSummary?.state;
+		this.notifySummary(payload.summary);
+		if (
+			(this.visibleContainer ?? this.stageContainer) &&
+			payload.summary.state !== previousState &&
+			previousState !== "running" &&
+			previousState !== "awaiting_review" &&
+			(payload.summary.state === "running" || payload.summary.state === "awaiting_review")
+		) {
+			this.forceResize();
 		}
-		if (!this.taskId || !this.workspaceId) {
-			return;
-		}
-		const controlSocket = new WebSocket(
-			getTerminalWebSocketUrl("control", this.taskId, this.workspaceId, this.clientId),
-		);
-		this.controlSocket = controlSocket;
-		controlSocket.onopen = () => {
-			if (this.disposed || this.controlSocket !== controlSocket) {
-				return;
-			}
-			this.lastError = null;
-			this.notifyLastError();
-		};
-		controlSocket.onmessage = (event) => {
-			let payload: RuntimeTerminalWsServerMessage;
-			try {
-				payload = JSON.parse(String(event.data)) as RuntimeTerminalWsServerMessage;
-			} catch {
-				// Ignore malformed control frames.
-				return;
-			}
+	}
 
-			if (payload.type === "restore") {
-				this.restoreCompleted = false;
-				void this.applyRestore(payload.snapshot, payload.cols, payload.rows)
-					.then(() => {
-						if (this.disposed || this.controlSocket !== controlSocket) {
-							return;
-						}
-						this.restoreCompleted = true;
-						this.sendControlMessage({ type: "restore_complete" });
-						this.terminal.scrollToBottom();
-						// Reveal the terminal now that the buffer is populated and
-						// the viewport is scrolled to the bottom. mount() defers
-						// visibility when restoreCompleted is false to avoid the
-						// full history visibly scrolling past during the write.
-						this.ensureVisible();
-						if (this.pendingAutoFocus) {
-							this.pendingAutoFocus = false;
-							this.terminal.focus();
-						}
-						if (this.ioSocket && (this.visibleContainer ?? this.stageContainer)) {
-							this.requestResize();
-						}
-						if (this.ioSocket) {
-							this.notifyConnectionReady();
-						}
-					})
-					.catch(() => {
-						if (this.disposed || this.controlSocket !== controlSocket) {
-							return;
-						}
-						// Reveal on failure too so the terminal doesn't stay hidden.
-						this.ensureVisible();
-						if (this.pendingAutoFocus) {
-							this.pendingAutoFocus = false;
-							this.terminal.focus();
-						}
-						this.lastError = "Terminal restore failed.";
-						this.notifyLastError();
-					});
-				return;
-			}
-			if (payload.type === "state") {
-				const previousState = this.latestSummary?.state;
-				this.notifySummary(payload.summary);
-				// When a session newly starts, the server PTY may not have had our
-				// terminal dimensions — the resize sent during the earlier restore
-				// may have been silently dropped because the PTY didn't exist yet.
-				// Only fire on the first transition INTO an active state (from null,
-				// "starting", etc.), not on transitions between active states. Sending
-				// a same-dimensions SIGWINCH while the agent is already running can
-				// interrupt TUI layout mid-redraw (e.g. input prompt setup), causing
-				// off-by-one artifacts.
-				if (
-					(this.visibleContainer ?? this.stageContainer) &&
-					payload.summary.state !== previousState &&
-					previousState !== "running" &&
-					previousState !== "awaiting_review" &&
-					(payload.summary.state === "running" || payload.summary.state === "awaiting_review")
-				) {
-					this.forceResize();
-				}
-				return;
-			}
-			if (payload.type === "exit") {
-				const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
-				void this.enqueueTerminalWrite(`\r\n[quarterdeck] ${label}\r\n`);
-				this.notifyExit(payload.code);
-				return;
-			}
-			if (payload.type === "error") {
-				this.lastError = payload.message;
-				this.notifyLastError();
-				void this.enqueueTerminalWrite(`\r\n[quarterdeck] ${payload.message}\r\n`);
-			}
-		};
-		controlSocket.onerror = () => {
-			if (this.disposed || this.controlSocket !== controlSocket) {
-				return;
-			}
-			this.ensureVisible();
-			this.lastError = "Terminal control connection failed.";
-			this.notifyLastError();
-		};
-		controlSocket.onclose = () => {
-			if (this.disposed || this.controlSocket !== controlSocket) {
-				return;
-			}
-			this.ensureVisible();
-			this.controlSocket = null;
-			this.lastError = "Terminal control connection closed. Close and reopen to reconnect.";
-			this.notifyLastError();
-		};
+	private handleExit(code: number | null): void {
+		const label = code == null ? "session exited" : `session exited with code ${code}`;
+		void this.writeQueue.enqueue(`\r\n[quarterdeck] ${label}\r\n`);
+		this.notifyExit(code);
 	}
 
 	private updateAppearance(appearance: PersistentTerminalAppearance): void {
 		this.appearance = appearance;
-		this.terminal.options.theme = {
-			...this.terminal.options.theme,
-			...createQuarterdeckTerminalOptions({
-				cursorColor: appearance.cursorColor,
-				fontWeight: currentTerminalFontWeight,
-				isMacPlatform,
-				terminalBackgroundColor: appearance.terminalBackgroundColor,
-			}).theme,
-		};
+		this.renderer.updateAppearance(appearance, currentTerminalFontWeight);
 	}
 
 	setAppearance(appearance: PersistentTerminalAppearance): void {
@@ -781,7 +435,7 @@ export class TerminalSlot {
 	}
 
 	setFontWeight(weight: number): void {
-		this.terminal.options.fontWeight = weight;
+		this.renderer.setFontWeight(weight);
 	}
 
 	/**
@@ -834,7 +488,7 @@ export class TerminalSlot {
 		if (this.latestSummary) {
 			subscriber.onSummary?.(this.latestSummary);
 		}
-		if (this.connectionReady && this.taskId) {
+		if (this.sockets.connectionReady && this.taskId) {
 			subscriber.onConnectionReady?.(this.taskId);
 		}
 		return () => {
@@ -846,12 +500,13 @@ export class TerminalSlot {
 		if (this.disposed) {
 			return;
 		}
+		this.showTimestamp = performance.now();
 		this.updateAppearance(appearance);
 
 		// Defer visibility when a restore snapshot is pending — the full history
 		// would otherwise scroll past as xterm renders it incrementally. The
 		// restore handler sets visibility = "visible" after scrollToBottom().
-		const shouldReveal = this.restoreCompleted;
+		const shouldReveal = this.sockets.restoreCompleted;
 		log.debug(`slot ${this.slotId} show`, {
 			reveal: shouldReveal,
 			staged: this.stageContainer !== null,
@@ -865,38 +520,22 @@ export class TerminalSlot {
 
 		this.visibleContainer = this.stageContainer;
 
-		if (this.resizeObserver) {
-			this.resizeObserver.disconnect();
-		}
-		this.resizeObserver = new ResizeObserver(() => {
-			if (this.resizeTimer !== null) {
-				clearTimeout(this.resizeTimer);
-			}
-			this.resizeTimer = setTimeout(() => {
-				this.resizeTimer = null;
-				this.requestResize();
-				if (this.pendingScrollToBottom) {
-					this.pendingScrollToBottom = false;
-					this.terminal.scrollToBottom();
-				}
-			}, RESIZE_DEBOUNCE_MS);
-		});
 		if (this.stageContainer) {
-			this.resizeObserver.observe(this.stageContainer);
+			this.resizer.observe(this.stageContainer);
 		} else {
 			log.warn(`slot ${this.slotId} show — no stageContainer, ResizeObserver not attached`);
 		}
-		this.listenForDprChange();
+		this.renderer.listenForDprChange();
 		if (options.isVisible !== false) {
 			// Fit + scroll BEFORE revealing to avoid a visible frame at the
 			// old scroll position. fit() may reflow the buffer when cols/rows
 			// change, so scrollToBottom must come after it.
-			this.requestResize();
+			this.resizer.request();
 			if (shouldReveal) {
 				this.terminal.scrollToBottom();
 				// Arm a one-shot for the first ResizeObserver callback in case
 				// its fit() reflow undoes this scroll.
-				this.pendingScrollToBottom = true;
+				this.resizer.pendingScrollToBottom = true;
 			}
 			if (options.autoFocus) {
 				if (shouldReveal) {
@@ -914,6 +553,11 @@ export class TerminalSlot {
 		if (shouldReveal) {
 			this.hostElement.style.visibility = "visible";
 		}
+		log.debug(`[perf] slot ${this.slotId} show complete`, {
+			elapsedMs: (performance.now() - this.showTimestamp!).toFixed(1),
+			revealed: shouldReveal,
+			task: this.taskId,
+		});
 	}
 
 	hide(): void {
@@ -921,15 +565,8 @@ export class TerminalSlot {
 			return;
 		}
 		log.debug(`slot ${this.slotId} hide`, { task: this.taskId });
-		if (this.resizeObserver) {
-			this.resizeObserver.disconnect();
-			this.resizeObserver = null;
-		}
-		if (this.resizeTimer !== null) {
-			clearTimeout(this.resizeTimer);
-			this.resizeTimer = null;
-		}
-		this.clearDprListener();
+		this.resizer.disconnect();
+		this.renderer.clearDprListener();
 		this.pendingAutoFocus = false;
 		this.visibleContainer = null;
 		if (this.connectedTaskId) {
@@ -959,7 +596,7 @@ export class TerminalSlot {
 		if (this.disposed) {
 			return;
 		}
-		void this.enqueueTerminalWrite(text);
+		void this.writeQueue.enqueue(text);
 	}
 
 	focus(): void {
@@ -967,7 +604,7 @@ export class TerminalSlot {
 	}
 
 	input(text: string): boolean {
-		if (!this.ioSocket || this.ioSocket.readyState !== WebSocket.OPEN) {
+		if (!this.sockets.isIoOpen) {
 			return false;
 		}
 		this.terminal.input(text);
@@ -975,7 +612,7 @@ export class TerminalSlot {
 	}
 
 	paste(text: string): boolean {
-		if (!this.ioSocket || this.ioSocket.readyState !== WebSocket.OPEN) {
+		if (!this.sockets.isIoOpen) {
 			return false;
 		}
 		this.terminal.paste(text);
@@ -983,107 +620,21 @@ export class TerminalSlot {
 	}
 
 	clear(): void {
-		this.terminalWriteQueue = this.terminalWriteQueue
-			.catch(() => undefined)
-			.then(() => {
-				if (this.disposed) {
-					return;
-				}
-				this.terminal.clear();
-			});
+		this.writeQueue.chainAction(
+			(t) => t.clear(),
+			() => this.disposed,
+		);
 	}
 
 	reset(): void {
-		this.terminalWriteQueue = this.terminalWriteQueue
-			.catch(() => undefined)
-			.then(() => {
-				if (this.disposed) {
-					return;
-				}
-				this.terminal.reset();
-			});
-	}
-
-	/**
-	 * Canvas repair sequence — the three steps that fix blurry/stale terminal
-	 * rendering after a DPR change, monitor move, or DOM re-parent.
-	 *
-	 * xterm.js caches rendered glyphs in a texture atlas (both the WebGL and
-	 * canvas 2D renderers). When the device pixel ratio changes or the canvas
-	 * is moved in the DOM, the cached textures become stale but xterm doesn't
-	 * automatically invalidate them. Three things need to happen:
-	 *
-	 *   1. **Dimension bounce** — resize(cols-1, rows) then forceResize() back
-	 *      to the real size. fitAddon.fit() short-circuits when cols/rows
-	 *      haven't changed, so the bounce forces it to actually call
-	 *      terminal.resize() which recalculates the canvas pixel dimensions.
-	 *
-	 *   2. **clearTextureAtlas()** — discards the cached glyph textures so the
-	 *      renderer rebuilds them at the current DPR. This is the step that
-	 *      actually fixes blurriness. Without it, refresh() just re-composites
-	 *      the same stale textures.
-	 *
-	 *   3. **refresh(0, rows-1)** — repaints every visible row from the buffer
-	 *      using the newly rebuilt textures.
-	 *
-	 * All three steps must run together — skipping any one produces a subtle
-	 * no-op where the button appears to "not do anything".
-	 *
-	 * Called from:
-	 *   - DPR change handler — repairs after monitor move or browser zoom
-	 *   - resetRenderer() — user-initiated "Reset terminal rendering" button
-	 */
-	private repairRendererCanvas(trigger: string): void {
-		// No canvas to fix when the terminal is parked (not in any container).
-		// The repair will run on the next show() instead.
-		if (!this.stageContainer && !this.visibleContainer) {
-			log.debug(`slot ${this.slotId} canvas repair skipped — not staged`, { trigger });
-			return;
-		}
-
-		const t0 = performance.now();
-		const prevCols = this.terminal.cols;
-		const prevRows = this.terminal.rows;
-
-		// Step 1: dimension bounce
-		if (prevCols > 2) {
-			this.terminal.resize(prevCols - 1, prevRows);
-		}
-
-		// Step 2: clear glyph texture cache
-		this.terminal.clearTextureAtlas();
-
-		// Step 3: repaint all rows
-		this.terminal.refresh(0, prevRows - 1);
-
-		// Restore real dimensions and send to server
-		this.forceResize();
-
-		const elapsed = (performance.now() - t0).toFixed(1);
-		log.debug(`slot ${this.slotId} canvas repair`, {
-			trigger,
-			renderer: this.webglAddon ? "webgl" : "canvas-2d",
-			dpr: window.devicePixelRatio,
-			cols: prevCols,
-			rows: prevRows,
-			elapsedMs: elapsed,
-		});
+		this.writeQueue.chainAction(
+			(t) => t.reset(),
+			() => this.disposed,
+		);
 	}
 
 	resetRenderer(): void {
-		const hadWebgl = this.webglAddon !== null;
-		if (this.webglAddon) {
-			this.webglAddon.dispose();
-			this.webglAddon = null;
-		}
-		this.attachWebglAddon();
-		const newRenderer = this.webglAddon ? "webgl" : "canvas-2d";
-		log.info(`slot ${this.slotId} renderer reset`, {
-			previous: hadWebgl ? "webgl" : "none",
-			current: newRenderer,
-			dpr: window.devicePixelRatio,
-		});
-		this.repairRendererCanvas("resetRenderer");
+		this.renderer.resetRenderer();
 	}
 
 	/**
@@ -1098,20 +649,8 @@ export class TerminalSlot {
 			log.warn(`slot ${this.slotId} requestRestore skipped — terminal disposed`);
 			return;
 		}
-		if (!this.restoreCompleted) {
-			log.warn(`slot ${this.slotId} requestRestore skipped — initial restore not yet complete`);
-			return;
-		}
-		const socketState = this.controlSocket?.readyState;
-		if (!this.controlSocket || socketState !== WebSocket.OPEN) {
-			log.warn(`slot ${this.slotId} requestRestore skipped — control socket not open`, {
-				hasSocket: this.controlSocket !== null,
-				readyState: socketState,
-			});
-			return;
-		}
-		log.info(`slot ${this.slotId} requesting restore from server`);
-		this.sendControlMessage({ type: "request_restore" });
+		this.restoreRequestTimestamp = performance.now();
+		this.sockets.requestRestore();
 	}
 
 	getBufferDebugInfo(): {
@@ -1198,7 +737,7 @@ export class TerminalSlot {
 		if (!this.connectedTaskId || !this.connectedWorkspaceId) {
 			return;
 		}
-		this.sendControlMessage({ type: "stop" });
+		this.sockets.sendControl({ type: "stop" });
 		const trpcClient = getRuntimeTrpcClient(this.connectedWorkspaceId);
 		await trpcClient.runtime.stopTaskSession.mutate({ taskId: this.connectedTaskId });
 	}
@@ -1215,10 +754,7 @@ export class TerminalSlot {
 			document.removeEventListener("visibilitychange", this.visibilityChangeHandler);
 			this.visibilityChangeHandler = null;
 		}
-		this.ioSocket?.close();
-		this.controlSocket?.close();
-		this.ioSocket = null;
-		this.controlSocket = null;
+		this.sockets.closeAll();
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
 		this.terminal.dispose();

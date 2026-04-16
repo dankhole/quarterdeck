@@ -7,7 +7,10 @@ import { WebSocketServer } from "ws";
 import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
 import { parseTerminalWsClientMessage } from "../core/api-validation";
 import { getQuarterdeckRuntimeOrigin } from "../core/runtime-endpoint";
+import { createTaggedLogger } from "../core/runtime-logger";
 import type { TerminalSessionService } from "./terminal-session-service";
+
+const log = createTaggedLogger("ws-server");
 
 interface TerminalWebSocketConnectionContext {
 	taskId: string;
@@ -109,9 +112,17 @@ function sendControlMessage(ws: WebSocket, message: RuntimeTerminalWsServerMessa
 }
 
 function sendRestoreSnapshot(ws: WebSocket, terminalManager: TerminalSessionService, taskId: string): void {
+	const t0 = performance.now();
 	void terminalManager
 		.getRestoreSnapshot(taskId)
 		.then((snapshot) => {
+			const totalMs = Math.round((performance.now() - t0) * 100) / 100;
+			const snapshotLength = snapshot?.snapshot?.length ?? 0;
+			log.debug("[perf] sendRestoreSnapshot", {
+				totalMs,
+				snapshotLength,
+				taskId,
+			});
 			sendControlMessage(ws, {
 				type: "restore",
 				snapshot: snapshot?.snapshot ?? "",

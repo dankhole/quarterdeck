@@ -1,6 +1,10 @@
 import serializeAddonModule from "@xterm/addon-serialize";
 import headlessTerminalModule from "@xterm/headless";
 
+import { createTaggedLogger } from "../core/runtime-logger";
+
+const log = createTaggedLogger("terminal-mirror");
+
 const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
 const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
 
@@ -110,16 +114,26 @@ export class TerminalStateMirror {
 	}
 
 	async getSnapshot(): Promise<TerminalRestoreSnapshot | null> {
+		const t0 = performance.now();
 		this.flushBatch();
 		await this.operationQueue;
+		const t1 = performance.now();
 		if (this.disposed) {
 			return null;
 		}
-		return {
-			snapshot: this.serializeAddon.serialize({ scrollback: this.snapshotScrollback }),
-			cols: this.terminal.cols,
-			rows: this.terminal.rows,
-		};
+		const snapshot = this.serializeAddon.serialize({ scrollback: this.snapshotScrollback });
+		const t2 = performance.now();
+		const cols = this.terminal.cols;
+		const rows = this.terminal.rows;
+		log.debug("[perf] getSnapshot", {
+			queueDrainMs: Math.round((t1 - t0) * 100) / 100,
+			serializeMs: Math.round((t2 - t1) * 100) / 100,
+			totalMs: Math.round((t2 - t0) * 100) / 100,
+			snapshotLength: snapshot.length,
+			cols,
+			rows,
+		});
+		return { snapshot, cols, rows };
 	}
 
 	dispose(): void {

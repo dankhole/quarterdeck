@@ -5,6 +5,7 @@ import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
@@ -15,6 +16,7 @@ import { describeSessionState, getSessionStatusBadgeStyle, statusBadgeColors } f
 interface AgentTerminalSessionControls {
 	clearTerminal: () => void;
 	containerRef: MutableRefObject<HTMLDivElement | null>;
+	isLoading: boolean;
 	isStopping: boolean;
 	lastError: string | null;
 	stopTerminal: () => Promise<void>;
@@ -73,7 +75,7 @@ function AgentTerminalPanelLayout({
 }: AgentTerminalPanelProps & {
 	sessionControls: AgentTerminalSessionControls;
 }): ReactElement {
-	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
+	const { containerRef, isLoading, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getSessionStatusBadgeStyle(summary), [summary]);
@@ -248,7 +250,13 @@ function AgentTerminalPanelLayout({
 						background: terminalBackgroundColor,
 						overflow: "hidden",
 					}}
-				/>
+				>
+					{isLoading ? (
+						<div className="absolute inset-0 z-10 flex items-center justify-center">
+							<Spinner size={24} />
+						</div>
+					) : null}
+				</div>
 			</div>
 			{lastError ? (
 				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">

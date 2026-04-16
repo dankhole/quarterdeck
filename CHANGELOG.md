@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Refactor: decompose terminal-slot into focused modules
+
+- Broke the 1,227-line `terminal-slot.ts` into 5 files: orchestrator (`terminal-slot.ts`, 749), socket management (`slot-socket-manager.ts`, 239), WebGL rendering (`slot-renderer.ts`, 185), resize handling (`slot-resize-manager.ts`, 115), and write queue (`slot-write-queue.ts`, 65). Zero consumer changes.
+- Fixed scroll races during terminal restore — reordered to fit → scrollToBottom → ensureVisible, with synchronous scroll on armed ResizeObserver callbacks.
+- Added `[perf]` timing logs across the full terminal pipeline: warmup, acquireForTask, show, socket open, font ready, restore apply, restore round-trip, connect-to-ready, show-to-interactive, and server-side getSnapshot/sendRestoreSnapshot.
+
+### Feat: terminal loading spinner
+
+- Show a centered spinner in the terminal container while connecting/restoring, replacing the empty background visible for 50-500ms. Spinner disappears when `onConnectionReady` fires.
+- Moved the background `requestRestore()` from PREVIOUS slot demotion to PREVIOUS slot re-acquire — the restore now runs when the user actually switches back, repairing any client-side buffer drift accumulated while the slot was hidden.
+
 ### Fix: clicking agent terminal panel now always focuses terminal for input
 
 - Added click handler to the agent terminal panel wrapper so clicking anywhere in the terminal area (including padding/gutters outside the xterm canvas) focuses the terminal for keyboard input.

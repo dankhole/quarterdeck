@@ -254,18 +254,25 @@ export function detachPoolContainer(): void {
  * - Finds a FREE slot or evicts the oldest PRELOADING/READY.
  */
 export function acquireForTask(taskId: string, workspaceId: string): TerminalSlot {
+	const t0 = performance.now();
 	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it
 	const existing = slotTaskIds.get(taskId);
 	if (existing) {
 		clearWarmupTimeout(taskId);
 		// Re-open sockets if they closed (e.g. after sleep/wake).
 		existing.ensureConnected();
+		const previousRole = getRole(existing);
 		// If reacquiring the PREVIOUS slot (user switched back), cancel its eviction timer
-		if (getRole(existing) === "PREVIOUS") {
+		// and re-sync the buffer from the server so any drift while hidden is repaired.
+		if (previousRole === "PREVIOUS") {
 			clearPreviousEvictionTimer();
+			existing.requestRestore();
 		}
 		setRole(existing, "ACTIVE");
-		log.debug(`acquireForTask — reusing slot ${existing.slotId} for ${taskId}`);
+		log.debug(`[perf] acquireForTask — reused slot ${existing.slotId} for ${taskId}`, {
+			previousRole,
+			elapsedMs: (performance.now() - t0).toFixed(1),
+		});
 		return existing;
 	}
 
@@ -273,11 +280,6 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 	const currentActive = findOldestSlotByRole("ACTIVE");
 	if (currentActive) {
 		setRole(currentActive, "PREVIOUS");
-		// Re-sync the buffer from the server's headless mirror while the user
-		// isn't looking. This repairs any client-side visual drift (garbled
-		// rendering, stale cursor state) so the terminal is clean if the user
-		// switches back before the slot is evicted.
-		currentActive.requestRestore();
 		// Auto-evict after 30s — keeps instant switch-back for quick peeks
 		// while stopping hidden WebGL rendering from burning GPU/WindowServer.
 		schedulePreviousEviction(currentActive);
@@ -305,7 +307,11 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 		if (previousSlot) {
 			log.warn("acquireForTask — no free slots, evicting PREVIOUS");
 			evictSlot(previousSlot);
-			return acquireForTaskIntoSlot(previousSlot, taskId, workspaceId);
+			const result = acquireForTaskIntoSlot(previousSlot, taskId, workspaceId);
+			log.debug(`[perf] acquireForTask — fallback slot ${previousSlot.slotId} to ${taskId}`, {
+				elapsedMs: (performance.now() - t0).toFixed(1),
+			});
+			return result;
 		}
 		// If we reach here, the state machine has a bug. Throw rather than silently
 		// growing the pool array (which would violate the 4-slot cap permanently).
@@ -314,14 +320,17 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 		);
 	}
 
-	return acquireForTaskIntoSlot(freeSlot, taskId, workspaceId);
+	const result = acquireForTaskIntoSlot(freeSlot, taskId, workspaceId);
+	log.debug(`[perf] acquireForTask — assigned slot ${freeSlot.slotId} to ${taskId}`, {
+		elapsedMs: (performance.now() - t0).toFixed(1),
+	});
+	return result;
 }
 
 function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, workspaceId: string): TerminalSlot {
 	slot.connectToTask(taskId, workspaceId);
 	slotTaskIds.set(taskId, slot);
 	setRole(slot, "ACTIVE");
-	log.debug(`acquireForTask — assigned slot ${slot.slotId} to ${taskId}`);
 	return slot;
 }
 
@@ -331,6 +340,7 @@ function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, workspaceId:
  * within WARMUP_TIMEOUT_MS, the warmup is cancelled.
  */
 export function warmup(taskId: string, workspaceId: string): void {
+	const t0 = performance.now();
 	// 1. If task already has a slot (any role): no-op
 	if (slotTaskIds.has(taskId)) {
 		return;
@@ -348,13 +358,17 @@ export function warmup(taskId: string, workspaceId: string): void {
 	slot.connectToTask(taskId, workspaceId);
 	slotTaskIds.set(taskId, slot);
 	setRole(slot, "PRELOADING");
-	log.debug(`warmup — slot ${slot.slotId} preloading for ${taskId}`);
+	log.debug(`[perf] warmup — slot ${slot.slotId} preloading for ${taskId}`, {
+		elapsedMs: (performance.now() - t0).toFixed(1),
+	});
 
 	// 4. Transition to READY when connection is ready
 	slot.onceConnectionReady(() => {
 		if (getRole(slot) === "PRELOADING" && slotTaskIds.get(taskId) === slot) {
 			setRole(slot, "READY");
-			log.debug(`warmup — slot ${slot.slotId} ready for ${taskId}`);
+			log.debug(`[perf] warmup — slot ${slot.slotId} ready for ${taskId}`, {
+				totalMs: (performance.now() - t0).toFixed(1),
+			});
 		}
 	});
 

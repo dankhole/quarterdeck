@@ -1,7 +1,12 @@
 import type { ITerminalOptions } from "@xterm/xterm";
 
-import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-slot";
+import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+
+export interface PersistentTerminalAppearance {
+	cursorColor: string;
+	terminalBackgroundColor: string;
+}
 
 interface CreateQuarterdeckTerminalOptionsInput {
 	cursorColor: string;

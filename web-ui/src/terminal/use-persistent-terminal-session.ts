@@ -30,6 +30,7 @@ interface UsePersistentTerminalSessionInput {
 export interface UsePersistentTerminalSessionResult {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	lastError: string | null;
+	isLoading: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
 	stopTerminal: () => Promise<void>;
@@ -65,6 +66,7 @@ export function usePersistentTerminalSession({
 		sessionStartedAt: number | null;
 	} | null>(null);
 	const [lastError, setLastError] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(true);
 	const [isStopping, setIsStopping] = useState(false);
 	callbackRef.current = {
 		onSummary,
@@ -86,6 +88,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 				previousSessionRef.current = null;
 				setLastError(null);
+				setIsLoading(false);
 				setIsStopping(false);
 				return;
 			}
@@ -99,6 +102,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 				previousSessionRef.current = null;
 				setLastError("No project selected.");
+				setIsLoading(false);
 				return;
 			}
 			const container = containerRef.current;
@@ -127,8 +131,12 @@ export function usePersistentTerminalSession({
 				sessionStartedAt,
 			};
 			terminalRef.current = terminal;
+			setLastError(null);
+			setIsLoading(true);
+			setIsStopping(false);
 			const unsubscribe = terminal.subscribe({
 				onConnectionReady: (connectedTaskId) => {
+					setIsLoading(false);
 					callbackRef.current.onConnectionReady?.(connectedTaskId);
 				},
 				onLastError: setLastError,
@@ -141,8 +149,6 @@ export function usePersistentTerminalSession({
 			});
 			terminal.attachToStageContainer(container);
 			terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
-			setLastError(null);
-			setIsStopping(false);
 			return () => {
 				unsubscribe();
 				terminal.hide();
@@ -163,6 +169,7 @@ export function usePersistentTerminalSession({
 			terminalRef.current?.hide();
 			terminalRef.current = null;
 			setLastError(null);
+			setIsLoading(false);
 			setIsStopping(false);
 			return;
 		}
@@ -172,6 +179,7 @@ export function usePersistentTerminalSession({
 			terminalRef.current?.hide();
 			terminalRef.current = null;
 			setLastError("No project selected.");
+			setIsLoading(false);
 			return;
 		}
 		const container = containerRef.current;
@@ -195,8 +203,12 @@ export function usePersistentTerminalSession({
 		}
 		previousSessionRef.current = { workspaceId, taskId, sessionStartedAt };
 		terminalRef.current = terminal;
+		setLastError(null);
+		setIsLoading(true);
+		setIsStopping(false);
 		const unsubscribe = terminal.subscribe({
 			onConnectionReady: (connectedTaskId) => {
+				setIsLoading(false);
 				callbackRef.current.onConnectionReady?.(connectedTaskId);
 			},
 			onLastError: setLastError,
@@ -208,8 +220,6 @@ export function usePersistentTerminalSession({
 			},
 		});
 		terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
-		setLastError(null);
-		setIsStopping(false);
 		return () => {
 			unsubscribe();
 			terminal.hide();
@@ -250,6 +260,7 @@ export function usePersistentTerminalSession({
 	return {
 		containerRef,
 		lastError,
+		isLoading,
 		isStopping,
 		clearTerminal,
 		stopTerminal,

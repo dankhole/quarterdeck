@@ -2,6 +2,42 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: terminal-slot decomposition + loading indicator + perf logging (2026-04-16)
+
+**Problem:** `terminal-slot.ts` was 1,227 lines handling orchestration, WebSocket management, WebGL rendering, resize handling, and a write queue. Users saw an empty background for 50-500ms while the terminal connected/restored. No perf timing existed for warmup, acquire, show, or restore round-trips. The background `requestRestore()` on PREVIOUS demotion repaired the *old* slot proactively but if the agent kept writing after the restore, the buffer drifted again before the user switched back.
+
+**Changes:**
+
+*Decomposition:* Extracted 4 private helper classes from `terminal-slot.ts`:
+- `slot-socket-manager.ts` (239 lines) — IO + control WebSockets, `connectionReady`, `restoreCompleted`
+- `slot-renderer.ts` (185 lines) — WebGL addon, font readiness, DPR change, canvas repair
+- `slot-resize-manager.ts` (115 lines) — resize epoch dedup, ResizeObserver, debounce, `pendingScrollToBottom`
+- `slot-write-queue.ts` (65 lines) — serialized `terminal.write()` queue with ack and text notification
+
+Shared types (`PersistentTerminalAppearance`, `TERMINAL_SCROLLBACK`) moved to `terminal-options.ts` and `terminal-constants.ts` to avoid circular imports, re-exported from `terminal-slot.ts` for backward compat.
+
+*Scroll fix:* Restore handler reordered to `requestResize()` → `scrollToBottom()` → `ensureVisible()`. ResizeObserver now performs synchronous `fit()+scrollToBottom()` when `pendingScrollToBottom` is armed, before the debounce timer fires.
+
+*Loading indicator:* Added `isLoading` state to `usePersistentTerminalSession` — `true` from effect setup until `onConnectionReady` fires. Renders a centered `<Spinner>` overlay in the terminal container div. State resets ordered before `subscribe()` to avoid race with already-connected slots firing `onConnectionReady` synchronously.
+
+*Restore timing fix:* Moved `requestRestore()` from PREVIOUS demotion in `acquireForTask` to PREVIOUS re-acquire — the restore now runs at the moment the user switches back, repairing any drift that accumulated while hidden.
+
+*Perf logging:* Added `[perf]` timing to: `warmup` (preload start + ready), `acquireForTask` (all exit paths), `show()` (synchronous work), `requestRestore` round-trip (request → handleRestore), plus existing: socket open, font ready, restore applied, connect-to-ready, show-to-interactive, server getSnapshot, server sendRestoreSnapshot.
+
+**Files:**
+- `web-ui/src/terminal/terminal-slot.ts` — orchestrator (749 lines), perf timestamps for show/restore round-trip
+- `web-ui/src/terminal/slot-socket-manager.ts` — new, WebSocket lifecycle
+- `web-ui/src/terminal/slot-renderer.ts` — new, WebGL + font rendering
+- `web-ui/src/terminal/slot-resize-manager.ts` — new, resize handling
+- `web-ui/src/terminal/slot-write-queue.ts` — new, write serialization
+- `web-ui/src/terminal/terminal-constants.ts` — `TERMINAL_SCROLLBACK` (updated 3000→1500)
+- `web-ui/src/terminal/terminal-options.ts` — `PersistentTerminalAppearance` type
+- `web-ui/src/terminal/terminal-pool.ts` — perf logging in warmup/acquire, moved requestRestore to re-acquire path
+- `web-ui/src/terminal/use-persistent-terminal-session.ts` — `isLoading` state
+- `web-ui/src/components/detail-panels/agent-terminal-panel.tsx` — Spinner overlay
+- `src/terminal/terminal-state-mirror.ts` — perf logging in getSnapshot, flushBatch before snapshot
+- `src/terminal/ws-server.ts` — perf logging in sendRestoreSnapshot
+
 ## Fix: clicking agent terminal panel always focuses terminal (2026-04-16)
 
 **Problem:** Clicking in the agent terminal main view area outside the xterm canvas (padding, gutters, empty space around the terminal) did not focus the terminal for keyboard input. Only clicks directly on the xterm canvas element triggered xterm's built-in focus behavior.
