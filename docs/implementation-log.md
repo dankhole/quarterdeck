@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split task-create-dialog into focused files (2026-04-16)
+
+**Problem:** `task-create-dialog.tsx` was 725 lines mixing pure logic (list parsing, start action types), a self-contained multi-task editing UI (with its own focus management via refs), and dialog orchestration. LLM agents working on one concern had to load the entire file.
+
+**Approach:** Cut on two natural seams: (1) pure functions and constants into a utils file, (2) the multi-task list UI into its own component. The multi-task list was chosen because it owns genuine internal state (input refs, focus scheduling) behind a narrow 5-prop interface — not a thin JSX wrapper. The options panel (checkboxes, branch picker) was intentionally kept inline despite being ~130 lines, because it would need ~15 forwarded props with no internal state.
+
+**Caught in sanity check:** The original `handleSplitIntoTasks` set `nextFocusIndexRef.current = 0` to auto-focus the first input when entering multi mode. That line was lost in the extraction since the ref moved into the child component. Fixed by initializing the ref to `0` instead of `null` — the component only mounts when entering multi mode, so this is equivalent.
+
+**Files:** `web-ui/src/components/task/task-create-dialog.tsx` (725 → 544 lines), `web-ui/src/components/task/task-create-dialog-utils.tsx` (69 lines, new), `web-ui/src/components/task/task-create-multi-list.tsx` (139 lines, new)
+
 ## Refactor: split board-card into domain module and actions component (2026-04-16)
 
 **Problem:** `web-ui/src/components/board/board-card.tsx` was 784 lines mixing pure display logic (tool-call label parsing, tooltip derivation, activity labels), column-specific action button rendering (backlog/in_progress/review/trash each with different button sets), and the card's layout/state/indicator rendering. Agents working on tooltip bugs had to load 650 lines of unrelated JSX; agents adding a review action button had to parse through display helpers and card layout code.

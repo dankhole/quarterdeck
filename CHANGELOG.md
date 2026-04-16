@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split task-create-dialog into focused files
+
+- Split the 725-line `TaskCreateDialog` into three files — pure utilities (`parseListItems`, start action types, `ButtonShortcut`), a multi-task list component with its own focus management, and the slimmed dialog (544 lines). Zero consumer changes.
+
 ### Refactor: split board-card into domain module and actions component
 
 - Split the 784-line `BoardCard` into 3 focused files — domain module (`board-card-display.ts`, pure TS tooltip/activity/branch-name helpers), actions sub-component (`board-card-actions.tsx`, column-specific action buttons), and slimmed-down card component (520 lines). Public API unchanged.

@@ -4,98 +4,37 @@ import * as RadixSwitch from "@radix-ui/react-switch";
 import {
 	AlertTriangle,
 	ArrowBigUp,
-	ArrowLeft,
 	Check,
 	ChevronDown,
 	Command,
 	CornerDownLeft,
 	List,
-	Option,
 	PencilLine,
-	Plus,
 	Sparkles,
-	X,
 } from "lucide-react";
-import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from "react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { Dispatch, ReactElement, SetStateAction } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
+import {
+	ButtonShortcut,
+	DEFAULT_PRIMARY_START_ACTION,
+	DIALOG_STYLE,
+	normalizeStoredTaskCreateStartAction,
+	parseListItems,
+	type TaskCreateStartAction,
+} from "@/components/task/task-create-dialog-utils";
+import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskImage } from "@/types";
-import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
+import { pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
-
-const DIALOG_STYLE: CSSProperties = {
-	width: "580px",
-	height: "520px",
-	minWidth: "400px",
-	minHeight: "300px",
-	maxWidth: "90vw",
-	maxHeight: "85vh",
-};
-
-type TaskCreateStartAction = "start" | "start_and_open";
-
-const DEFAULT_PRIMARY_START_ACTION: TaskCreateStartAction = "start";
-
-function normalizeStoredTaskCreateStartAction(value: string): TaskCreateStartAction | null {
-	if (value === "start" || value === "start_and_open") {
-		return value;
-	}
-	return null;
-}
-
-function ButtonShortcut({
-	includeShift = false,
-	includeAlt = false,
-}: {
-	includeShift?: boolean;
-	includeAlt?: boolean;
-}): ReactElement {
-	return (
-		<span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden>
-			<Command size={12} />
-			{includeAlt ? (
-				isMacPlatform ? (
-					<Option size={12} />
-				) : (
-					<span className="text-[10px] font-medium leading-none">Alt</span>
-				)
-			) : null}
-			{includeShift ? <ArrowBigUp size={12} /> : null}
-			<CornerDownLeft size={12} />
-		</span>
-	);
-}
-
-function parseListItems(text: string): string[] {
-	const lines = text.split("\n");
-	const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
-
-	if (nonEmptyLines.length < 2) {
-		return [];
-	}
-
-	const numberedRegex = /^\s*\d+[.)]\s+(.+)$/;
-	const numberedItems = nonEmptyLines.map((line) => numberedRegex.exec(line));
-	if (numberedItems.every((match) => match !== null)) {
-		return numberedItems.map((match) => match[1]!.trim());
-	}
-
-	const bulletRegex = /^\s*[-*+•]\s+(.+)$/;
-	const bulletItems = nonEmptyLines.map((line) => bulletRegex.exec(line));
-	if (bulletItems.every((match) => match !== null)) {
-		return bulletItems.map((match) => match[1]!.trim());
-	}
-
-	return [];
-}
 
 export function TaskCreateDialog({
 	open,
@@ -161,17 +100,13 @@ export function TaskCreateDialog({
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
 	onBranchRefChange: (value: string) => void;
-	/** The branch currently set as the default base ref (empty string = auto-detect). */
 	defaultBaseRef?: string;
-	/** Called when the user pins/unpins a branch as the default base ref. */
 	onSetDefaultBaseRef?: (value: string | null) => void;
 }): ReactElement {
 	const [mode, setMode] = useState<"single" | "multi">("single");
 	const [createMore, setCreateMore] = useState(false);
 	const [composerResetKey, setComposerResetKey] = useState(0);
 	const [taskPrompts, setTaskPrompts] = useState<string[]>([]);
-	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
 	const useWorktreeId = useId();
 	const createFeatureBranchId = useId();
@@ -189,33 +124,18 @@ export function TaskCreateDialog({
 		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
 	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
 
-	// Reset state when dialog closes
 	useEffect(() => {
 		if (!open) {
 			setMode("single");
 			setCreateMore(false);
 			setComposerResetKey(0);
 			setTaskPrompts([]);
-			inputRefs.current = [];
-			nextFocusIndexRef.current = null;
 		}
 	}, [open]);
-
-	// Handle pending focus after render
-	useEffect(() => {
-		if (nextFocusIndexRef.current !== null) {
-			const idx = nextFocusIndexRef.current;
-			nextFocusIndexRef.current = null;
-			requestAnimationFrame(() => {
-				inputRefs.current[idx]?.focus();
-			});
-		}
-	});
 
 	const handleSplitIntoTasks = useCallback(() => {
 		setTaskPrompts(detectedItems);
 		setMode("multi");
-		nextFocusIndexRef.current = 0;
 	}, [detectedItems]);
 
 	const handleBackToSingle = useCallback(() => {
@@ -228,34 +148,6 @@ export function TaskCreateDialog({
 		setTaskPrompts([]);
 	}, [taskPrompts, onPromptChange]);
 
-	const handleUpdateTaskPrompt = useCallback((index: number, value: string) => {
-		setTaskPrompts((prev) => {
-			const next = [...prev];
-			next[index] = value;
-			return next;
-		});
-	}, []);
-
-	const handleRemoveTask = useCallback((index: number) => {
-		setTaskPrompts((prev) => {
-			if (prev.length <= 1) {
-				return prev;
-			}
-			nextFocusIndexRef.current = Math.min(index, prev.length - 2);
-			return prev.filter((_, i) => i !== index);
-		});
-	}, []);
-
-	const handleAddTask = useCallback((afterIndex?: number) => {
-		setTaskPrompts((prev) => {
-			const insertIndex = afterIndex !== undefined ? afterIndex + 1 : prev.length;
-			nextFocusIndexRef.current = insertIndex;
-			const next = [...prev];
-			next.splice(insertIndex, 0, "");
-			return next;
-		});
-	}, []);
-
 	const getValidPrompts = useCallback(() => {
 		return taskPrompts.filter((p) => p.trim());
 	}, [taskPrompts]);
@@ -265,8 +157,6 @@ export function TaskCreateDialog({
 		onImagesChange([]);
 		setMode("single");
 		setTaskPrompts([]);
-		inputRefs.current = [];
-		nextFocusIndexRef.current = null;
 		setComposerResetKey((current) => current + 1);
 	}, [onImagesChange, onPromptChange]);
 
@@ -325,35 +215,6 @@ export function TaskCreateDialog({
 		}
 	}, [createMore, getValidPrompts, onCreateAndStartMultiple, resetForCreateMore]);
 
-	const handleInputKeyDown = useCallback(
-		(index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
-			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-				event.preventDefault();
-				if (event.altKey) {
-					handleCreateAll();
-					return;
-				}
-				handleCreateAndStartAll();
-				return;
-			}
-			if (event.key === "Enter" && !event.shiftKey) {
-				event.preventDefault();
-				handleAddTask(index);
-				return;
-			}
-			if (event.key === "Backspace" && taskPrompts[index] === "" && taskPrompts.length > 1) {
-				event.preventDefault();
-				handleRemoveTask(index);
-			}
-		},
-		[handleAddTask, handleCreateAll, handleCreateAndStartAll, handleRemoveTask, taskPrompts],
-	);
-
-	const setInputRef = useCallback((index: number, el: HTMLInputElement | null) => {
-		inputRefs.current[index] = el;
-	}, []);
-
-	// Cmd/Ctrl+Enter → Start task, Cmd/Ctrl+Shift+Enter → Start & Open, Cmd/Ctrl+Alt+Enter → Create only
 	useHotkeys(
 		"mod+enter, mod+shift+enter, mod+alt+enter",
 		(event) => {
@@ -381,9 +242,6 @@ export function TaskCreateDialog({
 			enableOnContentEditable: true,
 			ignoreEventWhen: (event) => {
 				if (!event.defaultPrevented) return false;
-				// Only skip when a textarea or input already handled the shortcut.
-				// Radix checkbox also calls preventDefault() on Enter, but that
-				// should not block the dialog-level shortcut.
 				const tag = (event.target as HTMLElement).tagName?.toLowerCase();
 				return tag === "textarea" || tag === "input";
 			},
@@ -393,7 +251,6 @@ export function TaskCreateDialog({
 	);
 
 	const dialogTitle = mode === "multi" ? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}` : "New task";
-
 	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
 	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
 	const primaryStartIncludesShift = effectivePrimaryStartAction === "start_and_open";
@@ -449,51 +306,13 @@ export function TaskCreateDialog({
 						</div>
 					</div>
 				) : (
-					<div>
-						<div className="flex flex-col gap-1.5">
-							{taskPrompts.map((taskPrompt, index) => (
-								<div key={index} className="flex items-center gap-1.5">
-									<span className="text-[12px] text-text-tertiary text-right shrink-0 tabular-nums">
-										{index + 1}.
-									</span>
-									<input
-										ref={(el) => setInputRef(index, el)}
-										type="text"
-										value={taskPrompt}
-										onChange={(e) => handleUpdateTaskPrompt(index, e.target.value)}
-										onKeyDown={(e) => handleInputKeyDown(index, e)}
-										placeholder="Describe the task..."
-										className="flex-1 min-w-0 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-									/>
-									<Button
-										variant="ghost"
-										size="sm"
-										icon={<X size={14} />}
-										onClick={() => handleRemoveTask(index)}
-										aria-label={`Remove task ${index + 1}`}
-									/>
-								</div>
-							))}
-						</div>
-						<div className="flex items-center justify-between mt-3">
-							<button
-								type="button"
-								onClick={() => handleAddTask()}
-								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
-							>
-								<Plus size={12} />
-								Add task
-							</button>
-							<button
-								type="button"
-								onClick={handleBackToSingle}
-								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
-							>
-								<ArrowLeft size={12} />
-								Back to single prompt
-							</button>
-						</div>
-					</div>
+					<TaskCreateMultiList
+						taskPrompts={taskPrompts}
+						onTaskPromptsChange={setTaskPrompts}
+						onBackToSingle={handleBackToSingle}
+						onCreateAll={handleCreateAll}
+						onCreateAndStartAll={handleCreateAndStartAll}
+					/>
 				)}
 
 				<div className="flex flex-col gap-2.5 mt-4 pt-4 border-t border-border">
