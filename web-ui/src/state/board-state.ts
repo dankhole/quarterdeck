@@ -57,6 +57,27 @@ function withUpdatedColumns(board: BoardData, columns: BoardColumn[]): BoardData
 	};
 }
 
+function updateCardInBoard(
+	board: BoardData,
+	taskId: string,
+	updater: (card: BoardCard) => BoardCard | null,
+): { columns: BoardColumn[]; updated: boolean } {
+	let updated = false;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== taskId) return card;
+			const result = updater(card);
+			if (result === null) return card;
+			columnUpdated = true;
+			updated = true;
+			return result;
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+	return { columns, updated };
+}
+
 function normalizeColumnId(id: string): BoardColumnId | null {
 	if (id === "backlog" || id === "in_progress" || id === "review" || id === "trash") {
 		return id;
@@ -469,35 +490,23 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		return { board, updated: false };
 	}
 
-	let updated = false;
-	const columns = board.columns.map((column) => {
-		let columnUpdated = false;
-		const cards = column.cards.map((card) => {
-			if (card.id !== taskId) {
-				return card;
-			}
-			columnUpdated = true;
-			updated = true;
-			return {
-				...card,
-				prompt,
-				startInPlanMode: Boolean(draft.startInPlanMode),
-				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
-				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
-				images:
-					draft.images === undefined
-						? card.images
-						: draft.images.length > 0
-							? draft.images.map((image) => ({ ...image }))
-							: undefined,
-				baseRef,
-				useWorktree: draft.useWorktree ?? card.useWorktree,
-				pinned: card.pinned,
-				updatedAt: Date.now(),
-			};
-		});
-		return columnUpdated ? { ...column, cards } : column;
-	});
+	const { columns, updated } = updateCardInBoard(board, taskId, (card) => ({
+		...card,
+		prompt,
+		startInPlanMode: Boolean(draft.startInPlanMode),
+		autoReviewEnabled: Boolean(draft.autoReviewEnabled),
+		autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
+		images:
+			draft.images === undefined
+				? card.images
+				: draft.images.length > 0
+					? draft.images.map((image) => ({ ...image }))
+					: undefined,
+		baseRef,
+		useWorktree: draft.useWorktree ?? card.useWorktree,
+		pinned: card.pinned,
+		updatedAt: Date.now(),
+	}));
 
 	if (!updated) {
 		return { board, updated: false };
@@ -528,27 +537,17 @@ export function reconcileTaskWorkingDirectory(
 	metadataPath: string,
 	workspacePath: string | null,
 ): { board: BoardData; updated: boolean } {
-	let updated = false;
 	const isWorktree = workspacePath ? metadataPath !== workspacePath : undefined;
-	const columns = board.columns.map((column) => {
-		let columnUpdated = false;
-		const cards = column.cards.map((card) => {
-			if (card.id !== taskId) {
-				return card;
-			}
-			if (card.workingDirectory === metadataPath && (isWorktree === undefined || card.useWorktree === isWorktree)) {
-				return card;
-			}
-			columnUpdated = true;
-			updated = true;
-			return {
-				...card,
-				workingDirectory: metadataPath,
-				useWorktree: isWorktree ?? card.useWorktree,
-				updatedAt: Date.now(),
-			};
-		});
-		return columnUpdated ? { ...column, cards } : column;
+	const { columns, updated } = updateCardInBoard(board, taskId, (card) => {
+		if (card.workingDirectory === metadataPath && (isWorktree === undefined || card.useWorktree === isWorktree)) {
+			return null;
+		}
+		return {
+			...card,
+			workingDirectory: metadataPath,
+			useWorktree: isWorktree ?? card.useWorktree,
+			updatedAt: Date.now(),
+		};
 	});
 	if (!updated) {
 		return { board, updated: false };
@@ -578,25 +577,15 @@ export function reconcileTaskBranch(
 			return { board, updated: false };
 		}
 	}
-	let updated = false;
-	const columns = board.columns.map((column) => {
-		let columnUpdated = false;
-		const cards = column.cards.map((card) => {
-			if (card.id !== taskId) {
-				return card;
-			}
-			if ((card.branch ?? null) === normalizedBranch) {
-				return card;
-			}
-			columnUpdated = true;
-			updated = true;
-			return {
-				...card,
-				branch: normalizedBranch,
-				updatedAt: Date.now(),
-			};
-		});
-		return columnUpdated ? { ...column, cards } : column;
+	const { columns, updated } = updateCardInBoard(board, taskId, (card) => {
+		if ((card.branch ?? null) === normalizedBranch) {
+			return null;
+		}
+		return {
+			...card,
+			branch: normalizedBranch,
+			updatedAt: Date.now(),
+		};
 	});
 	if (!updated) {
 		return { board, updated: false };
@@ -658,22 +647,10 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 }
 
 export function toggleTaskPinned(board: BoardData, taskId: string): { board: BoardData; toggled: boolean } {
-	let toggled = false;
-	const columns = board.columns.map((column) => {
-		let columnUpdated = false;
-		const cards = column.cards.map((card) => {
-			if (card.id !== taskId) {
-				return card;
-			}
-			columnUpdated = true;
-			toggled = true;
-			return {
-				...card,
-				pinned: card.pinned ? undefined : true,
-			};
-		});
-		return columnUpdated ? { ...column, cards } : column;
-	});
+	const { columns, updated: toggled } = updateCardInBoard(board, taskId, (card) => ({
+		...card,
+		pinned: card.pinned ? undefined : true,
+	}));
 
 	if (!toggled) {
 		return { board, toggled: false };

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: extract `updateCardInBoard` helper in board-state
+
+- Extracted repeated nested `columns.map → cards.map` pattern into a single `updateCardInBoard` helper. Refactored `updateTask`, `reconcileTaskWorkingDirectory`, `reconcileTaskBranch`, and `toggleTaskPinned` to use it. ~33 line net reduction, zero behavior changes.
+
 ## [0.9.4] — 2026-04-16
 
 ### Refactor: split session-manager into concern-based modules
