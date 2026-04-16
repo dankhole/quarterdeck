@@ -45,8 +45,9 @@ When closing issues via commit:
 - Include fixes #<number> or closes #<number> in the commit message. This automatically closes the issue when the commit is merged.
 
 web-ui conventions
-- **Before any frontend work**, read `docs/web-ui-conventions.md` — it covers the stack, design tokens, UI primitives, Radix gotchas, dialog suppression rules, and dark theme constraints.
+- **Before any frontend work**, read `docs/web-ui-conventions.md` — it covers the stack, design tokens, UI primitives, Radix gotchas, dialog suppression rules, dark theme constraints, and the hooks architecture (domain modules vs hooks, directory structure, naming conventions).
 - In `web-ui`, prefer `react-use` hooks (via `@/quarterdeck/utils/react-use`) whenever possible.
+- **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/web-ui-conventions.md` § "Hooks architecture" for the full pattern and the reference table of existing extractions.
 
 Board state single-writer rule
 - When the browser UI is connected, the UI is the **single writer** of board state via `saveWorkspaceState` (optimistic concurrency with `expectedRevision`). Server code must **never** call `mutateWorkspaceState` to modify board state for operations triggered while a UI client is active — doing so bumps the server-side revision and causes the UI's next persist to hit a `WorkspaceStateConflictError`, surfacing a disruptive "Workspace changed elsewhere" toast.
@@ -62,7 +63,7 @@ Completing a feature or fix (release hygiene)
 - When bumping the version number, always keep a `## [Unreleased]` section at the top of `CHANGELOG.md` above the new version heading. This is where subsequent changes land before the next release.
 
 Adding a new config field
-- The full checklist is in `src/config/global-config-fields.ts` (top-of-file comment). The key file for the settings dialog form is `web-ui/src/hooks/use-settings-form.ts` — add to `SettingsFormValues` (type) and `resolveInitialValues` (mapping), then add the JSX control. The dirty check, reset-on-open, save payload, and web-ui save types are handled automatically (no manual wiring).
+- The full checklist is in `src/config/global-config-fields.ts` (top-of-file comment). The key file for the settings dialog form is `web-ui/src/hooks/settings-form.ts` (domain module) — add to `SettingsFormValues` (type) and `resolveInitialValues` (mapping), then add the JSX control. The dirty check, reset-on-open, save payload, and web-ui save types are handled automatically (no manual wiring).
 
 Test fixtures and merge conflicts
 - Avoid touching test fixture mocks in feature branches — the config mock pattern (adding fields to 10+ test files) is the #1 conflict magnet. If you can defer test fixture updates to a final pass, or extract a shared `createDefaultMockConfig()` helper that all tests import, adding a field becomes a 1-file change instead of 12.

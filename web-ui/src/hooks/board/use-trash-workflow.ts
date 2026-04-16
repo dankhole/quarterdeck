@@ -1,40 +1,21 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import {
+	findTrashTaskIds,
+	type HardDeleteDialogState,
+	INITIAL_HARD_DELETE_DIALOG_STATE,
+	INITIAL_TRASH_WARNING_STATE,
+	type TrashWarningState,
+} from "@/hooks/board/trash-workflow";
 import type { UseTaskLifecycleResult } from "@/hooks/board/use-task-lifecycle";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearColumnTasks, findCardSelection, moveTaskToColumn, removeTask } from "@/state/board-state";
 import { clearTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
-export interface TrashWarningState {
-	open: boolean;
-	warning: TaskTrashWarningViewModel | null;
-	card: BoardCard | null;
-	fromColumnId: BoardColumnId | null;
-	optimisticMoveApplied: boolean;
-}
-
-export const INITIAL_TRASH_WARNING_STATE: TrashWarningState = {
-	open: false,
-	warning: null,
-	card: null,
-	fromColumnId: null,
-	optimisticMoveApplied: false,
-};
-
-export interface HardDeleteDialogState {
-	open: boolean;
-	taskId: string | null;
-	taskTitle: string | null;
-}
-
-export const INITIAL_HARD_DELETE_DIALOG_STATE: HardDeleteDialogState = {
-	open: false,
-	taskId: null,
-	taskTitle: null,
-};
+export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
+export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
 
 interface SelectedBoardCard {
 	card: BoardCard;
@@ -108,10 +89,7 @@ export function useTrashWorkflow({
 	);
 	const hardDeleteConfirmedRef = useRef(false);
 
-	const trashTaskIds = useMemo(() => {
-		const trashColumn = board.columns.find((column) => column.id === "trash");
-		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
-	}, [board.columns]);
+	const trashTaskIds = useMemo(() => findTrashTaskIds(board), [board.columns]);
 	const trashTaskCount = trashTaskIds.length;
 
 	const setTaskMoveToTrashLoading = useCallback((taskId: string, isLoading: boolean) => {

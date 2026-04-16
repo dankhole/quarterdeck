@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	isDirectoryPickerUnavailableErrorMessage,
 	parseRemovedProjectPathFromStreamError,
-} from "@/hooks/project/use-project-navigation";
+} from "@/hooks/project/project-navigation";
 
 describe("parseRemovedProjectPathFromStreamError", () => {
 	it("extracts removed project paths", () => {

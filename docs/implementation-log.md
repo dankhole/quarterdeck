@@ -2,6 +2,31 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: hooks domain logic extraction batch 2 + Phase 3 conventions (2026-04-15)
+
+**What:** Extracted domain logic from 6 more hooks into standalone, React-free modules with dedicated tests (Phase 2 batch 2). Added "Hooks architecture" conventions section to `docs/web-ui-conventions.md` (Phase 3).
+
+**Why:** Hooks in `web-ui/src/hooks/` blend business logic with React wiring, making them hard to unit-test without `renderHook` and hard to read without filtering out lifecycle boilerplate. Phase 2 batch 1 proved the pattern on 3 priority hooks; this batch covers the remaining high-value candidates. Phase 3 documents the pattern so future hooks follow the same structure.
+
+**Domain modules extracted:**
+- `git/git-actions.ts` — from `use-git-actions` (691 lines): `matchesWorkspaceInfoSelection`, `deriveLoadingByTaskId`, `computeNextTaskGitActionLoading`, `isTaskGitActionInFlight`, `getGitActionErrorTitle`, `getGitSyncSuccessLabel`, plus types
+- `terminal/terminal-panels.ts` — from `use-terminal-panels` (609 lines): constants, `estimateShellTerminalCols`, `loadBottomTerminalPaneHeight`, `persistBottomTerminalPaneHeight`, `resolveShellTerminalGeometry`, `computeTerminalPaneHeight`, `collapseAllDetailPanels`, plus types
+- `settings-form.ts` — from `use-settings-form` (193 lines): `SettingsFormValues` type, `resolveInitialValues`, `areFormValuesEqual`
+- `git/commit-panel.ts` — from `use-commit-panel` (389 lines): `computeSelectionSync`, `computeSelectedPaths`, `canPerformCommit`, `formatCommitSuccessMessage`
+- `board/trash-workflow.ts` — from `use-trash-workflow` (383 lines): `TrashWarningState`/`HardDeleteDialogState` types, initial state constants, `findTrashTaskIds`
+- `project/project-navigation.ts` — from `use-project-navigation` (378 lines): `parseRemovedProjectPathFromStreamError`, `isDirectoryPickerUnavailableErrorMessage`, `promptForManualProjectPath`
+
+**Test metrics:** 6 new test files, 63 new domain-level unit tests. Combined with batch 1: 9 domain modules, 9 test files, 92 domain tests. All hooks re-export moved types for backward compatibility. Existing test suites unchanged.
+
+**Conventions (Phase 3):** Added to `docs/web-ui-conventions.md`: directory structure, domain module vs hook pattern, naming conventions, re-export pattern, reference table. Updated `AGENTS.md` with extraction rule and updated config field checklist pointer.
+
+**Files:**
+- New domain modules: `web-ui/src/hooks/git/git-actions.ts`, `git/commit-panel.ts`, `terminal/terminal-panels.ts`, `project/project-navigation.ts`, `board/trash-workflow.ts`, `settings-form.ts`
+- New test files: corresponding `.test.ts` for each domain module
+- Modified hooks: `use-git-actions.ts`, `use-commit-panel.ts`, `use-terminal-panels.ts`, `use-project-navigation.ts`, `use-trash-workflow.ts`, `use-settings-form.ts`
+- Modified test: `project/use-project-navigation.test.ts` (import path update)
+- Docs: `docs/web-ui-conventions.md`, `AGENTS.md`
+
 ## Fix: restore terminal focus after programmatic input and task selection (2026-04-15)
 
 **What:** After sending input to the agent terminal via prompt shortcuts, review comments, or git actions, keyboard focus now returns to the terminal. Clicking/double-clicking a task from the column panel also focuses the terminal.

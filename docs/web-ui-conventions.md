@@ -58,3 +58,74 @@
 - The app is always in dark theme. Colors are set via CSS custom properties in `globals.css`.
 - Surface hierarchy: `bg-surface-0` (app background) -> `bg-surface-1` (raised panels) -> `bg-surface-2` (cards/inputs) -> `bg-surface-3` (hover) -> `bg-surface-4` (pressed).
 - Do NOT use Blueprint, Tailwind's light-mode defaults, or any `dark:` prefix. The theme is always dark.
+
+## Hooks architecture
+
+### Directory structure
+
+Hooks live in `src/hooks/` organized by domain:
+
+- `hooks/board/` — task lifecycle, board state, drag-and-drop, trash workflow
+- `hooks/git/` — branch operations, diffs, conflict resolution, commit panel
+- `hooks/terminal/` — PTY panels, shell management, auto-restart
+- `hooks/project/` — workspace navigation, project switching, sync
+- `hooks/notifications/` — alerts, sound, browser notifications
+- `hooks/` (flat) — cross-cutting hooks that don't belong to a single domain (settings, hotkeys, display)
+
+When adding a new hook, place it in the most specific subdirectory that fits. Only keep hooks flat at the root if they're genuinely cross-cutting (used by 3+ domains) or standalone utilities.
+
+### Domain modules vs hooks
+
+Separate domain logic from React wiring:
+
+- **Domain module** (`foo-bar.ts`): Pure TypeScript — no React imports, no hooks, no JSX. Exports functions, types, and constants. Testable with plain `describe`/`it` — no `renderHook` needed.
+- **Hook** (`use-foo-bar.ts`): Thin React adapter that reads state from context or props, calls domain functions, and writes results back via dispatch or setState.
+
+**When to extract**: if a hook has >50 lines of logic that doesn't reference React APIs (`useState`, `useEffect`, `useCallback`, `useContext`, `useRef`), that logic belongs in a domain module. Good extraction candidates include: validation rules, state machine guards, data transforms, error classification, loading-state derivation, and format/display helpers.
+
+**When NOT to extract**: if the hook is mostly React wiring (event listeners, effect setup, ref management) with minimal domain logic, keep it in one file. Examples: `use-document-visibility`, `use-escape-handler`, `use-app-hotkeys`.
+
+### Naming convention
+
+For a hook at `hooks/{domain}/use-foo-bar.ts`:
+
+```
+hooks/board/use-task-lifecycle.ts       ← hook (React wiring)
+hooks/board/task-lifecycle.ts           ← domain module (pure TS)
+hooks/board/use-task-lifecycle.test.tsx  ← hook integration test (needs renderHook)
+hooks/board/task-lifecycle.test.ts      ← domain unit test (no React)
+```
+
+The domain module drops the `use-` prefix since it's not a hook.
+
+### Backward-compatible re-exports
+
+When moving types or functions from a hook to a domain module, add re-exports in the hook file so external consumers don't break:
+
+```typescript
+// In use-trash-workflow.ts — re-export moved types
+export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
+export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@/hooks/board/trash-workflow";
+```
+
+### Existing domain modules (reference)
+
+| Domain module | Extracted from | What it contains |
+|---------------|---------------|-----------------|
+| `board/task-lifecycle.ts` | `use-task-lifecycle` | Board move helpers, workspace info transforms |
+| `board/trash-workflow.ts` | `use-trash-workflow` | Types, initial states, trash column queries |
+| `git/conflict-resolution.ts` | `use-conflict-resolution` | Step change detection, path filtering, fallback responses |
+| `git/git-actions.ts` | `use-git-actions` | Loading state derivation, workspace info matching, error titles |
+| `git/commit-panel.ts` | `use-commit-panel` | Selection sync, commit validation, success formatting |
+| `terminal/terminal-panels.ts` | `use-terminal-panels` | Geometry estimation, pane height persistence, panel state helpers |
+| `project/project-navigation.ts` | `use-project-navigation` | Error parsing, picker detection, manual path prompt |
+| `project/workspace-sync.ts` | `use-workspace-sync` | Session merging, version comparison, hydration guards |
+| `settings-form.ts` | `use-settings-form` | Form values type, initial values resolver, equality check |
+
+### Non-hook files
+
+Utility functions, constants, and React components do not belong in `hooks/`. Place them in `utils/`, `terminal/`, or `components/` respectively.
+
+### No barrel files
+
+Every import is a direct file path (`@/hooks/board/use-task-lifecycle`). Do not add `index.ts` barrel re-exports.

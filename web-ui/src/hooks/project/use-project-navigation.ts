@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
+import {
+	isDirectoryPickerUnavailableErrorMessage,
+	promptForManualProjectPath,
+} from "@/hooks/project/project-navigation";
 import { preloadProjectWorkspaceState } from "@/runtime/project-preload-cache";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -17,45 +21,10 @@ import { buildProjectPathname, parseProjectIdFromPathname } from "@/utils/app-ut
 import { useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
-const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
-const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
-	"could not open directory picker",
-	'install "zenity" or "kdialog"',
-	'install powershell ("powershell" or "pwsh")',
-	'command "osascript" is not available',
-] as const;
-const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
-	"Quarterdeck could not open a directory picker on this runtime. Enter a project path to add:";
-
-export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
-	if (!streamError?.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
-		return null;
-	}
-	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
-}
-
-export function isDirectoryPickerUnavailableErrorMessage(message: string | null | undefined): boolean {
-	if (!message) {
-		return false;
-	}
-	const normalized = message.trim().toLowerCase();
-	if (!normalized) {
-		return false;
-	}
-	return DIRECTORY_PICKER_UNAVAILABLE_MARKERS.some((marker) => normalized.includes(marker));
-}
-
-function promptForManualProjectPath(): string | null {
-	if (typeof window === "undefined") {
-		return null;
-	}
-	const rawValue = window.prompt(MANUAL_PROJECT_PATH_PROMPT_MESSAGE);
-	if (rawValue === null) {
-		return null;
-	}
-	const normalized = rawValue.trim();
-	return normalized || null;
-}
+export {
+	isDirectoryPickerUnavailableErrorMessage,
+	parseRemovedProjectPathFromStreamError,
+} from "@/hooks/project/project-navigation";
 
 interface UseProjectNavigationInput {
 	onProjectSwitchStart: () => void;

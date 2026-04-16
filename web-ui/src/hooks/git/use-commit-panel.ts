@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
+import {
+	canPerformCommit,
+	computeSelectedPaths,
+	computeSelectionSync,
+	formatCommitSuccessMessage,
+} from "@/hooks/git/commit-panel";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
@@ -95,39 +101,15 @@ export function useCommitPanel(
 	const prevPathsRef = useRef<Set<string>>(new Set());
 	useEffect(() => {
 		if (!files) return;
-		const currentPaths = new Set(files.map((f) => f.path));
-		const prevPaths = prevPathsRef.current;
-
-		// Detect actual changes to avoid unnecessary re-renders.
-		const added = files.filter((f) => !prevPaths.has(f.path));
-		const removed = [...prevPaths].filter((p) => !currentPaths.has(p));
-
-		if (added.length > 0 || removed.length > 0) {
-			setSelection((prev) => {
-				const next = new Map(prev);
-				for (const f of added) {
-					next.set(f.path, true);
-				}
-				for (const p of removed) {
-					next.delete(p);
-				}
-				return next;
-			});
+		const result = computeSelectionSync(files, prevPathsRef.current, selection);
+		if (result.changed) {
+			setSelection(result.selection);
 		}
-
-		// Initialize selection for first load (all checked).
-		if (prevPaths.size === 0 && files.length > 0) {
-			setSelection(new Map(files.map((f) => [f.path, true])));
-		}
-
-		prevPathsRef.current = currentPaths;
+		prevPathsRef.current = new Set(files.map((f) => f.path));
 	}, [files]);
 
 	// Derived selection state.
-	const selectedPaths = useMemo(() => {
-		if (!files) return [];
-		return files.filter((f) => selection.get(f.path)).map((f) => f.path);
-	}, [files, selection]);
+	const selectedPaths = useMemo(() => computeSelectedPaths(files, selection), [files, selection]);
 
 	const isAllSelected = files !== null && files.length > 0 && selectedPaths.length === files.length;
 	const isIndeterminate = selectedPaths.length > 0 && !isAllSelected;
@@ -161,7 +143,7 @@ export function useCommitPanel(
 	const taskScope = useMemo(() => (taskId && baseRef ? { taskId, baseRef } : null), [taskId, baseRef]);
 
 	// Validation.
-	const canCommit = selectedPaths.length > 0 && message.trim().length > 0 && !isCommitting;
+	const canCommit = canPerformCommit(selectedPaths.length, message, isCommitting);
 	const canPush = canCommit && isOnNamedBranch;
 
 	// Shared commit implementation — handles both commit-only and commit-and-push flows.
@@ -187,25 +169,17 @@ export function useCommitPanel(
 					showAppToast({ intent: "danger", message: fullError, timeout: 5000 });
 					return;
 				}
-				const hashLabel = result.commitHash ? ` (${result.commitHash.slice(0, 7)})` : "";
-				if (pushAfterCommit) {
-					if (result.pushOk) {
-						showAppToast({
-							intent: "success",
-							message: `Committed${hashLabel} and pushed`,
-							timeout: 4000,
-						});
-					} else {
-						showAppToast({
-							intent: "warning",
-							message: `Committed${hashLabel} but push failed: ${result.pushError ?? "unknown error"}`,
-							timeout: 7000,
-						});
-					}
+				if (pushAfterCommit && !result.pushOk) {
+					const hashLabel = result.commitHash ? ` (${result.commitHash.slice(0, 7)})` : "";
+					showAppToast({
+						intent: "warning",
+						message: `Committed${hashLabel} but push failed: ${result.pushError ?? "unknown error"}`,
+						timeout: 7000,
+					});
 				} else {
 					showAppToast({
 						intent: "success",
-						message: `Committed${hashLabel}`,
+						message: formatCommitSuccessMessage(result.commitHash, pushAfterCommit),
 						timeout: 4000,
 					});
 				}

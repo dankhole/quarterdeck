@@ -2,6 +2,17 @@ import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git-history/use-git-history-data";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import {
+	computeNextTaskGitActionLoading,
+	deriveLoadingByTaskId,
+	type GitActionErrorState,
+	getGitActionErrorTitle,
+	getGitSyncSuccessLabel,
+	isTaskGitActionInFlight,
+	matchesWorkspaceInfoSelection,
+	type TaskGitActionLoadingState,
+	type TaskGitActionSource,
+} from "@/hooks/git/git-actions";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
@@ -19,13 +30,6 @@ import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
-
-type TaskGitActionSource = "card" | "agent";
-
-interface TaskGitActionLoadingState {
-	commitSource: TaskGitActionSource | null;
-	prSource: TaskGitActionSource | null;
-}
 
 interface UseGitActionsInput {
 	currentProjectId: string | null;
@@ -52,12 +56,7 @@ export interface UseGitActionsResult {
 	isSwitchingHomeBranch: boolean;
 	isDiscardingHomeWorkingChanges: boolean;
 	isStashAndRetryingPull: boolean;
-	gitActionError: {
-		action: RuntimeGitSyncAction;
-		message: string;
-		output: string;
-		dirtyTree?: boolean;
-	} | null;
+	gitActionError: GitActionErrorState | null;
 	gitActionErrorTitle: string;
 	clearGitActionError: () => void;
 	onStashAndRetry: (() => void) | undefined;
@@ -78,16 +77,6 @@ export interface UseGitActionsResult {
 	resetGitActionState: () => void;
 }
 
-function matchesWorkspaceInfoSelection(
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
-	card: BoardCard | null,
-): workspaceInfo is RuntimeTaskWorkspaceInfoResponse {
-	if (!workspaceInfo || !card) {
-		return false;
-	}
-	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
-}
-
 export function useGitActions({
 	currentProjectId,
 	board,
@@ -105,12 +94,7 @@ export function useGitActions({
 	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
 	const [isDiscardingHomeWorkingChanges, setIsDiscardingHomeWorkingChanges] = useState(false);
 	const [isStashAndRetryingPull, setIsStashAndRetryingPull] = useState(false);
-	const [gitActionError, setGitActionError] = useState<{
-		action: RuntimeGitSyncAction;
-		message: string;
-		output: string;
-		dirtyTree?: boolean;
-	} | null>(null);
+	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
 	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id ?? null);
@@ -156,74 +140,35 @@ export function useGitActions({
 
 	const setTaskGitActionLoading = useCallback(
 		(taskId: string, action: TaskGitAction, source: TaskGitActionSource | null) => {
+			const actionKey = action === "commit" ? "commitSource" : "prSource";
 			setTaskGitActionLoadingByTaskId((current) => {
-				const existing = current[taskId] ?? { commitSource: null, prSource: null };
-				const key = action === "commit" ? "commitSource" : "prSource";
-				if (existing[key] === source) {
-					return current;
-				}
-				const nextEntry: TaskGitActionLoadingState = {
-					...existing,
-					[key]: source,
-				};
-				if (nextEntry.commitSource === null && nextEntry.prSource === null) {
-					const { [taskId]: _removed, ...rest } = current;
-					return rest;
-				}
-				return {
-					...current,
-					[taskId]: nextEntry,
-				};
+				return computeNextTaskGitActionLoading(current, taskId, actionKey, source) ?? current;
 			});
 		},
 		[],
 	);
 
-	const commitTaskLoadingById = useMemo(() => {
-		const next: Record<string, boolean> = {};
-		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
-			if (loading.commitSource === "card") {
-				next[taskId] = true;
-			}
-		}
-		return next;
-	}, [taskGitActionLoadingByTaskId]);
-
-	const openPrTaskLoadingById = useMemo(() => {
-		const next: Record<string, boolean> = {};
-		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
-			if (loading.prSource === "card") {
-				next[taskId] = true;
-			}
-		}
-		return next;
-	}, [taskGitActionLoadingByTaskId]);
-
-	const agentCommitTaskLoadingById = useMemo(() => {
-		const next: Record<string, boolean> = {};
-		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
-			if (loading.commitSource === "agent") {
-				next[taskId] = true;
-			}
-		}
-		return next;
-	}, [taskGitActionLoadingByTaskId]);
-
-	const agentOpenPrTaskLoadingById = useMemo(() => {
-		const next: Record<string, boolean> = {};
-		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
-			if (loading.prSource === "agent") {
-				next[taskId] = true;
-			}
-		}
-		return next;
-	}, [taskGitActionLoadingByTaskId]);
+	const commitTaskLoadingById = useMemo(
+		() => deriveLoadingByTaskId(taskGitActionLoadingByTaskId, "commitSource", "card"),
+		[taskGitActionLoadingByTaskId],
+	);
+	const openPrTaskLoadingById = useMemo(
+		() => deriveLoadingByTaskId(taskGitActionLoadingByTaskId, "prSource", "card"),
+		[taskGitActionLoadingByTaskId],
+	);
+	const agentCommitTaskLoadingById = useMemo(
+		() => deriveLoadingByTaskId(taskGitActionLoadingByTaskId, "commitSource", "agent"),
+		[taskGitActionLoadingByTaskId],
+	);
+	const agentOpenPrTaskLoadingById = useMemo(
+		() => deriveLoadingByTaskId(taskGitActionLoadingByTaskId, "prSource", "agent"),
+		[taskGitActionLoadingByTaskId],
+	);
 
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
-			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
-			const actionInFlightSource = action === "commit" ? taskLoadingState?.commitSource : taskLoadingState?.prSource;
-			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
+			const actionKey = action === "commit" ? "commitSource" : "prSource";
+			if (isTaskGitActionInFlight(taskGitActionLoadingByTaskId, taskId, actionKey)) {
 				return false;
 			}
 			setTaskGitActionLoading(taskId, action, source);
@@ -390,8 +335,7 @@ export function useGitActions({
 					setHomeGitSummary(payload.summary);
 				}
 				refreshGitHistory();
-				const label = action === "push" ? "Pushed" : action === "pull" ? "Pulled" : "Fetched";
-				showAppToast({ intent: "success", message: label, timeout: 3000 });
+				showAppToast({ intent: "success", message: getGitSyncSuccessLabel(action), timeout: 3000 });
 			} catch (error) {
 				const message = toErrorMessage(error);
 				setGitActionError({
@@ -649,18 +593,7 @@ export function useGitActions({
 	const onStashAndRetry =
 		gitActionError?.dirtyTree && gitActionError.action === "pull" ? stashAndRetryPull : undefined;
 
-	const gitActionErrorTitle = useMemo(() => {
-		if (!gitActionError) {
-			return "Git action failed";
-		}
-		if (gitActionError.action === "fetch") {
-			return "Fetch failed";
-		}
-		if (gitActionError.action === "pull") {
-			return "Pull failed";
-		}
-		return "Push failed";
-	}, [gitActionError]);
+	const gitActionErrorTitle = useMemo(() => getGitActionErrorTitle(gitActionError), [gitActionError]);
 
 	return {
 		runningGitAction,

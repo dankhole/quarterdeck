@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
+import {
+	collapseAllDetailPanels,
+	computeTerminalPaneHeight,
+	DEFAULT_DETAIL_TERMINAL_PANEL_STATE,
+	type DetailTerminalPanelState,
+	loadBottomTerminalPaneHeight,
+	persistBottomTerminalPaneHeight as persistPaneHeight,
+	resolveShellTerminalGeometry,
+} from "@/hooks/terminal/terminal-panels";
 import { useShellAutoRestart } from "@/hooks/terminal/use-shell-auto-restart";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
 import { getDetailTerminalTaskId, HOME_TERMINAL_TASK_ID } from "@/terminal/terminal-constants";
 
 export {
@@ -10,53 +22,10 @@ export {
 	HOME_TERMINAL_TASK_ID,
 } from "@/terminal/terminal-constants";
 
-import {
-	clampAtLeast,
-	readOptionalPersistedResizeNumber,
-	writePersistedResizeNumber,
-} from "@/resize/resize-persistence";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
-import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
-import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/terminal-pool";
 import type { BoardCard, CardSelection } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
-
-const HOME_TERMINAL_ROWS = 16;
-const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
-const MIN_TERMINAL_COLS = 40;
-const MIN_BOTTOM_TERMINAL_PANE_HEIGHT = 200;
-const EXPANDED_TERMINAL_PANE_HEIGHT = 99999;
-
-function estimateShellTerminalCols(): number {
-	if (typeof window === "undefined") {
-		return 120;
-	}
-	return Math.max(MIN_TERMINAL_COLS, Math.floor(Math.max(0, window.innerWidth - 96) / APPROX_TERMINAL_CELL_WIDTH_PX));
-}
-
-function loadBottomTerminalPaneHeight(): number | undefined {
-	return readOptionalPersistedResizeNumber({
-		key: LocalStorageKey.BottomTerminalPaneHeight,
-		normalize: (value) => clampAtLeast(value, MIN_BOTTOM_TERMINAL_PANE_HEIGHT),
-	});
-}
-
-async function resolveShellTerminalGeometry(taskId: string): Promise<{ cols: number; rows: number }> {
-	const existingGeometry = getTerminalGeometry(taskId);
-	if (existingGeometry) {
-		return existingGeometry;
-	}
-	await prepareWaitForTerminalGeometry(taskId)();
-	return (
-		getTerminalGeometry(taskId) ?? {
-			cols: estimateShellTerminalCols(),
-			rows: HOME_TERMINAL_ROWS,
-		}
-	);
-}
 
 interface StartDetailTerminalOptions {
 	showLoading?: boolean;
@@ -88,16 +57,6 @@ interface PrepareTerminalForShortcutResult {
 	targetTaskId?: string;
 	message?: string;
 }
-
-interface DetailTerminalPanelState {
-	isExpanded: boolean;
-	isOpen: boolean;
-}
-
-const DEFAULT_DETAIL_TERMINAL_PANEL_STATE: DetailTerminalPanelState = {
-	isExpanded: false,
-	isOpen: false,
-};
 
 export interface UseTerminalPanelsResult {
 	homeTerminalTaskId: string;
@@ -162,10 +121,8 @@ export function useTerminalPanels({
 		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
 	const isDetailTerminalOpen = currentDetailTerminalPanelState.isOpen;
 	const isDetailTerminalExpanded = currentDetailTerminalPanelState.isExpanded;
-	const homeTerminalPaneHeight = isHomeTerminalExpanded ? EXPANDED_TERMINAL_PANE_HEIGHT : lastBottomTerminalPaneHeight;
-	const detailTerminalPaneHeight = isDetailTerminalExpanded
-		? EXPANDED_TERMINAL_PANE_HEIGHT
-		: lastBottomTerminalPaneHeight;
+	const homeTerminalPaneHeight = computeTerminalPaneHeight(isHomeTerminalExpanded, lastBottomTerminalPaneHeight);
+	const detailTerminalPaneHeight = computeTerminalPaneHeight(isDetailTerminalExpanded, lastBottomTerminalPaneHeight);
 
 	const updateDetailTerminalPanelState = useCallback(
 		(taskId: string, updater: (previous: DetailTerminalPanelState) => DetailTerminalPanelState) => {
@@ -181,11 +138,7 @@ export function useTerminalPanels({
 		if (typeof height !== "number" || !Number.isFinite(height)) {
 			return;
 		}
-		const normalizedHeight = writePersistedResizeNumber({
-			key: LocalStorageKey.BottomTerminalPaneHeight,
-			value: height,
-			normalize: (value) => clampAtLeast(value, MIN_BOTTOM_TERMINAL_PANE_HEIGHT),
-		});
+		const normalizedHeight = persistPaneHeight(height);
 		setLastBottomTerminalPaneHeight(normalizedHeight);
 	}, []);
 
@@ -197,17 +150,7 @@ export function useTerminalPanels({
 	const resetBottomTerminalLayoutCustomizations = useCallback(() => {
 		resetBottomTerminalPaneHeight();
 		setIsHomeTerminalExpanded(false);
-		setDetailTerminalPanelStateByTaskId((previous) =>
-			Object.fromEntries(
-				Object.entries(previous).map(([taskId, panelState]) => [
-					taskId,
-					{
-						...panelState,
-						isExpanded: false,
-					},
-				]),
-			),
-		);
+		setDetailTerminalPanelStateByTaskId(collapseAllDetailPanels);
 	}, [resetBottomTerminalPaneHeight]);
 
 	const closeHomeTerminal = useCallback(() => {

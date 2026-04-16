@@ -27,7 +27,12 @@
 
 ### Refactor: extract domain logic from hooks into plain TS modules (Phase 2)
 
-- Split 3 priority hooks into domain module + thin React wrapper pairs: `task-lifecycle.ts` (board revert helpers, workspace info mapping, isolation predicate), `conflict-resolution.ts` (step-change detection, unresolved path filtering, external resolution detection), `workspace-sync.ts` (session merging, revision conflict guards, board hydration decisions). Each domain module has zero React imports and is testable with plain `describe`/`it`. Adds 29 new domain-level unit tests across 3 test files. Existing hook-level tests unchanged.
+- **Batch 1** — Split 3 priority hooks into domain module + thin React wrapper pairs: `task-lifecycle.ts` (board revert helpers, workspace info mapping, isolation predicate), `conflict-resolution.ts` (step-change detection, unresolved path filtering, external resolution detection), `workspace-sync.ts` (session merging, revision conflict guards, board hydration decisions). 29 new domain-level unit tests across 3 test files.
+- **Batch 2** — Extracted 6 more hooks: `git-actions.ts` (loading state derivation, workspace info matching, error titles), `terminal-panels.ts` (geometry estimation, pane height persistence, panel state helpers), `settings-form.ts` (form values type, initial values resolver, equality check), `commit-panel.ts` (selection sync, commit validation, success formatting), `trash-workflow.ts` (types, initial states, trash column queries), `project-navigation.ts` (error parsing, picker detection, manual path prompt). 63 new domain-level unit tests across 6 test files. Phase 2 now 9 of ~11 candidates done.
+
+### Docs: hooks architecture conventions (Phase 3)
+
+- Added "Hooks architecture" section to `docs/web-ui-conventions.md` — codifies directory structure, domain module vs hook separation pattern, naming conventions, backward-compatible re-exports, and reference table of all 9 existing extractions. Updated `AGENTS.md` to reference the new conventions and add the >50-line extraction rule.
 
 ### Refactor: extract ConnectedTopBar, HomeView, and AppDialogs from AppContent
 
