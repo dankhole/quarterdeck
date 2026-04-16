@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AlertDialogDescription } from "@/components/ui/dialog";
-import type { MigrateDirection } from "@/hooks/use-migrate-working-directory";
+import type { MigrateDirection } from "@/hooks/terminal/use-migrate-working-directory";
 
 interface MigrateWorkingDirectoryDialogProps {
 	open: boolean;

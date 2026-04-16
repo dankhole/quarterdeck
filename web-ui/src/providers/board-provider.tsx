@@ -1,10 +1,9 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo } from "react";
-
-import { useDetailTaskNavigation } from "@/hooks/use-detail-task-navigation";
+import { useTaskSessions } from "@/hooks/board/use-task-sessions";
+import { useDetailTaskNavigation } from "@/hooks/project/use-detail-task-navigation";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { type UseTaskEditorResult, useTaskEditor } from "@/hooks/use-task-editor";
-import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useProjectContext } from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { reconcileTaskWorkingDirectory } from "@/state/board-state";

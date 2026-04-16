@@ -183,7 +183,7 @@ All hooks migrated out of the monolithic App component into 6 focused providers 
 
 **After the provider migration**, two follow-up refactors build on it (do in order):
 
-1. **Organize hooks into domain subdirectories** — see "Organize web-ui hooks directory" todo below
+1. ~~**Organize hooks into domain subdirectories**~~ — done. 78 flat files reorganized into 5 domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`), 5 non-hook files relocated to proper directories (`utils/`, `terminal/`, `components/`), ~123 import sites updated.
 2. **Extract business logic from hooks into plain TS modules** — see "Organize web-ui hooks directory" todo below
 
 ## Remove non-WebGL terminal renderer option
@@ -200,7 +200,7 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 
 Three phases, done in order:
 
-1. **Subdirectory reorg** — Move 60+ hooks from flat `hooks/` into domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`). Mechanical file moves + import updates, no logic changes. ~2 hours, best done in a low-activity window. Plan: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 1.
+1. ~~**Subdirectory reorg**~~ — Done. Moved 78 files into 5 domain subdirectories plus relocated 5 misplaced non-hook files. Pure file moves + import path updates.
 2. **Domain logic extraction** — For hooks with >50 lines of business logic, split into a pure TS domain module (`foo-bar.ts`) and a thin React hook (`use-foo-bar.ts`). The domain module has zero React imports and is testable without `renderHook`. Do incrementally, hook-by-hook. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics (candidates, naming, examples): [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 2.
 3. **Conventions update** — Add "Hooks architecture" section to `web-ui-conventions.md` to codify the domain-module pattern and directory structure. Plan: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 3.
 

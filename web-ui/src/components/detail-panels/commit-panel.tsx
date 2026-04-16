@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useCommitPanel } from "@/hooks/use-commit-panel";
+import { useCommitPanel } from "@/hooks/git/use-commit-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { useHomeStashCount } from "@/stores/workspace-metadata-store";
 import { StashListSection } from "./stash-list-section";

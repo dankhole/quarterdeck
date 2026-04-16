@@ -27,6 +27,10 @@
 
 - Migrated all hook/state logic from the monolithic App.tsx into 6 focused provider components (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). Eliminated the AppCore intermediate component. App is now a ~50-line composition root; each provider is independently maintainable. AppContent props reduced from 35+ to 2.
 
+### Refactor: organize web-ui hooks into domain subdirectories
+
+- Reorganized the flat 78-file `hooks/` directory into 5 domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`) — hooks are now grouped by the domain they serve. Relocated 5 non-hook files (utility functions, constants, React components) to their proper directories (`utils/`, `terminal/`, `components/`). ~123 import sites updated across ~40 files. Pure structural change — no logic modifications.
+
 ## [0.9.1] — 2026-04-15
 
 ### Fix: preserve terminal review reasons across server restart

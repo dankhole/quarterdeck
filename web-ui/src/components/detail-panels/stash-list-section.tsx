@@ -18,7 +18,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { useStashList } from "@/hooks/use-stash-list";
+import { useStashList } from "@/hooks/git/use-stash-list";
 import type { RuntimeStashEntry } from "@/runtime/types";
 
 /* ------------------------------------------------------------------ */

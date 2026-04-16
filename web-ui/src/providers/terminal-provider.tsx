@@ -2,7 +2,7 @@ import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 
-import { type UseTerminalPanelsResult, useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { type UseTerminalPanelsResult, useTerminalPanels } from "@/hooks/terminal/use-terminal-panels";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";

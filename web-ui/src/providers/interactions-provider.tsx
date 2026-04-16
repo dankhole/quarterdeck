@@ -1,8 +1,8 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { createContext, useContext, useMemo, useState } from "react";
 
-import type { UseBoardInteractionsResult } from "@/hooks/use-board-interactions";
-import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import type { UseBoardInteractionsResult } from "@/hooks/board/use-board-interactions";
+import { useBoardInteractions } from "@/hooks/board/use-board-interactions";
 import type { UseTaskStartActionsResult } from "@/hooks/use-task-start-actions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useBoardContext } from "@/providers/board-provider";

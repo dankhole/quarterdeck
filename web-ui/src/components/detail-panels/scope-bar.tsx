@@ -2,7 +2,7 @@ import { AlertTriangle, CornerDownLeft, House, LogIn } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { ResolvedScope, ScopeMode } from "@/hooks/use-scope-context";
+import type { ResolvedScope, ScopeMode } from "@/hooks/git/use-scope-context";
 import type { RuntimeGitSyncSummary } from "@/runtime/types";
 
 /**

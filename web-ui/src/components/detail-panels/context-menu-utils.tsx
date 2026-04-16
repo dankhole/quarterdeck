@@ -1,7 +1,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ClipboardCopy, FileSearch } from "lucide-react";
 import { showAppToast } from "@/components/app-toaster";
-import type { FileNavigation } from "@/hooks/use-git-navigation";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 
 export const CONTEXT_MENU_ITEM_CLASS =
 	"flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3";

@@ -1,4 +1,4 @@
-import { DETAIL_TERMINAL_TASK_PREFIX, HOME_TERMINAL_TASK_ID } from "@/hooks/terminal-constants";
+import { DETAIL_TERMINAL_TASK_PREFIX, HOME_TERMINAL_TASK_ID } from "@/terminal/terminal-constants";
 import {
 	type PersistentTerminalAppearance,
 	TerminalSlot,

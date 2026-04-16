@@ -3,12 +3,12 @@ import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 
 import type { UseGitHistoryDataResult } from "@/components/git-history/use-git-history-data";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { type UseBranchActionsResult, useBranchActions } from "@/hooks/use-branch-actions";
+import { type UseBranchActionsResult, useBranchActions } from "@/hooks/git/use-branch-actions";
+import { useGitActions } from "@/hooks/git/use-git-actions";
+import { type FileNavigation, useGitNavigation } from "@/hooks/git/use-git-navigation";
+import type { GitViewCompareNavigation } from "@/hooks/git/use-git-view-compare";
+import { type ResolvedScope, type ScopeMode, useScopeContext } from "@/hooks/git/use-scope-context";
 import { type UseFileBrowserDataResult, useFileBrowserData } from "@/hooks/use-file-browser-data";
-import { useGitActions } from "@/hooks/use-git-actions";
-import { type FileNavigation, useGitNavigation } from "@/hooks/use-git-navigation";
-import type { GitViewCompareNavigation } from "@/hooks/use-git-view-compare";
-import { type ResolvedScope, type ScopeMode, useScopeContext } from "@/hooks/use-scope-context";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { type MainViewId, type SidebarId, useCardDetailLayout } from "@/resize/use-card-detail-layout";

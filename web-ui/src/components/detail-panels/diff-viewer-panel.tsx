@@ -7,9 +7,9 @@ import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/deta
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { useDiffComments } from "@/hooks/use-diff-comments";
-import { useDiffScrollSync } from "@/hooks/use-diff-scroll-sync";
-import type { FileNavigation } from "@/hooks/use-git-navigation";
+import { useDiffComments } from "@/hooks/git/use-diff-comments";
+import { useDiffScrollSync } from "@/hooks/git/use-diff-scroll-sync";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";

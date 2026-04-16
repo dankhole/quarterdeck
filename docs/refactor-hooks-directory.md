@@ -2,7 +2,7 @@
 
 **Goal:** Tame the 78-file flat `web-ui/src/hooks/` directory — first by organizing into domain subdirectories, then by separating domain logic from React wiring, with conventions to prevent re-bloating.
 
-**Status:** Plan documented. No work started.
+**Status:** Phase 1 complete. Phase 2 incremental, Phase 3 pending.
 **Date:** 2026-04-15
 
 ---

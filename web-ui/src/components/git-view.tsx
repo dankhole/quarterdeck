@@ -10,9 +10,9 @@ import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panel
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useConflictResolution } from "@/hooks/use-conflict-resolution";
-import { useDocumentVisibility } from "@/hooks/use-document-visibility";
-import { type GitViewCompareNavigation, useGitViewCompare } from "@/hooks/use-git-view-compare";
+import { useConflictResolution } from "@/hooks/git/use-conflict-resolution";
+import { type GitViewCompareNavigation, useGitViewCompare } from "@/hooks/git/use-git-view-compare";
+import { useDocumentVisibility } from "@/hooks/notifications/use-document-visibility";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
 import {

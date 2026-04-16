@@ -2,7 +2,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { FileText, Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
 import { FileContextMenuItems } from "@/components/detail-panels/context-menu-utils";
-import type { FileNavigation } from "@/hooks/use-git-navigation";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import type { RuntimeWorkspaceFileChange, RuntimeWorkspaceFileStatus } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 

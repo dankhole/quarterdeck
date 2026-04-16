@@ -2,6 +2,34 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: organize web-ui hooks into domain subdirectories (2026-04-15)
+
+**Goal:** Phase 1 of the hooks directory refactoring plan (`docs/refactor-hooks-directory.md`). The flat 78-file `web-ui/src/hooks/` directory was unnavigable — finding anything required grep or memorized filenames, and 5 files weren't even hooks.
+
+**What changed:**
+
+1. **Non-hook files relocated** — 5 files that ended up in `hooks/` by gravity moved to their proper homes:
+   - `app-utils.tsx` → `utils/app-utils.tsx` (pure utility functions)
+   - `session-summary-utils.ts` → `utils/session-summary-utils.ts` (pure utility functions)
+   - `terminal-constants.ts` → `terminal/terminal-constants.ts` (constants)
+   - `quarterdeck-access-blocked-fallback.tsx` → `components/quarterdeck-access-blocked-fallback.tsx` (React component)
+   - `runtime-disconnected-fallback.tsx` → `components/runtime-disconnected-fallback.tsx` (React component)
+
+2. **Hooks grouped into 5 domain subdirectories:**
+   - `hooks/board/` (11 hooks + tests) — task lifecycle, board orchestration, drag-and-drop
+   - `hooks/git/` (10 hooks + tests) — VCS operations, diffs, conflict resolution
+   - `hooks/terminal/` (5 hooks + tests) — PTY panels, shell management, migration
+   - `hooks/project/` (8 hooks + tests) — workspace and project navigation
+   - `hooks/notifications/` (5 hooks + tests) — alerts, sound, visibility
+
+3. **Cross-cutting hooks stayed flat** (16 files) — `use-app-hotkeys`, `use-app-dialogs`, `use-escape-handler`, `use-settings-form`, `use-task-editor`, etc. These are genuinely cross-cutting or standalone with no natural domain cluster.
+
+4. **Import paths updated** — ~123 import sites across ~40 source files rewritten from `@/hooks/use-foo` to `@/hooks/{domain}/use-foo` (or `@/utils/`, `@/terminal/`, `@/components/` for non-hooks). No barrel files — every import is a direct file path.
+
+**Zero logic changes.** Pure file moves + import path rewrites. Typecheck, all 552 web-ui tests, and production build pass clean.
+
+**Files:** Every file in `web-ui/src/hooks/` was either moved or had its imports updated. Key consumers: `App.tsx`, all 6 providers (`board-provider.tsx`, `git-provider.tsx`, `terminal-provider.tsx`, `project-provider.tsx`, `dialog-provider.tsx`, `interactions-provider.tsx`), `card-detail-view.tsx`, `git-view.tsx`, `runtime-settings-dialog.tsx`, `commit-panel.tsx`, `diff-viewer-panel.tsx`, `stash-list-section.tsx`, `terminal-pool.ts`, and many hook-to-hook cross-references.
+
 ## Fix: dedicated shell terminals blank after close/reopen (2026-04-15)
 
 **Problem:** Shell terminals (home terminal, detail dev shell) appeared blank or broken when toggled closed and reopened. The issue was intermittent — it depended on whether the WebGL context survived the DOM detachment.
