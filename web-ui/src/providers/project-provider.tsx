@@ -1,16 +1,31 @@
-import { createContext, useContext } from "react";
-
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
+import { createContext, useCallback, useContext, useMemo } from "react";
+import { showAppToast } from "@/components/app-toaster";
+import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import type { UseProjectNavigationResult } from "@/hooks/use-project-navigation";
+import { useProjectNavigation } from "@/hooks/use-project-navigation";
+import { useQuarterdeckAccessGate } from "@/hooks/use-quarterdeck-access-gate";
 import type { UseStartupOnboardingResult } from "@/hooks/use-startup-onboarding";
-import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
+import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
+import { isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
+import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
+import type {
+	RuntimeConfigResponse,
+	RuntimeGitRepositoryInfo,
+	RuntimeProjectShortcut,
+	RuntimeTaskSessionSummary,
+} from "@/runtime/types";
+import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
+import type { BoardData } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Context value — project-level state: navigation, runtime config, onboarding,
-// access gate, and config-derived values + mutation callbacks.
+// access gate, config-derived values, mutation callbacks, and workspace sync.
 //
-// The value is constructed in App.tsx and provided inline via
-// <ProjectContext.Provider>. This file owns the context shape and consumer
-// hook so child components can read project state without prop drilling.
+// The value is constructed inside ProjectProvider, which owns all project-level
+// hooks. Child components read project state via useProjectContext().
 // ---------------------------------------------------------------------------
 
 export interface ProjectContextValue {
@@ -85,6 +100,25 @@ export interface ProjectContextValue {
 	agentCommand: string | null;
 	configDefaultBaseRef: string;
 
+	// --- useWorkspaceSync (subset exposed via context) ---
+	workspacePath: string | null;
+	workspaceGit: RuntimeGitRepositoryInfo | null;
+	refreshWorkspaceState: () => Promise<void>;
+
+	// --- useWorkspaceSync (additional outputs needed by AppContent) ---
+	workspaceRevision: number | null;
+	setWorkspaceRevision: Dispatch<SetStateAction<number | null>>;
+	workspaceHydrationNonce: number;
+	isWorkspaceStateRefreshing: boolean;
+	isWorkspaceMetadataPending: boolean;
+	resetWorkspaceSyncState: () => void;
+
+	// --- Document visibility ---
+	isDocumentVisible: boolean;
+
+	// --- Board-level state bridged through for downstream consumers ---
+	canPersistWorkspaceState: boolean;
+
 	// --- Config mutation callbacks ---
 	handleTogglePinBranch: (branchName: string) => void;
 	handleSkipTaskCheckoutConfirmationChange: (skip: boolean) => void;
@@ -100,4 +134,372 @@ export function useProjectContext(): ProjectContextValue {
 		throw new Error("useProjectContext must be used within a ProjectContext.Provider");
 	}
 	return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Provider component — calls all project-level hooks and exposes the combined
+// value via ProjectContext. This is the foundation layer: it reads from nothing
+// (no parent contexts), and all other providers depend on it.
+//
+// Props bridge values that are owned above the provider tree:
+// - onProjectSwitchStart: cleanup callback defined in App
+// - setBoard/setSessions/setCanPersistWorkspaceState: board-level state setters
+//   needed by useWorkspaceSync (temporary — will clean up with BoardProvider)
+// ---------------------------------------------------------------------------
+
+export interface ProjectProviderProps {
+	onProjectSwitchStart: () => void;
+	setBoard: Dispatch<SetStateAction<BoardData>>;
+	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
+	canPersistWorkspaceState: boolean;
+	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
+	children: ReactNode;
+}
+
+export function ProjectProvider({
+	onProjectSwitchStart,
+	setBoard,
+	setSessions,
+	canPersistWorkspaceState,
+	setCanPersistWorkspaceState,
+	children,
+}: ProjectProviderProps): ReactNode {
+	// --- Core project navigation ---
+	const {
+		currentProjectId,
+		projects,
+		workspaceState: streamedWorkspaceState,
+		workspaceMetadata,
+		notificationSessions,
+		notificationWorkspaceIds,
+		latestTaskReadyForReview,
+		latestTaskTitleUpdate,
+		logLevel,
+		debugLogEntries,
+		streamError,
+		isRuntimeDisconnected,
+		hasReceivedSnapshot,
+		navigationCurrentProjectId,
+		removingProjectId,
+		hasNoProjects,
+		isProjectSwitching,
+		handleSelectProject,
+		handlePreloadProject,
+		handleAddProject,
+		handleConfirmInitializeGitProject,
+		handleCancelInitializeGitProject,
+		handleRemoveProject,
+		handleReorderProjects,
+		pendingGitInitializationPath,
+		isInitializingGitProject,
+		resetProjectNavigationState,
+	} = useProjectNavigation({
+		onProjectSwitchStart,
+	});
+
+	// --- Document visibility ---
+	const isDocumentVisible = useDocumentVisibility();
+
+	// --- Runtime project config ---
+	const {
+		config: runtimeProjectConfig,
+		isLoading: isRuntimeProjectConfigLoading,
+		refresh: refreshRuntimeProjectConfig,
+	} = useRuntimeProjectConfig(currentProjectId);
+
+	const { isBlocked: isQuarterdeckAccessBlocked } = useQuarterdeckAccessGate({
+		workspaceId: currentProjectId,
+	});
+
+	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
+	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
+
+	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
+		useRuntimeProjectConfig(settingsWorkspaceId);
+
+	// --- Startup onboarding ---
+	const {
+		isStartupOnboardingDialogOpen,
+		handleOpenStartupOnboardingDialog,
+		handleCloseStartupOnboardingDialog,
+		handleSelectOnboardingAgent,
+	} = useStartupOnboarding({
+		currentProjectId,
+		runtimeProjectConfig,
+		isRuntimeProjectConfigLoading,
+		isTaskAgentReady,
+		refreshRuntimeProjectConfig,
+		refreshSettingsRuntimeProjectConfig,
+	});
+
+	// --- Workspace sync ---
+	const {
+		workspacePath,
+		workspaceGit,
+		workspaceRevision,
+		setWorkspaceRevision,
+		workspaceHydrationNonce,
+		isWorkspaceStateRefreshing,
+		isWorkspaceMetadataPending,
+		refreshWorkspaceState,
+		resetWorkspaceSyncState,
+	} = useWorkspaceSync({
+		currentProjectId,
+		streamedWorkspaceState,
+		hasNoProjects,
+		hasReceivedSnapshot,
+		isDocumentVisible,
+		setBoard,
+		setSessions,
+		setCanPersistWorkspaceState,
+	});
+
+	// --- Derived config values ---
+	const llmConfigured = runtimeProjectConfig?.llmConfigured ?? false;
+	const isLlmGenerationDisabled = !llmConfigured;
+	const showTrashWorktreeNotice =
+		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
+	const unmergedChangesIndicatorEnabled =
+		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
+	const behindBaseIndicatorEnabled =
+		runtimeProjectConfig?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
+	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
+	const selectedShortcutLabel = useMemo(() => {
+		if (shortcuts.length === 0) {
+			return null;
+		}
+		const configured = runtimeProjectConfig?.selectedShortcutLabel ?? null;
+		if (configured && shortcuts.some((shortcut) => shortcut.label === configured)) {
+			return configured;
+		}
+		return shortcuts[0]?.label ?? null;
+	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
+	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
+	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
+	const skipCherryPickConfirmation = runtimeProjectConfig?.skipCherryPickConfirmation ?? false;
+	const pinnedBranches = runtimeProjectConfig?.pinnedBranches ?? [];
+	const audibleNotificationsEnabled =
+		runtimeProjectConfig?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
+	const audibleNotificationVolume =
+		runtimeProjectConfig?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
+	const audibleNotificationEvents =
+		runtimeProjectConfig?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
+	const audibleNotificationsOnlyWhenHidden =
+		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
+	const audibleNotificationSuppressCurrentProject =
+		runtimeProjectConfig?.audibleNotificationSuppressCurrentProject ??
+		CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject;
+	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
+	const terminalWebGLRenderer = runtimeProjectConfig?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
+	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
+	const configDefaultBaseRef = runtimeProjectConfig?.defaultBaseRef ?? "";
+
+	// --- Config mutation callbacks ---
+	const handleTogglePinBranch = useCallback(
+		(branchName: string) => {
+			if (!currentProjectId) return;
+			const current = runtimeProjectConfig?.pinnedBranches ?? [];
+			const next = current.includes(branchName) ? current.filter((b) => b !== branchName) : [...current, branchName];
+			void saveRuntimeConfig(currentProjectId, { pinnedBranches: next })
+				.then(() => {
+					refreshRuntimeProjectConfig();
+				})
+				.catch(() => {
+					showAppToast({ intent: "danger", message: "Failed to update pinned branches" });
+				});
+		},
+		[currentProjectId, runtimeProjectConfig?.pinnedBranches, refreshRuntimeProjectConfig],
+	);
+
+	const handleSkipTaskCheckoutConfirmationChange = useCallback(
+		(skip: boolean) => {
+			if (!currentProjectId) return;
+			void saveRuntimeConfig(currentProjectId, { skipTaskCheckoutConfirmation: skip }).then(() => {
+				refreshRuntimeProjectConfig();
+			});
+		},
+		[currentProjectId, refreshRuntimeProjectConfig],
+	);
+
+	const handleSetDefaultBaseRef = useCallback(
+		async (value: string | null) => {
+			const nextValue = value ?? "";
+			try {
+				await saveRuntimeConfig(currentProjectId, { defaultBaseRef: nextValue });
+				refreshRuntimeProjectConfig();
+				showAppToast({
+					intent: "success",
+					message: nextValue ? `Default base ref set to ${nextValue}` : "Default base ref cleared",
+					timeout: 2000,
+				});
+			} catch {
+				showAppToast({ intent: "danger", message: "Failed to update default base ref" });
+			}
+		},
+		[currentProjectId, refreshRuntimeProjectConfig],
+	);
+
+	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
+		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
+			refreshRuntimeProjectConfig();
+		});
+	}, [currentProjectId, refreshRuntimeProjectConfig]);
+
+	// --- Context value ---
+	const value = useMemo<ProjectContextValue>(
+		() => ({
+			currentProjectId,
+			projects,
+			streamedWorkspaceState,
+			workspaceMetadata,
+			notificationSessions,
+			notificationWorkspaceIds,
+			latestTaskReadyForReview,
+			latestTaskTitleUpdate,
+			logLevel,
+			debugLogEntries,
+			streamError,
+			isRuntimeDisconnected,
+			hasReceivedSnapshot,
+			navigationCurrentProjectId,
+			removingProjectId,
+			hasNoProjects,
+			isProjectSwitching,
+			handleSelectProject,
+			handlePreloadProject,
+			handleAddProject,
+			handleConfirmInitializeGitProject,
+			handleCancelInitializeGitProject,
+			handleRemoveProject,
+			handleReorderProjects,
+			pendingGitInitializationPath,
+			isInitializingGitProject,
+			resetProjectNavigationState,
+			runtimeProjectConfig,
+			isRuntimeProjectConfigLoading,
+			refreshRuntimeProjectConfig,
+			settingsRuntimeProjectConfig,
+			refreshSettingsRuntimeProjectConfig,
+			isStartupOnboardingDialogOpen,
+			handleOpenStartupOnboardingDialog,
+			handleCloseStartupOnboardingDialog,
+			handleSelectOnboardingAgent,
+			isQuarterdeckAccessBlocked,
+			isTaskAgentReady,
+			settingsWorkspaceId,
+			llmConfigured,
+			isLlmGenerationDisabled,
+			shortcuts,
+			selectedShortcutLabel,
+			skipTaskCheckoutConfirmation,
+			skipHomeCheckoutConfirmation,
+			skipCherryPickConfirmation,
+			pinnedBranches,
+			showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled,
+			behindBaseIndicatorEnabled,
+			audibleNotificationsEnabled,
+			audibleNotificationVolume,
+			audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden,
+			audibleNotificationSuppressCurrentProject,
+			terminalFontWeight,
+			terminalWebGLRenderer,
+			agentCommand,
+			configDefaultBaseRef,
+			workspacePath,
+			workspaceGit,
+			refreshWorkspaceState,
+			workspaceRevision,
+			setWorkspaceRevision,
+			workspaceHydrationNonce,
+			isWorkspaceStateRefreshing,
+			isWorkspaceMetadataPending,
+			resetWorkspaceSyncState,
+			isDocumentVisible,
+			canPersistWorkspaceState,
+			handleTogglePinBranch,
+			handleSkipTaskCheckoutConfirmationChange,
+			handleSetDefaultBaseRef,
+			saveTrashWorktreeNoticeDismissed,
+		}),
+		[
+			currentProjectId,
+			projects,
+			streamedWorkspaceState,
+			workspaceMetadata,
+			notificationSessions,
+			notificationWorkspaceIds,
+			latestTaskReadyForReview,
+			latestTaskTitleUpdate,
+			logLevel,
+			debugLogEntries,
+			streamError,
+			isRuntimeDisconnected,
+			hasReceivedSnapshot,
+			navigationCurrentProjectId,
+			removingProjectId,
+			hasNoProjects,
+			isProjectSwitching,
+			handleSelectProject,
+			handlePreloadProject,
+			handleAddProject,
+			handleConfirmInitializeGitProject,
+			handleCancelInitializeGitProject,
+			handleRemoveProject,
+			handleReorderProjects,
+			pendingGitInitializationPath,
+			isInitializingGitProject,
+			resetProjectNavigationState,
+			runtimeProjectConfig,
+			isRuntimeProjectConfigLoading,
+			refreshRuntimeProjectConfig,
+			settingsRuntimeProjectConfig,
+			refreshSettingsRuntimeProjectConfig,
+			isStartupOnboardingDialogOpen,
+			handleOpenStartupOnboardingDialog,
+			handleCloseStartupOnboardingDialog,
+			handleSelectOnboardingAgent,
+			isQuarterdeckAccessBlocked,
+			isTaskAgentReady,
+			settingsWorkspaceId,
+			llmConfigured,
+			isLlmGenerationDisabled,
+			shortcuts,
+			selectedShortcutLabel,
+			skipTaskCheckoutConfirmation,
+			skipHomeCheckoutConfirmation,
+			skipCherryPickConfirmation,
+			pinnedBranches,
+			showTrashWorktreeNotice,
+			unmergedChangesIndicatorEnabled,
+			behindBaseIndicatorEnabled,
+			audibleNotificationsEnabled,
+			audibleNotificationVolume,
+			audibleNotificationEvents,
+			audibleNotificationsOnlyWhenHidden,
+			audibleNotificationSuppressCurrentProject,
+			terminalFontWeight,
+			terminalWebGLRenderer,
+			agentCommand,
+			configDefaultBaseRef,
+			workspacePath,
+			workspaceGit,
+			refreshWorkspaceState,
+			workspaceRevision,
+			setWorkspaceRevision,
+			workspaceHydrationNonce,
+			isWorkspaceStateRefreshing,
+			isWorkspaceMetadataPending,
+			resetWorkspaceSyncState,
+			isDocumentVisible,
+			canPersistWorkspaceState,
+			handleTogglePinBranch,
+			handleSkipTaskCheckoutConfirmationChange,
+			handleSetDefaultBaseRef,
+			saveTrashWorktreeNoticeDismissed,
+		],
+	);
+
+	return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }

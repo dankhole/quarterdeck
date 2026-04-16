@@ -173,16 +173,16 @@ This is exactly `IBoardService` in a C# project. The interface is the contract. 
 
 ### Current state in this project
 
-The App.tsx refactor (see `docs/plan-app-content-extraction.md` and `docs/plan-remaining-provider-migrations.md`) is establishing this pattern. Six providers are being created:
+The App.tsx refactor established this pattern. Six providers were created:
 
-| Provider | Interface | Status |
-|----------|-----------|--------|
-| `ProjectProvider` | `ProjectContextValue` | Done |
-| `DialogProvider` | `DialogContextValue` | Done |
-| `BoardProvider` | `BoardContextValue` | In progress |
-| `TerminalProvider` | `TerminalContextValue` | Planned |
-| `GitProvider` | `GitContextValue` | Planned |
-| `InteractionsProvider` | `InteractionsContextValue` | Planned |
+| Provider | Interface |
+|----------|-----------|
+| `ProjectProvider` | `ProjectContextValue` |
+| `DialogProvider` | `DialogContextValue` |
+| `BoardProvider` | `BoardContextValue` |
+| `TerminalProvider` | `TerminalContextValue` |
+| `GitProvider` | `GitContextValue` |
+| `InteractionsProvider` | `InteractionsContextValue` |
 
 ### Should you push this further after the refactor?
 

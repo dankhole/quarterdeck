@@ -2,6 +2,27 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: complete frontend provider migration (2026-04-15)
+
+**Goal:** Decompose the monolithic App.tsx (~2200 lines) into focused provider components so each domain (project, board, git, terminal, interactions, dialogs) is independently maintainable.
+
+**What changed:** Executed a 13-commit migration across 6 providers:
+
+1. **Context field expansion** — Added missing fields to ProjectContextValue, BoardContextValue, GitContextValue so downstream providers could read from context instead of props.
+2. **AppContent extraction** — Split App into App (outer, runs hooks) and AppContent (inner, renders JSX) to unblock provider migrations.
+3. **DialogProvider** — Moved useAppDialogs, useDebugTools, useDebugLogging. Reads handleCancelCreateTask from BoardContext.
+4. **ProjectProvider** — Moved useProjectNavigation, useRuntimeProjectConfig, useQuarterdeckAccessGate, useStartupOnboarding, useWorkspaceSync, useDocumentVisibility, and ~50 derived values.
+5. **TerminalProvider** — Moved useTerminalPanels, useTerminalConnectionReady, derived terminal metadata. Derives navigationProjectPath internally from ProjectContext.
+6. **GitProvider** — Moved useGitActions, useScopeContext, useBranchActions (x2), useFileBrowserData, useGitNavigation, useCardDetailLayout. Reads fetchTaskWorkspaceInfo from BoardContext.
+7. **InteractionsProvider** — Moved useBoardInteractions, useTaskStartActions.
+8. **BoardProvider** — Moved useDetailTaskNavigation, useTaskSessions, useTaskBranchOptions, useTaskEditor, boardContextValue construction. BoardContextValue expanded with taskEditor, createTaskBranchOptions, handleCancelCreateTask, isInitialRuntimeLoad, isAwaitingWorkspaceSnapshot.
+9. **AppCore collapse** — Eliminated AppCore entirely. App is now ~50 lines (state atoms + provider tree). AppContent reads from 6 contexts + 2 props.
+10. **Cleanup** — Deleted AppProviders wrapper, deleted 4 completed plan docs, updated todo.md and patterns doc.
+
+**Provider nesting order:** ProjectProvider > AppEarlyBailout > BoardProvider > GitProvider > TerminalProvider > InteractionsProvider > DialogProvider > AppContent.
+
+**Files:** `web-ui/src/App.tsx`, `web-ui/src/providers/board-provider.tsx`, `web-ui/src/providers/dialog-provider.tsx`, `web-ui/src/providers/git-provider.tsx`, `web-ui/src/providers/interactions-provider.tsx`, `web-ui/src/providers/project-provider.tsx`, `web-ui/src/providers/terminal-provider.tsx`, `web-ui/src/providers/app-providers.tsx` (deleted), `web-ui/src/hooks/use-app-dialogs.ts`, `web-ui/src/hooks/use-board-interactions.ts`, `web-ui/src/components/card-detail-view.test.tsx`, `docs/patterns-frontend-service-extraction.md`, `docs/todo.md`
+
 ## Fix: preserve terminal review reasons across server restart (2026-04-15)
 
 **Problem:** Two CI test failures since Apr 12. (1) `git-stash.test.ts` dirtyTree test failed on CI because `git init --bare` didn't specify `-b main`, so the bare repo defaulted to `master` and `git push -u origin main` failed. (2) The `skip-shutdown-cleanup` integration test expected `awaiting_review` sessions with `reviewReason: "hook"` to survive a restart, but `hydrateFromRecord` (changed in `4c2bd593` on Apr 15) started marking all `awaiting_review` sessions as `interrupted` unconditionally.

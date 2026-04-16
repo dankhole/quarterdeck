@@ -1,16 +1,21 @@
-import { createContext, useContext } from "react";
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
+import type { ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 
-import type { UseTerminalPanelsResult } from "@/hooks/use-terminal-panels";
+import { type UseTerminalPanelsResult, useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useBoardContext } from "@/providers/board-provider";
+import { useProjectContext } from "@/providers/project-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import type { UseTerminalConnectionReadyResult } from "@/runtime/use-terminal-connection-ready";
+import {
+	type UseTerminalConnectionReadyResult,
+	useTerminalConnectionReady,
+} from "@/runtime/use-terminal-connection-ready";
+import { findCardSelection } from "@/state/board-state";
+import { useTaskWorkspaceInfoValue, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 
 // ---------------------------------------------------------------------------
 // Context value — terminal panel state, connection readiness, and
 // home/detail terminal metadata.
-//
-// The value is constructed in App.tsx and provided inline via
-// <TerminalContext.Provider>. This file owns the context shape and consumer
-// hook so child components can read terminal state without prop drilling.
 // ---------------------------------------------------------------------------
 
 export interface TerminalContextValue {
@@ -66,4 +71,190 @@ export function useTerminalContext(): TerminalContextValue {
 		throw new Error("useTerminalContext must be used within a TerminalContext.Provider");
 	}
 	return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Provider component
+// ---------------------------------------------------------------------------
+
+interface TerminalProviderProps {
+	children: ReactNode;
+}
+
+export function TerminalProvider({ children }: TerminalProviderProps): ReactNode {
+	const {
+		currentProjectId,
+		workspaceGit,
+		configDefaultBaseRef,
+		agentCommand,
+		runtimeProjectConfig,
+		hasNoProjects,
+		workspacePath,
+		projects,
+		navigationCurrentProjectId,
+	} = useProjectContext();
+
+	const { board, selectedCard, sessions, upsertSession, sendTaskSessionInput } = useBoardContext();
+
+	// Stable findCard callback — avoids re-creating on every board change.
+	const boardRef = useRef(board);
+	boardRef.current = board;
+	const findCardStable = useCallback(
+		(cardId: string) => findCardSelection(boardRef.current, cardId)?.card ?? null,
+		[],
+	);
+
+	// Store subscriptions for detail terminal metadata.
+	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+
+	// --- useTerminalConnectionReady ---
+	const {
+		markConnectionReady: markTerminalConnectionReady,
+		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
+	} = useTerminalConnectionReady();
+
+	// --- useTerminalPanels ---
+	const {
+		homeTerminalTaskId,
+		isHomeTerminalOpen,
+		isHomeTerminalStarting,
+		homeTerminalShellBinary,
+		homeTerminalPaneHeight,
+		isDetailTerminalOpen,
+		detailTerminalTaskId,
+		isDetailTerminalStarting,
+		detailTerminalPaneHeight,
+		isHomeTerminalExpanded,
+		isDetailTerminalExpanded,
+		setHomeTerminalPaneHeight,
+		setDetailTerminalPaneHeight,
+		handleToggleExpandHomeTerminal,
+		handleToggleExpandDetailTerminal,
+		handleToggleHomeTerminal,
+		handleToggleDetailTerminal,
+		handleSendAgentCommandToHomeTerminal,
+		handleSendAgentCommandToDetailTerminal,
+		handleRestartHomeTerminal,
+		handleRestartDetailTerminal,
+		prepareTerminalForShortcut,
+		resetBottomTerminalLayoutCustomizations,
+		collapseHomeTerminal,
+		collapseDetailTerminal,
+		closeHomeTerminal,
+		closeDetailTerminal,
+		resetTerminalPanelsState,
+		handleShellExit,
+		cancelPendingRestart,
+	} = useTerminalPanels({
+		currentProjectId,
+		selectedCard,
+		workspaceGit,
+		configDefaultBaseRef,
+		agentCommand,
+		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
+		findCard: findCardStable,
+		upsertSession,
+		sendTaskSessionInput,
+	});
+
+	// --- Derived terminal metadata ---
+	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
+	const showHomeBottomTerminal = !selectedCard && !hasNoProjects && isHomeTerminalOpen;
+	const navigationProjectPath = useMemo(
+		() =>
+			navigationCurrentProjectId ? (projects.find((p) => p.id === navigationCurrentProjectId)?.path ?? null) : null,
+		[navigationCurrentProjectId, projects],
+	);
+	const homeTerminalSubtitle = useMemo(
+		() => workspacePath ?? navigationProjectPath ?? null,
+		[navigationProjectPath, workspacePath],
+	);
+
+	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
+	const detailTerminalSubtitle = selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? null;
+
+	// --- Context value ---
+	const value = useMemo<TerminalContextValue>(
+		() => ({
+			homeTerminalTaskId,
+			isHomeTerminalOpen,
+			isHomeTerminalStarting,
+			homeTerminalShellBinary,
+			homeTerminalPaneHeight,
+			isDetailTerminalOpen,
+			detailTerminalTaskId,
+			isDetailTerminalStarting,
+			detailTerminalPaneHeight,
+			isHomeTerminalExpanded,
+			isDetailTerminalExpanded,
+			setHomeTerminalPaneHeight,
+			setDetailTerminalPaneHeight,
+			handleToggleExpandHomeTerminal,
+			handleToggleExpandDetailTerminal,
+			handleToggleHomeTerminal,
+			handleToggleDetailTerminal,
+			handleSendAgentCommandToHomeTerminal,
+			handleSendAgentCommandToDetailTerminal,
+			handleRestartHomeTerminal,
+			handleRestartDetailTerminal,
+			prepareTerminalForShortcut,
+			resetBottomTerminalLayoutCustomizations,
+			collapseHomeTerminal,
+			collapseDetailTerminal,
+			closeHomeTerminal,
+			closeDetailTerminal,
+			resetTerminalPanelsState,
+			handleShellExit,
+			cancelPendingRestart,
+			markTerminalConnectionReady,
+			prepareWaitForTerminalConnectionReady,
+			homeTerminalSummary,
+			homeTerminalSubtitle,
+			showHomeBottomTerminal,
+			detailTerminalSummary,
+			detailTerminalSubtitle,
+		}),
+		[
+			homeTerminalTaskId,
+			isHomeTerminalOpen,
+			isHomeTerminalStarting,
+			homeTerminalShellBinary,
+			homeTerminalPaneHeight,
+			isDetailTerminalOpen,
+			detailTerminalTaskId,
+			isDetailTerminalStarting,
+			detailTerminalPaneHeight,
+			isHomeTerminalExpanded,
+			isDetailTerminalExpanded,
+			setHomeTerminalPaneHeight,
+			setDetailTerminalPaneHeight,
+			handleToggleExpandHomeTerminal,
+			handleToggleExpandDetailTerminal,
+			handleToggleHomeTerminal,
+			handleToggleDetailTerminal,
+			handleSendAgentCommandToHomeTerminal,
+			handleSendAgentCommandToDetailTerminal,
+			handleRestartHomeTerminal,
+			handleRestartDetailTerminal,
+			prepareTerminalForShortcut,
+			resetBottomTerminalLayoutCustomizations,
+			collapseHomeTerminal,
+			collapseDetailTerminal,
+			closeHomeTerminal,
+			closeDetailTerminal,
+			resetTerminalPanelsState,
+			handleShellExit,
+			cancelPendingRestart,
+			markTerminalConnectionReady,
+			prepareWaitForTerminalConnectionReady,
+			homeTerminalSummary,
+			homeTerminalSubtitle,
+			showHomeBottomTerminal,
+			detailTerminalSummary,
+			detailTerminalSubtitle,
+		],
+	);
+
+	return <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>;
 }

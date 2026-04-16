@@ -4,13 +4,6 @@ import { useCallback, useEffect } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
-import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-
-interface TaskGitActionLoadingStateLike {
-	commitSource: "card" | "agent" | null;
-	prSource: "card" | "agent" | null;
-}
-
 import { useBoardDragHandler } from "@/hooks/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
@@ -56,8 +49,6 @@ interface UseBoardInteractionsInput {
 	) => Promise<{ ok: boolean; message?: string }>;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
-	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
 
 export interface UseBoardInteractionsResult {
@@ -108,8 +99,6 @@ export function useBoardInteractions({
 	sendTaskSessionInput,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
-	taskGitActionLoadingByTaskId: _taskGitActionLoadingByTaskId,
-	runAutoReviewGitAction: _runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const {
 		handleProgrammaticCardMoveReady,

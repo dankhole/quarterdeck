@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: complete frontend provider migration
+
+- Migrated all hook/state logic from the monolithic App.tsx into 6 focused provider components (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). Eliminated the AppCore intermediate component. App is now a ~50-line composition root; each provider is independently maintainable. AppContent props reduced from 35+ to 2.
+
 ## [0.9.1] — 2026-04-15
 
 ### Fix: preserve terminal review reasons across server restart

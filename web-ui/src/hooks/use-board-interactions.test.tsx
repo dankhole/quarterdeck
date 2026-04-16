@@ -63,7 +63,6 @@ const NOOP_STOP_SESSION = async (): Promise<void> => {};
 const NOOP_CLEANUP_WORKSPACE = async (): Promise<null> => null;
 const NOOP_FETCH_WORKSPACE_INFO = async (): Promise<null> => null;
 const NOOP_SEND_TASK_INPUT = async (): Promise<{ ok: boolean }> => ({ ok: true });
-const NOOP_RUN_AUTO_REVIEW = async (): Promise<boolean> => false;
 
 interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
@@ -129,8 +128,6 @@ function HookHarness({
 		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
 		showTrashWorktreeNotice: true,
 		saveTrashWorktreeNoticeDismissed: () => {},
-		taskGitActionLoadingByTaskId: {},
-		runAutoReviewGitAction: NOOP_RUN_AUTO_REVIEW,
 	});
 
 	useEffect(() => {

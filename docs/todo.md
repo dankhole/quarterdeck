@@ -177,14 +177,9 @@ Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-cs
 - ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider` replace 4 bespoke dependency bags
 - ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
-**Frontend (section 8): Provider migration — in progress.**
+**Frontend (section 8): Provider migration — done.**
 
-App.tsx split into `App` > `AppCore` > `AppContent`. Provider shells created. Hook/state migration into providers is the remaining work. The sequence is:
-
-1. **Step 0: Add context fields** (branch: `refactor/context-provider-fields-for-app-extraction`) — Plan: [docs/plan-app-content-extraction.md](plan-app-content-extraction.md) (Step 0 section)
-2. **AppContent extraction** — Plans: [docs/plan-app-content-extraction.md](plan-app-content-extraction.md), [docs/plan-app-content-extraction-execution.md](plan-app-content-extraction-execution.md)
-3. **Remaining provider migrations** (Board → Terminal → Git → Interactions → collapse AppCore) — Plan: [docs/plan-remaining-provider-migrations.md](plan-remaining-provider-migrations.md)
-4. **Migration order context** — [docs/plan-provider-migration-order.md](plan-provider-migration-order.md)
+All hooks migrated out of the monolithic App component into 6 focused providers (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). AppCore eliminated. App is now a ~50-line composition root rendering the provider tree. AppContent (~1150 lines) remains as the leaf component with side-effect hooks and JSX.
 
 **After the provider migration**, two follow-up refactors build on it (do in order):
 

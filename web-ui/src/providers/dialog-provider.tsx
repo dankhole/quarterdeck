@@ -1,14 +1,16 @@
-import { createContext, useContext } from "react";
+import type { ReactNode } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 import type { RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
-import type { UseDebugLoggingResult } from "@/hooks/use-debug-logging";
+import { useAppDialogs } from "@/hooks/use-app-dialogs";
+import { type UseDebugLoggingResult, useDebugLogging } from "@/hooks/use-debug-logging";
+import { useDebugTools } from "@/hooks/use-debug-tools";
+import { useBoardContext } from "@/providers/board-provider";
+import { useInteractionsContext } from "@/providers/interactions-provider";
+import { useProjectContext } from "@/providers/project-provider";
 
 // ---------------------------------------------------------------------------
 // Context value — dialog open/close state, debug tools, and debug logging.
-//
-// The value is constructed in App.tsx and provided inline via
-// <DialogContext.Provider>. This file owns the context shape and consumer
-// hook so child components can read dialog state without prop drilling.
 // ---------------------------------------------------------------------------
 
 export interface DialogContextValue {
@@ -49,4 +51,93 @@ export function useDialogContext(): DialogContextValue {
 		throw new Error("useDialogContext must be used within a DialogContext.Provider");
 	}
 	return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Provider component — calls useAppDialogs, useDebugTools, useDebugLogging
+// and exposes the combined value via DialogContext.
+//
+// Reads project-level inputs (config, log entries, onboarding handler) from
+// ProjectContext. Clear-trash dialog state is read from InteractionsContext
+// (owned by InteractionsProvider which must render above DialogProvider).
+// ---------------------------------------------------------------------------
+
+export interface DialogProviderProps {
+	children: ReactNode;
+}
+
+export function DialogProvider({ children }: DialogProviderProps): ReactNode {
+	const project = useProjectContext();
+	const { handleCancelCreateTask } = useBoardContext();
+	const { isClearTrashDialogOpen, setIsClearTrashDialogOpen } = useInteractionsContext();
+
+	const {
+		isSettingsOpen,
+		setIsSettingsOpen,
+		settingsInitialSection,
+		setSettingsInitialSection,
+		promptShortcutEditorOpen,
+		setPromptShortcutEditorOpen,
+		handleOpenSettings,
+		handleCreateDialogOpenChange,
+	} = useAppDialogs({ handleCancelCreateTask });
+
+	const {
+		debugModeEnabled,
+		isDebugDialogOpen,
+		handleOpenDebugDialog,
+		handleShowStartupOnboardingDialog,
+		handleDebugDialogOpenChange,
+	} = useDebugTools({
+		runtimeProjectConfig: project.runtimeProjectConfig,
+		settingsRuntimeProjectConfig: project.settingsRuntimeProjectConfig,
+		onOpenStartupOnboardingDialog: project.handleOpenStartupOnboardingDialog,
+	});
+
+	const debugLogging = useDebugLogging({
+		currentProjectId: project.currentProjectId,
+		logLevel: project.logLevel,
+		debugLogEntries: project.debugLogEntries,
+	});
+
+	const value = useMemo<DialogContextValue>(
+		() => ({
+			isSettingsOpen,
+			setIsSettingsOpen,
+			settingsInitialSection,
+			setSettingsInitialSection,
+			handleOpenSettings,
+			isClearTrashDialogOpen,
+			setIsClearTrashDialogOpen,
+			promptShortcutEditorOpen,
+			setPromptShortcutEditorOpen,
+			handleCreateDialogOpenChange,
+			debugModeEnabled,
+			isDebugDialogOpen,
+			handleOpenDebugDialog,
+			handleShowStartupOnboardingDialog,
+			handleDebugDialogOpenChange,
+			debugLogging,
+		}),
+		[
+			isSettingsOpen,
+			setIsSettingsOpen,
+			settingsInitialSection,
+			setSettingsInitialSection,
+			handleOpenSettings,
+			isClearTrashDialogOpen,
+			setIsClearTrashDialogOpen,
+			promptShortcutEditorOpen,
+			setPromptShortcutEditorOpen,
+			handleCreateDialogOpenChange,
+			debugModeEnabled,
+			isDebugDialogOpen,
+			handleOpenDebugDialog,
+			handleShowStartupOnboardingDialog,
+			handleDebugDialogOpenChange,
+			debugLogging,
+		],
+	);
+
+	return <DialogContext.Provider value={value}>{children}</DialogContext.Provider>;
 }
