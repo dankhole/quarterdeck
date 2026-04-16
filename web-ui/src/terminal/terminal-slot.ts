@@ -42,7 +42,7 @@ const FONT_READY_TIMEOUT_MS = 3000;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 /** Scrollback buffer size shared by pool slots and dedicated terminals. Keep in sync with session-manager.ts server-side headless mirror. */
-export const TERMINAL_SCROLLBACK = 3_000;
+export const TERMINAL_SCROLLBACK = 1_500;
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
 

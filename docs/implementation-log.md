@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Perf: headless mirror batching and scrollback reduction (2026-04-16)
+
+**Problem:** With many agents running simultaneously, the terminal UI becomes laggy. Investigation revealed the bottleneck is server-side event loop saturation — every PTY output byte from every agent goes through a headless xterm `terminal.write()` (full ANSI parsing, cursor movement, line wrapping), each as a separate Promise-chained operation. With 8+ agents, this starves the event loop and delays WebSocket sends to the visible terminal.
+
+**Changes:**
+
+1. **Batched mirror writes** (`src/terminal/terminal-state-mirror.ts`): Added `setBatching(enabled)` toggle. When enabled, output chunks accumulate in a buffer and flush as a single concatenated `terminal.write()` every 160ms instead of one operation per PTY chunk. `getSnapshot()` synchronously flushes pending batches before serializing, so restore snapshots are always complete.
+
+2. **Automatic batching lifecycle** (`src/terminal/session-manager.ts`): New mirrors start in batched mode (no browser viewer yet). When `attach()` receives a listener with `onOutput` (browser connects), batching turns off for instant output. When the last output listener detaches, batching re-enables. This means only the actively-viewed task does per-chunk writes; all others coalesce.
+
+3. **Scrollback reduction** (`terminal-state-mirror.ts`, `web-ui/src/terminal/terminal-slot.ts`): Dropped from 3,000 to 1,500 lines on both server mirror and client terminal. Halves memory per terminal and halves snapshot serialization cost. The removed `scrollback: 3_000` override in the task session mirror constructor was redundant — it now uses the module-level default.
+
+**Files changed:**
+- `src/terminal/terminal-state-mirror.ts` — batching state, `setBatching()`, `flushBatch()`, timer management, scrollback constant
+- `src/terminal/session-manager.ts` — batching toggle in `attach()` detach callback, initial batching on mirror creation, removed redundant scrollback override
+- `web-ui/src/terminal/terminal-slot.ts` — scrollback constant 3000→1500
+
 ## Refactor: remove CLI task commands and enforce single-writer pattern (2026-04-16)
 
 **Problem:** The `quarterdeck task` CLI subcommands (create, update, trash, delete, start, link, unlink, list) used `mutateWorkspaceState` to write board state directly to disk. This was the only server-side board state writer and could race with the UI's single-writer persist cycle when a browser was connected, potentially causing `WorkspaceStateConflictError` toasts. The CLI commands were unused — all operations were handled by the browser UI.

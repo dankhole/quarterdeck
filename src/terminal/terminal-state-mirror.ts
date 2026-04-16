@@ -5,7 +5,7 @@ const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-s
 const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
 
 /** Must match web-ui/src/terminal/terminal-slot.ts TERMINAL_SCROLLBACK */
-const TERMINAL_SCROLLBACK = 3_000;
+const TERMINAL_SCROLLBACK = 1_500;
 
 /**
  * Minimum scrollback for the headless xterm terminal, even when snapshot
@@ -22,6 +22,8 @@ const TERMINAL_SCROLLBACK = 3_000;
  */
 const MINIMUM_TERMINAL_SCROLLBACK = 100;
 
+const BATCH_FLUSH_INTERVAL_MS = 160;
+
 export interface TerminalRestoreSnapshot {
 	snapshot: string;
 	cols: number;
@@ -32,7 +34,7 @@ interface TerminalStateMirrorOptions {
 	onInputResponse?: (data: string) => void;
 	/**
 	 * Scrollback line count for the mirror terminal and snapshot serialization.
-	 * Defaults to {@link TERMINAL_SCROLLBACK} (3,000). The terminal itself
+	 * Defaults to {@link TERMINAL_SCROLLBACK} (1,500). The terminal itself
 	 * always gets at least {@link MINIMUM_TERMINAL_SCROLLBACK} lines to avoid
 	 * an xterm.js 6.x circular-buffer crash.
 	 */
@@ -46,6 +48,10 @@ export class TerminalStateMirror {
 	private disposed = false;
 
 	private readonly snapshotScrollback: number;
+
+	private batching = false;
+	private batchBuffer: Uint8Array[] = [];
+	private batchTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
 		const scrollback = options.scrollback ?? TERMINAL_SCROLLBACK;
@@ -63,8 +69,25 @@ export class TerminalStateMirror {
 		});
 	}
 
+	setBatching(enabled: boolean): void {
+		if (this.batching === enabled) return;
+		this.batching = enabled;
+		if (!enabled) {
+			this.flushBatch();
+		}
+	}
+
 	applyOutput(chunk: Buffer): void {
 		if (this.disposed) return;
+
+		if (this.batching) {
+			this.batchBuffer.push(new Uint8Array(chunk));
+			if (this.batchTimer === null) {
+				this.batchTimer = setTimeout(() => this.flushBatch(), BATCH_FLUSH_INTERVAL_MS);
+			}
+			return;
+		}
+
 		const chunkCopy = new Uint8Array(chunk);
 		this.enqueueOperation(
 			() =>
@@ -87,6 +110,7 @@ export class TerminalStateMirror {
 	}
 
 	async getSnapshot(): Promise<TerminalRestoreSnapshot | null> {
+		this.flushBatch();
 		await this.operationQueue;
 		if (this.disposed) {
 			return null;
@@ -100,7 +124,43 @@ export class TerminalStateMirror {
 
 	dispose(): void {
 		this.disposed = true;
+		if (this.batchTimer !== null) {
+			clearTimeout(this.batchTimer);
+			this.batchTimer = null;
+		}
+		this.batchBuffer.length = 0;
 		this.terminal.dispose();
+	}
+
+	private flushBatch(): void {
+		if (this.batchTimer !== null) {
+			clearTimeout(this.batchTimer);
+			this.batchTimer = null;
+		}
+		if (this.batchBuffer.length === 0) return;
+
+		const chunks = this.batchBuffer;
+		this.batchBuffer = [];
+
+		let totalLength = 0;
+		for (const chunk of chunks) {
+			totalLength += chunk.byteLength;
+		}
+		const merged = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const chunk of chunks) {
+			merged.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+
+		this.enqueueOperation(
+			() =>
+				new Promise<void>((resolve) => {
+					this.terminal.write(merged, () => {
+						resolve();
+					});
+				}),
+		);
 	}
 
 	private enqueueOperation(operation: () => void | Promise<void>): void {

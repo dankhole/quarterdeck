@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Perf: headless mirror batching and scrollback reduction
+
+- Server-side headless terminal mirrors now batch output writes when no browser viewer is connected — chunks accumulate for up to 160ms and flush as a single `terminal.write()`, dramatically reducing event loop contention with many concurrent agents.
+- Batching disables instantly when a viewer attaches (warmup/task switch) and re-enables when the last viewer detaches.
+- Reduced terminal scrollback from 3,000 to 1,500 lines on both server and client, halving per-terminal memory and snapshot serialization cost.
+
 ### Refactor: remove CLI task commands and enforce single-writer pattern
 
 - Removed the `quarterdeck task` CLI subcommands (create, update, trash, delete, start, link, unlink, list) — all board operations are now exclusively handled by the browser UI.

@@ -197,8 +197,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.listenerIdCounter += 1;
 		entry.listeners.set(listenerId, listener);
 
+		if (listener.onOutput) {
+			entry.terminalStateMirror?.setBatching(false);
+		}
+
 		return () => {
 			entry.listeners.delete(listenerId);
+			if (listener.onOutput && !hasLiveOutputListener(entry)) {
+				entry.terminalStateMirror?.setBatching(true);
+			}
 		};
 	}
 
@@ -240,7 +247,6 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					entry.active.session.write(data);
 				},
-				scrollback: 3_000,
 			});
 
 			launch = await prepareAgentLaunch({
@@ -351,6 +357,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust, launch });
 		entry.pendingSessionStart = false;
 		entry.terminalStateMirror = terminalStateMirror;
+		if (!hasLiveOutputListener(entry)) {
+			terminalStateMirror.setBatching(true);
+		}
 
 		const summary = this.store.update(request.taskId, {
 			state: request.awaitReview ? "awaiting_review" : "running",
@@ -479,6 +488,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust: false });
 		entry.terminalStateMirror = terminalStateMirror;
+		if (!hasLiveOutputListener(entry)) {
+			terminalStateMirror.setBatching(true);
+		}
 
 		emitSessionEvent(request.taskId, "session.started.shell", {
 			binary: request.binary,
