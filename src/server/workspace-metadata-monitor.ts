@@ -2,7 +2,7 @@ import pLimit from "p-limit";
 
 import type { RuntimeBoardData, RuntimeWorkspaceMetadata } from "../core/api-contract";
 import { createGitProcessEnv } from "../core/git-process-env";
-import { runGit } from "../workspace/git-utils";
+import { resolveBaseRefForBranch, runGit } from "../workspace/git-utils";
 import {
 	areWorkspaceMetadataEqual,
 	buildWorkspaceMetadataSnapshot,
@@ -29,6 +29,8 @@ const REMOTE_FETCH_INTERVAL_MS = 60_000;
 
 export interface CreateWorkspaceMetadataMonitorDependencies {
 	onMetadataUpdated: (workspaceId: string, metadata: RuntimeWorkspaceMetadata) => void;
+	onTaskBaseRefChanged?: (workspaceId: string, taskId: string, newBaseRef: string) => void;
+	getProjectDefaultBaseRef?: (workspaceId: string) => string;
 }
 
 export interface WorkspaceMetadataMonitor {
@@ -86,6 +88,30 @@ export function createWorkspaceMetadataMonitor(
 		if (entry.remoteFetchTimer) {
 			clearInterval(entry.remoteFetchTimer);
 			entry.remoteFetchTimer = null;
+		}
+	};
+
+	const checkForBranchChanges = async (
+		workspaceId: string,
+		entry: WorkspaceMetadataEntry,
+		taskId: string,
+		previous: CachedTaskWorkspaceMetadata | null,
+		next: CachedTaskWorkspaceMetadata,
+	): Promise<void> => {
+		if (!deps.onTaskBaseRefChanged) return;
+		const prevBranch = previous?.lastKnownBranch ?? null;
+		const newBranch = next.lastKnownBranch;
+		if (!newBranch || newBranch === prevBranch || !next.data.exists) return;
+		// First refresh for this task — skip, just establishing baseline
+		if (prevBranch === null) return;
+
+		const task = entry.trackedTasks.find((t) => t.taskId === taskId);
+		if (!task) return;
+
+		const projectDefault = deps.getProjectDefaultBaseRef?.(workspaceId) ?? "";
+		const resolved = await resolveBaseRefForBranch(next.data.path, newBranch, projectDefault);
+		if (resolved && resolved !== task.baseRef) {
+			deps.onTaskBaseRefChanged(workspaceId, taskId, resolved);
 		}
 	};
 
@@ -160,12 +186,13 @@ export function createWorkspaceMetadataMonitor(
 		focusedRefreshInFlight = true;
 		try {
 			const previous = buildWorkspaceMetadataSnapshot(entry);
+			const previousCached = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
 			const next = await taskProbeLimit(async () => {
-				const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
-				return await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
+				return await loadTaskWorkspaceMetadata(entry.workspacePath, task, previousCached);
 			});
 			if (next) {
 				entry.taskMetadataByTaskId.set(task.taskId, next);
+				void checkForBranchChanges(workspaceId, entry, task.taskId, previousCached, next);
 			}
 			broadcastIfChanged(workspaceId, entry, previous);
 		} finally {
@@ -186,14 +213,15 @@ export function createWorkspaceMetadataMonitor(
 			const results = await Promise.all(
 				tasksToRefresh.map((task) =>
 					taskProbeLimit(async () => {
-						const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
-						const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, current);
-						return next ? ([task.taskId, next] as const) : null;
+						const previousCached = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
+						const next = await loadTaskWorkspaceMetadata(entry.workspacePath, task, previousCached);
+						return next ? ([task.taskId, next, previousCached] as const) : null;
 					}),
 				),
 			);
 			for (const result of results) {
 				if (result) {
+					void checkForBranchChanges(workspaceId, entry, result[0], result[2], result[1]);
 					entry.taskMetadataByTaskId.set(result[0], result[1]);
 				}
 			}

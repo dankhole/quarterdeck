@@ -64,6 +64,16 @@ export const runtimeStateStreamTaskTitleUpdatedMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskTitleUpdatedMessage = z.infer<typeof runtimeStateStreamTaskTitleUpdatedMessageSchema>;
 
+export const runtimeStateStreamTaskBaseRefUpdatedMessageSchema = z.object({
+	type: z.literal("task_base_ref_updated"),
+	workspaceId: z.string(),
+	taskId: z.string(),
+	baseRef: z.string(),
+});
+export type RuntimeStateStreamTaskBaseRefUpdatedMessage = z.infer<
+	typeof runtimeStateStreamTaskBaseRefUpdatedMessageSchema
+>;
+
 export const runtimeStateStreamTaskWorkingDirectoryUpdatedMessageSchema = z.object({
 	type: z.literal("task_working_directory_updated"),
 	workspaceId: z.string(),
@@ -127,6 +137,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamWorkspaceMetadataMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskTitleUpdatedMessageSchema,
+	runtimeStateStreamTaskBaseRefUpdatedMessageSchema,
 	runtimeStateStreamTaskWorkingDirectoryUpdatedMessageSchema,
 	runtimeStateStreamTaskNotificationMessageSchema,
 	runtimeStateStreamErrorMessageSchema,

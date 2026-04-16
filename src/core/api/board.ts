@@ -10,6 +10,7 @@ export const runtimeBoardCardSchema = z.object({
 	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
+	baseRefPinned: z.boolean().optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),

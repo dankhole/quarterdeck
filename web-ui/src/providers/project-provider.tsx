@@ -38,6 +38,7 @@ export interface ProjectContextValue {
 	notificationWorkspaceIds: UseProjectNavigationResult["notificationWorkspaceIds"];
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
+	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
 	latestTaskWorkingDirectoryUpdate: UseProjectNavigationResult["latestTaskWorkingDirectoryUpdate"];
 	logLevel: UseProjectNavigationResult["logLevel"];
 	debugLogEntries: UseProjectNavigationResult["debugLogEntries"];
@@ -174,6 +175,7 @@ export function ProjectProvider({
 		notificationWorkspaceIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		latestTaskBaseRefUpdate,
 		latestTaskWorkingDirectoryUpdate,
 		logLevel,
 		debugLogEntries,
@@ -356,6 +358,7 @@ export function ProjectProvider({
 			notificationWorkspaceIds,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
+			latestTaskBaseRefUpdate,
 			latestTaskWorkingDirectoryUpdate,
 			logLevel,
 			debugLogEntries,
@@ -432,6 +435,7 @@ export function ProjectProvider({
 			notificationWorkspaceIds,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
+			latestTaskBaseRefUpdate,
 			latestTaskWorkingDirectoryUpdate,
 			logLevel,
 			debugLogEntries,

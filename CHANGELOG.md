@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feature: auto-sync task base ref on branch change
+
+- Task base ref now auto-updates when the worktree's branch changes (e.g. checking out a feature branch forked from `develop` updates the base ref from `main` to `develop`). Detection runs during the existing metadata polling cycle — resolves via upstream tracking ref, then falls back to merge-base distance against well-known integration branches. The "from X" label in the top bar is now clickable, opening a popover to manually set the base ref and pin it (preventing auto-updates). Pinned base refs show a lock icon.
+
 ### Feat: wire inline diff comments to agent terminal
 
 - Connected the existing inline comment UI in the diff viewer to the agent terminal. Click any diff line, type a comment, then Cmd+Enter pastes formatted comments into the agent's terminal (Add), or Cmd+Shift+Enter pastes and submits (Send). Callbacks created in `CardDetailView` using `sendTaskSessionInput`, threaded through `GitView` → `DiffViewerPanel`. Removed orphaned `handleAddReviewComments`/`handleSendReviewComments` from `useBoardInteractions` — they were never consumed.

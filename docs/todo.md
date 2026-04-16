@@ -199,10 +199,6 @@ Three phases, done in order:
 2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1.
 3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/web-ui-conventions.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
-## Keep task base ref in sync with branch changes
-
-When a task's branch changes (e.g. user checks out a different branch in the worktree), the base ref should auto-update to match the new branch's parent (e.g. if the new branch was forked from `develop`, base switches from `main` to `develop`). Currently the base ref is set at task creation and never updates. This affects "from main" labels and behind-base notifications showing stale info. Add a manual override option for when auto-detection gets it wrong.
-
 ## Investigate and fix statusline ↓↑ counters vs task card stats
 
 The agent statusline shows `374↓ 207↑` (total input/output tokens from Claude's cost data) and `+0 -0` (total lines added/removed). These don't obviously correspond to what's shown on the task card, and they don't appear to update after a commit. Investigate: what exactly do these counters track, why don't they match the task card's stats, and why don't they refresh on commit? Fix the desync.

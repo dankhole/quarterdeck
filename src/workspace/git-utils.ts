@@ -360,6 +360,81 @@ export function parseNumstatPerFile(output: string): Map<string, { additions: nu
 }
 
 /**
+ * Detect which base branch the current HEAD was forked from.
+ *
+ * Strategy:
+ * 1. Check if the branch has an upstream tracking ref — if it points at a
+ *    known integration branch (e.g. origin/main → main), use that.
+ * 2. Otherwise, test each candidate base ref and pick the one whose merge-base
+ *    with HEAD is closest (fewest commits between merge-base and HEAD).
+ *
+ * Returns null if no candidate can be resolved.
+ */
+export async function resolveBaseRefForBranch(
+	cwd: string,
+	currentBranch: string,
+	projectDefaultBaseRef: string,
+): Promise<string | null> {
+	// 1. Check upstream tracking ref
+	const upstreamResult = await runGit(cwd, [
+		"--no-optional-locks",
+		"rev-parse",
+		"--abbrev-ref",
+		`${currentBranch}@{upstream}`,
+	]);
+	if (upstreamResult.ok && upstreamResult.stdout) {
+		const upstream = upstreamResult.stdout;
+		// Strip "origin/" prefix to get the local branch name
+		const localName = upstream.startsWith("origin/") ? upstream.slice("origin/".length) : upstream;
+		if (localName && localName !== currentBranch) {
+			return localName;
+		}
+	}
+
+	// 2. Build candidate list: project default + well-known integration branches
+	const candidates = new Set<string>();
+	if (projectDefaultBaseRef) {
+		candidates.add(projectDefaultBaseRef);
+	}
+	for (const name of ["main", "master", "develop"]) {
+		candidates.add(name);
+	}
+	// Don't consider the current branch as its own base
+	candidates.delete(currentBranch);
+
+	if (candidates.size === 0) {
+		return null;
+	}
+
+	// 3. For each candidate, find distance from merge-base to HEAD
+	const distanceChecks = await Promise.all(
+		[...candidates].map(async (candidate) => {
+			const mbResult = await runGit(cwd, ["--no-optional-locks", "merge-base", "HEAD", candidate]);
+			if (!mbResult.ok) return null;
+			const countResult = await runGit(cwd, [
+				"--no-optional-locks",
+				"rev-list",
+				"--count",
+				`${mbResult.stdout}..HEAD`,
+			]);
+			if (!countResult.ok) return null;
+			const distance = parseInt(countResult.stdout, 10);
+			if (!Number.isFinite(distance)) return null;
+			return { candidate, distance };
+		}),
+	);
+
+	const valid = distanceChecks.filter((entry): entry is { candidate: string; distance: number } => entry !== null);
+	if (valid.length === 0) {
+		return null;
+	}
+
+	// Pick the candidate with the smallest distance (closest ancestor)
+	valid.sort((a, b) => a.distance - b.distance);
+	return valid[0]?.candidate ?? null;
+}
+
+/**
  * Synchronous git command execution — returns trimmed stdout or null on failure.
  * Use sparingly; prefer the async {@link runGit} for most operations.
  */

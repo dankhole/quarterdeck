@@ -30,6 +30,7 @@ export interface CachedTaskWorkspaceMetadata {
 	stateToken: string | null;
 	baseRefCommit: string | null;
 	originBaseRefCommit: string | null;
+	lastKnownBranch: string | null;
 }
 
 export interface WorkspaceMetadataEntry {
@@ -288,6 +289,7 @@ export async function loadTaskWorkspaceMetadata(
 			stateToken: null,
 			baseRefCommit: null,
 			originBaseRefCommit: null,
+			lastKnownBranch: null,
 		};
 	}
 
@@ -355,6 +357,7 @@ export async function loadTaskWorkspaceMetadata(
 			stateToken: probe.stateToken,
 			baseRefCommit,
 			originBaseRefCommit,
+			lastKnownBranch: probe.currentBranch,
 		};
 	} catch {
 		if (current) {
@@ -380,6 +383,7 @@ export async function loadTaskWorkspaceMetadata(
 			stateToken: null,
 			baseRefCommit: null,
 			originBaseRefCommit: null,
+			lastKnownBranch: null,
 		};
 	}
 }

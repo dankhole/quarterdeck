@@ -39,6 +39,7 @@ export interface BoardCard {
 	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
+	baseRefPinned?: boolean;
 	useWorktree?: boolean;
 	workingDirectory?: string | null;
 	branch?: string | null;

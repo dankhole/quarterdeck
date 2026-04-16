@@ -2,6 +2,53 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Feature: auto-sync task base ref on branch change (2026-04-16)
+
+**Problem:** Task `baseRef` was set at creation via `resolveTaskBaseRef()` and never updated. When a user checked out a different branch in the worktree (e.g. switched from a branch forked from `main` to one forked from `develop`), the "from main" label and behind-base commit count became stale.
+
+**Solution — auto-detection in metadata polling:**
+
+Added branch change detection to the metadata monitor's existing polling cycle. `CachedTaskWorkspaceMetadata` now tracks `lastKnownBranch`. When the focused or background task refresh detects a branch change (`newBranch !== lastKnownBranch`), it calls `resolveBaseRefForBranch()` to compute the appropriate new base ref.
+
+`resolveBaseRefForBranch()` (`src/workspace/git-utils.ts`) uses a two-phase strategy:
+1. Check the branch's upstream tracking ref (`@{upstream}`) — if it points at an integration branch (e.g. `origin/develop`), use that.
+2. Fall back to merge-base distance: test each candidate (project default base ref + `main`/`master`/`develop`), compute distance from merge-base to HEAD, pick the closest ancestor.
+
+**Solution — WebSocket broadcast (single-writer pattern):**
+
+Follows the `task_title_updated` reference pattern to respect the board state single-writer rule. New `task_base_ref_updated` stream message type flows: server detects change → `broadcastTaskBaseRefUpdated()` → WebSocket → `runtime-stream-dispatch.ts` handler → `latestTaskBaseRefUpdate` in reducer → `useTaskBaseRefSync` hook applies to board state → normal debounced persist cycle.
+
+**Solution — manual override UI:**
+
+The "from X" label in `ConnectedTopBar` is now a clickable `BaseRefLabel` component backed by a Radix Popover. It shows:
+- A text input pre-filled with the current base ref
+- A pin/unpin toggle — when pinned, `baseRefPinned: true` on the card suppresses auto-sync
+- Pinned state displays a lock icon on the label
+
+**Schema changes:**
+
+- `RuntimeBoardCard` (`src/core/api/board.ts`): added `baseRefPinned?: boolean`
+- `BoardCard` (`web-ui/src/types/board.ts`): added `baseRefPinned?: boolean`
+- New stream message: `task_base_ref_updated` (schema, factory, broadcast, dispatch handler, reducer case)
+
+**Files changed:**
+- `src/core/api/board.ts` — added `baseRefPinned` field
+- `src/core/api/streams.ts` — new `runtimeStateStreamTaskBaseRefUpdatedMessageSchema`, added to discriminated union
+- `src/core/service-interfaces.ts` — `broadcastTaskBaseRefUpdated` on `IRuntimeBroadcaster`
+- `src/server/runtime-state-messages.ts` — `buildTaskBaseRefUpdatedMessage` factory
+- `src/server/runtime-state-hub.ts` — broadcast impl + wired monitor callbacks (`onTaskBaseRefChanged`, `getProjectDefaultBaseRef`)
+- `src/server/workspace-metadata-monitor.ts` — `checkForBranchChanges` helper, called from `refreshFocusedTask` and `refreshBackgroundTasks`
+- `src/server/workspace-metadata-loaders.ts` — `lastKnownBranch` in `CachedTaskWorkspaceMetadata`, populated in all return paths
+- `src/workspace/git-utils.ts` — `resolveBaseRefForBranch()` utility
+- `web-ui/src/runtime/runtime-stream-dispatch.ts` — handler + action type for `task_base_ref_updated`
+- `web-ui/src/runtime/use-runtime-state-stream.ts` — `TaskBaseRefUpdate` type, `latestTaskBaseRefUpdate` store field, reducer case
+- `web-ui/src/hooks/project/use-project-navigation.ts` — threaded `latestTaskBaseRefUpdate`
+- `web-ui/src/providers/project-provider.tsx` — threaded `latestTaskBaseRefUpdate`
+- `web-ui/src/hooks/use-task-base-ref-sync.ts` — new hook (mirrors `useTaskTitleSync`)
+- `web-ui/src/App.tsx` — wired `useTaskBaseRefSync`
+- `web-ui/src/components/connected-top-bar.tsx` — `BaseRefLabel` component with Radix Popover, `handleUpdateBaseRef`
+- `web-ui/src/types/board.ts` — `baseRefPinned` on `BoardCard`
+
 ## Feat: wire inline diff comments to agent terminal (2026-04-16)
 
 **Problem:** The diff viewer had a fully built inline comment UI (click lines, type comments, keyboard shortcuts, formatting, styling, tests) but the terminal integration was never connected. `DiffViewerPanel` accepted `onAddToTerminal`/`onSendToTerminal` callbacks but `GitView` never passed them. Separately, `useBoardInteractions` had orphaned `handleAddReviewComments`/`handleSendReviewComments` handlers that were exported but never consumed by any component.

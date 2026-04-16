@@ -33,6 +33,7 @@ import { useEscapeHandler } from "@/hooks/use-escape-handler";
 import { useNavbarState } from "@/hooks/use-navbar-state";
 import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
+import { useTaskBaseRefSync } from "@/hooks/use-task-base-ref-sync";
 import { useTaskTitleSync } from "@/hooks/use-task-title-sync";
 import { useTaskWorkingDirectorySync } from "@/hooks/use-task-working-directory-sync";
 import { useTitleActions } from "@/hooks/use-title-actions";
@@ -245,6 +246,7 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 		terminalFontWeight: project.terminalFontWeight,
 	});
 	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard });
+	useTaskBaseRefSync({ latestTaskBaseRefUpdate: project.latestTaskBaseRefUpdate, setBoard });
 	useTaskWorkingDirectorySync({
 		latestTaskWorkingDirectoryUpdate: project.latestTaskWorkingDirectoryUpdate,
 		setBoard,
