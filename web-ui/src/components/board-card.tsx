@@ -1,7 +1,7 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
 import { AlertCircle, Bug, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { InlineTitleEditor } from "@/components/inline-title-editor";
 import { Button } from "@/components/ui/button";
@@ -219,6 +219,7 @@ export function BoardCard({
 	draggable?: boolean;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 
 	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
@@ -374,7 +375,7 @@ export function BoardCard({
 					cursor: draggable ? "grab" : undefined,
 				}}
 				onMouseEnter={() => {
-					setIsHovered(true);
+					hoverTimerRef.current = setTimeout(() => setIsHovered(true), 200);
 					onDependencyPointerEnter?.(card.id);
 					onRequestDisplaySummary?.(card.id);
 					onTerminalWarmup?.(card.id);
@@ -386,6 +387,10 @@ export function BoardCard({
 					onDependencyPointerEnter?.(card.id);
 				}}
 				onMouseLeave={() => {
+					if (hoverTimerRef.current) {
+						clearTimeout(hoverTimerRef.current);
+						hoverTimerRef.current = null;
+					}
 					setIsHovered(false);
 					onTerminalCancelWarmup?.(card.id);
 				}}

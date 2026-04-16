@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: task card hover buttons delay
+
+- Added a 200ms delay before task card hover action buttons (pin, edit title, migrate workspace, debug flag, emergency actions) appear. Prevents accidental triggers when the mouse passes over cards while navigating the board. Preload callbacks (dependency, summary, terminal warmup) still fire immediately — only button visibility is delayed.
+
 ### Terminal — always use WebGL renderer
 
 - Removed the `terminalWebGLRenderer` config toggle and canvas 2D fallback path. Terminals now always load the WebGL addon for GPU-accelerated rendering. The `onContextLoss` handler is preserved so a lost WebGL context falls back gracefully instead of crashing.

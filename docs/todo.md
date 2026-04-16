@@ -216,10 +216,6 @@ The yellow "needs input" indicator on the board icon sometimes shows for project
 
 The diff viewer has some inline comment infrastructure. Investigate how it currently works (or doesn't), what state it's in, and whether it's usable or needs work. Document findings.
 
-## Assess and adjust live terminal WebGL context limit
-
-Browsers support ~8–16 WebGL contexts (varies by browser/GPU). The current limit is 4 live terminals. At least 1 context must be reserved for the shell terminal. Investigate the actual browser limits, measure what happens at the boundary, and adjust the limit if the research supports a higher number.
-
 ## "Reset to here" in branch context menu
 
 Add a "Reset to here" action in the top-bar branch context menu that performs `git reset --hard <selected-ref>` on the task's worktree branch. Must include a confirmation dialog ("Are you sure? This will discard all commits after X and any uncommitted changes."). This is per-worktree only — never touches the main repo.
@@ -244,17 +240,9 @@ The file browser should save and restore its scroll position when navigating awa
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
 
-## Task card hover buttons should have a short delay
-
-Add a brief delay (~200ms) before task card hover action buttons appear. Prevents accidental triggers when the mouse passes over cards while navigating the board.
-
 ## Audit default branch resolution for bugs
 
 The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.
-
-## Add timestamps to all runtime logging
-
-Ensure all runtime log output includes timestamps. Audit existing logging paths (console logger, JSONL event log, debug ring buffer) and add timestamps where missing.
 
 ## ~~Archive current changelog and implementation log~~
 

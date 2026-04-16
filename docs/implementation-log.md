@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: task card hover buttons delay + todo cleanup (2026-04-15)
+
+**What:** Added a 200ms delay before hover action buttons appear on task cards. Removed two completed todo items ("Add timestamps to all runtime logging" and "Assess and adjust live terminal WebGL context limit") and the now-implemented hover delay item.
+
+**Why:** Users accidentally triggered card actions (pin, edit, trash, restart) when moving the mouse across the board. The buttons appeared instantly on `mouseenter`, making quick passes over cards trigger unintended clicks. The 200ms delay ensures buttons only show for intentional hovers. The todo items were confirmed complete: all three runtime logging paths (console logger, JSONL event log, debug ring buffer) already include timestamps; the WebGL context limit assessment was no longer needed.
+
+**Files:**
+- `web-ui/src/components/board-card.tsx` — added `useRef` for hover timer, delayed `setIsHovered(true)` by 200ms in `onMouseEnter`, clear timer immediately in `onMouseLeave`
+- `docs/todo.md` — removed 3 completed items (timestamps, WebGL limit, hover delay)
+
 ## Remove non-WebGL terminal renderer option (2026-04-15)
 
 **What:** Removed the `terminalWebGLRenderer` config toggle. Terminals now always use WebGL rendering — the canvas 2D fallback path and the UI toggle to switch between them are gone.
