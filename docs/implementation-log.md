@@ -2,6 +2,24 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split linked backlog task actions test file (2026-04-16)
+
+**Problem:** `use-linked-backlog-task-actions.test.tsx` was 1,096 lines — the largest test file in `web-ui/src/hooks/board/`. Three distinct test groups (core actions, trash confirmation dialog, worktree notice toast) were interleaved in a single `describe` block sharing ~160 lines of boilerplate (mocks, factories, harness component, setup/teardown).
+
+**Fix:** Extracted the shared infrastructure into `linked-backlog-actions-test-harness.tsx` (183 lines) exporting `createTask`, `createBoard`, `requireSnapshot`, `createDeferred`, `HookHarness`, `HookHarnessProps`, `HookSnapshot`, `Deferred`, `RequestMoveTaskToTrashOptions`, and `useTestEnvironment`. Split the tests into three focused files by `describe` group:
+
+- `use-linked-backlog-task-actions.test.tsx` (265 lines) — 6 core action tests (dependency creation, auto-start linked tasks, animated starts, session stop on trash, direct trash via request handler, animation queuing)
+- `use-linked-backlog-trash-confirmation.test.tsx` (321 lines) — 7 trash confirmation dialog tests (uncommitted changes, optimistic move passthrough, skip warning, zero/null/missing changedFiles, optimistic selection update)
+- `use-linked-backlog-worktree-notice.test.tsx` (385 lines) — 9 worktree notice toast tests (column-aware show/hide, prop transitions, dismiss lifecycle, dialog suppression)
+
+Each new file imports from the harness and declares its own `vi.mock` calls and `vi.hoisted` mock refs where needed (the `sonner` and `workspace-metadata-store` mocks are only used by the confirmation and notice files, not the core actions file).
+
+**Files:**
+- `web-ui/src/hooks/board/linked-backlog-actions-test-harness.tsx` — new shared harness
+- `web-ui/src/hooks/board/use-linked-backlog-task-actions.test.tsx` — rewritten (core actions only)
+- `web-ui/src/hooks/board/use-linked-backlog-trash-confirmation.test.tsx` — new (confirmation dialog tests)
+- `web-ui/src/hooks/board/use-linked-backlog-worktree-notice.test.tsx` — new (worktree notice tests)
+
 ## Refactor: split runtime-state-stream integration tests (2026-04-16)
 
 **Problem:** `test/integration/runtime-state-stream.integration.test.ts` was 1,126 lines — a single `describe.sequential` block containing 9 tests covering project discovery, project management, state streaming, hooks, metadata, worktree preservation, and server restart behavior. Too large to navigate and a merge-conflict magnet.
