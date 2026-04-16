@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { DETAIL_TERMINAL_TASK_PREFIX, HOME_TERMINAL_TASK_ID } from "@/terminal/terminal-constants";
-
-const MAX_RESTARTS = 3;
-const RATE_LIMIT_WINDOW_MS = 30_000;
-const RESTART_DELAY_MS = 1000;
+import {
+	canRestart as canRestartCheck,
+	parseRestartTarget,
+	RESTART_DELAY_MS,
+	recordRestart as recordRestartTimestamp,
+} from "@/hooks/terminal/shell-auto-restart";
 
 interface UseShellAutoRestartOptions {
 	shellAutoRestartEnabled: boolean;
@@ -46,18 +47,13 @@ export function useShellAutoRestart({
 	};
 
 	const canRestart = useCallback((taskId: string): boolean => {
-		const now = Date.now();
 		const timestamps = rateLimiterRef.current.get(taskId) ?? [];
-		const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-		return recent.length < MAX_RESTARTS;
+		return canRestartCheck(timestamps, Date.now());
 	}, []);
 
 	const recordRestart = useCallback((taskId: string): void => {
-		const now = Date.now();
 		const timestamps = rateLimiterRef.current.get(taskId) ?? [];
-		const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-		recent.push(now);
-		rateLimiterRef.current.set(taskId, recent);
+		rateLimiterRef.current.set(taskId, recordRestartTimestamp(timestamps, Date.now()));
 	}, []);
 
 	const cancelPendingRestart = useCallback((taskId: string): void => {
@@ -80,17 +76,9 @@ export function useShellAutoRestart({
 				return;
 			}
 
-			// Validate taskId is a known restartable pattern.
-			const isHome = taskId === HOME_TERMINAL_TASK_ID;
-			const isDetail = taskId.startsWith(DETAIL_TERMINAL_TASK_PREFIX);
-			if (!isHome && !isDetail) {
+			const target = parseRestartTarget(taskId);
+			if (!target) {
 				return;
-			}
-			if (isDetail) {
-				const cardId = taskId.slice(DETAIL_TERMINAL_TASK_PREFIX.length);
-				if (!cardId) {
-					return;
-				}
 			}
 
 			if (!canRestart(taskId)) {
@@ -119,11 +107,10 @@ export function useShellAutoRestart({
 				restartInProgressRef.current.add(taskId);
 
 				try {
-					if (taskId === HOME_TERMINAL_TASK_ID) {
+					if (target.type === "home") {
 						optionsRef.current.restartHomeTerminal();
 					} else {
-						const cardId = taskId.slice(DETAIL_TERMINAL_TASK_PREFIX.length);
-						optionsRef.current.restartDetailTerminal(cardId);
+						optionsRef.current.restartDetailTerminal(target.cardId);
 					}
 				} catch {
 					// Sync error from restart handler, unlikely but safe to swallow.

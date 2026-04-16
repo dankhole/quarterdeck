@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { showAppToast } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
+import { buildTrashWarningViewModel, getDependencyAddErrorMessage } from "@/hooks/board/linked-backlog-task-actions";
 import { getDetailTerminalTaskId } from "@/hooks/terminal/use-terminal-panels";
 import {
 	addTaskDependency,
@@ -75,20 +76,10 @@ export function useLinkedBacklogTaskActions({
 		(fromTaskId: string, toTaskId: string) => {
 			const result = addTaskDependency(boardRef.current, fromTaskId, toTaskId);
 			if (!result.added) {
-				const message =
-					result.reason === "same_task"
-						? "A task cannot be linked to itself."
-						: result.reason === "duplicate"
-							? "Link already exists."
-							: result.reason === "trash_task"
-								? "Links cannot include trashed tasks."
-								: result.reason === "non_backlog"
-									? "Links must include at least one Backlog task."
-									: "Could not create link.";
 				showAppToast({
 					intent: "warning",
 					icon: "warning-sign",
-					message,
+					message: getDependencyAddErrorMessage(result.reason),
 					timeout: 3000,
 				});
 				return;
@@ -245,12 +236,7 @@ export function useLinkedBacklogTaskActions({
 			if (onRequestTrashConfirmation) {
 				const snapshot = getTaskWorkspaceSnapshot(taskId);
 				const workspaceInfo = getTaskWorkspaceInfo(taskId);
-				const viewModel: TaskTrashWarningViewModel = {
-					taskTitle: selection.card.title ?? "Untitled task",
-					fileCount: snapshot?.changedFiles ?? 0,
-					workspaceInfo,
-					isNonIsolated,
-				};
+				const viewModel = buildTrashWarningViewModel(selection.card, snapshot?.changedFiles ?? 0, workspaceInfo);
 				onRequestTrashConfirmation(viewModel, selection.card, fromColumnId, !!options?.optimisticMoveApplied);
 				return;
 			}

@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef } from "react";
 
+import {
+	AUTO_REVIEW_ACTION_DELAY_MS,
+	buildColumnByTaskId,
+	getReviewCardsForAutomation,
+	isAutoTrashMode,
+	isTaskAutoReviewEnabled,
+} from "@/hooks/board/review-auto-actions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import { subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
-import type { BoardCard, BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
+import type { BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
 import { isApprovalState } from "@/utils/session-status";
-
-const AUTO_REVIEW_ACTION_DELAY_MS = 500;
-
-function isTaskAutoReviewEnabled(task: BoardCard): boolean {
-	return task.autoReviewEnabled === true;
-}
 
 interface RequestMoveTaskToTrashOptions {
 	skipWorkingChangeWarning?: boolean;
@@ -100,16 +100,8 @@ export function useReviewAutoActions({
 
 	const evaluateAutoReview = useCallback(
 		(_trigger: { source: string; taskId?: string }) => {
-			const columnByTaskId = new Map<string, BoardColumnId>();
-			const reviewCardsForAutomation: BoardCard[] = [];
-			for (const column of boardRef.current.columns) {
-				for (const card of column.cards) {
-					columnByTaskId.set(card.id, column.id);
-					if (column.id === "review") {
-						reviewCardsForAutomation.push(card);
-					}
-				}
-			}
+			const columnByTaskId = buildColumnByTaskId(boardRef.current);
+			const reviewCardsForAutomation = getReviewCardsForAutomation(boardRef.current);
 
 			for (const taskId of moveToTrashInFlightTaskIdsRef.current) {
 				if (columnByTaskId.get(taskId) !== "review") {
@@ -125,13 +117,6 @@ export function useReviewAutoActions({
 			}
 
 			for (const reviewTask of reviewCardsForAutomation) {
-				if (!isTaskAutoReviewEnabled(reviewTask)) {
-					clearAutoReviewTimer(reviewTask.id);
-					continue;
-				}
-
-				// Guard: skip cards actively waiting for permission approval.
-				// These should not be auto-trashed — the agent needs user input.
 				const sessionSummary = sessionsRef.current[reviewTask.id] ?? null;
 				if (isApprovalState(sessionSummary)) {
 					clearAutoReviewTimer(reviewTask.id);
@@ -150,7 +135,7 @@ export function useReviewAutoActions({
 					if (!isTaskAutoReviewEnabled(latestSelection.card)) {
 						return;
 					}
-					if (resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode) !== "move_to_trash") {
+					if (!isAutoTrashMode(latestSelection.card)) {
 						return;
 					}
 					moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);

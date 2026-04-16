@@ -1,101 +1,32 @@
 import { useEffect, useRef } from "react";
+import {
+	type AudibleNotificationEventConfig,
+	areSoundsSuppressed,
+	deriveColumn,
+	EVENT_PRIORITY,
+	getSettleWindowMs,
+	isEventSuppressedForProject,
+	resolveSessionSoundEvent,
+	type TaskColumn,
+} from "@/hooks/notifications/audible-notifications";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { type AudibleNotificationEventType, notificationAudioPlayer } from "@/utils/notification-audio";
-import { isApprovalState } from "@/utils/session-status";
+import type { AudibleNotificationEventType } from "@/utils/notification-audio";
+import { notificationAudioPlayer } from "@/utils/notification-audio";
 
 interface UseAudibleNotificationsOptions {
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
-	audibleNotificationEvents: {
-		permission: boolean;
-		review: boolean;
-		failure: boolean;
-	};
+	audibleNotificationEvents: AudibleNotificationEventConfig;
 	audibleNotificationsOnlyWhenHidden: boolean;
 	/** Per-event suppression for tasks in the currently viewed project. */
-	audibleNotificationSuppressCurrentProject: {
-		permission: boolean;
-		review: boolean;
-		failure: boolean;
-	};
+	audibleNotificationSuppressCurrentProject: AudibleNotificationEventConfig;
 	/** Maps task IDs to their workspace/project IDs. */
 	notificationWorkspaceIds: Record<string, string>;
 	/** The currently viewed project ID. */
 	currentProjectId: string | null;
 	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
 	suppressedTaskIds?: ReadonlySet<string>;
-}
-
-/**
- * Settle window for hook-based transitions. When a hook fires `to_review`,
- * `latestHookActivity` is cleared and repopulated after the server's async
- * checkpoint capture. This window allows the activity data to arrive so
- * `isApprovalState` can distinguish permission sounds from review sounds.
- *
- * Non-hook transitions (exit, error, attention, failed) have their sound
- * event fully determined by `state`, `reviewReason`, and `exitCode` — they
- * fire immediately with no settle delay.
- */
-const SETTLE_WINDOW_HOOK_MS = 500;
-const SETTLE_WINDOW_IMMEDIATE_MS = 0;
-
-function getSettleWindowMs(summary: RuntimeTaskSessionSummary): number {
-	if (summary.state === "awaiting_review" && summary.reviewReason === "hook") {
-		return SETTLE_WINDOW_HOOK_MS;
-	}
-	return SETTLE_WINDOW_IMMEDIATE_MS;
-}
-
-/** Higher number = higher priority. Failure beats permission beats review. */
-const EVENT_PRIORITY: Record<AudibleNotificationEventType, number> = {
-	review: 0,
-	permission: 1,
-	failure: 2,
-};
-
-type TaskColumn = "active" | "stopped" | "silent";
-
-function deriveColumn(summary: RuntimeTaskSessionSummary): TaskColumn {
-	if (summary.state === "running") return "active";
-	if (summary.state === "interrupted") return "silent";
-	if (summary.state === "awaiting_review" && summary.reviewReason === "interrupted") return "silent";
-	// awaiting_review (hook, exit, error, attention) and failed → stopped
-	return "stopped";
-}
-
-function isTabVisible(): boolean {
-	if (typeof document === "undefined") {
-		return true;
-	}
-	// Both conditions must be true for the user to actually be looking at
-	// Quarterdeck. visibilityState alone reports "visible" even when the
-	// browser window is behind other apps (terminal, IDE), which is the
-	// primary use case for audible notifications.
-	return document.visibilityState === "visible" && document.hasFocus();
-}
-
-function resolveSessionSoundEvent(summary: RuntimeTaskSessionSummary): AudibleNotificationEventType | null {
-	if (summary.state === "awaiting_review") {
-		switch (summary.reviewReason) {
-			case "hook":
-				return isApprovalState(summary) ? "permission" : "review";
-			case "attention":
-				return "review";
-			case "exit":
-				return summary.exitCode === 0 ? "review" : "failure";
-			case "error":
-				return "failure";
-			case "interrupted":
-				return null;
-			default:
-				return null;
-		}
-	}
-	if (summary.state === "failed") {
-		return "failure";
-	}
-	return null;
 }
 
 interface PendingSound {
@@ -134,13 +65,13 @@ export function useAudibleNotifications({
 		pendingSoundsRef.current.delete(taskId);
 		const eventType = pending.eventType;
 		if (!latestEventsRef.current[eventType]) return;
-		// Per-event suppress: skip if this event type is suppressed for the current project
-		// and the task belongs to that project.
-		const projectId = latestProjectIdRef.current;
 		if (
-			projectId != null &&
-			latestSuppressRef.current[eventType] &&
-			latestWorkspaceIdsRef.current[taskId] === projectId
+			isEventSuppressedForProject(
+				eventType,
+				latestSuppressRef.current,
+				latestWorkspaceIdsRef.current[taskId],
+				latestProjectIdRef.current,
+			)
 		) {
 			return;
 		}
@@ -161,7 +92,7 @@ export function useAudibleNotifications({
 			return;
 		}
 
-		const soundsSuppressed = !audibleNotificationsEnabled || (audibleNotificationsOnlyWhenHidden && isTabVisible());
+		const soundsSuppressed = areSoundsSuppressed(audibleNotificationsEnabled, audibleNotificationsOnlyWhenHidden);
 
 		for (const [taskId, summary] of Object.entries(notificationSessions)) {
 			const currentColumn = deriveColumn(summary);

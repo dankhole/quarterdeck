@@ -184,7 +184,7 @@ All hooks migrated out of the monolithic App component into 6 focused providers 
 **After the provider migration**, two follow-up refactors build on it (do in order):
 
 1. ~~**Organize hooks into domain subdirectories**~~ — done. 78 flat files reorganized into 5 domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`), 5 non-hook files relocated to proper directories (`utils/`, `terminal/`, `components/`), ~123 import sites updated.
-2. **Extract business logic from hooks into plain TS modules** — see "Organize web-ui hooks directory" todo below
+2. ~~**Extract business logic from hooks into plain TS modules**~~ — done. See "Organize web-ui hooks directory" todo below.
 
 ## Revisit periodic orphaned entity cleanup
 
@@ -197,7 +197,7 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 Three phases, done in order:
 
 1. ~~**Subdirectory reorg**~~ — Done. Moved 78 files into 5 domain subdirectories plus relocated 5 misplaced non-hook files. Pure file moves + import path updates.
-2. ~~**Domain logic extraction**~~ — Done (9 of ~11 candidates). Split hooks into domain module + thin React wrapper pairs. 9 domain modules, 92 domain-level unit tests. Remaining 2 candidates (`use-board-interactions`, `use-task-start`) are primarily orchestration hooks with minimal extractable pure logic — extract as-encountered. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics: [docs/archived/refactor-hooks-directory.md](archived/refactor-hooks-directory.md) Phase 2.
+2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1.
 3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/web-ui-conventions.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
 ## Keep task base ref in sync with branch changes

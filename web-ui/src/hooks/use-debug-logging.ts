@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+	type DebugLogLevelFilter,
+	type DebugLogSourceFilter,
+	extractAvailableTags,
+	filterLogEntries,
+	type LogLevel,
+	loadDisabledTags,
+	mergeLogEntries,
+	persistDisabledTags,
+} from "@/hooks/debug-logging";
 import { setLogLevel as setLogLevelOnServer } from "@/runtime/runtime-config-query";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
-import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { registerClientLogCallback, setClientLoggingEnabled } from "@/utils/client-logger";
 import { setGlobalErrorCallback } from "@/utils/global-error-capture";
 
-export type DebugLogLevelFilter = "all" | "debug" | "info" | "warn" | "error";
-export type DebugLogSourceFilter = "all" | "server" | "client";
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type { DebugLogLevelFilter, DebugLogSourceFilter, LogLevel } from "@/hooks/debug-logging";
 
 export interface UseDebugLoggingResult {
 	logLevel: LogLevel;
@@ -19,9 +26,7 @@ export interface UseDebugLoggingResult {
 	sourceFilter: DebugLogSourceFilter;
 	searchText: string;
 	showConsoleCapture: boolean;
-	/** All unique tags seen in the current log entries. */
 	availableTags: string[];
-	/** Tags currently disabled (filtered out). */
 	disabledTags: Set<string>;
 	setLogLevel: (level: LogLevel) => void;
 	openDebugLogPanel: () => void;
@@ -38,25 +43,7 @@ export interface UseDebugLoggingResult {
 	addClientLogEntry: (level: RuntimeDebugLogEntry["level"], tag: string, message: string, data?: unknown) => void;
 }
 
-const LEVEL_ORDER: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
-
 let clientEntryId = 0;
-
-function loadDisabledTags(): Set<string> {
-	const raw = readLocalStorageItem(LocalStorageKey.DebugLogDisabledTags);
-	if (!raw) return new Set();
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (Array.isArray(parsed)) return new Set(parsed.filter((t): t is string => typeof t === "string"));
-	} catch {
-		// Ignore malformed data.
-	}
-	return new Set();
-}
-
-function persistDisabledTags(tags: Set<string>): void {
-	writeLocalStorageItem(LocalStorageKey.DebugLogDisabledTags, JSON.stringify([...tags]));
-}
 
 export function useDebugLogging({
 	currentProjectId,
@@ -78,47 +65,17 @@ export function useDebugLogging({
 	const [clearedAt, setClearedAt] = useState(0);
 	const [disabledTags, setDisabledTags] = useState<Set<string>>(loadDisabledTags);
 
-	const allEntries = useMemo(() => {
-		const serverEntries = clearedAt > 0 ? debugLogEntries.filter((e) => e.timestamp > clearedAt) : debugLogEntries;
-		const clientVisible = clearedAt > 0 ? clientEntries.filter((e) => e.timestamp > clearedAt) : clientEntries;
-		if (clientVisible.length === 0) return serverEntries;
-		return [...serverEntries, ...clientVisible].sort((a, b) => a.timestamp - b.timestamp);
-	}, [debugLogEntries, clientEntries, clearedAt]);
+	const allEntries = useMemo(
+		() => mergeLogEntries(debugLogEntries, clientEntries, clearedAt),
+		[debugLogEntries, clientEntries, clearedAt],
+	);
 
-	const availableTags = useMemo(() => {
-		const tags = new Set<string>();
-		for (const entry of allEntries) {
-			tags.add(entry.tag);
-		}
-		return [...tags].sort();
-	}, [allEntries]);
+	const availableTags = useMemo(() => extractAvailableTags(allEntries), [allEntries]);
 
-	const filteredEntries = useMemo(() => {
-		let entries = allEntries;
-		if (!showConsoleCapture) {
-			entries = entries.filter((e) => e.tag !== "console");
-		}
-		if (disabledTags.size > 0) {
-			entries = entries.filter((e) => !disabledTags.has(e.tag));
-		}
-		if (levelFilter !== "all") {
-			const minOrder = LEVEL_ORDER[levelFilter] ?? 0;
-			entries = entries.filter((e) => (LEVEL_ORDER[e.level] ?? 0) >= minOrder);
-		}
-		if (sourceFilter !== "all") {
-			entries = entries.filter((e) => e.source === sourceFilter);
-		}
-		if (searchText.trim()) {
-			const lower = searchText.toLowerCase();
-			entries = entries.filter(
-				(e) =>
-					e.message.toLowerCase().includes(lower) ||
-					e.tag.toLowerCase().includes(lower) ||
-					(typeof e.data === "string" && e.data.toLowerCase().includes(lower)),
-			);
-		}
-		return entries;
-	}, [allEntries, showConsoleCapture, disabledTags, levelFilter, sourceFilter, searchText]);
+	const filteredEntries = useMemo(
+		() => filterLogEntries(allEntries, { showConsoleCapture, disabledTags, levelFilter, sourceFilter, searchText }),
+		[allEntries, showConsoleCapture, disabledTags, levelFilter, sourceFilter, searchText],
+	);
 
 	const toggleTag = useCallback((tag: string) => {
 		setDisabledTags((prev) => {

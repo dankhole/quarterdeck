@@ -2,6 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
+import {
+	isBranchRefValid,
+	isPlanModeDisabledByAutoReview,
+	isTaskSaveValid,
+	resolveDefaultBranchRef,
+	resolveEffectiveBaseRef,
+} from "@/hooks/task-editor";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
@@ -113,7 +120,10 @@ export function useTaskEditor({
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
-	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
+	const isNewTaskStartInPlanModeDisabled = isPlanModeDisabledByAutoReview(
+		newTaskAutoReviewEnabled,
+		newTaskAutoReviewMode,
+	);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -122,7 +132,10 @@ export function useTaskEditor({
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
-	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
+	const isEditTaskStartInPlanModeDisabled = isPlanModeDisabledByAutoReview(
+		editTaskAutoReviewEnabled,
+		editTaskAutoReviewMode,
+	);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const lastCreatedTaskBranchRef = useMemo(() => {
@@ -132,22 +145,19 @@ export function useTaskEditor({
 		return lastCreatedTaskBranchByProjectId[currentProjectId] ?? null;
 	}, [currentProjectId, lastCreatedTaskBranchByProjectId]);
 
-	const resolvedDefaultTaskBranchRef = useMemo(() => {
-		if (configOverridesDefault) {
-			return defaultTaskBranchRef;
-		}
-		if (
-			lastCreatedTaskBranchRef &&
-			createTaskBranchOptions.some((option) => option.value === lastCreatedTaskBranchRef)
-		) {
-			return lastCreatedTaskBranchRef;
-		}
-		return defaultTaskBranchRef;
-	}, [configOverridesDefault, createTaskBranchOptions, defaultTaskBranchRef, lastCreatedTaskBranchRef]);
+	const resolvedDefaultTaskBranchRef = useMemo(
+		() =>
+			resolveDefaultBranchRef(
+				defaultTaskBranchRef,
+				configOverridesDefault,
+				lastCreatedTaskBranchRef,
+				createTaskBranchOptions,
+			),
+		[configOverridesDefault, createTaskBranchOptions, defaultTaskBranchRef, lastCreatedTaskBranchRef],
+	);
 
 	useEffect(() => {
-		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === newTaskBranchRef);
-		if (isCurrentValid) {
+		if (isBranchRefValid(newTaskBranchRef, createTaskBranchOptions)) {
 			return;
 		}
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
@@ -191,8 +201,7 @@ export function useTaskEditor({
 		if (!editingTaskId) {
 			return;
 		}
-		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === editTaskBranchRef);
-		if (isCurrentValid) {
+		if (isBranchRefValid(editTaskBranchRef, createTaskBranchOptions)) {
 			return;
 		}
 		setEditTaskBranchRef(resolvedDefaultTaskBranchRef);
@@ -297,15 +306,12 @@ export function useTaskEditor({
 		if (!editingTaskId) {
 			return null;
 		}
-		const prompt = editTaskPrompt.trim();
-		if (!prompt) {
-			return null;
-		}
-		if (!(editTaskBranchRef || resolvedDefaultTaskBranchRef)) {
+		if (!isTaskSaveValid(editTaskPrompt, editTaskBranchRef, resolvedDefaultTaskBranchRef)) {
 			return null;
 		}
 
-		const baseRef = editTaskBranchRef || resolvedDefaultTaskBranchRef;
+		const prompt = editTaskPrompt.trim();
+		const baseRef = resolveEffectiveBaseRef(editTaskBranchRef, resolvedDefaultTaskBranchRef);
 		const savedTaskId = editingTaskId;
 
 		setBoard((currentBoard) => {
@@ -347,14 +353,11 @@ export function useTaskEditor({
 
 	const handleCreateTask = useCallback(
 		(options?: CreateTaskOptions): string | null => {
+			if (!isTaskSaveValid(newTaskPrompt, newTaskBranchRef, resolvedDefaultTaskBranchRef)) {
+				return null;
+			}
 			const prompt = newTaskPrompt.trim();
-			if (!prompt) {
-				return null;
-			}
-			if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
-				return null;
-			}
-			const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
+			const baseRef = resolveEffectiveBaseRef(newTaskBranchRef, resolvedDefaultTaskBranchRef);
 			const created = addTaskToColumnWithResult(board, "backlog", {
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
@@ -406,10 +409,10 @@ export function useTaskEditor({
 			if (validPrompts.length === 0) {
 				return [];
 			}
-			if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
+			const baseRef = resolveEffectiveBaseRef(newTaskBranchRef, resolvedDefaultTaskBranchRef);
+			if (!baseRef) {
 				return [];
 			}
-			const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
 			const createdTaskIds: string[] = [];
 			let updatedBoard = board;
 			for (const prompt of validPrompts) {

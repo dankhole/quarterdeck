@@ -2,6 +2,38 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: complete hook domain logic extraction — Phase 2 final (2026-04-16)
+
+**Goal:** Complete all remaining hook domain extractions and close out Phase 2.
+
+**Extractions performed (7 domain modules, 119 new tests):**
+
+1. **`notifications/audible-notifications.ts`** — 6 functions + 2 constants from `use-audible-notifications.ts`: `deriveColumn`, `resolveSessionSoundEvent`, `getSettleWindowMs`, `isTabVisible`, `areSoundsSuppressed`, `isEventSuppressedForProject`, `EVENT_PRIORITY`, `AudibleNotificationEventConfig` type. 35 tests.
+
+2. **`debug-logging.ts`** — 5 functions + 1 constant from `use-debug-logging.ts`: `loadDisabledTags`, `persistDisabledTags`, `mergeLogEntries`, `extractAvailableTags`, `filterLogEntries`, `LEVEL_ORDER`. Types re-exported from hook file for backward compatibility. 22 tests.
+
+3. **`task-editor.ts`** — 5 functions from `use-task-editor.ts`: `isPlanModeDisabledByAutoReview` (plan mode + auto-review incompatibility check), `resolveDefaultBranchRef` (config override vs last-used-branch memory), `isBranchRefValid` (branch option validation), `isTaskSaveValid` (prompt + branch ref validation), `resolveEffectiveBaseRef` (branch ref with fallback). Replaced 6 inline expressions in the hook. 21 tests.
+
+4. **`board/review-auto-actions.ts`** — 4 functions + 1 constant from `use-review-auto-actions.ts`: `isTaskAutoReviewEnabled`, `buildColumnByTaskId` (board → Map<taskId, columnId>), `getReviewCardsForAutomation` (review column + auto-review filter), `isAutoTrashMode` (resolved mode check), `AUTO_REVIEW_ACTION_DELAY_MS`. Replaced the inline column-building loop and double filter in `evaluateAutoReview`. 14 tests.
+
+5. **`terminal/shell-auto-restart.ts`** — 3 functions + 3 constants from `use-shell-auto-restart.ts`: `parseRestartTarget` (taskId → `{type: "home"}` | `{type: "detail", cardId}` | null), `canRestart` (sliding window rate limiter check), `recordRestart` (prune + append timestamp), `MAX_RESTARTS`, `RATE_LIMIT_WINDOW_MS`, `RESTART_DELAY_MS`. Replaced inline taskId validation and rate limiting logic. 13 tests.
+
+6. **`board/linked-backlog-task-actions.ts`** — 2 functions from `use-linked-backlog-task-actions.ts`: `getDependencyAddErrorMessage` (reason → user-facing message mapping), `buildTrashWarningViewModel` (card + workspace info → dialog view model). Replaced 10-line ternary chain and inline view model construction. 11 tests.
+
+7. **`shortcut-actions.ts`** — 2 functions from `use-shortcut-actions.ts`: `getNextShortcutLabel` (case-insensitive collision detection with suffix incrementing), `validateNewShortcut` (command + label validation with auto-dedup). Replaced `getNextShortcutLabel` callback and inline validation in `handleCreateShortcut`. 12 tests. Changed from `useCallback` to `useMemo` for `existingLabels` derivation.
+
+**Named candidates closed out (no extraction needed):**
+- **`use-board-interactions`** — Pure orchestration hub composing 7 sub-hooks with no domain logic.
+- **`use-task-start`** — React refs + DOM queries + programmatic card move coordination, under threshold.
+
+**Files changed:**
+- 7 new domain modules: `notifications/audible-notifications.ts`, `debug-logging.ts`, `task-editor.ts`, `board/review-auto-actions.ts`, `terminal/shell-auto-restart.ts`, `board/linked-backlog-task-actions.ts`, `shortcut-actions.ts`
+- 7 new domain test files (119 tests total)
+- 7 hook files updated to import from domain modules
+- `docs/web-ui-conventions.md` — added 7 rows to domain modules reference table (now 16 total)
+- `docs/todo.md` — updated Phase 2 counts
+- `CHANGELOG.md` — added entry under [Unreleased]
+
 ## Refactor: split linked backlog task actions test file (2026-04-16)
 
 **Problem:** `use-linked-backlog-task-actions.test.tsx` was 1,096 lines — the largest test file in `web-ui/src/hooks/board/`. Three distinct test groups (core actions, trash confirmation dialog, worktree notice toast) were interleaved in a single `describe` block sharing ~160 lines of boilerplate (mocks, factories, harness component, setup/teardown).
