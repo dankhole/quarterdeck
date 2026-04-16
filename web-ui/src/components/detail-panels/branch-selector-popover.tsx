@@ -14,8 +14,10 @@ import {
 	GitMerge,
 	Locate,
 	LogIn,
+	Pencil,
 	Pin,
 	PinOff,
+	RotateCcw,
 	Search,
 	Trash2,
 } from "lucide-react";
@@ -53,6 +55,12 @@ interface BranchSelectorPopoverProps {
 	onCreateBranch?: (sourceRef: string) => void;
 	/** When provided, shows "Delete branch" in the branch right-click menu (local branches only). */
 	onDeleteBranch?: (branchName: string) => void;
+	/** When provided, shows "Rebase onto" in the branch right-click menu. */
+	onRebaseBranch?: (onto: string) => void;
+	/** When provided, shows "Rename branch" in the branch right-click menu (local branches only). */
+	onRenameBranch?: (branchName: string) => void;
+	/** When provided, shows "Reset to here" in the branch right-click menu. */
+	onResetToRef?: (ref: string) => void;
 	/** When provided, shows "Pull from remote" in any local branch's right-click menu. */
 	onPull?: (branch: string) => void;
 	/** When provided, shows "Push to remote" in any local branch's right-click menu. */
@@ -78,6 +86,9 @@ export function BranchSelectorPopover({
 	onMergeBranch,
 	onCreateBranch,
 	onDeleteBranch,
+	onRebaseBranch,
+	onRenameBranch,
+	onResetToRef,
 	onPull,
 	onPush,
 	pinnedBranches,
@@ -158,6 +169,33 @@ export function BranchSelectorPopover({
 			setQuery("");
 		},
 		[onCreateBranch, onOpenChange],
+	);
+
+	const handleRebase = useCallback(
+		(onto: string) => {
+			onRebaseBranch?.(onto);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onRebaseBranch, onOpenChange],
+	);
+
+	const handleRename = useCallback(
+		(branchName: string) => {
+			onRenameBranch?.(branchName);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onRenameBranch, onOpenChange],
+	);
+
+	const handleReset = useCallback(
+		(ref: string) => {
+			onResetToRef?.(ref);
+			onOpenChange(false);
+			setQuery("");
+		},
+		[onResetToRef, onOpenChange],
 	);
 
 	const handlePull = useCallback(
@@ -302,6 +340,9 @@ export function BranchSelectorPopover({
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
+										onRebase={onRebaseBranch ? handleRebase : undefined}
+										onRename={onRenameBranch ? handleRename : undefined}
+										onReset={onResetToRef ? handleReset : undefined}
 										onTogglePin={onTogglePinBranch}
 										onPull={onPull ? handlePull : undefined}
 										onPush={onPush ? handlePush : undefined}
@@ -328,6 +369,9 @@ export function BranchSelectorPopover({
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
 										onDeleteBranch={onDeleteBranch}
+										onRebase={onRebaseBranch ? handleRebase : undefined}
+										onRename={onRenameBranch ? handleRename : undefined}
+										onReset={onResetToRef ? handleReset : undefined}
 										onTogglePin={onTogglePinBranch}
 										onPull={onPull ? handlePull : undefined}
 										onPush={onPush ? handlePush : undefined}
@@ -353,6 +397,8 @@ export function BranchSelectorPopover({
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
+										onRebase={onRebaseBranch ? handleRebase : undefined}
+										onReset={onResetToRef ? handleReset : undefined}
 										onClose={closePopover}
 									/>
 								))}
@@ -420,6 +466,9 @@ function BranchItem({
 	onMerge,
 	onCreateBranch,
 	onDeleteBranch,
+	onRebase,
+	onRename,
+	onReset,
 	onTogglePin,
 	onPull,
 	onPush,
@@ -436,6 +485,9 @@ function BranchItem({
 	onMerge?: (name: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
 	onDeleteBranch?: (branchName: string) => void;
+	onRebase?: (onto: string) => void;
+	onRename?: (branchName: string) => void;
+	onReset?: (ref: string) => void;
 	onTogglePin?: (branchName: string) => void;
 	onPull?: (branch: string) => void;
 	onPush?: (branch: string) => void;
@@ -568,7 +620,23 @@ function BranchItem({
 							Push to remote
 						</ContextMenu.Item>
 					) : null}
-					{onCheckout || onCompare || onMerge || onCreateBranch || onPull || onPush ? (
+					{onRebase ? (
+						<ContextMenu.Item
+							className={cn(CONTEXT_MENU_ITEM_CLASS, isCurrent && "opacity-50 cursor-not-allowed")}
+							disabled={isCurrent}
+							onSelect={() => onRebase(gitRef.name)}
+						>
+							<RotateCcw size={14} className="text-text-secondary" />
+							Rebase onto
+						</ContextMenu.Item>
+					) : null}
+					{onReset ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onReset(gitRef.name)}>
+							<RotateCcw size={14} className="text-status-red" />
+							Reset to here
+						</ContextMenu.Item>
+					) : null}
+					{onCheckout || onCompare || onMerge || onCreateBranch || onPull || onPush || onRebase || onReset ? (
 						<ContextMenu.Separator className="my-1 h-px bg-border" />
 					) : null}
 					<ContextMenu.Item
@@ -594,6 +662,16 @@ function BranchItem({
 									Pin to top
 								</>
 							)}
+						</ContextMenu.Item>
+					) : null}
+					{onRename && gitRef.type === "branch" ? (
+						<ContextMenu.Item
+							className={cn(CONTEXT_MENU_ITEM_CLASS, isLocked && "opacity-50 cursor-not-allowed")}
+							disabled={isLocked}
+							onSelect={() => onRename(gitRef.name)}
+						>
+							<Pencil size={14} className="text-text-secondary" />
+							Rename branch
 						</ContextMenu.Item>
 					) : null}
 					{onDeleteBranch && gitRef.type === "branch" ? (

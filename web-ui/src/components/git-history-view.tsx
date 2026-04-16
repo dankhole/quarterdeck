@@ -107,6 +107,9 @@ interface GitHistoryViewProps {
 	onCheckoutBranch?: (branch: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
 	onPullLatest?: () => void;
+	onRebaseBranch?: (onto: string) => void;
+	onRenameBranch?: (branchName: string) => void;
+	onResetToRef?: (ref: string) => void;
 	/** Task scope for cherry-pick operations (null = home repo context). */
 	taskScope?: { taskId: string; baseRef: string } | null;
 	/** When true, skip the cherry-pick confirmation dialog and execute immediately. */
@@ -119,6 +122,9 @@ export function GitHistoryView({
 	onCheckoutBranch,
 	onCreateBranch,
 	onPullLatest,
+	onRebaseBranch,
+	onRenameBranch,
+	onResetToRef,
 	taskScope,
 	skipCherryPickConfirmation = false,
 }: GitHistoryViewProps): React.ReactElement {
@@ -344,6 +350,9 @@ export function GitHistoryView({
 					onCheckoutRef={onCheckoutBranch}
 					onCreateBranch={onCreateBranch}
 					onPullLatest={onPullLatest}
+					onRebaseBranch={onRebaseBranch}
+					onRenameBranch={onRenameBranch}
+					onResetToRef={onResetToRef}
 				/>
 				<ResizeHandle
 					orientation="vertical"

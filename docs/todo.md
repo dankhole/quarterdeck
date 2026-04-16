@@ -46,10 +46,9 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - Pull/push to remote — context menu action on any local branch (non-current branches use `git fetch origin X:X` for pull and `git push origin X` for push), task-scoped with worktree directory resolution, ahead/behind indicators on branch pill
 - Commit & Push — combined commit-and-push button in commit sidebar with detached HEAD detection
 - Stash / unstash — stash button in commit sidebar (respects file selection, always includes untracked), collapsible stash list with pop/apply/drop/diff-preview, "Stash & Switch" for blocked checkouts, "Stash & Pull" with atomic stash→pull→auto-pop
-
-**Tier 2 — Valuable but less frequent:**
-- **Rebase onto** — Rebase a task branch onto latest main before merging. Keeps history linear. (Note: conflict resolution and abort for in-progress rebases are already fully implemented — this is just the initiation action.)
-- **Rename branch** — Minor convenience but nice for fixing typos.
+- Rebase onto — context menu action on any non-current branch, rebases current branch onto selected ref, integrates with existing conflict resolver for multi-round rebase conflicts, confirmation dialog warns about history rewriting
+- Rename branch — context menu action on local branches, dialog with pre-filled editable input, disabled on worktree-locked branches
+- Reset to here — context menu action on any branch/ref, performs `git reset --hard` to selected ref, danger-styled confirmation dialog, works in both home repo and task worktrees
 
 **Tier 3 — Nice-to-have, power user:**
 - **Interactive rebase** (reorder/squash commits) — Hard to do well in UI, questionable ROI.
@@ -58,8 +57,8 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 - **Revert commit** — Undo a specific commit without rewriting history.
 
 **UI surface areas:**
-- Branch context menu in `BranchSelectorPopover` — merge done; add delete, rename, create branch actions
-- Branch context menu in `GitRefsPanel` (git history view) — extend with the same actions
+- Branch context menu in `BranchSelectorPopover` — checkout, compare, merge, create, delete, rename, rebase, reset, pull, push, pin
+- Branch context menu in `GitRefsPanel` (git history view) — checkout, create, pull, rebase, rename, reset
 - Git view tab bar or toolbar — stash controls, conflict state indicator, abort button
 
 ## Per-task session identity for non-isolated tasks
@@ -216,6 +215,10 @@ The yellow "needs input" indicator on the board icon sometimes shows for project
 
 The diff viewer has some inline comment infrastructure. Investigate how it currently works (or doesn't), what state it's in, and whether it's usable or needs work. Document findings.
 
-## "Reset to here" in branch context menu
+## Skip trash confirmation when task has no uncommitted or unmerged changes
 
-Add a "Reset to here" action in the top-bar branch context menu that performs `git reset --hard <selected-ref>` on the task's worktree branch. Must include a confirmation dialog ("Are you sure? This will discard all commits after X and any uncommitted changes."). This is per-worktree only — never touches the main repo.
+The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
+
+## Audit default branch resolution for bugs
+
+The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.

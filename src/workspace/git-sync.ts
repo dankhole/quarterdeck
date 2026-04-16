@@ -4,6 +4,8 @@ import type {
 	RuntimeGitCreateBranchResponse,
 	RuntimeGitDeleteBranchResponse,
 	RuntimeGitDiscardResponse,
+	RuntimeGitRenameBranchResponse,
+	RuntimeGitResetToRefResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
@@ -211,6 +213,76 @@ export async function deleteBranch(options: {
 	}
 
 	return { ok: true, branchName };
+}
+
+export async function renameBranch(options: {
+	cwd: string;
+	oldName: string;
+	newName: string;
+}): Promise<RuntimeGitRenameBranchResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const oldName = options.oldName.trim();
+	const newName = options.newName.trim();
+
+	if (!oldName || !validateGitRef(oldName)) {
+		return { ok: false, oldName, newName, error: "Invalid current branch name." };
+	}
+	if (!newName || !validateGitRef(newName)) {
+		return { ok: false, oldName, newName, error: "Invalid new branch name." };
+	}
+
+	const exists = await hasGitRef(repoRoot, `refs/heads/${oldName}`);
+	if (!exists) {
+		return { ok: false, oldName, newName, error: `Branch "${oldName}" does not exist locally.` };
+	}
+
+	const targetExists = await hasGitRef(repoRoot, `refs/heads/${newName}`);
+	if (targetExists) {
+		return { ok: false, oldName, newName, error: `Branch "${newName}" already exists.` };
+	}
+
+	const renameResult = await runGit(repoRoot, ["branch", "-m", oldName, newName]);
+	if (!renameResult.ok) {
+		return {
+			ok: false,
+			oldName,
+			newName,
+			error: renameResult.error ?? "Failed to rename branch.",
+		};
+	}
+
+	return { ok: true, oldName, newName };
+}
+
+export async function resetToRef(options: { cwd: string; ref: string }): Promise<RuntimeGitResetToRefResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const targetRef = options.ref.trim();
+
+	if (!targetRef || !validateGitRef(targetRef)) {
+		const summary = await getGitSyncSummary(repoRoot);
+		return { ok: false, ref: targetRef, summary, output: "", error: "Invalid ref." };
+	}
+
+	const verifyResult = await runGit(repoRoot, ["rev-parse", "--verify", targetRef]);
+	if (!verifyResult.ok) {
+		const summary = await getGitSyncSummary(repoRoot);
+		return { ok: false, ref: targetRef, summary, output: "", error: `Ref "${targetRef}" does not exist.` };
+	}
+
+	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef]);
+	const summary = await getGitSyncSummary(repoRoot);
+
+	if (!resetResult.ok) {
+		return {
+			ok: false,
+			ref: targetRef,
+			summary,
+			output: resetResult.output,
+			error: resetResult.error ?? "Reset failed.",
+		};
+	}
+
+	return { ok: true, ref: targetRef, summary, output: resetResult.output };
 }
 
 export async function discardGitChanges(options: { cwd: string }): Promise<RuntimeGitDiscardResponse> {

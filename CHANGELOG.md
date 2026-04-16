@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Branch management — rebase onto, rename branch, reset to here
+
+- **Rebase onto** — context menu action in branch selector popover and git history refs panel. Rebases the current branch onto the selected ref. Integrates with the existing conflict resolver for multi-round rebase conflicts. Confirmation dialog warns about history rewriting. Disabled on current branch.
+- **Rename branch** — context menu action on local branches. Dialog with pre-filled editable input. Validates uniqueness and disables on worktree-locked branches.
+- **Reset to here** — context menu action on any branch or ref. Performs `git reset --hard` to the selected ref. Danger-styled confirmation dialog. Works in both home repo and task-scoped worktrees.
+
 ### Perf: headless mirror batching and scrollback reduction
 
 - Server-side headless terminal mirrors now batch output writes when no browser viewer is connected — chunks accumulate for up to 160ms and flush as a single `terminal.write()`, dramatically reducing event loop contention with many concurrent agents.

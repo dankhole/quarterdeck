@@ -37,6 +37,9 @@ interface UseBranchActionsOptions {
 
 export type DeleteBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
 export type MergeBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
+export type RebaseBranchDialogState = { type: "closed" } | { type: "open"; onto: string };
+export type RenameBranchDialogState = { type: "closed" } | { type: "open"; branchName: string };
+export type ResetToRefDialogState = { type: "closed" } | { type: "open"; ref: string };
 
 export interface UseBranchActionsResult {
 	isBranchPopoverOpen: boolean;
@@ -63,6 +66,18 @@ export interface UseBranchActionsResult {
 	handleDeleteBranch: (branch: string) => void;
 	handleConfirmDeleteBranch: () => void;
 	closeDeleteBranchDialog: () => void;
+	rebaseBranchDialogState: RebaseBranchDialogState;
+	handleRebaseBranch: (onto: string) => void;
+	handleConfirmRebaseBranch: () => void;
+	closeRebaseBranchDialog: () => void;
+	renameBranchDialogState: RenameBranchDialogState;
+	handleRenameBranch: (branch: string) => void;
+	handleConfirmRenameBranch: (newName: string) => void;
+	closeRenameBranchDialog: () => void;
+	resetToRefDialogState: ResetToRefDialogState;
+	handleResetToRef: (ref: string) => void;
+	handleConfirmResetToRef: () => void;
+	closeResetToRefDialog: () => void;
 }
 
 export function useBranchActions(options: UseBranchActionsOptions): UseBranchActionsResult {
@@ -347,6 +362,123 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		[refetchRefs, handleCheckoutBranch],
 	);
 
+	// Rebase branch dialog
+	const [rebaseBranchDialogState, setRebaseBranchDialogState] = useState<RebaseBranchDialogState>({ type: "closed" });
+
+	const handleRebaseBranch = useCallback((onto: string) => {
+		setRebaseBranchDialogState({ type: "open", onto });
+	}, []);
+
+	const closeRebaseBranchDialog = useCallback(() => {
+		setRebaseBranchDialogState({ type: "closed" });
+	}, []);
+
+	const handleConfirmRebaseBranch = useCallback(async () => {
+		if (!workspaceId || rebaseBranchDialogState.type !== "open") {
+			return;
+		}
+		const { onto } = rebaseBranchDialogState;
+		setRebaseBranchDialogState({ type: "closed" });
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const result = await trpc.workspace.rebaseBranch.mutate({
+				onto,
+				...(taskId ? { taskId } : {}),
+				...(baseRef ? { baseRef } : {}),
+			});
+			if (result.ok) {
+				showAppToast({
+					intent: "success",
+					message: `Rebased onto ${onto}`,
+				});
+			} else if (result.conflictState) {
+				showAppToast({ intent: "warning", message: "Rebase has conflicts \u2014 opening resolver" });
+				onConflictDetected?.();
+			} else {
+				showAppToast({ intent: "danger", message: result.error ?? `Failed to rebase onto ${onto}` });
+			}
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: `Rebase failed: ${toErrorMessage(error)}`,
+			});
+		}
+	}, [workspaceId, rebaseBranchDialogState, taskId, baseRef, onConflictDetected]);
+
+	// Rename branch dialog
+	const [renameBranchDialogState, setRenameBranchDialogState] = useState<RenameBranchDialogState>({ type: "closed" });
+
+	const handleRenameBranch = useCallback((branch: string) => {
+		setRenameBranchDialogState({ type: "open", branchName: branch });
+	}, []);
+
+	const closeRenameBranchDialog = useCallback(() => {
+		setRenameBranchDialogState({ type: "closed" });
+	}, []);
+
+	const handleConfirmRenameBranch = useCallback(
+		async (newName: string) => {
+			if (!workspaceId || renameBranchDialogState.type !== "open") {
+				return;
+			}
+			const { branchName: oldName } = renameBranchDialogState;
+			setRenameBranchDialogState({ type: "closed" });
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				const result = await trpc.workspace.renameBranch.mutate({ oldName, newName });
+				if (result.ok) {
+					showAppToast({ intent: "success", message: `Renamed ${oldName} to ${newName}` });
+					void refetchRefs();
+				} else {
+					showAppToast({ intent: "danger", message: result.error ?? `Failed to rename ${oldName}` });
+				}
+			} catch (error) {
+				showAppToast({
+					intent: "danger",
+					message: `Rename failed: ${toErrorMessage(error)}`,
+				});
+			}
+		},
+		[workspaceId, renameBranchDialogState, refetchRefs],
+	);
+
+	// Reset to ref dialog
+	const [resetToRefDialogState, setResetToRefDialogState] = useState<ResetToRefDialogState>({ type: "closed" });
+
+	const handleResetToRef = useCallback((ref: string) => {
+		setResetToRefDialogState({ type: "open", ref });
+	}, []);
+
+	const closeResetToRefDialog = useCallback(() => {
+		setResetToRefDialogState({ type: "closed" });
+	}, []);
+
+	const handleConfirmResetToRef = useCallback(async () => {
+		if (!workspaceId || resetToRefDialogState.type !== "open") {
+			return;
+		}
+		const { ref } = resetToRefDialogState;
+		setResetToRefDialogState({ type: "closed" });
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const result = await trpc.workspace.resetToRef.mutate({
+				ref,
+				...(taskId ? { taskId } : {}),
+				...(baseRef ? { baseRef } : {}),
+			});
+			if (result.ok) {
+				showAppToast({ intent: "success", message: `Reset to ${ref}` });
+			} else {
+				showAppToast({ intent: "danger", message: result.error ?? `Failed to reset to ${ref}` });
+			}
+		} catch (error) {
+			showAppToast({
+				intent: "danger",
+				message: `Reset failed: ${toErrorMessage(error)}`,
+			});
+		}
+	}, [workspaceId, resetToRefDialogState, taskId, baseRef]);
+
 	return {
 		isBranchPopoverOpen,
 		setBranchPopoverOpen,
@@ -372,5 +504,17 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		handleDeleteBranch,
 		handleConfirmDeleteBranch,
 		closeDeleteBranchDialog,
+		rebaseBranchDialogState,
+		handleRebaseBranch,
+		handleConfirmRebaseBranch,
+		closeRebaseBranchDialog,
+		renameBranchDialogState,
+		handleRenameBranch,
+		handleConfirmRenameBranch,
+		closeRenameBranchDialog,
+		resetToRefDialogState,
+		handleResetToRef,
+		handleConfirmResetToRef,
+		closeResetToRefDialog,
 	};
 }

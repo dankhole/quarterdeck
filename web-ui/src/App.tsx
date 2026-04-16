@@ -781,6 +781,9 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 										onPullLatest={() => {
 											void git.runGitAction("pull", git.gitHistoryTaskScope);
 										}}
+										onRebaseBranch={git.fileBrowserBranchActions.handleRebaseBranch}
+										onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
+										onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 										taskScope={git.gitHistoryTaskScope}
 										skipCherryPickConfirmation={project.skipCherryPickConfirmation}
 									/>

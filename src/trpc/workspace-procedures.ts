@@ -33,7 +33,13 @@ import {
 	runtimeGitLogResponseSchema,
 	runtimeGitMergeRequestSchema,
 	runtimeGitMergeResponseSchema,
+	runtimeGitRebaseRequestSchema,
+	runtimeGitRebaseResponseSchema,
 	runtimeGitRefsResponseSchema,
+	runtimeGitRenameBranchRequestSchema,
+	runtimeGitRenameBranchResponseSchema,
+	runtimeGitResetToRefRequestSchema,
+	runtimeGitResetToRefResponseSchema,
 	runtimeGitSummaryResponseSchema,
 	runtimeGitSyncActionSchema,
 	runtimeGitSyncResponseSchema,
@@ -146,6 +152,24 @@ export const workspaceRouter = t.router({
 		.output(runtimeGitDeleteBranchResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.workspaceApi.deleteBranch(ctx.workspaceScope, input);
+		}),
+	renameBranch: workspaceProcedure
+		.input(runtimeGitRenameBranchRequestSchema)
+		.output(runtimeGitRenameBranchResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.renameBranch(ctx.workspaceScope, input);
+		}),
+	rebaseBranch: workspaceProcedure
+		.input(runtimeGitRebaseRequestSchema)
+		.output(runtimeGitRebaseResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.rebaseBranch(ctx.workspaceScope, input);
+		}),
+	resetToRef: workspaceProcedure
+		.input(runtimeGitResetToRefRequestSchema)
+		.output(runtimeGitResetToRefResponseSchema)
+		.mutation(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.resetToRef(ctx.workspaceScope, input);
 		}),
 	cherryPickCommit: workspaceProcedure
 		.input(runtimeGitCherryPickRequestSchema)

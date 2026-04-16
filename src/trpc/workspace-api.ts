@@ -43,6 +43,7 @@ import {
 	getConflictFileContent,
 	resolveConflictFile as gitResolveConflictFile,
 	runGitMergeAction,
+	runGitRebaseAction,
 } from "../workspace/git-conflict";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
 import { getGitSyncSummary } from "../workspace/git-probe";
@@ -53,6 +54,8 @@ import {
 	deleteBranch,
 	discardGitChanges,
 	discardSingleFile,
+	renameBranch,
+	resetToRef,
 	runGitCheckoutAction,
 	runGitSyncAction,
 } from "../workspace/git-sync";
@@ -488,6 +491,118 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return result;
 			} catch (error) {
 				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
+			}
+		},
+
+		renameBranch: async (workspaceScope, input) => {
+			try {
+				const result = await renameBranch({
+					cwd: workspaceScope.workspacePath,
+					oldName: input.oldName,
+					newName: input.newName,
+				});
+				if (result.ok) broadcastStateUpdate(workspaceScope);
+				return result;
+			} catch (error) {
+				return { ok: false as const, oldName: input.oldName, newName: input.newName, error: errorMessage(error) };
+			}
+		},
+
+		rebaseBranch: async (workspaceScope, input) => {
+			try {
+				const ontoRef = input.onto.trim();
+				if (!ontoRef) {
+					return {
+						ok: false as const,
+						onto: ontoRef,
+						summary: { ...EMPTY_GIT_SUMMARY },
+						output: "",
+						error: "Target ref cannot be empty.",
+					};
+				}
+
+				if (input.taskId) {
+					const taskCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: input.baseRef ?? "",
+					});
+					const response = await runGitRebaseAction({ cwd: taskCwd, onto: ontoRef });
+					if (response.ok || response.conflictState) {
+						deps.broadcaster.requestTaskRefresh(workspaceScope.workspaceId, input.taskId);
+					}
+					return response;
+				}
+
+				if (await hasActiveSharedCheckoutTask(workspaceScope.workspacePath)) {
+					return {
+						ok: false as const,
+						onto: ontoRef,
+						summary: { ...EMPTY_GIT_SUMMARY },
+						output: "",
+						error: "Cannot rebase while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+					};
+				}
+				const response = await runGitRebaseAction({ cwd: workspaceScope.workspacePath, onto: ontoRef });
+				if (response.ok || response.conflictState) broadcastStateUpdate(workspaceScope);
+				return response;
+			} catch (error) {
+				return {
+					ok: false as const,
+					onto: input.onto,
+					summary: { ...EMPTY_GIT_SUMMARY },
+					output: "",
+					error: errorMessage(error),
+				};
+			}
+		},
+
+		resetToRef: async (workspaceScope, input) => {
+			try {
+				const targetRef = input.ref.trim();
+				if (!targetRef) {
+					return {
+						ok: false as const,
+						ref: targetRef,
+						summary: { ...EMPTY_GIT_SUMMARY },
+						output: "",
+						error: "Target ref cannot be empty.",
+					};
+				}
+
+				if (input.taskId) {
+					const taskCwd = await resolveTaskWorkingDirectory({
+						workspacePath: workspaceScope.workspacePath,
+						taskId: input.taskId,
+						baseRef: input.baseRef ?? "",
+					});
+					const response = await resetToRef({ cwd: taskCwd, ref: targetRef });
+					if (response.ok) {
+						deps.broadcaster.requestTaskRefresh(workspaceScope.workspaceId, input.taskId);
+					}
+					return response;
+				}
+
+				if (await hasActiveSharedCheckoutTask(workspaceScope.workspacePath)) {
+					return {
+						ok: false as const,
+						ref: targetRef,
+						summary: { ...EMPTY_GIT_SUMMARY },
+						output: "",
+						error: "Cannot reset while a task in the shared checkout is in progress or review. Isolate the task or move it to another column first.",
+					};
+				}
+				const response = await resetToRef({ cwd: workspaceScope.workspacePath, ref: targetRef });
+				if (response.ok) broadcastStateUpdate(workspaceScope);
+				return response;
+			} catch (error) {
+				return {
+					ok: false as const,
+					ref: input.ref,
+					summary: { ...EMPTY_GIT_SUMMARY },
+					output: "",
+					error: errorMessage(error),
+				};
 			}
 		},
 

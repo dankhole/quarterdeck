@@ -8,6 +8,7 @@ import type {
 	RuntimeConflictFile,
 	RuntimeConflictState,
 	RuntimeGitMergeResponse,
+	RuntimeGitRebaseResponse,
 } from "../core/api-contract";
 import { getGitSyncSummary } from "./git-probe";
 import { resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
@@ -325,6 +326,69 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 	}
 
 	return { ok: true, summary };
+}
+
+// ---------------------------------------------------------------------------
+// Rebase action
+// ---------------------------------------------------------------------------
+
+export async function runGitRebaseAction(options: { cwd: string; onto: string }): Promise<RuntimeGitRebaseResponse> {
+	const ontoRef = options.onto.trim();
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const initialSummary = await getGitSyncSummary(repoRoot);
+
+	if (!ontoRef || !validateGitRef(ontoRef)) {
+		return {
+			ok: false,
+			onto: ontoRef,
+			summary: initialSummary,
+			output: "",
+			error: "Invalid ref name.",
+		};
+	}
+
+	const rebaseResult = await runGit(repoRoot, ["rebase", ontoRef]);
+
+	if (!rebaseResult.ok) {
+		const lsUnmerged = await runGit(repoRoot, ["ls-files", "-u"]);
+		const hasConflicts = lsUnmerged.ok && lsUnmerged.stdout.trim().length > 0;
+
+		if (hasConflicts) {
+			const conflictedFiles = await getConflictedFiles(repoRoot);
+			const autoMergedFiles = await computeAutoMergedFiles(repoRoot, conflictedFiles);
+			const conflictState = await getConflictState(repoRoot, {
+				operation: "rebase",
+				sourceBranch: initialSummary.currentBranch ?? undefined,
+				autoMergedFiles,
+			});
+			const conflictSummary = await getGitSyncSummary(repoRoot);
+			return {
+				ok: false,
+				onto: ontoRef,
+				summary: conflictSummary,
+				output: rebaseResult.output,
+				conflictState: conflictState ?? undefined,
+			};
+		}
+
+		await runGit(repoRoot, ["rebase", "--abort"]);
+		const abortedSummary = await getGitSyncSummary(repoRoot);
+		return {
+			ok: false,
+			onto: ontoRef,
+			summary: abortedSummary,
+			output: rebaseResult.output,
+			error: rebaseResult.error ?? `Rebase onto ${ontoRef} failed and was aborted.`,
+		};
+	}
+
+	const nextSummary = await getGitSyncSummary(repoRoot);
+	return {
+		ok: true,
+		onto: ontoRef,
+		summary: nextSummary,
+		output: rebaseResult.output,
+	};
 }
 
 // ---------------------------------------------------------------------------

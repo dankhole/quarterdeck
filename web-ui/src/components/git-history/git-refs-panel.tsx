@@ -12,6 +12,8 @@ import {
 	Info,
 	Locate,
 	LogIn,
+	Pencil,
+	RotateCcw,
 	Search,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -19,6 +21,7 @@ import { useMemo, useState } from "react";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/detail-panels/context-menu-utils";
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeGitRef } from "@/runtime/types";
 
@@ -89,6 +92,9 @@ export function GitRefsPanel({
 	onCheckoutRef,
 	onCreateBranch,
 	onPullLatest,
+	onRebaseBranch,
+	onRenameBranch,
+	onResetToRef,
 }: {
 	refs: RuntimeGitRef[];
 	selectedRefName: string | null;
@@ -101,6 +107,9 @@ export function GitRefsPanel({
 	onSelectWorkingCopy?: () => void;
 	onCheckoutRef?: (branchName: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
+	onRebaseBranch?: (onto: string) => void;
+	onRenameBranch?: (branchName: string) => void;
+	onResetToRef?: (ref: string) => void;
 	onPullLatest?: () => void;
 }): React.ReactElement {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -242,9 +251,13 @@ export function GitRefsPanel({
 						{headBranch ? (
 							<RefContextMenu
 								refName={headBranch.name}
+								isHead
 								onCheckoutRef={undefined}
 								onCreateBranch={onCreateBranch}
 								onPullLatest={onPullLatest}
+								onRebaseBranch={onRebaseBranch}
+								onRenameBranch={onRenameBranch}
+								onResetToRef={onResetToRef}
 							>
 								<RefRow isSelected={isHeadBranchSelected} onSelect={() => onSelectRef(headBranch)}>
 									<GitBranch size={12} />
@@ -297,6 +310,9 @@ export function GitRefsPanel({
 									refName={ref.name}
 									onCheckoutRef={onCheckoutRef}
 									onCreateBranch={onCreateBranch}
+									onRebaseBranch={onRebaseBranch}
+									onRenameBranch={onRenameBranch}
+									onResetToRef={onResetToRef}
 								>
 									<RefRow
 										isSelected={isSelected}
@@ -328,6 +344,8 @@ export function GitRefsPanel({
 											refName={ref.name}
 											onCheckoutRef={undefined}
 											onCreateBranch={onCreateBranch}
+											onRebaseBranch={onRebaseBranch}
+											onResetToRef={onResetToRef}
 										>
 											<RefRow isSelected={isSelected} onSelect={() => onSelectRef(ref)}>
 												<Cloud size={12} />
@@ -383,18 +401,27 @@ function SectionLabel({ children }: { children: React.ReactNode }): React.ReactE
 
 function RefContextMenu({
 	refName,
+	isHead,
 	onCheckoutRef,
 	onCreateBranch,
 	onPullLatest,
+	onRebaseBranch,
+	onRenameBranch,
+	onResetToRef,
 	children,
 }: {
 	refName: string;
+	isHead?: boolean;
 	onCheckoutRef?: (branchName: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
 	onPullLatest?: () => void;
+	onRebaseBranch?: (onto: string) => void;
+	onRenameBranch?: (branchName: string) => void;
+	onResetToRef?: (ref: string) => void;
 	children: React.ReactNode;
 }): React.ReactElement {
-	const hasActions = onCheckoutRef || onCreateBranch || onPullLatest;
+	const hasActions =
+		onCheckoutRef || onCreateBranch || onPullLatest || onRebaseBranch || onRenameBranch || onResetToRef;
 	if (!hasActions) {
 		return <>{children}</>;
 	}
@@ -421,7 +448,29 @@ function RefContextMenu({
 							Create branch from here
 						</ContextMenu.Item>
 					) : null}
-					{onCheckoutRef || onCreateBranch || onPullLatest ? (
+					{onRebaseBranch ? (
+						<ContextMenu.Item
+							className={cn(CONTEXT_MENU_ITEM_CLASS, isHead && "opacity-50 cursor-not-allowed")}
+							disabled={isHead}
+							onSelect={() => onRebaseBranch(refName)}
+						>
+							<RotateCcw size={14} className="text-text-secondary" />
+							Rebase onto
+						</ContextMenu.Item>
+					) : null}
+					{onRenameBranch ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onRenameBranch(refName)}>
+							<Pencil size={14} className="text-text-secondary" />
+							Rename branch
+						</ContextMenu.Item>
+					) : null}
+					{onResetToRef ? (
+						<ContextMenu.Item className={CONTEXT_MENU_ITEM_CLASS} onSelect={() => onResetToRef(refName)}>
+							<RotateCcw size={14} className="text-status-red" />
+							Reset to here
+						</ContextMenu.Item>
+					) : null}
+					{onCheckoutRef || onCreateBranch || onPullLatest || onRebaseBranch || onRenameBranch || onResetToRef ? (
 						<ContextMenu.Separator className="my-1 h-px bg-border" />
 					) : null}
 					<ContextMenu.Item

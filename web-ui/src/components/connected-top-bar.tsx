@@ -106,6 +106,9 @@ export function ConnectedTopBar({
 							onMergeBranch={git.topbarBranchActions.handleMergeBranch}
 							onCreateBranch={git.topbarBranchActions.handleCreateBranchFrom}
 							onDeleteBranch={git.topbarBranchActions.handleDeleteBranch}
+							onRebaseBranch={git.topbarBranchActions.handleRebaseBranch}
+							onRenameBranch={git.topbarBranchActions.handleRenameBranch}
+							onResetToRef={git.topbarBranchActions.handleResetToRef}
 							onPull={(branch) => {
 								void git.runGitAction("pull", git.gitSyncTaskScope ?? null, branch);
 							}}

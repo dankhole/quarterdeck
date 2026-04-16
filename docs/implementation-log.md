@@ -2,6 +2,33 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Branch management tier 2: rebase onto, rename branch, reset to here (2026-04-16)
+
+**What:** Added three new branch operations to the context menus in both the top-bar `BranchSelectorPopover` and the git history `GitRefsPanel`: "Rebase onto", "Rename branch", and "Reset to here". Each has a confirmation dialog, full task-scoped worktree support, and toast feedback.
+
+**Backend (5 files):**
+- `src/core/api/git-sync.ts` — added `runtimeGitRenameBranchRequest/Response` and `runtimeGitResetToRefRequest/Response` Zod schemas + types
+- `src/core/api/git-merge.ts` — added `runtimeGitRebaseRequest/Response` schemas (placed after `runtimeConflictStateSchema` to avoid forward reference)
+- `src/workspace/git-conflict.ts` — added `runGitRebaseAction()` — runs `git rebase <onto>`, detects conflicts via `ls-files -u`, auto-aborts on non-conflict failure, returns `RuntimeGitRebaseResponse` with optional `conflictState`
+- `src/workspace/git-sync.ts` — added `renameBranch()` (`git branch -m`) with existence/uniqueness validation, and `resetToRef()` (`git reset --hard`) with ref verification
+- `src/trpc/app-router-context.ts` — added `renameBranch`, `rebaseBranch`, `resetToRef` to the `workspaceApi` interface
+- `src/trpc/workspace-procedures.ts` — added three new tRPC mutations wired to the workspace API
+- `src/trpc/workspace-api.ts` — implemented the three methods: rebase and reset support task-scoped worktree resolution and shared-checkout guards; rename operates on the home repo only
+
+**Frontend (12 files):**
+- `web-ui/src/hooks/git/use-branch-actions.ts` — added `RebaseBranchDialogState`, `RenameBranchDialogState`, `ResetToRefDialogState` types, dialog state + open/close/confirm handlers for all three, wired to tRPC mutations with toast feedback and conflict detection callbacks
+- `web-ui/src/components/detail-panels/rebase-branch-dialog.tsx` — new confirmation dialog (primary variant, warns about history rewriting)
+- `web-ui/src/components/detail-panels/rename-branch-dialog.tsx` — new dialog with text input, ref-based focus, Enter-to-submit, validates non-empty and different-from-current
+- `web-ui/src/components/detail-panels/reset-to-ref-dialog.tsx` — new confirmation dialog (danger variant, warns about permanent data loss)
+- `web-ui/src/components/detail-panels/branch-selector-popover.tsx` — added `onRebaseBranch`, `onRenameBranch`, `onResetToRef` callback props, threaded through to `BranchItem`, rendered as context menu items (rebase/reset on all branches, rename on local only)
+- `web-ui/src/components/git-history/git-refs-panel.tsx` — added same three callbacks to `GitRefsPanel` and `RefContextMenu`, rendered with appropriate disabled states
+- `web-ui/src/components/connected-top-bar.tsx` — passed the three new handlers from `topbarBranchActions` to `BranchSelectorPopover`
+- `web-ui/src/components/home-view.tsx` — passed handlers to both the file browser `BranchSelectorPopover` and `GitHistoryView`
+- `web-ui/src/components/git-history-view.tsx` — added three new props, threaded to `GitRefsPanel`
+- `web-ui/src/App.tsx` — passed handlers to the board-level `GitHistoryView`
+- `web-ui/src/components/app-dialogs.tsx` — rendered all six new dialog instances (2 each × fileBrowser + topbar scopes)
+- `web-ui/src/components/card-detail-view.test.tsx` — added the 12 new properties to both mock `UseBranchActionsResult` objects
+
 ## Perf: headless mirror batching and scrollback reduction (2026-04-16)
 
 **Problem:** With many agents running simultaneously, the terminal UI becomes laggy. Investigation revealed the bottleneck is server-side event loop saturation — every PTY output byte from every agent goes through a headless xterm `terminal.write()` (full ANSI parsing, cursor movement, line wrapping), each as a separate Promise-chained operation. With 8+ agents, this starves the event loop and delays WebSocket sends to the visible terminal.

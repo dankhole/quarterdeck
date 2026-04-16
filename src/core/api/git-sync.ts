@@ -114,3 +114,33 @@ export const runtimeGitDiscardFileRequestSchema = z.object({
 	fileStatus: runtimeWorkspaceFileStatusSchema,
 });
 export type RuntimeGitDiscardFileRequest = z.infer<typeof runtimeGitDiscardFileRequestSchema>;
+
+export const runtimeGitRenameBranchRequestSchema = z.object({
+	oldName: z.string().min(1),
+	newName: z.string().min(1),
+});
+export type RuntimeGitRenameBranchRequest = z.infer<typeof runtimeGitRenameBranchRequestSchema>;
+
+export const runtimeGitRenameBranchResponseSchema = z.object({
+	ok: z.boolean(),
+	oldName: z.string(),
+	newName: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitRenameBranchResponse = z.infer<typeof runtimeGitRenameBranchResponseSchema>;
+
+export const runtimeGitResetToRefRequestSchema = z.object({
+	ref: z.string().min(1),
+	taskId: z.string().optional(),
+	baseRef: z.string().optional(),
+});
+export type RuntimeGitResetToRefRequest = z.infer<typeof runtimeGitResetToRefRequestSchema>;
+
+export const runtimeGitResetToRefResponseSchema = z.object({
+	ok: z.boolean(),
+	ref: z.string(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitResetToRefResponse = z.infer<typeof runtimeGitResetToRefResponseSchema>;

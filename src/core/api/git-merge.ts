@@ -28,6 +28,23 @@ export const runtimeConflictStateSchema = z.object({
 });
 export type RuntimeConflictState = z.infer<typeof runtimeConflictStateSchema>;
 
+export const runtimeGitRebaseRequestSchema = z.object({
+	onto: z.string().min(1),
+	taskId: z.string().optional(),
+	baseRef: z.string().optional(),
+});
+export type RuntimeGitRebaseRequest = z.infer<typeof runtimeGitRebaseRequestSchema>;
+
+export const runtimeGitRebaseResponseSchema = z.object({
+	ok: z.boolean(),
+	onto: z.string(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	conflictState: runtimeConflictStateSchema.optional(),
+	error: z.string().optional(),
+});
+export type RuntimeGitRebaseResponse = z.infer<typeof runtimeGitRebaseResponseSchema>;
+
 // Auto-merged file content (non-conflicting changes git merged automatically)
 export const runtimeAutoMergedFileSchema = z.object({
 	path: z.string(),

@@ -34,7 +34,13 @@ import type {
 	RuntimeGitLogResponse,
 	RuntimeGitMergeRequest,
 	RuntimeGitMergeResponse,
+	RuntimeGitRebaseRequest,
+	RuntimeGitRebaseResponse,
 	RuntimeGitRefsResponse,
+	RuntimeGitRenameBranchRequest,
+	RuntimeGitRenameBranchResponse,
+	RuntimeGitResetToRefRequest,
+	RuntimeGitResetToRefResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
@@ -179,6 +185,18 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitDeleteBranchRequest,
 		) => Promise<RuntimeGitDeleteBranchResponse>;
+		renameBranch: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitRenameBranchRequest,
+		) => Promise<RuntimeGitRenameBranchResponse>;
+		rebaseBranch: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitRebaseRequest,
+		) => Promise<RuntimeGitRebaseResponse>;
+		resetToRef: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitResetToRefRequest,
+		) => Promise<RuntimeGitResetToRefResponse>;
 		cherryPickCommit: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCherryPickRequest,

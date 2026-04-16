@@ -114,6 +114,9 @@ export function HomeView({
 												onPullLatest={() => {
 													void git.runGitAction("pull");
 												}}
+												onRebaseBranch={git.fileBrowserBranchActions.handleRebaseBranch}
+												onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
+												onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 												taskScope={git.gitHistoryTaskScope}
 												skipCherryPickConfirmation={project.skipCherryPickConfirmation}
 											/>
@@ -148,6 +151,9 @@ export function HomeView({
 													onMergeBranch={git.fileBrowserBranchActions.handleMergeBranch}
 													onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
 													onDeleteBranch={git.fileBrowserBranchActions.handleDeleteBranch}
+													onRebaseBranch={git.fileBrowserBranchActions.handleRebaseBranch}
+													onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
+													onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 													onPull={
 														git.fileBrowserResolvedScope?.type !== "branch_view"
 															? (branch) => {

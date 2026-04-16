@@ -5,6 +5,9 @@ import { CheckoutConfirmationDialog } from "@/components/detail-panels/checkout-
 import { CreateBranchDialog } from "@/components/detail-panels/create-branch-dialog";
 import { DeleteBranchDialog } from "@/components/detail-panels/delete-branch-dialog";
 import { MergeBranchDialog } from "@/components/detail-panels/merge-branch-dialog";
+import { RebaseBranchDialog } from "@/components/detail-panels/rebase-branch-dialog";
+import { RenameBranchDialog } from "@/components/detail-panels/rename-branch-dialog";
+import { ResetToRefDialog } from "@/components/detail-panels/reset-to-ref-dialog";
 import { GitActionErrorDialog } from "@/components/git-action-error-dialog";
 import { HardDeleteTaskDialog } from "@/components/hard-delete-task-dialog";
 import { MigrateWorkingDirectoryDialog } from "@/components/migrate-working-directory-dialog";
@@ -211,6 +214,68 @@ export function AppDialogs({
 				currentBranch={git.topbarBranchActions.currentBranch ?? "current branch"}
 				onCancel={git.topbarBranchActions.closeMergeBranchDialog}
 				onConfirm={git.topbarBranchActions.handleConfirmMergeBranch}
+			/>
+			<RebaseBranchDialog
+				open={git.fileBrowserBranchActions.rebaseBranchDialogState.type === "open"}
+				onto={
+					git.fileBrowserBranchActions.rebaseBranchDialogState.type === "open"
+						? git.fileBrowserBranchActions.rebaseBranchDialogState.onto
+						: ""
+				}
+				currentBranch={git.fileBrowserBranchActions.currentBranch ?? "current branch"}
+				onCancel={git.fileBrowserBranchActions.closeRebaseBranchDialog}
+				onConfirm={git.fileBrowserBranchActions.handleConfirmRebaseBranch}
+			/>
+			<RebaseBranchDialog
+				open={git.topbarBranchActions.rebaseBranchDialogState.type === "open"}
+				onto={
+					git.topbarBranchActions.rebaseBranchDialogState.type === "open"
+						? git.topbarBranchActions.rebaseBranchDialogState.onto
+						: ""
+				}
+				currentBranch={git.topbarBranchActions.currentBranch ?? "current branch"}
+				onCancel={git.topbarBranchActions.closeRebaseBranchDialog}
+				onConfirm={git.topbarBranchActions.handleConfirmRebaseBranch}
+			/>
+			<RenameBranchDialog
+				open={git.fileBrowserBranchActions.renameBranchDialogState.type === "open"}
+				branchName={
+					git.fileBrowserBranchActions.renameBranchDialogState.type === "open"
+						? git.fileBrowserBranchActions.renameBranchDialogState.branchName
+						: ""
+				}
+				onCancel={git.fileBrowserBranchActions.closeRenameBranchDialog}
+				onConfirm={git.fileBrowserBranchActions.handleConfirmRenameBranch}
+			/>
+			<RenameBranchDialog
+				open={git.topbarBranchActions.renameBranchDialogState.type === "open"}
+				branchName={
+					git.topbarBranchActions.renameBranchDialogState.type === "open"
+						? git.topbarBranchActions.renameBranchDialogState.branchName
+						: ""
+				}
+				onCancel={git.topbarBranchActions.closeRenameBranchDialog}
+				onConfirm={git.topbarBranchActions.handleConfirmRenameBranch}
+			/>
+			<ResetToRefDialog
+				open={git.fileBrowserBranchActions.resetToRefDialogState.type === "open"}
+				targetRef={
+					git.fileBrowserBranchActions.resetToRefDialogState.type === "open"
+						? git.fileBrowserBranchActions.resetToRefDialogState.ref
+						: ""
+				}
+				onCancel={git.fileBrowserBranchActions.closeResetToRefDialog}
+				onConfirm={git.fileBrowserBranchActions.handleConfirmResetToRef}
+			/>
+			<ResetToRefDialog
+				open={git.topbarBranchActions.resetToRefDialogState.type === "open"}
+				targetRef={
+					git.topbarBranchActions.resetToRefDialogState.type === "open"
+						? git.topbarBranchActions.resetToRefDialogState.ref
+						: ""
+				}
+				onCancel={git.topbarBranchActions.closeResetToRefDialog}
+				onConfirm={git.topbarBranchActions.handleConfirmResetToRef}
 			/>
 			<MigrateWorkingDirectoryDialog
 				open={pendingMigrate !== null}
