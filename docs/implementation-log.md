@@ -2,6 +2,17 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: reconciliation sweep race prevents session resume after server restart (2026-04-15)
+
+**Root cause:** `checkInterruptedNoRestart` in `session-reconciliation.ts` is a safety net for sessions that failed auto-restart during the current server lifetime. But it also matched sessions hydrated from disk after a restart — those have `state: "interrupted"` with no `pendingAutoRestart`. The sweep fired within the first 10 seconds, applying `autorestart.denied` to move them to `awaiting_review` with `reviewReason: "interrupted"`. When the UI connected shortly after and `resumeInterruptedSessions` ran, it looked for `summary?.state === "interrupted"` (line 477 of workspace-registry.ts) — no match, nothing resumed.
+
+**Fix:** Added a `restartRequest` guard to `checkInterruptedNoRestart`. Sessions started this server lifetime always have `restartRequest` set (via `startTaskSession`). Sessions hydrated from disk via `hydrateFromRecord` have `restartRequest: null` because `createProcessEntry()` defaults it to null. The sweep now skips those, leaving them for `resumeInterruptedSessions` to pick up on first UI connection. This mirrors the existing pattern in `checkProcesslessActiveSession` which already checks `entry.restartRequest`.
+
+**Files:**
+- `src/terminal/session-reconciliation.ts` — added `!entry.restartRequest` early return in `checkInterruptedNoRestart`
+- `test/runtime/terminal/session-reconciliation.test.ts` — updated existing tests to pass `restartRequest: {}` for "this-lifetime" scenarios, added test for hydrated-from-disk case
+- `test/runtime/terminal/session-manager-reconciliation.test.ts` — updated integration test assertion: hydrated session now stays `interrupted` through the sweep instead of being moved to `awaiting_review`
+
 ## Fix: task card hover buttons delay + todo cleanup (2026-04-15)
 
 **What:** Added a 200ms delay before hover action buttons appear on task cards. Removed two completed todo items ("Add timestamps to all runtime logging" and "Assess and adjust live terminal WebGL context limit") and the now-implemented hover delay item.

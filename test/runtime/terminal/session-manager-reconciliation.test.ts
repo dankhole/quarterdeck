@@ -344,8 +344,10 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
-		// Reconciliation's checkInterruptedNoRestart moves it to awaiting_review
-		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		// Hydrated sessions have no restartRequest — reconciliation leaves them
+		// in "interrupted" so resumeInterruptedSessions can restart them on
+		// first UI connection.
+		expect(manager.store.getSummary("task-1")?.state).toBe("interrupted");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
 
 		manager.stopReconciliation();

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: reconciliation sweep no longer prevents session resume after server restart
+
+- The reconciliation sweep's `checkInterruptedNoRestart` was racing with `resumeInterruptedSessions` — moving hydrated-from-disk sessions from `interrupted` to `awaiting_review` within the first 10-second sweep, before the UI could connect and trigger the resume. By the time the UI connected, the resume filter (`state === "interrupted"`) no longer matched, so tasks never restarted.
+- Added a `restartRequest` guard: hydrated sessions have `restartRequest=null` (never started this server lifetime), so the sweep now leaves them in `interrupted` for the UI-triggered resume. Sessions that crashed during this lifetime still have `restartRequest` set and are handled as before.
+
 ### Fix: task card hover buttons delay
 
 - Added a 200ms delay before task card hover action buttons (pin, edit title, migrate workspace, debug flag, emergency actions) appear. Prevents accidental triggers when the mouse passes over cards while navigating the board. Preload callbacks (dependency, summary, terminal warmup) still fire immediately — only button visibility is delayed.

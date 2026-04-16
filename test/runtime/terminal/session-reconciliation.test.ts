@@ -417,8 +417,8 @@ describe("checkStalledSession", () => {
 // ── checkInterruptedNoRestart ────────────────────────────────────────────
 
 describe("checkInterruptedNoRestart", () => {
-	it("returns move_interrupted_to_review for interrupted session with no pending auto-restart", () => {
-		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
+	it("returns move_interrupted_to_review for interrupted session started this lifetime", () => {
+		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" }, { restartRequest: {} });
 		entry.pendingAutoRestart = null;
 		expect(checkInterruptedNoRestart(entry, Date.now())).toEqual({ type: "move_interrupted_to_review" });
 	});
@@ -434,8 +434,14 @@ describe("checkInterruptedNoRestart", () => {
 	});
 
 	it("returns null when pendingAutoRestart is set", () => {
-		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
+		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" }, { restartRequest: {} });
 		entry.pendingAutoRestart = Promise.resolve();
+		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
+	});
+
+	it("returns null for hydrated-from-disk sessions with no restartRequest (awaiting first UI resume)", () => {
+		const entry = createEntry({ state: "interrupted", reviewReason: "interrupted" });
+		// restartRequest defaults to null — simulates a session hydrated from disk after server restart
 		expect(checkInterruptedNoRestart(entry, Date.now())).toBeNull();
 	});
 });

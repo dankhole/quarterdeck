@@ -181,6 +181,11 @@ export function checkStalledSession(entry: ReconciliationEntry, nowMs: number): 
  * failed (pendingAutoRestart cleared in finally block), or where the onExit
  * autorestart.denied transition was missed for any reason. Moves the session
  * to awaiting_review so the card lands in review for the user to decide.
+ *
+ * Only applies to sessions started this server lifetime (restartRequest is set).
+ * Hydrated-from-disk sessions have restartRequest=null and are waiting for
+ * resumeInterruptedSessions on first UI connection — the sweep must not
+ * prematurely move them to awaiting_review or the resume filter won't match.
  */
 export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: number): ReconciliationAction | null {
 	const { summary } = entry;
@@ -188,6 +193,11 @@ export function checkInterruptedNoRestart(entry: ReconciliationEntry, _nowMs: nu
 		return null;
 	}
 	if (entry.pendingAutoRestart) {
+		return null;
+	}
+	// Sessions hydrated from disk after a server restart don't have a
+	// restartRequest. Leave them in "interrupted" for resumeInterruptedSessions.
+	if (!entry.restartRequest) {
 		return null;
 	}
 	return { type: "move_interrupted_to_review" };
