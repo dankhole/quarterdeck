@@ -359,7 +359,7 @@ describe("recoverStaleSession with launched sessions", () => {
 		vi.useRealTimers();
 	});
 
-	it("attempts restart when process exited with error during review", async () => {
+	it("does not restart when process exits after agent already handed off via hook", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -373,31 +373,24 @@ describe("recoverStaleSession with launched sessions", () => {
 			prompt: "Fix the bug",
 		});
 
-		// Transition to review, then process exits with error
+		// Agent completes work and sends to_review hook, then process exits
+		// (code 1 is typical Claude Code shutdown noise — not a crash).
 		manager.store.transitionToReview("task-1", "hook");
 		spawnedSessions[0]?.triggerExit(1);
 
-		// State should be awaiting_review/error with no process
+		// Review reason should be preserved as "hook", not overwritten to "error"
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 
-		// Now simulate viewer connecting (recoverStaleSession is called by WS handler)
+		// Viewer connects — recoverStaleSession should NOT restart since
+		// the agent already completed its work
 		const recovered = manager.recoverStaleSession("task-1");
-
-		// Should stay in error review state and schedule a restart
 		expect(recovered?.state).toBe("awaiting_review");
-		expect(recovered?.reviewReason).toBe("error");
-
-		// Let the restart complete
-		await vi.advanceTimersByTimeAsync(0);
-
-		// A new session should have been spawned (awaitReview=true — agent is at
-		// its prompt, not actively working, so it lands in review).
-		expect(spawnedSessions).toHaveLength(2);
-		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("hook");
+		expect(spawnedSessions).toHaveLength(1);
 	});
 
-	it("does not restart for clean exits (reviewReason: exit)", async () => {
+	it("preserves hook review reason on clean exit (code 0)", async () => {
 		const spawnedSessions = setupMockPtySpawn();
 
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
@@ -414,14 +407,13 @@ describe("recoverStaleSession with launched sessions", () => {
 		manager.store.transitionToReview("task-1", "hook");
 		spawnedSessions[0]?.triggerExit(0);
 
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("exit");
+		// Reason stays "hook" — process dying after handoff doesn't change the reason
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 
-		// Viewer connects
+		// Viewer connects — should NOT restart
 		const recovered = manager.recoverStaleSession("task-1");
-
-		// Should keep the "exit" state and NOT restart
 		expect(recovered?.state).toBe("awaiting_review");
-		expect(recovered?.reviewReason).toBe("exit");
+		expect(recovered?.reviewReason).toBe("hook");
 		expect(spawnedSessions).toHaveLength(1);
 	});
 

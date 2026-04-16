@@ -86,6 +86,79 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.pid).toBe(222);
 	});
 
+	it("does not restart when the agent already transitioned to review before exit", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		// Agent sends to_review hook — transitions to awaiting_review before exit.
+		// This is the normal lifecycle: agent finishes work, sends hook, then exits.
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review" });
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+
+		// Process exits (code 1 — typical Claude Code shutdown noise)
+		spawnedSessions[0]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// Should NOT restart — the agent was done, not crashing
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+	});
+
+	it("does not restart when the agent exits cleanly from review (exit code 0)", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		// Agent sends to_review hook, then exits cleanly
+		manager.store.applySessionEvent("task-1", { type: "hook.to_review" });
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
+	});
+
 	it("does not restart an attached agent session after an explicit stop", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
@@ -295,19 +368,25 @@ describe("TerminalSessionManager auto-restart", () => {
 				prompt: "Fix the bug",
 			});
 
+			// Each restarted session starts in awaiting_review (awaitReview=true).
+			// Transition back to running via hook before each exit so auto-restart
+			// recognizes it as a crash (pre-exit state must be "running").
 			// 1st exit -> auto-restart #1
 			spawnedSessions[0]?.triggerExit(1);
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(2));
 
 			// 2nd exit -> auto-restart #2
+			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 			spawnedSessions[1]?.triggerExit(1);
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(3));
 
 			// 3rd exit -> auto-restart #3
+			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 			spawnedSessions[2]?.triggerExit(1);
 			await vi.waitFor(() => expect(spawnedSessions).toHaveLength(4));
 
 			// 4th exit -> rate limited, no more restarts
+			manager.store.applySessionEvent("task-1", { type: "hook.to_in_progress" });
 			spawnedSessions[3]?.triggerExit(1);
 			await vi.advanceTimersByTimeAsync(100);
 			expect(spawnedSessions).toHaveLength(4); // No 5th spawn

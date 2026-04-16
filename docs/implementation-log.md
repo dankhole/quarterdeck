@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: auto-restart state-awareness — stop restarting completed tasks (2026-04-15)
+
+**Problem:** Agent sessions that completed their work and were sitting in `awaiting_review` would spam auto-restart attempts when their process exited. The logs showed repeated `auto-restart skipped on exit` with `reason: 'rate_limited'` — the restart loop hit 3 attempts in 5 seconds before being throttled. Clicking a review card after the agent process died would either not restart or show "Error" instead of "Ready for review."
+
+**Root cause:** Three interconnected bugs:
+1. `shouldAutoRestart` was state-blind — it checked suppression, listeners, and rate limits but never checked whether the agent was actually working when it died. Every non-suppressed exit triggered restart.
+2. The state machine's `process.exit` handler unconditionally overwrote `reviewReason`, so `awaiting_review/hook` (agent completed) became `awaiting_review/error` when the process exited with code 1 (normal CLI shutdown noise).
+3. `recoverStaleSession` (called on viewer reconnect) only skipped restart for `reviewReason === "exit"` (code 0). The overwritten `"error"` reason triggered spurious restart attempts on reconnect.
+
+**Fix:**
+1. `session-auto-restart.ts`: `shouldAutoRestart` now takes `preExitState` parameter (captured before the state machine runs). Returns `{ restart: false, reason: "not_running" }` if pre-exit state wasn't `"running"`. Auto-restart only fires for genuine crashes during active work.
+2. `session-state-machine.ts`: `process.exit` on an `awaiting_review` session now preserves the existing review reason — only patches `exitCode` and `pid: null`. Cards stay "Ready for review" instead of flipping to "Error."
+3. `session-manager.ts`: `recoverStaleSession` inverted from `=== "exit"` to `!== "error"` — only restarts for genuine crash errors. Removed the `store.update` that forced `reviewReason: "error"` before calling `scheduleAutoRestart`.
+4. `session-reconciliation.ts`: `checkProcesslessActiveSession` simplified to skip all `awaiting_review` sessions — a processless review card is expected state, not an error.
+
+**Files:** `src/terminal/session-auto-restart.ts`, `src/terminal/session-state-machine.ts`, `src/terminal/session-manager.ts`, `src/terminal/session-reconciliation.ts`, `test/runtime/terminal/session-manager-auto-restart.test.ts`, `test/runtime/terminal/session-state-machine.test.ts`, `test/runtime/terminal/session-reconciliation.test.ts`, `test/runtime/terminal/session-manager-reconciliation.test.ts`, `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`
+
 ## Fix: auto-focus agent terminal on open (2026-04-15)
 
 **Problem:** Opening an agent terminal required clicking on it before keyboard input would register. The terminal should auto-focus immediately.

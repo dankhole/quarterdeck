@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: auto-restart only fires for genuine crashes, not normal agent exits
+
+- `shouldAutoRestart` now checks the pre-exit session state — only restarts when the agent was actively `running` at exit time. Agent processes that exit after completing work (already in `awaiting_review`) are normal lifecycle cleanup, not crashes.
+- The state machine's `process.exit` handler now preserves the existing review reason when the session is already in `awaiting_review`. Previously it unconditionally overwrote the reason (e.g. `hook` → `error`), making completed tasks show "Error" instead of "Ready for review".
+- `recoverStaleSession` only attempts restart for `reviewReason: "error"` (genuine crash). Previously it restarted for any non-`exit` reason, causing spurious restarts on viewer reconnect.
+- Reconciliation sweep treats all processless `awaiting_review` sessions as expected — the agent finished and the process exited as normal cleanup.
+
 ### Fix: auto-focus agent terminal on open
 
 - Opening an agent terminal now immediately grabs keyboard focus. Previously, `terminal.focus()` fired before the restore snapshot completed — while the terminal was still `visibility: hidden` — so the browser silently ignored it. Focus is now deferred until the terminal is revealed after restore, including the restore-failure path.

@@ -262,12 +262,12 @@ describe("checkProcesslessActiveSession", () => {
 		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
 	});
 
-	it("returns mark_processless_error for awaiting_review/hook with no process and restartRequest set", () => {
+	it("returns null for awaiting_review/hook — agent completed, process dying is expected", () => {
 		const entry = createEntry(
 			{ state: "awaiting_review", reviewReason: "hook" },
 			{ active: null, restartRequest: { kind: "task" } },
 		);
-		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 
 	it("returns null when already in error state", () => {
@@ -325,17 +325,17 @@ describe("checkProcesslessActiveSession", () => {
 		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 
-	it("returns mark_processless_error for awaiting_review/attention with no process", () => {
+	it("returns null for awaiting_review/attention — review state, not an error", () => {
 		const entry = createEntry(
 			{ state: "awaiting_review", reviewReason: "attention" },
 			{ active: null, restartRequest: { kind: "task" } },
 		);
-		expect(checkProcesslessActiveSession(entry, Date.now())).toEqual({ type: "mark_processless_error" });
+		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();
 	});
 
 	it("returns null when pendingSessionStart is true (session spawn in-flight)", () => {
 		const entry = createEntry(
-			{ state: "awaiting_review", reviewReason: "attention" },
+			{ state: "running" },
 			{ active: null, restartRequest: { kind: "task" }, pendingSessionStart: true },
 		);
 		expect(checkProcesslessActiveSession(entry, Date.now())).toBeNull();

@@ -199,7 +199,7 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.stopReconciliation();
 	});
 
-	it("dead process in awaiting_review state triggers recovery (31)", async () => {
+	it("dead process in awaiting_review preserves review reason (31)", async () => {
 		setupMockPtySpawn(DEAD_PID);
 
 		const onExit = vi.fn();
@@ -214,8 +214,10 @@ describe("reconciliation sweep lifecycle", () => {
 		manager.startReconciliation();
 		await vi.advanceTimersByTimeAsync(10_000);
 
+		// Process dying after the agent already handed off is cleanup noise —
+		// the review reason should stay "hook", not flip to "error".
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
-		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("hook");
 		expect(onExit).toHaveBeenCalledWith(null);
 
 		manager.stopReconciliation();

@@ -135,17 +135,13 @@ export function checkProcesslessActiveSession(entry: ReconciliationEntry, _nowMs
 	if (entry.pendingAutoRestart || entry.pendingSessionStart) {
 		return null;
 	}
-	// Skip review states that were already classified by the onExit handler:
-	// - "error": already marked as error, nothing to do.
-	// - "exit": clean exit (code 0), agent completed its work normally.
-	// - "interrupted": user-initiated stop.
-	// Only "running", "hook", and "attention" indicate a genuinely stale state
-	// where the process disappeared without proper exit handling.
+	// A processless awaiting_review session is expected — the agent finished
+	// its work (or was stopped/stalled), then the backing process exited as
+	// normal cleanup. The review reason was already set correctly by the
+	// onExit handler or hook. Only flag "running" sessions as processless
+	// errors, since those genuinely lost their process mid-work.
 	if (summary.state === "awaiting_review") {
-		const reason = summary.reviewReason;
-		if (reason === "error" || reason === "exit" || reason === "interrupted" || reason === "stalled") {
-			return null;
-		}
+		return null;
 	}
 	return { type: "mark_processless_error" };
 }

@@ -79,6 +79,21 @@ export function reduceSessionTransition(
 			};
 		}
 		case "process.exit": {
+			// If the session is already in awaiting_review, the agent already
+			// handed off (via hook, clean exit, etc.). The process dying after
+			// that is just cleanup noise — preserve the existing review reason
+			// so the card still shows "Ready for review" instead of flipping
+			// to "Error". We still clear pid and record exitCode.
+			if (summary.state === "awaiting_review") {
+				return {
+					changed: true,
+					patch: {
+						exitCode: event.exitCode,
+						pid: null,
+					},
+					clearAttentionBuffer: false,
+				};
+			}
 			let reason: RuntimeTaskSessionReviewReason = event.exitCode === 0 ? "exit" : "error";
 			if (event.interrupted) {
 				reason = "interrupted";

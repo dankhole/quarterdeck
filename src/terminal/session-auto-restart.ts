@@ -1,8 +1,18 @@
 // Auto-restart logic for agent sessions that exit unexpectedly.
 // Extracted from session-manager.ts — determines whether a session should
 // auto-restart after exit and executes the restart with rate limiting.
+//
+// Auto-restart exists for ONE purpose: recovering from unexpected agent
+// crashes that happen while the agent is actively working (state "running").
+// When an agent finishes a task, it sends a to_review hook (transitioning
+// to "awaiting_review") and then its process exits — that exit is normal
+// lifecycle cleanup, NOT a crash. The pre-exit state distinguishes the two:
+//
+//   running → process exits     = crash mid-work → auto-restart
+//   awaiting_review → exits     = normal cleanup after handoff → no restart
+//   interrupted → exits         = user-initiated stop → no restart
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskSessionState, RuntimeTaskSessionSummary } from "../core/api-contract";
 import { emitSessionEvent } from "../core/event-log";
 import type { ProcessEntry, StartTaskSessionRequest } from "./session-manager-types";
 import { cloneStartTaskSessionRequest } from "./session-manager-types";
@@ -13,14 +23,21 @@ export const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 
 export type AutoRestartDecision =
 	| { restart: true }
-	| { restart: false; reason: "suppressed" | "no_listeners" | "rate_limited" };
+	| { restart: false; reason: "suppressed" | "no_listeners" | "rate_limited" | "not_running" };
 
 /**
  * Determines if auto-restart should proceed after process exit.
+ *
+ * `preExitState` is the session state captured BEFORE the process.exit event
+ * is applied to the state machine. This is critical because the state machine
+ * unconditionally overwrites the state on exit (e.g., awaiting_review/hook
+ * becomes awaiting_review/error), losing the information about whether the
+ * agent was actively working when it died.
+ *
  * Mutates `entry.suppressAutoRestartOnExit` and `entry.autoRestartTimestamps`
  * as side effects (matching original behavior).
  */
-export function shouldAutoRestart(entry: ProcessEntry): AutoRestartDecision {
+export function shouldAutoRestart(entry: ProcessEntry, preExitState: RuntimeTaskSessionState): AutoRestartDecision {
 	const wasSuppressed = entry.suppressAutoRestartOnExit;
 	entry.suppressAutoRestartOnExit = false;
 	if (wasSuppressed) {
@@ -28,6 +45,13 @@ export function shouldAutoRestart(entry: ProcessEntry): AutoRestartDecision {
 	}
 	if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
 		return { restart: false, reason: "no_listeners" };
+	}
+	// Only restart when the agent was actively working. Any other pre-exit
+	// state means the agent already handed off (hook/exit/error/stalled) or
+	// was stopped by the user (interrupted). The process exiting in those
+	// states is normal cleanup, not a crash.
+	if (preExitState !== "running") {
+		return { restart: false, reason: "not_running" };
 	}
 	const currentTime = Date.now();
 	entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(

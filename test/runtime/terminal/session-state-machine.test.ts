@@ -310,14 +310,17 @@ describe("reduceSessionTransition", () => {
 			expect(result.patch.pid).toBeNull();
 		});
 
-		it("always changes even from awaiting_review", () => {
+		it("preserves review reason when already in awaiting_review", () => {
 			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 			const result = reduceSessionTransition(summary, { type: "process.exit", exitCode: 0, interrupted: false });
 
 			expect(result.changed).toBe(true);
-			expect(result.patch.state).toBe("awaiting_review");
-			expect(result.patch.reviewReason).toBe("exit");
+			// Process dying after the agent already handed off is cleanup noise —
+			// the review reason should stay as "hook", not flip to "exit".
+			expect(result.patch.state).toBeUndefined();
+			expect(result.patch.reviewReason).toBeUndefined();
 			expect(result.patch.pid).toBeNull();
+			expect(result.patch.exitCode).toBe(0);
 		});
 	});
 });

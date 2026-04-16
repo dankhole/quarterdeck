@@ -523,19 +523,20 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		if (entry?.restartRequest?.kind === "task" && !entry.pendingAutoRestart) {
-			if (summary.reviewReason === "exit") {
+			// The agent already completed or was reviewed — don't restart just
+			// because the backing process died. The worktree has the work product;
+			// the user can review it or manually continue. Only restart for
+			// genuinely unexpected process loss (reason "error" from a crash
+			// during active work).
+			if (summary.reviewReason !== "error") {
 				return summary;
 			}
-			const updated = this.store.update(taskId, {
-				state: "awaiting_review",
-				reviewReason: "error",
-			});
 			scheduleAutoRestart(entry, {
 				startTaskSession: (r) => this.startTaskSession(r),
 				updateStore: (id, patch) => this.store.update(id, patch),
 				applyDenied: () => this.applySessionEventWithSideEffects(entry, { type: "autorestart.denied" }),
 			});
-			return updated;
+			return summary;
 		}
 
 		sessionLog.warn("recovering stale session to idle", {
@@ -813,21 +814,29 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: event.exitCode,
 			interrupted: currentEntry.active.session.wasInterrupted(),
 		});
-		const autoRestartDecision = shouldAutoRestart(currentEntry);
+		// Pass the pre-exit state so shouldAutoRestart can distinguish a crash
+		// mid-work (running → exit) from normal lifecycle (awaiting_review → exit).
+		// currentSummaryAtExit was captured at line 788 before the state machine
+		// overwrites the state on process.exit.
+		const preExitState = currentSummaryAtExit?.state ?? "idle";
+		const autoRestartDecision = shouldAutoRestart(currentEntry, preExitState);
 		if (!autoRestartDecision.restart) {
 			const skipData = {
 				taskId: request.taskId,
 				displaySummary: currentSummaryAtExit?.displaySummary ?? null,
 				reason: autoRestartDecision.reason,
+				preExitState,
 				listenerCount: currentEntry.listeners.size,
 				restartRequestKind: currentEntry.restartRequest?.kind ?? null,
 				exitCode: event.exitCode,
 				exitState: result?.summary?.state ?? null,
 				exitReviewReason: result?.summary?.reviewReason ?? null,
 			};
-			// Intentional suppression (stop/trash) is expected — log at debug, not warn.
-			if (autoRestartDecision.reason === "suppressed") {
-				sessionLog.debug("auto-restart suppressed on exit", skipData);
+			// Intentional suppression (stop/trash) and not_running (normal lifecycle)
+			// are expected — log at debug level. Only unexpected skips (rate_limited,
+			// no_listeners) are warnings.
+			if (autoRestartDecision.reason === "suppressed" || autoRestartDecision.reason === "not_running") {
+				sessionLog.debug("auto-restart skipped on exit", skipData);
 			} else {
 				sessionLog.warn("auto-restart skipped on exit", skipData);
 			}
