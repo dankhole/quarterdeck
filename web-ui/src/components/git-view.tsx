@@ -333,6 +333,8 @@ export function GitView({
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
+	const pendingCompareNavigationRef = useRef(pendingCompareNavigation);
+	pendingCompareNavigationRef.current = pendingCompareNavigation;
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 	const isDocumentVisible = useDocumentVisibility();
 
@@ -578,12 +580,14 @@ export function GitView({
 
 	useEffect(() => {
 		setSelectedPathRaw(null);
-		// Don't reset to uncommitted if we're navigating to compare via external request
-		if (!pendingCompareNavigation) {
+		// Don't reset to uncommitted if we're navigating to compare via external request.
+		// Read from ref to avoid re-firing when navigation is consumed (which would
+		// overwrite the compare tab that Effect A just set).
+		if (!pendingCompareNavigationRef.current) {
 			setActiveTab("uncommitted");
 		}
 		setDiffComments(new Map());
-	}, [currentProjectId, setActiveTab, pendingCompareNavigation]);
+	}, [currentProjectId, setActiveTab]);
 
 	// --- Render ---
 

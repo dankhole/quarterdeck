@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: "Compare with local tree" from branch context menu opens Compare tab (2026-04-15)
+
+**What:** Clicking "Compare with local tree" from any branch dropdown context menu (top bar, Files scope bar, task detail) navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare.
+
+**Root cause:** `GitView` has two effects that interact with `pendingCompareNavigation`:
+- **Effect A** (line ~434): switches to the Compare tab when `pendingCompareNavigation` becomes truthy.
+- **Effect B** (line ~581): resets to the Uncommitted tab on project changes, with a guard that skips the reset if `pendingCompareNavigation` is truthy.
+
+Effect B had `pendingCompareNavigation` in its dependency array. The sequence: (1) Effect A fires, sets tab to "compare". (2) `useGitViewCompare` consumes the navigation → calls `onNavigationConsumed()` → clears state to `null`. (3) Effect B re-fires because its dependency changed, sees `null`, guard fails, resets tab to "uncommitted" — undoing Effect A.
+
+**Fix:** Added a `pendingCompareNavigationRef` ref that mirrors the prop value. Effect B now reads from the ref (stable identity, no dependency) instead of the prop. The guard still works correctly for actual project changes, but consumption of the navigation no longer re-triggers the effect.
+
+**Files:** `web-ui/src/components/git-view.tsx`
+
 ## Refactor: extract domain logic from hooks into plain TS modules — Phase 2 (2026-04-15)
 
 **Goal:** Phase 2 of the hooks directory refactoring plan (`docs/refactor-hooks-directory.md`). Extract business logic from React hooks into companion pure TS modules so the logic is readable and testable without React.

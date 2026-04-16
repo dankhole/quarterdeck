@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: "Compare with local tree" from branch context menu now opens the Compare tab
+
+- Selecting "Compare with local tree" from the branch dropdown context menu navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare. The project-change reset effect had `pendingCompareNavigation` in its dependency array — when the navigation was consumed (cleared to `null`), the effect re-fired and overwrote the tab. Switched to reading the value from a ref so consumption doesn't re-trigger the reset.
+
 ### Refactor: extract domain logic from hooks into plain TS modules (Phase 2)
 
 - Split 3 priority hooks into domain module + thin React wrapper pairs: `task-lifecycle.ts` (board revert helpers, workspace info mapping, isolation predicate), `conflict-resolution.ts` (step-change detection, unresolved path filtering, external resolution detection), `workspace-sync.ts` (session merging, revision conflict guards, board hydration decisions). Each domain module has zero React imports and is testable with plain `describe`/`it`. Adds 29 new domain-level unit tests across 3 test files. Existing hook-level tests unchanged.
