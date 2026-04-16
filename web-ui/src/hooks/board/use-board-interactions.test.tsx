@@ -62,7 +62,6 @@ function createBoard(): BoardData {
 const NOOP_STOP_SESSION = async (): Promise<void> => {};
 const NOOP_CLEANUP_WORKSPACE = async (): Promise<null> => null;
 const NOOP_FETCH_WORKSPACE_INFO = async (): Promise<null> => null;
-const NOOP_SEND_TASK_INPUT = async (): Promise<{ ok: boolean }> => ({ ok: true });
 
 interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
@@ -125,7 +124,6 @@ function HookHarness({
 		ensureTaskWorkspace,
 		startTaskSession,
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
-		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
 		showTrashWorktreeNotice: true,
 		saveTrashWorktreeNoticeDismissed: () => {},
 	});

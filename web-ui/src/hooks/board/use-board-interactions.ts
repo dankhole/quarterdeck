@@ -2,7 +2,7 @@ import type { DropResult } from "@hello-pangea/dnd";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect } from "react";
 
-import { notifyError, showAppToast } from "@/components/app-toaster";
+import { notifyError } from "@/components/app-toaster";
 import type { TaskTrashWarningViewModel } from "@/components/task-trash-warning-dialog";
 import { useBoardDragHandler } from "@/hooks/board/use-board-drag-handler";
 import { useLinkedBacklogTaskActions } from "@/hooks/board/use-linked-backlog-task-actions";
@@ -15,8 +15,6 @@ import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { findCardSelection, updateTask } from "@/state/board-state";
-import { getTerminalController } from "@/terminal/terminal-controller-registry";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 
@@ -43,11 +41,6 @@ interface UseBoardInteractionsInput {
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
-	sendTaskSessionInput: (
-		taskId: string,
-		input: string,
-		options?: SendTerminalInputOptions,
-	) => Promise<{ ok: boolean; message?: string }>;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 }
@@ -72,8 +65,6 @@ export interface UseBoardInteractionsResult {
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
-	handleAddReviewComments: (taskId: string, text: string) => Promise<void>;
-	handleSendReviewComments: (taskId: string, text: string) => Promise<void>;
 	moveToTrashLoadingById: Record<string, boolean>;
 	trashTaskCount: number;
 	trashWarningState: TrashWarningState;
@@ -97,7 +88,6 @@ export function useBoardInteractions({
 	ensureTaskWorkspace,
 	startTaskSession,
 	fetchTaskWorkspaceInfo,
-	sendTaskSessionInput,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
@@ -218,53 +208,6 @@ export function useBoardInteractions({
 		resolvePendingProgrammaticTrashMove,
 	});
 
-	// ── Review comments ──────────────────────────────────────────────────
-
-	const handleAddReviewComments = useCallback(
-		async (taskId: string, text: string) => {
-			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
-			if (!typed.ok) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: typed.message ?? "Could not add review comments to the task session.",
-					timeout: 7000,
-				});
-			}
-		},
-		[sendTaskSessionInput],
-	);
-
-	const handleSendReviewComments = useCallback(
-		async (taskId: string, text: string) => {
-			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
-			if (!typed.ok) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: typed.message ?? "Could not send review comments to the task session.",
-					timeout: 7000,
-				});
-				return;
-			}
-			await new Promise<void>((resolve) => {
-				setTimeout(resolve, 200);
-			});
-			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-			if (!submitted.ok) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: submitted.message ?? "Could not submit review comments to the task session.",
-					timeout: 7000,
-				});
-			} else {
-				getTerminalController(taskId)?.focus?.();
-			}
-		},
-		[sendTaskSessionInput],
-	);
-
 	// ── Session → column sync ────────────────────────────────────────────
 	// Startup resume is handled server-side (triggered on first UI connection).
 	useSessionColumnSync({
@@ -365,8 +308,6 @@ export function useBoardInteractions({
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
-		handleAddReviewComments,
-		handleSendReviewComments,
 		moveToTrashLoadingById,
 		trashTaskCount,
 		trashWarningState,

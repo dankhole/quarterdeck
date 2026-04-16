@@ -211,10 +211,6 @@ The agent statusline shows `374↓ 207↑` (total input/output tokens from Claud
 
 The yellow "needs input" indicator on the board icon sometimes shows for projects that don't actually need input. The erroneous state follows the project — switching projects brings the wrong NI status along. Investigate whether this is a stale hook state issue, a project-scoping bug in the notification system, or a UI render bug.
 
-## Investigate inline comments in diff viewer
-
-The diff viewer has some inline comment infrastructure. Investigate how it currently works (or doesn't), what state it's in, and whether it's usable or needs work. Document findings.
-
 ## Skip trash confirmation when task has no uncommitted or unmerged changes
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.

@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Feat: wire inline diff comments to agent terminal (2026-04-16)
+
+**Problem:** The diff viewer had a fully built inline comment UI (click lines, type comments, keyboard shortcuts, formatting, styling, tests) but the terminal integration was never connected. `DiffViewerPanel` accepted `onAddToTerminal`/`onSendToTerminal` callbacks but `GitView` never passed them. Separately, `useBoardInteractions` had orphaned `handleAddReviewComments`/`handleSendReviewComments` handlers that were exported but never consumed by any component.
+
+**Fix:** Created `handleAddToTerminal` and `handleSendToTerminal` callbacks in `CardDetailView` using `sendTaskSessionInput` from `BoardContext`. "Add" pastes formatted comments via paste mode without submitting. "Send" pastes, waits 200ms, then sends `\r` to submit — matching the existing pattern from the orphaned handlers and `use-git-actions.ts:235-248`. After send, focuses the terminal via `getTerminalController`. Both show error toasts on failure.
+
+Threaded the callbacks through `GitView` (new props) → `DiffViewerPanel` (existing props, now populated). The `HomeView` git view correctly gets no callbacks since there's no agent terminal in that context.
+
+Removed the orphaned handlers from `useBoardInteractions` along with their `sendTaskSessionInput` input prop, `getTerminalController` import, and `showAppToast` import. Updated `InteractionsProvider` to stop passing the removed prop. Cleaned up test fixture.
+
+**Files:**
+- `web-ui/src/components/card-detail-view.tsx` — added `sendTaskSessionInput` from board context, `handleAddToTerminal`/`handleSendToTerminal` callbacks, imported `showAppToast` and `getTerminalController`, passed callbacks to `GitView`
+- `web-ui/src/components/git-view.tsx` — added `onAddToTerminal`/`onSendToTerminal` to `GitViewProps`, destructured in component, passed through to `DiffViewerPanel`
+- `web-ui/src/hooks/board/use-board-interactions.ts` — removed `handleAddReviewComments`, `handleSendReviewComments`, `sendTaskSessionInput` from input interface, removed unused imports (`showAppToast`, `getTerminalController`, `SendTerminalInputOptions`)
+- `web-ui/src/providers/interactions-provider.tsx` — removed `sendTaskSessionInput` from `useBoardContext` destructuring and `useBoardInteractions` call
+- `web-ui/src/hooks/board/use-board-interactions.test.tsx` — removed `NOOP_SEND_TASK_INPUT` and its usage in fixture
+
 ## Branch management tier 2: rebase onto, rename branch, reset to here (2026-04-16)
 
 **What:** Added three new branch operations to the context menus in both the top-bar `BranchSelectorPopover` and the git history `GitRefsPanel`: "Rebase onto", "Rename branch", and "Reset to here". Each has a confirmation dialog, full task-scoped worktree support, and toast feedback.

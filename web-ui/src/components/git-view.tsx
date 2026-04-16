@@ -306,6 +306,10 @@ export interface GitViewProps {
 	gitHistoryPanel?: React.ReactNode;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
+	/** Paste formatted inline comments into the agent terminal without submitting. */
+	onAddToTerminal?: (text: string) => void;
+	/** Paste formatted inline comments into the agent terminal and submit. */
+	onSendToTerminal?: (text: string) => void;
 }
 
 export function GitView({
@@ -323,6 +327,8 @@ export function GitView({
 	gitHistoryPanel,
 	pinnedBranches,
 	onTogglePinBranch,
+	onAddToTerminal,
+	onSendToTerminal,
 }: GitViewProps): React.ReactElement {
 	const [activeTab, setActiveTabState] = useState<GitViewTab>(loadGitViewTab);
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
@@ -736,6 +742,8 @@ export function GitView({
 									viewMode="split"
 									comments={diffComments}
 									onCommentsChange={setDiffComments}
+									onAddToTerminal={onAddToTerminal}
+									onSendToTerminal={onSendToTerminal}
 									navigateToFile={navigateToFile}
 									fileLoadingState={fileLoadingState}
 								/>

@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useMemo, useRef } from "react";
+import { showAppToast } from "@/components/app-toaster";
 import { ConflictBanner } from "@/components/conflict-banner";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/detail-panels/branch-selector-popover";
@@ -29,6 +30,7 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 
@@ -155,7 +157,7 @@ export function CardDetailView({
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
 }): React.ReactElement {
-	const { board, sessions: taskSessions, upsertSession: onSessionSummary } = useBoardContext();
+	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
 	const {
 		isGitHistoryOpen,
 		handleToggleGitHistory: onToggleGitHistory,
@@ -250,6 +252,48 @@ export function CardDetailView({
 		if (taskWorkspaceInfo?.isDetached) return taskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
 		return selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
 	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
+
+	const taskId = selection.card.id;
+
+	const handleAddToTerminal = useCallback(
+		async (text: string) => {
+			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			if (!result.ok) {
+				showAppToast({
+					intent: "danger",
+					message: result.message ?? "Could not paste review comments into the terminal.",
+					timeout: 7000,
+				});
+			}
+		},
+		[sendTaskSessionInput, taskId],
+	);
+
+	const handleSendToTerminal = useCallback(
+		async (text: string) => {
+			const result = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
+			if (!result.ok) {
+				showAppToast({
+					intent: "danger",
+					message: result.message ?? "Could not paste review comments into the terminal.",
+					timeout: 7000,
+				});
+				return;
+			}
+			await new Promise<void>((resolve) => setTimeout(resolve, 200));
+			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+			if (!submitted.ok) {
+				showAppToast({
+					intent: "danger",
+					message: submitted.message ?? "Could not submit review comments.",
+					timeout: 7000,
+				});
+			} else {
+				getTerminalController(taskId)?.focus?.();
+			}
+		},
+		[sendTaskSessionInput, taskId],
+	);
 
 	const sidePanelPercent = `${(sidePanelRatio * 100).toFixed(1)}%`;
 	const isTaskSidePanelOpen = sidebar === "task_column" || sidebar === "commit";
@@ -362,6 +406,8 @@ export function CardDetailView({
 							gitHistoryPanel={gitHistoryPanel}
 							pinnedBranches={pinnedBranches}
 							onTogglePinBranch={onTogglePinBranch}
+							onAddToTerminal={handleAddToTerminal}
+							onSendToTerminal={handleSendToTerminal}
 						/>
 					</div>
 				) : mainView === "files" ? (

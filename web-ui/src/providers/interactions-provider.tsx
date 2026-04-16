@@ -93,7 +93,6 @@ export function InteractionsProvider({ setIsGitHistoryOpen, children }: Interact
 		ensureTaskWorkspace,
 		startTaskSession,
 		fetchTaskWorkspaceInfo,
-		sendTaskSessionInput,
 		cleanupTaskWorkspace,
 		handleCreateTask,
 		handleCreateTasks,
@@ -142,7 +141,6 @@ export function InteractionsProvider({ setIsGitHistoryOpen, children }: Interact
 		ensureTaskWorkspace,
 		startTaskSession,
 		fetchTaskWorkspaceInfo,
-		sendTaskSessionInput,
 		showTrashWorktreeNotice,
 		saveTrashWorktreeNoticeDismissed,
 	});

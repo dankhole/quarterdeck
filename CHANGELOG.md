@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feat: wire inline diff comments to agent terminal
+
+- Connected the existing inline comment UI in the diff viewer to the agent terminal. Click any diff line, type a comment, then Cmd+Enter pastes formatted comments into the agent's terminal (Add), or Cmd+Shift+Enter pastes and submits (Send). Callbacks created in `CardDetailView` using `sendTaskSessionInput`, threaded through `GitView` → `DiffViewerPanel`. Removed orphaned `handleAddReviewComments`/`handleSendReviewComments` from `useBoardInteractions` — they were never consumed.
+
 ### Branch management — rebase onto, rename branch, reset to here
 
 - **Rebase onto** — context menu action in branch selector popover and git history refs panel. Rebases the current branch onto the selected ref. Integrates with the existing conflict resolver for multi-round rebase conflicts. Confirmation dialog warns about history rewriting. Disabled on current branch.
