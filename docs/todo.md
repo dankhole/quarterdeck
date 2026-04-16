@@ -224,10 +224,3 @@ Add a "Reset to here" action in the top-bar branch context menu that performs `g
 
 If a sidebar panel (e.g. task column) was open before switching to a full-screen main view (e.g. file browser), it should automatically reopen when navigating back to agent chat. Currently the sidebar state is lost on view switch.
 
-## Skip trash confirmation when task has no uncommitted or unmerged changes
-
-The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
-
-## Audit default branch resolution for bugs
-
-The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.
