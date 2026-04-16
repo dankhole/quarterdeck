@@ -23,7 +23,10 @@ export interface CreateRuntimeApiDependencies {
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<
 		IRuntimeBroadcaster,
-		"broadcastRuntimeWorkspaceStateUpdated" | "setPollIntervals" | "broadcastLogLevel"
+		| "broadcastRuntimeWorkspaceStateUpdated"
+		| "broadcastTaskWorkingDirectoryUpdated"
+		| "setPollIntervals"
+		| "broadcastLogLevel"
 	>;
 	getActiveWorkspaceId: () => string | null;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;

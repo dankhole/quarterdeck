@@ -44,7 +44,6 @@ const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 
 const workspaceStateMocks = vi.hoisted(() => ({
 	loadWorkspaceState: vi.fn(),
-	mutateWorkspaceState: vi.fn(async () => ({ value: null, state: null, saved: false })),
 	saveWorkspaceState: vi.fn(),
 	WorkspaceStateConflictError: class extends Error {},
 }));
@@ -106,7 +105,6 @@ vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
 
 vi.mock("../../../src/state/workspace-state.js", () => ({
 	loadWorkspaceState: workspaceStateMocks.loadWorkspaceState,
-	mutateWorkspaceState: workspaceStateMocks.mutateWorkspaceState,
 	saveWorkspaceState: workspaceStateMocks.saveWorkspaceState,
 	WorkspaceStateConflictError: workspaceStateMocks.WorkspaceStateConflictError,
 }));

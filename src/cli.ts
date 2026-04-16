@@ -7,7 +7,6 @@ import packageJson from "../package.json" with { type: "json" };
 import { registerBackupCommand } from "./commands/backup";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
-import { registerTaskCommand } from "./commands/task";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
 import type { RuntimeCommandRunResponse } from "./core/api-contract";
 import { createGitProcessEnv } from "./core/git-process-env";
@@ -345,8 +344,8 @@ interface RuntimeServerHandle {
 
 async function startServer(): Promise<RuntimeServerHandle> {
 	/*
-		Server-only modules are loaded lazily because task-oriented subcommands like
-		`quarterdeck task create` and `quarterdeck hooks ingest` do not need the runtime server.
+		Server-only modules are loaded lazily because subcommands like
+		`quarterdeck hooks ingest` do not need the runtime server.
 
 		A regression in 25ba59f showed that eagerly importing the runtime stack here
 		could leave the source CLI process alive after the command had already printed
@@ -648,7 +647,6 @@ function createProgram(invocationArgs: string[]): Command {
 
 	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 
-	registerTaskCommand(program);
 	registerHooksCommand(program);
 	registerStatuslineCommand(program);
 	registerBackupCommand(program);

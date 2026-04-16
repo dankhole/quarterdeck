@@ -6,7 +6,7 @@ import type { RuntimeConfigState } from "../../config/runtime-config";
 import { createTaggedLogger } from "../../core/runtime-logger";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core/service-interfaces";
 import { findCardInBoard } from "../../core/task-board-mutations";
-import { loadWorkspaceState, mutateWorkspaceState } from "../../state/workspace-state";
+import { loadWorkspaceState } from "../../state/workspace-state";
 import type { TerminalSessionManager } from "../../terminal/session-manager";
 import {
 	applyTaskPatch,
@@ -20,7 +20,7 @@ import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface MigrateTaskWorkingDirectoryDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeWorkspaceStateUpdated">;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastTaskWorkingDirectoryUpdated">;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 }
 
@@ -195,25 +195,15 @@ export async function handleMigrateTaskWorkingDirectory(
 			log("de-isolating", newWorkingDirectory);
 		}
 
-		// Update the card's workingDirectory.
+		// Broadcast the working directory change to the UI, which applies it
+		// to the board and persists through its normal single-writer cycle.
 		try {
-			log("persisting workingDirectory", newWorkingDirectory);
-			await mutateWorkspaceState(workspaceScope.workspacePath, (currentState) => {
-				const board = structuredClone(currentState.board);
-				const target = findCardInBoard(board, input.taskId);
-				if (target) {
-					target.workingDirectory = newWorkingDirectory;
-					target.useWorktree = input.direction === "isolate";
-					target.updatedAt = Date.now();
-				}
-				return { board, value: null };
-			});
-
-			// Broadcast the state change so the metadata monitor picks up the new
-			// workingDirectory immediately instead of waiting for the next poll.
-			void deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated(
+			log("broadcasting workingDirectory update", newWorkingDirectory);
+			deps.broadcaster.broadcastTaskWorkingDirectoryUpdated(
 				workspaceScope.workspaceId,
-				workspaceScope.workspacePath,
+				input.taskId,
+				newWorkingDirectory,
+				input.direction === "isolate",
 			);
 
 			// Only restart the session if it was running before migration.

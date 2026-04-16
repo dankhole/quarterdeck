@@ -2,6 +2,47 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: remove CLI task commands and enforce single-writer pattern (2026-04-16)
+
+**Problem:** The `quarterdeck task` CLI subcommands (create, update, trash, delete, start, link, unlink, list) used `mutateWorkspaceState` to write board state directly to disk. This was the only server-side board state writer and could race with the UI's single-writer persist cycle when a browser was connected, potentially causing `WorkspaceStateConflictError` toasts. The CLI commands were unused — all operations were handled by the browser UI.
+
+Additionally, `migrate-task-working-directory` (a tRPC handler called by the browser) also used `mutateWorkspaceState` to update `card.workingDirectory` and `card.useWorktree` server-side, violating the single-writer rule.
+
+**Fix:**
+1. Deleted 4 CLI task command files (~750 lines): `src/commands/task.ts`, `task-lifecycle-handlers.ts`, `task-workspace.ts`, `task-board-helpers.ts`.
+2. Removed `registerTaskCommand` from `src/cli.ts`.
+3. Deleted `mutateWorkspaceState` and its supporting types (`RuntimeWorkspaceAtomicMutationResult`, `RuntimeWorkspaceAtomicMutationResponse`) from `src/state/workspace-state.ts`.
+4. Refactored `migrate-task-working-directory` to broadcast a `task_working_directory_updated` WebSocket message instead of writing board state. New message type wired through the full stack: Zod schema (`src/core/api/streams.ts`), message builder (`src/server/runtime-state-messages.ts`), broadcaster interface and hub (`src/core/service-interfaces.ts`, `src/server/runtime-state-hub.ts`), runtime API deps (`src/trpc/runtime-api.ts`), frontend dispatch (`web-ui/src/runtime/runtime-stream-dispatch.ts`), state stream reducer (`web-ui/src/runtime/use-runtime-state-stream.ts`), project navigation/provider plumbing, and new `use-task-working-directory-sync.ts` board sync hook (mirrors `use-task-title-sync.ts`).
+5. Updated `AGENTS.md` single-writer rule documentation.
+6. Cleaned up test mocks referencing `mutateWorkspaceState` across 4 test files; removed integration tests for deleted CLI commands.
+
+**Files:**
+- `src/commands/task.ts` — deleted
+- `src/commands/task-lifecycle-handlers.ts` — deleted
+- `src/commands/task-workspace.ts` — deleted
+- `src/commands/task-board-helpers.ts` — deleted
+- `src/cli.ts` — removed `registerTaskCommand` import/call
+- `src/state/workspace-state.ts` — removed `mutateWorkspaceState` + types
+- `src/trpc/handlers/migrate-task-working-directory.ts` — broadcast instead of mutate
+- `src/core/api/streams.ts` — new `task_working_directory_updated` schema
+- `src/server/runtime-state-messages.ts` — new builder
+- `src/core/service-interfaces.ts` — new broadcaster method
+- `src/server/runtime-state-hub.ts` — new broadcast implementation
+- `src/trpc/runtime-api.ts` — updated broadcaster Pick
+- `src/trpc/workspace-api.ts` — comment cleanup
+- `web-ui/src/runtime/runtime-stream-dispatch.ts` — new handler
+- `web-ui/src/runtime/use-runtime-state-stream.ts` — new type, state, reducer case
+- `web-ui/src/hooks/project/use-project-navigation.ts` — plumbing
+- `web-ui/src/providers/project-provider.tsx` — plumbing
+- `web-ui/src/hooks/use-task-working-directory-sync.ts` — new board sync hook
+- `web-ui/src/App.tsx` — wire new sync hook
+- `AGENTS.md` — updated single-writer rule docs
+- `test/runtime/trpc/runtime-api.test.ts` — removed mutate mocks/assertions
+- `test/runtime/trpc/workspace-api.test.ts` — removed mutate mocks/assertions
+- `test/runtime/trpc/workspace-api-conflict.test.ts` — removed mutate mock
+- `test/runtime/trpc/workspace-api-stash.test.ts` — removed mutate mock
+- `test/integration/task-command-exit.integration.test.ts` — removed CLI task tests
+
 ## Refactor: complete hook domain logic extraction — Phase 2 final (2026-04-16)
 
 **Goal:** Complete all remaining hook domain extractions and close out Phase 2.

@@ -21,7 +21,6 @@ const workspaceChangesMocks = vi.hoisted(() => ({
 
 const workspaceStateMocks = vi.hoisted(() => ({
 	loadWorkspaceState: vi.fn(),
-	mutateWorkspaceState: vi.fn(async () => ({ value: null, state: null, saved: false })),
 	saveWorkspaceState: vi.fn(),
 	WorkspaceStateConflictError: class extends Error {},
 }));
@@ -95,7 +94,6 @@ vi.mock("../../../src/workspace/get-workspace-changes.js", async (importOriginal
 
 vi.mock("../../../src/state/workspace-state.js", () => ({
 	loadWorkspaceState: workspaceStateMocks.loadWorkspaceState,
-	mutateWorkspaceState: workspaceStateMocks.mutateWorkspaceState,
 	saveWorkspaceState: workspaceStateMocks.saveWorkspaceState,
 	WorkspaceStateConflictError: workspaceStateMocks.WorkspaceStateConflictError,
 }));
@@ -651,12 +649,9 @@ describe("createWorkspaceApi checkoutGitBranch", () => {
 describe("createWorkspaceApi deleteWorktree", () => {
 	beforeEach(() => {
 		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockReset();
-		workspaceStateMocks.mutateWorkspaceState.mockReset();
-
-		workspaceStateMocks.mutateWorkspaceState.mockResolvedValue({ value: null, state: null, saved: false });
 	});
 
-	it("delegates to deleteTaskWorktree without mutating board state", async () => {
+	it("delegates to deleteTaskWorktree", async () => {
 		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
 
 		const api = createWorkspaceApi(createWorkspaceDeps());
@@ -668,12 +663,9 @@ describe("createWorkspaceApi deleteWorktree", () => {
 			repoPath: "/tmp/repo",
 			taskId: "task-1",
 		});
-		// Board state is NOT mutated server-side — the client clears workingDirectory
-		// when it moves the card to trash, avoiding a dual-writer race.
-		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
 	});
 
-	it("does not clear workingDirectory when delete fails", async () => {
+	it("returns error when delete fails", async () => {
 		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockResolvedValue({
 			ok: false,
 			error: "worktree not found",
@@ -684,7 +676,6 @@ describe("createWorkspaceApi deleteWorktree", () => {
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
 		expect(result.ok).toBe(false);
-		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
 	});
 });
 

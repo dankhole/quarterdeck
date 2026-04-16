@@ -34,6 +34,7 @@ import { useNavbarState } from "@/hooks/use-navbar-state";
 import { usePromptShortcuts } from "@/hooks/use-prompt-shortcuts";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskTitleSync } from "@/hooks/use-task-title-sync";
+import { useTaskWorkingDirectorySync } from "@/hooks/use-task-working-directory-sync";
 import { useTitleActions } from "@/hooks/use-title-actions";
 import { BoardProvider, useBoardContext } from "@/providers/board-provider";
 import { DialogProvider, useDialogContext } from "@/providers/dialog-provider";
@@ -244,6 +245,10 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 		terminalFontWeight: project.terminalFontWeight,
 	});
 	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard });
+	useTaskWorkingDirectorySync({
+		latestTaskWorkingDirectoryUpdate: project.latestTaskWorkingDirectoryUpdate,
+		setBoard,
+	});
 	useStreamErrorHandler({ streamError: project.streamError, isRuntimeDisconnected: project.isRuntimeDisconnected });
 
 	useProjectSwitchCleanup({

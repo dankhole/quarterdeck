@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: remove CLI task commands and enforce single-writer pattern
+
+- Removed the `quarterdeck task` CLI subcommands (create, update, trash, delete, start, link, unlink, list) — all board operations are now exclusively handled by the browser UI.
+- Deleted `mutateWorkspaceState` — the only server-side board state writer that could race with the UI's single-writer persist cycle.
+- Refactored `migrate-task-working-directory` to broadcast a lightweight `task_working_directory_updated` WebSocket message instead of writing board state server-side. The UI applies the change to its local board and persists through its normal debounced cycle, following the established `task_title_updated` pattern.
+
 ### Refactor: complete domain logic extraction from hooks (Phase 2 final)
 
 - **Batch 3** — Extracted 7 more domain modules: `notifications/audible-notifications.ts` (column derivation, sound event resolution, settle window, visibility, project suppression), `debug-logging.ts` (log merging, filtering, tag extraction, disabled-tag persistence), `task-editor.ts` (branch ref resolution, plan mode incompatibility, task save validation), `board/review-auto-actions.ts` (auto-review eligibility, column mapping, review card collection, auto-trash mode), `terminal/shell-auto-restart.ts` (rate limiting, restart target parsing, restart eligibility), `board/linked-backlog-task-actions.ts` (dependency error messages, trash warning view model), `shortcut-actions.ts` (label collision detection, shortcut creation validation). 119 new domain-level unit tests across 7 test files.

@@ -24,7 +24,6 @@ const turnCheckpointMocks = vi.hoisted(() => ({
 }));
 
 const workspaceStateMocks = vi.hoisted(() => ({
-	mutateWorkspaceState: vi.fn(async () => ({ value: null, state: null, saved: false })),
 	loadWorkspaceState: vi.fn(),
 }));
 
@@ -65,7 +64,6 @@ vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
 }));
 
 vi.mock("../../../src/state/workspace-state.js", () => ({
-	mutateWorkspaceState: workspaceStateMocks.mutateWorkspaceState,
 	loadWorkspaceState: workspaceStateMocks.loadWorkspaceState,
 }));
 
@@ -165,6 +163,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 		},
 		broadcaster: {
 			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskWorkingDirectoryUpdated: vi.fn(),
 			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		},
@@ -431,7 +430,6 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		taskWorktreeMocks.findTaskPatch.mockReset();
 		taskWorktreeMocks.applyTaskPatch.mockReset();
 		workspaceStateMocks.loadWorkspaceState.mockReset();
-		workspaceStateMocks.mutateWorkspaceState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		fsMocks.rm.mockReset();
@@ -443,7 +441,6 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 			binary: "claude",
 			args: [],
 		});
-		workspaceStateMocks.mutateWorkspaceState.mockResolvedValue({ value: null, state: null, saved: false });
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockResolvedValue({
 			turn: 1,
 			ref: "refs/quarterdeck/checkpoints/task-1/turn/1",
@@ -647,8 +644,6 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		expect(result.ok).toBe(false);
 		expect(result.error).toMatch(/No runnable agent command/);
 		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
-		// State must NOT have been mutated — early return before side effects.
-		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
 		expect(terminalManager.stopTaskSessionAndWaitForExit).not.toHaveBeenCalled();
 	});
 
@@ -706,8 +701,6 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({ cwd: "/tmp/repo", resumeConversation: true }),
 		);
-		// State should NOT have been mutated.
-		expect(workspaceStateMocks.mutateWorkspaceState).not.toHaveBeenCalled();
 	});
 });
 

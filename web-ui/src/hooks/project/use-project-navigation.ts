@@ -15,7 +15,7 @@ import type {
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
-import type { TaskTitleUpdate } from "@/runtime/use-runtime-state-stream";
+import type { TaskTitleUpdate, TaskWorkingDirectoryUpdate } from "@/runtime/use-runtime-state-stream";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/utils/app-utils";
 import { useWindowEvent } from "@/utils/react-use";
@@ -42,6 +42,7 @@ export interface UseProjectNavigationResult {
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
+	latestTaskWorkingDirectoryUpdate: TaskWorkingDirectoryUpdate | null;
 	logLevel: "debug" | "info" | "warn" | "error";
 	debugLogEntries: RuntimeDebugLogEntry[];
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -82,6 +83,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		notificationWorkspaceIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		latestTaskWorkingDirectoryUpdate,
 		logLevel,
 		debugLogEntries,
 		streamError,
@@ -326,6 +328,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		workspaceMetadata,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
+		latestTaskWorkingDirectoryUpdate,
 		logLevel,
 		debugLogEntries,
 		notificationSessions,
