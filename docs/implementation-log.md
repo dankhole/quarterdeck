@@ -2,6 +2,22 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split git-view into domain module, hook, and sub-components (2026-04-16)
+
+**Problem:** `web-ui/src/components/git/git-view.tsx` was 757 lines mixing persistence logic, data fetching for 3 tab modes, resize handling, conflict resolution, rollback, and rendering. Agents working on a rendering fix had to load the entire file; agents debugging data fetching had to read past 400 lines of unrelated JSX.
+
+**Changes:**
+
+- **Domain module** (`hooks/git/git-view.ts`, 88 lines): `GitViewTab` type, tab persistence (`loadGitViewTab`, `persistGitViewTab`), scoped path cache (`lastSelectedPathByScope` Map + IIFE hydration from localStorage, `getLastSelectedPath`, `setLastSelectedPath`), and derived state helpers (`deriveActiveFiles`, `deriveEmptyTitle`). Pure TS, no React imports.
+- **Hook** (`hooks/git/use-git-view.ts`, 343 lines): All state (`activeTab`, `fileTreeVisible`, `selectedPath`, `diffComments`), effects (tab navigation, file navigation, context resets, auto-select), data fetching (3 `useRuntimeWorkspaceChanges` calls + `useAllFileDiffContent`), resize handling, conflict resolution, and file rollback. Explicit `UseGitViewResult` interface (23 fields).
+- **CompareBar** (`components/git/git-view-compare-bar.tsx`, 132 lines): Extracted from inline function — has own `useState` for two popover open states, clean props interface.
+- **Empty/loading panels** (`components/git/git-view-empty.tsx`, 36 lines): `GitViewLoadingPanel` (skeleton) and `GitViewEmptyPanel` (icon + title).
+- **View component** (`components/git/git-view.tsx`, 255 lines): `GitViewProps extends UseGitViewOptions` for hook props + 7 render-only props. `TabButton` stays inline (28 lines, stateless, single call site).
+
+**Design decisions:** `GitViewProps extends UseGitViewOptions` with `...hookOptions` rest spread — novel in this codebase but appropriate since the view is a thin shell over the hook. Explicit `UseGitViewResult` interface matches every other hook's pattern (not `ReturnType`). Module-level `lastSelectedPathByScope` Map stays singleton via ES module evaluation semantics.
+
+**Files:** `web-ui/src/components/git/git-view.tsx` (rewritten), `web-ui/src/components/git/git-view-compare-bar.tsx` (new), `web-ui/src/components/git/git-view-empty.tsx` (new), `web-ui/src/hooks/git/git-view.ts` (new), `web-ui/src/hooks/git/use-git-view.ts` (new), `web-ui/src/hooks/git/index.ts` (barrel update). Public API (`GitView`, `GitViewProps`) unchanged — zero consumer updates.
+
 ## Refactor: split hooks-api test into domain-focused files (2026-04-16)
 
 **Problem:** `test/runtime/trpc/hooks-api.test.ts` was 888 lines covering 5 unrelated behavioral domains (basic transitions, conversation summaries, permission metadata guard, permission-aware transition guard, turn checkpoints) plus misplaced `isPermissionActivity` tests that belong to `session-reconciliation.ts`. Every test repeated a 7-line `createHooksApi({...})` setup block.

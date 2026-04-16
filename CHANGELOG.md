@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split git-view into domain module, hook, and sub-components
+
+- Split the 757-line `GitView` monolith into 5 focused files — domain module (`hooks/git/git-view.ts`, types + persistence), hook (`hooks/git/use-git-view.ts`, state + effects + data fetching), `CompareBar` component, empty/loading panels, and slimmed-down view component (255 lines). Public API unchanged.
+
 ### Refactor: split hooks-api test into domain-focused files
 
 - Split the 888-line `hooks-api.test.ts` monolith into a `hooks-api/` subdirectory with 4 focused test files — transitions, conversation summaries, permission guard, and turn checkpoints — plus a shared `_helpers.ts` with test factories and a `createTestApi` helper that eliminates boilerplate. Moved misplaced `isPermissionActivity` tests to `test/runtime/terminal/`.

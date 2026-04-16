@@ -168,7 +168,7 @@ Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folde
 
 - ~~**Phase 1**~~ — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves. Done.
 - ~~**Phase 2**~~ — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves. Done.
-- **Phase 3** — Decompose 7 oversized components (board-card 784L, git-view 757L, task-create-dialog 725L, branch-selector-popover 698L, project-navigation-panel 679L, top-bar 624L, card-detail-view 587L) into sub-components targeting ~400 lines max.
+- **Phase 3** — Decompose 6 oversized components (board-card 784L, task-create-dialog 725L, branch-selector-popover 698L, project-navigation-panel 679L, top-bar 624L, card-detail-view 587L) into sub-components targeting ~400 lines max. git-view done (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels).
 - ~~**Phase 4**~~ — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`. Done.
 
 ## Readability refactoring roadmap (C#-style navigability) — completed

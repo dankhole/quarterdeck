@@ -14,6 +14,8 @@ export type { UseGitActionsResult } from "./use-git-actions";
 export { useGitActions } from "./use-git-actions";
 export type { FileNavigation } from "./use-git-navigation";
 export { useGitNavigation } from "./use-git-navigation";
+export type { UseGitViewResult } from "./use-git-view";
+export { useGitView } from "./use-git-view";
 export type { GitViewCompareNavigation, UseGitViewCompareResult } from "./use-git-view-compare";
 export { useGitViewCompare } from "./use-git-view-compare";
 export type { ResolvedScope, ScopeMode } from "./use-scope-context";
