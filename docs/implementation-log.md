@@ -72,6 +72,24 @@ No test logic changes — same 28 tests, same assertions. The `createDefaultSave
 - `test/runtime/config/prompt-shortcuts.test.ts` — new
 - `test/runtime/config/pinned-branches.test.ts` — new
 
+## Refactor: split terminal-pool test file (2026-04-16)
+
+**Problem:** `web-ui/src/terminal/terminal-pool.test.ts` was 1,002 lines — well above the sub-500-line target for test files. A single file covered pool acquisition, lifecycle management (warmup, eviction, rotation), and dedicated terminal CRUD, making it hard to navigate and slow to reason about which tests cover which behavior.
+
+**What changed:** Split into three files organized by domain:
+
+1. **`terminal-pool-acquire.test.ts`** (412 lines) — `acquireForTask`, `releaseTask`, `getSlotForTask`, `releaseAll`, `disconnectFromTask` on release. These are the core slot acquisition and release tests.
+2. **`terminal-pool-lifecycle.test.ts`** (456 lines) — `initPool`, `warmup`, `cancelWarmup`, eviction timeout clearing, rotation (FREE slot replacement, skip-when-full, dispose-before-create ordering), `attachPoolContainer`/`detachPoolContainer`. These cover the pool's background lifecycle management.
+3. **`terminal-pool-dedicated.test.ts`** (347 lines) — `isDedicatedTerminalTaskId`, `ensureDedicatedTerminal`, `disposeDedicatedTerminal`, `disposeAllDedicatedTerminalsForWorkspace`, `writeToTerminalBuffer`, `isTerminalSessionRunning`. These cover the dedicated terminal subsystem that lives outside the pool.
+
+The `MockSlot` factory (~100 lines) is duplicated in each file because vitest hoists `vi.mock()` calls to module scope — shared mock modules can't be imported before the hoisted mock registration.
+
+All 42 original tests preserved and passing. No behavioral changes.
+
+**Files:**
+- Deleted: `web-ui/src/terminal/terminal-pool.test.ts`
+- New: `web-ui/src/terminal/terminal-pool-acquire.test.ts`, `web-ui/src/terminal/terminal-pool-lifecycle.test.ts`, `web-ui/src/terminal/terminal-pool-dedicated.test.ts`
+
 ## Fix: remember last viewed file when switching tasks + preserve file browser scroll position (2026-04-15)
 
 **Problem 1 — Git view file selection resets on task switch:** `git-view.tsx:574-577` had a `useEffect([taskId])` that unconditionally set `selectedPath` to `null` when switching tasks. A module-level `lastSelectedPathByScope` Map and auto-select effect already existed to restore the cached path, but the explicit null reset created an intermediate state that interfered with restoration timing.

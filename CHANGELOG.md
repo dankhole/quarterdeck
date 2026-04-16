@@ -19,6 +19,10 @@
 
 - Split the 951-line `runtime-config.test.ts` into 5 focused test files + shared helpers module, all under 250 lines. Extracted repeated 40-field save payloads into a `createDefaultSavePayload()` factory. No test logic changes — same 28 tests, same assertions.
 
+### Refactor: split terminal-pool test file
+
+- Split the 1,002-line `terminal-pool.test.ts` monolith into three focused test files by domain: `terminal-pool-acquire.test.ts` (acquire, release, slot lookup), `terminal-pool-lifecycle.test.ts` (init, warmup, eviction, rotation, attach/detach), `terminal-pool-dedicated.test.ts` (dedicated terminals, write, session status). All 42 tests preserved.
+
 ## [0.9.2] — 2026-04-15
 
 ### Fix: remember last viewed file when switching tasks

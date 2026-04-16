@@ -1,0 +1,455 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Mock TerminalSlot
+// ---------------------------------------------------------------------------
+
+interface MockSlot {
+	slotId: number;
+	_taskId: string | null;
+	_workspaceId: string | null;
+	_sessionState: string | null;
+	connectToTask: ReturnType<typeof vi.fn>;
+	ensureConnected: ReturnType<typeof vi.fn>;
+	disconnectFromTask: ReturnType<typeof vi.fn>;
+	onceConnectionReady: ReturnType<typeof vi.fn>;
+	attachToStageContainer: ReturnType<typeof vi.fn>;
+	show: ReturnType<typeof vi.fn>;
+	hide: ReturnType<typeof vi.fn>;
+	dispose: ReturnType<typeof vi.fn>;
+	resetRenderer: ReturnType<typeof vi.fn>;
+	requestRestore: ReturnType<typeof vi.fn>;
+	setFontWeight: ReturnType<typeof vi.fn>;
+	writeText: ReturnType<typeof vi.fn>;
+	setAppearance: ReturnType<typeof vi.fn>;
+	getBufferDebugInfo: ReturnType<typeof vi.fn>;
+	connectedTaskId: string | null;
+	connectedWorkspaceId: string | null;
+	sessionState: string | null;
+}
+
+vi.mock("@/terminal/terminal-slot", () => {
+	function createMock(slotId: number): MockSlot {
+		const mock: MockSlot = {
+			slotId,
+			_taskId: null,
+			_workspaceId: null,
+			_sessionState: null,
+			connectToTask: vi.fn((taskId: string, workspaceId: string) => {
+				mock._taskId = taskId;
+				mock._workspaceId = workspaceId;
+			}),
+			ensureConnected: vi.fn(),
+			disconnectFromTask: vi.fn(async () => {
+				mock._taskId = null;
+				mock._workspaceId = null;
+			}),
+			onceConnectionReady: vi.fn(),
+			attachToStageContainer: vi.fn(),
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+			resetRenderer: vi.fn(),
+			requestRestore: vi.fn(),
+			setFontWeight: vi.fn(),
+			writeText: vi.fn(),
+			setAppearance: vi.fn(),
+			getBufferDebugInfo: vi.fn(() => ({
+				activeBuffer: "NORMAL" as const,
+				normalLength: 0,
+				normalBaseY: 0,
+				normalScrollbackLines: 0,
+				alternateLength: 0,
+				viewportRows: 24,
+				scrollbackOption: 3_000,
+				sessionState: null,
+			})),
+			get connectedTaskId() {
+				return mock._taskId;
+			},
+			get connectedWorkspaceId() {
+				return mock._workspaceId;
+			},
+			get sessionState() {
+				return mock._sessionState;
+			},
+		};
+		return mock;
+	}
+
+	const MockTerminalSlot = vi.fn(function (this: MockSlot, slotId: number) {
+		const mock = createMock(slotId);
+		for (const key of Object.keys(mock)) {
+			(this as unknown as Record<string, unknown>)[key] = (mock as unknown as Record<string, unknown>)[key];
+		}
+		const self = this;
+		Object.defineProperty(this, "connectedTaskId", {
+			get() {
+				return self._taskId;
+			},
+			configurable: true,
+		});
+		Object.defineProperty(this, "connectedWorkspaceId", {
+			get() {
+				return self._workspaceId;
+			},
+			configurable: true,
+		});
+		Object.defineProperty(this, "sessionState", {
+			get() {
+				return self._sessionState;
+			},
+			configurable: true,
+		});
+		this.connectToTask = vi.fn((taskId: string, workspaceId: string) => {
+			self._taskId = taskId;
+			self._workspaceId = workspaceId;
+		});
+		this.disconnectFromTask = vi.fn(async () => {
+			self._taskId = null;
+			self._workspaceId = null;
+		});
+	});
+
+	return {
+		TerminalSlot: MockTerminalSlot,
+		updateGlobalTerminalFontWeight: vi.fn(),
+		PersistentTerminalAppearance: undefined,
+	};
+});
+
+vi.mock("@/utils/client-logger", () => ({
+	createClientLogger: () => ({
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+	}),
+}));
+
+// ---------------------------------------------------------------------------
+// Import pool under test (AFTER mocks are set up)
+// ---------------------------------------------------------------------------
+
+import {
+	_resetPoolForTesting,
+	acquireForTask,
+	attachPoolContainer,
+	cancelWarmup,
+	detachPoolContainer,
+	getSlotForTask,
+	getSlotRole,
+	initPool,
+	type SlotRole,
+	warmup,
+} from "@/terminal/terminal-pool";
+import { TerminalSlot } from "@/terminal/terminal-slot";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const TerminalSlotMock = TerminalSlot as unknown as ReturnType<typeof vi.fn>;
+
+function getPoolSlots(): MockSlot[] {
+	return TerminalSlotMock.mock.instances as unknown as MockSlot[];
+}
+
+function getCurrentPoolSlots(): MockSlot[] {
+	const all = getPoolSlots();
+	return all.slice(all.length - 4);
+}
+
+function getSlotRoles(poolSlots: MockSlot[]): SlotRole[] {
+	return poolSlots.map((s) => getSlotRole(s as unknown as TerminalSlot));
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("terminal-pool — lifecycle", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		_resetPoolForTesting();
+		TerminalSlotMock.mockClear();
+	});
+
+	afterEach(() => {
+		_resetPoolForTesting();
+		vi.useRealTimers();
+	});
+
+	// -----------------------------------------------------------------------
+	// initPool
+	// -----------------------------------------------------------------------
+
+	describe("initPool", () => {
+		it("creates 4 slots all FREE", () => {
+			initPool();
+			expect(TerminalSlotMock).toHaveBeenCalledTimes(4);
+			const poolSlots = getCurrentPoolSlots();
+			expect(poolSlots).toHaveLength(4);
+			const roles = getSlotRoles(poolSlots);
+			expect(roles).toEqual(["FREE", "FREE", "FREE", "FREE"]);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// warmup
+	// -----------------------------------------------------------------------
+
+	describe("warmup", () => {
+		beforeEach(() => {
+			initPool();
+		});
+
+		it("connects FREE slot and sets PRELOADING", () => {
+			warmup("task-1", "ws-1");
+			const slot = getSlotForTask("task-1")!;
+			expect(slot).not.toBeNull();
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+			const mockSlot = slot as unknown as MockSlot;
+			expect(mockSlot.connectToTask).toHaveBeenCalledWith("task-1", "ws-1");
+			expect(mockSlot.onceConnectionReady).toHaveBeenCalledWith(expect.any(Function));
+		});
+
+		it("is no-op for ACTIVE task", () => {
+			acquireForTask("task-1", "ws-1");
+			const slotBefore = getSlotForTask("task-1")!;
+			warmup("task-1", "ws-1");
+			const slotAfter = getSlotForTask("task-1")!;
+			expect(slotBefore).toBe(slotAfter);
+			expect(getSlotRole(slotAfter)).toBe("ACTIVE");
+		});
+
+		it("is no-op for PREVIOUS task", () => {
+			acquireForTask("task-1", "ws-1");
+			acquireForTask("task-2", "ws-1");
+			expect(getSlotRole(getSlotForTask("task-1")!)).toBe("PREVIOUS");
+
+			warmup("task-1", "ws-1");
+			expect(getSlotRole(getSlotForTask("task-1")!)).toBe("PREVIOUS");
+		});
+
+		it("evicts oldest PRELOADING if no FREE", () => {
+			acquireForTask("task-1", "ws-1");
+			acquireForTask("task-2", "ws-1");
+
+			warmup("task-warm-1", "ws-1");
+			vi.advanceTimersByTime(100);
+			warmup("task-warm-2", "ws-1");
+
+			warmup("task-warm-3", "ws-1");
+			expect(getSlotForTask("task-warm-1")).toBeNull();
+			expect(getSlotForTask("task-warm-3")).not.toBeNull();
+			expect(getSlotRole(getSlotForTask("task-warm-3")!)).toBe("PRELOADING");
+		});
+
+		it("stays warm indefinitely until cancelWarmup is called", () => {
+			warmup("task-1", "ws-1");
+			const slot = getSlotForTask("task-1")!;
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+
+			vi.advanceTimersByTime(10_000);
+
+			expect(getSlotForTask("task-1")).not.toBeNull();
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// cancelWarmup
+	// -----------------------------------------------------------------------
+
+	describe("cancelWarmup", () => {
+		beforeEach(() => {
+			initPool();
+		});
+
+		it("starts a grace period then disconnects and returns to FREE", () => {
+			warmup("task-1", "ws-1");
+			const slot = getSlotForTask("task-1")!;
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+
+			cancelWarmup("task-1");
+
+			expect(getSlotForTask("task-1")).not.toBeNull();
+			expect(getSlotRole(slot)).toBe("PRELOADING");
+
+			vi.advanceTimersByTime(3000);
+
+			expect(getSlotForTask("task-1")).toBeNull();
+			expect(getSlotRole(slot)).toBe("FREE");
+			const mockSlot = slot as unknown as MockSlot;
+			expect(mockSlot.disconnectFromTask).toHaveBeenCalled();
+		});
+
+		it("grace period is cancelled if acquireForTask reuses the slot", () => {
+			warmup("task-1", "ws-1");
+			cancelWarmup("task-1");
+
+			const slot = acquireForTask("task-1", "ws-1");
+			expect(slot).toBeDefined();
+
+			vi.advanceTimersByTime(5000);
+			expect(getSlotRole(slot)).toBe("ACTIVE");
+		});
+
+		it("is no-op for non-warming task", () => {
+			cancelWarmup("nonexistent-task");
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// eviction
+	// -----------------------------------------------------------------------
+
+	describe("eviction", () => {
+		beforeEach(() => {
+			initPool();
+		});
+
+		it("cancels warmup timeout for evicted task", () => {
+			warmup("w1", "ws-1");
+			vi.advanceTimersByTime(50);
+			warmup("w2", "ws-1");
+			vi.advanceTimersByTime(50);
+			warmup("w3", "ws-1");
+			vi.advanceTimersByTime(50);
+			warmup("w4", "ws-1");
+
+			const slotW1 = getSlotForTask("w1")!;
+			const mockW1 = slotW1 as unknown as MockSlot;
+
+			acquireForTask("new-task", "ws-1");
+			expect(getSlotForTask("w1")).toBeNull();
+
+			const disconnectCallsBefore = mockW1.disconnectFromTask.mock.calls.length;
+
+			vi.advanceTimersByTime(5000);
+
+			expect(mockW1.disconnectFromTask.mock.calls.length).toBe(disconnectCallsBefore);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// rotation
+	// -----------------------------------------------------------------------
+
+	describe("rotation", () => {
+		it("replaces oldest FREE slot", () => {
+			initPool();
+			const initialSlots = getCurrentPoolSlots();
+
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			const oldestSlot = initialSlots[0]!;
+			expect(oldestSlot.dispose).toHaveBeenCalled();
+
+			expect(TerminalSlotMock).toHaveBeenCalledTimes(5);
+		});
+
+		it("skips when no FREE slots", () => {
+			initPool();
+
+			warmup("w1", "ws-1");
+			warmup("w2", "ws-1");
+			acquireForTask("a1", "ws-1");
+			acquireForTask("a2", "ws-1");
+
+			expect(getSlotRole(getSlotForTask("w1")!)).toBe("PRELOADING");
+			expect(getSlotRole(getSlotForTask("w2")!)).toBe("PRELOADING");
+			expect(getSlotRole(getSlotForTask("a1")!)).toBe("PREVIOUS");
+			expect(getSlotRole(getSlotForTask("a2")!)).toBe("ACTIVE");
+
+			vi.advanceTimersByTime(179_000);
+
+			warmup("w3", "ws-1");
+			warmup("w4", "ws-1");
+			acquireForTask("a3", "ws-1");
+			acquireForTask("a4", "ws-1");
+
+			const constructCallsBefore = TerminalSlotMock.mock.calls.length;
+
+			vi.advanceTimersByTime(1_000);
+
+			expect(TerminalSlotMock.mock.calls.length).toBe(constructCallsBefore);
+		});
+
+		it("disposes old before creating new (no 5th slot)", () => {
+			initPool();
+			const initialSlots = getCurrentPoolSlots();
+			const slot0 = initialSlots[0]!;
+
+			let disposedBeforeCreate = false;
+			slot0.dispose.mockImplementation(() => {
+				const callsSoFar = TerminalSlotMock.mock.calls.length;
+				disposedBeforeCreate = callsSoFar === 4;
+			});
+
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			expect(disposedBeforeCreate).toBe(true);
+			expect(TerminalSlotMock).toHaveBeenCalledTimes(5);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// attachPoolContainer / detachPoolContainer
+	// -----------------------------------------------------------------------
+
+	describe("attachPoolContainer", () => {
+		it("calls attachToStageContainer on all pool slots", () => {
+			initPool();
+			const poolSlots = getCurrentPoolSlots();
+			const container = document.createElement("div");
+
+			attachPoolContainer(container);
+
+			for (const slot of poolSlots) {
+				expect(slot.attachToStageContainer).toHaveBeenCalledWith(container);
+			}
+		});
+
+		it("is idempotent for the same container", () => {
+			initPool();
+			const poolSlots = getCurrentPoolSlots();
+			const container = document.createElement("div");
+
+			attachPoolContainer(container);
+			attachPoolContainer(container);
+
+			for (const slot of poolSlots) {
+				expect(slot.attachToStageContainer).toHaveBeenCalledTimes(1);
+			}
+		});
+
+		it("stages replacement slot after rotation", () => {
+			initPool();
+			const container = document.createElement("div");
+			attachPoolContainer(container);
+
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			const allSlots = getPoolSlots();
+			const replacementSlot = allSlots[allSlots.length - 1]!;
+			expect(replacementSlot.attachToStageContainer).toHaveBeenCalledWith(container);
+		});
+	});
+
+	describe("detachPoolContainer", () => {
+		it("clears poolContainer so rotation does not stage", () => {
+			initPool();
+			const container = document.createElement("div");
+			attachPoolContainer(container);
+			detachPoolContainer();
+
+			vi.advanceTimersByTime(3 * 60 * 1000);
+
+			const allSlots = getPoolSlots();
+			const replacementSlot = allSlots[allSlots.length - 1]!;
+			expect(replacementSlot.attachToStageContainer).not.toHaveBeenCalled();
+		});
+	});
+});
