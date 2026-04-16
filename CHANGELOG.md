@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split workspace-api into domain-grouped modules
+
+- Split the 1,092-line `src/trpc/workspace-api.ts` into 7 focused files grouped by git domain — shared helpers (148 lines), git ops (305), changes/files/history (314), staging/stash (178), conflict resolution (106), state/worktrees (140), and a 21-line coordinator that composes them via spread. Each domain module returns a typed `Pick<>` of the full workspace API interface, validated at compile time. Zero behavior changes.
+
 ### Refactor: split runtime-config into focused modules
 
 - Split the 917-line `runtime-config.ts` into normalizers (372 lines, pure functions), persistence (332 lines, file I/O), and barrel (262 lines, public API). Moved `AudibleNotification*` interfaces into `config-defaults.ts` to break a circular type dependency. All consumer imports unchanged.

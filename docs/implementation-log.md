@@ -2,6 +2,23 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split workspace-api into domain-grouped modules (2026-04-16)
+
+**Problem:** `src/trpc/workspace-api.ts` was 1,092 lines — a single factory function returning 43 methods. Most methods are thin adapter glue (resolve cwd, call domain function, maybe notify, catch errors), but the file size made it expensive for LLM agents to load into context when touching any single method.
+
+**Approach:** Domain-grouped split. Methods cut along natural import boundaries into 5 modules, each returning a typed `Pick<>` of the full `workspaceApi` interface. A shared module extracts the cross-cutting concerns (deps interface, context factory, cwd resolution helpers, error factories, input normalizers). The coordinator composes via object spread with the full interface as its return type, so TypeScript validates completeness at compile time.
+
+**Groupings:**
+- `workspace-api-shared.ts` (148 lines) — `CreateWorkspaceApiDependencies`, `WorkspaceApiContext` + factory, `resolveWorkingDir`, `tryResolveTaskCwd`, `hasActiveSharedCheckoutTask`, input normalizers, error response factories
+- `workspace-api-git-ops.ts` (305 lines) — sync, checkout, merge, rebase, reset, cherry-pick, create/delete/rename branch (10 methods)
+- `workspace-api-changes.ts` (314 lines) — loadChanges, loadFileDiff, getDiffText, git log/refs/commit-diff, searchFiles, listFiles, getFileContent (10 methods)
+- `workspace-api-staging.ts` (178 lines) — discard, commit, 6 stash ops (9 methods)
+- `workspace-api-conflict.ts` (106 lines) — conflict files, resolve, continue, abort (5 methods)
+- `workspace-api-state.ts` (140 lines) — load/save state, worktrees, title/summary/focus (9 methods)
+- `workspace-api.ts` (21 lines) — coordinator
+
+**Files:** `src/trpc/workspace-api.ts` (rewritten), 6 new files in `src/trpc/`. Zero behavior changes — all 700 tests pass.
+
 ## Refactor: split runtime-config into focused modules (2026-04-16)
 
 **Problem:** `runtime-config.ts` was 917 lines mixing pure normalizer functions (field coercion, validation, defaults), file I/O (load, save, merge), and the public API surface. Agents working on config field validation had to load persistence logic; agents fixing save behavior had to read past normalizers.
@@ -88,6 +105,7 @@ Moved `isPermissionActivity` tests (6 tests, 43 lines) to `test/runtime/terminal
 **Fix:** Added `LOG_LEVEL_SEVERITY` map and `currentLogLevel` state (default "warn") to `client-logger.ts`, mirroring the server pattern. The `emit()` function now short-circuits when the entry's severity is below the threshold. Added `setClientLogLevel()` export and wired it via a `useEffect` in `use-debug-logging.ts` so the panel's level dropdown controls both server and client entries.
 
 **Files:** `web-ui/src/utils/client-logger.ts`, `web-ui/src/hooks/debug/use-debug-logging.ts`
+>>>>>>> main
 
 ## Refactor: frontend feature folders and barrel exports — Phases 1, 2, 4 (2026-04-16)
 
