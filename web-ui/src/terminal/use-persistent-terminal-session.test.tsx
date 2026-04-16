@@ -32,6 +32,7 @@ function createTerminalSlotMock() {
 		attachToStageContainer: vi.fn(),
 		show: vi.fn(),
 		hide: vi.fn(),
+		park: vi.fn(),
 		reset: vi.fn(),
 		input: vi.fn(() => true),
 		paste: vi.fn(() => true),

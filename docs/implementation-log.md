@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: dedicated shell terminals blank after close/reopen (2026-04-15)
+
+**Problem:** Shell terminals (home terminal, detail dev shell) appeared blank or broken when toggled closed and reopened. The issue was intermittent — it depended on whether the WebGL context survived the DOM detachment.
+
+**Root cause:** Dedicated shell terminals live in ephemeral React containers — when the panel closes, React unmounts the `<ResizableBottomPane>` and removes the container `<div>` from the DOM. The `TerminalSlot`'s `hostElement` (a child of that container) was removed along with it, orphaning the xterm canvas from the live DOM. This caused WebGL context loss and a stale rendering surface. On reopen, `ensureDedicatedTerminal()` returned the existing `TerminalSlot` and `attachToStageContainer()` moved the `hostElement` into the fresh container, but the rendering context was already dead. Pool terminals don't have this problem because their shared container persists across task switches.
+
+**Fix:** Added `park()` method to `TerminalSlot` — moves the `hostElement` back to the off-screen parking root (the same persistent `<div>` used at construction time) and clears the `stageContainer` reference. Called in the dedicated terminal effect cleanup after `terminal.hide()`, before React removes the container from the DOM. This keeps the canvas in the live DOM across close/reopen cycles. All 16 `stageContainer` read sites are already null-guarded via `??` fallback or explicit checks, so setting it to null is safe.
+
+**Files:** `web-ui/src/terminal/terminal-slot.ts` (new `park()` method), `web-ui/src/terminal/use-persistent-terminal-session.ts` (call `park()` in dedicated cleanup), `web-ui/src/terminal/use-persistent-terminal-session.test.tsx` (added `park` to mock)
+
 ## Fix: auto-restart state-awareness — stop restarting completed tasks (2026-04-15)
 
 **Problem:** Agent sessions that completed their work and were sitting in `awaiting_review` would spam auto-restart attempts when their process exited. The logs showed repeated `auto-restart skipped on exit` with `reason: 'rate_limited'` — the restart loop hit 3 attempts in 5 seconds before being throttled. Clicking a review card after the agent process died would either not restart or show "Error" instead of "Ready for review."

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: dedicated shell terminals blank after close/reopen
+
+- Closing and reopening a shell terminal (home or detail dev shell) could leave the terminal blank or broken. The xterm canvas was orphaned from the DOM when React unmounted the panel container, causing WebGL context loss. Added `park()` to `TerminalSlot` — moves the host element back to the off-screen parking root before the container is removed, keeping the canvas in the live DOM so it survives the round-trip.
+
 ### Fix: auto-restart only fires for genuine crashes, not normal agent exits
 
 - `shouldAutoRestart` now checks the pre-exit session state — only restarts when the agent was actively `running` at exit time. Agent processes that exit after completing work (already in `awaiting_review`) are normal lifecycle cleanup, not crashes.

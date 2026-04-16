@@ -146,6 +146,11 @@ export function usePersistentTerminalSession({
 			return () => {
 				unsubscribe();
 				terminal.hide();
+				// Park the host element back to the off-screen root before React
+				// removes the container div from the DOM. Without this, the xterm
+				// canvas becomes detached from the live DOM on unmount, causing
+				// WebGL context loss and a blank terminal on next open.
+				terminal.park();
 				if (terminalRef.current === terminal) {
 					terminalRef.current = null;
 				}

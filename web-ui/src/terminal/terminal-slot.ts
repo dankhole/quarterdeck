@@ -956,6 +956,19 @@ export class TerminalSlot {
 		this.hostElement.style.visibility = "hidden";
 	}
 
+	/**
+	 * Move the host element back to the off-screen parking root and clear the
+	 * stage container reference. Call this when the DOM container that held the
+	 * terminal is about to be removed (e.g. dedicated terminal panel unmount)
+	 * so the xterm canvas stays in the live DOM and avoids WebGL context loss.
+	 */
+	park(): void {
+		if (this.disposed) return;
+		log.debug(`slot ${this.slotId} parked`, { task: this.taskId });
+		this.stageContainer = null;
+		this.parkingRoot.appendChild(this.hostElement);
+	}
+
 	get sessionState(): string | null {
 		return this.latestSummary?.state ?? null;
 	}
