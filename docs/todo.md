@@ -162,7 +162,16 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
-## Readability refactoring roadmap (C#-style navigability)
+## Frontend feature folders, component decomposition, and barrel exports
+
+Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folders.md). Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.
+
+- **Phase 1** — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves.
+- **Phase 2** — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves.
+- **Phase 3** — Decompose 7 oversized components (board-card 784L, git-view 757L, task-create-dialog 725L, branch-selector-popover 698L, project-navigation-panel 679L, top-bar 624L, card-detail-view 587L) into sub-components targeting ~400 lines max.
+- **Phase 4** — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`.
+
+## Readability refactoring roadmap (C#-style navigability) — completed
 
 Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-csharp-readability.md). Eight concrete tasks to make the codebase navigable like a well-structured C# solution — ctrl+click through interfaces, see contracts at a glance, trace data flow without grep.
 
