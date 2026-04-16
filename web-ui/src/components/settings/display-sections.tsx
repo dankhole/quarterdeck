@@ -326,14 +326,6 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 			<p className="text-text-secondary text-[13px] mt-1 mb-0">
 				CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 			</p>
-			<SettingsSwitch
-				className="mt-3"
-				checked={fields.terminalWebGLRenderer}
-				onCheckedChange={(v) => setField("terminalWebGLRenderer", v)}
-				disabled={disabled}
-				label="Use WebGL renderer"
-				description="Uses GPU-accelerated WebGL for terminal rendering. Disable for crisper text via the browser's native canvas 2D renderer."
-			/>
 			<Button
 				size="sm"
 				className="mt-3"

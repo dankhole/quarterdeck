@@ -186,10 +186,6 @@ All hooks migrated out of the monolithic App component into 6 focused providers 
 1. ~~**Organize hooks into domain subdirectories**~~ — done. 78 flat files reorganized into 5 domain subdirectories (`board/`, `git/`, `terminal/`, `project/`, `notifications/`), 5 non-hook files relocated to proper directories (`utils/`, `terminal/`, `components/`), ~123 import sites updated.
 2. **Extract business logic from hooks into plain TS modules** — see "Organize web-ui hooks directory" todo below
 
-## Remove non-WebGL terminal renderer option
-
-The `terminalWebGLRenderer` config toggle and canvas 2D fallback path exist as an escape hatch, but WebGL is the default and the better experience. Remove the toggle from settings, the `setWebGLRenderer` method, the `updateGlobalTerminalWebGLRenderer` plumbing, and always load the WebGL addon. Keep the `onContextLoss` handler so a lost WebGL context doesn't crash the terminal.
-
 ## Revisit periodic orphaned entity cleanup
 
 Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.

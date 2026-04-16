@@ -2,6 +2,28 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Remove non-WebGL terminal renderer option (2026-04-15)
+
+**What:** Removed the `terminalWebGLRenderer` config toggle. Terminals now always use WebGL rendering — the canvas 2D fallback path and the UI toggle to switch between them are gone.
+
+**Why:** WebGL was already the default and provided the better experience. The toggle existed as an escape hatch but added config plumbing, a settings UI control, and a live-toggle code path across 12 files for a rarely-used option. Removing it simplifies the terminal initialization path and shrinks the config surface.
+
+**What was kept:** The `onContextLoss` handler in `attachWebglAddon()` and the try/catch around addon creation remain — if WebGL is unavailable (e.g. in jsdom tests or headless environments), xterm.js falls back to its built-in canvas 2D renderer automatically.
+
+**Files touched:**
+- `src/config/global-config-fields.ts` — removed `terminalWebGLRenderer` field from registry
+- `src/core/api/config.ts` — removed from response and save request Zod schemas
+- `web-ui/src/hooks/use-settings-form.ts` — removed from form values type and initial values
+- `web-ui/src/hooks/terminal/use-terminal-config-sync.ts` — removed WebGL sync effect
+- `web-ui/src/terminal/terminal-pool.ts` — removed `setTerminalWebGLRenderer` export
+- `web-ui/src/terminal/terminal-slot.ts` — removed global flag, `updateGlobalTerminalWebGLRenderer`, `setWebGLRenderer` method; `attachWebglAddon` no longer checks the flag
+- `web-ui/src/components/settings/display-sections.tsx` — removed "Use WebGL renderer" toggle
+- `web-ui/src/App.tsx` — removed `terminalWebGLRenderer` from config sync call
+- `web-ui/src/providers/project-provider.tsx` — removed from context interface and value
+- `web-ui/src/test-utils/runtime-config-factory.ts`, `web-ui/src/terminal/terminal-pool.test.ts`, `test/runtime/config/runtime-config.test.ts` — removed from test fixtures and mocks
+- `docs/todo.md` — removed completed item
+- `CHANGELOG.md` — added entry
+
 ## Fix: "Compare with local tree" from branch context menu opens Compare tab (2026-04-15)
 
 **What:** Clicking "Compare with local tree" from any branch dropdown context menu (top bar, Files scope bar, task detail) navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare.

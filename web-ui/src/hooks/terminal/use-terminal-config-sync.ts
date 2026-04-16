@@ -1,21 +1,16 @@
 import { useEffect } from "react";
-import { setTerminalFontWeight, setTerminalWebGLRenderer } from "@/terminal/terminal-pool";
+import { setTerminalFontWeight } from "@/terminal/terminal-pool";
 
 interface UseTerminalConfigSyncInput {
 	terminalFontWeight: number;
-	terminalWebGLRenderer: boolean;
 }
 
 /**
- * Syncs runtime config terminal settings (font weight, WebGL renderer) to
+ * Syncs runtime config terminal settings (font weight) to
  * the persistent terminal manager so they take effect on existing terminals.
  */
-export function useTerminalConfigSync({ terminalFontWeight, terminalWebGLRenderer }: UseTerminalConfigSyncInput): void {
+export function useTerminalConfigSync({ terminalFontWeight }: UseTerminalConfigSyncInput): void {
 	useEffect(() => {
 		setTerminalFontWeight(terminalFontWeight);
 	}, [terminalFontWeight]);
-
-	useEffect(() => {
-		setTerminalWebGLRenderer(terminalWebGLRenderer);
-	}, [terminalWebGLRenderer]);
 }

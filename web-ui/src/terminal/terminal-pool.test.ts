@@ -20,7 +20,6 @@ interface MockSlot {
 	resetRenderer: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
 	setFontWeight: ReturnType<typeof vi.fn>;
-	setWebGLRenderer: ReturnType<typeof vi.fn>;
 	writeText: ReturnType<typeof vi.fn>;
 	setAppearance: ReturnType<typeof vi.fn>;
 	getBufferDebugInfo: ReturnType<typeof vi.fn>;
@@ -53,7 +52,6 @@ vi.mock("@/terminal/terminal-slot", () => {
 			resetRenderer: vi.fn(),
 			requestRestore: vi.fn(),
 			setFontWeight: vi.fn(),
-			setWebGLRenderer: vi.fn(),
 			writeText: vi.fn(),
 			setAppearance: vi.fn(),
 			getBufferDebugInfo: vi.fn(() => ({
@@ -120,7 +118,6 @@ vi.mock("@/terminal/terminal-slot", () => {
 	return {
 		TerminalSlot: MockTerminalSlot,
 		updateGlobalTerminalFontWeight: vi.fn(),
-		updateGlobalTerminalWebGLRenderer: vi.fn(),
 		PersistentTerminalAppearance: undefined,
 	};
 });

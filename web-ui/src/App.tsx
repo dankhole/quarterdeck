@@ -241,7 +241,6 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 
 	useTerminalConfigSync({
 		terminalFontWeight: project.terminalFontWeight,
-		terminalWebGLRenderer: project.terminalWebGLRenderer,
 	});
 	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard });
 	useStreamErrorHandler({ streamError: project.streamError, isRuntimeDisconnected: project.isRuntimeDisconnected });

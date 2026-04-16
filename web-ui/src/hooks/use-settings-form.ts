@@ -23,7 +23,6 @@ export interface SettingsFormValues {
 	summaryStaleAfterSeconds: number;
 	shellAutoRestartEnabled: boolean;
 	terminalFontWeight: number;
-	terminalWebGLRenderer: boolean;
 	showTrashWorktreeNotice: boolean;
 	uncommittedChangesOnCardsEnabled: boolean;
 	unmergedChangesIndicatorEnabled: boolean;
@@ -71,7 +70,6 @@ export function resolveInitialValues(
 		summaryStaleAfterSeconds: config?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
-		terminalWebGLRenderer: config?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer,
 		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,
 		uncommittedChangesOnCardsEnabled:
 			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,

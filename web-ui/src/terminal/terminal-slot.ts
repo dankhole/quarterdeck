@@ -45,7 +45,6 @@ const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 export const TERMINAL_SCROLLBACK = 3_000;
 
 let currentTerminalFontWeight: number = CONFIG_DEFAULTS.terminalFontWeight;
-let currentTerminalWebGLRenderer: boolean = CONFIG_DEFAULTS.terminalWebGLRenderer;
 
 export interface PersistentTerminalAppearance {
 	cursorColor: string;
@@ -85,11 +84,6 @@ function getParkingRoot(): HTMLDivElement {
 /** Update the global font weight state used when constructing new terminals. */
 export function updateGlobalTerminalFontWeight(weight: number): void {
 	currentTerminalFontWeight = weight;
-}
-
-/** Update the global WebGL renderer state used when constructing new terminals. */
-export function updateGlobalTerminalWebGLRenderer(enabled: boolean): void {
-	currentTerminalWebGLRenderer = enabled;
 }
 
 export class TerminalSlot {
@@ -358,9 +352,6 @@ export class TerminalSlot {
 	}
 
 	private attachWebglAddon(): void {
-		if (!currentTerminalWebGLRenderer) {
-			return;
-		}
 		try {
 			const webglAddon = new WebglAddon();
 			webglAddon.onContextLoss(() => {
@@ -791,15 +782,6 @@ export class TerminalSlot {
 
 	setFontWeight(weight: number): void {
 		this.terminal.options.fontWeight = weight;
-	}
-
-	setWebGLRenderer(enabled: boolean): void {
-		if (enabled && !this.webglAddon) {
-			this.attachWebglAddon();
-		} else if (!enabled && this.webglAddon) {
-			this.webglAddon.dispose();
-			this.webglAddon = null;
-		}
 	}
 
 	/**

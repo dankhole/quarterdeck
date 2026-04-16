@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Terminal — always use WebGL renderer
+
+- Removed the `terminalWebGLRenderer` config toggle and canvas 2D fallback path. Terminals now always load the WebGL addon for GPU-accelerated rendering. The `onContextLoss` handler is preserved so a lost WebGL context falls back gracefully instead of crashing.
+
 ### Fix: "Compare with local tree" from branch context menu now opens the Compare tab
 
 - Selecting "Compare with local tree" from the branch dropdown context menu navigated to the git view but immediately snapped back to the Uncommitted tab instead of staying on Compare. The project-change reset effect had `pendingCompareNavigation` in its dependency array — when the navigation was consumed (cleared to `null`), the effect re-fired and overwrote the tab. Switched to reading the value from a ref so consumption doesn't re-trigger the reset.

@@ -3,7 +3,6 @@ import {
 	type PersistentTerminalAppearance,
 	TerminalSlot,
 	updateGlobalTerminalFontWeight,
-	updateGlobalTerminalWebGLRenderer,
 } from "@/terminal/terminal-slot";
 import { createClientLogger } from "@/utils/client-logger";
 
@@ -617,16 +616,6 @@ export function setTerminalFontWeight(weight: number): void {
 	updateGlobalTerminalFontWeight(weight);
 	for (const slot of allSlots()) {
 		slot.setFontWeight(weight);
-	}
-}
-
-/**
- * Set WebGL renderer on all terminals (pool + dedicated).
- */
-export function setTerminalWebGLRenderer(enabled: boolean): void {
-	updateGlobalTerminalWebGLRenderer(enabled);
-	for (const slot of allSlots()) {
-		slot.setWebGLRenderer(enabled);
 	}
 }
 

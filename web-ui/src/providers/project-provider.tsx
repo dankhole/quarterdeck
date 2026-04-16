@@ -96,7 +96,6 @@ export interface ProjectContextValue {
 	audibleNotificationsOnlyWhenHidden: boolean;
 	audibleNotificationSuppressCurrentProject: { permission: boolean; review: boolean; failure: boolean };
 	terminalFontWeight: number;
-	terminalWebGLRenderer: boolean;
 	agentCommand: string | null;
 	configDefaultBaseRef: string;
 
@@ -290,7 +289,6 @@ export function ProjectProvider({
 		runtimeProjectConfig?.audibleNotificationSuppressCurrentProject ??
 		CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject;
 	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
-	const terminalWebGLRenderer = runtimeProjectConfig?.terminalWebGLRenderer ?? CONFIG_DEFAULTS.terminalWebGLRenderer;
 	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
 	const configDefaultBaseRef = runtimeProjectConfig?.defaultBaseRef ?? "";
 
@@ -404,7 +402,6 @@ export function ProjectProvider({
 			audibleNotificationsOnlyWhenHidden,
 			audibleNotificationSuppressCurrentProject,
 			terminalFontWeight,
-			terminalWebGLRenderer,
 			agentCommand,
 			configDefaultBaseRef,
 			workspacePath,
@@ -480,7 +477,6 @@ export function ProjectProvider({
 			audibleNotificationsOnlyWhenHidden,
 			audibleNotificationSuppressCurrentProject,
 			terminalFontWeight,
-			terminalWebGLRenderer,
 			agentCommand,
 			configDefaultBaseRef,
 			workspacePath,
