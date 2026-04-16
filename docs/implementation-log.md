@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: auto-focus agent terminal on open (2026-04-15)
+
+**Problem:** Opening an agent terminal required clicking on it before keyboard input would register. The terminal should auto-focus immediately.
+
+**Root cause:** `TerminalSlot.show()` called `this.terminal.focus()` immediately, but the terminal element was still `visibility: hidden` at that point — the restore snapshot hadn't arrived yet, and the terminal defers visibility to avoid the full history visibly scrolling past during the write. Browsers silently ignore `focus()` on hidden elements. By the time restore completed and `ensureVisible()` revealed the terminal, the focus call was already lost.
+
+**Fix:** Added a `pendingAutoFocus` flag to `TerminalSlot`. When `show()` is called with `autoFocus: true` and the terminal isn't revealed yet (`restoreCompleted === false`), the intent is stored instead of calling focus on a hidden element. After restore completes (both success and failure paths) and `ensureVisible()` reveals the terminal, the deferred `focus()` is applied. The flag is cleared on `hide()` and `reset()` to prevent stale focus on recycled pool slots.
+
+**Files:** `web-ui/src/terminal/terminal-slot.ts`
+
 ## Refactor: rename debug-logger to runtime-logger (2026-04-15)
 
 **Goal:** The runtime logger was still called `debug-logger` from when it was a boolean on/off toggle. Now that it's a proper four-level logger (`debug`/`info`/`warn`/`error`) used for all runtime logging, the name was misleading.

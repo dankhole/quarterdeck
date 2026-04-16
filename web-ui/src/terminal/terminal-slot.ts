@@ -121,6 +121,8 @@ export class TerminalSlot {
 	private controlSocket: WebSocket | null = null;
 	private connectionReady = false;
 	private restoreCompleted = false;
+	/** Deferred focus — set by show() when autoFocus is requested before restore completes. */
+	private pendingAutoFocus = false;
 	private outputTextDecoder = new TextDecoder();
 	private terminalWriteQueue: Promise<void> = Promise.resolve();
 	/** Bumped on any lifecycle event where the server may not know our dimensions. */
@@ -295,6 +297,7 @@ export class TerminalSlot {
 		// task's connection (taskId, subscribers, buffer).
 		this.connectionReady = false;
 		this.restoreCompleted = false;
+		this.pendingAutoFocus = false;
 		this.latestSummary = null;
 		this.lastError = null;
 		this.outputTextDecoder = new TextDecoder();
@@ -690,6 +693,10 @@ export class TerminalSlot {
 						// visibility when restoreCompleted is false to avoid the
 						// full history visibly scrolling past during the write.
 						this.ensureVisible();
+						if (this.pendingAutoFocus) {
+							this.pendingAutoFocus = false;
+							this.terminal.focus();
+						}
 						if (this.ioSocket && (this.visibleContainer ?? this.stageContainer)) {
 							this.requestResize();
 						}
@@ -703,6 +710,10 @@ export class TerminalSlot {
 						}
 						// Reveal on failure too so the terminal doesn't stay hidden.
 						this.ensureVisible();
+						if (this.pendingAutoFocus) {
+							this.pendingAutoFocus = false;
+							this.terminal.focus();
+						}
 						this.lastError = "Terminal restore failed.";
 						this.notifyLastError();
 					});
@@ -906,7 +917,14 @@ export class TerminalSlot {
 				this.pendingScrollToBottom = true;
 			}
 			if (options.autoFocus) {
-				this.terminal.focus();
+				if (shouldReveal) {
+					this.terminal.focus();
+				} else {
+					// Restore hasn't completed yet — the terminal is visibility:hidden
+					// and browsers ignore focus on hidden elements. Defer until
+					// restore completes and the terminal is revealed.
+					this.pendingAutoFocus = true;
+				}
 			}
 		}
 
@@ -930,6 +948,7 @@ export class TerminalSlot {
 			this.resizeTimer = null;
 		}
 		this.clearDprListener();
+		this.pendingAutoFocus = false;
 		this.visibleContainer = null;
 		if (this.connectedTaskId) {
 			clearTerminalGeometry(this.connectedTaskId);

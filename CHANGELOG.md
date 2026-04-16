@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: auto-focus agent terminal on open
+
+- Opening an agent terminal now immediately grabs keyboard focus. Previously, `terminal.focus()` fired before the restore snapshot completed — while the terminal was still `visibility: hidden` — so the browser silently ignored it. Focus is now deferred until the terminal is revealed after restore, including the restore-failure path.
+
 ### Refactor: rename debug-logger to runtime-logger
 
 - Renamed `src/core/debug-logger.ts` to `src/core/runtime-logger.ts` — the "debug" name was a holdover from when logging was a boolean on/off toggle. Renamed internal types (`DebugLogLevel` → `LogLevel`, `DebugLogEntry` → `LogEntry`) and functions (`getRecentDebugLogEntries` → `getRecentLogEntries`, `onDebugLogEntry` → `onLogEntry`) to match. API contract wire-format schemas unchanged.
