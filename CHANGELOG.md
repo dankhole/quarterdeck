@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split board-state test file into domain-focused modules
+
+- Split the 899-line `board-state.test.ts` monolith into 4 focused test files — dependencies (10 tests), drag (8 tests), normalization (6 tests), and mutations (12 tests) — plus a shared helpers module. All 36 tests preserved.
+
 ### Fix: client-side logger missing log level gating
 
 - The client-side logger (`client-logger.ts`) had no log level filtering — when the debug panel was open, all `log.debug()` calls (including `[perf]` entries) flooded the console and panel regardless of the user's chosen level. Added `LOG_LEVEL_SEVERITY` gating to match the server-side logger, and synced the level from the debug panel to the client logger.

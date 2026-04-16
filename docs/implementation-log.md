@@ -2,6 +2,16 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split board-state.test.ts into domain-focused modules (2026-04-16)
+
+**Problem:** `board-state.test.ts` was 899 lines with two `describe` blocks. The first — "board dependency state" — was a 562-line catch-all mixing dependency lifecycle, drag-and-drop rules, normalization, and task mutations under one misleading name. Finding tests for a specific function required scanning the entire file.
+
+**Approach:** Grouped tests by the board-state function under test (not by the original `describe` blocks), creating 4 files that each answer one question: "where are the tests for X?" Extracted shared fixture builders (`createBacklogBoard`, `requireTaskId`) into a helpers module.
+
+**Files:**
+- Deleted: `web-ui/src/state/board-state.test.ts` (899 lines)
+- Created: `board-state-dependencies.test.ts` (223 lines, 10 tests), `board-state-drag.test.ts` (302 lines, 8 tests), `board-state-normalization.test.ts` (118 lines, 6 tests), `board-state-mutations.test.ts` (239 lines, 12 tests), `board-state-test-helpers.ts` (31 lines)
+
 ## Fix: client-side logger missing log level gating (2026-04-16)
 
 **Problem:** The `[perf]` logging added in the terminal-slot decomposition commit used `log.debug()` via `createClientLogger`, expecting level gating to suppress debug entries at the default "warn" threshold. The server-side `runtime-logger.ts` correctly filters by level, but `client-logger.ts` only had an on/off toggle (`enabled`) — no severity check. When the debug panel was open, every `log.debug()` call hit the console and panel regardless of the user's chosen level. The level dropdown only filtered server-side entries.
