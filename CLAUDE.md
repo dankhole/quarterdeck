@@ -134,3 +134,7 @@ Use `http://127.0.0.1:4173` during development.
 ## Conventions and rules
 
 @AGENTS.md
+
+## Archive
+
+`docs/archive/` contains old plans, investigations, and completed work. It is gitignored. **Do not read or reference anything in `docs/archive/` unless the user explicitly asks you to.**
