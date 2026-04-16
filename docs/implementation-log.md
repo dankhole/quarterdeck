@@ -2,6 +2,14 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: client-side logger missing log level gating (2026-04-16)
+
+**Problem:** The `[perf]` logging added in the terminal-slot decomposition commit used `log.debug()` via `createClientLogger`, expecting level gating to suppress debug entries at the default "warn" threshold. The server-side `runtime-logger.ts` correctly filters by level, but `client-logger.ts` only had an on/off toggle (`enabled`) — no severity check. When the debug panel was open, every `log.debug()` call hit the console and panel regardless of the user's chosen level. The level dropdown only filtered server-side entries.
+
+**Fix:** Added `LOG_LEVEL_SEVERITY` map and `currentLogLevel` state (default "warn") to `client-logger.ts`, mirroring the server pattern. The `emit()` function now short-circuits when the entry's severity is below the threshold. Added `setClientLogLevel()` export and wired it via a `useEffect` in `use-debug-logging.ts` so the panel's level dropdown controls both server and client entries.
+
+**Files:** `web-ui/src/utils/client-logger.ts`, `web-ui/src/hooks/debug/use-debug-logging.ts`
+
 ## Refactor: frontend feature folders and barrel exports — Phases 1, 2, 4 (2026-04-16)
 
 **Problem:** `web-ui/src/components/` had 48 files at root level mixing board, git, task, settings, debug, and shell components. `hooks/` had 15 orphan files outside domain subdirectories. Every import was a direct file path with no barrel re-exports, leading to verbose multi-line import blocks.

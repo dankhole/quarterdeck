@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: client-side logger missing log level gating
+
+- The client-side logger (`client-logger.ts`) had no log level filtering — when the debug panel was open, all `log.debug()` calls (including `[perf]` entries) flooded the console and panel regardless of the user's chosen level. Added `LOG_LEVEL_SEVERITY` gating to match the server-side logger, and synced the level from the debug panel to the client logger.
+
 ### Refactor: frontend feature folders and barrel exports (Phases 1, 2, 4)
 
 - **Phase 1 — Hook reorganization:** Sorted 15 orphan hooks from `hooks/` root into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and 4 existing dirs). Pure file moves + import path updates.

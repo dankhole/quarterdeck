@@ -23,8 +23,16 @@ export interface ClientLogger {
 
 type ClientLogEntryCallback = (level: DebugLogLevel, tag: string, message: string, data?: unknown) => void;
 
+const LOG_LEVEL_SEVERITY: Record<DebugLogLevel, number> = {
+	debug: 0,
+	info: 1,
+	warn: 2,
+	error: 3,
+};
+
 let addEntryCallback: ClientLogEntryCallback | null = null;
 let enabled = false;
+let currentLogLevel: DebugLogLevel = "warn";
 
 /** Called by useDebugLogging to wire the client logger to the panel. */
 export function registerClientLogCallback(callback: ClientLogEntryCallback | null): void {
@@ -34,6 +42,11 @@ export function registerClientLogCallback(callback: ClientLogEntryCallback | nul
 /** Called by useDebugLogging when debug logging state changes. */
 export function setClientLoggingEnabled(isEnabled: boolean): void {
 	enabled = isEnabled;
+}
+
+/** Called by useDebugLogging when the user changes the log level. */
+export function setClientLogLevel(level: DebugLogLevel): void {
+	currentLogLevel = level;
 }
 
 export function createClientLogger(tag: string): ClientLogger {
@@ -46,7 +59,7 @@ export function createClientLogger(tag: string): ClientLogger {
 }
 
 function emit(level: DebugLogLevel, tag: string, message: string, data: unknown): void {
-	if (!enabled) {
+	if (!enabled || LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[currentLogLevel]) {
 		return;
 	}
 

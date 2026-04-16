@@ -12,7 +12,7 @@ import {
 } from "@/hooks/debug/debug-logging";
 import { setLogLevel as setLogLevelOnServer } from "@/runtime/runtime-config-query";
 import type { RuntimeDebugLogEntry } from "@/runtime/types";
-import { registerClientLogCallback, setClientLoggingEnabled } from "@/utils/client-logger";
+import { registerClientLogCallback, setClientLoggingEnabled, setClientLogLevel } from "@/utils/client-logger";
 import { setGlobalErrorCallback } from "@/utils/global-error-capture";
 
 export type { DebugLogLevelFilter, DebugLogSourceFilter, LogLevel } from "@/hooks/debug/debug-logging";
@@ -139,6 +139,11 @@ export function useDebugLogging({
 		},
 		[isDebugLogPanelOpen],
 	);
+
+	// Keep the client-side logger level in sync with the server level.
+	useEffect(() => {
+		setClientLogLevel(logLevel as "debug" | "info" | "warn" | "error");
+	}, [logLevel]);
 
 	// Wire the client-side logger module when the panel is open.
 	useEffect(() => {
