@@ -162,6 +162,15 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
+## Runtime & cross-cutting readability refactors
+
+Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readability-refactors.md). Four independent refactors targeting repeated patterns and navigability gaps identified in a codebase audit.
+
+- **workspace-api.ts handler pipeline** — Extract 3 higher-order helpers to collapse ~25 copy-pasted try/catch/resolve/broadcast handlers into declarations. Net ~400-500 line reduction in `src/trpc/workspace-api.ts` (currently 1,092 lines).
+- **board-state.ts `updateCardInBoard` helper** — Extract the repeated nested `.map()` pattern used by `updateTask`, `reconcileTaskWorkingDirectory`, `reconcileTaskBranch`, and `toggleTaskPinned` into a single helper. ~45 line reduction.
+- **Git action toast + loading guard helpers** — Add `showGitErrorToast`/`showGitSuccessToast` to `hooks/git/git-actions.ts` and `useLoadingGuard` to `utils/react-use.ts`. Simplifies 21 toast calls and 5 loading patterns across `use-git-actions.ts` (626L) and `use-branch-actions.ts` (520L). ~100-150 line reduction.
+- **Runtime barrel exports** — Add `index.ts` to `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`. Re-export public surface, update ~100-150 import paths. No logic changes.
+
 ## Frontend feature folders, component decomposition, and barrel exports
 
 Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folders.md). Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.
