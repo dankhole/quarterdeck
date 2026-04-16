@@ -651,6 +651,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// The kernel only sends SIGWINCH when PTY dimensions actually change.
 		// On task switch the viewer sends force:true so TUI agents redraw even
 		// when the container happens to be the same size as the PTY.
+		// TODO(windows): SIGWINCH is a no-op on Windows (sendSignal swallows the error).
+		// TUI agents won't redraw on task switch when dimensions are unchanged.
+		// A resize-nudge (cols-1 then cols) could work but needs ConPTY testing.
 		if (force && dimensionsUnchanged) {
 			entry.active.session.sendSignal("SIGWINCH");
 		}

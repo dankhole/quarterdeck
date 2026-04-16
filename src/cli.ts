@@ -626,7 +626,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		process.stdin.on("end", () => {
 			if (!isShuttingDown) {
 				console.warn("Parent process disconnected (stdin closed). Shutting down.");
-				process.kill(process.pid, "SIGHUP");
+				process.kill(process.pid, process.platform === "win32" ? "SIGTERM" : "SIGHUP");
 			}
 		});
 	}

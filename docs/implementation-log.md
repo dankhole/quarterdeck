@@ -2,6 +2,24 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Fix: Windows compatibility — path resolution and signal handling (2026-04-16)
+
+**Problem 1 — `startsWith("/")` for absolute path detection:** Two places used `startsWith("/")` to check if a path is absolute: `git-conflict.ts:55` (resolving the git dir from `git rev-parse --git-dir`) and `state-backup.ts:109` (resolving a backup path-or-name argument). On Windows, absolute paths start with a drive letter (e.g., `C:\`), so these checks would treat Windows absolute paths as relative, producing malformed double-rooted paths like `C:\repo\C:\actual\path`.
+
+**Fix:** Replaced both with `path.isAbsolute()`, which handles Unix `/...` and Windows `C:\...` paths. On Unix/macOS, `path.posix.isAbsolute` is functionally identical to `startsWith("/")` — zero behavioral change on existing platforms.
+
+**Problem 2 — SIGHUP on parent disconnect crashes on Windows:** `cli.ts:629` sends `process.kill(process.pid, "SIGHUP")` when stdin closes (parent process died). SIGHUP is not a valid Windows signal — `process.kill` throws `ERR_UNKNOWN_SIGNAL` with no surrounding try/catch. Additionally, the graceful shutdown handler at `graceful-shutdown.ts:199` already filters SIGHUP out on Windows, so even if it were deliverable, no handler would catch it.
+
+**Fix:** Platform-conditional signal: `process.platform === "win32" ? "SIGTERM" : "SIGHUP"`. SIGTERM is in the Windows-filtered signal set and triggers the same graceful shutdown path. Exit code changes from 129 (SIGHUP) to 143 (SIGTERM) on Windows only — no caller inspects this programmatically.
+
+**Also added** a `TODO(windows)` comment at `session-manager.ts:654` documenting that `sendSignal("SIGWINCH")` is a silent no-op on Windows (the catch block in `pty-session.ts:147` swallows the error). TUI agents won't force-redraw on task switch when dimensions are unchanged. A resize-nudge workaround is noted but needs ConPTY testing.
+
+**Files:**
+- `src/workspace/git-conflict.ts` — `startsWith("/")` → `isAbsolute()` (L2, L55)
+- `src/state/state-backup.ts` — `startsWith("/")` → `isAbsolute()` (L17, L109)
+- `src/cli.ts` — platform-guarded signal on parent disconnect (L629)
+- `src/terminal/session-manager.ts` — added TODO(windows) comment for SIGWINCH (L654-656)
+
 ## Fix: restore sidebar panel state when returning to agent chat (2026-04-16)
 
 **Problem:** When a sidebar panel (e.g. task_column) was open and the user switched to a full-screen main view (files or git), the auto-coupling rule in `setMainView` collapsed the sidebar. Switching back to terminal view did nothing to restore it — the sidebar stayed collapsed, forcing the user to manually reopen it every time.

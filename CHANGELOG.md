@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: Windows compatibility — path resolution and signal handling
+
+- Use `path.isAbsolute()` instead of `startsWith("/")` for detecting absolute paths in git conflict detection and state backup restore — fixes broken path resolution on Windows where absolute paths start with a drive letter.
+- Guard the parent-disconnect self-signal in the CLI entry point with a platform check — SIGHUP is not a valid signal on Windows and would crash the process; uses SIGTERM on Windows instead, which the graceful shutdown handler already listens for.
+
 ### Fix: restore sidebar panel state when returning to agent chat
 
 - Switching from agent chat (terminal view) to a full-screen view (file browser, git) and back now automatically reopens the previously-open sidebar panel (e.g. task column). The auto-collapse on view switch saves what was open; returning to terminal restores it. Manual sidebar toggles, home navigation, and project switches clear the saved state so restoration only fires for the specific auto-collapse → return flow.

@@ -15,7 +15,7 @@
 
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { isNodeError } from "../fs/node-error";
 import {
@@ -106,7 +106,7 @@ async function discoverWorkspaceIds(indexPath: string): Promise<string[]> {
 }
 
 async function resolveBackupPath(backupPathOrName: string): Promise<string> {
-	if (backupPathOrName.startsWith("/")) {
+	if (isAbsolute(backupPathOrName)) {
 		return backupPathOrName;
 	}
 	const backupDir = join(getBackupHomePath(), backupPathOrName);

@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import type {
 	RuntimeAutoMergedFile,
@@ -52,7 +52,7 @@ export async function detectActiveConflict(cwd: string): Promise<DetectedConflic
 	}
 	const rawGitDir = gitDirResult.stdout.trim();
 	// git rev-parse --git-dir may return a relative path; resolve against cwd.
-	const gitDir = rawGitDir.startsWith("/") ? rawGitDir : join(cwd, rawGitDir);
+	const gitDir = isAbsolute(rawGitDir) ? rawGitDir : join(cwd, rawGitDir);
 
 	// Check for active merge
 	if (await fileExists(join(gitDir, "MERGE_HEAD"))) {
