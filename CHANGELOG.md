@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: split board-card into domain module and actions component
+
+- Split the 784-line `BoardCard` into 3 focused files — domain module (`board-card-display.ts`, pure TS tooltip/activity/branch-name helpers), actions sub-component (`board-card-actions.tsx`, column-specific action buttons), and slimmed-down card component (520 lines). Public API unchanged.
+
 ### Refactor: split git-view into domain module, hook, and sub-components
 
 - Split the 757-line `GitView` monolith into 5 focused files — domain module (`hooks/git/git-view.ts`, types + persistence), hook (`hooks/git/use-git-view.ts`, state + effects + data fetching), `CompareBar` component, empty/loading panels, and slimmed-down view component (255 lines). Public API unchanged.

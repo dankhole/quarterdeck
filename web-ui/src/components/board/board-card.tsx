@@ -1,8 +1,15 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
-import { AlertCircle, Bug, GitBranch, Pencil, Pin, PinOff, Play, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { BoardCardActions } from "@/components/board/board-card-actions";
+import {
+	CARD_TEXT_COLOR,
+	getCardHoverTooltip,
+	getRunningActivityLabel,
+	shortenBranchName,
+} from "@/components/board/board-card-display";
 import { InlineTitleEditor } from "@/components/task/inline-title-editor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -20,134 +27,12 @@ import {
 } from "@/utils/session-status";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
-const CARD_TEXT_COLOR = {
-	muted: "var(--color-text-tertiary)",
-	secondary: "var(--color-text-secondary)",
-} as const;
+export { getCardHoverTooltip } from "@/components/board/board-card-display";
 
-function shortenBranchName(branch: string): string {
-	return branch.replace(/^(?:feature|fix|chore|hotfix|bugfix|release|refactor|feat)\//i, "") || branch;
-}
-
-function extractToolInputSummaryFromActivityText(activityText: string, toolName: string): string | null {
-	const escapedToolName = toolName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const match = activityText.match(
-		new RegExp(`^(?:Using|Completed|Failed|Calling)\\s+${escapedToolName}(?::\\s*(.+))?$`),
-	);
-	if (!match) {
-		return null;
-	}
-	const rawSummary = match[1]?.trim() ?? "";
-	if (!rawSummary) {
-		return null;
-	}
-	if (activityText.startsWith("Failed ")) {
-		const [operationSummary] = rawSummary.split(": ");
-		return operationSummary?.trim() || null;
-	}
-	return rawSummary;
-}
-
-function parseToolCallFromActivityText(
-	activityText: string,
-): { toolName: string; toolInputSummary: string | null } | null {
-	const match = activityText.match(/^(?:Using|Completed|Failed|Calling)\s+([^:()]+?)(?::\s*(.+))?$/);
-	if (!match?.[1]) {
-		return null;
-	}
-	const toolName = match[1].trim();
-	if (!toolName) {
-		return null;
-	}
-	const rawSummary = match[2]?.trim() ?? "";
-	if (!rawSummary) {
-		return { toolName, toolInputSummary: null };
-	}
-	if (activityText.startsWith("Failed ")) {
-		const [operationSummary] = rawSummary.split(": ");
-		return {
-			toolName,
-			toolInputSummary: operationSummary?.trim() || null,
-		};
-	}
-	return {
-		toolName,
-		toolInputSummary: rawSummary,
-	};
-}
-
-function resolveToolCallLabel(
-	activityText: string | undefined,
-	toolName: string | null,
-	toolInputSummary: string | null,
-): string | null {
-	if (toolName) {
-		const summary = toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName);
-		return summary ? `${toolName}(${summary})` : toolName;
-	}
-	if (!activityText) {
-		return null;
-	}
-	const parsed = parseToolCallFromActivityText(activityText);
-	if (!parsed) {
-		return null;
-	}
-	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
-}
-
-const TOOLTIP_MAX_LENGTH = 80;
-
-/** Tooltip content for card hover: displaySummary if available, fallback text otherwise. */
-export function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
-	if (!summary) {
-		return null;
-	}
-
-	// displaySummary is the single canonical text — already truncated to 80 chars.
-	// Show it regardless of state (running, review, etc.).
-	if (summary.displaySummary) {
-		return summary.displaySummary;
-	}
-
-	// Fallback for sessions that predate the displaySummary field: use the last
-	// conversation summary entry, truncated.
-	if (summary.conversationSummaries.length > 0) {
-		const last = summary.conversationSummaries[summary.conversationSummaries.length - 1];
-		const text = last?.text?.trim();
-		if (text) {
-			return text.length > TOOLTIP_MAX_LENGTH ? `${text.slice(0, TOOLTIP_MAX_LENGTH)}\u2026` : text;
-		}
-	}
-	return null;
-}
-
-/** Short activity label for running cards (e.g. "Reading src/auth.ts"). */
-function getRunningActivityLabel(summary: RuntimeTaskSessionSummary | undefined): string | null {
-	if (!summary || summary.state !== "running") {
-		return null;
-	}
-	const hookActivity = summary.latestHookActivity;
-	if (!hookActivity) {
-		return null;
-	}
-	const activityText = hookActivity.activityText?.trim();
-	const toolName = hookActivity.toolName?.trim() ?? null;
-	const toolInputSummary = hookActivity.toolInputSummary?.trim() ?? null;
-	if (activityText) {
-		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
-		if (toolCallLabel) {
-			return toolCallLabel;
-		}
-		if (activityText === "Agent active" || activityText === "Working on task" || activityText.startsWith("Resumed")) {
-			return null;
-		}
-		if (activityText.startsWith("Agent: ")) {
-			return activityText.slice(7);
-		}
-		return activityText;
-	}
-	return null;
-}
+const stopEvent = (event: MouseEvent<HTMLElement>) => {
+	event.preventDefault();
+	event.stopPropagation();
+};
 
 export function BoardCard({
 	card,
@@ -208,11 +93,11 @@ export function BoardCard({
 	onMigrateWorkingDirectory?: (taskId: string, direction: "isolate" | "de-isolate") => void;
 	isMigrateLoading?: boolean;
 	onFlagForDebug?: (taskId: string) => void;
+	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
+	onDependencyPointerEnter?: (taskId: string) => void;
 	onRequestDisplaySummary?: (taskId: string) => void;
 	onTerminalWarmup?: (taskId: string) => void;
 	onTerminalCancelWarmup?: (taskId: string) => void;
-	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
-	onDependencyPointerEnter?: (taskId: string) => void;
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
@@ -229,8 +114,6 @@ export function BoardCard({
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 
-	// Derive shared-checkout state from metadata snapshot path when available,
-	// falling back to card.useWorktree for tasks that haven't started yet.
 	const isSharedCheckout = useMemo(() => {
 		const wsPath = getWorkspacePath();
 		if (reviewWorkspaceSnapshot?.path && wsPath) {
@@ -239,11 +122,6 @@ export function BoardCard({
 		return card.useWorktree === false;
 	}, [reviewWorkspaceSnapshot?.path, card.useWorktree]);
 
-	// Warn when the agent session is running in a different directory than the
-	// card's working directory. This can happen after migration edge cases or
-	// if the persisted state drifts from reality.
-	// TODO: Add a force-restart button that calls startTaskSession to restart
-	// the agent at the correct CWD. Currently no explicit restart UI exists.
 	const isCwdDiverged = useMemo(() => {
 		if (!sessionSummary?.workspacePath || !reviewWorkspaceSnapshot?.path) return false;
 		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
@@ -262,7 +140,6 @@ export function BoardCard({
 
 	const latestSummaryText = sessionSummary?.displaySummary ?? null;
 
-	// Don't show the tooltip if the summary is already visible on the card face.
 	const isSummaryVisibleOnCard = showSummaryOnCards && !!latestSummaryText;
 	const effectiveTooltip = isSummaryVisibleOnCard ? null : cardHoverTooltip;
 
@@ -273,8 +150,6 @@ export function BoardCard({
 		sessionSummary.state === "interrupted" ||
 		(sessionSummary.state === "awaiting_review" && sessionSummary.reviewReason === "error");
 
-	// Delay showing the restart button by ~1s so it doesn't flash during
-	// transient dead states (hydration, brief exits before auto-restart).
 	const [isRestartDelayElapsed, setIsRestartDelayElapsed] = useState(false);
 	useEffect(() => {
 		if (!isSessionDead) {
@@ -307,11 +182,6 @@ export function BoardCard({
 		: null;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
-
-	const stopEvent = (event: MouseEvent<HTMLElement>) => {
-		event.preventDefault();
-		event.stopPropagation();
-	};
 
 	const renderShell = (provided?: DraggableProvided, snapshot?: DraggableStateSnapshot) => {
 		const isDragging = snapshot?.isDragging ?? false;
@@ -534,154 +404,21 @@ export function BoardCard({
 									) : null}
 								</div>
 							)}
-							{columnId === "in_progress" && onFlagForDebug && isHovered ? (
-								<Tooltip content="Flag for debug log">
-									<Button
-										icon={<Bug size={12} />}
-										variant="ghost"
-										size="sm"
-										className="text-text-tertiary hover:text-status-purple"
-										aria-label="Flag task state for debug log"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onFlagForDebug(card.id);
-										}}
-									/>
-								</Tooltip>
-							) : null}
-							{columnId === "in_progress" && showRunningTaskEmergencyActions && !isSessionDead && isHovered ? (
-								<>
-									{onRestartSession ? (
-										<Tooltip content="Force restart session">
-											<Button
-												icon={<RotateCw size={12} />}
-												variant="ghost"
-												size="sm"
-												className="text-status-orange hover:text-text-primary"
-												aria-label="Force restart agent session"
-												onMouseDown={stopEvent}
-												onClick={(event) => {
-													stopEvent(event);
-													onRestartSession(card.id);
-												}}
-											/>
-										</Tooltip>
-									) : null}
-									<Tooltip content="Force trash task">
-										<Button
-											icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-											variant="ghost"
-											size="sm"
-											className="text-status-red hover:text-text-primary"
-											disabled={isMoveToTrashLoading}
-											aria-label="Force move task to trash"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onMoveToTrash?.(card.id);
-											}}
-										/>
-									</Tooltip>
-								</>
-							) : columnId === "backlog" ? (
-								<Button
-									icon={<Play size={14} />}
-									variant="ghost"
-									size="sm"
-									aria-label="Start task"
-									onMouseDown={stopEvent}
-									onClick={(event) => {
-										stopEvent(event);
-										onStart?.(card.id);
-									}}
-								/>
-							) : columnId === "review" ? (
-								<>
-									{onFlagForDebug ? (
-										<Tooltip content="Flag for debug log">
-											<Button
-												icon={<Bug size={12} />}
-												variant="ghost"
-												size="sm"
-												className="text-text-tertiary hover:text-status-purple"
-												aria-label="Flag task state for debug log"
-												onMouseDown={stopEvent}
-												onClick={(event) => {
-													stopEvent(event);
-													onFlagForDebug(card.id);
-												}}
-											/>
-										</Tooltip>
-									) : null}
-									{isSessionRestartable && onRestartSession ? (
-										<Tooltip content="Restart session">
-											<Button
-												icon={<RotateCw size={12} />}
-												variant="ghost"
-												size="sm"
-												aria-label="Restart agent session"
-												onMouseDown={stopEvent}
-												onClick={(event) => {
-													stopEvent(event);
-													onRestartSession(card.id);
-												}}
-											/>
-										</Tooltip>
-									) : null}
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
-								</>
-							) : columnId === "trash" ? (
-								<>
-									<Tooltip
-										side="bottom"
-										content={
-											<>
-												Restore session
-												<br />
-												in new workspace
-											</>
-										}
-									>
-										<Button
-											icon={<RotateCcw size={12} />}
-											variant="ghost"
-											size="sm"
-											aria-label="Restore task from trash"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onRestoreFromTrash?.(card.id);
-											}}
-										/>
-									</Tooltip>
-									<Tooltip side="bottom" content="Delete permanently">
-										<Button
-											icon={<Trash2 size={12} />}
-											variant="ghost"
-											size="sm"
-											className="text-status-red hover:text-status-red"
-											aria-label="Delete task permanently"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onHardDelete?.(card.id);
-											}}
-										/>
-									</Tooltip>
-								</>
-							) : null}
+							<BoardCardActions
+								cardId={card.id}
+								columnId={columnId}
+								isHovered={isHovered}
+								isSessionDead={isSessionDead}
+								isSessionRestartable={isSessionRestartable}
+								showRunningTaskEmergencyActions={showRunningTaskEmergencyActions}
+								isMoveToTrashLoading={isMoveToTrashLoading}
+								onStart={onStart}
+								onRestartSession={onRestartSession}
+								onMoveToTrash={onMoveToTrash}
+								onRestoreFromTrash={onRestoreFromTrash}
+								onHardDelete={onHardDelete}
+								onFlagForDebug={onFlagForDebug}
+							/>
 						</div>
 						{showSummaryOnCards && latestSummaryText ? (
 							<p className="text-xs text-text-secondary line-clamp-2 mt-1 m-0">{latestSummaryText}</p>

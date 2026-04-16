@@ -2,6 +2,18 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split board-card into domain module and actions component (2026-04-16)
+
+**Problem:** `web-ui/src/components/board/board-card.tsx` was 784 lines mixing pure display logic (tool-call label parsing, tooltip derivation, activity labels), column-specific action button rendering (backlog/in_progress/review/trash each with different button sets), and the card's layout/state/indicator rendering. Agents working on tooltip bugs had to load 650 lines of unrelated JSX; agents adding a review action button had to parse through display helpers and card layout code.
+
+**Changes:**
+- Extracted 6 pure functions + 1 constant into `board-card-display.ts` (124 lines): `shortenBranchName`, `extractToolInputSummaryFromActivityText`, `parseToolCallFromActivityText`, `resolveToolCallLabel`, `getCardHoverTooltip`, `getRunningActivityLabel`, `CARD_TEXT_COLOR`. Domain module pattern — no React imports, testable with plain `describe`/`it`.
+- Extracted column-specific action buttons into `BoardCardActions` component in `board-card-actions.tsx` (210 lines). Owns the column-ID dispatch logic (4 branches: backlog start, in_progress debug/emergency/restart, review debug/restart/trash, trash restore/delete). Focused 13-prop interface vs the parent's 40+ props.
+- Main `board-card.tsx` reduced from 784 to 520 lines. Re-exports `getCardHoverTooltip` for external consumers. `stopEvent` moved from render-scope to module-level (verified no closure dependencies).
+- `board/index.ts` barrel unchanged — `BoardCard` and `getCardHoverTooltip` still exported from same paths.
+
+**Files:** `web-ui/src/components/board/board-card.tsx`, `web-ui/src/components/board/board-card-display.ts` (new), `web-ui/src/components/board/board-card-actions.tsx` (new)
+
 ## Refactor: split git-view into domain module, hook, and sub-components (2026-04-16)
 
 **Problem:** `web-ui/src/components/git/git-view.tsx` was 757 lines mixing persistence logic, data fetching for 3 tab modes, resize handling, conflict resolution, rollback, and rendering. Agents working on a rendering fix had to load the entire file; agents debugging data fetching had to read past 400 lines of unrelated JSX.
