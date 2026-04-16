@@ -197,7 +197,7 @@ Review and improve the periodic cleanup of orphaned entities — stale worktrees
 Three phases, done in order:
 
 1. ~~**Subdirectory reorg**~~ — Done. Moved 78 files into 5 domain subdirectories plus relocated 5 misplaced non-hook files. Pure file moves + import path updates.
-2. ~~**Domain logic extraction**~~ — Done (9 of ~11 candidates). Split hooks into domain module + thin React wrapper pairs. 9 domain modules, 92 domain-level unit tests. Remaining 2 candidates (`use-board-interactions`, `use-task-start`) are primarily orchestration hooks with minimal extractable pure logic — extract as-encountered. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics: [docs/refactor-hooks-directory.md](refactor-hooks-directory.md) Phase 2.
+2. ~~**Domain logic extraction**~~ — Done (9 of ~11 candidates). Split hooks into domain module + thin React wrapper pairs. 9 domain modules, 92 domain-level unit tests. Remaining 2 candidates (`use-board-interactions`, `use-task-start`) are primarily orchestration hooks with minimal extractable pure logic — extract as-encountered. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1. Specifics: [docs/archived/refactor-hooks-directory.md](archived/refactor-hooks-directory.md) Phase 2.
 3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/web-ui-conventions.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
 ## Keep task base ref in sync with branch changes
@@ -231,7 +231,3 @@ The trash confirmation dialog should only appear when the task has uncommitted c
 ## Audit default branch resolution for bugs
 
 The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.
-
-## ~~Archive current changelog and implementation log~~
-
-**Done** — 0.9.0 release. Archived to `docs/changelog-through-0.8.0.md` and `docs/implementation-log-through-2026-04-15.md`.

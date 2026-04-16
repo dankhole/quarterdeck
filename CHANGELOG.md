@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-04-15
+
 ### Fix: remember last viewed file when switching tasks
 
 - Git view now restores the previously selected file when switching back to a task, instead of resetting to the first file. Uses the existing `lastSelectedPathByScope` per-task cache — replaced the unconditional null reset with scope-aware eager restoration on task switch, matching the pattern in `use-file-browser-data.ts`.

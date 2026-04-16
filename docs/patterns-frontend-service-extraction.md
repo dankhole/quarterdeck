@@ -2,7 +2,7 @@
 
 **Purpose:** Methodology guide for two related patterns that make the frontend navigable for developers coming from class-based / service-oriented backgrounds (C#, Java, Go). This doc explains *how* to identify candidates, apply the patterns, and verify correctness — not which specific files to change.
 
-**Companion doc:** `docs/refactor-hooks-directory.md` Phase 2 has concrete examples, naming conventions, and a candidate list for domain extraction. Read that for the specifics.
+**Companion doc:** `docs/archived/refactor-hooks-directory.md` Phase 2 has concrete examples, naming conventions, and a candidate list for domain extraction. Read that for the specifics.
 
 ---
 
@@ -138,7 +138,7 @@ The goal is not "every hook must have a companion module." The goal is "business
 Do NOT extract all hooks in a single pass. Two approaches:
 
 1. **Opportunistic** (preferred): When modifying a hook for a feature or bugfix, check if it has extractable domain logic. If so, extract in the same PR.
-2. **Focused pass**: Pick the 3-5 most complex hooks (see the candidate list in `docs/refactor-hooks-directory.md` Phase 2) and extract them in a dedicated PR. Do this during a low-activity window to minimize merge conflicts.
+2. **Focused pass**: Pick the 3-5 most complex hooks (see the candidate list in `docs/archived/refactor-hooks-directory.md` Phase 2) and extract them in a dedicated PR. Do this during a low-activity window to minimize merge conflicts.
 
 ---
 
