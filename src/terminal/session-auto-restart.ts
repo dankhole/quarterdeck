@@ -73,12 +73,26 @@ export interface AutoRestartCallbacks {
 	applyDenied: () => void;
 }
 
+export interface ScheduleAutoRestartOptions {
+	skipContinueAttempt?: boolean;
+	eventPrefix?: string;
+}
+
 /**
  * Schedule an async auto-restart for a task session. Guards against duplicate
  * restarts via `entry.pendingAutoRestart`. On failure, surfaces the error as
  * a warning message and terminal output to listeners.
+ *
+ * When `skipContinueAttempt` is true, the restart goes straight to a fresh
+ * session without `--continue`. Used when `--continue` already failed at the
+ * process level (e.g. server-restart resume where the conversation no longer
+ * exists).
  */
-export function scheduleAutoRestart(entry: ProcessEntry, callbacks: AutoRestartCallbacks): void {
+export function scheduleAutoRestart(
+	entry: ProcessEntry,
+	callbacks: AutoRestartCallbacks,
+	options?: ScheduleAutoRestartOptions,
+): void {
 	if (entry.pendingAutoRestart) {
 		return;
 	}
@@ -86,8 +100,10 @@ export function scheduleAutoRestart(entry: ProcessEntry, callbacks: AutoRestartC
 	if (!restartRequest || restartRequest.kind !== "task") {
 		return;
 	}
-	emitSessionEvent(entry.taskId, "autorestart.triggered", {
+	const prefix = options?.eventPrefix ?? "autorestart";
+	emitSessionEvent(entry.taskId, `${prefix}.triggered`, {
 		restartCount: entry.autoRestartTimestamps.length,
+		skipContinueAttempt: options?.skipContinueAttempt ?? false,
 	});
 	let pendingAutoRestart: Promise<void> | null = null;
 	pendingAutoRestart = (async () => {
@@ -96,18 +112,22 @@ export function scheduleAutoRestart(entry: ProcessEntry, callbacks: AutoRestartC
 			// Resume conversation so the agent has context. awaitReview=true
 			// because --continue opens the prompt — it doesn't resume active work.
 			// If --continue fails, fall back to a fresh start (still in review).
-			request.resumeConversation = true;
+			request.resumeConversation = !options?.skipContinueAttempt;
 			request.awaitReview = true;
-			try {
+			if (options?.skipContinueAttempt) {
 				await callbacks.startTaskSession(request);
-			} catch {
-				emitSessionEvent(entry.taskId, "autorestart.continue_failed", {});
-				request.resumeConversation = false;
-				await callbacks.startTaskSession(request);
+			} else {
+				try {
+					await callbacks.startTaskSession(request);
+				} catch {
+					emitSessionEvent(entry.taskId, `${prefix}.continue_failed`, {});
+					request.resumeConversation = false;
+					await callbacks.startTaskSession(request);
+				}
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			emitSessionEvent(entry.taskId, "autorestart.failed", {
+			emitSessionEvent(entry.taskId, `${prefix}.failed`, {
 				error: message,
 			});
 			// Transition to review immediately instead of waiting for the

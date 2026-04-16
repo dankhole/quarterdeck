@@ -13,9 +13,20 @@ import {
 	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 } from "../prompts/prompt-templates";
 import { getGlobalConfigDefaults } from "./global-config-fields";
-import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./runtime-config";
 
 export type { LogLevel } from "./global-config-fields";
+
+export interface AudibleNotificationEvents {
+	permission: boolean;
+	review: boolean;
+	failure: boolean;
+}
+
+export interface AudibleNotificationSuppressCurrentProject {
+	permission: boolean;
+	review: boolean;
+	failure: boolean;
+}
 
 export {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,

@@ -2,6 +2,22 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: split runtime-config into focused modules (2026-04-16)
+
+**Problem:** `runtime-config.ts` was 917 lines mixing pure normalizer functions (field coercion, validation, defaults), file I/O (load, save, merge), and the public API surface. Agents working on config field validation had to load persistence logic; agents fixing save behavior had to read past normalizers.
+
+**Changes:** Split into three files: `runtime-config-normalizers.ts` (372 lines, pure normalizer functions), `runtime-config-persistence.ts` (332 lines, load/save/merge file I/O), and the barrel `runtime-config.ts` (262 lines, re-exports + public API). Moved `AudibleNotification` and `AudibleNotificationConfig` interfaces from `runtime-config.ts` into `config-defaults.ts` to break a circular import dependency between normalizers and defaults.
+
+**Files:** `src/config/runtime-config.ts` (rewritten), `src/config/runtime-config-normalizers.ts` (new), `src/config/runtime-config-persistence.ts` (new), `src/config/config-defaults.ts` (type additions)
+
+## Fix: resume --continue fallback after server restart (2026-04-16)
+
+**Problem:** After a server restart, interrupted sessions are resumed with `--continue`. If the conversation no longer exists (e.g. agent cleanup), `--continue` fails with a non-zero exit from `awaiting_review`/`attention` state. `shouldAutoRestart` skips this because `preExitState` is not `"running"`, leaving a zombie session with no process and no way forward.
+
+**Fix:** Added a new exit handler condition in `session-manager.ts` that detects `--continue` failures (non-zero exit from `awaiting_review` with `reviewReason=attention` and an active `restartRequest`). Routes through `scheduleAutoRestart` with new `skipContinueAttempt` option, which starts a fresh session without `--continue`. This reuses the existing concurrency guard (`pendingAutoRestart`), listener notification, and state machine transition on failure. Event prefix `startup.resume_fallback` distinguishes these from normal auto-restarts.
+
+**Files:** `src/terminal/session-auto-restart.ts` (new `ScheduleAutoRestartOptions` interface, `skipContinueAttempt`/`eventPrefix` options), `src/terminal/session-manager.ts` (new exit handler branch)
+
 ## Refactor: split task-create-dialog into focused files (2026-04-16)
 
 **Problem:** `task-create-dialog.tsx` was 725 lines mixing pure logic (list parsing, start action types), a self-contained multi-task editing UI (with its own focus management via refs), and dialog orchestration. LLM agents working on one concern had to load the entire file.

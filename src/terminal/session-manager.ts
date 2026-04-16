@@ -867,6 +867,27 @@ export class TerminalSessionManager implements TerminalSessionService {
 			// Auto-restart was denied (suppressed, rate-limited, or no listeners).
 			// Move to awaiting_review so the card lands in review for the user.
 			this.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" });
+		} else if (
+			request.resumeConversation &&
+			preExitState === "awaiting_review" &&
+			currentSummaryAtExit?.reviewReason === "attention" &&
+			event.exitCode != null &&
+			event.exitCode !== 0 &&
+			currentEntry.restartRequest?.kind === "task"
+		) {
+			// --continue failed at the process level (no conversation to continue).
+			// Retry via scheduleAutoRestart with skipContinueAttempt so the agent
+			// starts fresh at its prompt. Common after server restart when session
+			// state couldn't be preserved.
+			scheduleAutoRestart(
+				currentEntry,
+				{
+					startTaskSession: (r) => this.startTaskSession(r),
+					updateStore: (id, patch) => this.store.update(id, patch),
+					applyDenied: () => this.applySessionEventWithSideEffects(currentEntry, { type: "autorestart.denied" }),
+				},
+				{ skipContinueAttempt: true, eventPrefix: "startup.resume_fallback" },
+			);
 		}
 		if (cleanupFn) {
 			cleanupFn().catch(() => {});

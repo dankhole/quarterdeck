@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: split runtime-config into focused modules
+
+- Split the 917-line `runtime-config.ts` into normalizers (372 lines, pure functions), persistence (332 lines, file I/O), and barrel (262 lines, public API). Moved `AudibleNotification*` interfaces into `config-defaults.ts` to break a circular type dependency. All consumer imports unchanged.
+
+### Fix: resume --continue fallback after server restart
+
+- After a server restart, sessions resumed with `--continue` could fail if the conversation no longer existed, leaving a zombie session with no process. Now retries via `scheduleAutoRestart` with `skipContinueAttempt` to start a fresh session instead.
+
 ### Refactor: split task-create-dialog into focused files
 
 - Split the 725-line `TaskCreateDialog` into three files — pure utilities (`parseListItems`, start action types, `ButtonShortcut`), a multi-task list component with its own focus management, and the slimmed dialog (544 lines). Zero consumer changes.
