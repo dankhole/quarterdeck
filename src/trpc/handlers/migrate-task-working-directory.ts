@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { ResolvedAgentCommand } from "../../config/agent-registry";
 import { resolveAgentCommand } from "../../config/agent-registry";
 import type { RuntimeConfigState } from "../../config/runtime-config";
-import { createTaggedLogger } from "../../core/debug-logger";
+import { createTaggedLogger } from "../../core/runtime-logger";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core/service-interfaces";
 import { findCardInBoard } from "../../core/task-board-mutations";
 import { loadWorkspaceState, mutateWorkspaceState } from "../../state/workspace-state";

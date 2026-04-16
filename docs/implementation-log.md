@@ -2,6 +2,20 @@
 
 > Prior entries through 2026-04-15 in `implementation-log-through-2026-04-15.md`.
 
+## Refactor: rename debug-logger to runtime-logger (2026-04-15)
+
+**Goal:** The runtime logger was still called `debug-logger` from when it was a boolean on/off toggle. Now that it's a proper four-level logger (`debug`/`info`/`warn`/`error`) used for all runtime logging, the name was misleading.
+
+**What changed:**
+
+1. **File rename** — `src/core/debug-logger.ts` → `src/core/runtime-logger.ts`, test file renamed to match.
+2. **Type renames** — `DebugLogLevel` → `LogLevel`, `DebugLogEntry` → `LogEntry`, `DebugLogEntryListener` → `LogEntryListener`. Internal only; API contract schemas (`RuntimeDebugLogLevel`, `RuntimeDebugLogEntry` in `streams.ts`) are wire-format types shared with the frontend and left unchanged.
+3. **Function renames** — `getRecentDebugLogEntries` → `getRecentLogEntries`, `onDebugLogEntry` → `onLogEntry`, `_resetDebugLoggerForTests` → `_resetLoggerForTests`.
+4. **Console timestamps** — Added `[HH:MM:SS]` prefix to all console output in the `emit` function, using local time via `toTimeString().slice(0, 8)`.
+5. **Orphan cleanup log level** — Bumped "found orphaned agent processes" and "killed orphaned agent process" from `info` to `warn` so they appear at the default threshold.
+
+**Files:** `src/core/runtime-logger.ts` (renamed + modified), `src/terminal/orphan-cleanup.ts`, `src/server/runtime-state-hub.ts`, `src/server/runtime-state-messages.ts`, `src/core/service-interfaces.ts`, `src/trpc/handlers/set-log-level.ts`, `src/trpc/handlers/save-config.ts`, `src/core/event-log.ts` (comment), `src/cli.ts`, and 13 files with `createTaggedLogger` import path updates. `test/runtime/runtime-logger.test.ts` (renamed + updated assertions for timestamp prefix).
+
 ## Refactor: complete frontend provider migration (2026-04-15)
 
 **Goal:** Decompose the monolithic App.tsx (~2200 lines) into focused provider components so each domain (project, board, git, terminal, interactions, dialogs) is independently maintainable.

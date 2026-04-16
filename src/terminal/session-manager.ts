@@ -9,8 +9,8 @@
 //   session-auto-restart.ts      — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic reconciliation sweep
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { cleanStaleIndexLockForWorktree } from "../fs/lock-cleanup";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";

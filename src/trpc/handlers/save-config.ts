@@ -3,8 +3,8 @@ import { buildRuntimeConfigResponse } from "../../config/agent-registry";
 import type { RuntimeConfigState } from "../../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config/runtime-config";
 import { parseRuntimeConfigSaveRequest } from "../../core/api-validation";
-import { type DebugLogLevel, setLogLevel } from "../../core/debug-logger";
 import { setEventLogEnabled } from "../../core/event-log";
+import { type LogLevel, setLogLevel } from "../../core/runtime-logger";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core/service-interfaces";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
@@ -47,7 +47,7 @@ export async function handleSaveConfig(
 		});
 	}
 	setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
-	setLogLevel(nextRuntimeConfig.logLevel as DebugLogLevel);
-	deps.broadcaster.broadcastLogLevel(nextRuntimeConfig.logLevel as DebugLogLevel);
+	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
+	deps.broadcaster.broadcastLogLevel(nextRuntimeConfig.logLevel as LogLevel);
 	return buildRuntimeConfigResponse(nextRuntimeConfig);
 }

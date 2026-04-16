@@ -60,7 +60,7 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { findCardInBoard } from "../core/task-board-mutations";
 import { generateCommitMessage } from "../title/commit-message-generator";
 import { generateDisplaySummary } from "../title/summary-generator";

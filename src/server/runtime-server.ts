@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
 import { emitEvent } from "../core/event-log";
 import {
 	buildQuarterdeckRuntimeUrl,
@@ -12,6 +11,7 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 } from "../core/runtime-endpoint";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server";

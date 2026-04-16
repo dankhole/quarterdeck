@@ -1,7 +1,7 @@
 // Commit message generation from git diffs. Uses the same LLM client as
 // title and summary generation — see llm-client.ts for setup requirements.
 // When LLM is not configured, returns null and the UI stays manual-only.
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("commit-msg-gen");

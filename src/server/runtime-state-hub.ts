@@ -9,9 +9,9 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import type { DebugLogEntry, DebugLogLevel } from "../core/debug-logger";
-import { getLogLevel, getRecentDebugLogEntries, onDebugLogEntry } from "../core/debug-logger";
 import { Disposable, toDisposable } from "../core/disposable";
+import type { LogEntry, LogLevel } from "../core/runtime-logger";
+import { getLogLevel, getRecentLogEntries, onLogEntry } from "../core/runtime-logger";
 import type { IRuntimeBroadcaster } from "../core/service-interfaces";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
@@ -72,7 +72,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	private readonly metadataMonitor: ReturnType<typeof createWorkspaceMetadataMonitor>;
 
 	// Debug log batching
-	private readonly pendingDebugLogEntries: DebugLogEntry[] = [];
+	private readonly pendingDebugLogEntries: LogEntry[] = [];
 	private debugLogBroadcastTimer: NodeJS.Timeout | null = null;
 
 	constructor(private readonly deps: CreateRuntimeStateHubDependencies) {
@@ -94,7 +94,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 		this._register(
 			toDisposable(
-				onDebugLogEntry((entry) => {
+				onLogEntry((entry) => {
 					if (this.allClients.size === 0) {
 						return;
 					}
@@ -239,8 +239,8 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this.metadataMonitor.setPollIntervals(workspaceId, intervals);
 	};
 
-	broadcastLogLevel = (level: DebugLogLevel): void => {
-		const payload = buildDebugLoggingStateMessage(level, getRecentDebugLogEntries());
+	broadcastLogLevel = (level: LogLevel): void => {
+		const payload = buildDebugLoggingStateMessage(level, getRecentLogEntries());
 		for (const client of this.allClients) {
 			this.send(client, payload);
 		}
@@ -477,7 +477,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 						});
 				}
 				// Send current log level so newly connected clients can show it.
-				this.send(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentDebugLogEntries()));
+				this.send(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentLogEntries()));
 
 				if (workspace.removedRequestedWorkspacePath) {
 					this.send(

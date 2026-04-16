@@ -3,8 +3,8 @@
 // file rotation. Gated behind the `eventLogEnabled` config toggle (default off)
 // so users don't accumulate log files they don't need.
 //
-// This is separate from the debug logger (core/debug-logger.ts) — the debug
-// logger is an ephemeral 200-entry ring buffer for live UI inspection, while
+// This is separate from the runtime logger (core/runtime-logger.ts) — the
+// runtime logger is an ephemeral 200-entry ring buffer for live UI inspection, while
 // this writes persistent, greppable JSONL to disk for post-mortem analysis.
 //
 // ── How to emit events ──────────────────────────────────────────────────────

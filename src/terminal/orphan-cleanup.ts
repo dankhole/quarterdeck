@@ -4,7 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { isProcessAlive } from "./session-reconciliation";
 
 const log = createTaggedLogger("orphan-cleanup");
@@ -96,14 +96,14 @@ export async function killOrphanedAgentProcesses(): Promise<number> {
 	const pids = findOrphanedAgentPids();
 	if (pids.length === 0) return 0;
 
-	log.info("found orphaned agent processes", { pids });
+	log.warn("found orphaned agent processes", { pids });
 
 	let killed = 0;
 	for (const pid of pids) {
 		const success = await killPid(pid);
 		if (success) {
 			killed++;
-			log.info("killed orphaned agent process", { pid });
+			log.warn("killed orphaned agent process", { pid });
 		} else {
 			log.error("failed to kill orphaned agent process", { pid });
 		}

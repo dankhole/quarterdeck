@@ -23,7 +23,7 @@ import type {
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import type { DebugLogEntry, DebugLogLevel } from "../core/debug-logger";
+import type { LogEntry, LogLevel } from "../core/runtime-logger";
 
 export function buildSnapshotMessage(
 	currentProjectId: string | null,
@@ -129,8 +129,8 @@ export function buildErrorMessage(message: string): RuntimeStateStreamErrorMessa
 }
 
 export function buildDebugLoggingStateMessage(
-	level: DebugLogLevel,
-	recentEntries?: DebugLogEntry[],
+	level: LogLevel,
+	recentEntries?: LogEntry[],
 ): RuntimeStateStreamDebugLoggingStateMessage {
 	return {
 		type: "debug_logging_state",
@@ -139,7 +139,7 @@ export function buildDebugLoggingStateMessage(
 	};
 }
 
-export function buildDebugLogBatchMessage(entries: DebugLogEntry[]): RuntimeStateStreamDebugLogBatchMessage {
+export function buildDebugLogBatchMessage(entries: LogEntry[]): RuntimeStateStreamDebugLogBatchMessage {
 	return {
 		type: "debug_log_batch",
 		entries,

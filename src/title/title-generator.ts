@@ -2,7 +2,7 @@
 // setup-specific Bedrock proxy — see llm-client.ts for portability notes.
 // When LLM is not configured, these return null and callers fall back
 // gracefully (cards show truncated prompt text, branch name field stays empty).
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { callLlm } from "./llm-client";
 
 const log = createTaggedLogger("title-gen");

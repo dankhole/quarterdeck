@@ -7,8 +7,8 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
 import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath } from "../state/workspace-state";

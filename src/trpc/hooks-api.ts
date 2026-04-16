@@ -6,8 +6,8 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { parseHookIngestRequest } from "../core/api-validation";
-import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
+import { createTaggedLogger } from "../core/runtime-logger";
 import type { IRuntimeBroadcaster, ITerminalManagerProvider, IWorkspaceResolver } from "../core/service-interfaces";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import { isPermissionActivity } from "../terminal/session-reconciliation";

@@ -1,22 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	_resetDebugLoggerForTests,
+	_resetLoggerForTests,
 	createTaggedLogger,
 	getLogLevel,
-	getRecentDebugLogEntries,
+	getRecentLogEntries,
 	isDebugLoggingEnabled,
-	onDebugLogEntry,
+	onLogEntry,
 	setDebugLoggingEnabled,
 	setLogLevel,
-} from "../../src/core/debug-logger";
+} from "../../src/core/runtime-logger";
 
-describe("debug-logger", () => {
+describe("runtime-logger", () => {
 	beforeEach(() => {
-		_resetDebugLoggerForTests();
+		_resetLoggerForTests();
 	});
 
 	afterEach(() => {
-		_resetDebugLoggerForTests();
+		_resetLoggerForTests();
 		vi.restoreAllMocks();
 	});
 
@@ -80,7 +80,7 @@ describe("debug-logger", () => {
 			log.info("i");
 			log.warn("w");
 			log.error("e");
-			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			const levels = getRecentLogEntries().map((e) => e.level);
 			expect(levels).toEqual(["warn", "error"]);
 		});
 
@@ -91,7 +91,7 @@ describe("debug-logger", () => {
 			log.info("i");
 			log.warn("w");
 			log.error("e");
-			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			const levels = getRecentLogEntries().map((e) => e.level);
 			expect(levels).toEqual(["info", "warn", "error"]);
 		});
 
@@ -102,7 +102,7 @@ describe("debug-logger", () => {
 			log.info("i");
 			log.warn("w");
 			log.error("e");
-			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			const levels = getRecentLogEntries().map((e) => e.level);
 			expect(levels).toEqual(["debug", "info", "warn", "error"]);
 		});
 
@@ -113,7 +113,7 @@ describe("debug-logger", () => {
 			log.info("i");
 			log.warn("w");
 			log.error("e");
-			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			const levels = getRecentLogEntries().map((e) => e.level);
 			expect(levels).toEqual(["error"]);
 		});
 
@@ -122,7 +122,7 @@ describe("debug-logger", () => {
 			const log = createTaggedLogger("test");
 			log.debug("should be ignored");
 			log.info("should be ignored");
-			expect(getRecentDebugLogEntries()).toHaveLength(0);
+			expect(getRecentLogEntries()).toHaveLength(0);
 		});
 	});
 
@@ -138,7 +138,7 @@ describe("debug-logger", () => {
 		it("records entries to ring buffer", () => {
 			const log = createTaggedLogger("mytag");
 			log.info("hello");
-			const entries = getRecentDebugLogEntries();
+			const entries = getRecentLogEntries();
 			expect(entries).toHaveLength(1);
 			expect(entries[0]).toMatchObject({
 				level: "info",
@@ -152,7 +152,7 @@ describe("debug-logger", () => {
 			const log = createTaggedLogger("t");
 			log.debug("a");
 			log.debug("b");
-			const entries = getRecentDebugLogEntries();
+			const entries = getRecentLogEntries();
 			expect(entries[0]?.id).toBe("1");
 			expect(entries[1]?.id).toBe("2");
 		});
@@ -163,33 +163,40 @@ describe("debug-logger", () => {
 			log.info("i");
 			log.warn("w");
 			log.error("e");
-			const levels = getRecentDebugLogEntries().map((e) => e.level);
+			const levels = getRecentLogEntries().map((e) => e.level);
 			expect(levels).toEqual(["debug", "info", "warn", "error"]);
 		});
 
-		it("writes to console with tag prefix", () => {
+		it("writes to console with timestamp and tag prefix", () => {
 			const log = createTaggedLogger("srv");
 			log.warn("something");
-			expect(console.warn).toHaveBeenCalledWith("[srv]", "something");
+			expect(console.warn).toHaveBeenCalledWith(
+				expect.stringMatching(/^\[\d{2}:\d{2}:\d{2}\] \[srv\]$/),
+				"something",
+			);
 		});
 
 		it("writes to console with data when provided", () => {
 			const log = createTaggedLogger("srv");
 			const data = { key: "val" };
 			log.info("msg", data);
-			expect(console.info).toHaveBeenCalledWith("[srv]", "msg", data);
+			expect(console.info).toHaveBeenCalledWith(
+				expect.stringMatching(/^\[\d{2}:\d{2}:\d{2}\] \[srv\]$/),
+				"msg",
+				data,
+			);
 		});
 
 		it("stores data in entry", () => {
 			const log = createTaggedLogger("t");
 			log.debug("m", { x: 1 });
-			expect(getRecentDebugLogEntries()[0]?.data).toEqual({ x: 1 });
+			expect(getRecentLogEntries()[0]?.data).toEqual({ x: 1 });
 		});
 
 		it("stores undefined data as undefined", () => {
 			const log = createTaggedLogger("t");
 			log.debug("m");
-			expect(getRecentDebugLogEntries()[0]?.data).toBeUndefined();
+			expect(getRecentLogEntries()[0]?.data).toBeUndefined();
 		});
 	});
 
@@ -204,7 +211,7 @@ describe("debug-logger", () => {
 			for (let i = 0; i < 210; i++) {
 				log.debug(`msg-${i}`);
 			}
-			const entries = getRecentDebugLogEntries();
+			const entries = getRecentLogEntries();
 			expect(entries).toHaveLength(200);
 			expect(entries[0]?.message).toBe("msg-10");
 			expect(entries[199]?.message).toBe("msg-209");
@@ -219,7 +226,7 @@ describe("debug-logger", () => {
 
 		it("notifies registered listener on each entry", () => {
 			const received: unknown[] = [];
-			onDebugLogEntry((entry) => received.push(entry));
+			onLogEntry((entry) => received.push(entry));
 			const log = createTaggedLogger("t");
 			log.debug("a");
 			log.debug("b");
@@ -228,7 +235,7 @@ describe("debug-logger", () => {
 
 		it("unsubscribe stops notifications", () => {
 			const received: unknown[] = [];
-			const unsubscribe = onDebugLogEntry((entry) => received.push(entry));
+			const unsubscribe = onLogEntry((entry) => received.push(entry));
 			const log = createTaggedLogger("t");
 			log.debug("a");
 			unsubscribe();
@@ -237,17 +244,17 @@ describe("debug-logger", () => {
 		});
 
 		it("listener errors do not break logging", () => {
-			onDebugLogEntry(() => {
+			onLogEntry(() => {
 				throw new Error("boom");
 			});
 			const received: unknown[] = [];
-			onDebugLogEntry((entry) => received.push(entry));
+			onLogEntry((entry) => received.push(entry));
 
 			const log = createTaggedLogger("t");
 			log.debug("still works");
 
 			expect(received).toHaveLength(1);
-			expect(getRecentDebugLogEntries()).toHaveLength(1);
+			expect(getRecentLogEntries()).toHaveLength(1);
 		});
 	});
 
@@ -260,14 +267,14 @@ describe("debug-logger", () => {
 		it("handles null data", () => {
 			const log = createTaggedLogger("t");
 			log.debug("m", null);
-			expect(getRecentDebugLogEntries()[0]?.data).toBeNull();
+			expect(getRecentLogEntries()[0]?.data).toBeNull();
 		});
 
 		it("truncates oversized data or falls back to String()", () => {
 			const log = createTaggedLogger("t");
 			const bigString = "x".repeat(3000);
 			log.debug("m", bigString);
-			const entry = getRecentDebugLogEntries()[0];
+			const entry = getRecentLogEntries()[0];
 			// safeSerializeData truncates the JSON, which may produce invalid JSON.
 			// JSON.parse on truncated JSON throws, so it falls back to String(data).
 			// Either way, the stored data should be shorter than the original.
@@ -280,12 +287,12 @@ describe("debug-logger", () => {
 			const circular: Record<string, unknown> = {};
 			circular.self = circular;
 			log.debug("m", circular);
-			const entry = getRecentDebugLogEntries()[0];
+			const entry = getRecentLogEntries()[0];
 			expect(typeof entry?.data).toBe("string");
 		});
 	});
 
-	describe("getRecentDebugLogEntries", () => {
+	describe("getRecentLogEntries", () => {
 		beforeEach(() => {
 			setLogLevel("debug");
 			vi.spyOn(console, "debug").mockImplementation(() => {});
@@ -294,8 +301,8 @@ describe("debug-logger", () => {
 		it("returns a defensive copy", () => {
 			const log = createTaggedLogger("t");
 			log.debug("a");
-			const entries1 = getRecentDebugLogEntries();
-			const entries2 = getRecentDebugLogEntries();
+			const entries1 = getRecentLogEntries();
+			const entries2 = getRecentLogEntries();
 			expect(entries1).not.toBe(entries2);
 			expect(entries1).toEqual(entries2);
 		});

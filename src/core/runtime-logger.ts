@@ -1,5 +1,5 @@
 /**
- * Runtime-togglable debug logging system.
+ * Runtime logging system.
  *
  * Provides tagged loggers that write to console AND notify registered listeners
  * (for WebSocket broadcast to the browser UI). Log calls below the current
@@ -10,24 +10,24 @@
  * and "debug" enables full verbose output.
  *
  * Usage:
- *   import { createTaggedLogger } from "../core/debug-logger";
+ *   import { createTaggedLogger } from "../core/runtime-logger";
  *   const log = createTaggedLogger("my-tag");
  *   log.debug("Something happened", { extra: "data" });
  */
 
-export type DebugLogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
-const LOG_LEVEL_SEVERITY: Record<DebugLogLevel, number> = {
+const LOG_LEVEL_SEVERITY: Record<LogLevel, number> = {
 	debug: 0,
 	info: 1,
 	warn: 2,
 	error: 3,
 };
 
-export interface DebugLogEntry {
+export interface LogEntry {
 	id: string;
 	timestamp: number;
-	level: DebugLogLevel;
+	level: LogLevel;
 	tag: string;
 	message: string;
 	data?: unknown;
@@ -41,25 +41,25 @@ export interface TaggedLogger {
 	error: (message: string, data?: unknown) => void;
 }
 
-type DebugLogEntryListener = (entry: DebugLogEntry) => void;
+type LogEntryListener = (entry: LogEntry) => void;
 
 // ── Module state ──────────────────────────────────────────────────────────
 
-let currentLogLevel: DebugLogLevel = "warn";
+let currentLogLevel: LogLevel = "warn";
 let entryIdCounter = 0;
-const listeners = new Set<DebugLogEntryListener>();
+const listeners = new Set<LogEntryListener>();
 
 const RING_BUFFER_CAPACITY = 200;
 const DATA_MAX_CHARS = 2000;
-const ringBuffer: DebugLogEntry[] = [];
+const ringBuffer: LogEntry[] = [];
 
 // ── Public API ────────────────────────────────────────────────────────────
 
-export function setLogLevel(level: DebugLogLevel): void {
+export function setLogLevel(level: LogLevel): void {
 	currentLogLevel = level;
 }
 
-export function getLogLevel(): DebugLogLevel {
+export function getLogLevel(): LogLevel {
 	return currentLogLevel;
 }
 
@@ -73,11 +73,11 @@ export function isDebugLoggingEnabled(): boolean {
 	return LOG_LEVEL_SEVERITY[currentLogLevel] < LOG_LEVEL_SEVERITY.warn;
 }
 
-export function getRecentDebugLogEntries(): DebugLogEntry[] {
+export function getRecentLogEntries(): LogEntry[] {
 	return [...ringBuffer];
 }
 
-export function onDebugLogEntry(listener: DebugLogEntryListener): () => void {
+export function onLogEntry(listener: LogEntryListener): () => void {
 	listeners.add(listener);
 	return () => {
 		listeners.delete(listener);
@@ -95,13 +95,13 @@ export function createTaggedLogger(tag: string): TaggedLogger {
 
 // ── Internals ─────────────────────────────────────────────────────────────
 
-function emit(level: DebugLogLevel, tag: string, message: string, data: unknown): void {
+function emit(level: LogLevel, tag: string, message: string, data: unknown): void {
 	// Only emit entries at or above the current log level threshold.
 	if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[currentLogLevel]) {
 		return;
 	}
 
-	const entry: DebugLogEntry = {
+	const entry: LogEntry = {
 		id: String(++entryIdCounter),
 		timestamp: Date.now(),
 		level,
@@ -112,7 +112,7 @@ function emit(level: DebugLogLevel, tag: string, message: string, data: unknown)
 	};
 
 	// Console output (always when enabled).
-	const prefix = `[${tag}]`;
+	const prefix = `[${new Date(entry.timestamp).toTimeString().slice(0, 8)}] [${tag}]`;
 	if (data !== undefined) {
 		console[level](prefix, message, data);
 	} else {
@@ -153,7 +153,7 @@ function safeSerializeData(data: unknown): unknown {
 // ── Test helpers ──────────────────────────────────────────────────────────
 
 /** Reset all module state. Only for tests. */
-export function _resetDebugLoggerForTests(): void {
+export function _resetLoggerForTests(): void {
 	currentLogLevel = "warn";
 	entryIdCounter = 0;
 	listeners.clear();

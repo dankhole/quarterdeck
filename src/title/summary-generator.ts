@@ -2,7 +2,7 @@
 // proxy — see llm-client.ts for portability notes. When LLM is not configured,
 // returns null and cards show no summary (hover tooltip falls back to raw
 // conversation summary text if available).
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { callLlm, DISPLAY_SUMMARY_LLM_BUDGET, DISPLAY_SUMMARY_MAX_LENGTH } from "./llm-client";
 
 const log = createTaggedLogger("summary-gen");

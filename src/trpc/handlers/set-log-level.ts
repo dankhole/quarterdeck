@@ -1,4 +1,4 @@
-import { type DebugLogLevel, getLogLevel, setLogLevel } from "../../core/debug-logger";
+import { getLogLevel, type LogLevel, setLogLevel } from "../../core/runtime-logger";
 import type { IRuntimeBroadcaster } from "../../core/service-interfaces";
 
 export interface SetLogLevelDeps {
@@ -6,7 +6,7 @@ export interface SetLogLevelDeps {
 }
 
 export function handleSetLogLevel(level: "debug" | "info" | "warn" | "error", deps: SetLogLevelDeps) {
-	setLogLevel(level as DebugLogLevel);
-	deps.broadcaster.broadcastLogLevel(level as DebugLogLevel);
+	setLogLevel(level as LogLevel);
+	deps.broadcaster.broadcastLogLevel(level as LogLevel);
 	return { ok: true, level: getLogLevel() };
 }

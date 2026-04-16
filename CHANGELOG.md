@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: rename debug-logger to runtime-logger
+
+- Renamed `src/core/debug-logger.ts` to `src/core/runtime-logger.ts` — the "debug" name was a holdover from when logging was a boolean on/off toggle. Renamed internal types (`DebugLogLevel` → `LogLevel`, `DebugLogEntry` → `LogEntry`) and functions (`getRecentDebugLogEntries` → `getRecentLogEntries`, `onDebugLogEntry` → `onLogEntry`) to match. API contract wire-format schemas unchanged.
+- Added `HH:MM:SS` local-time timestamps to all console log output from the runtime logger.
+- Bumped orphan cleanup "found" and "killed" log messages from `info` to `warn` so they appear at the default threshold.
+
 ### Refactor: complete frontend provider migration
 
 - Migrated all hook/state logic from the monolithic App.tsx into 6 focused provider components (ProjectProvider, BoardProvider, TerminalProvider, GitProvider, InteractionsProvider, DialogProvider). Eliminated the AppCore intermediate component. App is now a ~50-line composition root; each provider is independently maintainable. AppContent props reduced from 35+ to 2.

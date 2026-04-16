@@ -3,8 +3,8 @@
 // this module owns the timer lifecycle and action execution.
 
 import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
 import { emitSessionEvent } from "../core/event-log";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { cleanStaleGitIndexLocks } from "../fs/lock-cleanup";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";

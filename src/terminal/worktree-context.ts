@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE } from "../config/config-defaults";
-import { createTaggedLogger } from "../core/debug-logger";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { readGitHeadInfo } from "../workspace/git-utils";
 
 const log = createTaggedLogger("worktree-context");

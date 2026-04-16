@@ -7,8 +7,8 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { createTaggedLogger } from "../core/debug-logger";
 import { emitEvent, emitSessionEvent } from "../core/event-log";
+import { createTaggedLogger } from "../core/runtime-logger";
 import type {
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,

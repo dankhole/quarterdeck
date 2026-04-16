@@ -378,7 +378,7 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		import("./fs/lock-cleanup.js"),
 		import("./state/workspace-state.js"),
 		import("./core/event-log.js"),
-		import("./core/debug-logger.js"),
+		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
 	]);
 
