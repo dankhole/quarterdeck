@@ -19,8 +19,8 @@ export {
 	createHookRuntimeEnv,
 	type HookRuntimeContext,
 	parseHookRuntimeContextFromEnv,
+	QUARTERDECK_HOOK_PROJECT_ID_ENV,
 	QUARTERDECK_HOOK_TASK_ID_ENV,
-	QUARTERDECK_HOOK_WORKSPACE_ID_ENV,
 } from "./hook-runtime-context";
 export { killOrphanedAgentProcesses } from "./orphan-cleanup";
 export { stripAnsi } from "./output-utils";

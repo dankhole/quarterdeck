@@ -12,7 +12,7 @@ interface UseProjectSwitchCleanupInput {
 	resetGitActionState: () => void;
 	resetProjectNavigationState: () => void;
 	resetTerminalPanelsState: () => void;
-	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
+	resetProjectSyncState: (targetProjectId?: string | null) => void;
 }
 
 /**
@@ -28,7 +28,7 @@ export function useProjectSwitchCleanup({
 	resetGitActionState,
 	resetProjectNavigationState,
 	resetTerminalPanelsState,
-	resetWorkspaceSyncState,
+	resetProjectSyncState,
 }: UseProjectSwitchCleanupInput): void {
 	// Dispose persistent terminal instances for the previous project.
 	// These hold xterm instances, WebGL contexts, and WebSocket connections that
@@ -57,8 +57,8 @@ export function useProjectSwitchCleanup({
 		if (!isProjectSwitching) {
 			return;
 		}
-		resetWorkspaceSyncState(navigationCurrentProjectId);
-	}, [isProjectSwitching, navigationCurrentProjectId, resetWorkspaceSyncState]);
+		resetProjectSyncState(navigationCurrentProjectId);
+	}, [isProjectSwitching, navigationCurrentProjectId, resetProjectSyncState]);
 
 	// Reset task editor state when switching projects.
 	useEffect(() => {

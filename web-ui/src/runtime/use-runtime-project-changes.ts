@@ -25,11 +25,11 @@ export function useRuntimeProjectChanges(
 	diffMode?: RuntimeDiffMode | null,
 ): UseRuntimeProjectChangesResult {
 	// projectId is always required. The backend handles null taskId (home context) and fromRef/toRef (compare).
-	const hasWorkspaceScope = projectId !== null;
+	const hasProjectScope = projectId !== null;
 	const normalizedViewKey = viewKey ?? "__default__";
 	const requestKey = `${projectId ?? "__none__"}:${taskId ?? "__none__"}:${baseRef ?? "__none__"}:${mode}:${normalizedViewKey}:${fromRef ?? ""}:${toRef ?? ""}:${diffMode ?? ""}`;
 	const previousRequestKeyRef = useRef(requestKey);
-	const isRequestTransitioning = hasWorkspaceScope && previousRequestKeyRef.current !== requestKey;
+	const isRequestTransitioning = hasProjectScope && previousRequestKeyRef.current !== requestKey;
 	const queryFn = useCallback(async () => {
 		if (!projectId) {
 			throw new Error("Missing project scope.");
@@ -46,16 +46,16 @@ export function useRuntimeProjectChanges(
 		});
 	}, [baseRef, diffMode, fromRef, mode, normalizedViewKey, taskId, toRef, projectId]);
 	const changesQuery = useTrpcQuery<RuntimeWorkdirChangesResponse>({
-		enabled: hasWorkspaceScope,
+		enabled: hasProjectScope,
 		queryFn,
 	});
 
 	const refresh = useCallback(async () => {
-		if (!hasWorkspaceScope) {
+		if (!hasProjectScope) {
 			return;
 		}
 		await changesQuery.refetch();
-	}, [changesQuery.refetch, hasWorkspaceScope]);
+	}, [changesQuery.refetch, hasProjectScope]);
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
@@ -69,7 +69,7 @@ export function useRuntimeProjectChanges(
 	}, [changesQuery.setData, clearOnViewTransition, isRequestTransitioning, requestKey]);
 
 	useEffect(() => {
-		if (!hasWorkspaceScope) {
+		if (!hasProjectScope) {
 			previousRequestKeyRef.current = requestKey;
 			previousStateVersionRef.current = stateVersion;
 			return;
@@ -79,10 +79,10 @@ export function useRuntimeProjectChanges(
 		}
 		previousStateVersionRef.current = stateVersion;
 		void changesQuery.refetch();
-	}, [changesQuery.refetch, hasWorkspaceScope, requestKey, stateVersion]);
+	}, [changesQuery.refetch, hasProjectScope, requestKey, stateVersion]);
 
 	useEffect(() => {
-		if (!hasWorkspaceScope || pollIntervalMs == null) {
+		if (!hasProjectScope || pollIntervalMs == null) {
 			return;
 		}
 		const interval = window.setInterval(() => {
@@ -91,7 +91,7 @@ export function useRuntimeProjectChanges(
 		return () => {
 			window.clearInterval(interval);
 		};
-	}, [changesQuery.refetch, hasWorkspaceScope, pollIntervalMs]);
+	}, [changesQuery.refetch, hasProjectScope, pollIntervalMs]);
 
 	if (!projectId) {
 		return {

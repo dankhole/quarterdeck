@@ -82,22 +82,22 @@ describe("cleanupGlobalStaleLockArtifacts (phase 1)", () => {
 		expect(readdirSync(mockRuntimeHome.path)).toEqual(["config.json"]);
 	});
 
-	it("removes stale artifacts from workspaces root and subdirectories", async () => {
-		const workspacesRoot = join(mockRuntimeHome.path, "projects");
-		mkdirSync(workspacesRoot);
+	it("removes stale artifacts from projects root and subdirectories", async () => {
+		const projectsRoot = join(mockRuntimeHome.path, "projects");
+		mkdirSync(projectsRoot);
 
-		// Stale lock in workspaces root
-		createStaleDir(workspacesRoot, "index.json.lock");
+		// Stale lock in projects root
+		createStaleDir(projectsRoot, "index.json.lock");
 
-		// Workspace subdirectory with stale temp files
-		const wsDir = join(workspacesRoot, "ws-abc");
+		// Project subdirectory with stale temp files
+		const wsDir = join(projectsRoot, "ws-abc");
 		mkdirSync(wsDir);
 		writeFileSync(join(wsDir, "board.json"), "{}");
 		createStaleFile(wsDir, "board.json.tmp.1.2.uuid");
 
 		await cleanupGlobalStaleLockArtifacts();
 
-		expect(readdirSync(workspacesRoot)).toEqual(["ws-abc"]);
+		expect(readdirSync(projectsRoot)).toEqual(["ws-abc"]);
 		expect(readdirSync(wsDir)).toEqual(["board.json"]);
 	});
 
@@ -111,8 +111,8 @@ describe("cleanupGlobalStaleLockArtifacts (phase 1)", () => {
 		expect(warnings[0]).toContain("config.json.lock");
 	});
 
-	it("handles nonexistent workspaces directory gracefully", async () => {
-		// Don't create the workspaces directory — should not throw
+	it("handles nonexistent projects directory gracefully", async () => {
+		// Don't create the projects directory — should not throw
 		await expect(cleanupGlobalStaleLockArtifacts()).resolves.toBeUndefined();
 	});
 });

@@ -79,9 +79,9 @@ export function areSoundsSuppressed(enabled: boolean, onlyWhenHidden: boolean): 
 export function isEventSuppressedForProject(
 	eventType: AudibleNotificationEventType,
 	suppressConfig: AudibleNotificationEventConfig,
-	taskWorkspaceId: string | undefined,
+	taskWorktreeId: string | undefined,
 	currentProjectId: string | null,
 ): boolean {
 	if (currentProjectId == null) return false;
-	return suppressConfig[eventType] && taskWorkspaceId === currentProjectId;
+	return suppressConfig[eventType] && taskWorktreeId === currentProjectId;
 }

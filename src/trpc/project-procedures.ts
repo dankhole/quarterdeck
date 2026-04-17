@@ -75,7 +75,7 @@ const log = createTaggedLogger("task-gen");
 /** Tracks taskIds with in-flight LLM summary generation to prevent duplicate concurrent calls. */
 const summaryGenerationInFlight = new Set<string>();
 
-const optionalTaskWorkspaceInfoRequestSchema = runtimeTaskWorktreeInfoRequestSchema.nullable().optional();
+const optionalTaskWorktreeInfoRequestSchema = runtimeTaskWorktreeInfoRequestSchema.nullable().optional();
 const gitSyncActionInputSchema = z.object({
 	action: runtimeGitSyncActionSchema,
 	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable().optional(),
@@ -169,7 +169,7 @@ export const projectRouter = t.router({
 			return await ctx.projectApi.cherryPickCommit(ctx.projectScope, input);
 		}),
 	discardGitChanges: projectProcedure
-		.input(optionalTaskWorkspaceInfoRequestSchema)
+		.input(optionalTaskWorktreeInfoRequestSchema)
 		.output(runtimeGitDiscardResponseSchema)
 		.mutation(async ({ ctx, input }) => {
 			return await ctx.projectApi.discardGitChanges(ctx.projectScope, input ?? null);
@@ -252,8 +252,8 @@ export const projectRouter = t.router({
 	setFocusedTask: projectProcedure.input(z.object({ taskId: z.string().nullable() })).mutation(({ ctx, input }) => {
 		ctx.projectApi.setFocusedTask(ctx.projectScope, input.taskId);
 	}),
-	getWorkspaceChanges: projectProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
-		return await ctx.projectApi.loadWorkspaceChanges(ctx.projectScope);
+	getWorkdirChanges: projectProcedure.output(runtimeWorkdirChangesResponseSchema).query(async ({ ctx }) => {
+		return await ctx.projectApi.loadWorkdirChanges(ctx.projectScope);
 	}),
 	getGitLog: projectProcedure
 		.input(runtimeGitLogRequestSchema)
@@ -262,7 +262,7 @@ export const projectRouter = t.router({
 			return await ctx.projectApi.loadGitLog(ctx.projectScope, input);
 		}),
 	getGitRefs: projectProcedure
-		.input(optionalTaskWorkspaceInfoRequestSchema)
+		.input(optionalTaskWorktreeInfoRequestSchema)
 		.output(runtimeGitRefsResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.projectApi.loadGitRefs(ctx.projectScope, input ?? null);

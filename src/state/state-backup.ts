@@ -150,14 +150,14 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 	try {
 		await copyFileIfExists(globalConfigPath, join(backupDir, "config.json"));
 
-		const backupWorkspacesDir = join(backupDir, "projects");
+		const backupProjectsDir = join(backupDir, "projects");
 		if (indexExists) {
-			await mkdir(backupWorkspacesDir, { recursive: true });
-			await copyFileIfExists(indexPath, join(backupWorkspacesDir, "index.json"));
+			await mkdir(backupProjectsDir, { recursive: true });
+			await copyFileIfExists(indexPath, join(backupProjectsDir, "index.json"));
 		}
 
 		for (const projectId of projectIds) {
-			const wsBackupDir = join(backupWorkspacesDir, projectId);
+			const wsBackupDir = join(backupProjectsDir, projectId);
 			await mkdir(wsBackupDir, { recursive: true });
 			await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
 			await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));

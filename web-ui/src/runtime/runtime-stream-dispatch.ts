@@ -63,7 +63,7 @@ type StreamAction =
 export interface StreamDispatchContext {
 	getActiveProjectId: () => string | null;
 	setActiveProjectId: (id: string | null) => void;
-	reconnectToWorkspace: (projectId: string) => void;
+	reconnectToProject: (projectId: string) => void;
 	dispatch: Dispatch<StreamAction>;
 }
 
@@ -97,12 +97,12 @@ const streamMessageHandlers: {
 	},
 
 	projects_updated: (msg, ctx) => {
-		const previousWorkspaceId = ctx.getActiveProjectId();
-		const nextProjectId = resolveProjectIdAfterProjectsUpdate(previousWorkspaceId, msg);
+		const previousProjectId = ctx.getActiveProjectId();
+		const nextProjectId = resolveProjectIdAfterProjectsUpdate(previousProjectId, msg);
 		ctx.setActiveProjectId(nextProjectId);
 		ctx.dispatch({ type: "projects_updated", payload: msg, nextProjectId });
-		if (nextProjectId && nextProjectId !== previousWorkspaceId) {
-			ctx.reconnectToWorkspace(nextProjectId);
+		if (nextProjectId && nextProjectId !== previousProjectId) {
+			ctx.reconnectToProject(nextProjectId);
 		}
 	},
 

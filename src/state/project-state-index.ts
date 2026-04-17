@@ -16,7 +16,7 @@ import {
 } from "./project-state-utils";
 
 const INDEX_VERSION = 1;
-const WORKSPACE_ID_COLLISION_SUFFIX_LENGTH = 4;
+const PROJECT_ID_COLLISION_SUFFIX_LENGTH = 4;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -53,15 +53,15 @@ export const projectStateMetaSchema = z.object({
 });
 
 const projectIndexEntrySchema = z.object({
-	projectId: z.string().min(1, "Workspace ID cannot be empty."),
-	repoPath: z.string().min(1, "Workspace repository path cannot be empty."),
+	projectId: z.string().min(1, "Project ID cannot be empty."),
+	repoPath: z.string().min(1, "Project repository path cannot be empty."),
 });
 
 const projectIndexFileSchema = z
 	.object({
 		version: z.literal(INDEX_VERSION),
 		entries: z.record(z.string(), projectIndexEntrySchema),
-		repoPathToId: z.record(z.string(), z.string().min(1, "Workspace ID cannot be empty.")),
+		repoPathToId: z.record(z.string(), z.string().min(1, "Project ID cannot be empty.")),
 		projectOrder: z.array(z.string()).optional().default([]),
 	})
 	.superRefine((index, context) => {
@@ -70,11 +70,11 @@ const projectIndexFileSchema = z
 				context.addIssue({
 					code: z.ZodIssueCode.custom,
 					path: ["entries", projectId, "projectId"],
-					message: `Workspace ID must match entry key "${projectId}".`,
+					message: `Project ID must match entry key "${projectId}".`,
 				});
 			}
-			const mappedWorkspaceId = index.repoPathToId[entry.repoPath];
-			if (mappedWorkspaceId !== projectId) {
+			const mappedProjectId = index.repoPathToId[entry.repoPath];
+			if (mappedProjectId !== projectId) {
 				context.addIssue({
 					code: z.ZodIssueCode.custom,
 					path: ["entries", projectId, "repoPath"],
@@ -186,7 +186,7 @@ export function createEmptyBoard(): RuntimeBoardData {
 	};
 }
 
-function createEmptyWorkspaceIndex(): ProjectIndexFile {
+function createEmptyProjectIndex(): ProjectIndexFile {
 	return {
 		version: INDEX_VERSION,
 		entries: {},
@@ -195,15 +195,9 @@ function createEmptyWorkspaceIndex(): ProjectIndexFile {
 	};
 }
 
-function parseWorkspaceIndex(rawIndex: unknown | null): ProjectIndexFile {
+function parseProjectIndex(rawIndex: unknown | null): ProjectIndexFile {
 	const indexPath = getProjectIndexPath();
-	return parsePersistedStateFile(
-		indexPath,
-		"index.json",
-		rawIndex,
-		projectIndexFileSchema,
-		createEmptyWorkspaceIndex(),
-	);
+	return parsePersistedStateFile(indexPath, "index.json", rawIndex, projectIndexFileSchema, createEmptyProjectIndex());
 }
 
 export function parseProjectStateSavePayload<T>(payload: T, schema: z.ZodType<T>): T {
@@ -245,16 +239,16 @@ export async function readProjectMeta(projectId: string): Promise<ProjectStateMe
 
 export async function readProjectIndex(): Promise<ProjectIndexFile> {
 	const raw = await readJsonFile(getProjectIndexPath());
-	return parseWorkspaceIndex(raw);
+	return parseProjectIndex(raw);
 }
 
-async function writeWorkspaceIndex(index: ProjectIndexFile): Promise<void> {
+async function writeProjectIndex(index: ProjectIndexFile): Promise<void> {
 	await lockedFileSystem.writeJsonFileAtomic(getProjectIndexPath(), index, {
 		lock: null,
 	});
 }
 
-function toWorkspaceIdBase(repoPath: string): string {
+function toProjectIdBase(repoPath: string): string {
 	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
 	const folderName = basename(trimmed) || "project";
 	const normalized = folderName
@@ -265,7 +259,7 @@ function toWorkspaceIdBase(repoPath: string): string {
 	return normalized || "project";
 }
 
-function createWorkspaceIdCollisionSuffix(length: number): string {
+function createProjectIdCollisionSuffix(length: number): string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 	let suffix = "";
 	while (suffix.length < length) {
@@ -280,14 +274,14 @@ function createWorkspaceIdCollisionSuffix(length: number): string {
 	return suffix;
 }
 
-function createWorkspaceId(index: ProjectIndexFile, repoPath: string): string {
-	const baseId = toWorkspaceIdBase(repoPath);
+function createProjectId(index: ProjectIndexFile, repoPath: string): string {
+	const baseId = toProjectIdBase(repoPath);
 	if (!index.entries[baseId] || index.entries[baseId]?.repoPath === repoPath) {
 		return baseId;
 	}
 
 	for (let attempt = 0; attempt < 256; attempt += 1) {
-		const candidate = `${baseId}-${createWorkspaceIdCollisionSuffix(WORKSPACE_ID_COLLISION_SUFFIX_LENGTH)}`;
+		const candidate = `${baseId}-${createProjectIdCollisionSuffix(PROJECT_ID_COLLISION_SUFFIX_LENGTH)}`;
 		if (!index.entries[candidate] || index.entries[candidate]?.repoPath === repoPath) {
 			return candidate;
 		}
@@ -304,9 +298,9 @@ export function ensureProjectEntry(
 		throw new Error(`Cannot add a Quarterdeck worktree as a project: ${repoPath}`);
 	}
 
-	const existingWorkspaceId = index.repoPathToId[repoPath];
-	if (existingWorkspaceId) {
-		const existingEntry = index.entries[existingWorkspaceId];
+	const existingProjectId = index.repoPathToId[repoPath];
+	if (existingProjectId) {
+		const existingEntry = index.entries[existingProjectId];
 		if (existingEntry && existingEntry.repoPath === repoPath) {
 			return {
 				index,
@@ -316,7 +310,7 @@ export function ensureProjectEntry(
 		}
 	}
 
-	const projectId = createWorkspaceId(index, repoPath);
+	const projectId = createProjectId(index, repoPath);
 
 	const entry: ProjectIndexEntry = {
 		projectId,
@@ -384,7 +378,7 @@ export async function removeProjectIndexEntry(projectId: string): Promise<boolea
 		delete index.entries[projectId];
 		delete index.repoPathToId[entry.repoPath];
 		index.projectOrder = index.projectOrder.filter((id) => id !== projectId);
-		await writeWorkspaceIndex(index);
+		await writeProjectIndex(index);
 		return true;
 	});
 }
@@ -396,10 +390,10 @@ export async function updateProjectOrder(orderedIds: string[]): Promise<void> {
 		const includedIds = new Set(validIds);
 		const missingIds = Object.keys(index.entries).filter((id) => !includedIds.has(id));
 		index.projectOrder = [...validIds, ...missingIds];
-		await writeWorkspaceIndex(index);
+		await writeProjectIndex(index);
 	});
 }
 
 export async function writeProjectIndexSafe(index: ProjectIndexFile): Promise<void> {
-	await writeWorkspaceIndex(index);
+	await writeProjectIndex(index);
 }

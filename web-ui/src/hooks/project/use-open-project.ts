@@ -15,18 +15,18 @@ import {
 import { useRawLocalStorageValue } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
-interface UseOpenWorkspaceParams {
+interface UseOpenProjectParams {
 	currentProjectId: string | null;
 	projectPath?: string;
 }
 
-interface UseOpenWorkspaceResult {
+interface UseOpenProjectResult {
 	openTargetOptions: readonly OpenTargetOption[];
 	selectedOpenTargetId: OpenTargetId;
 	onSelectOpenTarget: (targetId: OpenTargetId) => void;
-	onOpenWorkspace: () => void;
-	canOpenWorkspace: boolean;
-	isOpeningWorkspace: boolean;
+	onOpenProject: () => void;
+	canOpenProject: boolean;
+	isOpeningProject: boolean;
 }
 
 function getFirstOutputLine(output: string): string | null {
@@ -38,7 +38,7 @@ function getFirstOutputLine(output: string): string | null {
 	);
 }
 
-export function useOpenProject({ currentProjectId, projectPath }: UseOpenWorkspaceParams): UseOpenWorkspaceResult {
+export function useOpenProject({ currentProjectId, projectPath }: UseOpenProjectParams): UseOpenProjectResult {
 	const openTargetPlatform = resolveOpenTargetPlatform();
 	const openTargetOptions = useMemo(() => getOpenTargetOptions(openTargetPlatform), [openTargetPlatform]);
 	const fallbackTargetId = openTargetOptions[0]?.id ?? "vscode";
@@ -47,12 +47,12 @@ export function useOpenProject({ currentProjectId, projectPath }: UseOpenWorkspa
 		fallbackTargetId,
 		(value) => normalizeOpenTargetId(value),
 	);
-	const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
+	const [isOpeningProject, setIsOpeningProject] = useState(false);
 	const selectedOpenTarget = useMemo(
 		() => getOpenTargetOption(preferredOpenTargetId, openTargetPlatform),
 		[openTargetPlatform, preferredOpenTargetId],
 	);
-	const canOpenWorkspace = Boolean(currentProjectId && projectPath);
+	const canOpenProject = Boolean(currentProjectId && projectPath);
 
 	const onSelectOpenTarget = useCallback(
 		(targetId: OpenTargetId) => {
@@ -79,13 +79,13 @@ export function useOpenProject({ currentProjectId, projectPath }: UseOpenWorkspa
 		[selectedOpenTarget.label],
 	);
 
-	const onOpenWorkspace = useCallback(() => {
-		if (isOpeningWorkspace || !currentProjectId || !projectPath) {
+	const onOpenProject = useCallback(() => {
+		if (isOpeningProject || !currentProjectId || !projectPath) {
 			return;
 		}
 
 		void (async () => {
-			setIsOpeningWorkspace(true);
+			setIsOpeningProject(true);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.runCommand.mutate({
@@ -99,12 +99,12 @@ export function useOpenProject({ currentProjectId, projectPath }: UseOpenWorkspa
 				const message = toErrorMessage(error);
 				showOpenFailureToast(message);
 			} finally {
-				setIsOpeningWorkspace(false);
+				setIsOpeningProject(false);
 			}
 		})();
 	}, [
 		currentProjectId,
-		isOpeningWorkspace,
+		isOpeningProject,
 		openTargetPlatform,
 		selectedOpenTarget.id,
 		showOpenFailureToast,
@@ -115,8 +115,8 @@ export function useOpenProject({ currentProjectId, projectPath }: UseOpenWorkspa
 		openTargetOptions,
 		selectedOpenTargetId: selectedOpenTarget.id,
 		onSelectOpenTarget,
-		onOpenWorkspace,
-		canOpenWorkspace,
-		isOpeningWorkspace,
+		onOpenProject,
+		canOpenProject,
+		isOpeningProject,
 	};
 }

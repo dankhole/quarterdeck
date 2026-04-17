@@ -33,7 +33,7 @@ export function getWorkdirFolderLabelForWorktreePath(repoPath: string): string {
 		})
 		.join("")
 		.trim();
-	return cleaned || "workspace";
+	return cleaned || "project";
 }
 
 export function buildTaskWorktreeDisplayPath(taskId: string, repoPath: string): string {

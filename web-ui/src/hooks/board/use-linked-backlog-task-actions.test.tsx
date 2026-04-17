@@ -166,12 +166,12 @@ describe("useLinkedBacklogTaskActions", () => {
 
 	it("trashes tasks directly through the request handler", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async (_taskId: string) => null);
+		const cleanupTaskWorktree = vi.fn(async (_taskId: string) => null);
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -194,7 +194,7 @@ describe("useLinkedBacklogTaskActions", () => {
 		const nextSnapshot = latestSnapshot as HookSnapshot;
 		expect(nextSnapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 		expect(nextSnapshot.board.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe("task-2");
-		expect(cleanupTaskWorkspace).toHaveBeenCalledWith("task-2");
+		expect(cleanupTaskWorktree).toHaveBeenCalledWith("task-2");
 	});
 
 	it("can queue the next dependency-unblocked animation before the previous start resolves", async () => {

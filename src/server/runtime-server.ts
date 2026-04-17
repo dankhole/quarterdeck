@@ -30,7 +30,7 @@ import type { RuntimeStateHub } from "./runtime-state-hub";
 
 const serverLog = createTaggedLogger("runtime-server");
 
-interface DisposeTrackedWorkspaceResult {
+interface DisposeTrackedProjectResult {
 	terminalManager: TerminalSessionManager | null;
 	projectPath: string | null;
 }
@@ -49,7 +49,7 @@ export interface CreateRuntimeServerDependencies {
 		options?: {
 			stopTerminalSessions?: boolean;
 		},
-	) => DisposeTrackedWorkspaceResult;
+	) => DisposeTrackedProjectResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeProjectStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
 }
@@ -59,18 +59,18 @@ export interface RuntimeServer {
 	close: () => Promise<void>;
 }
 
-function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
+function readProjectIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
 	const headerValue = request.headers["x-quarterdeck-project-id"];
-	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-	if (typeof headerWorkspaceId === "string") {
-		const normalized = headerWorkspaceId.trim();
+	const headerProjectId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+	if (typeof headerProjectId === "string") {
+		const normalized = headerProjectId.trim();
 		if (normalized) {
 			return normalized;
 		}
 	}
-	const queryWorkspaceId = requestUrl.searchParams.get("projectId");
-	if (typeof queryWorkspaceId === "string") {
-		const normalized = queryWorkspaceId.trim();
+	const queryProjectId = requestUrl.searchParams.get("projectId");
+	if (typeof queryProjectId === "string") {
+		const normalized = queryProjectId.trim();
 		if (normalized) {
 			return normalized;
 		}
@@ -87,14 +87,14 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		throw new Error("Could not find web UI assets. Run `npm run build` to generate and package the web UI.");
 	}
 
-	const resolveWorkspaceScopeFromRequest = async (
+	const resolveProjectScopeFromRequest = async (
 		request: IncomingMessage,
 		requestUrl: URL,
 	): Promise<{
 		requestedProjectId: string | null;
 		projectScope: RuntimeTrpcProjectScope | null;
 	}> => {
-		const requestedProjectId = readWorkspaceIdFromRequest(request, requestUrl);
+		const requestedProjectId = readProjectIdFromRequest(request, requestUrl);
 		if (!requestedProjectId) {
 			return {
 				requestedProjectId: null,
@@ -121,7 +121,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath);
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
-		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
+		const scope = await resolveProjectScopeFromRequest(req, requestUrl);
 		return {
 			requestedProjectId: scope.requestedProjectId,
 			projectScope: scope.projectScope,

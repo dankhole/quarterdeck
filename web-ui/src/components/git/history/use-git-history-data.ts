@@ -365,7 +365,7 @@ export function useGitHistoryData({
 		if (taskScope) {
 			return await trpc.project.getChanges.query(taskScope);
 		}
-		return await trpc.project.getWorkspaceChanges.query();
+		return await trpc.project.getWorkdirChanges.query();
 	}, [taskScope, projectId]);
 	const shouldLoadWorkingCopyChanges =
 		!isScopeTransitioning &&

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary, RuntimeWorkdirChangesResponse } from "../../../src/core";
 
-const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
+const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	isMissingTaskWorktreeError: vi.fn(
@@ -12,9 +12,9 @@ const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 	deleteTaskWorktree: vi.fn(),
 }));
 
-const workspaceChangesMocks = vi.hoisted(() => ({
+const workdirChangesMocks = vi.hoisted(() => ({
 	createEmptyWorkdirChangesResponse: vi.fn(),
-	getWorkspaceChanges: vi.fn(),
+	getWorkdirChanges: vi.fn(),
 	getWorkdirChangesBetweenRefs: vi.fn(),
 	getWorkdirChangesFromRef: vi.fn(),
 }));
@@ -26,13 +26,13 @@ const projectStateMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
-	deleteTaskWorktree: workspaceTaskWorktreeMocks.deleteTaskWorktree,
+	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
-	resolveTaskCwd: workspaceTaskWorktreeMocks.resolveTaskCwd,
-	resolveTaskWorkingDirectory: workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory,
-	isMissingTaskWorktreeError: workspaceTaskWorktreeMocks.isMissingTaskWorktreeError,
-	getTaskWorkingDirectory: workspaceTaskWorktreeMocks.getTaskWorkingDirectory,
+	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
+	isMissingTaskWorktreeError: worktreeMocks.isMissingTaskWorktreeError,
+	getTaskWorkingDirectory: worktreeMocks.getTaskWorkingDirectory,
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
 
@@ -73,10 +73,10 @@ vi.mock("../../../src/workdir/git-sync.js", () => ({
 }));
 
 vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
-	createEmptyWorkdirChangesResponse: workspaceChangesMocks.createEmptyWorkdirChangesResponse,
-	getWorkspaceChanges: workspaceChangesMocks.getWorkspaceChanges,
-	getWorkdirChangesBetweenRefs: workspaceChangesMocks.getWorkdirChangesBetweenRefs,
-	getWorkdirChangesFromRef: workspaceChangesMocks.getWorkdirChangesFromRef,
+	createEmptyWorkdirChangesResponse: workdirChangesMocks.createEmptyWorkdirChangesResponse,
+	getWorkdirChanges: workdirChangesMocks.getWorkdirChanges,
+	getWorkdirChangesBetweenRefs: workdirChangesMocks.getWorkdirChangesBetweenRefs,
+	getWorkdirChangesFromRef: workdirChangesMocks.getWorkdirChangesFromRef,
 	getWorkdirFileDiff: vi.fn(),
 }));
 
@@ -154,21 +154,21 @@ function createChangesResponse(): RuntimeWorkdirChangesResponse {
 
 describe("createProjectApi loadChanges", () => {
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.resolveTaskCwd.mockReset();
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		worktreeMocks.resolveTaskCwd.mockReset();
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
-		workspaceChangesMocks.createEmptyWorkdirChangesResponse.mockReset();
-		workspaceChangesMocks.getWorkspaceChanges.mockReset();
-		workspaceChangesMocks.getWorkdirChangesBetweenRefs.mockReset();
-		workspaceChangesMocks.getWorkdirChangesFromRef.mockReset();
+		workdirChangesMocks.createEmptyWorkdirChangesResponse.mockReset();
+		workdirChangesMocks.getWorkdirChanges.mockReset();
+		workdirChangesMocks.getWorkdirChangesBetweenRefs.mockReset();
+		workdirChangesMocks.getWorkdirChangesFromRef.mockReset();
 
 		// Default: resolveTaskWorkingDirectory resolves to /tmp/worktree.
 		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
-		workspaceChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(createChangesResponse());
-		workspaceChangesMocks.getWorkspaceChanges.mockResolvedValue(createChangesResponse());
-		workspaceChangesMocks.getWorkdirChangesBetweenRefs.mockResolvedValue(createChangesResponse());
-		workspaceChangesMocks.getWorkdirChangesFromRef.mockResolvedValue(createChangesResponse());
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		workdirChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(createChangesResponse());
+		workdirChangesMocks.getWorkdirChanges.mockResolvedValue(createChangesResponse());
+		workdirChangesMocks.getWorkdirChangesBetweenRefs.mockResolvedValue(createChangesResponse());
+		workdirChangesMocks.getWorkdirChangesFromRef.mockResolvedValue(createChangesResponse());
 	});
 
 	it("shows the completed turn diff while awaiting review", async () => {
@@ -212,7 +212,7 @@ describe("createProjectApi loadChanges", () => {
 
 		await api.loadChanges(
 			{
-				projectId: "workspace-1",
+				projectId: "project-1",
 				projectPath: "/tmp/repo",
 			},
 			{
@@ -222,12 +222,12 @@ describe("createProjectApi loadChanges", () => {
 			},
 		);
 
-		expect(workspaceChangesMocks.getWorkdirChangesBetweenRefs).toHaveBeenCalledWith({
+		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			fromRef: "1111111",
 			toRef: "2222222",
 		});
-		expect(workspaceChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
 	});
 
 	it("tracks the current turn from the latest checkpoint while running", async () => {
@@ -271,7 +271,7 @@ describe("createProjectApi loadChanges", () => {
 
 		await api.loadChanges(
 			{
-				projectId: "workspace-1",
+				projectId: "project-1",
 				projectPath: "/tmp/repo",
 			},
 			{
@@ -281,21 +281,21 @@ describe("createProjectApi loadChanges", () => {
 			},
 		);
 
-		expect(workspaceChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
+		expect(workdirChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			fromRef: "2222222",
 		});
-		expect(workspaceChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
 	});
 
 	it("returns an empty diff when the task worktree does not exist yet", async () => {
 		// No persisted workingDirectory, and worktree doesn't exist on disk.
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
+		worktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
 			new Error('Task worktree not found for task "task-1".'),
 		);
 
 		const emptyResponse = createChangesResponse();
-		workspaceChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(emptyResponse);
+		workdirChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(emptyResponse);
 
 		const api = createProjectApi({
 			terminals: {
@@ -315,7 +315,7 @@ describe("createProjectApi loadChanges", () => {
 
 		const response = await api.loadChanges(
 			{
-				projectId: "workspace-1",
+				projectId: "project-1",
 				projectPath: "/tmp/repo",
 			},
 			{
@@ -326,8 +326,8 @@ describe("createProjectApi loadChanges", () => {
 		);
 
 		expect(response).toBe(emptyResponse);
-		expect(workspaceChangesMocks.createEmptyWorkdirChangesResponse).toHaveBeenCalledWith("/tmp/repo");
-		expect(workspaceChangesMocks.getWorkspaceChanges).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.createEmptyWorkdirChangesResponse).toHaveBeenCalledWith("/tmp/repo");
+		expect(workdirChangesMocks.getWorkdirChanges).not.toHaveBeenCalled();
 	});
 
 	it("diffs fromRef against working tree when toRef is omitted (task-scoped)", async () => {
@@ -348,16 +348,16 @@ describe("createProjectApi loadChanges", () => {
 		});
 
 		await api.loadChanges(
-			{ projectId: "workspace-1", projectPath: "/tmp/repo" },
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
 			{ taskId: "task-1", baseRef: "main", fromRef: "main", mode: "working_copy" },
 		);
 
-		expect(workspaceChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
+		expect(workdirChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			fromRef: "main",
 			threeDot: false,
 		});
-		expect(workspaceChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
 	});
 
 	it("diffs fromRef against working tree when toRef is omitted (home repo)", async () => {
@@ -378,24 +378,24 @@ describe("createProjectApi loadChanges", () => {
 		});
 
 		await api.loadChanges(
-			{ projectId: "workspace-1", projectPath: "/tmp/repo" },
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
 			{ taskId: null, fromRef: "main", mode: "working_copy" },
 		);
 
-		expect(workspaceChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
+		expect(workdirChangesMocks.getWorkdirChangesFromRef).toHaveBeenCalledWith({
 			cwd: "/tmp/repo",
 			fromRef: "main",
 			threeDot: false,
 		});
-		expect(workspaceChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.getWorkdirChangesBetweenRefs).not.toHaveBeenCalled();
 	});
 
 	it("returns empty diff for fromRef-only when task worktree is missing", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
+		worktreeMocks.resolveTaskWorkingDirectory.mockRejectedValue(
 			new Error('Task worktree not found for task "task-1".'),
 		);
 		const emptyResponse = createChangesResponse();
-		workspaceChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(emptyResponse);
+		workdirChangesMocks.createEmptyWorkdirChangesResponse.mockResolvedValue(emptyResponse);
 
 		const api = createProjectApi({
 			terminals: {
@@ -414,11 +414,11 @@ describe("createProjectApi loadChanges", () => {
 		});
 
 		const response = await api.loadChanges(
-			{ projectId: "workspace-1", projectPath: "/tmp/repo" },
+			{ projectId: "project-1", projectPath: "/tmp/repo" },
 			{ taskId: "task-1", baseRef: "main", fromRef: "main", mode: "working_copy" },
 		);
 
 		expect(response).toBe(emptyResponse);
-		expect(workspaceChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
+		expect(workdirChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
 	});
 });

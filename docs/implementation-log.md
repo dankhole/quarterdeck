@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: complete workspace → project/worktree/workdir rename (2026-04-17)
+
+**What:** Eliminated all remaining "workspace" references in source, tests, and config — except agent workspace-trust files where "workspace" is the agent's own terminology.
+
+**Why:** The prior rename pass (709e05e7) covered files, directories, API routes, and wire protocol but left ~980 occurrences across 96 files: identifiers, string literals, Zod validation messages, comments, env vars, and test fixture IDs. These created confusion about whether "workspace" meant a project, a git worktree, or a working directory.
+
+**Approach:** Categorized each identifier by its actual semantic role:
+- **→ project**: state management, IDs, persistence, sync, settings scope, index entries, env vars
+- **→ worktree**: task git worktree operations (`ensureTaskWorktree`, `cleanupTaskWorktree`, `taskWorktreeInfo`)
+- **→ workdir**: file change queries (`getWorkdirChanges`, `loadWorkdirChanges`)
+- **kept as workspace**: agent workspace trust (Claude/Codex concept)
+
+Also fixed: `@runtime-task-worktree-path` Vite alias pointing to deleted `src/workspace/` directory, stale `workspace-state-query.ts` reference in `biome.json`, stale interface names in `docs/todo.md`.
+
+**Files touched:** 106 files across `src/`, `web-ui/src/`, `test/`, `biome.json`, `web-ui/tsconfig.json`, `web-ui/vite.config.ts`, `web-ui/vitest.config.ts`, `docs/todo.md`, `CHANGELOG.md`.
+
 ## Refactor: app shell component decomposition and design guardrails (2026-04-17)
 
 **What:** Split two large app-shell components (`project-navigation-panel.tsx` and `top-bar.tsx`) into focused sub-components, added four design/architecture docs, fixed a pre-existing TS error, and completed a stale workspace→project prop rename.

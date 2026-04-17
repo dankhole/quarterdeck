@@ -23,7 +23,7 @@ interface UseAudibleNotificationsOptions {
 	/** Per-event suppression for tasks in the currently viewed project. */
 	audibleNotificationSuppressCurrentProject: AudibleNotificationEventConfig;
 	/** Maps task IDs to their project IDs. */
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 	/** The currently viewed project ID. */
 	currentProjectId: string | null;
 	/** Task IDs for which sounds should be suppressed (e.g. tasks being trashed). */
@@ -42,7 +42,7 @@ export function useAudibleNotifications({
 	audibleNotificationEvents,
 	audibleNotificationsOnlyWhenHidden,
 	audibleNotificationSuppressCurrentProject,
-	notificationWorkspaceIds,
+	notificationProjectIds,
 	currentProjectId,
 	suppressedTaskIds,
 }: UseAudibleNotificationsOptions): void {
@@ -52,12 +52,12 @@ export function useAudibleNotifications({
 	const latestVolumeRef = useRef(audibleNotificationVolume);
 	const latestEventsRef = useRef(audibleNotificationEvents);
 	const latestSuppressRef = useRef(audibleNotificationSuppressCurrentProject);
-	const latestWorkspaceIdsRef = useRef(notificationWorkspaceIds);
+	const latestProjectIdsRef = useRef(notificationProjectIds);
 	const latestProjectIdRef = useRef(currentProjectId);
 	latestVolumeRef.current = audibleNotificationVolume;
 	latestEventsRef.current = audibleNotificationEvents;
 	latestSuppressRef.current = audibleNotificationSuppressCurrentProject;
-	latestWorkspaceIdsRef.current = notificationWorkspaceIds;
+	latestProjectIdsRef.current = notificationProjectIds;
 	latestProjectIdRef.current = currentProjectId;
 
 	const fireSound = (taskId: string) => {
@@ -71,7 +71,7 @@ export function useAudibleNotifications({
 			isEventSuppressedForProject(
 				eventType,
 				latestSuppressRef.current,
-				latestWorkspaceIdsRef.current[taskId],
+				latestProjectIdsRef.current[taskId],
 				latestProjectIdRef.current,
 			)
 		) {

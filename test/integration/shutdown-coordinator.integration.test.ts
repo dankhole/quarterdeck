@@ -154,7 +154,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				// Tasks without a pre-existing session record are unchanged.
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
-				// Indexed (non-managed) workspaces are also preserved in place.
+				// Indexed (non-managed) projects are also preserved in place.
 				const indexedAfter = await loadProjectState(indexedProjectPath);
 				const indexedInProgress =
 					indexedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];

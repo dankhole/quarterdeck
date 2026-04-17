@@ -57,7 +57,7 @@ export interface ITerminalManagerProvider {
 	ensureTerminalManagerForProject: (projectId: string, repoPath: string) => Promise<TerminalSessionManager>;
 }
 
-// ── Workspace Resolution ─────────────────────────────────────────────────────
+// ── Project Resolution ─────────────────────────────────────────────────────
 
 /**
  * Resolves project identity and paths from project IDs.
@@ -84,7 +84,7 @@ export interface IRuntimeConfigProvider {
 	loadScopedRuntimeConfig: (scope: { projectId: string; projectPath: string }) => Promise<RuntimeConfigState>;
 }
 
-// ── Workspace Data ───────────────────────────────────────────────────────────
+// ── Project Data ───────────────────────────────────────────────────────────
 
 /**
  * Builds project and metadata snapshots for streaming to clients.

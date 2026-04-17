@@ -15,7 +15,7 @@ const getGitRefsQueryMock = vi.hoisted(() => vi.fn());
 const getGitLogQueryMock = vi.hoisted(() => vi.fn());
 const getCommitDiffQueryMock = vi.hoisted(() => vi.fn());
 const getChangesQueryMock = vi.hoisted(() => vi.fn());
-const getWorkspaceChangesQueryMock = vi.hoisted(() => vi.fn());
+const getWorkdirChangesQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
@@ -32,8 +32,8 @@ vi.mock("@/runtime/trpc-client", () => ({
 			getChanges: {
 				query: getChangesQueryMock,
 			},
-			getWorkspaceChanges: {
-				query: getWorkspaceChangesQueryMock,
+			getWorkdirChanges: {
+				query: getWorkdirChangesQueryMock,
 			},
 		},
 	}),
@@ -130,7 +130,7 @@ function createDiffResponse(hash: string): RuntimeGitCommitDiffResponse {
 	};
 }
 
-function createWorkspaceChangesResponse(): RuntimeWorkdirChangesResponse {
+function createWorkdirChangesResponse(): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/project",
 		generatedAt: Date.now(),
@@ -183,7 +183,7 @@ describe("useGitHistoryData", () => {
 		getGitLogQueryMock.mockReset();
 		getCommitDiffQueryMock.mockReset();
 		getChangesQueryMock.mockReset();
-		getWorkspaceChangesQueryMock.mockReset();
+		getWorkdirChangesQueryMock.mockReset();
 
 		getGitRefsQueryMock.mockImplementation(async (taskScope: { taskId: string; baseRef: string } | null) =>
 			taskScope ? createRefsResponse("task-branch", "taskhash1") : createRefsResponse("main", "homehash1"),
@@ -195,8 +195,8 @@ describe("useGitHistoryData", () => {
 		getCommitDiffQueryMock.mockImplementation(async ({ commitHash }: { commitHash: string }) =>
 			createDiffResponse(commitHash),
 		);
-		getChangesQueryMock.mockImplementation(async () => createWorkspaceChangesResponse());
-		getWorkspaceChangesQueryMock.mockImplementation(async () => createWorkspaceChangesResponse());
+		getChangesQueryMock.mockImplementation(async () => createWorkdirChangesResponse());
+		getWorkdirChangesQueryMock.mockImplementation(async () => createWorkdirChangesResponse());
 
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;

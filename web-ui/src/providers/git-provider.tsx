@@ -144,10 +144,10 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		skipHomeCheckoutConfirmation,
 		hasNoProjects,
 		isProjectSwitching,
-		refreshWorkspaceState,
+		refreshProjectState,
 	} = useProjectContext();
 
-	const { board, selectedCard, selectedTaskId, setSelectedTaskId, sendTaskSessionInput, fetchTaskWorkspaceInfo } =
+	const { board, selectedCard, selectedTaskId, setSelectedTaskId, sendTaskSessionInput, fetchTaskWorktreeInfo } =
 		useBoardContext();
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
@@ -238,9 +238,9 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		selectedCard,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
-		fetchTaskWorkspaceInfo,
+		fetchTaskWorktreeInfo,
 		isGitHistoryOpen,
-		refreshWorkspaceState,
+		refreshProjectState,
 	});
 
 	// --- handleToggleGitHistory ---

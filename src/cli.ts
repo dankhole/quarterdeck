@@ -426,7 +426,7 @@ async function runRuntimeStartupCleanup(
 			await modules.cleanupProjectStaleLockArtifacts(projectPaths, warn);
 		}
 	} catch {
-		// Workspace index may not exist yet on first run — safe to skip.
+		// Project index may not exist yet on first run — safe to skip.
 	}
 }
 
@@ -487,7 +487,7 @@ async function createRuntimeBootstrapState(
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
 
-	const disposeTrackedWorkspace = (
+	const disposeTrackedProject = (
 		projectId: string,
 		options?: {
 			stopTerminalSessions?: boolean;
@@ -503,7 +503,7 @@ async function createRuntimeBootstrapState(
 	return {
 		projectRegistry,
 		runtimeHub,
-		disposeTrackedWorkspace,
+		disposeTrackedProject,
 		warn,
 		stopPeriodicBackups: () => {
 			modules.stopPeriodicBackups();
@@ -524,7 +524,7 @@ async function createRuntimeServerHandle(
 		resolveProjectInputPath: modules.resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,
-		disposeProject: bootstrap.disposeTrackedWorkspace,
+		disposeProject: bootstrap.disposeTrackedProject,
 		collectProjectWorktreeTaskIdsForRemoval: modules.collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog: modules.pickDirectoryPathFromSystemDialog,
 	});

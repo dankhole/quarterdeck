@@ -4,7 +4,7 @@ import { runGit } from "./git-utils.js";
 
 const DEFAULT_LIMIT = 100;
 
-interface SearchWorkspaceTextOptions {
+interface SearchWorkdirTextOptions {
 	caseSensitive?: boolean;
 	isRegex?: boolean;
 	limit?: number;
@@ -13,7 +13,7 @@ interface SearchWorkspaceTextOptions {
 export async function searchWorkdirText(
 	cwd: string,
 	query: string,
-	options: SearchWorkspaceTextOptions = {},
+	options: SearchWorkdirTextOptions = {},
 ): Promise<RuntimeWorkdirTextSearchResponse> {
 	const { caseSensitive = false, isRegex = false, limit = DEFAULT_LIMIT } = options;
 

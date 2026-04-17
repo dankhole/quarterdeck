@@ -44,7 +44,7 @@ export interface HookProps {
 		review: boolean;
 		failure: boolean;
 	};
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 	currentProjectId: string | null;
 }
 
@@ -64,7 +64,7 @@ export function defaultProps(): HookProps {
 			review: false,
 			failure: false,
 		},
-		notificationWorkspaceIds: {},
+		notificationProjectIds: {},
 		currentProjectId: null,
 	};
 }

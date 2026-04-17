@@ -80,7 +80,7 @@ Add branch operations within the git view. The branch pill, git stats, fetch/pul
 
 ## Per-task session identity for non-isolated tasks
 
-The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorkspace` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
+The client-side trash/untrash/start bugs for non-isolated tasks are fixed — `ensureTaskWorktree` is no longer called (no orphan worktrees), dialog/toast messaging is correct, cleanup is skipped. However, the deeper session-scoping problem remains:
 
 - **Session clobbering**: `--continue` picks the most recent conversation by CWD. Non-isolated tasks sharing the home repo all compete for the same "most recent" session. A warning toast now discloses this limitation on restore and restart, but there's no per-task session targeting.
 - **Possible fix**: If Claude Code adds a `--session-id` or `--resume <id>` flag in the future, Quarterdeck could store the session ID per task and resume the correct conversation. Until then, this is a known limitation for non-isolated tasks.
@@ -208,7 +208,7 @@ Full plan at [docs/archived/refactor-csharp-readability.md](archived/refactor-cs
 - ~~Convert `RuntimeStateHub` to class~~ — 550-line factory → `RuntimeStateHubImpl` extending `Disposable`
 - ~~Convert `RuntimeApi` to class~~ — 615-line factory → `RuntimeApiImpl` class
 - ~~Split `RuntimeApi` handlers into individual files under `src/trpc/handlers/`~~ — 11 handler files, `RuntimeApiImpl` is a thin dispatcher
-- ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IWorkspaceResolver`, `IRuntimeConfigProvider`, `IWorkspaceDataProvider` replace 4 bespoke dependency bags
+- ~~Shared service interfaces~~ — `IRuntimeBroadcaster`, `ITerminalManagerProvider`, `IProjectResolver`, `IRuntimeConfigProvider`, `IProjectDataProvider` replace 4 bespoke dependency bags
 - ~~Message factory functions + typed WebSocket dispatch map~~ — 11 factory functions replace inline construction, compiler-enforced handler map replaces 110-line if/else chain
 
 **Frontend (section 8): Provider migration — done.**

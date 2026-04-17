@@ -44,9 +44,9 @@ interface UseGitActionsInput {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 	isGitHistoryOpen: boolean;
-	refreshWorkspaceState: () => Promise<void>;
+	refreshProjectState: () => Promise<void>;
 }
 
 export interface UseGitActionsResult {
@@ -86,9 +86,9 @@ export function useGitActions({
 	selectedCard,
 	runtimeProjectConfig,
 	sendTaskSessionInput,
-	fetchTaskWorkspaceInfo,
+	fetchTaskWorktreeInfo,
 	isGitHistoryOpen,
-	refreshWorkspaceState,
+	refreshProjectState,
 }: UseGitActionsInput): UseGitActionsResult {
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
 	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] = useState<
@@ -104,7 +104,7 @@ export function useGitActions({
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
 	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id ?? null);
-	const selectedTaskWorkspaceStateVersion = useTaskProjectStateVersionValue(selectedCard?.card.id ?? null);
+	const selectedTaskWorktreeStateVersion = useTaskProjectStateVersionValue(selectedCard?.card.id ?? null);
 
 	const gitHistoryTaskScope = useMemo(() => {
 		if (!selectedCard) {
@@ -133,7 +133,7 @@ export function useGitActions({
 			behindCount: 0,
 		};
 	}, [homeGitSummary, selectedCard, selectedTaskProjectSnapshot]);
-	const gitHistoryStateVersion = selectedCard ? selectedTaskWorkspaceStateVersion : homeGitStateVersion;
+	const gitHistoryStateVersion = selectedCard ? selectedTaskWorktreeStateVersion : homeGitStateVersion;
 
 	const gitHistory = useGitHistoryData({
 		projectId: currentProjectId,
@@ -190,7 +190,7 @@ export function useGitActions({
 				}
 
 				const snapshot = getTaskProjectSnapshot(taskId);
-				const snapshotWorkspaceInfo = snapshot
+				const snapshotWorktreeInfo = snapshot
 					? {
 							taskId,
 							path: snapshot.path,
@@ -204,7 +204,7 @@ export function useGitActions({
 				const storedWorktreeInfo = getTaskWorktreeInfo(selection.card.id, selection.card.baseRef);
 				const worktreeInfo = matchesWorktreeInfoSelection(storedWorktreeInfo, selection.card)
 					? storedWorktreeInfo
-					: (snapshotWorkspaceInfo ?? (await fetchTaskWorkspaceInfo(selection.card)));
+					: (snapshotWorktreeInfo ?? (await fetchTaskWorktreeInfo(selection.card)));
 				if (!worktreeInfo) {
 					showGitErrorToast("Could not resolve task worktree details.", { timeout: 6000 });
 					return false;
@@ -244,7 +244,7 @@ export function useGitActions({
 		},
 		[
 			board,
-			fetchTaskWorkspaceInfo,
+			fetchTaskWorktreeInfo,
 			runtimeProjectConfig,
 			sendTaskSessionInput,
 			setTaskGitActionLoading,
@@ -382,7 +382,7 @@ export function useGitActions({
 					}
 					setHomeGitSummary(payload.summary);
 					refreshGitHistory();
-					await refreshWorkspaceState();
+					await refreshProjectState();
 				} catch (error) {
 					showGitErrorToast(`Could not switch to ${normalizedBranch}. ${toErrorMessage(error)}`);
 				}
@@ -393,7 +393,7 @@ export function useGitActions({
 			switchHomeBranchGuard.run,
 			homeGitSummary?.currentBranch,
 			refreshGitHistory,
-			refreshWorkspaceState,
+			refreshProjectState,
 		],
 	);
 

@@ -25,7 +25,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: { hookEventName: "Stop", activityText: "Final: done", source: "claude" },
 		});
@@ -54,7 +54,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "activity",
 			metadata: { hookEventName: "PreToolUse", toolName: "bash", source: "claude" },
 		});
@@ -92,7 +92,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: { hookEventName: "Notification", source: "claude" },
 		});
@@ -120,7 +120,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: { notificationType: "permission_prompt", activityText: "Allow bash?", source: "claude" },
 		});
@@ -149,7 +149,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: {
 				hookEventName: "Stop",
@@ -184,7 +184,7 @@ describe("createHooksApi — permission metadata guard", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "activity",
 			metadata: { hookEventName: "PreToolUse", toolName: "bash", source: "claude" },
 		});
@@ -228,17 +228,17 @@ describe("createHooksApi — permission-aware transition guard", () => {
 
 		const r1 = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: { hookEventName: "PermissionRequest", source: "claude" },
 		});
 		expect(r1).toEqual({ ok: true });
 		expect(mockStore(manager).transitionToReview).toHaveBeenCalledWith("task-1", "hook");
-		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(broadcastTaskReadyForReview).toHaveBeenCalledWith("project-1", "task-1");
 
 		const r2 = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: { hookEventName: "PostToolUse", source: "claude" },
 		});
@@ -266,7 +266,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
 		});
@@ -299,7 +299,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: { hookEventName: "UserPromptSubmit", source: "claude" },
 		});
@@ -339,7 +339,7 @@ describe("createHooksApi — permission-aware transition guard", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: { hookEventName: "PostToolUse", toolName: "Bash", source: "claude" },
 		});

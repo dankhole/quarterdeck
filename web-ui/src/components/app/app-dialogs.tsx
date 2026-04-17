@@ -78,7 +78,7 @@ export function AppDialogs({
 			<DebugShelf />
 			<RuntimeSettingsDialog
 				open={dialog.isSettingsOpen}
-				projectId={project.settingsWorkspaceId}
+				projectId={project.settingsProjectId}
 				initialConfig={project.settingsRuntimeProjectConfig}
 				initialSection={dialog.settingsInitialSection}
 				onOpenChange={(nextOpen) => {

@@ -68,7 +68,7 @@ export function useAppSideEffects({
 		audibleNotificationEvents: project.audibleNotificationEvents,
 		audibleNotificationsOnlyWhenHidden: project.audibleNotificationsOnlyWhenHidden,
 		audibleNotificationSuppressCurrentProject: project.audibleNotificationSuppressCurrentProject,
-		notificationWorkspaceIds: project.notificationWorkspaceIds,
+		notificationProjectIds: project.notificationProjectIds,
 		currentProjectId: project.currentProjectId,
 		suppressedTaskIds: trashTaskIdSet,
 	});
@@ -90,7 +90,7 @@ export function useAppSideEffects({
 		resetGitActionState: git.resetGitActionState,
 		resetProjectNavigationState: project.resetProjectNavigationState,
 		resetTerminalPanelsState: terminal.resetTerminalPanelsState,
-		resetWorkspaceSyncState: project.resetWorkspaceSyncState,
+		resetProjectSyncState: project.resetProjectSyncState,
 	});
 
 	useEffect(() => {
@@ -132,20 +132,20 @@ export function useAppSideEffects({
 		setSelectedTaskId: board.setSelectedTaskId,
 	});
 
-	const persistWorkspaceStateAsync = useCallback(
+	const persistProjectStateAsync = useCallback(
 		async (input: { projectId: string; payload: Parameters<typeof saveProjectState>[1] }) =>
 			await saveProjectState(input.projectId, input.payload),
 		[],
 	);
 
-	const handleWorkspaceStateConflict = useCallback(() => {
+	const handleProjectStateConflict = useCallback(() => {
 		if (serverMutationInFlightRef.current) return;
 		showAppToast(
 			{
 				intent: "warning",
 				icon: "warning-sign",
 				message:
-					"Workspace changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
+					"Project changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
 				timeout: 5000,
 			},
 			"project-state-conflict",
@@ -161,10 +161,10 @@ export function useAppSideEffects({
 		canPersistProjectState: project.canPersistProjectState,
 		isDocumentVisible: project.isDocumentVisible,
 		isProjectStateRefreshing: project.isProjectStateRefreshing,
-		persistWorkspaceState: persistWorkspaceStateAsync,
-		refetchWorkspaceState: project.refreshWorkspaceState,
-		onWorkspaceRevisionChange: project.setWorkspaceRevision,
-		onWorkspaceStateConflict: handleWorkspaceStateConflict,
+		persistProjectState: persistProjectStateAsync,
+		refetchProjectState: project.refreshProjectState,
+		onProjectRevisionChange: project.setProjectRevision,
+		onProjectStateConflict: handleProjectStateConflict,
 	});
 
 	useEffect(() => {

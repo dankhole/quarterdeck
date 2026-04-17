@@ -89,7 +89,7 @@ function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
-	const [canPersistProjectState, setCanPersistWorkspaceState] = useState(false);
+	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
@@ -101,7 +101,7 @@ export default function App(): ReactElement {
 	const searchOverlayResetRef = useRef<() => void>(() => {});
 
 	const handleProjectSwitchStart = useCallback(() => {
-		setCanPersistWorkspaceState(false);
+		setCanPersistProjectState(false);
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
@@ -116,7 +116,7 @@ export default function App(): ReactElement {
 			setBoard={setBoard}
 			setSessions={setSessions}
 			canPersistProjectState={canPersistProjectState}
-			setCanPersistWorkspaceState={setCanPersistWorkspaceState}
+			setCanPersistProjectState={setCanPersistProjectState}
 		>
 			<AppEarlyBailout>
 				<BoardProvider
@@ -481,7 +481,7 @@ function AppContent({
 											void project.handleAddProject();
 										}}
 										notificationSessions={project.notificationSessions}
-										notificationWorkspaceIds={project.notificationWorkspaceIds}
+										notificationProjectIds={project.notificationProjectIds}
 									/>
 								</div>
 								<ResizeHandle

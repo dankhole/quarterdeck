@@ -16,7 +16,7 @@ import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
 describe.sequential("project discovery integration", () => {
-	it("starts outside a git repository with no active workspace", async () => {
+	it("starts outside a git repository with no active project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-no-git-");
 		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("quarterdeck-no-git-");
 
@@ -59,7 +59,7 @@ describe.sequential("project discovery integration", () => {
 		}
 	}, 30_000);
 
-	it("starts from the home directory with no active workspace", async () => {
+	it("starts from the home directory with no active project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-home-dir-launch-");
 
 		const port = await getAvailablePort();
@@ -120,17 +120,17 @@ describe.sequential("project discovery integration", () => {
 			port: firstPort,
 		});
 
-		let workspaceAId: string | null = null;
+		let projectAId: string | null = null;
 		try {
 			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
-			workspaceAId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
-			expect(workspaceAId).not.toBe("");
+			projectAId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(projectAId).not.toBe("");
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "projects.add",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
 					path: projectBPath,
 				},
@@ -151,12 +151,12 @@ describe.sequential("project discovery integration", () => {
 		let secondStream: RuntimeStreamClient | null = null;
 		try {
 			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
-			expect(workspaceAId).not.toBeNull();
-			if (!workspaceAId) {
-				throw new Error("Missing workspace id for project A.");
+			expect(projectAId).not.toBeNull();
+			if (!projectAId) {
+				throw new Error("Missing project id for project A.");
 			}
-			const secondWorkspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
-			expect(secondWorkspaceId).toBe(workspaceAId);
+			const secondProjectId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(secondProjectId).toBe(projectAId);
 			const expectedProjectAPath = await realpath(projectAPath).catch(() => resolve(projectAPath));
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
@@ -165,13 +165,13 @@ describe.sequential("project discovery integration", () => {
 				type: "query",
 			});
 			expect(projectsResponse.status).toBe(200);
-			expect(projectsResponse.payload.currentProjectId).toBe(workspaceAId);
+			expect(projectsResponse.payload.currentProjectId).toBe(projectAId);
 
 			secondStream = await connectRuntimeStream(`ws://127.0.0.1:${secondPort}/api/runtime/ws`);
 			const snapshot = (await secondStream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(snapshot.currentProjectId).toBe(workspaceAId);
+			expect(snapshot.currentProjectId).toBe(projectAId);
 			expect(snapshot.projectState?.repoPath).toBe(expectedProjectAPath);
 		} finally {
 			if (secondStream) {

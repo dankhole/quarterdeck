@@ -165,7 +165,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		try {
 			const projectState = await this.deps.projectRegistry.buildProjectStateSnapshot(projectId, projectPath);
 			this.clients.broadcastToProject(projectId, buildProjectStateUpdatedMessage(projectId, projectState));
-			await this.metadataMonitor.updateWorkspaceState({
+			await this.metadataMonitor.updateProjectState({
 				projectId,
 				projectPath,
 				board: projectState.board,
@@ -301,7 +301,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				if (snapshot.projectId && snapshot.projectPath && snapshot.projectState) {
 					didConnectProjectMonitor = true;
 					void this.metadataMonitor
-						.connectWorkspace({
+						.connectProject({
 							projectId: snapshot.projectId,
 							projectPath: snapshot.projectPath,
 							board: snapshot.projectState.board,

@@ -4,10 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
-import { fetchWorkspaceState } from "@/runtime/project-state-query";
+import { fetchProjectState } from "@/runtime/project-state-query";
 import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { normalizeBoardData } from "@/state/board-state";
-import { setProjectPath as setStoreWorkspacePath } from "@/stores/project-metadata-store";
+import { setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
 import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 
@@ -18,7 +18,7 @@ import {
 	shouldHydrateBoard,
 } from "./project-sync";
 
-interface UseWorkspaceSyncInput {
+interface UseProjectSyncInput {
 	currentProjectId: string | null;
 	streamedProjectState: RuntimeProjectStateResponse | null;
 	hasNoProjects: boolean;
@@ -28,20 +28,20 @@ interface UseWorkspaceSyncInput {
 	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
+	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 }
 
-interface UseWorkspaceSyncResult {
+interface UseProjectSyncResult {
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
 	projectRevision: number | null;
-	setWorkspaceRevision: Dispatch<SetStateAction<number | null>>;
+	setProjectRevision: Dispatch<SetStateAction<number | null>>;
 	projectHydrationNonce: number;
 	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
-	refreshWorkspaceState: () => Promise<void>;
-	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
+	refreshProjectState: () => Promise<void>;
+	resetProjectSyncState: (targetProjectId?: string | null) => void;
 }
 
 export function useProjectSync({
@@ -54,14 +54,14 @@ export function useProjectSync({
 	sessionsRef,
 	setBoard,
 	setSessions,
-	setCanPersistWorkspaceState,
-}: UseWorkspaceSyncInput): UseWorkspaceSyncResult {
+	setCanPersistProjectState,
+}: UseProjectSyncInput): UseProjectSyncResult {
 	const [projectPath, setProjectPath] = useState<string | null>(null);
-	const [projectGit, setWorkspaceGit] = useState<RuntimeGitRepositoryInfo | null>(null);
-	const [appliedProjectId, setAppliedWorkspaceProjectId] = useState<string | null>(null);
-	const [projectRevision, setWorkspaceRevision] = useState<number | null>(null);
-	const [projectHydrationNonce, setWorkspaceHydrationNonce] = useState(0);
-	const [isProjectStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
+	const [projectGit, setProjectGit] = useState<RuntimeGitRepositoryInfo | null>(null);
+	const [appliedProjectId, setAppliedProjectId] = useState<string | null>(null);
+	const [projectRevision, setProjectRevision] = useState<number | null>(null);
+	const [projectHydrationNonce, setProjectHydrationNonce] = useState(0);
+	const [isProjectStateRefreshing, setIsProjectStateRefreshing] = useState(false);
 	const [isServedFromBoardCache, setIsServedFromBoardCache] = useState(false);
 	const projectVersionRef = useRef<ProjectVersion>({
 		projectId: null,
@@ -81,17 +81,17 @@ export function useProjectSync({
 		};
 	}, [currentProjectId, projectRevision]);
 
-	const applyWorkspaceState = useCallback(
+	const applyProjectState = useCallback(
 		(nextProjectState: RuntimeProjectStateResponse | null) => {
 			if (!nextProjectState) {
-				setCanPersistWorkspaceState(false);
+				setCanPersistProjectState(false);
 				setProjectPath(null);
-				setStoreWorkspacePath(null);
-				setWorkspaceGit(null);
-				setAppliedWorkspaceProjectId(null);
+				setStoreProjectPath(null);
+				setProjectGit(null);
+				setAppliedProjectId(null);
 				setBoard(createInitialBoardData());
 				setSessions({});
-				setWorkspaceRevision(null);
+				setProjectRevision(null);
 				setIsServedFromBoardCache(false);
 				projectVersionRef.current = {
 					projectId: currentProjectId,
@@ -105,8 +105,8 @@ export function useProjectSync({
 				return;
 			}
 			setProjectPath(nextProjectState.repoPath);
-			setStoreWorkspacePath(nextProjectState.repoPath);
-			setWorkspaceGit(nextProjectState.git);
+			setStoreProjectPath(nextProjectState.repoPath);
+			setProjectGit(nextProjectState.git);
 			setSessions((currentSessions) => {
 				const incomingSessions = nextProjectState.sessions ?? {};
 				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
@@ -114,15 +114,15 @@ export function useProjectSync({
 			const normalizedBoard = normalizeBoardData(nextProjectState.board) ?? createInitialBoardData();
 			if (shouldHydrateBoard(projectVersionRef.current, currentProjectId, nextProjectState.revision)) {
 				setBoard(normalizedBoard);
-				setWorkspaceHydrationNonce((current) => current + 1);
+				setProjectHydrationNonce((current) => current + 1);
 			}
-			setWorkspaceRevision(nextProjectState.revision);
+			setProjectRevision(nextProjectState.revision);
 			projectVersionRef.current = {
 				projectId: currentProjectId,
 				revision: nextProjectState.revision,
 			};
-			setAppliedWorkspaceProjectId(currentProjectId);
-			setCanPersistWorkspaceState(true);
+			setAppliedProjectId(currentProjectId);
+			setCanPersistProjectState(true);
 			setIsServedFromBoardCache(false);
 			if (currentProjectId) {
 				updateProjectBoardCache(currentProjectId, {
@@ -134,26 +134,26 @@ export function useProjectSync({
 				});
 			}
 		},
-		[currentProjectId, setBoard, setCanPersistWorkspaceState, setSessions],
+		[currentProjectId, setBoard, setCanPersistProjectState, setSessions],
 	);
 
-	const refreshWorkspaceState = useCallback(async () => {
+	const refreshProjectState = useCallback(async () => {
 		if (!currentProjectId) {
 			return;
 		}
 		const requestId = projectRefreshRequestIdRef.current + 1;
 		projectRefreshRequestIdRef.current = requestId;
 		const requestedProjectId = currentProjectId;
-		setIsWorkspaceStateRefreshing(true);
+		setIsProjectStateRefreshing(true);
 		try {
-			const refreshed = await fetchWorkspaceState(requestedProjectId);
+			const refreshed = await fetchProjectState(requestedProjectId);
 			if (
 				projectRefreshRequestIdRef.current !== requestId ||
 				projectVersionRef.current.projectId !== requestedProjectId
 			) {
 				return;
 			}
-			applyWorkspaceState(refreshed);
+			applyProjectState(refreshed);
 		} catch (error) {
 			if (
 				projectRefreshRequestIdRef.current !== requestId ||
@@ -165,12 +165,12 @@ export function useProjectSync({
 			notifyError(message);
 		} finally {
 			if (projectRefreshRequestIdRef.current === requestId) {
-				setIsWorkspaceStateRefreshing(false);
+				setIsProjectStateRefreshing(false);
 			}
 		}
-	}, [applyWorkspaceState, currentProjectId]);
+	}, [applyProjectState, currentProjectId]);
 
-	const resetWorkspaceSyncState = useCallback(
+	const resetProjectSyncState = useCallback(
 		(targetProjectId?: string | null) => {
 			const prevProjectId = projectVersionRef.current.projectId;
 			const prevRevision = projectVersionRef.current.revision;
@@ -185,26 +185,26 @@ export function useProjectSync({
 			}
 
 			projectRefreshRequestIdRef.current += 1;
-			setCanPersistWorkspaceState(false);
-			setIsWorkspaceStateRefreshing(false);
-			setAppliedWorkspaceProjectId(null);
+			setCanPersistProjectState(false);
+			setIsProjectStateRefreshing(false);
+			setAppliedProjectId(null);
 
 			const restoreId = targetProjectId ?? currentProjectId;
 			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
 			if (cached) {
 				setBoard(cached.board);
 				setSessions(cached.sessions);
-				setWorkspaceRevision(cached.revision);
+				setProjectRevision(cached.revision);
 				setProjectPath(cached.projectPath);
-				setStoreWorkspacePath(cached.projectPath);
-				setWorkspaceGit(cached.projectGit);
+				setStoreProjectPath(cached.projectPath);
+				setProjectGit(cached.projectGit);
 				projectVersionRef.current = {
 					projectId: restoreId,
 					revision: cached.revision,
 				};
 				setIsServedFromBoardCache(true);
 			} else {
-				setWorkspaceRevision(null);
+				setProjectRevision(null);
 				projectVersionRef.current = {
 					projectId: currentProjectId,
 					revision: null,
@@ -217,7 +217,7 @@ export function useProjectSync({
 			currentProjectId,
 			sessionsRef,
 			setBoard,
-			setCanPersistWorkspaceState,
+			setCanPersistProjectState,
 			setSessions,
 			projectGit,
 			projectPath,
@@ -226,32 +226,32 @@ export function useProjectSync({
 
 	useEffect(() => {
 		if (hasNoProjects) {
-			applyWorkspaceState(null);
+			applyProjectState(null);
 			return;
 		}
 		if (!streamedProjectState) {
 			return;
 		}
-		applyWorkspaceState(streamedProjectState);
-	}, [applyWorkspaceState, hasNoProjects, streamedProjectState]);
+		applyProjectState(streamedProjectState);
+	}, [applyProjectState, hasNoProjects, streamedProjectState]);
 
 	useEffect(() => {
 		if (!hasReceivedSnapshot || !isDocumentVisible) {
 			return;
 		}
-		void refreshWorkspaceState();
-	}, [hasReceivedSnapshot, isDocumentVisible, refreshWorkspaceState]);
+		void refreshProjectState();
+	}, [hasReceivedSnapshot, isDocumentVisible, refreshProjectState]);
 
 	return {
 		projectPath,
 		projectGit,
 		projectRevision,
-		setWorkspaceRevision,
+		setProjectRevision,
 		projectHydrationNonce,
 		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,
-		refreshWorkspaceState,
-		resetWorkspaceSyncState,
+		refreshProjectState,
+		resetProjectSyncState,
 	};
 }

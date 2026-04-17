@@ -15,7 +15,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 	stashApply: vi.fn(),
 	stashDrop: vi.fn(),
 	stashShow: vi.fn(),
-	// Stubs required by the git-sync module mock (used by other workspace-api methods)
+	// Stubs required by the git-sync module mock (used by other project-api methods)
 	commitSelectedFiles: vi.fn(),
 	discardGitChanges: vi.fn(),
 	discardSingleFile: vi.fn(),
@@ -32,7 +32,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 	cherryPickCommit: vi.fn(),
 }));
 
-const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
+const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	resolveTaskCwd: vi.fn(),
 	isMissingTaskWorktreeError: vi.fn(
@@ -85,19 +85,19 @@ vi.mock("../../../src/workdir/git-sync.js", () => ({
 }));
 
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
-	deleteTaskWorktree: workspaceTaskWorktreeMocks.deleteTaskWorktree,
+	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
-	resolveTaskCwd: workspaceTaskWorktreeMocks.resolveTaskCwd,
-	resolveTaskWorkingDirectory: workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory,
-	isMissingTaskWorktreeError: workspaceTaskWorktreeMocks.isMissingTaskWorktreeError,
-	getTaskWorkingDirectory: workspaceTaskWorktreeMocks.getTaskWorkingDirectory,
+	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
+	isMissingTaskWorktreeError: worktreeMocks.isMissingTaskWorktreeError,
+	getTaskWorkingDirectory: worktreeMocks.getTaskWorkingDirectory,
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
 	createEmptyWorkdirChangesResponse: vi.fn(),
-	getWorkspaceChanges: vi.fn(),
+	getWorkdirChanges: vi.fn(),
 	getWorkdirChangesBetweenRefs: vi.fn(),
 	getWorkdirChangesFromRef: vi.fn(),
 	validateRef: vi.fn(),
@@ -140,7 +140,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 
 import { createProjectApi } from "../../../src/trpc";
 
-function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
+function createProjectDeps(overrides: Record<string, unknown> = {}) {
 	return {
 		terminals: {
 			getTerminalManagerForProject: vi.fn(() => null),
@@ -162,7 +162,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 }
 
 const defaultScope = {
-	projectId: "workspace-1",
+	projectId: "project-1",
 	projectPath: "/tmp/repo",
 };
 
@@ -174,8 +174,8 @@ describe("createProjectApi stash endpoints", () => {
 		gitSyncMocks.stashApply.mockReset();
 		gitSyncMocks.stashDrop.mockReset();
 		gitSyncMocks.stashShow.mockReset();
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 	});
 
 	// ─── Test 1: stashPush resolves task CWD and calls stashPush ──────────
@@ -183,7 +183,7 @@ describe("createProjectApi stash endpoints", () => {
 		const pushResponse: RuntimeStashPushResponse = { ok: true };
 		gitSyncMocks.stashPush.mockResolvedValue(pushResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashPush(defaultScope, {
@@ -193,7 +193,7 @@ describe("createProjectApi stash endpoints", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
+		expect(worktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
 			projectPath: "/tmp/repo",
 			taskId: "task-1",
 			baseRef: "main",
@@ -209,7 +209,7 @@ describe("createProjectApi stash endpoints", () => {
 	it("stashPush refreshes task git metadata on success (task-scoped)", async () => {
 		gitSyncMocks.stashPush.mockResolvedValue({ ok: true });
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.stashPush(defaultScope, {
@@ -217,7 +217,7 @@ describe("createProjectApi stash endpoints", () => {
 			paths: [],
 		});
 
-		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
 	});
 
@@ -226,7 +226,7 @@ describe("createProjectApi stash endpoints", () => {
 		const pushResponse: RuntimeStashPushResponse = { ok: true };
 		gitSyncMocks.stashPush.mockResolvedValue(pushResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashPush(defaultScope, {
@@ -236,7 +236,7 @@ describe("createProjectApi stash endpoints", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
+		expect(worktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
 		expect(gitSyncMocks.stashPush).toHaveBeenCalledWith({
 			cwd: "/tmp/repo",
 			paths: [],
@@ -249,7 +249,7 @@ describe("createProjectApi stash endpoints", () => {
 		const pushResponse: RuntimeStashPushResponse = { ok: true };
 		gitSyncMocks.stashPush.mockResolvedValue(pushResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.stashPush(defaultScope, {
@@ -257,7 +257,7 @@ describe("createProjectApi stash endpoints", () => {
 			paths: [],
 		});
 
-		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
 	});
 
@@ -272,7 +272,7 @@ describe("createProjectApi stash endpoints", () => {
 		};
 		gitSyncMocks.stashList.mockResolvedValue(listResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashList(defaultScope, { taskScope: null });
@@ -288,7 +288,7 @@ describe("createProjectApi stash endpoints", () => {
 		const popResponse: RuntimeStashPopApplyResponse = { ok: true, conflicted: false };
 		gitSyncMocks.stashPop.mockResolvedValue(popResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashPop(defaultScope, {
@@ -299,7 +299,7 @@ describe("createProjectApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashPop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 	});
 
 	// ─── Test 6: stashApply calls stashApply and refreshes metadata ───────
@@ -307,7 +307,7 @@ describe("createProjectApi stash endpoints", () => {
 		const applyResponse: RuntimeStashPopApplyResponse = { ok: true, conflicted: false };
 		gitSyncMocks.stashApply.mockResolvedValue(applyResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashApply(defaultScope, {
@@ -318,7 +318,7 @@ describe("createProjectApi stash endpoints", () => {
 		expect(result.ok).toBe(true);
 		expect(result.conflicted).toBe(false);
 		expect(gitSyncMocks.stashApply).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 1 });
-		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 	});
 
 	// ─── Test 7: stashDrop calls stashDrop and refreshes metadata ─────────
@@ -326,7 +326,7 @@ describe("createProjectApi stash endpoints", () => {
 		const dropResponse: RuntimeStashDropResponse = { ok: true };
 		gitSyncMocks.stashDrop.mockResolvedValue(dropResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashDrop(defaultScope, {
@@ -336,7 +336,7 @@ describe("createProjectApi stash endpoints", () => {
 
 		expect(result.ok).toBe(true);
 		expect(gitSyncMocks.stashDrop).toHaveBeenCalledWith({ cwd: "/tmp/repo", index: 0 });
-		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 	});
 
 	// ─── Test 8: stashShow returns diff ───────────────────────────────────
@@ -347,7 +347,7 @@ describe("createProjectApi stash endpoints", () => {
 		};
 		gitSyncMocks.stashShow.mockResolvedValue(showResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.stashShow(defaultScope, {
@@ -369,7 +369,7 @@ describe("createProjectApi stash endpoints", () => {
 		gitSyncMocks.stashDrop.mockRejectedValue(new Error("git stash drop failed"));
 		gitSyncMocks.stashShow.mockRejectedValue(new Error("git stash show failed"));
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 		const nullTaskScope = { taskScope: null };
 

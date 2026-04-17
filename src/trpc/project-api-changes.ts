@@ -13,10 +13,10 @@ import {
 	getGitLog,
 	getGitRefs,
 	getGitStdout,
+	getWorkdirChanges,
 	getWorkdirChangesBetweenRefs,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
-	getWorkspaceChanges,
 	listAllWorkdirFiles,
 	listFilesAtRef,
 	readWorkdirFile,
@@ -38,7 +38,7 @@ type ChangesOps = Pick<
 	| "loadChanges"
 	| "loadFileDiff"
 	| "getDiffText"
-	| "loadWorkspaceChanges"
+	| "loadWorkdirChanges"
 	| "loadGitLog"
 	| "loadGitRefs"
 	| "loadCommitDiff"
@@ -76,7 +76,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			}
 
 			if (!input.taskId) {
-				return await getWorkspaceChanges(projectScope.projectPath);
+				return await getWorkdirChanges(projectScope.projectPath);
 			}
 
 			const normalizedInput = normalizeRequiredTaskScopeInput(input);
@@ -110,7 +110,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 					toRef: toCheckpoint.commit,
 				});
 			}
-			return await getWorkspaceChanges(taskCwd);
+			return await getWorkdirChanges(taskCwd);
 		},
 
 		loadFileDiff: async (projectScope, input) => {
@@ -200,8 +200,8 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			return await getGitStdout(args, cwd);
 		},
 
-		loadWorkspaceChanges: async (projectScope) => {
-			return await getWorkspaceChanges(projectScope.projectPath);
+		loadWorkdirChanges: async (projectScope) => {
+			return await getWorkdirChanges(projectScope.projectPath);
 		},
 
 		loadGitLog: async (projectScope, input) => {

@@ -60,7 +60,7 @@ function createBoard(): BoardData {
 }
 
 const NOOP_STOP_SESSION = async (): Promise<void> => {};
-const NOOP_CLEANUP_WORKSPACE = async (): Promise<null> => null;
+const NOOP_CLEANUP_WORKTREE = async (): Promise<null> => null;
 const NOOP_FETCH_WORKSPACE_INFO = async (): Promise<null> => null;
 
 interface HookSnapshot {
@@ -87,7 +87,7 @@ function createRect(width: number, height: number): DOMRect {
 function HookHarness({
 	board,
 	setBoard,
-	ensureTaskWorkspace,
+	ensureTaskWorktree,
 	startTaskSession,
 	stopTaskSession,
 	selectedCard = null,
@@ -96,7 +96,7 @@ function HookHarness({
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
-	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
+	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	stopTaskSession?: UseTaskSessionsResult["stopTaskSession"];
 	selectedCard?: { card: BoardCard; column: { id: "backlog" | "in_progress" | "review" | "trash" } } | null;
@@ -120,10 +120,10 @@ function HookHarness({
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
 		stopTaskSession: stopTaskSession ?? NOOP_STOP_SESSION,
-		cleanupTaskWorkspace: NOOP_CLEANUP_WORKSPACE,
-		ensureTaskWorkspace,
+		cleanupTaskWorktree: NOOP_CLEANUP_WORKTREE,
+		ensureTaskWorktree,
 		startTaskSession,
-		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
+		fetchTaskWorktreeInfo: NOOP_FETCH_WORKSPACE_INFO,
 		showTrashWorktreeNotice: true,
 		saveTrashWorktreeNoticeDismissed: () => {},
 	});
@@ -220,7 +220,7 @@ describe("useBoardInteractions", () => {
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
 			// Simulate React deferring state updater execution.
 		});
-		const ensureTaskWorkspace = vi.fn(async () => ({
+		const ensureTaskWorktree = vi.fn(async () => ({
 			ok: true as const,
 			response: {
 				ok: true as const,
@@ -236,7 +236,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={ensureTaskWorkspace}
+					ensureTaskWorktree={ensureTaskWorktree}
 					startTaskSession={startTaskSession}
 				/>,
 			);
@@ -257,7 +257,7 @@ describe("useBoardInteractions", () => {
 		});
 
 		expect(started).toBe(true);
-		expect(ensureTaskWorkspace).toHaveBeenCalledWith(backlogTask);
+		expect(ensureTaskWorktree).toHaveBeenCalledWith(backlogTask);
 		expect(startTaskSession).toHaveBeenCalledWith(backlogTask);
 	});
 
@@ -300,7 +300,7 @@ describe("useBoardInteractions", () => {
 
 		const board = createBoard();
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>(() => {});
-		const ensureTaskWorkspace = vi.fn(async () => ({
+		const ensureTaskWorktree = vi.fn(async () => ({
 			ok: true as const,
 			response: {
 				ok: true as const,
@@ -316,7 +316,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={ensureTaskWorkspace}
+					ensureTaskWorktree={ensureTaskWorktree}
 					startTaskSession={startTaskSession}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -390,7 +390,7 @@ describe("useBoardInteractions", () => {
 
 		const board = createBoard();
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>(() => {});
-		const ensureTaskWorkspace = vi.fn(async () => ({
+		const ensureTaskWorktree = vi.fn(async () => ({
 			ok: true as const,
 			response: {
 				ok: true as const,
@@ -406,7 +406,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={ensureTaskWorkspace}
+					ensureTaskWorktree={ensureTaskWorktree}
 					startTaskSession={startTaskSession}
 					selectedCard={{ card: board.columns[0]!.cards[0]!, column: { id: "backlog" } }}
 					onSnapshot={(snapshot) => {
@@ -466,7 +466,7 @@ describe("useBoardInteractions", () => {
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
 			// The optimistic move is not part of this assertion.
 		});
-		const ensureTaskWorkspace = vi.fn(async () => ({
+		const ensureTaskWorktree = vi.fn(async () => ({
 			ok: true as const,
 			response: {
 				ok: true as const,
@@ -483,7 +483,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={ensureTaskWorkspace}
+					ensureTaskWorktree={ensureTaskWorktree}
 					startTaskSession={startTaskSession}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -499,7 +499,7 @@ describe("useBoardInteractions", () => {
 		await act(async () => {
 			latestSnapshot!.handleRestoreTaskFromTrash("task-trash");
 			// resumeTaskFromTrash is fire-and-forget (void), so flush enough
-			// microtasks for ensureTaskWorkspace and startTaskSession to resolve.
+			// microtasks for ensureTaskWorktree and startTaskSession to resolve.
 			for (let i = 0; i < 10; i++) {
 				await Promise.resolve();
 			}
@@ -512,7 +512,7 @@ describe("useBoardInteractions", () => {
 			baseRef: trashTask.baseRef,
 			createdAt: trashTask.createdAt,
 		});
-		expect(ensureTaskWorkspace).toHaveBeenCalledWith(expectedTask);
+		expect(ensureTaskWorktree).toHaveBeenCalledWith(expectedTask);
 		expect(startTaskSession).toHaveBeenCalledWith(expectedTask, { resumeConversation: true, awaitReview: true });
 		expect(showAppToastMock).toHaveBeenCalledWith({
 			intent: "warning",
@@ -563,7 +563,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					ensureTaskWorktree={async () => ({ ok: true as const })}
 					startTaskSession={startTaskSession}
 					stopTaskSession={stopTaskSession}
 					onSnapshot={(snapshot) => {
@@ -629,7 +629,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={setBoard}
-					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					ensureTaskWorktree={async () => ({ ok: true as const })}
 					startTaskSession={startTaskSession}
 					stopTaskSession={stopTaskSession}
 					onSnapshot={(snapshot) => {
@@ -693,7 +693,7 @@ describe("useBoardInteractions", () => {
 				<HookHarness
 					board={board}
 					setBoard={() => board}
-					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					ensureTaskWorktree={async () => ({ ok: true as const })}
 					startTaskSession={async () => ({ ok: true as const })}
 					setSelectedTaskIdOverride={setSelectedTaskId}
 					onSnapshot={(snapshot) => {

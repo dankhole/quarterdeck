@@ -37,7 +37,7 @@ export interface ProjectContextValue {
 	streamedProjectState: UseProjectNavigationResult["projectState"];
 	projectMetadata: UseProjectNavigationResult["projectMetadata"];
 	notificationSessions: UseProjectNavigationResult["notificationSessions"];
-	notificationWorkspaceIds: UseProjectNavigationResult["notificationWorkspaceIds"];
+	notificationProjectIds: UseProjectNavigationResult["notificationProjectIds"];
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
 	latestTaskTitleUpdate: UseProjectNavigationResult["latestTaskTitleUpdate"];
 	latestTaskBaseRefUpdate: UseProjectNavigationResult["latestTaskBaseRefUpdate"];
@@ -82,7 +82,7 @@ export interface ProjectContextValue {
 
 	// --- Derived values from config ---
 	isTaskAgentReady: boolean | null;
-	settingsWorkspaceId: string | null;
+	settingsProjectId: string | null;
 	llmConfigured: boolean;
 	isLlmGenerationDisabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
@@ -106,15 +106,15 @@ export interface ProjectContextValue {
 	// --- useProjectSync (subset exposed via context) ---
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
-	refreshWorkspaceState: () => Promise<void>;
+	refreshProjectState: () => Promise<void>;
 
 	// --- useProjectSync (additional outputs needed by AppContent) ---
 	projectRevision: number | null;
-	setWorkspaceRevision: Dispatch<SetStateAction<number | null>>;
+	setProjectRevision: Dispatch<SetStateAction<number | null>>;
 	projectHydrationNonce: number;
 	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
-	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
+	resetProjectSyncState: (targetProjectId?: string | null) => void;
 
 	// --- Document visibility ---
 	isDocumentVisible: boolean;
@@ -147,7 +147,7 @@ export function useProjectContext(): ProjectContextValue {
 //
 // Props bridge values that are owned above the provider tree:
 // - onProjectSwitchStart: cleanup callback defined in App
-// - setBoard/setSessions/setCanPersistWorkspaceState: board-level state setters
+// - setBoard/setSessions/setCanPersistProjectState: board-level state setters
 //   needed by useProjectSync (temporary — will clean up with BoardProvider)
 // ---------------------------------------------------------------------------
 
@@ -158,7 +158,7 @@ export interface ProjectProviderProps {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	canPersistProjectState: boolean;
-	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
+	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
 }
 
@@ -169,7 +169,7 @@ export function ProjectProvider({
 	setBoard,
 	setSessions,
 	canPersistProjectState,
-	setCanPersistWorkspaceState,
+	setCanPersistProjectState,
 	children,
 }: ProjectProviderProps): ReactNode {
 	// --- Core project navigation ---
@@ -179,7 +179,7 @@ export function ProjectProvider({
 		projectState: streamedProjectState,
 		projectMetadata,
 		notificationSessions,
-		notificationWorkspaceIds,
+		notificationProjectIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
@@ -222,10 +222,10 @@ export function ProjectProvider({
 	});
 
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
-	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
+	const settingsProjectId = navigationCurrentProjectId ?? currentProjectId;
 
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
-		useRuntimeProjectConfig(settingsWorkspaceId);
+		useRuntimeProjectConfig(settingsProjectId);
 
 	// --- Startup onboarding ---
 	const {
@@ -242,18 +242,18 @@ export function ProjectProvider({
 		refreshSettingsRuntimeProjectConfig,
 	});
 
-	// --- Workspace sync ---
+	// --- Project sync ---
 	const {
 		projectPath,
 		projectGit,
 		projectRevision,
-		setWorkspaceRevision,
+		setProjectRevision,
 		projectHydrationNonce,
 		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,
-		refreshWorkspaceState,
-		resetWorkspaceSyncState,
+		refreshProjectState,
+		resetProjectSyncState,
 	} = useProjectSync({
 		currentProjectId,
 		streamedProjectState,
@@ -264,7 +264,7 @@ export function ProjectProvider({
 		sessionsRef,
 		setBoard,
 		setSessions,
-		setCanPersistWorkspaceState,
+		setCanPersistProjectState,
 	});
 
 	// --- Derived config values ---
@@ -365,7 +365,7 @@ export function ProjectProvider({
 			streamedProjectState,
 			projectMetadata,
 			notificationSessions,
-			notificationWorkspaceIds,
+			notificationProjectIds,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
@@ -400,7 +400,7 @@ export function ProjectProvider({
 			handleSelectOnboardingAgent,
 			isQuarterdeckAccessBlocked,
 			isTaskAgentReady,
-			settingsWorkspaceId,
+			settingsProjectId,
 			llmConfigured,
 			isLlmGenerationDisabled,
 			shortcuts,
@@ -422,13 +422,13 @@ export function ProjectProvider({
 			configDefaultBaseRef,
 			projectPath,
 			projectGit,
-			refreshWorkspaceState,
+			refreshProjectState,
 			projectRevision,
-			setWorkspaceRevision,
+			setProjectRevision,
 			projectHydrationNonce,
 			isProjectStateRefreshing,
 			isProjectMetadataPending,
-			resetWorkspaceSyncState,
+			resetProjectSyncState,
 			isDocumentVisible,
 			canPersistProjectState,
 			isServedFromBoardCache,
@@ -443,7 +443,7 @@ export function ProjectProvider({
 			streamedProjectState,
 			projectMetadata,
 			notificationSessions,
-			notificationWorkspaceIds,
+			notificationProjectIds,
 			latestTaskReadyForReview,
 			latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate,
@@ -478,7 +478,7 @@ export function ProjectProvider({
 			handleSelectOnboardingAgent,
 			isQuarterdeckAccessBlocked,
 			isTaskAgentReady,
-			settingsWorkspaceId,
+			settingsProjectId,
 			llmConfigured,
 			isLlmGenerationDisabled,
 			shortcuts,
@@ -500,13 +500,13 @@ export function ProjectProvider({
 			configDefaultBaseRef,
 			projectPath,
 			projectGit,
-			refreshWorkspaceState,
+			refreshProjectState,
 			projectRevision,
-			setWorkspaceRevision,
+			setProjectRevision,
 			projectHydrationNonce,
 			isProjectStateRefreshing,
 			isProjectMetadataPending,
-			resetWorkspaceSyncState,
+			resetProjectSyncState,
 			isDocumentVisible,
 			canPersistProjectState,
 			isServedFromBoardCache,

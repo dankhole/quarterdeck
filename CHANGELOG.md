@@ -15,6 +15,7 @@
 - Unified the state-container concept under "project" — the backend previously used "workspace" while the UI/API layer used "project", causing confusion. All types, files, functions, variables, API routes, wire protocol strings, HTTP headers, and on-disk paths now consistently use "project".
 - Renamed `src/workspace/` to `src/workdir/` with updated function names (`*Workspace*` → `*Workdir*`) for working directory operations. Agent workspace trust files (`claude-workspace-trust.ts`, etc.) intentionally unchanged — "workspace" is the agent's own terminology.
 - On-disk state path changed from `~/.quarterdeck/workspaces/` to `~/.quarterdeck/projects/`. Manual migration: `cp -r ~/.quarterdeck/workspaces ~/.quarterdeck/projects` and rename `workspaceId` to `projectId` in `index.json`.
+- Completed remaining renames across 106 files: `notificationWorkspaceIds` → `notificationProjectIds`, `cleanupTaskWorkspace` → `cleanupTaskWorktree`, `disposeTrackedWorkspace` → `disposeTrackedProject`, `SearchWorkspaceTextOptions` → `SearchWorkdirTextOptions`, `@runtime-task-worktree-path` alias fix, plus full sweep of all remaining workspace→project/worktree/workdir identifiers, string literals, comments, Zod messages, env vars (`QUARTERDECK_HOOK_WORKSPACE_ID` → `QUARTERDECK_HOOK_PROJECT_ID`), and test fixtures.
 
 ### Feature: file finder (Cmd+P) and text search (Cmd+Shift+F)
 

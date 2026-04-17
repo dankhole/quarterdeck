@@ -32,7 +32,7 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-describe.sequential("search workspace files runtime", () => {
+describe.sequential("search workdir files runtime", () => {
 	it("finds modified tracked files with non-ASCII paths using UTF-8 query text", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-search-files-nonascii-tracked-");
 		try {

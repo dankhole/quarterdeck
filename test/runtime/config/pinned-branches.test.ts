@@ -8,8 +8,8 @@ import { getProjectPinnedBranchesPath } from "../../../src/state";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv } from "./runtime-config-helpers";
 
-describe.sequential("pinned branches workspace storage", () => {
-	it("reads pinned branches from workspace directory when projectId is provided", async () => {
+describe.sequential("pinned branches project storage", () => {
+	it("reads pinned branches from project directory when projectId is provided", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-pinned-read-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-pinned-read-");
 		const projectId = "test-project";
@@ -29,7 +29,7 @@ describe.sequential("pinned branches workspace storage", () => {
 		}
 	});
 
-	it("writes pinned branches to workspace directory via updateRuntimeConfig", async () => {
+	it("writes pinned branches to project directory via updateRuntimeConfig", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-pinned-write-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-pinned-write-");
 		const projectId = "test-project";

@@ -73,7 +73,7 @@ describe("cleanupStaleLockAndTempFiles", () => {
 			writeFileSync(join(tempDir.path, "config.json"), "{}");
 
 			// Create stale lock directories (proper-lockfile uses directories)
-			const locks = ["index.json.lock", "workspace-abc.lock", ".workspaces.lock"];
+			const locks = ["index.json.lock", "project-abc.lock", ".projects.lock"];
 			for (const name of locks) {
 				const p = join(tempDir.path, name);
 				mkdirSync(p);
@@ -129,11 +129,11 @@ describe("cleanupStaleLockAndTempFiles", () => {
 	it("preserves subdirectories that are not lock artifacts", async () => {
 		const tempDir = createTempDir("quarterdeck-lock-cleanup-");
 		try {
-			const workspaceDir = join(tempDir.path, "my-project");
-			mkdirSync(workspaceDir);
-			writeFileSync(join(workspaceDir, "board.json"), "{}");
+			const projectDir = join(tempDir.path, "my-project");
+			mkdirSync(projectDir);
+			writeFileSync(join(projectDir, "board.json"), "{}");
 
-			// Lock artifact sibling to the workspace dir
+			// Lock artifact sibling to the project dir
 			const lockPath = join(tempDir.path, "my-project.lock");
 			mkdirSync(lockPath);
 			makeStale(lockPath);
@@ -142,41 +142,41 @@ describe("cleanupStaleLockAndTempFiles", () => {
 
 			const remaining = readdirSync(tempDir.path);
 			expect(remaining).toEqual(["my-project"]);
-			expect(readFileSync(join(workspaceDir, "board.json"), "utf8")).toBe("{}");
+			expect(readFileSync(join(projectDir, "board.json"), "utf8")).toBe("{}");
 		} finally {
 			tempDir.cleanup();
 		}
 	});
 
-	it("removes stale artifacts inside workspace subdirectories when included in directories list", async () => {
+	it("removes stale artifacts inside project subdirectories when included in directories list", async () => {
 		const tempDir = createTempDir("quarterdeck-lock-cleanup-");
 		try {
-			// Simulate a workspaces root with per-workspace subdirectories
-			const workspaceA = join(tempDir.path, "workspace-abc");
-			const workspaceB = join(tempDir.path, "workspace-def");
-			mkdirSync(workspaceA);
-			mkdirSync(workspaceB);
+			// Simulate a projects root with per-project subdirectories
+			const projectA = join(tempDir.path, "project-abc");
+			const projectB = join(tempDir.path, "project-def");
+			mkdirSync(projectA);
+			mkdirSync(projectB);
 
-			// Normal files inside workspace dirs should survive
-			writeFileSync(join(workspaceA, "board.json"), "{}");
-			writeFileSync(join(workspaceB, "board.json"), "{}");
+			// Normal files inside project dirs should survive
+			writeFileSync(join(projectA, "board.json"), "{}");
+			writeFileSync(join(projectB, "board.json"), "{}");
 
-			// Stale temp files inside workspace dirs (the common case after a crash)
-			const staleTemp1 = join(workspaceA, "board.json.tmp.12345.1700000000.abc-uuid");
-			const staleTemp2 = join(workspaceB, "board.json.tmp.99999.1700000001.def-uuid");
+			// Stale temp files inside project dirs (the common case after a crash)
+			const staleTemp1 = join(projectA, "board.json.tmp.12345.1700000000.abc-uuid");
+			const staleTemp2 = join(projectB, "board.json.tmp.99999.1700000001.def-uuid");
 			writeFileSync(staleTemp1, "partial");
 			writeFileSync(staleTemp2, "partial");
 			makeStale(staleTemp1);
 			makeStale(staleTemp2);
 
-			// Pass workspace subdirectories explicitly (as the caller in cli.ts would)
-			await cleanupStaleLockAndTempFiles([tempDir.path, workspaceA, workspaceB]);
+			// Pass project subdirectories explicitly (as the caller in cli.ts would)
+			await cleanupStaleLockAndTempFiles([tempDir.path, projectA, projectB]);
 
-			// Workspace directories themselves should survive
-			expect(readdirSync(tempDir.path).sort()).toEqual(["workspace-abc", "workspace-def"]);
+			// Project directories themselves should survive
+			expect(readdirSync(tempDir.path).sort()).toEqual(["project-abc", "project-def"]);
 			// Stale temp files inside should be removed; board.json should remain
-			expect(readdirSync(workspaceA)).toEqual(["board.json"]);
-			expect(readdirSync(workspaceB)).toEqual(["board.json"]);
+			expect(readdirSync(projectA)).toEqual(["board.json"]);
+			expect(readdirSync(projectB)).toEqual(["board.json"]);
 		} finally {
 			tempDir.cleanup();
 		}

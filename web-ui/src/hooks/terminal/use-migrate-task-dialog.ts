@@ -7,7 +7,7 @@ interface UseMigrateTaskDialogInput {
 	currentProjectId: string | null;
 	serverMutationInFlightRef: MutableRefObject<boolean>;
 	stopTaskSession: (taskId: string) => Promise<void>;
-	refreshWorkspaceState: () => Promise<void>;
+	refreshProjectState: () => Promise<void>;
 }
 
 interface UseMigrateTaskDialogResult {
@@ -27,7 +27,7 @@ export function useMigrateTaskDialog({
 	currentProjectId,
 	serverMutationInFlightRef,
 	stopTaskSession,
-	refreshWorkspaceState,
+	refreshProjectState,
 }: UseMigrateTaskDialogInput): UseMigrateTaskDialogResult {
 	const { migrate: migrateWorkingDirectory, migratingTaskId } = useMigrateWorkingDirectory(currentProjectId);
 	const [pendingMigrate, setPendingMigrate] = useState<{
@@ -47,11 +47,11 @@ export function useMigrateTaskDialog({
 				// Stop any open detail shell for this task so the next open
 				// spawns in the new working directory.
 				void stopTaskSession(getDetailTerminalTaskId(pendingMigrate.taskId));
-				void refreshWorkspaceState();
+				void refreshProjectState();
 			});
 			setPendingMigrate(null);
 		}
-	}, [pendingMigrate, migrateWorkingDirectory, refreshWorkspaceState, stopTaskSession, serverMutationInFlightRef]);
+	}, [pendingMigrate, migrateWorkingDirectory, refreshProjectState, stopTaskSession, serverMutationInFlightRef]);
 
 	const cancelMigrate = useCallback(() => setPendingMigrate(null), []);
 

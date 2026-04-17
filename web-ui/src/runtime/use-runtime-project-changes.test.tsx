@@ -27,7 +27,7 @@ function createDeferred<T>() {
 	return { promise, resolve, reject };
 }
 
-function createWorkspaceChangesResponse(path: string): RuntimeWorkdirChangesResponse {
+function createWorkdirChangesResponse(path: string): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/project",
 		generatedAt: Date.now(),
@@ -113,7 +113,7 @@ describe("useRuntimeProjectChanges", () => {
 
 	it("clears the previous task diff immediately when switching tasks", async () => {
 		const taskBDiffDeferred = createDeferred<RuntimeWorkdirChangesResponse>();
-		getChangesQueryMock.mockResolvedValueOnce(createWorkspaceChangesResponse("task-a.ts"));
+		getChangesQueryMock.mockResolvedValueOnce(createWorkdirChangesResponse("task-a.ts"));
 		getChangesQueryMock.mockImplementationOnce(() => taskBDiffDeferred.promise);
 
 		const snapshots: HookSnapshot[] = [];
@@ -154,7 +154,7 @@ describe("useRuntimeProjectChanges", () => {
 		});
 
 		await act(async () => {
-			taskBDiffDeferred.resolve(createWorkspaceChangesResponse("task-b.ts"));
+			taskBDiffDeferred.resolve(createWorkdirChangesResponse("task-b.ts"));
 			await taskBDiffDeferred.promise;
 		});
 
@@ -167,7 +167,7 @@ describe("useRuntimeProjectChanges", () => {
 
 	it("clears the previous diff immediately when the last-turn view key changes", async () => {
 		const nextTurnDiffDeferred = createDeferred<RuntimeWorkdirChangesResponse>();
-		getChangesQueryMock.mockResolvedValueOnce(createWorkspaceChangesResponse("turn-1.ts"));
+		getChangesQueryMock.mockResolvedValueOnce(createWorkdirChangesResponse("turn-1.ts"));
 		getChangesQueryMock.mockImplementationOnce(() => nextTurnDiffDeferred.promise);
 
 		const snapshots: HookSnapshot[] = [];
@@ -210,7 +210,7 @@ describe("useRuntimeProjectChanges", () => {
 		});
 
 		await act(async () => {
-			nextTurnDiffDeferred.resolve(createWorkspaceChangesResponse("turn-2.ts"));
+			nextTurnDiffDeferred.resolve(createWorkdirChangesResponse("turn-2.ts"));
 			await nextTurnDiffDeferred.promise;
 		});
 
@@ -223,7 +223,7 @@ describe("useRuntimeProjectChanges", () => {
 
 	it("keeps the previous diff visible during a view-key transition when requested", async () => {
 		const nextTurnDiffDeferred = createDeferred<RuntimeWorkdirChangesResponse>();
-		getChangesQueryMock.mockResolvedValueOnce(createWorkspaceChangesResponse("turn-1.ts"));
+		getChangesQueryMock.mockResolvedValueOnce(createWorkdirChangesResponse("turn-1.ts"));
 		getChangesQueryMock.mockImplementationOnce(() => nextTurnDiffDeferred.promise);
 
 		const snapshots: HookSnapshot[] = [];
@@ -268,7 +268,7 @@ describe("useRuntimeProjectChanges", () => {
 		});
 
 		await act(async () => {
-			nextTurnDiffDeferred.resolve(createWorkspaceChangesResponse("turn-2.ts"));
+			nextTurnDiffDeferred.resolve(createWorkdirChangesResponse("turn-2.ts"));
 			await nextTurnDiffDeferred.promise;
 		});
 

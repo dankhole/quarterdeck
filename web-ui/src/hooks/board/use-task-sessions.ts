@@ -27,7 +27,7 @@ interface UseTaskSessionsInput {
 	onWorkingDirectoryResolved?: (taskId: string, workingDirectory: string) => void;
 }
 
-interface EnsureTaskWorkspaceResult {
+interface EnsureTaskWorktreeResult {
 	ok: boolean;
 	message?: string;
 	response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
@@ -50,7 +50,7 @@ interface StartTaskSessionOptions {
 
 export interface UseTaskSessionsResult {
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
-	ensureTaskWorkspace: (task: BoardCard) => Promise<EnsureTaskWorkspaceResult>;
+	ensureTaskWorktree: (task: BoardCard) => Promise<EnsureTaskWorktreeResult>;
 	startTaskSession: (task: BoardCard, options?: StartTaskSessionOptions) => Promise<StartTaskSessionResult>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	sendTaskSessionInput: (
@@ -58,8 +58,8 @@ export interface UseTaskSessionsResult {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
-	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	cleanupTaskWorktree: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 }
 
 export function useTaskSessions({
@@ -117,8 +117,8 @@ export function useTaskSessions({
 	// Must pass task.branch so ensureTaskWorktreeIfDoesntExist can do branch-aware checkout.
 	// The other path to that function is startTaskSession (runtime-api.ts), which reads
 	// branch from persisted board state server-side instead.
-	const ensureTaskWorkspace = useCallback(
-		async (task: BoardCard): Promise<EnsureTaskWorkspaceResult> => {
+	const ensureTaskWorktree = useCallback(
+		async (task: BoardCard): Promise<EnsureTaskWorktreeResult> => {
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
@@ -244,7 +244,7 @@ export function useTaskSessions({
 		[currentProjectId, upsertSession],
 	);
 
-	const cleanupTaskWorkspace = useCallback(
+	const cleanupTaskWorktree = useCallback(
 		async (taskId: string): Promise<RuntimeWorktreeDeleteResponse | null> => {
 			if (!currentProjectId) {
 				return null;
@@ -254,20 +254,20 @@ export function useTaskSessions({
 				const payload = await trpcClient.project.deleteWorktree.mutate({ taskId });
 				if (!payload.ok) {
 					const message = payload.error ?? "Could not clean up task worktree.";
-					console.error(`[cleanupTaskWorkspace] ${message}`);
+					console.error(`[cleanupTaskWorktree] ${message}`);
 					return null;
 				}
 				return payload;
 			} catch (error) {
 				const message = toErrorMessage(error);
-				console.error(`[cleanupTaskWorkspace] ${message}`);
+				console.error(`[cleanupTaskWorktree] ${message}`);
 				return null;
 			}
 		},
 		[currentProjectId],
 	);
 
-	const fetchTaskWorkspaceInfo = useCallback(
+	const fetchTaskWorktreeInfo = useCallback(
 		async (task: BoardCard): Promise<RuntimeTaskWorktreeInfoResponse | null> => {
 			if (!currentProjectId) {
 				return null;
@@ -289,11 +289,11 @@ export function useTaskSessions({
 
 	return {
 		upsertSession,
-		ensureTaskWorkspace,
+		ensureTaskWorktree,
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
-		cleanupTaskWorkspace,
-		fetchTaskWorkspaceInfo,
+		cleanupTaskWorktree,
+		fetchTaskWorktreeInfo,
 	};
 }

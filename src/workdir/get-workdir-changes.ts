@@ -216,7 +216,7 @@ export async function createEmptyWorkdirChangesResponse(cwd: string): Promise<Ru
 	};
 }
 
-export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
+export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
 	const repoRoot = await resolveRepoRoot(cwd);
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([

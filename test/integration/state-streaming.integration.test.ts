@@ -23,7 +23,7 @@ import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
 
 describe.sequential("state streaming integration", () => {
-	it("streams per-project snapshots and isolates workspace updates", async () => {
+	it("streams per-project snapshots and isolates project updates", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-stream-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("quarterdeck-projects-stream-");
 
@@ -46,8 +46,8 @@ describe.sequential("state streaming integration", () => {
 
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			const workspaceAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceAId).not.toBe("");
+			const projectAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectAId).not.toBe("");
 			const expectedProjectAPath = await realpath(projectAPath).catch(() => resolve(projectAPath));
 			const expectedProjectBPath = await realpath(projectBPath).catch(() => resolve(projectBPath));
 
@@ -55,70 +55,70 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
 					path: projectBPath,
 				},
 			});
 			expect(addProjectResponse.status).toBe(200);
 			expect(addProjectResponse.payload.ok).toBe(true);
-			const workspaceBId = addProjectResponse.payload.project?.id ?? null;
-			expect(workspaceBId).not.toBeNull();
-			if (!workspaceBId) {
-				throw new Error("Missing project id for added workspace.");
+			const projectBId = addProjectResponse.payload.project?.id ?? null;
+			expect(projectBId).not.toBeNull();
+			if (!projectBId) {
+				throw new Error("Missing project id for added project.");
 			}
 
 			streamA = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceAId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
 			);
 			const snapshotA = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(snapshotA.currentProjectId).toBe(workspaceAId);
+			expect(snapshotA.currentProjectId).toBe(projectAId);
 			expect(snapshotA.projectState?.repoPath).toBe(expectedProjectAPath);
-			expect(snapshotA.projects.map((project) => project.id).sort()).toEqual([workspaceAId, workspaceBId].sort());
+			expect(snapshotA.projects.map((project) => project.id).sort()).toEqual([projectAId, projectBId].sort());
 
 			streamB = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceBId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectBId)}`,
 			);
 			const snapshotB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(snapshotB.currentProjectId).toBe(workspaceBId);
+			expect(snapshotB.currentProjectId).toBe(projectBId);
 			expect(snapshotB.projectState?.repoPath).toBe(expectedProjectBPath);
 
-			const currentWorkspaceBState = await requestJson<RuntimeProjectStateResponse>({
+			const currentProjectBState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "project.getState",
 				type: "query",
-				projectId: workspaceBId,
+				projectId: projectBId,
 			});
-			const previousRevision = currentWorkspaceBState.payload.revision;
-			const saveWorkspaceBResponse = await requestJson<RuntimeProjectStateResponse>({
+			const previousRevision = currentProjectBState.payload.revision;
+			const saveProjectBResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "project.saveState",
 				type: "mutation",
-				projectId: workspaceBId,
+				projectId: projectBId,
 				payload: {
 					board: createBoard("Realtime Task"),
-					sessions: currentWorkspaceBState.payload.sessions,
+					sessions: currentProjectBState.payload.sessions,
 					expectedRevision: previousRevision,
 				},
 			});
-			expect(saveWorkspaceBResponse.status).toBe(200);
-			expect(saveWorkspaceBResponse.payload.revision).toBe(previousRevision + 1);
+			expect(saveProjectBResponse.status).toBe(200);
+			expect(saveProjectBResponse.payload.revision).toBe(previousRevision + 1);
 
-			const workspaceUpdateB = (await streamB.waitForMessage(
+			const projectUpdateB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamProjectStateMessage =>
-					message.type === "project_state_updated" && message.projectId === workspaceBId,
+					message.type === "project_state_updated" && message.projectId === projectBId,
 			)) as RuntimeStateStreamProjectStateMessage;
-			expect(workspaceUpdateB.projectState.revision).toBe(previousRevision + 1);
-			expect(workspaceUpdateB.projectState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
+			expect(projectUpdateB.projectState.revision).toBe(previousRevision + 1);
+			expect(projectUpdateB.projectState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
 
 			const streamAMessages = await streamA.collectFor(500);
 			expect(
 				streamAMessages.some(
-					(message) => message.type === "project_state_updated" && message.projectId === workspaceBId,
+					(message) => message.type === "project_state_updated" && message.projectId === projectBId,
 				),
 			).toBe(false);
 
@@ -126,10 +126,10 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				projectId: workspaceAId,
+				projectId: projectAId,
 			});
 			expect(projectsAfterUpdate.status).toBe(200);
-			const projectB = projectsAfterUpdate.payload.projects.find((project) => project.id === workspaceBId) ?? null;
+			const projectB = projectsAfterUpdate.payload.projects.find((project) => project.id === projectBId) ?? null;
 			expect(projectB?.taskCounts.backlog).toBe(1);
 		} finally {
 			if (streamA) {
@@ -223,7 +223,7 @@ describe.sequential("state streaming integration", () => {
 		}
 	}, 30_000);
 
-	it("streams centralized workspace metadata updates for task worktrees", async () => {
+	it("streams centralized project metadata updates for task worktrees", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-metadata-stream-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("quarterdeck-project-metadata-stream-");
 
@@ -311,18 +311,18 @@ describe.sequential("state streaming integration", () => {
 				(message) =>
 					message.type === "project_metadata_updated" &&
 					message.projectId === projectId &&
-					message.projectMetadata.taskWorkspaces.some((task) => task.taskId === taskId),
+					message.projectMetadata.taskWorktrees.some((task) => task.taskId === taskId),
 				10_000,
 			);
 			expect(initialMetadataMessage.type).toBe("project_metadata_updated");
 			if (initialMetadataMessage.type !== "project_metadata_updated") {
-				throw new Error("Expected initial workspace metadata update message.");
+				throw new Error("Expected initial project metadata update message.");
 			}
 			const initialTaskMetadata =
-				initialMetadataMessage.projectMetadata.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
+				initialMetadataMessage.projectMetadata.taskWorktrees.find((task) => task.taskId === taskId) ?? null;
 			expect(initialTaskMetadata).not.toBeNull();
 			expect(initialTaskMetadata?.changedFiles ?? 0).toBe(0);
-			expect(initialMetadataMessage.projectMetadata.taskWorkspaces.some((task) => task.taskId === trashTaskId)).toBe(
+			expect(initialMetadataMessage.projectMetadata.taskWorktrees.some((task) => task.taskId === trashTaskId)).toBe(
 				false,
 			);
 
@@ -332,16 +332,16 @@ describe.sequential("state streaming integration", () => {
 				(message) =>
 					message.type === "project_metadata_updated" &&
 					message.projectId === projectId &&
-					message.projectMetadata.taskWorkspaces.some(
+					message.projectMetadata.taskWorktrees.some(
 						(task) => task.taskId === taskId && (task.changedFiles ?? 0) > 0,
 					),
 				10_000,
 			);
 			expect(metadataMessage.type).toBe("project_metadata_updated");
 			if (metadataMessage.type !== "project_metadata_updated") {
-				throw new Error("Expected workspace metadata update message.");
+				throw new Error("Expected project metadata update message.");
 			}
-			const updatedTaskMetadata = metadataMessage.projectMetadata.taskWorkspaces.find(
+			const updatedTaskMetadata = metadataMessage.projectMetadata.taskWorktrees.find(
 				(task) => task.taskId === taskId,
 			);
 			expect(updatedTaskMetadata?.changedFiles).toBeGreaterThan(0);

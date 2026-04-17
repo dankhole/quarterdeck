@@ -45,7 +45,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 				failure: true,
 			},
 			currentProjectId: "project-a",
-			notificationWorkspaceIds: { "task-1": "project-a" },
+			notificationProjectIds: { "task-1": "project-a" },
 		};
 
 		await act(async () => {
@@ -88,7 +88,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 				failure: false,
 			},
 			currentProjectId: "project-a",
-			notificationWorkspaceIds: { "task-1": "project-a" },
+			notificationProjectIds: { "task-1": "project-a" },
 		};
 
 		await act(async () => {
@@ -131,7 +131,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 				failure: true,
 			},
 			currentProjectId: "project-a",
-			notificationWorkspaceIds: { "task-1": "project-b" },
+			notificationProjectIds: { "task-1": "project-b" },
 		};
 
 		await act(async () => {
@@ -174,7 +174,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 				failure: true,
 			},
 			currentProjectId: "project-a",
-			notificationWorkspaceIds: { "task-local": "project-a", "task-remote": "project-b" },
+			notificationProjectIds: { "task-local": "project-a", "task-remote": "project-b" },
 		};
 
 		await act(async () => {

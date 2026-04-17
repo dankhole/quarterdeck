@@ -167,7 +167,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		},
-		getActiveProjectId: vi.fn(() => "workspace-1"),
+		getActiveProjectId: vi.fn(() => "project-1"),
 		getScopedTerminalManager: vi.fn(async () => manager as never),
 		resolveInteractiveShellCommand: vi.fn(),
 		runCommand: vi.fn(),
@@ -175,7 +175,7 @@ function createDeps(flat: Record<string, unknown> = {}) {
 }
 
 const defaultScope = {
-	projectId: "workspace-1",
+	projectId: "project-1",
 	projectPath: "/tmp/repo",
 };
 

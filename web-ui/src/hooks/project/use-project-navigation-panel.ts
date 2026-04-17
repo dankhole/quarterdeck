@@ -9,7 +9,7 @@ interface UseProjectNavigationPanelInput {
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 }
 
 export interface UseProjectNavigationPanelResult {
@@ -31,7 +31,7 @@ export function useProjectNavigationPanel({
 	onRemoveProject,
 	onReorderProjects,
 	notificationSessions,
-	notificationWorkspaceIds,
+	notificationProjectIds,
 }: UseProjectNavigationPanelInput): UseProjectNavigationPanelResult {
 	const canReorder = projects.length > 1 && onReorderProjects !== undefined;
 	const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
@@ -45,13 +45,13 @@ export function useProjectNavigationPanel({
 			if (!isApprovalState(session)) {
 				continue;
 			}
-			const projectId = notificationWorkspaceIds[taskId];
+			const projectId = notificationProjectIds[taskId];
 			if (projectId) {
 				counts[projectId] = (counts[projectId] ?? 0) + 1;
 			}
 		}
 		return counts;
-	}, [notificationSessions, notificationWorkspaceIds]);
+	}, [notificationSessions, notificationProjectIds]);
 
 	useEffect(() => {
 		if (optimisticOrder && previousProjectIdsRef.current !== projectIdsSignature) {

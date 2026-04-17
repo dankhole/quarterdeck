@@ -44,7 +44,7 @@ describe("createHooksApi — turn checkpoints", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 		});
 
@@ -95,7 +95,7 @@ describe("createHooksApi — turn checkpoints", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: { hookEventName: "Stop", activityText: "Done with work", source: "claude" },
 		});

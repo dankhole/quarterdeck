@@ -11,7 +11,7 @@ import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionS
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
 
 const TASK_ID = "task-1";
-const WORKSPACE_ID = "workspace-1";
+const WORKSPACE_ID = "project-1";
 
 function createSummary(taskId = TASK_ID): RuntimeTaskSessionSummary {
 	return {

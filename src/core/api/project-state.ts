@@ -43,7 +43,7 @@ export const runtimeProjectMetadataSchema = z.object({
 	homeGitStateVersion: z.number().int().nonnegative(),
 	homeConflictState: runtimeConflictStateSchema.nullable().optional(),
 	homeStashCount: z.number().int().nonnegative(),
-	taskWorkspaces: z.array(runtimeTaskProjectMetadataSchema),
+	taskWorktrees: z.array(runtimeTaskProjectMetadataSchema),
 });
 export type RuntimeProjectMetadata = z.infer<typeof runtimeProjectMetadataSchema>;
 

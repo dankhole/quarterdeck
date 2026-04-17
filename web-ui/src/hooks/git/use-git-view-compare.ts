@@ -49,17 +49,17 @@ export function useGitViewCompare({
 	pendingNavigation,
 	onNavigationConsumed,
 }: UseGitViewCompareOptions): UseGitViewCompareResult {
-	const taskWorkspaceInfo = useTaskWorktreeInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
+	const taskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
 
 	// Default refs based on context
 	const defaultSourceRef = useMemo(() => {
 		if (selectedCard) {
 			// Task context: the task's worktree branch, falling back to headCommit for
 			// headless (detached HEAD) worktrees, then to the card-level branch.
-			return taskWorkspaceInfo?.branch ?? taskWorkspaceInfo?.headCommit ?? selectedCard.card.branch ?? null;
+			return taskWorktreeInfo?.branch ?? taskWorktreeInfo?.headCommit ?? selectedCard.card.branch ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, taskWorkspaceInfo, homeGitSummary]);
+	}, [selectedCard, taskWorktreeInfo, homeGitSummary]);
 
 	const defaultTargetRef = useMemo(() => {
 		if (selectedCard) {

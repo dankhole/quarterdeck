@@ -62,7 +62,7 @@ function getFileStats(source: GitCommitDiffSource, path: string): { additions: n
 	return { additions: file?.additions ?? 0, deletions: file?.deletions ?? 0 };
 }
 
-function toWorkspaceFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkdirFileChange[] {
+function toWorkdirFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkdirFileChange[] {
 	if (source.type === "working-copy") {
 		return source.files;
 	}
@@ -121,7 +121,7 @@ export function GitCommitDiffPanel({
 		if (!diffSource) {
 			return null;
 		}
-		return toWorkspaceFileChangeFormat(diffSource);
+		return toWorkdirFileChangeFormat(diffSource);
 	}, [diffSource]);
 
 	const handleDiffSplitSeparatorMouseDown = useCallback(

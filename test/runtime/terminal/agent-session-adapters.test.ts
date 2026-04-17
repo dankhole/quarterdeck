@@ -63,11 +63,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			projectId: "workspace-1",
+			projectId: "project-1",
 		});
 
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.QUARTERDECK_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("hooks");
@@ -89,7 +89,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			projectId: "workspace-1",
+			projectId: "project-1",
 		});
 
 		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");

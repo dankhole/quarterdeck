@@ -228,11 +228,11 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			const manager = new TerminalSessionManager(store);
 			let hydratedSessionCount = 0;
 			try {
-				const existingWorkspace = await loadProjectState(repoPath);
-				manager.hydrateFromRecord(existingWorkspace.sessions);
-				hydratedSessionCount = Object.keys(existingWorkspace.sessions).length;
+				const existingProject = await loadProjectState(repoPath);
+				manager.hydrateFromRecord(existingProject.sessions);
+				hydratedSessionCount = Object.keys(existingProject.sessions).length;
 			} catch {
-				// Workspace state will be created on demand.
+				// Project state will be created on demand.
 			}
 			manager.startReconciliation(repoPath);
 			terminalManagersByProjectId.set(projectId, manager);

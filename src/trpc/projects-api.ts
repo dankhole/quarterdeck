@@ -97,10 +97,10 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				deps.projects.rememberProject(context.projectId, context.repoPath);
 				const projectsAfterAdd = await listProjectIndexEntries();
 				const activeProjectId = deps.projects.getActiveProjectId();
-				const hasActiveWorkspace = activeProjectId
+				const hasActiveProject = activeProjectId
 					? projectsAfterAdd.some((project) => project.projectId === activeProjectId)
 					: false;
-				if (!hasActiveWorkspace) {
+				if (!hasActiveProject) {
 					await deps.projects.setActiveProject(context.projectId, context.repoPath);
 				}
 				const taskCounts = await deps.data.summarizeProjectTaskCounts(context.projectId, context.repoPath);

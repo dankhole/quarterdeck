@@ -120,7 +120,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("skips confirmation dialog when skipWorkingChangeWarning is true", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
@@ -134,7 +134,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 			ctx.root.render(
 				<HookHarness
 					onRequestTrashConfirmation={onRequestTrashConfirmation}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -276,7 +276,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const setSelectedTaskId = vi.fn<Dispatch<SetStateAction<string | null>>>();
 		const stopTaskSession = vi.fn(async () => {});
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		const boardFactory = (): BoardData => ({
 			columns: [
@@ -297,7 +297,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 				<HookHarness
 					boardFactory={boardFactory}
 					stopTaskSession={stopTaskSession}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					setSelectedTaskIdOverride={setSelectedTaskId}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -316,6 +316,6 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 		expect(setSelectedTaskId).toHaveBeenCalled();
 		expect(stopTaskSession).toHaveBeenCalledTimes(2);
-		expect(cleanupTaskWorkspace).toHaveBeenCalledWith("task-2");
+		expect(cleanupTaskWorktree).toHaveBeenCalledWith("task-2");
 	});
 });

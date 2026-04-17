@@ -4,7 +4,7 @@ const log = createClientLogger("slot-visibility-lifecycle");
 
 interface SlotVisibilityLifecycleCallbacks {
 	getTaskId: () => string | null;
-	getWorkspaceId: () => string | null;
+	getProjectId: () => string | null;
 	hasVisibleContainer: () => boolean;
 	hasIoSocket: () => boolean;
 	hasControlSocket: () => boolean;
@@ -33,7 +33,7 @@ export class SlotVisibilityLifecycle {
 			log.debug(`slot ${this.slotId} tab-return refresh`, { task: taskId });
 			this.callbacks.refreshTerminal();
 
-			const projectId = this.callbacks.getWorkspaceId();
+			const projectId = this.callbacks.getProjectId();
 			const hasDeadSocket = !this.callbacks.hasIoSocket() || !this.callbacks.hasControlSocket();
 			if (taskId && projectId && hasDeadSocket) {
 				log.info(`slot ${this.slotId} tab-return reconnecting dead sockets`, { task: taskId });

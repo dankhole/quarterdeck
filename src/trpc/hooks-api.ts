@@ -92,7 +92,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				if (!projectPath) {
 					return {
 						ok: false,
-						error: `Workspace "${projectId}" not found`,
+						error: `Project "${projectId}" not found`,
 					} satisfies RuntimeHookIngestResponse;
 				}
 

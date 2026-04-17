@@ -34,13 +34,13 @@ export interface CreateProjectMetadataMonitorDependencies {
 }
 
 export interface ProjectMetadataMonitor {
-	connectWorkspace: (input: {
+	connectProject: (input: {
 		projectId: string;
 		projectPath: string;
 		board: RuntimeBoardData;
 		pollIntervals: { focusedTaskPollMs: number; backgroundTaskPollMs: number; homeRepoPollMs: number };
 	}) => Promise<RuntimeProjectMetadata>;
-	updateWorkspaceState: (input: {
+	updateProjectState: (input: {
 		projectId: string;
 		projectPath: string;
 		board: RuntimeBoardData;
@@ -226,7 +226,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	};
 
 	/** Full refresh — home + all tasks. Used on initial connect and state updates. */
-	const refreshWorkspace = async (projectId: string): Promise<RuntimeProjectMetadata> => {
+	const refreshProject = async (projectId: string): Promise<RuntimeProjectMetadata> => {
 		const entry = projects.get(projectId);
 		if (!entry) {
 			return createEmptyProjectMetadata();
@@ -268,7 +268,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		return await entry.refreshPromise;
 	};
 
-	const updateWorkspaceEntry = (input: {
+	const updateProjectEntry = (input: {
 		projectId: string;
 		projectPath: string;
 		board: RuntimeBoardData;
@@ -309,8 +309,8 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	};
 
 	return {
-		connectWorkspace: async ({ projectId, projectPath, board, pollIntervals }) => {
-			const entry = updateWorkspaceEntry({ projectId, projectPath, board });
+		connectProject: async ({ projectId, projectPath, board, pollIntervals }) => {
+			const entry = updateProjectEntry({ projectId, projectPath, board });
 			entry.subscriberCount += 1;
 			entry.pollIntervals = pollIntervals;
 			startTimers(projectId, entry);
@@ -318,14 +318,14 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			// Don't await — the initial snapshot uses local state, fetch results arrive
 			// on the next poll cycle (or sooner via the refreshHome inside performRemoteFetch).
 			void performRemoteFetch(projectId);
-			return await refreshWorkspace(projectId);
+			return await refreshProject(projectId);
 		},
-		updateWorkspaceState: async ({ projectId, projectPath, board }) => {
-			const entry = updateWorkspaceEntry({ projectId, projectPath, board });
+		updateProjectState: async ({ projectId, projectPath, board }) => {
+			const entry = updateProjectEntry({ projectId, projectPath, board });
 			if (entry.subscriberCount === 0) {
 				return buildProjectMetadataSnapshot(entry);
 			}
-			return await refreshWorkspace(projectId);
+			return await refreshProject(projectId);
 		},
 		setFocusedTask: (projectId, taskId) => {
 			const entry = projects.get(projectId);

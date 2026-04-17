@@ -64,10 +64,10 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 	};
 }
 
-describe.sequential("workspace-state integration", () => {
+describe.sequential("project-state integration", () => {
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-workspace-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-");
 			try {
 				const projectPath = join(sandboxRoot, "project-a");
 				mkdirSync(projectPath, { recursive: true });
@@ -112,19 +112,19 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
-	it("lists and removes workspace index entries across multiple projects", async () => {
+	it("lists and removes project index entries across multiple projects", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-workspaces-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-projects-");
 			try {
-				const workspaceAPath = join(sandboxRoot, "alpha");
-				const workspaceBPath = join(sandboxRoot, "beta");
-				mkdirSync(workspaceAPath, { recursive: true });
-				mkdirSync(workspaceBPath, { recursive: true });
-				initGitRepository(workspaceAPath);
-				initGitRepository(workspaceBPath);
+				const projectAPath = join(sandboxRoot, "alpha");
+				const projectBPath = join(sandboxRoot, "beta");
+				mkdirSync(projectAPath, { recursive: true });
+				mkdirSync(projectBPath, { recursive: true });
+				initGitRepository(projectAPath);
+				initGitRepository(projectBPath);
 
-				const contextA = await loadProjectContext(workspaceAPath);
-				const contextB = await loadProjectContext(workspaceBPath);
+				const contextA = await loadProjectContext(projectAPath);
+				const contextB = await loadProjectContext(projectBPath);
 
 				const entries = await listProjectIndexEntries();
 				expect(entries).toHaveLength(2);
@@ -146,20 +146,20 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
-	it("keeps all workspace index entries when projects are added concurrently", async () => {
+	it("keeps all project index entries when projects are added concurrently", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-workspaces-concurrent-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-projects-concurrent-");
 			try {
-				const workspaceAPath = join(sandboxRoot, "alpha");
-				const workspaceBPath = join(sandboxRoot, "beta");
-				mkdirSync(workspaceAPath, { recursive: true });
-				mkdirSync(workspaceBPath, { recursive: true });
-				initGitRepository(workspaceAPath);
-				initGitRepository(workspaceBPath);
+				const projectAPath = join(sandboxRoot, "alpha");
+				const projectBPath = join(sandboxRoot, "beta");
+				mkdirSync(projectAPath, { recursive: true });
+				mkdirSync(projectBPath, { recursive: true });
+				initGitRepository(projectAPath);
+				initGitRepository(projectBPath);
 
 				const [contextA, contextB] = await Promise.all([
-					loadProjectContext(workspaceAPath),
-					loadProjectContext(workspaceBPath),
+					loadProjectContext(projectAPath),
+					loadProjectContext(projectBPath),
 				]);
 
 				const entries = await listProjectIndexEntries();
@@ -173,30 +173,30 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
-	it("creates readable workspace ids from folder names with random suffix on collisions", async () => {
+	it("creates readable project ids from folder names with random suffix on collisions", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-workspace-id-format-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-id-format-");
 			try {
-				const workspaceAPath = join(sandboxRoot, "one", "vscrui");
-				const workspaceBPath = join(sandboxRoot, "two", "vscrui");
-				const workspaceCPath = join(sandboxRoot, "three", "My Cool Repo");
-				mkdirSync(workspaceAPath, { recursive: true });
-				mkdirSync(workspaceBPath, { recursive: true });
-				mkdirSync(workspaceCPath, { recursive: true });
-				initGitRepository(workspaceAPath);
-				initGitRepository(workspaceBPath);
-				initGitRepository(workspaceCPath);
+				const projectAPath = join(sandboxRoot, "one", "vscrui");
+				const projectBPath = join(sandboxRoot, "two", "vscrui");
+				const projectCPath = join(sandboxRoot, "three", "My Cool Repo");
+				mkdirSync(projectAPath, { recursive: true });
+				mkdirSync(projectBPath, { recursive: true });
+				mkdirSync(projectCPath, { recursive: true });
+				initGitRepository(projectAPath);
+				initGitRepository(projectBPath);
+				initGitRepository(projectCPath);
 
-				const contextA = await loadProjectContext(workspaceAPath);
-				const contextB = await loadProjectContext(workspaceBPath);
-				const contextC = await loadProjectContext(workspaceCPath);
+				const contextA = await loadProjectContext(projectAPath);
+				const contextB = await loadProjectContext(projectBPath);
+				const contextC = await loadProjectContext(projectCPath);
 
 				expect(contextA.projectId).toBe("vscrui");
 				expect(contextB.projectId).toMatch(/^vscrui-[a-z0-9]{4}$/);
 				expect(contextB.projectId).not.toBe(contextA.projectId);
 				expect(contextC.projectId).toBe("my-cool-repo");
 
-				const contextAAgain = await loadProjectContext(workspaceAPath);
+				const contextAAgain = await loadProjectContext(projectAPath);
 				expect(contextAAgain.projectId).toBe(contextA.projectId);
 			} finally {
 				cleanup();
@@ -204,9 +204,9 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
-	it("can require an existing project without auto-creating workspace entries", async () => {
+	it("can require an existing project without auto-creating project entries", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-workspace-autocreate-");
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-autocreate-");
 			try {
 				const projectPath = join(sandboxRoot, "gamma");
 				mkdirSync(projectPath, { recursive: true });
@@ -315,7 +315,7 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
-	it("fails loudly when persisted workspace index data is malformed", async () => {
+	it("fails loudly when persisted project index data is malformed", async () => {
 		await withTemporaryHome(async () => {
 			mkdirSync(getProjectsRootPath(), { recursive: true });
 			writeFileSync(
@@ -324,8 +324,8 @@ describe.sequential("workspace-state integration", () => {
 					{
 						version: 1,
 						entries: {
-							"workspace-a": {
-								projectId: "workspace-a",
+							"project-a": {
+								projectId: "project-a",
 							},
 						},
 						repoPathToId: {},

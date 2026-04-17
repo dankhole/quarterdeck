@@ -141,12 +141,12 @@ export function areProjectMetadataEqual(a: RuntimeProjectMetadata, b: RuntimePro
 	if (!areConflictStatesEqual(a.homeConflictState ?? null, b.homeConflictState ?? null)) {
 		return false;
 	}
-	if (a.taskWorkspaces.length !== b.taskWorkspaces.length) {
+	if (a.taskWorktrees.length !== b.taskWorktrees.length) {
 		return false;
 	}
-	for (let index = 0; index < a.taskWorkspaces.length; index += 1) {
-		const left = a.taskWorkspaces[index];
-		const right = b.taskWorkspaces[index];
+	for (let index = 0; index < a.taskWorktrees.length; index += 1) {
+		const left = a.taskWorktrees[index];
+		const right = b.taskWorktrees[index];
 		if (!left || !right || !areTaskMetadataEqual(left, right)) {
 			return false;
 		}
@@ -160,7 +160,7 @@ export function createEmptyProjectMetadata(): RuntimeProjectMetadata {
 		homeGitStateVersion: 0,
 		homeConflictState: null,
 		homeStashCount: 0,
-		taskWorkspaces: [],
+		taskWorktrees: [],
 	};
 }
 
@@ -193,7 +193,7 @@ export function buildProjectMetadataSnapshot(entry: ProjectMetadataEntry): Runti
 		homeGitStateVersion: entry.homeGit.stateVersion,
 		homeConflictState: entry.homeGit.conflictState,
 		homeStashCount: entry.homeGit.stashCount,
-		taskWorkspaces: entry.trackedTasks
+		taskWorktrees: entry.trackedTasks
 			.map((task) => entry.taskMetadataByTaskId.get(task.taskId)?.data ?? null)
 			.filter((task): task is RuntimeTaskProjectMetadata => task !== null),
 	};

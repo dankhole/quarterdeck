@@ -27,7 +27,7 @@ export function useLinkedBacklogTaskActions({
 	setBoard,
 	setSelectedTaskId,
 	stopTaskSession,
-	cleanupTaskWorkspace,
+	cleanupTaskWorktree,
 	kickoffTaskInProgress,
 	startBacklogTaskWithAnimation,
 	waitForBacklogStartAnimationAvailability,
@@ -39,7 +39,7 @@ export function useLinkedBacklogTaskActions({
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
-	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
+	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
 	kickoffTaskInProgress: (
 		task: BoardCard,
 		taskId: string,
@@ -128,7 +128,7 @@ export function useLinkedBacklogTaskActions({
 				// Non-isolated tasks have no worktree to clean up. Calling deleteWorktree
 				// would unnecessarily delete any existing patch files for the task.
 				if (task.useWorktree !== false) {
-					await cleanupTaskWorkspace(task.id);
+					await cleanupTaskWorktree(task.id);
 				}
 				console.debug("[trash] cleanup complete (already-in-trash path)", { taskId: task.id });
 				return;
@@ -184,11 +184,11 @@ export function useLinkedBacklogTaskActions({
 				stopTaskSession(getDetailTerminalTaskId(task.id)),
 			]);
 			if (task.useWorktree !== false) {
-				await cleanupTaskWorkspace(task.id);
+				await cleanupTaskWorktree(task.id);
 			}
 		},
 		[
-			cleanupTaskWorkspace,
+			cleanupTaskWorktree,
 			kickoffTaskInProgress,
 			setBoard,
 			setSelectedTaskId,

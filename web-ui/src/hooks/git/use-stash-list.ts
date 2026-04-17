@@ -22,8 +22,8 @@ export function useStashList(taskId: string | undefined, projectId: string): Use
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	// Build taskScope from taskId + baseRef from the metadata store.
-	const taskWorkspaceInfo = useTaskWorktreeInfoValue(taskId ?? null);
-	const baseRef = taskWorkspaceInfo?.baseRef ?? null;
+	const taskWorktreeInfo = useTaskWorktreeInfoValue(taskId ?? null);
+	const baseRef = taskWorktreeInfo?.baseRef ?? null;
 	const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
 
 	// Track stash count changes from the metadata store.

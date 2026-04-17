@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskProjectSnapshot } from "@/types";
 
-let mockWorkspaceSnapshot: ReviewTaskProjectSnapshot | undefined;
+let mockProjectSnapshot: ReviewTaskProjectSnapshot | undefined;
 
 vi.mock("@hello-pangea/dnd", () => ({
 	Draggable: ({
@@ -28,7 +28,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/stores/project-metadata-store", () => ({
-	useTaskProjectSnapshotValue: () => mockWorkspaceSnapshot,
+	useTaskProjectSnapshotValue: () => mockProjectSnapshot,
 	getProjectPath: () => "/mock/project",
 }));
 
@@ -116,7 +116,7 @@ describe("BoardCard", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		mockWorkspaceSnapshot = undefined;
+		mockProjectSnapshot = undefined;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -463,7 +463,7 @@ describe("BoardCard", () => {
 		}
 
 		it("prefers live metadata branch over stale card.branch", async () => {
-			mockWorkspaceSnapshot = createSnapshot({ branch: "live-branch" });
+			mockProjectSnapshot = createSnapshot({ branch: "live-branch" });
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -481,7 +481,7 @@ describe("BoardCard", () => {
 		});
 
 		it("falls back to card.branch when metadata branch is null (detached HEAD)", async () => {
-			mockWorkspaceSnapshot = createSnapshot({ branch: null });
+			mockProjectSnapshot = createSnapshot({ branch: null });
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -498,7 +498,7 @@ describe("BoardCard", () => {
 		});
 
 		it("falls back to card.branch when no metadata is available", async () => {
-			mockWorkspaceSnapshot = undefined;
+			mockProjectSnapshot = undefined;
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -515,7 +515,7 @@ describe("BoardCard", () => {
 		});
 
 		it("shows headCommit fallback when neither source has a branch", async () => {
-			mockWorkspaceSnapshot = createSnapshot({ branch: null, headCommit: "deadbeef12345678" });
+			mockProjectSnapshot = createSnapshot({ branch: null, headCommit: "deadbeef12345678" });
 			await act(async () => {
 				root.render(
 					<Providers>

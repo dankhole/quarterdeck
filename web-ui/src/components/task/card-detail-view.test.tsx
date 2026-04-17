@@ -10,7 +10,7 @@ import { CardActionsProvider, type ReactiveCardState, type StableCardActions } f
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
-const mockUseRuntimeWorkspaceChanges = vi.fn();
+const mockUseRuntimeWorkdirChanges = vi.fn();
 const { mockAgentTerminalPanel } = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
 }));
@@ -44,7 +44,7 @@ vi.mock("@/resize/resizable-bottom-pane", () => ({
 }));
 
 vi.mock("@/runtime/use-runtime-project-changes", () => ({
-	useRuntimeProjectChanges: (...args: unknown[]) => mockUseRuntimeWorkspaceChanges(...args),
+	useRuntimeProjectChanges: (...args: unknown[]) => mockUseRuntimeWorkdirChanges(...args),
 }));
 
 vi.mock("@/stores/project-metadata-store", () => ({
@@ -199,10 +199,10 @@ const noopBoardContext: BoardContextValue = {
 	selectedCard: null,
 	setSelectedTaskId: () => {},
 	setSessions: () => {},
-	ensureTaskWorkspace: async () => ({ ok: false }),
+	ensureTaskWorktree: async () => ({ ok: false }),
 	startTaskSession: async () => ({ ok: false }),
-	cleanupTaskWorkspace: async () => null,
-	fetchTaskWorkspaceInfo: async () => null,
+	cleanupTaskWorktree: async () => null,
+	fetchTaskWorktreeInfo: async () => null,
 	sendTaskSessionInput: async () => ({ ok: true }),
 	stopTaskSession: async () => {},
 	taskEditor: noopTaskEditor,
@@ -396,7 +396,7 @@ describe("CardDetailView", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		mockAgentTerminalPanel.mockClear();
-		mockUseRuntimeWorkspaceChanges.mockReturnValue({
+		mockUseRuntimeWorkdirChanges.mockReturnValue({
 			changes: {
 				files: [
 					{
@@ -417,7 +417,7 @@ describe("CardDetailView", () => {
 		act(() => {
 			root.unmount();
 		});
-		mockUseRuntimeWorkspaceChanges.mockReset();
+		mockUseRuntimeWorkdirChanges.mockReset();
 		mockAgentTerminalPanel.mockClear();
 		vi.restoreAllMocks();
 		container.remove();

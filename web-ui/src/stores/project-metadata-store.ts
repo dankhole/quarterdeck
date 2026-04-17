@@ -12,24 +12,24 @@ import type { ReviewTaskProjectSnapshot } from "@/types";
 type StoreListener = () => void;
 type TaskMetadataListener = (taskId: string) => void;
 
-interface WorkspaceMetadataState {
+interface ProjectMetadataState {
 	projectPath: string | null;
 	homeGitSummary: RuntimeGitSyncSummary | null;
 	homeGitStateVersion: number;
 	homeStashCount: number;
-	taskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null>;
-	taskWorkspaceSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null>;
-	taskWorkspaceStateVersionByTaskId: Record<string, number>;
+	taskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null>;
+	taskWorktreeSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null>;
+	taskWorktreeStateVersionByTaskId: Record<string, number>;
 }
 
-const projectMetadataState: WorkspaceMetadataState = {
+const projectMetadataState: ProjectMetadataState = {
 	projectPath: null,
 	homeGitSummary: null,
 	homeGitStateVersion: 0,
 	homeStashCount: 0,
-	taskWorkspaceInfoByTaskId: {},
-	taskWorkspaceSnapshotByTaskId: {},
-	taskWorkspaceStateVersionByTaskId: {},
+	taskWorktreeInfoByTaskId: {},
+	taskWorktreeSnapshotByTaskId: {},
+	taskWorktreeStateVersionByTaskId: {},
 };
 
 let homeConflictState: RuntimeConflictState | null = null;
@@ -69,7 +69,7 @@ function emitTaskMetadata(taskId: string): void {
 	}
 }
 
-function toTaskWorkspaceInfo(metadata: RuntimeTaskProjectMetadata): RuntimeTaskWorktreeInfoResponse {
+function toTaskWorktreeInfo(metadata: RuntimeTaskProjectMetadata): RuntimeTaskWorktreeInfoResponse {
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
@@ -81,7 +81,7 @@ function toTaskWorkspaceInfo(metadata: RuntimeTaskProjectMetadata): RuntimeTaskW
 	};
 }
 
-function toTaskWorkspaceSnapshot(metadata: RuntimeTaskProjectMetadata): ReviewTaskProjectSnapshot {
+function toTaskWorktreeSnapshot(metadata: RuntimeTaskProjectMetadata): ReviewTaskProjectSnapshot {
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
@@ -131,7 +131,7 @@ function areGitSummariesEqual(a: RuntimeGitSyncSummary | null, b: RuntimeGitSync
 	);
 }
 
-function areTaskWorkspaceInfosEqual(
+function areTaskWorktreeInfosEqual(
 	a: RuntimeTaskWorktreeInfoResponse | null,
 	b: RuntimeTaskWorktreeInfoResponse | null,
 ): boolean {
@@ -171,7 +171,7 @@ function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConfli
 	);
 }
 
-function areTaskWorkspaceSnapshotsEqual(
+function areTaskWorktreeSnapshotsEqual(
 	a: ReviewTaskProjectSnapshot | null,
 	b: ReviewTaskProjectSnapshot | null,
 ): boolean {
@@ -239,7 +239,7 @@ export function getTaskWorktreeInfo(
 	if (!normalizedTaskId) {
 		return null;
 	}
-	const value = projectMetadataState.taskWorkspaceInfoByTaskId[normalizedTaskId] ?? null;
+	const value = projectMetadataState.taskWorktreeInfoByTaskId[normalizedTaskId] ?? null;
 	if (!value) {
 		return null;
 	}
@@ -253,12 +253,12 @@ export function setTaskWorktreeInfo(info: RuntimeTaskWorktreeInfoResponse | null
 	if (!info) {
 		return false;
 	}
-	const existing = projectMetadataState.taskWorkspaceInfoByTaskId[info.taskId] ?? null;
-	if (areTaskWorkspaceInfosEqual(existing, info)) {
+	const existing = projectMetadataState.taskWorktreeInfoByTaskId[info.taskId] ?? null;
+	if (areTaskWorktreeInfosEqual(existing, info)) {
 		return false;
 	}
-	projectMetadataState.taskWorkspaceInfoByTaskId = {
-		...projectMetadataState.taskWorkspaceInfoByTaskId,
+	projectMetadataState.taskWorktreeInfoByTaskId = {
+		...projectMetadataState.taskWorktreeInfoByTaskId,
 		[info.taskId]: info,
 	};
 	emitTaskMetadata(info.taskId);
@@ -267,11 +267,11 @@ export function setTaskWorktreeInfo(info: RuntimeTaskWorktreeInfoResponse | null
 
 export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolean {
 	const normalizedTaskId = taskId?.trim();
-	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorkspaceInfoByTaskId)) {
+	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeInfoByTaskId)) {
 		return false;
 	}
-	const { [normalizedTaskId]: _removed, ...rest } = projectMetadataState.taskWorkspaceInfoByTaskId;
-	projectMetadataState.taskWorkspaceInfoByTaskId = rest;
+	const { [normalizedTaskId]: _removed, ...rest } = projectMetadataState.taskWorktreeInfoByTaskId;
+	projectMetadataState.taskWorktreeInfoByTaskId = rest;
 	emitTaskMetadata(normalizedTaskId);
 	return true;
 }
@@ -281,23 +281,23 @@ export function getTaskProjectSnapshot(taskId: string | null | undefined): Revie
 	if (!normalizedTaskId) {
 		return null;
 	}
-	return projectMetadataState.taskWorkspaceSnapshotByTaskId[normalizedTaskId] ?? null;
+	return projectMetadataState.taskWorktreeSnapshotByTaskId[normalizedTaskId] ?? null;
 }
 
 export function setTaskProjectSnapshot(snapshot: ReviewTaskProjectSnapshot | null): boolean {
 	if (!snapshot) {
 		return false;
 	}
-	const existing = projectMetadataState.taskWorkspaceSnapshotByTaskId[snapshot.taskId] ?? null;
-	if (areTaskWorkspaceSnapshotsEqual(existing, snapshot)) {
+	const existing = projectMetadataState.taskWorktreeSnapshotByTaskId[snapshot.taskId] ?? null;
+	if (areTaskWorktreeSnapshotsEqual(existing, snapshot)) {
 		return false;
 	}
-	projectMetadataState.taskWorkspaceSnapshotByTaskId = {
-		...projectMetadataState.taskWorkspaceSnapshotByTaskId,
+	projectMetadataState.taskWorktreeSnapshotByTaskId = {
+		...projectMetadataState.taskWorktreeSnapshotByTaskId,
 		[snapshot.taskId]: snapshot,
 	};
-	projectMetadataState.taskWorkspaceStateVersionByTaskId = {
-		...projectMetadataState.taskWorkspaceStateVersionByTaskId,
+	projectMetadataState.taskWorktreeStateVersionByTaskId = {
+		...projectMetadataState.taskWorktreeStateVersionByTaskId,
 		[snapshot.taskId]: Date.now(),
 	};
 	emitTaskMetadata(snapshot.taskId);
@@ -306,14 +306,14 @@ export function setTaskProjectSnapshot(snapshot: ReviewTaskProjectSnapshot | nul
 
 export function clearTaskProjectSnapshot(taskId: string | null | undefined): boolean {
 	const normalizedTaskId = taskId?.trim();
-	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorkspaceSnapshotByTaskId)) {
+	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeSnapshotByTaskId)) {
 		return false;
 	}
-	const { [normalizedTaskId]: _removed, ...rest } = projectMetadataState.taskWorkspaceSnapshotByTaskId;
+	const { [normalizedTaskId]: _removed, ...rest } = projectMetadataState.taskWorktreeSnapshotByTaskId;
 	const { [normalizedTaskId]: _removedVersion, ...restVersions } =
-		projectMetadataState.taskWorkspaceStateVersionByTaskId;
-	projectMetadataState.taskWorkspaceSnapshotByTaskId = rest;
-	projectMetadataState.taskWorkspaceStateVersionByTaskId = restVersions;
+		projectMetadataState.taskWorktreeStateVersionByTaskId;
+	projectMetadataState.taskWorktreeSnapshotByTaskId = rest;
+	projectMetadataState.taskWorktreeStateVersionByTaskId = restVersions;
 	emitTaskMetadata(normalizedTaskId);
 	return true;
 }
@@ -322,19 +322,19 @@ export function clearInactiveTaskProjectSnapshots(activeTaskIds: Set<string>): v
 	let changed = false;
 	const nextSnapshots: Record<string, ReviewTaskProjectSnapshot | null> = {};
 	const nextStateVersions: Record<string, number> = {};
-	for (const [taskId, snapshot] of Object.entries(projectMetadataState.taskWorkspaceSnapshotByTaskId)) {
+	for (const [taskId, snapshot] of Object.entries(projectMetadataState.taskWorktreeSnapshotByTaskId)) {
 		if (!activeTaskIds.has(taskId)) {
 			changed = true;
 			continue;
 		}
 		nextSnapshots[taskId] = snapshot;
-		nextStateVersions[taskId] = projectMetadataState.taskWorkspaceStateVersionByTaskId[taskId] ?? 0;
+		nextStateVersions[taskId] = projectMetadataState.taskWorktreeStateVersionByTaskId[taskId] ?? 0;
 	}
 	if (!changed) {
 		return;
 	}
-	projectMetadataState.taskWorkspaceSnapshotByTaskId = nextSnapshots;
-	projectMetadataState.taskWorkspaceStateVersionByTaskId = nextStateVersions;
+	projectMetadataState.taskWorktreeSnapshotByTaskId = nextSnapshots;
+	projectMetadataState.taskWorktreeStateVersionByTaskId = nextStateVersions;
 	for (const taskId of taskMetadataListenersByTaskId.keys()) {
 		if (!activeTaskIds.has(taskId)) {
 			emitTaskMetadata(taskId);
@@ -344,16 +344,16 @@ export function clearInactiveTaskProjectSnapshots(activeTaskIds: Set<string>): v
 
 export function resetProjectMetadataStore(): void {
 	const taskIds = new Set([
-		...Object.keys(projectMetadataState.taskWorkspaceInfoByTaskId),
-		...Object.keys(projectMetadataState.taskWorkspaceSnapshotByTaskId),
-		...Object.keys(projectMetadataState.taskWorkspaceStateVersionByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeInfoByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeSnapshotByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeStateVersionByTaskId),
 	]);
 	projectMetadataState.homeGitSummary = null;
 	projectMetadataState.homeGitStateVersion = 0;
 	projectMetadataState.homeStashCount = 0;
-	projectMetadataState.taskWorkspaceInfoByTaskId = {};
-	projectMetadataState.taskWorkspaceSnapshotByTaskId = {};
-	projectMetadataState.taskWorkspaceStateVersionByTaskId = {};
+	projectMetadataState.taskWorktreeInfoByTaskId = {};
+	projectMetadataState.taskWorktreeSnapshotByTaskId = {};
+	projectMetadataState.taskWorktreeStateVersionByTaskId = {};
 	homeConflictState = null;
 	emitHomeGitSummary();
 	emitHomeConflictState();
@@ -378,45 +378,45 @@ export function replaceProjectMetadata(metadata: RuntimeProjectMetadata | null):
 		emitHomeStashCount();
 	}
 
-	const nextTaskWorkspaceInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null> = {};
-	const nextTaskWorkspaceSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null> = {};
-	const nextTaskWorkspaceStateVersionByTaskId: Record<string, number> = {};
+	const nextTaskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null> = {};
+	const nextTaskWorktreeSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null> = {};
+	const nextTaskWorktreeStateVersionByTaskId: Record<string, number> = {};
 
-	for (const taskMetadata of metadata?.taskWorkspaces ?? []) {
-		nextTaskWorkspaceInfoByTaskId[taskMetadata.taskId] = toTaskWorkspaceInfo(taskMetadata);
-		nextTaskWorkspaceSnapshotByTaskId[taskMetadata.taskId] = toTaskWorkspaceSnapshot(taskMetadata);
-		nextTaskWorkspaceStateVersionByTaskId[taskMetadata.taskId] = taskMetadata.stateVersion;
+	for (const taskMetadata of metadata?.taskWorktrees ?? []) {
+		nextTaskWorktreeInfoByTaskId[taskMetadata.taskId] = toTaskWorktreeInfo(taskMetadata);
+		nextTaskWorktreeSnapshotByTaskId[taskMetadata.taskId] = toTaskWorktreeSnapshot(taskMetadata);
+		nextTaskWorktreeStateVersionByTaskId[taskMetadata.taskId] = taskMetadata.stateVersion;
 	}
 
 	const taskIds = new Set([
-		...Object.keys(projectMetadataState.taskWorkspaceInfoByTaskId),
-		...Object.keys(projectMetadataState.taskWorkspaceSnapshotByTaskId),
-		...Object.keys(projectMetadataState.taskWorkspaceStateVersionByTaskId),
-		...Object.keys(nextTaskWorkspaceInfoByTaskId),
-		...Object.keys(nextTaskWorkspaceSnapshotByTaskId),
-		...Object.keys(nextTaskWorkspaceStateVersionByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeInfoByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeSnapshotByTaskId),
+		...Object.keys(projectMetadataState.taskWorktreeStateVersionByTaskId),
+		...Object.keys(nextTaskWorktreeInfoByTaskId),
+		...Object.keys(nextTaskWorktreeSnapshotByTaskId),
+		...Object.keys(nextTaskWorktreeStateVersionByTaskId),
 	]);
 
 	const changedTaskIds: string[] = [];
 	for (const taskId of taskIds) {
-		const previousInfo = projectMetadataState.taskWorkspaceInfoByTaskId[taskId] ?? null;
-		const nextInfo = nextTaskWorkspaceInfoByTaskId[taskId] ?? null;
-		const previousSnapshot = projectMetadataState.taskWorkspaceSnapshotByTaskId[taskId] ?? null;
-		const nextSnapshot = nextTaskWorkspaceSnapshotByTaskId[taskId] ?? null;
-		const previousStateVersion = projectMetadataState.taskWorkspaceStateVersionByTaskId[taskId] ?? 0;
-		const nextStateVersion = nextTaskWorkspaceStateVersionByTaskId[taskId] ?? 0;
+		const previousInfo = projectMetadataState.taskWorktreeInfoByTaskId[taskId] ?? null;
+		const nextInfo = nextTaskWorktreeInfoByTaskId[taskId] ?? null;
+		const previousSnapshot = projectMetadataState.taskWorktreeSnapshotByTaskId[taskId] ?? null;
+		const nextSnapshot = nextTaskWorktreeSnapshotByTaskId[taskId] ?? null;
+		const previousStateVersion = projectMetadataState.taskWorktreeStateVersionByTaskId[taskId] ?? 0;
+		const nextStateVersion = nextTaskWorktreeStateVersionByTaskId[taskId] ?? 0;
 		if (
-			!areTaskWorkspaceInfosEqual(previousInfo, nextInfo) ||
-			!areTaskWorkspaceSnapshotsEqual(previousSnapshot, nextSnapshot) ||
+			!areTaskWorktreeInfosEqual(previousInfo, nextInfo) ||
+			!areTaskWorktreeSnapshotsEqual(previousSnapshot, nextSnapshot) ||
 			previousStateVersion !== nextStateVersion
 		) {
 			changedTaskIds.push(taskId);
 		}
 	}
 
-	projectMetadataState.taskWorkspaceInfoByTaskId = nextTaskWorkspaceInfoByTaskId;
-	projectMetadataState.taskWorkspaceSnapshotByTaskId = nextTaskWorkspaceSnapshotByTaskId;
-	projectMetadataState.taskWorkspaceStateVersionByTaskId = nextTaskWorkspaceStateVersionByTaskId;
+	projectMetadataState.taskWorktreeInfoByTaskId = nextTaskWorktreeInfoByTaskId;
+	projectMetadataState.taskWorktreeSnapshotByTaskId = nextTaskWorktreeSnapshotByTaskId;
+	projectMetadataState.taskWorktreeStateVersionByTaskId = nextTaskWorktreeStateVersionByTaskId;
 
 	for (const taskId of changedTaskIds) {
 		emitTaskMetadata(taskId);
@@ -496,7 +496,7 @@ export function useTaskProjectStateVersionValue(taskId: string | null | undefine
 			}
 			return subscribeToTaskId(normalizedTaskId, listener);
 		},
-		() => projectMetadataState.taskWorkspaceStateVersionByTaskId[normalizedTaskId] ?? 0,
+		() => projectMetadataState.taskWorktreeStateVersionByTaskId[normalizedTaskId] ?? 0,
 		() => 0,
 	);
 }
@@ -514,7 +514,7 @@ export function useConflictState(taskId: string | null): RuntimeConflictState | 
 			if (!normalizedTaskId) {
 				return null;
 			}
-			const snapshot = projectMetadataState.taskWorkspaceSnapshotByTaskId[normalizedTaskId];
+			const snapshot = projectMetadataState.taskWorktreeSnapshotByTaskId[normalizedTaskId];
 			return snapshot?.conflictState ?? null;
 		},
 		() => null,

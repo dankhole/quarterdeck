@@ -18,13 +18,13 @@ export interface UseProjectPersistenceParams {
 	canPersistProjectState: boolean;
 	isDocumentVisible: boolean;
 	isProjectStateRefreshing: boolean;
-	persistWorkspaceState: (input: {
+	persistProjectState: (input: {
 		projectId: string;
 		payload: RuntimeProjectStateSaveRequest;
 	}) => Promise<RuntimeProjectStateResponse>;
-	refetchWorkspaceState: () => Promise<unknown>;
-	onWorkspaceRevisionChange: (revision: number) => void;
-	onWorkspaceStateConflict?: (input: { projectId: string; currentRevision: number }) => void;
+	refetchProjectState: () => Promise<unknown>;
+	onProjectRevisionChange: (revision: number) => void;
+	onProjectStateConflict?: (input: { projectId: string; currentRevision: number }) => void;
 }
 
 export function useProjectPersistence({
@@ -36,10 +36,10 @@ export function useProjectPersistence({
 	canPersistProjectState,
 	isDocumentVisible,
 	isProjectStateRefreshing,
-	persistWorkspaceState,
-	refetchWorkspaceState,
-	onWorkspaceRevisionChange,
-	onWorkspaceStateConflict,
+	persistProjectState,
+	refetchProjectState,
+	onProjectRevisionChange,
+	onProjectStateConflict,
 }: UseProjectPersistenceParams): void {
 	const [persistCycle, setPersistCycle] = useState(0);
 	const skipNextPersistRef = useRef(false);
@@ -50,12 +50,12 @@ export function useProjectPersistence({
 	const currentProjectIdRef = useRef<string | null>(currentProjectId);
 	const sessionsRef = useRef(sessions);
 	const lastPersistedBoardRef = useRef<BoardData | null>(null);
-	const lastPersistedWorkspaceIdRef = useRef<string | null>(null);
+	const lastPersistedProjectIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		currentProjectIdRef.current = currentProjectId;
-		if (lastPersistedWorkspaceIdRef.current !== currentProjectId) {
-			lastPersistedWorkspaceIdRef.current = currentProjectId;
+		if (lastPersistedProjectIdRef.current !== currentProjectId) {
+			lastPersistedProjectIdRef.current = currentProjectId;
 			lastPersistedBoardRef.current = null;
 		}
 	}, [currentProjectId]);
@@ -70,7 +70,7 @@ export function useProjectPersistence({
 		}
 		latestHydrationNonceRef.current = hydrationNonce;
 		skipNextPersistRef.current = true;
-		lastPersistedWorkspaceIdRef.current = currentProjectId;
+		lastPersistedProjectIdRef.current = currentProjectId;
 		lastPersistedBoardRef.current = board;
 	}, [board, currentProjectId, hydrationNonce]);
 
@@ -88,7 +88,7 @@ export function useProjectPersistence({
 		}
 		if (
 			currentProjectId != null &&
-			lastPersistedWorkspaceIdRef.current === currentProjectId &&
+			lastPersistedProjectIdRef.current === currentProjectId &&
 			lastPersistedBoardRef.current === board
 		) {
 			return;
@@ -96,8 +96,8 @@ export function useProjectPersistence({
 		const timeoutId = window.setTimeout(() => {
 			const requestId = latestPersistRequestIdRef.current + 1;
 			latestPersistRequestIdRef.current = requestId;
-			const persistWorkspaceId = currentProjectId;
-			if (!persistWorkspaceId) {
+			const persistProjectId = currentProjectId;
+			if (!persistProjectId) {
 				return;
 			}
 			const payload: RuntimeProjectStateSaveRequest = {
@@ -108,35 +108,35 @@ export function useProjectPersistence({
 			void (async () => {
 				persistInFlightRef.current = true;
 				try {
-					const saved = await persistWorkspaceState({
-						projectId: persistWorkspaceId,
+					const saved = await persistProjectState({
+						projectId: persistProjectId,
 						payload,
 					});
 					if (
 						requestId !== latestPersistRequestIdRef.current ||
-						currentProjectIdRef.current !== persistWorkspaceId
+						currentProjectIdRef.current !== persistProjectId
 					) {
 						return;
 					}
-					lastPersistedWorkspaceIdRef.current = persistWorkspaceId;
+					lastPersistedProjectIdRef.current = persistProjectId;
 					lastPersistedBoardRef.current = board;
-					onWorkspaceRevisionChange(saved.revision);
+					onProjectRevisionChange(saved.revision);
 				} catch (error) {
 					if (error instanceof ProjectStateConflictError) {
 						if (
 							requestId === latestPersistRequestIdRef.current &&
-							currentProjectIdRef.current === persistWorkspaceId
+							currentProjectIdRef.current === persistProjectId
 						) {
-							onWorkspaceRevisionChange(error.currentRevision);
-							onWorkspaceStateConflict?.({
-								projectId: persistWorkspaceId,
+							onProjectRevisionChange(error.currentRevision);
+							onProjectStateConflict?.({
+								projectId: persistProjectId,
 								currentRevision: error.currentRevision,
 							});
 						}
-						if (currentProjectIdRef.current !== persistWorkspaceId) {
+						if (currentProjectIdRef.current !== persistProjectId) {
 							return;
 						}
-						await refetchWorkspaceState();
+						await refetchProjectState();
 						return;
 					}
 					// Keep the UI usable even if persistence is temporarily unavailable.
@@ -158,11 +158,11 @@ export function useProjectPersistence({
 		currentProjectId,
 		isDocumentVisible,
 		isProjectStateRefreshing,
-		onWorkspaceRevisionChange,
+		onProjectRevisionChange,
 		persistCycle,
-		persistWorkspaceState,
-		refetchWorkspaceState,
-		onWorkspaceStateConflict,
+		persistProjectState,
+		refetchProjectState,
+		onProjectStateConflict,
 		projectRevision,
 	]);
 }

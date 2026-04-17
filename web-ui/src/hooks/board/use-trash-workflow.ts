@@ -33,7 +33,7 @@ interface UseTrashWorkflowInput {
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
-	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
+	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
 	resumeTaskFromTrash: UseTaskLifecycleResult["resumeTaskFromTrash"];
 	tryProgrammaticCardMove: (
 		taskId: string,
@@ -74,7 +74,7 @@ export function useTrashWorkflow({
 	setSessions,
 	setIsClearTrashDialogOpen,
 	stopTaskSession,
-	cleanupTaskWorkspace,
+	cleanupTaskWorktree,
 	resumeTaskFromTrash,
 	tryProgrammaticCardMove,
 	requestMoveTaskToTrashWithAnimation,
@@ -206,10 +206,10 @@ export function useTrashWorkflow({
 
 			void (async () => {
 				await stopTaskSession(taskId, { waitForExit: true });
-				await cleanupTaskWorkspace(taskId);
+				await cleanupTaskWorktree(taskId);
 			})();
 		},
-		[cleanupTaskWorkspace, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
+		[cleanupTaskWorktree, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
 	);
 
 	const handleHardDeleteTrashTask = useCallback(
@@ -275,12 +275,12 @@ export function useTrashWorkflow({
 			await Promise.all(
 				taskIds.map(async (taskId) => {
 					await stopTaskSession(taskId, { waitForExit: true });
-					await cleanupTaskWorkspace(taskId);
+					await cleanupTaskWorktree(taskId);
 				}),
 			);
 		})();
 	}, [
-		cleanupTaskWorkspace,
+		cleanupTaskWorktree,
 		selectedTaskId,
 		setBoard,
 		setIsClearTrashDialogOpen,

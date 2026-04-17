@@ -209,7 +209,7 @@ export class TerminalSlot {
 	private createVisibilityLifecycle(): SlotVisibilityLifecycle {
 		return new SlotVisibilityLifecycle(this.slotId, {
 			getTaskId: () => this.taskId,
-			getWorkspaceId: () => this.projectId,
+			getProjectId: () => this.projectId,
 			hasVisibleContainer: () => this.visibleContainer !== null,
 			hasIoSocket: () => this.sockets.hasIoSocket,
 			hasControlSocket: () => this.sockets.hasControlSocket,

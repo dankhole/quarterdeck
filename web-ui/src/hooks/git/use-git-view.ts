@@ -134,7 +134,7 @@ export function useGitView({
 	// --- Data fetching ---
 
 	const baseRef = selectedCard?.card.baseRef ?? null;
-	const taskWorkspaceStateVersion = useTaskProjectStateVersionValue(taskId);
+	const taskWorktreeStateVersion = useTaskProjectStateVersionValue(taskId);
 
 	// Uncommitted tab data
 	const isUncommittedActive = activeTab === "uncommitted";
@@ -143,7 +143,7 @@ export function useGitView({
 		isUncommittedActive ? currentProjectId : null,
 		isUncommittedActive ? baseRef : null,
 		"working_copy",
-		taskWorkspaceStateVersion,
+		taskWorktreeStateVersion,
 		isUncommittedActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
 	);
 
@@ -163,7 +163,7 @@ export function useGitView({
 		isLastTurnActive ? currentProjectId : null,
 		isLastTurnActive ? baseRef : null,
 		"last_turn",
-		taskWorkspaceStateVersion,
+		taskWorktreeStateVersion,
 		isLastTurnActive && isDocumentVisible ? POLL_INTERVAL_MS : null,
 		lastTurnViewKey,
 		true,
@@ -208,7 +208,7 @@ export function useGitView({
 		isCompareActive && hasCompareRefs ? currentProjectId : null,
 		isCompareActive ? baseRef : null,
 		"working_copy",
-		taskWorkspaceStateVersion,
+		taskWorktreeStateVersion,
 		comparePollInterval,
 		isCompareActive
 			? `compare:${compare.sourceRef}:${compare.targetRef}:${compareIncludeUncommitted ? "wt" : "refs"}:${compareDiffMode}`

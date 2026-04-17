@@ -1,9 +1,9 @@
 export {
 	createEmptyWorkdirChangesResponse,
+	getWorkdirChanges,
 	getWorkdirChangesBetweenRefs,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
-	getWorkspaceChanges,
 	type WorkdirFileDiffInput,
 } from "./get-workdir-changes";
 export { cherryPickCommit } from "./git-cherry-pick";

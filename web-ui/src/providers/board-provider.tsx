@@ -30,10 +30,10 @@ export interface BoardContextValue {
 
 	// --- Task session actions ---
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	ensureTaskWorkspace: ReturnType<typeof useTaskSessions>["ensureTaskWorkspace"];
+	ensureTaskWorktree: ReturnType<typeof useTaskSessions>["ensureTaskWorktree"];
 	startTaskSession: ReturnType<typeof useTaskSessions>["startTaskSession"];
-	cleanupTaskWorkspace: ReturnType<typeof useTaskSessions>["cleanupTaskWorkspace"];
-	fetchTaskWorkspaceInfo: ReturnType<typeof useTaskSessions>["fetchTaskWorkspaceInfo"];
+	cleanupTaskWorktree: ReturnType<typeof useTaskSessions>["cleanupTaskWorktree"];
+	fetchTaskWorktreeInfo: ReturnType<typeof useTaskSessions>["fetchTaskWorktreeInfo"];
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
@@ -115,12 +115,12 @@ export function BoardProvider({
 	// --- useTaskSessions ---
 	const {
 		upsertSession,
-		ensureTaskWorkspace,
+		ensureTaskWorktree,
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
-		cleanupTaskWorkspace,
-		fetchTaskWorkspaceInfo,
+		cleanupTaskWorktree,
+		fetchTaskWorktreeInfo,
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
@@ -175,10 +175,10 @@ export function BoardProvider({
 			selectedCard,
 			setSelectedTaskId,
 			setSessions,
-			ensureTaskWorkspace,
+			ensureTaskWorktree,
 			startTaskSession,
-			cleanupTaskWorkspace,
-			fetchTaskWorkspaceInfo,
+			cleanupTaskWorktree,
+			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
 			stopTaskSession,
 			taskEditor,
@@ -197,10 +197,10 @@ export function BoardProvider({
 			selectedCard,
 			setSelectedTaskId,
 			setSessions,
-			ensureTaskWorkspace,
+			ensureTaskWorktree,
 			startTaskSession,
-			cleanupTaskWorkspace,
-			fetchTaskWorkspaceInfo,
+			cleanupTaskWorktree,
+			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
 			stopTaskSession,
 			taskEditor,

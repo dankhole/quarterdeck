@@ -29,9 +29,9 @@ export function showNonIsolatedResumeWarning(): void {
 interface UseTaskLifecycleInput {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	selectedTaskId: string | null;
-	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
+	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 }
 
 export interface UseTaskLifecycleResult {
@@ -51,9 +51,9 @@ export interface UseTaskLifecycleResult {
 export function useTaskLifecycle({
 	setBoard,
 	selectedTaskId,
-	ensureTaskWorkspace,
+	ensureTaskWorktree,
 	startTaskSession,
-	fetchTaskWorkspaceInfo,
+	fetchTaskWorktreeInfo,
 }: UseTaskLifecycleInput): UseTaskLifecycleResult {
 	const kickoffTaskInProgress = useCallback(
 		async (
@@ -66,7 +66,7 @@ export function useTaskLifecycle({
 
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
 			if (!isNonIsolatedTask(task)) {
-				const ensured = await ensureTaskWorkspace(task);
+				const ensured = await ensureTaskWorktree(task);
 				if (!ensured.ok) {
 					notifyError(ensured.message ?? "Could not set up task worktree.");
 					if (optimisticMove) {
@@ -86,7 +86,7 @@ export function useTaskLifecycle({
 					if (ensured.response) {
 						setTaskWorktreeInfo(buildWorktreeInfoFromEnsureResponse(taskId, ensured.response));
 					}
-					const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
+					const infoAfterEnsure = await fetchTaskWorktreeInfo(task);
 					if (infoAfterEnsure) {
 						setTaskWorktreeInfo(infoAfterEnsure);
 					}
@@ -106,7 +106,7 @@ export function useTaskLifecycle({
 			}
 			return true;
 		},
-		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, setBoard, startTaskSession],
+		[ensureTaskWorktree, fetchTaskWorktreeInfo, selectedTaskId, setBoard, startTaskSession],
 	);
 
 	const resumeTaskFromTrash = useCallback(
@@ -120,7 +120,7 @@ export function useTaskLifecycle({
 
 			// Non-isolated tasks run in the home repo — no worktree to ensure.
 			if (!isNonIsolatedTask(task)) {
-				const ensured = await ensureTaskWorkspace(task);
+				const ensured = await ensureTaskWorktree(task);
 				if (!ensured.ok) {
 					notifyError(ensured.message ?? "Could not set up task worktree.");
 					revertToTrash();
@@ -151,7 +151,7 @@ export function useTaskLifecycle({
 			notifyError(resumed.message ?? "Could not resume task session.");
 			revertToTrash();
 		},
-		[ensureTaskWorkspace, setBoard, startTaskSession],
+		[ensureTaskWorktree, setBoard, startTaskSession],
 	);
 
 	return { kickoffTaskInProgress, resumeTaskFromTrash };

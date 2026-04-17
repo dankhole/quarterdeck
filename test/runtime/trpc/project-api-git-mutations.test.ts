@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
+const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	isMissingTaskWorktreeError: vi.fn(
@@ -26,13 +26,13 @@ const gitSyncMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
-	deleteTaskWorktree: workspaceTaskWorktreeMocks.deleteTaskWorktree,
+	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
-	resolveTaskCwd: workspaceTaskWorktreeMocks.resolveTaskCwd,
-	resolveTaskWorkingDirectory: workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory,
-	isMissingTaskWorktreeError: workspaceTaskWorktreeMocks.isMissingTaskWorktreeError,
-	getTaskWorkingDirectory: workspaceTaskWorktreeMocks.getTaskWorkingDirectory,
+	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
+	isMissingTaskWorktreeError: worktreeMocks.isMissingTaskWorktreeError,
+	getTaskWorkingDirectory: worktreeMocks.getTaskWorkingDirectory,
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
 
@@ -74,7 +74,7 @@ vi.mock("../../../src/workdir/git-sync.js", () => ({
 
 vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
 	createEmptyWorkdirChangesResponse: vi.fn(),
-	getWorkspaceChanges: vi.fn(),
+	getWorkdirChanges: vi.fn(),
 	getWorkdirChangesBetweenRefs: vi.fn(),
 	getWorkdirChangesFromRef: vi.fn(),
 	getWorkdirFileDiff: vi.fn(),
@@ -120,7 +120,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 
 import { createProjectApi } from "../../../src/trpc";
 
-function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
+function createProjectDeps(overrides: Record<string, unknown> = {}) {
 	return {
 		terminals: {
 			getTerminalManagerForProject: vi.fn(() => null),
@@ -140,23 +140,23 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 }
 
 const defaultScope = {
-	projectId: "workspace-1",
+	projectId: "project-1",
 	projectPath: "/tmp/repo",
 };
 
 describe("createProjectApi discardGitChanges", () => {
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		projectStateMocks.loadProjectState.mockReset();
 		gitSyncMocks.discardGitChanges.mockReset();
 
 		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [], dependencies: [] } });
 	});
 
-	it("blocks discard when task CWD resolves to the shared workspace path", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+	it("blocks discard when task CWD resolves to the shared project path", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.discardGitChanges(defaultScope, {
 			taskId: "task-1",
@@ -168,8 +168,8 @@ describe("createProjectApi discardGitChanges", () => {
 		expect(gitSyncMocks.discardGitChanges).not.toHaveBeenCalled();
 	});
 
-	it("allows discard when task CWD differs from workspace path", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+	it("allows discard when task CWD differs from project path", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.discardGitChanges.mockResolvedValue({
 			ok: true,
 			summary: {
@@ -184,7 +184,7 @@ describe("createProjectApi discardGitChanges", () => {
 			output: "",
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.discardGitChanges(defaultScope, {
 			taskId: "task-1",
@@ -228,7 +228,7 @@ describe("createProjectApi checkoutGitBranch", () => {
 			},
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
 
@@ -275,7 +275,7 @@ describe("createProjectApi checkoutGitBranch", () => {
 			output: "",
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
 
@@ -336,7 +336,7 @@ describe("createProjectApi checkoutGitBranch", () => {
 			output: "",
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.checkoutGitBranch(defaultScope, { branch: "feature/other" });
 
@@ -347,30 +347,30 @@ describe("createProjectApi checkoutGitBranch", () => {
 
 describe("createProjectApi deleteWorktree", () => {
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockReset();
+		worktreeMocks.deleteTaskWorktree.mockReset();
 	});
 
 	it("delegates to deleteTaskWorktree", async () => {
-		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
+		worktreeMocks.deleteTaskWorktree.mockResolvedValue({ ok: true });
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
 		expect(result.ok).toBe(true);
-		expect(workspaceTaskWorktreeMocks.deleteTaskWorktree).toHaveBeenCalledWith({
+		expect(worktreeMocks.deleteTaskWorktree).toHaveBeenCalledWith({
 			repoPath: "/tmp/repo",
 			taskId: "task-1",
 		});
 	});
 
 	it("returns error when delete fails", async () => {
-		workspaceTaskWorktreeMocks.deleteTaskWorktree.mockResolvedValue({
+		worktreeMocks.deleteTaskWorktree.mockResolvedValue({
 			ok: false,
 			error: "worktree not found",
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
@@ -390,7 +390,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 	};
 
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		gitSyncMocks.commitSelectedFiles.mockReset();
 	});
 
@@ -402,7 +402,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 			output: "",
 		});
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.commitSelectedFiles(defaultScope, {
@@ -416,11 +416,11 @@ describe("createProjectApi commitSelectedFiles", () => {
 			paths: ["src/file.ts"],
 			message: "test commit",
 		});
-		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
+		expect(worktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
 	});
 
 	it("resolves task worktree cwd", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.commitSelectedFiles.mockResolvedValue({
 			ok: true,
 			commitHash: "abc1234",
@@ -428,7 +428,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 			output: "",
 		});
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.commitSelectedFiles(defaultScope, {
@@ -437,7 +437,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
+		expect(worktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
 			projectPath: "/tmp/repo",
 			taskId: "task-1",
 			baseRef: "main",
@@ -450,9 +450,9 @@ describe("createProjectApi commitSelectedFiles", () => {
 	});
 
 	it("blocks shared-checkout tasks", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.commitSelectedFiles(defaultScope, {
 			taskScope: { taskId: "task-1", baseRef: "main" },
@@ -473,7 +473,7 @@ describe("createProjectApi commitSelectedFiles", () => {
 			output: "",
 		});
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.commitSelectedFiles(defaultScope, {
@@ -482,14 +482,14 @@ describe("createProjectApi commitSelectedFiles", () => {
 			message: "test commit",
 		});
 
-		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("workspace-1");
+		expect(deps.broadcaster.requestHomeRefresh).toHaveBeenCalledWith("project-1");
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
 	});
 
 	it("returns error on git failure", async () => {
 		gitSyncMocks.commitSelectedFiles.mockRejectedValue(new Error("git commit failed"));
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.commitSelectedFiles(defaultScope, {
 			taskScope: null,
@@ -514,19 +514,19 @@ describe("createProjectApi discardFile", () => {
 	};
 
 	beforeEach(() => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
+		worktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		gitSyncMocks.discardSingleFile.mockReset();
 	});
 
 	it("resolves cwd and calls discardSingleFile", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.discardSingleFile.mockResolvedValue({
 			ok: true,
 			summary: defaultSummary,
 			output: "",
 		});
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.discardFile(defaultScope, {
@@ -544,9 +544,9 @@ describe("createProjectApi discardFile", () => {
 	});
 
 	it("blocks shared-checkout tasks", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/repo");
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.discardFile(defaultScope, {
 			taskScope: { taskId: "task-1", baseRef: "main" },
@@ -560,14 +560,14 @@ describe("createProjectApi discardFile", () => {
 	});
 
 	it("refreshes task git metadata on success (task-scoped discard)", async () => {
-		workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		worktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
 		gitSyncMocks.discardSingleFile.mockResolvedValue({
 			ok: true,
 			summary: defaultSummary,
 			output: "",
 		});
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.discardFile(defaultScope, {
@@ -576,7 +576,7 @@ describe("createProjectApi discardFile", () => {
 			fileStatus: "modified",
 		});
 
-		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("workspace-1", "task-1");
+		expect(deps.broadcaster.requestTaskRefresh).toHaveBeenCalledWith("project-1", "task-1");
 		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).not.toHaveBeenCalled();
 	});
 });

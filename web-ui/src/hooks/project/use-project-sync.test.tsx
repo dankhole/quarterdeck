@@ -7,10 +7,10 @@ import { clearProjectBoardCache } from "@/runtime/project-board-cache";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
-const fetchWorkspaceStateMock = vi.hoisted(() => vi.fn());
+const fetchProjectStateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/project-state-query", () => ({
-	fetchWorkspaceState: fetchWorkspaceStateMock,
+	fetchProjectState: fetchProjectStateMock,
 }));
 
 function createBoard(taskId: string): BoardData {
@@ -41,7 +41,7 @@ function createBoard(taskId: string): BoardData {
 	};
 }
 
-function createWorkspaceState(taskId: string, revision: number): RuntimeProjectStateResponse {
+function createProjectState(taskId: string, revision: number): RuntimeProjectStateResponse {
 	return {
 		repoPath: "/tmp/project-a",
 		statePath: "/tmp/project-a/.quarterdeck",
@@ -94,13 +94,13 @@ function createSessionSummary(
 	};
 }
 
-function createWorkspaceStateWithSessions(
+function createProjectStateWithSessions(
 	taskId: string,
 	revision: number,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
 ): RuntimeProjectStateResponse {
 	return {
-		...createWorkspaceState(taskId, revision),
+		...createProjectState(taskId, revision),
 		sessions,
 	};
 }
@@ -119,8 +119,8 @@ interface HookSnapshot {
 	board: BoardData;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	canPersistProjectState: boolean;
-	refreshWorkspaceState: () => Promise<void>;
-	resetWorkspaceSyncState: () => void;
+	refreshProjectState: () => Promise<void>;
+	resetProjectSyncState: () => void;
 }
 
 function HookHarness({
@@ -136,12 +136,12 @@ function HookHarness({
 }): null {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
-	const [canPersistProjectState, setCanPersistWorkspaceState] = useState(false);
+	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
 	const boardRef = useRef(board);
 	boardRef.current = board;
 	const sessionsRef = useRef(sessions);
 	sessionsRef.current = sessions;
-	const { refreshWorkspaceState, resetWorkspaceSyncState } = useProjectSync({
+	const { refreshProjectState, resetProjectSyncState } = useProjectSync({
 		currentProjectId: "project-a",
 		streamedProjectState,
 		hasNoProjects: false,
@@ -151,7 +151,7 @@ function HookHarness({
 		sessionsRef,
 		setBoard,
 		setSessions,
-		setCanPersistWorkspaceState,
+		setCanPersistProjectState,
 	});
 
 	useEffect(() => {
@@ -159,10 +159,10 @@ function HookHarness({
 			board,
 			sessions,
 			canPersistProjectState,
-			refreshWorkspaceState,
-			resetWorkspaceSyncState,
+			refreshProjectState,
+			resetProjectSyncState,
 		});
-	}, [board, canPersistProjectState, onSnapshot, refreshWorkspaceState, resetWorkspaceSyncState, sessions]);
+	}, [board, canPersistProjectState, onSnapshot, refreshProjectState, resetProjectSyncState, sessions]);
 
 	return null;
 }
@@ -173,7 +173,7 @@ describe("useProjectSync", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		fetchWorkspaceStateMock.mockReset();
+		fetchProjectStateMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -198,7 +198,7 @@ describe("useProjectSync", () => {
 
 	it("ignores a stale refresh response after the sync state is reset during a project transition", async () => {
 		const deferred = createDeferred<RuntimeProjectStateResponse>();
-		fetchWorkspaceStateMock.mockReturnValue(deferred.promise);
+		fetchProjectStateMock.mockReturnValue(deferred.promise);
 
 		let latestSnapshot: HookSnapshot | null = null;
 		let refreshPromise: Promise<void> | null = null;
@@ -206,7 +206,7 @@ describe("useProjectSync", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createWorkspaceState("persisted-task", 1)}
+					streamedProjectState={createProjectState("persisted-task", 1)}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -222,15 +222,15 @@ describe("useProjectSync", () => {
 		expect(initialSnapshot.canPersistProjectState).toBe(true);
 
 		await act(async () => {
-			refreshPromise = initialSnapshot.refreshWorkspaceState();
+			refreshPromise = initialSnapshot.refreshProjectState();
 		});
 
 		await act(async () => {
-			initialSnapshot.resetWorkspaceSyncState();
+			initialSnapshot.resetProjectSyncState();
 		});
 
 		await act(async () => {
-			deferred.resolve(createWorkspaceState("stale-task", 1));
+			deferred.resolve(createProjectState("stale-task", 1));
 			await refreshPromise;
 		});
 
@@ -244,14 +244,14 @@ describe("useProjectSync", () => {
 
 	it("preserves newer in-memory task session summaries when refreshed project state lacks them", async () => {
 		const existingSummary = createSessionSummary("task-1", 1000, "All done");
-		fetchWorkspaceStateMock.mockResolvedValue(createWorkspaceState("persisted-task", 2));
+		fetchProjectStateMock.mockResolvedValue(createProjectState("persisted-task", 2));
 
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createWorkspaceStateWithSessions("persisted-task", 1, {
+					streamedProjectState={createProjectStateWithSessions("persisted-task", 1, {
 						"task-1": existingSummary,
 					})}
 					onSnapshot={(snapshot) => {
@@ -268,7 +268,7 @@ describe("useProjectSync", () => {
 		expect(initialSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
 
 		await act(async () => {
-			await initialSnapshot.refreshWorkspaceState();
+			await initialSnapshot.refreshProjectState();
 		});
 
 		if (latestSnapshot === null) {
@@ -287,7 +287,7 @@ describe("useProjectSync", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createWorkspaceStateWithSessions("persisted-task", 1, {
+					streamedProjectState={createProjectStateWithSessions("persisted-task", 1, {
 						"task-1": newerRunningSummary,
 					})}
 					onSnapshot={(snapshot) => {
@@ -307,7 +307,7 @@ describe("useProjectSync", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createWorkspaceStateWithSessions("persisted-task", 2, {
+					streamedProjectState={createProjectStateWithSessions("persisted-task", 2, {
 						"task-1": staleInterruptedSummary,
 					})}
 					onSnapshot={(snapshot) => {
@@ -341,7 +341,7 @@ describe("useProjectSync", () => {
 			);
 		});
 
-		expect(fetchWorkspaceStateMock).not.toHaveBeenCalled();
+		expect(fetchProjectStateMock).not.toHaveBeenCalled();
 		expect(latestSnapshot).not.toBeNull();
 	});
 });

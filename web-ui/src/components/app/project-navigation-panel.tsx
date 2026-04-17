@@ -15,7 +15,7 @@ export function ProjectNavigationPanel({
 	onReorderProjects,
 	onAddProject,
 	notificationSessions,
-	notificationWorkspaceIds,
+	notificationProjectIds,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -27,7 +27,7 @@ export function ProjectNavigationPanel({
 	onReorderProjects?: (projectOrder: string[]) => Promise<void>;
 	onAddProject: () => void;
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 }): React.ReactElement {
 	const panel = useProjectNavigationPanel({
 		projects,
@@ -35,7 +35,7 @@ export function ProjectNavigationPanel({
 		onRemoveProject,
 		onReorderProjects,
 		notificationSessions,
-		notificationWorkspaceIds,
+		notificationProjectIds,
 	});
 
 	return (

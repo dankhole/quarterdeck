@@ -197,8 +197,8 @@ export function CardDetailView({
 		[setSidePanelRatio, startSidePanelResize, sidePanelRatio],
 	);
 
-	const taskWorkspaceInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
-	const taskWorkspaceSnapshot = useTaskProjectSnapshotValue(selection.card.id);
+	const taskWorktreeInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
+	const taskWorktreeSnapshot = useTaskProjectSnapshotValue(selection.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {
@@ -217,8 +217,8 @@ export function CardDetailView({
 		board,
 		selectBranchView: taskSelectBranchView,
 		homeGitSummary,
-		taskBranch: taskWorkspaceInfo?.branch ?? selection.card.branch ?? null,
-		taskChangedFiles: taskWorkspaceSnapshot?.changedFiles ?? 0,
+		taskBranch: taskWorktreeInfo?.branch ?? selection.card.branch ?? null,
+		taskChangedFiles: taskWorktreeSnapshot?.changedFiles ?? 0,
 		skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation,
 		taskId: selection.card.id,
@@ -245,11 +245,11 @@ export function CardDetailView({
 		if (taskResolvedScope?.type === "branch_view") {
 			return taskResolvedScope.ref;
 		}
-		if (taskWorkspaceInfo?.branch) return taskWorkspaceInfo.branch;
+		if (taskWorktreeInfo?.branch) return taskWorktreeInfo.branch;
 		// When worktree info reports detached HEAD, skip stale card.branch and show commit hash
-		if (taskWorkspaceInfo?.isDetached) return taskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
-		return selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
-	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
+		if (taskWorktreeInfo?.isDetached) return taskWorktreeInfo.headCommit?.substring(0, 7) ?? null;
+		return selection.card.branch ?? taskWorktreeInfo?.headCommit?.substring(0, 7) ?? null;
+	}, [taskResolvedScope, taskWorktreeInfo, selection.card.branch]);
 
 	const taskId = selection.card.id;
 
@@ -384,19 +384,19 @@ export function CardDetailView({
 							onFileNavigationConsumed={onFileNavigationConsumed}
 							navigateToFile={navigateToFile}
 							branchStatusSlot={
-								taskWorkspaceInfo || taskWorkspaceSnapshot ? (
+								taskWorktreeInfo || taskWorktreeSnapshot ? (
 									<TaskBranchStatus
 										branchLabel={
-											taskWorkspaceInfo?.branch ??
-											taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ??
+											taskWorktreeInfo?.branch ??
+											taskWorktreeSnapshot?.headCommit?.slice(0, 8) ??
 											"initializing"
 										}
-										changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
-										additions={taskWorkspaceSnapshot?.additions ?? 0}
-										deletions={taskWorkspaceSnapshot?.deletions ?? 0}
+										changedFiles={taskWorktreeSnapshot?.changedFiles ?? 0}
+										additions={taskWorktreeSnapshot?.additions ?? 0}
+										deletions={taskWorktreeSnapshot?.deletions ?? 0}
 										isGitHistoryOpen={isGitHistoryOpen}
 										onToggleGitHistory={onToggleGitHistory}
-										isDetached={taskWorkspaceInfo?.isDetached ?? false}
+										isDetached={taskWorktreeInfo?.isDetached ?? false}
 										baseRef={selection.card.baseRef}
 									/>
 								) : undefined
@@ -418,11 +418,11 @@ export function CardDetailView({
 									scopeMode={taskScopeMode}
 									homeGitSummary={homeGitSummary}
 									taskTitle={selection.card.title}
-									taskBranch={taskWorkspaceInfo?.branch ?? selection.card.branch ?? null}
+									taskBranch={taskWorktreeInfo?.branch ?? selection.card.branch ?? null}
 									taskBaseRef={selection.card.baseRef}
-									behindBaseCount={taskWorkspaceSnapshot?.behindBaseCount ?? null}
-									isDetachedHead={taskWorkspaceInfo?.isDetached ?? false}
-									taskIsDetached={taskWorkspaceInfo?.isDetached ?? false}
+									behindBaseCount={taskWorktreeSnapshot?.behindBaseCount ?? null}
+									isDetachedHead={taskWorktreeInfo?.isDetached ?? false}
+									taskIsDetached={taskWorktreeInfo?.isDetached ?? false}
 									onSwitchToHome={onDeselectTask}
 									onReturnToContextual={taskReturnToContextual}
 									branchPillSlot={
@@ -467,7 +467,7 @@ export function CardDetailView({
 								/>
 							}
 							fileBrowserData={fileBrowserData}
-							rootPath={taskWorkspaceInfo?.path ?? selection.card.workingDirectory}
+							rootPath={taskWorktreeInfo?.path ?? selection.card.workingDirectory}
 							pendingFileNavigation={pendingFileNavigation}
 							onFileNavigationConsumed={onFileNavigationConsumed}
 							scopeKey={`${selection.card.id}-${taskScopeMode}`}

@@ -15,7 +15,7 @@ describe("createHooksApi — transitions", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 		});
 
@@ -37,7 +37,7 @@ describe("createHooksApi — transitions", () => {
 
 		const response = await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "activity",
 			metadata: {
 				source: "claude",

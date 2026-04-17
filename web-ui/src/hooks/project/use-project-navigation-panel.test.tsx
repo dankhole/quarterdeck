@@ -116,7 +116,7 @@ describe("useProjectNavigationPanel", () => {
 			projects: [makeProject("project-1"), makeProject("project-2")],
 			removingProjectId: null,
 			onRemoveProject: vi.fn(async () => true),
-			notificationWorkspaceIds: {
+			notificationProjectIds: {
 				"task-1": "project-1",
 				"task-2": "project-1",
 				"task-3": "project-2",
@@ -170,7 +170,7 @@ describe("useProjectNavigationPanel", () => {
 			onRemoveProject: vi.fn(async () => true),
 			onReorderProjects,
 			notificationSessions: {},
-			notificationWorkspaceIds: {},
+			notificationProjectIds: {},
 		});
 
 		act(() => {
@@ -190,7 +190,7 @@ describe("useProjectNavigationPanel", () => {
 			onRemoveProject: vi.fn(async () => true),
 			onReorderProjects,
 			notificationSessions: {},
-			notificationWorkspaceIds: {},
+			notificationProjectIds: {},
 		});
 
 		expect(latestValue.displayedProjects.map((project) => project.id)).toEqual([
@@ -208,7 +208,7 @@ describe("useProjectNavigationPanel", () => {
 			removingProjectId: null,
 			onRemoveProject,
 			notificationSessions: {},
-			notificationWorkspaceIds: {},
+			notificationProjectIds: {},
 		});
 
 		act(() => {

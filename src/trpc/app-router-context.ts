@@ -241,7 +241,7 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeProjectStateSaveRequest,
 		) => Promise<RuntimeProjectStateResponse>;
-		loadWorkspaceChanges: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeWorkdirChangesResponse>;
+		loadWorkdirChanges: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeWorkdirChangesResponse>;
 		loadGitLog: (scope: RuntimeTrpcProjectScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
 		loadGitRefs: (
 			scope: RuntimeTrpcProjectScope,

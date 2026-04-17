@@ -190,7 +190,7 @@ describe.sequential("server restart integration", () => {
 				},
 			});
 			expect(seedResponse.status).toBe(200);
-			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -200,8 +200,8 @@ describe.sequential("server restart integration", () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(taskWorkspaceInfo.status).toBe(200);
-			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
+			expect(taskWorktreeInfo.status).toBe(200);
+			mkdirSync(taskWorktreeInfo.payload.path, { recursive: true });
 		} finally {
 			await firstServer.stop();
 		}
@@ -232,7 +232,7 @@ describe.sequential("server restart integration", () => {
 			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("exit");
-			const workspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const worktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -242,8 +242,8 @@ describe.sequential("server restart integration", () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(workspaceInfo.status).toBe(200);
-			expect(workspaceInfo.payload.exists).toBe(true);
+			expect(worktreeInfo.status).toBe(200);
+			expect(worktreeInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();
 			cleanupProject();
@@ -311,7 +311,7 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(seedResponse.status).toBe(200);
 
-			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -321,8 +321,8 @@ describe.sequential("server restart integration", () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(taskWorkspaceInfo.status).toBe(200);
-			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
+			expect(taskWorktreeInfo.status).toBe(200);
+			mkdirSync(taskWorktreeInfo.payload.path, { recursive: true });
 		} finally {
 			await firstServer.stop();
 		}
@@ -354,7 +354,7 @@ describe.sequential("server restart integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
 
-			const workspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
+			const worktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "project.getTaskContext",
 				type: "query",
@@ -364,8 +364,8 @@ describe.sequential("server restart integration", () => {
 					baseRef: "HEAD",
 				},
 			});
-			expect(workspaceInfo.status).toBe(200);
-			expect(workspaceInfo.payload.exists).toBe(true);
+			expect(worktreeInfo.status).toBe(200);
+			expect(worktreeInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();
 			cleanupProject();

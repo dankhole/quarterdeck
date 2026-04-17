@@ -37,10 +37,10 @@ interface UseBoardInteractionsInput {
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
-	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
-	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
+	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
+	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
+	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 }
@@ -84,10 +84,10 @@ export function useBoardInteractions({
 	setIsClearTrashDialogOpen,
 	setIsGitHistoryOpen,
 	stopTaskSession,
-	cleanupTaskWorkspace,
-	ensureTaskWorkspace,
+	cleanupTaskWorktree,
+	ensureTaskWorktree,
 	startTaskSession,
-	fetchTaskWorkspaceInfo,
+	fetchTaskWorktreeInfo,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
@@ -107,9 +107,9 @@ export function useBoardInteractions({
 	const { kickoffTaskInProgress, resumeTaskFromTrash } = useTaskLifecycle({
 		setBoard,
 		selectedTaskId,
-		ensureTaskWorkspace,
+		ensureTaskWorktree,
 		startTaskSession,
-		fetchTaskWorkspaceInfo,
+		fetchTaskWorktreeInfo,
 	});
 
 	// ── Backlog task start + animation ───────────────────────────────────
@@ -135,7 +135,7 @@ export function useBoardInteractions({
 			setBoard,
 			setSelectedTaskId,
 			stopTaskSession,
-			cleanupTaskWorkspace,
+			cleanupTaskWorktree,
 			kickoffTaskInProgress,
 			startBacklogTaskWithAnimation,
 			waitForBacklogStartAnimationAvailability: waitForProgrammaticCardMoveAvailability,
@@ -188,7 +188,7 @@ export function useBoardInteractions({
 		setSessions,
 		setIsClearTrashDialogOpen,
 		stopTaskSession,
-		cleanupTaskWorkspace,
+		cleanupTaskWorktree,
 		resumeTaskFromTrash,
 		tryProgrammaticCardMove,
 		requestMoveTaskToTrashWithAnimation,

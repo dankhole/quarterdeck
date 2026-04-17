@@ -77,11 +77,11 @@ describe("shutdown coordinator timeout", () => {
 		vi.useFakeTimers();
 
 		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
-		const mockLoadWorkspaceState = vi.mocked(loadProjectState);
-		const mockSaveWorkspaceState = vi.mocked(saveProjectState);
+		const mockLoadProjectState = vi.mocked(loadProjectState);
+		const mockSaveProjectState = vi.mocked(saveProjectState);
 
 		const board = createBoard(["task-1"]);
-		mockLoadWorkspaceState.mockResolvedValue({
+		mockLoadProjectState.mockResolvedValue({
 			repoPath: "/tmp/test-project",
 			statePath: "/tmp/test-project/.quarterdeck",
 			git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
@@ -90,7 +90,7 @@ describe("shutdown coordinator timeout", () => {
 			revision: 1,
 		});
 		// saveProjectState never resolves — simulates hung filesystem I/O
-		mockSaveWorkspaceState.mockReturnValue(new Promise(() => {}));
+		mockSaveProjectState.mockReturnValue(new Promise(() => {}));
 
 		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
 		const warn = vi.fn();
@@ -99,7 +99,7 @@ describe("shutdown coordinator timeout", () => {
 			projectRegistry: {
 				listManagedProjects: () => [
 					{
-						projectId: "test-workspace",
+						projectId: "test-project",
 						projectPath: "/tmp/test-project",
 						terminalManager: createTerminalManagerStub(["task-1"]),
 					},
@@ -119,11 +119,11 @@ describe("shutdown coordinator timeout", () => {
 
 	it("completes normally when cleanup finishes within timeout", async () => {
 		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
-		const mockLoadWorkspaceState = vi.mocked(loadProjectState);
-		const mockSaveWorkspaceState = vi.mocked(saveProjectState);
+		const mockLoadProjectState = vi.mocked(loadProjectState);
+		const mockSaveProjectState = vi.mocked(saveProjectState);
 
 		const board = createBoard(["task-1"]);
-		mockLoadWorkspaceState.mockResolvedValue({
+		mockLoadProjectState.mockResolvedValue({
 			repoPath: "/tmp/test-project",
 			statePath: "/tmp/test-project/.quarterdeck",
 			git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
@@ -131,7 +131,7 @@ describe("shutdown coordinator timeout", () => {
 			sessions: {},
 			revision: 1,
 		});
-		mockSaveWorkspaceState.mockResolvedValue(undefined as never);
+		mockSaveProjectState.mockResolvedValue(undefined as never);
 
 		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
 		const warn = vi.fn();
@@ -140,7 +140,7 @@ describe("shutdown coordinator timeout", () => {
 			projectRegistry: {
 				listManagedProjects: () => [
 					{
-						projectId: "test-workspace",
+						projectId: "test-project",
 						projectPath: "/tmp/test-project",
 						terminalManager: createTerminalManagerStub(["task-1"]),
 					},

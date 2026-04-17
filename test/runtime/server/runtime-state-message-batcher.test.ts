@@ -45,7 +45,7 @@ describe("RuntimeStateMessageBatcher", () => {
 		vi.useRealTimers();
 	});
 
-	it("coalesces task summaries per workspace before flushing notifications", async () => {
+	it("coalesces task summaries per project before flushing notifications", async () => {
 		let onSummary: ((summary: RuntimeTaskSessionSummary) => void) | null = null;
 		const onTaskSessionBatch = vi.fn();
 		const onTaskNotificationBatch = vi.fn();
@@ -58,7 +58,7 @@ describe("RuntimeStateMessageBatcher", () => {
 			onDebugLogBatch: vi.fn(),
 		});
 
-		batcher.trackTerminalManager("workspace-1", {
+		batcher.trackTerminalManager("project-1", {
 			store: {
 				onChange: (listener: (summary: RuntimeTaskSessionSummary) => void) => {
 					onSummary = listener;
@@ -79,15 +79,15 @@ describe("RuntimeStateMessageBatcher", () => {
 		await vi.advanceTimersByTimeAsync(150);
 
 		expect(onTaskSessionBatch).toHaveBeenCalledOnce();
-		expect(onTaskSessionBatch).toHaveBeenCalledWith("workspace-1", [
+		expect(onTaskSessionBatch).toHaveBeenCalledWith("project-1", [
 			createSummary("task-1", 2),
 			createSummary("task-2", 3),
 		]);
-		expect(onTaskNotificationBatch).toHaveBeenCalledWith("workspace-1", [
+		expect(onTaskNotificationBatch).toHaveBeenCalledWith("project-1", [
 			createSummary("task-1", 2),
 			createSummary("task-2", 3),
 		]);
-		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("workspace-1");
+		expect(onProjectsRefreshRequested).toHaveBeenCalledWith("project-1");
 	});
 
 	it("batches debug log entries only while clients are connected", async () => {

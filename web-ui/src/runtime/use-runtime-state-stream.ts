@@ -71,7 +71,7 @@ export interface UseRuntimeStateStreamResult {
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
@@ -89,7 +89,7 @@ interface RuntimeStateStreamStore {
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
@@ -135,7 +135,7 @@ function createInitialRuntimeStateStreamStore(requestedProjectId: string | null)
 		projectState: null,
 		projectMetadata: null,
 		notificationSessions: {},
-		notificationWorkspaceIds: {},
+		notificationProjectIds: {},
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
 		latestTaskBaseRefUpdate: null,
@@ -164,12 +164,12 @@ function runtimeStateStreamReducer(
 				projectState: action.preloadedProjectState,
 				projectMetadata: null,
 				notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, preloadedSessions),
-				notificationWorkspaceIds: action.requestedProjectId
+				notificationProjectIds: action.requestedProjectId
 					? {
-							...state.notificationWorkspaceIds,
+							...state.notificationProjectIds,
 							...Object.fromEntries(preloadedSessions.map((s) => [s.taskId, action.requestedProjectId!])),
 						}
-					: state.notificationWorkspaceIds,
+					: state.notificationProjectIds,
 				streamError: null,
 				isRuntimeDisconnected: false,
 				hasReceivedSnapshot: true,
@@ -207,14 +207,14 @@ function runtimeStateStreamReducer(
 			// Seeded from the active project's sessions only; other projects'
 			// sessions arrive incrementally via `task_notification` messages.
 			notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, Object.values(snapshotSessions)),
-			notificationWorkspaceIds: action.payload.currentProjectId
+			notificationProjectIds: action.payload.currentProjectId
 				? {
-						...state.notificationWorkspaceIds,
+						...state.notificationProjectIds,
 						...Object.fromEntries(
 							Object.keys(snapshotSessions).map((taskId) => [taskId, action.payload.currentProjectId!]),
 						),
 					}
-				: state.notificationWorkspaceIds,
+				: state.notificationProjectIds,
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			latestTaskTitleUpdate: state.latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate: state.latestTaskBaseRefUpdate,
@@ -273,7 +273,7 @@ function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "project_state_updated") {
-		const mergedWorkspaceState = {
+		const mergedProjectState = {
 			...action.projectState,
 			sessions: mergeTaskSessionSummaries(
 				state.projectState?.sessions ?? {},
@@ -282,7 +282,7 @@ function runtimeStateStreamReducer(
 		};
 		return {
 			...state,
-			projectState: mergedWorkspaceState,
+			projectState: mergedProjectState,
 		};
 	}
 	if (action.type === "task_sessions_updated") {
@@ -305,8 +305,8 @@ function runtimeStateStreamReducer(
 		return {
 			...state,
 			notificationSessions: mergeTaskSessionSummaries(state.notificationSessions, action.summaries),
-			notificationWorkspaceIds: {
-				...state.notificationWorkspaceIds,
+			notificationProjectIds: {
+				...state.notificationProjectIds,
 				...Object.fromEntries(action.summaries.map((s) => [s.taskId, action.projectId])),
 			},
 		};
@@ -425,7 +425,7 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				setActiveProjectId: (id) => {
 					activeProjectId = id;
 				},
-				reconnectToWorkspace: (projectId) => {
+				reconnectToProject: (projectId) => {
 					requestedProjectForConnection = projectId;
 					dispatch({
 						type: "requested_project_changed",
@@ -485,7 +485,7 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		projectState: state.projectState,
 		projectMetadata: state.projectMetadata,
 		notificationSessions: state.notificationSessions,
-		notificationWorkspaceIds: state.notificationWorkspaceIds,
+		notificationProjectIds: state.notificationProjectIds,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: state.latestTaskBaseRefUpdate,

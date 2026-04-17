@@ -5,14 +5,14 @@ import type { RuntimeProjectStateResponse, RuntimeProjectStateSaveRequest } from
 export class ProjectStateConflictError extends Error {
 	readonly currentRevision: number;
 
-	constructor(currentRevision: number, message = "Workspace state revision conflict.") {
+	constructor(currentRevision: number, message = "Project state revision conflict.") {
 		super(message);
 		this.name = "ProjectStateConflictError";
 		this.currentRevision = currentRevision;
 	}
 }
 
-export async function fetchWorkspaceState(projectId: string): Promise<RuntimeProjectStateResponse> {
+export async function fetchProjectState(projectId: string): Promise<RuntimeProjectStateResponse> {
 	const trpcClient = createProjectTrpcClient(projectId);
 	return await trpcClient.project.getState.query();
 }

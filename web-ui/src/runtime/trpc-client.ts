@@ -8,11 +8,11 @@ interface TrpcErrorDataWithConflictRevision {
 
 type RuntimeTrpcClient = ReturnType<typeof createTRPCProxyClient<RuntimeAppRouter>>;
 
-const clientByWorkspaceId = new Map<string, RuntimeTrpcClient>();
+const clientByProjectId = new Map<string, RuntimeTrpcClient>();
 
 export function getRuntimeTrpcClient(projectId: string | null): RuntimeTrpcClient {
 	const key = projectId ?? "__unscoped__";
-	const existing = clientByWorkspaceId.get(key);
+	const existing = clientByProjectId.get(key);
 	if (existing) {
 		return existing;
 	}
@@ -24,7 +24,7 @@ export function getRuntimeTrpcClient(projectId: string | null): RuntimeTrpcClien
 			}),
 		],
 	});
-	clientByWorkspaceId.set(key, created);
+	clientByProjectId.set(key, created);
 	return created;
 }
 

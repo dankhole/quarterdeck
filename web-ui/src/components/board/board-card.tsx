@@ -110,23 +110,23 @@ export function BoardCard({
 	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
 	const closeTitleEditor = useCallback(() => setIsEditingTitle(false), []);
 
-	const reviewWorkspaceSnapshot = useTaskProjectSnapshotValue(card.id);
+	const reviewProjectSnapshot = useTaskProjectSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 
 	const isSharedCheckout = useMemo(() => {
 		const wsPath = getProjectPath();
-		if (reviewWorkspaceSnapshot?.path && wsPath) {
-			return reviewWorkspaceSnapshot.path === wsPath;
+		if (reviewProjectSnapshot?.path && wsPath) {
+			return reviewProjectSnapshot.path === wsPath;
 		}
 		return card.useWorktree === false;
-	}, [reviewWorkspaceSnapshot?.path, card.useWorktree]);
+	}, [reviewProjectSnapshot?.path, card.useWorktree]);
 
 	const isCwdDiverged = useMemo(() => {
-		if (!sessionSummary?.projectPath || !reviewWorkspaceSnapshot?.path) return false;
+		if (!sessionSummary?.projectPath || !reviewProjectSnapshot?.path) return false;
 		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
-		return sessionSummary.projectPath !== reviewWorkspaceSnapshot.path;
-	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewWorkspaceSnapshot?.path]);
+		return sessionSummary.projectPath !== reviewProjectSnapshot.path;
+	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewProjectSnapshot?.path]);
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
@@ -165,19 +165,19 @@ export function BoardCard({
 
 	const statusMarker =
 		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
-	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
+	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const effectiveBranch =
-		reviewWorkspaceSnapshot?.branch ?? (reviewWorkspaceSnapshot?.isDetached ? null : card.branch) ?? null;
+		reviewProjectSnapshot?.branch ?? (reviewProjectSnapshot?.isDetached ? null : card.branch) ?? null;
 	const reviewBranchLabel = effectiveBranch
 		? shortenBranchName(effectiveBranch)
-		: (reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? null);
-	const reviewChangeSummary = reviewWorkspaceSnapshot
-		? reviewWorkspaceSnapshot.changedFiles == null
+		: (reviewProjectSnapshot?.headCommit?.slice(0, 8) ?? null);
+	const reviewChangeSummary = reviewProjectSnapshot
+		? reviewProjectSnapshot.changedFiles == null
 			? null
 			: {
-					filesLabel: `${reviewWorkspaceSnapshot.changedFiles} ${reviewWorkspaceSnapshot.changedFiles === 1 ? "file" : "files"}`,
-					additions: reviewWorkspaceSnapshot.additions ?? 0,
-					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
+					filesLabel: `${reviewProjectSnapshot.changedFiles} ${reviewProjectSnapshot.changedFiles === 1 ? "file" : "files"}`,
+					additions: reviewProjectSnapshot.additions ?? 0,
+					deletions: reviewProjectSnapshot.deletions ?? 0,
 				}
 		: null;
 	const cancelAutomaticActionLabel =
@@ -319,11 +319,11 @@ export function BoardCard({
 								</Tooltip>
 							) : null}
 							{uncommittedChangesOnCardsEnabled &&
-							showWorkspaceStatus &&
+							showProjectStatus &&
 							!isTrashCard &&
-							(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 ? (
+							(reviewProjectSnapshot?.changedFiles ?? 0) > 0 ? (
 								<Tooltip
-									content={`${reviewWorkspaceSnapshot!.changedFiles} uncommitted change${reviewWorkspaceSnapshot!.changedFiles === 1 ? "" : "s"}`}
+									content={`${reviewProjectSnapshot!.changedFiles} uncommitted change${reviewProjectSnapshot!.changedFiles === 1 ? "" : "s"}`}
 								>
 									<span className="inline-flex items-center shrink-0">
 										<span className="block size-1.5 rounded-full bg-status-red" />
@@ -445,7 +445,7 @@ export function BoardCard({
 								) : null}
 							</div>
 						) : null}
-						{showWorkspaceStatus && reviewBranchLabel ? (
+						{showProjectStatus && reviewBranchLabel ? (
 							<TruncateTooltip content={effectiveBranch ?? reviewBranchLabel} side="top">
 								<p
 									className="font-mono kb-line-clamp-1"

@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { parseHookIngestRequest, parseTaskSessionStartRequest, parseWorktreeEnsureRequest } from "../../src/core";
 
 describe("parseHookIngestRequest", () => {
-	it("parses and trims task and workspace identifiers", () => {
+	it("parses and trims task and project identifiers", () => {
 		const parsed = parseHookIngestRequest({
 			taskId: "  task-123  ",
-			projectId: "  workspace-456  ",
+			projectId: "  project-456  ",
 			event: "to_review",
 			metadata: {
 				source: " claude ",
@@ -15,7 +15,7 @@ describe("parseHookIngestRequest", () => {
 		});
 		expect(parsed).toEqual({
 			taskId: "task-123",
-			projectId: "workspace-456",
+			projectId: "project-456",
 			event: "to_review",
 			metadata: {
 				source: "claude",

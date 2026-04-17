@@ -85,7 +85,7 @@ export function useAppActionModels({
 			currentProjectId: project.currentProjectId,
 			serverMutationInFlightRef,
 			stopTaskSession: board.stopTaskSession,
-			refreshWorkspaceState: project.refreshWorkspaceState,
+			refreshProjectState: project.refreshProjectState,
 		});
 
 	const handleMainViewChange = useCallback(
@@ -190,22 +190,22 @@ export function useAppActionModels({
 		() =>
 			Object.entries(project.notificationSessions).some(
 				([taskId, session]) =>
-					project.notificationWorkspaceIds[taskId] !== project.currentProjectId && isApprovalState(session),
+					project.notificationProjectIds[taskId] !== project.currentProjectId && isApprovalState(session),
 			)
 				? "orange"
 				: undefined,
-		[project.currentProjectId, project.notificationSessions, project.notificationWorkspaceIds],
+		[project.currentProjectId, project.notificationSessions, project.notificationProjectIds],
 	);
 
 	const boardBadgeColor: "orange" | undefined = useMemo(
 		() =>
 			Object.entries(project.notificationSessions).some(
 				([taskId, session]) =>
-					project.notificationWorkspaceIds[taskId] === project.currentProjectId && isApprovalState(session),
+					project.notificationProjectIds[taskId] === project.currentProjectId && isApprovalState(session),
 			)
 				? "orange"
 				: undefined,
-		[project.currentProjectId, project.notificationSessions, project.notificationWorkspaceIds],
+		[project.currentProjectId, project.notificationSessions, project.notificationProjectIds],
 	);
 
 	const handleBack = useCallback(() => {

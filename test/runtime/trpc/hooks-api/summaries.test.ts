@@ -18,7 +18,7 @@ describe("createHooksApi — conversation summaries", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: {
 				conversationSummaryText: "Completed the auth refactor with tests",
@@ -46,7 +46,7 @@ describe("createHooksApi — conversation summaries", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: {
 				finalMessage: "Done with the work",
@@ -72,7 +72,7 @@ describe("createHooksApi — conversation summaries", () => {
 		const longMessage = "A".repeat(100);
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: {
 				finalMessage: longMessage,
@@ -101,7 +101,7 @@ describe("createHooksApi — conversation summaries", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_in_progress",
 			metadata: {
 				source: "claude",
@@ -129,7 +129,7 @@ describe("createHooksApi — conversation summaries", () => {
 
 		await api.ingest({
 			taskId: "task-1",
-			projectId: "workspace-1",
+			projectId: "project-1",
 			event: "to_review",
 			metadata: {
 				conversationSummaryText: "Finished implementing feature",

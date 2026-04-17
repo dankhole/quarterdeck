@@ -35,17 +35,17 @@ describe.sequential("project management integration", () => {
 			port,
 		});
 
-		let workspaceAId: string | null = null;
+		let projectAId: string | null = null;
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			workspaceAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceAId).not.toBe("");
+			projectAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectAId).not.toBe("");
 
 			const addWithoutInitResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
 					path: nonGitPath,
 				},
@@ -59,7 +59,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				projectId: workspaceAId,
+				projectId: projectAId,
 			});
 			expect(projectsAfterDeclinedInit.status).toBe(200);
 			expect(projectsAfterDeclinedInit.payload.projects).toHaveLength(1);
@@ -68,7 +68,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
 					path: nonGitPath,
 					initializeGit: true,
@@ -108,42 +108,42 @@ describe.sequential("project management integration", () => {
 
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			const workspaceAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceAId).not.toBe("");
+			const projectAId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectAId).not.toBe("");
 			const expectedProjectBPath = await realpath(projectBPath).catch(() => resolve(projectBPath));
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
 					path: projectBPath,
 				},
 			});
 			expect(addProjectResponse.status).toBe(200);
 			expect(addProjectResponse.payload.ok).toBe(true);
-			const workspaceBId = addProjectResponse.payload.project?.id ?? null;
-			expect(workspaceBId).not.toBeNull();
-			if (!workspaceBId) {
-				throw new Error("Missing project id for added workspace.");
+			const projectBId = addProjectResponse.payload.project?.id ?? null;
+			expect(projectBId).not.toBeNull();
+			if (!projectBId) {
+				throw new Error("Missing project id for added project.");
 			}
 
 			streamA = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceAId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
 			);
 			const initialSnapshot = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(initialSnapshot.currentProjectId).toBe(workspaceAId);
+			expect(initialSnapshot.currentProjectId).toBe(projectAId);
 
 			const removeResponse = await requestJson<RuntimeProjectRemoveResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.remove",
 				type: "mutation",
-				projectId: workspaceAId,
+				projectId: projectAId,
 				payload: {
-					projectId: workspaceAId,
+					projectId: projectAId,
 				},
 			});
 			expect(removeResponse.status).toBe(200);
@@ -151,29 +151,29 @@ describe.sequential("project management integration", () => {
 
 			const projectsUpdated = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamProjectsMessage =>
-					message.type === "projects_updated" && message.currentProjectId === workspaceBId,
+					message.type === "projects_updated" && message.currentProjectId === projectBId,
 			)) as RuntimeStateStreamProjectsMessage;
-			expect(projectsUpdated.currentProjectId).toBe(workspaceBId);
-			expect(projectsUpdated.projects.map((project) => project.id)).toEqual([workspaceBId]);
+			expect(projectsUpdated.currentProjectId).toBe(projectBId);
+			expect(projectsUpdated.projects.map((project) => project.id)).toEqual([projectBId]);
 
 			streamB = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceBId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectBId)}`,
 			);
 			const fallbackSnapshot = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(fallbackSnapshot.currentProjectId).toBe(workspaceBId);
+			expect(fallbackSnapshot.currentProjectId).toBe(projectBId);
 			expect(fallbackSnapshot.projectState?.repoPath).toBe(expectedProjectBPath);
 
 			const projectsAfterRemoval = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				projectId: workspaceBId,
+				projectId: projectBId,
 			});
 			expect(projectsAfterRemoval.status).toBe(200);
-			expect(projectsAfterRemoval.payload.currentProjectId).toBe(workspaceBId);
-			expect(projectsAfterRemoval.payload.projects.map((project) => project.id)).toEqual([workspaceBId]);
+			expect(projectsAfterRemoval.payload.currentProjectId).toBe(projectBId);
+			expect(projectsAfterRemoval.payload.projects.map((project) => project.id)).toEqual([projectBId]);
 		} finally {
 			if (streamA) {
 				await streamA.close();

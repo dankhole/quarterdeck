@@ -13,7 +13,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 	continueMergeOrRebase: vi.fn(),
 	abortMergeOrRebase: vi.fn(),
 	runGitMergeAction: vi.fn(),
-	// Stubs required by the git-sync module mock (used by other workspace-api methods)
+	// Stubs required by the git-sync module mock (used by other project-api methods)
 	commitSelectedFiles: vi.fn(),
 	discardGitChanges: vi.fn(),
 	discardSingleFile: vi.fn(),
@@ -23,7 +23,7 @@ const gitSyncMocks = vi.hoisted(() => ({
 	createBranchFromRef: vi.fn(),
 }));
 
-const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
+const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskWorkingDirectory: vi.fn((): Promise<string> => Promise.resolve("/tmp/worktree")),
 	resolveTaskCwd: vi.fn(),
 	isMissingTaskWorktreeError: vi.fn(
@@ -76,19 +76,19 @@ vi.mock("../../../src/workdir/git-sync.js", () => ({
 }));
 
 vi.mock("../../../src/workdir/task-worktree.js", () => ({
-	deleteTaskWorktree: workspaceTaskWorktreeMocks.deleteTaskWorktree,
+	deleteTaskWorktree: worktreeMocks.deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
 	getTaskWorktreeInfo: vi.fn(),
-	resolveTaskCwd: workspaceTaskWorktreeMocks.resolveTaskCwd,
-	resolveTaskWorkingDirectory: workspaceTaskWorktreeMocks.resolveTaskWorkingDirectory,
-	isMissingTaskWorktreeError: workspaceTaskWorktreeMocks.isMissingTaskWorktreeError,
-	getTaskWorkingDirectory: workspaceTaskWorktreeMocks.getTaskWorkingDirectory,
+	resolveTaskCwd: worktreeMocks.resolveTaskCwd,
+	resolveTaskWorkingDirectory: worktreeMocks.resolveTaskWorkingDirectory,
+	isMissingTaskWorktreeError: worktreeMocks.isMissingTaskWorktreeError,
+	getTaskWorkingDirectory: worktreeMocks.getTaskWorkingDirectory,
 	pathExists: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
 	createEmptyWorkdirChangesResponse: vi.fn(),
-	getWorkspaceChanges: vi.fn(),
+	getWorkdirChanges: vi.fn(),
 	getWorkdirChangesBetweenRefs: vi.fn(),
 	getWorkdirChangesFromRef: vi.fn(),
 	validateRef: vi.fn(),
@@ -131,7 +131,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 
 import { createProjectApi } from "../../../src/trpc";
 
-function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
+function createProjectDeps(overrides: Record<string, unknown> = {}) {
 	return {
 		terminals: {
 			getTerminalManagerForProject: vi.fn(() => null),
@@ -153,7 +153,7 @@ function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 }
 
 const defaultScope = {
-	projectId: "workspace-1",
+	projectId: "project-1",
 	projectPath: "/tmp/repo",
 };
 
@@ -196,7 +196,7 @@ describe("createProjectApi conflict resolution", () => {
 			return Promise.resolve({ path, oursContent: "", theirsContent: "" });
 		});
 
-		const api = createProjectApi(createWorkspaceDeps());
+		const api = createProjectApi(createProjectDeps());
 
 		const result = await api.getConflictFiles(defaultScope, {
 			paths: ["src/index.ts", "src/utils.ts"],
@@ -214,7 +214,7 @@ describe("createProjectApi conflict resolution", () => {
 	it("resolveConflictFile calls gitResolveConflictFile", async () => {
 		gitSyncMocks.resolveConflictFile.mockResolvedValue({ ok: true });
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.resolveConflictFile(defaultScope, {
@@ -235,7 +235,7 @@ describe("createProjectApi conflict resolution", () => {
 		};
 		gitSyncMocks.continueMergeOrRebase.mockResolvedValue(continueResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.continueConflictResolution(defaultScope, {});
@@ -251,7 +251,7 @@ describe("createProjectApi conflict resolution", () => {
 		};
 		gitSyncMocks.abortMergeOrRebase.mockResolvedValue(abortResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.abortConflictResolution(defaultScope, {});
@@ -278,7 +278,7 @@ describe("createProjectApi conflict resolution", () => {
 		};
 		gitSyncMocks.runGitMergeAction.mockResolvedValue(mergeResponse);
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		const result = await api.mergeBranch(defaultScope, { branch: "feature/other" });
@@ -297,7 +297,7 @@ describe("createProjectApi conflict resolution", () => {
 	it("resolveConflictFile broadcasts metadata update", async () => {
 		gitSyncMocks.resolveConflictFile.mockResolvedValue({ ok: true });
 
-		const deps = createWorkspaceDeps();
+		const deps = createProjectDeps();
 		const api = createProjectApi(deps);
 
 		await api.resolveConflictFile(defaultScope, {
@@ -305,6 +305,6 @@ describe("createProjectApi conflict resolution", () => {
 			resolution: "theirs",
 		});
 
-		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("workspace-1", "/tmp/repo");
+		expect(deps.broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("project-1", "/tmp/repo");
 	});
 });

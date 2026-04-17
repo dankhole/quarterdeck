@@ -73,7 +73,7 @@
 				"web-ui/src/**/*.ts",
 				"web-ui/src/**/*.tsx",
 				"!web-ui/src/runtime/runtime-config-query.ts",
-				"!web-ui/src/runtime/workspace-state-query.ts"
+				"!web-ui/src/runtime/project-state-query.ts"
 			],
 			"linter": {
 				"rules": {

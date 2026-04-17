@@ -51,7 +51,7 @@ export interface UseProjectNavigationResult {
 	logLevel: "debug" | "info" | "warn" | "error";
 	debugLogEntries: RuntimeDebugLogEntry[];
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
-	notificationWorkspaceIds: Record<string, string>;
+	notificationProjectIds: Record<string, string>;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -85,7 +85,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projectState,
 		projectMetadata,
 		notificationSessions,
-		notificationWorkspaceIds,
+		notificationProjectIds,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,
@@ -339,7 +339,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		logLevel,
 		debugLogEntries,
 		notificationSessions,
-		notificationWorkspaceIds,
+		notificationProjectIds,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,

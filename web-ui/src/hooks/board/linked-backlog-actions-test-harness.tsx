@@ -87,7 +87,7 @@ export interface HookHarnessProps {
 	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
 	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
 	stopTaskSession?: (taskId: string) => Promise<void>;
-	cleanupTaskWorkspace?: (taskId: string) => Promise<unknown>;
+	cleanupTaskWorktree?: (taskId: string) => Promise<unknown>;
 	onRequestTrashConfirmation?: (
 		viewModel: TaskTrashWarningViewModel,
 		card: BoardCard,
@@ -106,7 +106,7 @@ export function HookHarness({
 	startBacklogTaskWithAnimation,
 	waitForBacklogStartAnimationAvailability,
 	stopTaskSession,
-	cleanupTaskWorkspace,
+	cleanupTaskWorktree,
 	onRequestTrashConfirmation,
 	showTrashWorktreeNotice,
 	saveTrashWorktreeNoticeDismissed,
@@ -119,7 +119,7 @@ export function HookHarness({
 		setBoard,
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		stopTaskSession: stopTaskSession ?? (async () => {}),
-		cleanupTaskWorkspace: cleanupTaskWorkspace ?? (async () => null),
+		cleanupTaskWorktree: cleanupTaskWorktree ?? (async () => null),
 		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
 		startBacklogTaskWithAnimation,
 		waitForBacklogStartAnimationAvailability,

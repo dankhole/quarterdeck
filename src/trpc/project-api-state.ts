@@ -22,7 +22,7 @@ type StateOps = Pick<
 
 export function createStateOps(ctx: ProjectApiContext): StateOps {
 	return {
-		// Called by the UI's ensureTaskWorkspace (use-task-sessions.ts) for restore-from-trash.
+		// Called by the UI's ensureTaskWorktree (use-task-sessions.ts) for restore-from-trash.
 		// The other path to ensureTaskWorktreeIfDoesntExist is startTaskSession in runtime-api.ts,
 		// which reads branch from persisted board state server-side instead.
 		ensureWorktree: async (projectScope, input) => {

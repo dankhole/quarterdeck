@@ -37,7 +37,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("shows toast when trashing from in_progress with showTrashWorktreeNotice enabled", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		const boardFactory = (): BoardData => ({
 			columns: [
@@ -57,7 +57,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -82,12 +82,12 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("shows toast when trashing from review column", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -107,12 +107,12 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("does not show toast when trashing from backlog", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -132,12 +132,12 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("does not show toast when showTrashWorktreeNotice is false", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={false}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -157,12 +157,12 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("does not show toast when skipWorkingChangeWarning bypasses the normal path", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -184,13 +184,13 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("toast action calls saveTrashWorktreeNoticeDismissed", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 		const saveTrashWorktreeNoticeDismissed = vi.fn();
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
 					onSnapshot={(snapshot) => {
@@ -216,7 +216,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("suppresses toast after showTrashWorktreeNotice prop transitions from true to false", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 
 		const boardFactory = (): BoardData => ({
 			columns: [
@@ -240,7 +240,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -261,7 +261,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={false}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -280,7 +280,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	it("full dismiss lifecycle: 'Don't show again' followed by prop update suppresses future toasts", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
-		const cleanupTaskWorkspace = vi.fn(async () => null);
+		const cleanupTaskWorktree = vi.fn(async () => null);
 		const saveTrashWorktreeNoticeDismissed = vi.fn();
 
 		const boardFactory = (): BoardData => ({
@@ -305,7 +305,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={true}
 					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
 					onSnapshot={(snapshot) => {
@@ -331,7 +331,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					cleanupTaskWorktree={cleanupTaskWorktree}
 					showTrashWorktreeNotice={false}
 					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
 					onSnapshot={(snapshot) => {
