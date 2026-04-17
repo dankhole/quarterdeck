@@ -68,6 +68,7 @@ export {
 export { ensureInitialCommit, initializeGitRepository } from "./initialize-repo";
 export { readWorkspaceFile } from "./read-workspace-file";
 export { listAllWorkspaceFiles, searchWorkspaceFiles } from "./search-workspace-files";
+export { searchWorkspaceText } from "./search-workspace-text";
 export {
 	applyTaskPatch,
 	captureTaskPatch,

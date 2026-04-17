@@ -63,6 +63,9 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={handleOpenSettings}
 					handleToggleGitHistory={handleToggleGitHistory}
 					onStartAllTasks={() => {}}
+					currentProjectId="test-project"
+					handleToggleFileFinder={() => {}}
+					handleToggleTextSearch={() => {}}
 				/>,
 			);
 		});
@@ -105,6 +108,9 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					onStartAllTasks={onStartAllTasks}
+					currentProjectId="test-project"
+					handleToggleFileFinder={() => {}}
+					handleToggleTextSearch={() => {}}
 				/>,
 			);
 		});
@@ -140,6 +146,9 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					onStartAllTasks={() => {}}
+					currentProjectId="test-project"
+					handleToggleFileFinder={() => {}}
+					handleToggleTextSearch={() => {}}
 				/>,
 			);
 		});

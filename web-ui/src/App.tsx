@@ -3,7 +3,7 @@
 // push runtime-specific orchestration down into hooks and service modules.
 
 import type { ReactElement, ReactNode } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	AppDialogs,
 	ConnectedTopBar,
@@ -14,6 +14,8 @@ import {
 } from "@/components/app";
 import { GitHistoryView } from "@/components/git";
 import { CommitPanel } from "@/components/git/panels";
+import { FileFinderOverlay } from "@/components/search/file-finder-overlay";
+import { TextSearchOverlay } from "@/components/search/text-search-overlay";
 import { CardDetailView, TaskInlineCreateCard } from "@/components/task";
 import { DetailToolbar } from "@/components/terminal";
 import { createInitialBoardData } from "@/data/board-data";
@@ -60,6 +62,7 @@ interface AppContentProps {
 	// pendingTaskStartAfterEditId state (owned by App for project-switch reset)
 	pendingTaskStartAfterEditId: string | null;
 	clearPendingTaskStartAfterEditId: () => void;
+	searchOverlayResetRef: React.MutableRefObject<() => void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,11 +98,14 @@ export default function App(): ReactElement {
 	const sessionsRef = useRef(sessions);
 	sessionsRef.current = sessions;
 
+	const searchOverlayResetRef = useRef<() => void>(() => {});
+
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
+		searchOverlayResetRef.current();
 	}, []);
 
 	return (
@@ -128,6 +134,7 @@ export default function App(): ReactElement {
 									<AppContent
 										pendingTaskStartAfterEditId={pendingTaskStartAfterEditId}
 										clearPendingTaskStartAfterEditId={() => setPendingTaskStartAfterEditId(null)}
+										searchOverlayResetRef={searchOverlayResetRef}
 									/>
 								</DialogProvider>
 							</InteractionsProvider>
@@ -144,7 +151,11 @@ export default function App(): ReactElement {
 // Reads from the 6 contexts, runs side-effect hooks, renders all JSX.
 // ---------------------------------------------------------------------------
 
-function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId }: AppContentProps): ReactElement {
+function AppContent({
+	pendingTaskStartAfterEditId,
+	clearPendingTaskStartAfterEditId,
+	searchOverlayResetRef,
+}: AppContentProps): ReactElement {
 	const project = useProjectContext();
 	const boardContext = useBoardContext();
 	const {
@@ -196,6 +207,39 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 
 	const serverMutationInFlightRef = useRef(false);
 
+	// --- Search overlay state ---
+
+	const [isFileFinderOpen, setIsFileFinderOpen] = useState(false);
+	const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
+
+	const handleToggleFileFinder = useCallback(() => {
+		setIsTextSearchOpen(false);
+		setIsFileFinderOpen((prev) => !prev);
+	}, []);
+
+	const handleToggleTextSearch = useCallback(() => {
+		setIsFileFinderOpen(false);
+		setIsTextSearchOpen((prev) => !prev);
+	}, []);
+
+	const handleSearchFileSelect = useCallback(
+		(filePath: string) => {
+			setIsFileFinderOpen(false);
+			setIsTextSearchOpen(false);
+			git.navigateToFile({ targetView: "files", filePath });
+		},
+		[git.navigateToFile],
+	);
+
+	useEffect(() => {
+		searchOverlayResetRef.current = () => {
+			setIsFileFinderOpen(false);
+			setIsTextSearchOpen(false);
+		};
+	}, [searchOverlayResetRef]);
+
+	// --- Side-effect hooks ---
+
 	useTerminalConfigSync({
 		terminalFontWeight: project.terminalFontWeight,
 	});
@@ -209,6 +253,8 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 		pendingTaskStartAfterEditId,
 		clearPendingTaskStartAfterEditId,
 		serverMutationInFlightRef,
+		handleToggleFileFinder,
+		handleToggleTextSearch,
 	});
 
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
@@ -526,6 +572,20 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 						cancelMigrate={cancelMigrate}
 						handleConfirmMigrate={handleConfirmMigrate}
 					/>
+					{isFileFinderOpen && (
+						<FileFinderOverlay
+							workspaceId={project.currentProjectId}
+							onSelect={handleSearchFileSelect}
+							onDismiss={() => setIsFileFinderOpen(false)}
+						/>
+					)}
+					{isTextSearchOpen && (
+						<TextSearchOverlay
+							workspaceId={project.currentProjectId}
+							onSelect={handleSearchFileSelect}
+							onDismiss={() => setIsTextSearchOpen(false)}
+						/>
+					)}
 				</div>
 			</LayoutCustomizationsProvider>
 		</CardActionsProvider>

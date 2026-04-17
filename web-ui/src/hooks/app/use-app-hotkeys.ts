@@ -7,6 +7,7 @@ interface UseAppHotkeysInput {
 	isDetailTerminalOpen: boolean;
 	isHomeTerminalOpen: boolean;
 	canUseCreateTaskShortcut: boolean;
+	currentProjectId: string | null;
 	handleToggleDetailTerminal: () => void;
 	handleToggleHomeTerminal: () => void;
 	handleToggleExpandDetailTerminal: () => void;
@@ -16,6 +17,8 @@ interface UseAppHotkeysInput {
 	handleToggleGitHistory: () => void;
 	onStartAllTasks: () => void;
 	handleToggleDebugLogPanel?: () => void;
+	handleToggleFileFinder: () => void;
+	handleToggleTextSearch: () => void;
 }
 
 export function useAppHotkeys({
@@ -23,6 +26,7 @@ export function useAppHotkeys({
 	isDetailTerminalOpen,
 	isHomeTerminalOpen,
 	canUseCreateTaskShortcut,
+	currentProjectId,
 	handleToggleDetailTerminal,
 	handleToggleHomeTerminal,
 	handleToggleExpandDetailTerminal,
@@ -32,6 +36,8 @@ export function useAppHotkeys({
 	handleToggleGitHistory,
 	onStartAllTasks,
 	handleToggleDebugLogPanel,
+	handleToggleFileFinder,
+	handleToggleTextSearch,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
 		"mod+j",
@@ -137,5 +143,33 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleToggleDebugLogPanel],
+	);
+
+	useHotkeys(
+		"mod+shift+t",
+		() => {
+			if (!currentProjectId) return;
+			handleToggleFileFinder();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[currentProjectId, handleToggleFileFinder],
+	);
+
+	useHotkeys(
+		"mod+shift+f",
+		() => {
+			if (!currentProjectId) return;
+			handleToggleTextSearch();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[currentProjectId, handleToggleTextSearch],
 	);
 }

@@ -31,6 +31,8 @@ interface UseAppSideEffectsInput {
 	pendingTaskStartAfterEditId: string | null;
 	clearPendingTaskStartAfterEditId: () => void;
 	serverMutationInFlightRef: MutableRefObject<boolean>;
+	handleToggleFileFinder: () => void;
+	handleToggleTextSearch: () => void;
 }
 
 export function useAppSideEffects({
@@ -43,6 +45,8 @@ export function useAppSideEffects({
 	pendingTaskStartAfterEditId,
 	clearPendingTaskStartAfterEditId,
 	serverMutationInFlightRef,
+	handleToggleFileFinder,
+	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
 	useFocusedTaskNotification({ currentProjectId: project.currentProjectId, selectedTaskId: board.selectedTaskId });
 	useBoardMetadataSync({ workspaceMetadata: project.workspaceMetadata, setBoard: board.setBoard });
@@ -107,6 +111,7 @@ export function useAppSideEffects({
 		isDetailTerminalOpen: terminal.isDetailTerminalOpen,
 		isHomeTerminalOpen: terminal.showHomeBottomTerminal,
 		canUseCreateTaskShortcut: !project.hasNoProjects && project.currentProjectId !== null,
+		currentProjectId: project.currentProjectId,
 		handleToggleDetailTerminal: terminal.handleToggleDetailTerminal,
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal: terminal.handleToggleExpandDetailTerminal,
@@ -116,6 +121,8 @@ export function useAppSideEffects({
 		handleToggleGitHistory: git.handleToggleGitHistory,
 		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
 		handleToggleDebugLogPanel: dialog.debugLogging.toggleDebugLogPanel,
+		handleToggleFileFinder,
+		handleToggleTextSearch,
 	});
 
 	useEscapeHandler({

@@ -80,6 +80,8 @@ import type {
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
+	RuntimeWorkspaceTextSearchRequest,
+	RuntimeWorkspaceTextSearchResponse,
 	RuntimeWorktreeDeleteRequest,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureRequest,
@@ -231,6 +233,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+		searchText: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceTextSearchRequest,
+		) => Promise<RuntimeWorkspaceTextSearchResponse>;
 		listFiles: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeListFilesRequest,

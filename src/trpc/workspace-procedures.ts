@@ -60,6 +60,8 @@ import {
 	runtimeWorkspaceFileSearchResponseSchema,
 	runtimeWorkspaceStateResponseSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
+	runtimeWorkspaceTextSearchRequestSchema,
+	runtimeWorkspaceTextSearchResponseSchema,
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeDeleteResponseSchema,
 	runtimeWorktreeEnsureRequestSchema,
@@ -219,6 +221,12 @@ export const workspaceRouter = t.router({
 		.output(runtimeWorkspaceFileSearchResponseSchema)
 		.query(async ({ ctx, input }) => {
 			return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
+		}),
+	searchText: workspaceProcedure
+		.input(runtimeWorkspaceTextSearchRequestSchema)
+		.output(runtimeWorkspaceTextSearchResponseSchema)
+		.query(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.searchText(ctx.workspaceScope, input);
 		}),
 	listFiles: workspaceProcedure
 		.input(runtimeListFilesRequestSchema)

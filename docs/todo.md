@@ -236,6 +236,14 @@ The yellow "needs input" indicator on the board icon sometimes shows for project
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
 
+## Search modals: scroll-to-line on text search result click
+
+When clicking a text search result in the Cmd+Shift+F modal, scroll the file content viewer to the matched line number. The `FileContentViewer` uses a virtualizer that supports `scrollToIndex()` — wire the line number through `pendingFileNavigation` (or a new prop) so the viewer scrolls to the match after opening the file.
+
+## Search modals: live preview pane
+
+Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
+
 ## Audit default branch resolution for bugs
 
 The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.

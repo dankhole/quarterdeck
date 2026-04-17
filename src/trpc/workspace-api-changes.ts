@@ -1,5 +1,10 @@
 import { TRPCError } from "@trpc/server";
-import type { RuntimeFileContentResponse, RuntimeListFilesResponse, RuntimeWorkspaceFileSearchResponse } from "../core";
+import type {
+	RuntimeFileContentResponse,
+	RuntimeListFilesResponse,
+	RuntimeWorkspaceFileSearchResponse,
+	RuntimeWorkspaceTextSearchResponse,
+} from "../core";
 import {
 	assertValidGitRef,
 	createEmptyWorkspaceChangesResponse,
@@ -16,6 +21,7 @@ import {
 	listFilesAtRef,
 	readWorkspaceFile,
 	searchWorkspaceFiles,
+	searchWorkspaceText,
 	validateGitPath,
 } from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router-context";
@@ -37,6 +43,7 @@ type ChangesOps = Pick<
 	| "loadGitRefs"
 	| "loadCommitDiff"
 	| "searchFiles"
+	| "searchText"
 	| "listFiles"
 	| "getFileContent"
 >;
@@ -239,6 +246,14 @@ export function createChangesOps(ctx: WorkspaceApiContext): ChangesOps {
 			const query = input.query.trim();
 			const files = await searchWorkspaceFiles(workspaceScope.workspacePath, query, input.limit);
 			return { query, files } satisfies RuntimeWorkspaceFileSearchResponse;
+		},
+
+		searchText: async (workspaceScope, input) => {
+			return (await searchWorkspaceText(workspaceScope.workspacePath, input.query, {
+				caseSensitive: input.caseSensitive,
+				isRegex: input.isRegex,
+				limit: input.limit,
+			})) satisfies RuntimeWorkspaceTextSearchResponse;
 		},
 
 		listFiles: async (workspaceScope, input) => {

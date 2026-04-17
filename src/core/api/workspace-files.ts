@@ -102,3 +102,31 @@ export const runtimeFileContentResponseSchema = z.object({
 	truncated: z.boolean(),
 });
 export type RuntimeFileContentResponse = z.infer<typeof runtimeFileContentResponseSchema>;
+
+export const runtimeWorkspaceTextSearchRequestSchema = z.object({
+	query: z.string().min(1).max(500),
+	caseSensitive: z.boolean().optional(),
+	isRegex: z.boolean().optional(),
+	limit: z.number().int().positive().max(500).optional(),
+});
+export type RuntimeWorkspaceTextSearchRequest = z.infer<typeof runtimeWorkspaceTextSearchRequestSchema>;
+
+export const runtimeWorkspaceTextSearchMatchSchema = z.object({
+	line: z.number().int().nonnegative(),
+	content: z.string(),
+});
+export type RuntimeWorkspaceTextSearchMatch = z.infer<typeof runtimeWorkspaceTextSearchMatchSchema>;
+
+export const runtimeWorkspaceTextSearchFileSchema = z.object({
+	path: z.string(),
+	matches: z.array(runtimeWorkspaceTextSearchMatchSchema),
+});
+export type RuntimeWorkspaceTextSearchFile = z.infer<typeof runtimeWorkspaceTextSearchFileSchema>;
+
+export const runtimeWorkspaceTextSearchResponseSchema = z.object({
+	query: z.string(),
+	files: z.array(runtimeWorkspaceTextSearchFileSchema),
+	totalMatches: z.number().int().nonnegative(),
+	truncated: z.boolean(),
+});
+export type RuntimeWorkspaceTextSearchResponse = z.infer<typeof runtimeWorkspaceTextSearchResponseSchema>;

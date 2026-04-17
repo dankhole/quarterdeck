@@ -2,6 +2,51 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Feature: file finder (Cmd+Shift+T) and text search (Cmd+Shift+F) (2026-04-17)
+
+**What:** Added two VS Code-style search overlays to the web UI — a file finder opened via Cmd+P for fuzzy filename search, and a text search opened via Cmd+Shift+F for full-text grep across the workspace using `git grep`.
+
+**Why:** Users could only browse files via the tree sidebar and had no way to search file contents from the UI. Both features are standard IDE navigation patterns that significantly speed up file discovery in large worktrees.
+
+**Approach:**
+
+1. **Backend — text search endpoint** (`src/workspace/search-workspace-text.ts`): New `searchWorkspaceText()` function using `runGit` to execute `git grep -rn --null --no-color` with flags for case sensitivity (`-i`), fixed-string (`-F`) vs extended regex (`-E`), and `--` separator to prevent flag injection. Parses NUL-delimited output (`--null` avoids colon ambiguity in file paths), groups matches by file, truncates at configurable limit (default 100). Exit code 1 returns empty results; exit code 2 throws `TRPCError({ code: "BAD_REQUEST" })` with stderr message. Wired through standard workspace procedure pattern: Zod schemas in `workspace-files.ts`, method on `workspaceApi` interface in `app-router-context.ts`, implementation in `workspace-api-changes.ts`, query procedure in `workspace-procedures.ts`.
+
+2. **Frontend — shared overlay shell** (`web-ui/src/components/search/search-overlay-shell.tsx`): Reusable component rendering a full-viewport backdrop with a centered floating panel. Escape key handled via capture-phase `keydown` listener on `document` (fires before the bubbling-phase `useEscapeHandler` in App.tsx that deselects tasks). Outside-click dismisses; panel click stops propagation. No Radix Dialog — avoids focus trap complications with hotkey toggle.
+
+3. **Frontend — file finder** (`use-file-finder.ts` + `file-finder-overlay.tsx`): Hook uses `useDebouncedEffect` (150ms) to call existing `workspace.searchFiles` endpoint with request-ID race protection (same pattern as `task-prompt-composer.tsx`). Component renders auto-focused input, scrollable results with file name/path/changed-indicator, keyboard navigation with wrap-around, selected row highlighting and `scrollIntoView`.
+
+4. **Frontend — text search** (`use-text-search.ts` + `text-search-overlay.tsx`): Hook manages query, case/regex toggles, `executeSearch()` triggered on Enter (minimum 2 characters), flat-index keyboard navigation across grouped results, and automatic re-search when toggles change. Component renders input with toggle buttons, match count summary with truncation indicator, results grouped by file with sticky headers, and inline match highlighting using regex split/match with try/catch for invalid patterns.
+
+5. **Integration** (`use-app-hotkeys.ts` + `App.tsx`): Two new `useHotkeys` calls (`mod+p` with `preventDefault: true` to suppress browser print dialog, `mod+shift+f`), both guarded by `currentProjectId !== null`. App.tsx owns `isFileFinderOpen`/`isTextSearchOpen` state with mutual exclusion (opening one closes the other). File selection calls `git.navigateToFile({ targetView: "files", filePath })` via existing `pendingFileNavigation` mechanism. Both modals close on project switch via `searchOverlayResetRef`.
+
+**Files touched:**
+- `src/core/api/workspace-files.ts` — 4 new Zod schemas (request, match, file group, response) with inferred types
+- `src/workspace/search-workspace-text.ts` — new, `searchWorkspaceText()` implementation
+- `src/workspace/index.ts` — barrel export
+- `src/trpc/app-router-context.ts` — `searchText` method on workspace API interface
+- `src/trpc/workspace-api-changes.ts` — implementation in `createChangesOps`, added to `ChangesOps` pick
+- `src/trpc/workspace-procedures.ts` — `searchText` query procedure
+- `web-ui/src/components/search/search-overlay-shell.tsx` — new, shared overlay shell
+- `web-ui/src/components/search/file-finder-overlay.tsx` — new, file finder component
+- `web-ui/src/components/search/text-search-overlay.tsx` — new, text search component
+- `web-ui/src/hooks/search/use-file-finder.ts` — new, file finder hook
+- `web-ui/src/hooks/search/use-text-search.ts` — new, text search hook
+- `web-ui/src/hooks/search/index.ts` — barrel export
+- `web-ui/src/hooks/app/use-app-hotkeys.ts` — `mod+p` and `mod+shift+f` hotkey registration
+- `web-ui/src/hooks/app/use-app-hotkeys.test.tsx` — added new required props to test harness
+- `web-ui/src/App.tsx` — overlay state, toggle handlers, file navigation integration, project-switch cleanup
+- `docs/todo.md` — added scroll-to-line and live preview pane follow-up items
+
+**Verification:** Biome lint clean, TypeScript clean, 729 runtime tests pass, 787 web-ui tests pass. Commit fca96c38.
+
+**Follow-up fixes (sanity review, commit f9cd214e):**
+- `use-text-search.ts` — Added `requestIdRef` with stale-response guards to `executeSearch`, matching the pattern in `use-file-finder.ts`. Prevents overlapping searches (e.g. toggle-triggered re-search racing a manual search) from producing stale results. Removed dead `onDismiss` parameter and its ref from the hook interface.
+- `text-search-overlay.tsx` — Replaced mutable `let flatIndex` counter (mutated inside `.map()` IIFE during render) with a precomputed `flatIndexStarts` array via `useMemo`, making the data flow explicit and safe under memoization/StrictMode.
+- `use-file-finder.ts` — Removed dead `onDismiss` parameter from hook interface (dismissal handled entirely by `SearchOverlayShell`).
+- `search-overlay-shell.tsx` — Stabilized Escape `keydown` listener with `onDismissRef` so it registers once on mount instead of re-attaching every render (the inline arrow `onDismiss` from App.tsx was causing needless listener churn).
+- `file-finder-overlay.tsx` — Updated `useFileFinder` call site to drop removed `onDismiss` prop.
+
 ## Refactor: separate dedicated terminals from shared pool policy (2026-04-17)
 
 **What:** Reassessed `web-ui/src/terminal/terminal-pool.ts` and kept the shared-slot allocation/lifecycle state machine intact, but extracted the dedicated-terminal registry into `web-ui/src/terminal/terminal-dedicated-registry.ts`. The new module now owns dedicated-terminal keying, home/detail task classification, dedicated slot creation/reuse, per-workspace disposal, dedicated iteration, and dedicated lookup helpers. `terminal-pool.ts` now stays focused on shared-slot role transitions, warmup/previous eviction timers, rotation, and the public shared-pool API, while still exposing the existing dedicated-terminal API through stable exports.
