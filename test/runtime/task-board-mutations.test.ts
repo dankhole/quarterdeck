@@ -4,6 +4,7 @@ import type { RuntimeBoardData } from "../../src/core";
 import {
 	addTaskDependency,
 	addTaskToColumn,
+	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	moveTaskToColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
@@ -53,6 +54,59 @@ describe("deleteTasksFromBoard", () => {
 		expect(deleted.deleted).toBe(true);
 		expect(deleted.deletedTaskIds.sort()).toEqual(["aaaaa", "bbbbb"]);
 		expect(deleted.board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
+	});
+});
+
+describe("canonicalizeTaskBoard", () => {
+	it("drops invalid dependencies and reorients surviving links to the backlog endpoint", () => {
+		const board = canonicalizeTaskBoard({
+			columns: [
+				{
+					id: "backlog",
+					title: "Backlog",
+					cards: [
+						{
+							id: "b",
+							title: null,
+							prompt: "Task B",
+							startInPlanMode: false,
+							autoReviewEnabled: false,
+							autoReviewMode: "commit",
+							baseRef: "main",
+							createdAt: 1,
+							updatedAt: 1,
+						},
+					],
+				},
+				{
+					id: "in_progress",
+					title: "In Progress",
+					cards: [
+						{
+							id: "a",
+							title: null,
+							prompt: "Task A",
+							startInPlanMode: false,
+							autoReviewEnabled: false,
+							autoReviewMode: "commit",
+							baseRef: "main",
+							createdAt: 1,
+							updatedAt: 1,
+						},
+					],
+				},
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [
+				{ id: "dep-1", fromTaskId: "a", toTaskId: "b", createdAt: 1 },
+				{ id: "dep-2", fromTaskId: "b", toTaskId: "a", createdAt: 2 },
+				{ id: "dep-3", fromTaskId: "a", toTaskId: "missing", createdAt: 3 },
+				{ id: "dep-4", fromTaskId: "a", toTaskId: "a", createdAt: 4 },
+			],
+		});
+
+		expect(board.dependencies).toEqual([{ id: "dep-1", fromTaskId: "b", toTaskId: "a", createdAt: 1 }]);
 	});
 });
 

@@ -7,9 +7,11 @@ import { Terminal } from "@xterm/xterm";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { SlotDomHost } from "@/terminal/slot-dom-host";
 import { SlotRenderer } from "@/terminal/slot-renderer";
 import { SlotResizeManager } from "@/terminal/slot-resize-manager";
 import { SlotSocketManager } from "@/terminal/slot-socket-manager";
+import { SlotVisibilityLifecycle } from "@/terminal/slot-visibility-lifecycle";
 import { SlotWriteQueue } from "@/terminal/slot-write-queue";
 import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
@@ -27,7 +29,6 @@ const log = createClientLogger("terminal-slot");
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const INTERRUPT_IDLE_SETTLE_MS = 250;
-const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
 
 export { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 export type { PersistentTerminalAppearance } from "@/terminal/terminal-options";
@@ -42,28 +43,6 @@ interface PersistentTerminalSubscriber {
 	onExit?: (taskId: string, exitCode: number | null) => void;
 }
 
-function getParkingRoot(): HTMLDivElement {
-	const existingRoot = document.getElementById(PARKING_ROOT_ID);
-	if (existingRoot instanceof HTMLDivElement) {
-		return existingRoot;
-	}
-	const root = document.createElement("div");
-	root.id = PARKING_ROOT_ID;
-	root.setAttribute("aria-hidden", "true");
-	Object.assign(root.style, {
-		position: "fixed",
-		left: "-10000px",
-		top: "-10000px",
-		width: "1px",
-		height: "1px",
-		overflow: "hidden",
-		opacity: "0",
-		pointerEvents: "none",
-	});
-	document.body.appendChild(root);
-	return root;
-}
-
 /** Update the global font weight state used when constructing new terminals. */
 export function updateGlobalTerminalFontWeight(weight: number): void {
 	currentTerminalFontWeight = weight;
@@ -73,9 +52,8 @@ export class TerminalSlot {
 	readonly slotId: number;
 	private readonly terminal: Terminal;
 	private readonly fitAddon = new FitAddon();
-	private readonly hostElement: HTMLDivElement;
+	private readonly domHost = new SlotDomHost();
 	private readonly subscribers = new Set<PersistentTerminalSubscriber>();
-	private readonly parkingRoot: HTMLDivElement;
 	private readonly unicode11Addon = new Unicode11Addon();
 	// This identifies one browser viewer, not the PTY session itself.
 	// The server uses it to keep per-tab restore and socket state while all tabs
@@ -88,17 +66,14 @@ export class TerminalSlot {
 	private lastError: string | null = null;
 	private readonly resizer: SlotResizeManager;
 	private readonly renderer: SlotRenderer;
-	private visibleContainer: HTMLDivElement | null = null;
-	/** The container the hostElement is physically in the DOM (set by pool or dedicated caller). */
-	private stageContainer: HTMLDivElement | null = null;
 	private readonly sockets: SlotSocketManager;
+	private readonly visibilityLifecycle: SlotVisibilityLifecycle;
 	/** Deferred focus — set by show() when autoFocus is requested before restore completes. */
 	private pendingAutoFocus = false;
 	private readonly writeQueue: SlotWriteQueue;
 	private disposed = false;
 	/** One-shot callback fired when notifyConnectionReady() runs, then cleared. */
 	private onceConnectionReadyCallback: (() => void) | null = null;
-	private visibilityChangeHandler: (() => void) | null = null;
 	private connectTimestamp: number | null = null;
 	private showTimestamp: number | null = null;
 	private restoreRequestTimestamp: number | null = null;
@@ -106,19 +81,47 @@ export class TerminalSlot {
 	constructor(slotId: number, appearance: PersistentTerminalAppearance) {
 		this.slotId = slotId;
 		this.appearance = appearance;
-		this.parkingRoot = getParkingRoot();
-		this.hostElement = document.createElement("div");
-		Object.assign(this.hostElement.style, {
-			width: "100%",
-			height: "100%",
-			position: "absolute",
-			inset: "0",
-			visibility: "hidden",
-		});
-		this.parkingRoot.appendChild(this.hostElement);
-		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+		this.terminal = this.createTerminal();
+		this.sockets = this.createSocketManager();
+		this.writeQueue = this.createWriteQueue();
+		this.initializeTerminalAddons();
+		this.configureTerminalIoForwarding();
+		this.configureCustomKeyHandling();
 
-		this.terminal = new Terminal({
+		this.renderer = new SlotRenderer(this.slotId, this.terminal, this.hostElement, this.fitAddon, {
+			forceResize: () => this.forceResize(),
+			getStageContainer: () => this.stageContainer,
+			getVisibleContainer: () => this.visibleContainer,
+			isDisposed: () => this.disposed,
+		});
+		this.resizer = new SlotResizeManager(this.terminal, this.fitAddon, {
+			sendControlMessage: (msg) => this.sockets.sendControl(msg),
+			reportGeometry: reportTerminalGeometry,
+			getConnectedTaskId: () => this.connectedTaskId,
+			getVisibleContainer: () => this.visibleContainer,
+			getStageContainer: () => this.stageContainer,
+		});
+		this.renderer.openWhenFontsReady();
+		this.visibilityLifecycle = this.createVisibilityLifecycle();
+		// No ensureConnected() — the pool controls IO state via connectToTask().
+	}
+
+	private get hostElement(): HTMLDivElement {
+		return this.domHost.hostElement;
+	}
+
+	private get visibleContainer(): HTMLDivElement | null {
+		return this.domHost.visibleContainer;
+	}
+
+	/** The container the hostElement is physically in the DOM (set by pool or dedicated caller). */
+	private get stageContainer(): HTMLDivElement | null {
+		return this.domHost.stageContainer;
+	}
+
+	private createTerminal(): Terminal {
+		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+		return new Terminal({
 			...createQuarterdeckTerminalOptions({
 				cursorColor: this.appearance.cursorColor,
 				fontWeight: currentTerminalFontWeight,
@@ -129,7 +132,10 @@ export class TerminalSlot {
 			cols: initialGeometry.cols,
 			rows: initialGeometry.rows,
 		});
-		this.sockets = new SlotSocketManager(this.slotId, this.clientId, {
+	}
+
+	private createSocketManager(): SlotSocketManager {
+		return new SlotSocketManager(this.slotId, this.clientId, {
 			enqueueWrite: (data, options) => {
 				void this.writeQueue.enqueue(data, options);
 			},
@@ -151,16 +157,25 @@ export class TerminalSlot {
 			getStageContainer: () => this.stageContainer,
 			isDisposed: () => this.disposed,
 		});
-		this.writeQueue = new SlotWriteQueue(this.terminal, {
+	}
+
+	private createWriteQueue(): SlotWriteQueue {
+		return new SlotWriteQueue(this.terminal, {
 			sendControlMessage: (msg) => this.sockets.sendControl(msg),
 			notifyOutputText: (text) => this.notifyOutputText(text),
 			isDisposed: () => this.disposed,
 		});
+	}
+
+	private initializeTerminalAddons(): void {
 		this.terminal.loadAddon(this.fitAddon);
 		this.terminal.loadAddon(new ClipboardAddon());
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
+	}
+
+	private configureTerminalIoForwarding(): void {
 		this.terminal.onData((data) => {
 			this.sockets.sendIo(data);
 		});
@@ -171,6 +186,9 @@ export class TerminalSlot {
 			}
 			this.sockets.sendIo(bytes);
 		});
+	}
+
+	private configureCustomKeyHandling(): void {
 		this.terminal.attachCustomKeyEventHandler((event) => {
 			if (event.key === "Enter" && event.shiftKey) {
 				if (event.type === "keydown") {
@@ -186,38 +204,22 @@ export class TerminalSlot {
 			}
 			return true;
 		});
+	}
 
-		this.renderer = new SlotRenderer(this.slotId, this.terminal, this.hostElement, this.fitAddon, {
-			forceResize: () => this.forceResize(),
-			getStageContainer: () => this.stageContainer,
-			getVisibleContainer: () => this.visibleContainer,
+	private createVisibilityLifecycle(): SlotVisibilityLifecycle {
+		return new SlotVisibilityLifecycle(this.slotId, {
+			getTaskId: () => this.taskId,
+			getWorkspaceId: () => this.workspaceId,
+			hasVisibleContainer: () => this.visibleContainer !== null,
+			hasIoSocket: () => this.sockets.hasIoSocket,
+			hasControlSocket: () => this.sockets.hasControlSocket,
+			refreshTerminal: () => this.terminal.refresh(0, this.terminal.rows - 1),
+			reconnectSockets: (taskId, workspaceId) => {
+				this.sockets.connectIo(taskId, workspaceId);
+				this.sockets.connectControl(taskId, workspaceId);
+			},
 			isDisposed: () => this.disposed,
 		});
-		this.resizer = new SlotResizeManager(this.terminal, this.fitAddon, {
-			sendControlMessage: (msg) => this.sockets.sendControl(msg),
-			reportGeometry: reportTerminalGeometry,
-			getConnectedTaskId: () => this.connectedTaskId,
-			getVisibleContainer: () => this.visibleContainer,
-			getStageContainer: () => this.stageContainer,
-		});
-		this.renderer.openWhenFontsReady();
-		// Repaint when the browser tab returns to foreground — GPU may have evicted
-		// textures or skipped frames while backgrounded. Also reconnect dead sockets
-		// (e.g. after the computer wakes from sleep).
-		this.visibilityChangeHandler = () => {
-			if (document.visibilityState === "visible" && this.visibleContainer && !this.disposed) {
-				log.debug(`slot ${this.slotId} tab-return refresh`, { task: this.taskId });
-				this.terminal.refresh(0, this.terminal.rows - 1);
-				// Reconnect sockets that died during sleep/background.
-				if (this.taskId && this.workspaceId && (!this.sockets.hasIoSocket || !this.sockets.hasControlSocket)) {
-					log.info(`slot ${this.slotId} tab-return reconnecting dead sockets`, { task: this.taskId });
-					this.sockets.connectIo(this.taskId, this.workspaceId);
-					this.sockets.connectControl(this.taskId, this.workspaceId);
-				}
-			}
-		};
-		document.addEventListener("visibilitychange", this.visibilityChangeHandler);
-		// No ensureConnected() — the pool controls IO state via connectToTask().
 	}
 
 	/** The task this slot is currently connected to, or null if idle. */
@@ -264,21 +266,7 @@ export class TerminalSlot {
 		const previousTaskId = this.taskId;
 
 		this.sockets.closeAll();
-
-		// Clear ALL task-specific state synchronously before any await.
-		// The pool may reuse this slot immediately via connectToTask() — if state
-		// mutation happened after the await, the async tail would clobber the new
-		// task's connection (taskId, subscribers, buffer).
-		this.sockets.resetConnectionState();
-		this.pendingAutoFocus = false;
-		this.latestSummary = null;
-		this.lastError = null;
-		this.restoreRequestTimestamp = null;
-		clearTerminalGeometry(previousTaskId);
-		this.taskId = null;
-		this.workspaceId = null;
-		this.subscribers.clear();
-		this.onceConnectionReadyCallback = null;
+		this.resetDisconnectedTaskState(previousTaskId);
 
 		await this.writeQueue.drain();
 		if (!this.taskId) {
@@ -354,11 +342,26 @@ export class TerminalSlot {
 		}
 	}
 
+	private resetDisconnectedTaskState(previousTaskId: string): void {
+		// Clear ALL task-specific state synchronously before any await.
+		// The pool may reuse this slot immediately via connectToTask() — if state
+		// mutation happened after the await, the async tail would clobber the new
+		// task's connection (taskId, subscribers, buffer).
+		this.sockets.resetConnectionState();
+		this.pendingAutoFocus = false;
+		this.latestSummary = null;
+		this.lastError = null;
+		this.restoreRequestTimestamp = null;
+		clearTerminalGeometry(previousTaskId);
+		this.taskId = null;
+		this.workspaceId = null;
+		this.subscribers.clear();
+		this.onceConnectionReadyCallback = null;
+	}
+
 	/** Reveal the host element if it was deferred during restore. */
 	private ensureVisible(): void {
-		if (this.visibleContainer) {
-			this.hostElement.style.visibility = "visible";
-		}
+		this.domHost.reveal();
 	}
 
 	private forceResize(): void {
@@ -371,6 +374,16 @@ export class TerminalSlot {
 		rows: number | null | undefined,
 	): Promise<void> {
 		const t0 = performance.now();
+		await this.applyRestoreSnapshot(snapshot, cols, rows);
+		this.logRestoreTiming(t0, snapshot.length);
+		this.finalizeRestorePresentation();
+	}
+
+	private async applyRestoreSnapshot(
+		snapshot: string,
+		cols: number | null | undefined,
+		rows: number | null | undefined,
+	): Promise<void> {
 		this.resizer.invalidate();
 		await this.writeQueue.drain();
 		this.terminal.reset();
@@ -380,9 +393,12 @@ export class TerminalSlot {
 		if (snapshot) {
 			await this.writeQueue.enqueue(snapshot);
 		}
+	}
+
+	private logRestoreTiming(startTime: number, snapshotLength: number): void {
 		log.debug(`[perf] slot ${this.slotId} restore applied`, {
-			elapsedMs: (performance.now() - t0).toFixed(1),
-			snapshotLength: snapshot.length,
+			elapsedMs: (performance.now() - startTime).toFixed(1),
+			snapshotLength,
 		});
 		if (this.restoreRequestTimestamp !== null) {
 			log.debug(`[perf] slot ${this.slotId} restore round-trip`, {
@@ -390,6 +406,9 @@ export class TerminalSlot {
 			});
 			this.restoreRequestTimestamp = null;
 		}
+	}
+
+	private finalizeRestorePresentation(): void {
 		// Post-restore: fit BEFORE reveal so scroll position is correct.
 		if (this.sockets.hasIoSocket && (this.visibleContainer ?? this.stageContainer)) {
 			this.resizer.request();
@@ -471,13 +490,11 @@ export class TerminalSlot {
 	attachToStageContainer(container: HTMLDivElement): void {
 		if (this.disposed) return;
 		if (this.stageContainer === container) return;
-		const hadPrevious = this.stageContainer !== null;
-		this.stageContainer = container;
-		container.appendChild(this.hostElement);
+		const { hadPreviousStage } = this.domHost.attachToStageContainer(container);
 		// Size to real container dimensions now that we're in the DOM properly.
 		this.fitAddon.fit();
 		log.debug(`slot ${this.slotId} staged`, {
-			reparent: hadPrevious,
+			reparent: hadPreviousStage,
 			cols: this.terminal.cols,
 			rows: this.terminal.rows,
 		});
@@ -519,7 +536,7 @@ export class TerminalSlot {
 		// No network, no SIGWINCH, no atlas clear.
 		this.terminal.refresh(0, this.terminal.rows - 1);
 
-		this.visibleContainer = this.stageContainer;
+		this.domHost.markVisible();
 
 		if (this.stageContainer) {
 			this.resizer.observe(this.stageContainer);
@@ -552,7 +569,7 @@ export class TerminalSlot {
 
 		// Reveal only after fit + scroll are applied.
 		if (shouldReveal) {
-			this.hostElement.style.visibility = "visible";
+			this.domHost.reveal();
 		}
 		log.debug(`[perf] slot ${this.slotId} show complete`, {
 			elapsedMs: (performance.now() - this.showTimestamp!).toFixed(1),
@@ -569,11 +586,10 @@ export class TerminalSlot {
 		this.resizer.disconnect();
 		this.renderer.clearDprListener();
 		this.pendingAutoFocus = false;
-		this.visibleContainer = null;
 		if (this.connectedTaskId) {
 			clearTerminalGeometry(this.connectedTaskId);
 		}
-		this.hostElement.style.visibility = "hidden";
+		this.domHost.hide();
 	}
 
 	/**
@@ -585,8 +601,7 @@ export class TerminalSlot {
 	park(): void {
 		if (this.disposed) return;
 		log.debug(`slot ${this.slotId} parked`, { task: this.taskId });
-		this.stageContainer = null;
-		this.parkingRoot.appendChild(this.hostElement);
+		this.domHost.park();
 	}
 
 	get sessionState(): string | null {
@@ -750,15 +765,12 @@ export class TerminalSlot {
 		log.debug(`slot ${this.slotId} dispose`, { task: this.taskId });
 		this.disposed = true;
 		this.hide();
-		this.stageContainer = null;
-		if (this.visibilityChangeHandler) {
-			document.removeEventListener("visibilitychange", this.visibilityChangeHandler);
-			this.visibilityChangeHandler = null;
-		}
+		this.domHost.park();
+		this.visibilityLifecycle.dispose();
 		this.sockets.closeAll();
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
 		this.terminal.dispose();
-		this.hostElement.remove();
+		this.domHost.dispose();
 	}
 }

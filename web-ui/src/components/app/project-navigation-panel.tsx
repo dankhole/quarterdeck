@@ -8,7 +8,7 @@ import {
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, GripVertical, Lightbulb, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -25,12 +25,12 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import { statusPillColors } from "@/data/column-colors";
+import { useProjectNavigationPanel } from "@/hooks/project";
 import type { RuntimeProjectSummary, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
-import { isApprovalState } from "@/utils/session-status";
 
 interface TaskCountBadge {
 	id: string;
@@ -65,76 +65,14 @@ export function ProjectNavigationPanel({
 	notificationSessions: Record<string, RuntimeTaskSessionSummary>;
 	notificationWorkspaceIds: Record<string, string>;
 }): React.ReactElement {
-	const canReorder = projects.length > 1 && onReorderProjects !== undefined;
-
-	const needsInputByProject = useMemo(() => {
-		const counts: Record<string, number> = {};
-		for (const [taskId, session] of Object.entries(notificationSessions)) {
-			if (isApprovalState(session)) {
-				const projectId = notificationWorkspaceIds[taskId];
-				if (projectId) {
-					counts[projectId] = (counts[projectId] ?? 0) + 1;
-				}
-			}
-		}
-		return counts;
-	}, [notificationSessions, notificationWorkspaceIds]);
-
-	const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
-	const prevProjectIdsRef = useRef<string>("");
-
-	const displayedProjects = useMemo(() => {
-		if (!optimisticOrder) {
-			return projects;
-		}
-		const projectsById = new Map(projects.map((p) => [p.id, p]));
-		const currentIds = projects.map((p) => p.id).join(",");
-		if (currentIds !== prevProjectIdsRef.current) {
-			prevProjectIdsRef.current = currentIds;
-			setOptimisticOrder(null);
-			return projects;
-		}
-		const ordered: RuntimeProjectSummary[] = [];
-		for (const id of optimisticOrder) {
-			const project = projectsById.get(id);
-			if (project) {
-				ordered.push(project);
-			}
-		}
-		for (const project of projects) {
-			if (!optimisticOrder.includes(project.id)) {
-				ordered.push(project);
-			}
-		}
-		return ordered;
-	}, [optimisticOrder, projects]);
-
-	const handleDragEnd = useCallback(
-		(result: DropResult) => {
-			if (!result.destination || result.source.index === result.destination.index || !onReorderProjects) {
-				return;
-			}
-			const reordered = Array.from(displayedProjects);
-			const [moved] = reordered.splice(result.source.index, 1);
-			if (moved !== undefined) {
-				reordered.splice(result.destination.index, 0, moved);
-			}
-			const newOrder = reordered.map((p) => p.id);
-			prevProjectIdsRef.current = projects.map((p) => p.id).join(",");
-			setOptimisticOrder(newOrder);
-			void onReorderProjects(newOrder);
-		},
-		[onReorderProjects, displayedProjects, projects],
-	);
-
-	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
-	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
-	const pendingProjectTaskCount = pendingProjectRemoval
-		? pendingProjectRemoval.taskCounts.backlog +
-			pendingProjectRemoval.taskCounts.in_progress +
-			pendingProjectRemoval.taskCounts.review +
-			pendingProjectRemoval.taskCounts.trash
-		: 0;
+	const panel = useProjectNavigationPanel({
+		projects,
+		removingProjectId,
+		onRemoveProject,
+		onReorderProjects,
+		notificationSessions,
+		notificationWorkspaceIds,
+	});
 
 	return (
 		<div className="flex flex-col min-h-0 overflow-hidden bg-surface-1 flex-1">
@@ -158,59 +96,17 @@ export function ProjectNavigationPanel({
 					</div>
 				) : null}
 
-				<DragDropContext onDragEnd={handleDragEnd}>
-					<Droppable droppableId="project-list">
-						{(droppableProvided) => (
-							<div ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-								{displayedProjects.map((project, index) => (
-									<Draggable
-										key={project.id}
-										draggableId={project.id}
-										index={index}
-										isDragDisabled={!canReorder}
-									>
-										{(draggableProvided, draggableSnapshot) => {
-											const row = (
-												<div
-													ref={draggableProvided.innerRef}
-													{...draggableProvided.draggableProps}
-													style={{
-														...draggableProvided.draggableProps.style,
-														marginBottom: 4,
-													}}
-												>
-													<ProjectRow
-														project={project}
-														isCurrent={currentProjectId === project.id}
-														removingProjectId={removingProjectId}
-														needsInputCount={needsInputByProject[project.id] ?? 0}
-														showDragHandle={canReorder}
-														dragHandleProps={draggableProvided.dragHandleProps}
-														isDragging={draggableSnapshot.isDragging}
-														onSelect={onSelectProject}
-														onPreload={onPreloadProject}
-														onRemove={(projectId) => {
-															const found = displayedProjects.find((item) => item.id === projectId);
-															if (!found) {
-																return;
-															}
-															setPendingProjectRemoval(found);
-														}}
-													/>
-												</div>
-											);
-											if (draggableSnapshot.isDragging && typeof document !== "undefined") {
-												return createPortal(row, document.body);
-											}
-											return row;
-										}}
-									</Draggable>
-								))}
-								{droppableProvided.placeholder}
-							</div>
-						)}
-					</Droppable>
-				</DragDropContext>
+				<ProjectList
+					projects={panel.displayedProjects}
+					currentProjectId={currentProjectId}
+					removingProjectId={removingProjectId}
+					needsInputByProject={panel.needsInputByProject}
+					canReorder={panel.canReorder}
+					onDragEnd={panel.handleDragEnd}
+					onSelectProject={onSelectProject}
+					onPreloadProject={onPreloadProject}
+					onRequestProjectRemoval={panel.requestProjectRemoval}
+				/>
 
 				{!isLoadingProjects ? (
 					<button
@@ -229,10 +125,10 @@ export function ProjectNavigationPanel({
 			<ShortcutsCard />
 			<BetaNotice />
 			<AlertDialog
-				open={pendingProjectRemoval !== null}
+				open={panel.pendingProjectRemoval !== null}
 				onOpenChange={(open) => {
-					if (!open && !isProjectRemovalPending) {
-						setPendingProjectRemoval(null);
+					if (!open) {
+						panel.closeProjectRemovalDialog();
 					}
 				}}
 			>
@@ -242,10 +138,10 @@ export function ProjectNavigationPanel({
 				<AlertDialogBody>
 					<AlertDialogDescription asChild>
 						<div className="flex flex-col gap-3">
-							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}</p>
+							<p>{panel.pendingProjectRemoval ? panel.pendingProjectRemoval.name : "This project"}</p>
 							<p className="text-text-primary">
-								This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces, and stop
-								any running processes for this project.
+								This will delete all project tasks ({panel.pendingProjectTaskCount}), remove task workspaces,
+								and stop any running processes for this project.
 							</p>
 							<p className="text-text-primary">This action cannot be undone.</p>
 						</div>
@@ -255,11 +151,9 @@ export function ProjectNavigationPanel({
 					<AlertDialogCancel asChild>
 						<Button
 							variant="default"
-							disabled={isProjectRemovalPending}
+							disabled={panel.isProjectRemovalPending}
 							onClick={() => {
-								if (!isProjectRemovalPending) {
-									setPendingProjectRemoval(null);
-								}
+								panel.closeProjectRemovalDialog();
 							}}
 						>
 							Cancel
@@ -268,18 +162,10 @@ export function ProjectNavigationPanel({
 					<AlertDialogAction asChild>
 						<Button
 							variant="danger"
-							disabled={isProjectRemovalPending}
-							onClick={async () => {
-								if (!pendingProjectRemoval) {
-									return;
-								}
-								const removed = await onRemoveProject(pendingProjectRemoval.id);
-								if (removed) {
-									setPendingProjectRemoval(null);
-								}
-							}}
+							disabled={panel.isProjectRemovalPending}
+							onClick={panel.confirmProjectRemoval}
 						>
-							{isProjectRemovalPending ? (
+							{panel.isProjectRemovalPending ? (
 								<>
 									<Spinner size={14} />
 									Removing...
@@ -293,6 +179,117 @@ export function ProjectNavigationPanel({
 			</AlertDialog>
 		</div>
 	);
+}
+
+function ProjectList({
+	projects,
+	currentProjectId,
+	removingProjectId,
+	needsInputByProject,
+	canReorder,
+	onDragEnd,
+	onSelectProject,
+	onPreloadProject,
+	onRequestProjectRemoval,
+}: {
+	projects: RuntimeProjectSummary[];
+	currentProjectId: string | null;
+	removingProjectId: string | null;
+	needsInputByProject: Record<string, number>;
+	canReorder: boolean;
+	onDragEnd: (result: DropResult) => void;
+	onSelectProject: (projectId: string) => void;
+	onPreloadProject?: (projectId: string) => void;
+	onRequestProjectRemoval: (projectId: string) => void;
+}): React.ReactElement {
+	return (
+		<DragDropContext onDragEnd={onDragEnd}>
+			<Droppable droppableId="project-list">
+				{(droppableProvided) => (
+					<div ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+						{projects.map((project, index) => (
+							<DraggableProjectRow
+								key={project.id}
+								project={project}
+								index={index}
+								isCurrent={currentProjectId === project.id}
+								removingProjectId={removingProjectId}
+								needsInputCount={needsInputByProject[project.id] ?? 0}
+								showDragHandle={canReorder}
+								isDragDisabled={!canReorder}
+								onSelect={onSelectProject}
+								onPreload={onPreloadProject}
+								onRemove={onRequestProjectRemoval}
+							/>
+						))}
+						{droppableProvided.placeholder}
+					</div>
+				)}
+			</Droppable>
+		</DragDropContext>
+	);
+}
+
+function DraggableProjectRow({
+	project,
+	index,
+	isCurrent,
+	removingProjectId,
+	needsInputCount,
+	showDragHandle,
+	isDragDisabled,
+	onSelect,
+	onPreload,
+	onRemove,
+}: {
+	project: RuntimeProjectSummary;
+	index: number;
+	isCurrent: boolean;
+	removingProjectId: string | null;
+	needsInputCount: number;
+	showDragHandle: boolean;
+	isDragDisabled: boolean;
+	onSelect: (projectId: string) => void;
+	onPreload?: (projectId: string) => void;
+	onRemove: (projectId: string) => void;
+}): React.ReactElement {
+	return (
+		<Draggable draggableId={project.id} index={index} isDragDisabled={isDragDisabled}>
+			{(draggableProvided, draggableSnapshot) => {
+				const row = (
+					<div
+						ref={draggableProvided.innerRef}
+						{...draggableProvided.draggableProps}
+						style={{
+							...draggableProvided.draggableProps.style,
+							marginBottom: 4,
+						}}
+					>
+						<ProjectRow
+							project={project}
+							isCurrent={isCurrent}
+							removingProjectId={removingProjectId}
+							needsInputCount={needsInputCount}
+							showDragHandle={showDragHandle}
+							dragHandleProps={draggableProvided.dragHandleProps}
+							isDragging={draggableSnapshot.isDragging}
+							onSelect={onSelect}
+							onPreload={onPreload}
+							onRemove={onRemove}
+						/>
+					</div>
+				);
+				return renderDraggedProjectRowInPortal(row, draggableSnapshot.isDragging);
+			}}
+		</Draggable>
+	);
+}
+
+function renderDraggedProjectRowInPortal(row: React.ReactElement, isDragging: boolean): React.ReactElement {
+	if (isDragging && typeof document !== "undefined") {
+		return createPortal(row, document.body);
+	}
+	return row;
 }
 
 const ONBOARDING_TIPS = [
@@ -512,38 +509,7 @@ function ProjectRow({
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const taskCountBadges: TaskCountBadge[] = [
-		{
-			id: "backlog",
-			title: "Backlog",
-			shortLabel: "B",
-			toneClassName: statusPillColors.backlog,
-			count: project.taskCounts.backlog,
-		},
-		{
-			id: "in_progress",
-			title: "In Progress",
-			shortLabel: "IP",
-			toneClassName: statusPillColors.in_progress,
-			count: project.taskCounts.in_progress,
-		},
-		{
-			id: "review",
-			title: "Review",
-			shortLabel: "R",
-			toneClassName: statusPillColors.review,
-			// Server counts all awaiting_review sessions as "review" — subtract the
-			// needs-input subset so tasks aren't double-counted across R and NI pills.
-			count: Math.max(0, project.taskCounts.review - needsInputCount),
-		},
-		{
-			id: "needs_input",
-			title: "Needs Input",
-			shortLabel: "NI",
-			toneClassName: statusPillColors.needs_input,
-			count: needsInputCount,
-		},
-	].filter((item) => item.count > 0);
+	const taskCountBadges = buildTaskCountBadges(project, needsInputCount);
 
 	return (
 		<div
@@ -676,4 +642,39 @@ function ProjectRow({
 			</div>
 		</div>
 	);
+}
+
+function buildTaskCountBadges(project: RuntimeProjectSummary, needsInputCount: number): TaskCountBadge[] {
+	return [
+		{
+			id: "backlog",
+			title: "Backlog",
+			shortLabel: "B",
+			toneClassName: statusPillColors.backlog,
+			count: project.taskCounts.backlog,
+		},
+		{
+			id: "in_progress",
+			title: "In Progress",
+			shortLabel: "IP",
+			toneClassName: statusPillColors.in_progress,
+			count: project.taskCounts.in_progress,
+		},
+		{
+			id: "review",
+			title: "Review",
+			shortLabel: "R",
+			toneClassName: statusPillColors.review,
+			// Server counts all awaiting_review sessions as "review" — subtract the
+			// needs-input subset so tasks aren't double-counted across R and NI pills.
+			count: Math.max(0, project.taskCounts.review - needsInputCount),
+		},
+		{
+			id: "needs_input",
+			title: "Needs Input",
+			shortLabel: "NI",
+			toneClassName: statusPillColors.needs_input,
+			count: needsInputCount,
+		},
+	].filter((badge) => badge.count > 0);
 }

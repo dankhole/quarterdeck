@@ -169,14 +169,14 @@ Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readabili
 - ~~**workspace-api.ts handler pipeline**~~ — Addressed by the domain split (ec698f8) which broke the 1,092-line file into 5 modules of 106–314 lines each. Higher-order helpers no longer justified against the smaller files.
 - ~~**Runtime barrel exports**~~ — Done. Added `index.ts` to 9 directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`). Updated ~150 import paths across `src/` and `test/`. Three source files kept direct imports to preserve vitest mock compatibility.
 
-## C# readability follow-ups
+## Design investigation follow-ups
 
-Full plan at [docs/plan-csharp-readability-followups.md](plan-csharp-readability-followups.md). These are readability-first refactors aimed at making the TypeScript codebase easier to navigate for developers coming from C#-style service and composition patterns.
+Full plan at [docs/plan-design-investigation.md](plan-design-investigation.md). These are architectural follow-ups for places where the concern may be incorrect responsibility boundaries or overlapping ownership, not just readability.
 
-- **Decompose `terminal-slot.ts` so terminal concerns are easier to locate** — Reduce the “god object” feel in `web-ui/src/terminal/terminal-slot.ts` by making reconnect, restore, DOM-hosting, and xterm setup responsibilities more explicit.
-- **Split `runtime-state-hub.ts` by client registry versus broadcast coordination** — Separate websocket client bookkeeping, batching, and higher-level broadcast responsibilities in `src/server/runtime-state-hub.ts`.
-- **Decompose `project-navigation-panel.tsx` into hooks and slimmer view components** — Move reorder/removal/badge logic out of `web-ui/src/components/app/project-navigation-panel.tsx` so the component reads more like a render surface.
-- **Reassess `terminal-pool.ts` for allocation-policy versus lifecycle splitting** — Inspect `web-ui/src/terminal/terminal-pool.ts` for a cleaner separation between pooling policy, slot lifecycle, and public API ownership.
+- **Reassess board-state ownership between browser and runtime** — Verify that `web-ui/src/state/board-state.ts` and `src/core/task-board-mutations.ts` have a clean canonical owner for board domain rules after the readability refactors.
+- **Reassess terminal architecture across `terminal-slot.ts` and `terminal-pool.ts`** — Investigate whether pooling, reconnect, restore, focus, and DOM attachment still depend on implicit cross-file invariants.
+- **Reassess runtime coordination boundaries between `runtime-state-hub.ts` and `workspace-registry.ts`** — Determine whether these remain overlapping smart hubs or have cleanly separated service responsibilities.
+- **Reassess large UI components that still own workflow state** — Audit `project-navigation-panel.tsx`, `top-bar.tsx`, and similar large components to distinguish healthy UI complexity from misplaced workflow logic.
 
 ## Frontend feature folders, component decomposition, and barrel exports
 

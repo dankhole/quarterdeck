@@ -1,4 +1,14 @@
-import { DETAIL_TERMINAL_TASK_PREFIX, HOME_TERMINAL_TASK_ID } from "@/terminal/terminal-constants";
+import {
+	_disposeAllDedicatedTerminalsForTesting,
+	disposeAllDedicatedTerminalsForWorkspace,
+	disposeDedicatedTerminal,
+	type EnsureDedicatedTerminalInput,
+	ensureDedicatedTerminal as ensureDedicatedTerminalInRegistry,
+	forEachDedicatedTerminal,
+	getDedicatedTerminal,
+	getDedicatedTerminalCount,
+	isDedicatedTerminalTaskId,
+} from "@/terminal/terminal-dedicated-registry";
 import {
 	type PersistentTerminalAppearance,
 	TerminalSlot,
@@ -14,11 +24,6 @@ const log = createClientLogger("terminal-pool");
 
 export type SlotRole = "FREE" | "PRELOADING" | "READY" | "ACTIVE" | "PREVIOUS";
 
-export interface EnsureDedicatedTerminalInput extends PersistentTerminalAppearance {
-	taskId: string;
-	workspaceId: string;
-}
-
 // ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
@@ -33,7 +38,6 @@ let previousEvictionTimer: ReturnType<typeof setTimeout> | null = null;
 let _rotationTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
 let nextSlotId = 0;
-const dedicatedTerminals = new Map<string, TerminalSlot>(); // workspaceId:taskId -> TerminalSlot
 let poolContainer: HTMLDivElement | null = null;
 
 // ---------------------------------------------------------------------------
@@ -56,10 +60,6 @@ const DEFAULT_POOL_APPEARANCE: PersistentTerminalAppearance = {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function buildKey(workspaceId: string, taskId: string): string {
-	return `${workspaceId}:${taskId}`;
-}
 
 function setRole(slot: TerminalSlot, role: SlotRole): void {
 	slotRoles.set(slot, role);
@@ -511,67 +511,17 @@ function rotateOldestFreeSlot(): void {
 // Dedicated terminal functions
 // ---------------------------------------------------------------------------
 
-/**
- * Returns true if the taskId is a dedicated terminal (home or detail).
- */
-export function isDedicatedTerminalTaskId(taskId: string): boolean {
-	return taskId === HOME_TERMINAL_TASK_ID || taskId.startsWith(DETAIL_TERMINAL_TASK_PREFIX);
-}
+export { disposeAllDedicatedTerminalsForWorkspace, disposeDedicatedTerminal, isDedicatedTerminalTaskId };
 
 /**
  * Ensure a dedicated terminal exists for the given task. Creates or reuses.
- * Dedicated terminals are NOT managed by the pool — they have their own lifecycle.
+ * Dedicated terminals are NOT managed by the shared-slot pool.
  */
 export function ensureDedicatedTerminal(input: EnsureDedicatedTerminalInput): TerminalSlot {
-	const key = buildKey(input.workspaceId, input.taskId);
-	const existing = dedicatedTerminals.get(key);
-	if (existing) {
-		existing.setAppearance({
-			cursorColor: input.cursorColor,
-			terminalBackgroundColor: input.terminalBackgroundColor,
-		});
-		// Re-open sockets if they closed (e.g. after sleep/wake).
-		existing.ensureConnected();
-		return existing;
-	}
-
-	const slotId = nextSlotId++;
-	const slot = new TerminalSlot(slotId, {
-		cursorColor: input.cursorColor,
-		terminalBackgroundColor: input.terminalBackgroundColor,
+	return ensureDedicatedTerminalInRegistry(input, (appearance) => {
+		const slotId = nextSlotId++;
+		return new TerminalSlot(slotId, appearance);
 	});
-	slot.connectToTask(input.taskId, input.workspaceId);
-	dedicatedTerminals.set(key, slot);
-	log.debug(`ensureDedicatedTerminal — created slot ${slotId} for ${key}`);
-	return slot;
-}
-
-/**
- * Dispose a specific dedicated terminal.
- */
-export function disposeDedicatedTerminal(workspaceId: string, taskId: string): void {
-	const key = buildKey(workspaceId, taskId);
-	const slot = dedicatedTerminals.get(key);
-	if (!slot) {
-		return;
-	}
-	slot.dispose();
-	dedicatedTerminals.delete(key);
-	log.debug(`disposeDedicatedTerminal — disposed ${key}`);
-}
-
-/**
- * Dispose all dedicated terminals for a workspace.
- */
-export function disposeAllDedicatedTerminalsForWorkspace(workspaceId: string): void {
-	const prefix = `${workspaceId}:`;
-	for (const [key, slot] of dedicatedTerminals.entries()) {
-		if (key.startsWith(prefix)) {
-			slot.dispose();
-			dedicatedTerminals.delete(key);
-			log.debug(`disposeAllDedicatedTerminalsForWorkspace — disposed ${key}`);
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -583,16 +533,18 @@ function* allSlots(): Generator<TerminalSlot> {
 	for (const slot of slots) {
 		yield slot;
 	}
-	for (const slot of dedicatedTerminals.values()) {
-		yield slot;
-	}
+	const dedicatedSlots: TerminalSlot[] = [];
+	forEachDedicatedTerminal((slot) => {
+		dedicatedSlots.push(slot);
+	});
+	yield* dedicatedSlots;
 }
 
 /**
  * Reset the renderer on all terminals (pool + dedicated).
  */
 export function resetAllTerminalRenderers(): void {
-	const count = slots.length + dedicatedTerminals.size;
+	const count = slots.length + getDedicatedTerminalCount();
 	if (count === 0) {
 		log.warn("resetAllTerminalRenderers — no terminals");
 		return;
@@ -610,7 +562,7 @@ export function resetAllTerminalRenderers(): void {
  * Request a restore on all connected terminals (pool + dedicated).
  */
 export function restoreAllTerminals(): void {
-	const count = slots.length + dedicatedTerminals.size;
+	const count = slots.length + getDedicatedTerminalCount();
 	if (count === 0) {
 		log.warn("restoreAllTerminals — no terminals");
 		return;
@@ -637,7 +589,7 @@ export function setTerminalFontWeight(weight: number): void {
  * Log debug info for all pool slots and dedicated terminals.
  */
 export function dumpTerminalDebugInfo(): void {
-	if (slots.length === 0 && dedicatedTerminals.size === 0) {
+	if (slots.length === 0 && getDedicatedTerminalCount() === 0) {
 		log.info("No active terminals");
 		return;
 	}
@@ -659,7 +611,7 @@ export function dumpTerminalDebugInfo(): void {
 	}
 
 	// Dedicated terminals
-	for (const [key, slot] of dedicatedTerminals.entries()) {
+	forEachDedicatedTerminal((slot, key) => {
 		const info = slot.getBufferDebugInfo();
 		log.info(`dedicated ${key}`, {
 			buffer: info.activeBuffer,
@@ -669,7 +621,7 @@ export function dumpTerminalDebugInfo(): void {
 			viewport: info.viewportRows,
 			session: info.sessionState,
 		});
-	}
+	});
 }
 
 /**
@@ -683,8 +635,7 @@ export function writeToTerminalBuffer(workspaceId: string, taskId: string, text:
 		return;
 	}
 	// Check dedicated terminals
-	const key = buildKey(workspaceId, taskId);
-	const dedicated = dedicatedTerminals.get(key);
+	const dedicated = getDedicatedTerminal(workspaceId, taskId);
 	if (dedicated) {
 		dedicated.writeText(text);
 	}
@@ -700,8 +651,7 @@ export function isTerminalSessionRunning(workspaceId: string, taskId: string): b
 		return poolSlot.sessionState === "running";
 	}
 	// Check dedicated terminals
-	const key = buildKey(workspaceId, taskId);
-	const dedicated = dedicatedTerminals.get(key);
+	const dedicated = getDedicatedTerminal(workspaceId, taskId);
 	if (dedicated) {
 		return dedicated.sessionState === "running";
 	}
@@ -731,10 +681,7 @@ export function _resetPoolForTesting(): void {
 	roleTimestamps.clear();
 
 	// Dispose all dedicated terminals
-	for (const [, slot] of dedicatedTerminals) {
-		slot.dispose();
-	}
-	dedicatedTerminals.clear();
+	_disposeAllDedicatedTerminalsForTesting();
 
 	// Clear rotation timer
 	if (_rotationTimer !== null) {

@@ -94,16 +94,6 @@ function createDependencyId(): string {
 	return createBrowserUuid().replaceAll("-", "").slice(0, 8);
 }
 
-function collectTaskIds(columns: BoardColumn[]): Set<string> {
-	const taskIds = new Set<string>();
-	for (const column of columns) {
-		for (const card of column.cards) {
-			taskIds.add(card.id);
-		}
-	}
-	return taskIds;
-}
-
 function createRuntimeTaskUpdateInput(
 	card: BoardCard,
 	overrides: Partial<runtimeTaskState.RuntimeUpdateTaskInput>,
@@ -147,10 +137,9 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 		}
 	}
 
-	const taskIds = collectTaskIds(normalizedColumns);
 	const normalizedDependencies: BoardDependency[] = [];
 	for (const rawDependency of parsedBoard.dependencies) {
-		const dependency = parsePersistedBoardDependency(rawDependency, taskIds, {
+		const dependency = parsePersistedBoardDependency(rawDependency, {
 			createDependencyId,
 		});
 		if (!dependency) {
@@ -159,7 +148,7 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 		normalizedDependencies.push(dependency);
 	}
 
-	return runtimeTaskState.updateTaskDependencies({
+	return runtimeTaskState.canonicalizeTaskBoard({
 		columns: normalizedColumns,
 		dependencies: normalizedDependencies,
 	});

@@ -2,6 +2,86 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: separate dedicated terminals from shared pool policy (2026-04-17)
+
+**What:** Reassessed `web-ui/src/terminal/terminal-pool.ts` and kept the shared-slot allocation/lifecycle state machine intact, but extracted the dedicated-terminal registry into `web-ui/src/terminal/terminal-dedicated-registry.ts`. The new module now owns dedicated-terminal keying, home/detail task classification, dedicated slot creation/reuse, per-workspace disposal, dedicated iteration, and dedicated lookup helpers. `terminal-pool.ts` now stays focused on shared-slot role transitions, warmup/previous eviction timers, rotation, and the public shared-pool API, while still exposing the existing dedicated-terminal API through stable exports.
+
+**Why:** This completed the `terminal-pool.ts` reassessment item from `docs/plan-csharp-readability-followups.md`. The review showed that most of the file's size is justified by the pool state machine: allocation policy, warmup promotion, `PREVIOUS` retention, timed eviction, and free-slot rotation are tightly coupled and safer to read together. The removable coupling was the separate dedicated-terminal lifecycle, which follows different ownership rules and was making the pool invariants harder to discover.
+
+**Files touched:**
+- `web-ui/src/terminal/terminal-pool.ts` — narrowed the module to shared-pool policy plus cross-terminal helpers, with dedicated concerns delegated out
+- `web-ui/src/terminal/terminal-dedicated-registry.ts` — new dedicated-terminal ownership module for home/detail terminal lookup, reuse, disposal, and iteration
+- `docs/plan-csharp-readability-followups.md` — marked the terminal-pool reassessment item done and recorded the conclusion
+- `docs/todo.md` — removed the completed reassessment item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the reassessment result and extracted ownership boundary
+
+**Verification:** `npm --prefix web-ui run test -- src/terminal/terminal-pool-acquire.test.ts src/terminal/terminal-pool-lifecycle.test.ts src/terminal/terminal-pool-dedicated.test.ts src/terminal/use-persistent-terminal-session.test.tsx`; `npm --prefix web-ui run typecheck`; `npx @biomejs/biome check web-ui/src/terminal/terminal-pool.ts web-ui/src/terminal/terminal-dedicated-registry.ts docs/plan-csharp-readability-followups.md docs/todo.md CHANGELOG.md docs/implementation-log.md`
+
+**Commit:** Pending user-requested commit (current HEAD: `511a3075`).
+
+## Refactor: split terminal slot hosting and visibility lifecycle (2026-04-17)
+
+**What:** Refactored `web-ui/src/terminal/terminal-slot.ts` so the class now reads more clearly as the orchestrator over terminal collaborators instead of as the implementation home for each concern. Added `web-ui/src/terminal/slot-dom-host.ts` to own the persistent parking-root host element, stage-container attachment, visibility/reveal state, and parking transitions. Added `web-ui/src/terminal/slot-visibility-lifecycle.ts` to own the document visibility listener, tab-return repaint, and reconnect-on-return behavior for dead sockets. Inside `TerminalSlot`, grouped constructor work behind named helpers for xterm creation, addon wiring, socket manager creation, write-queue creation, IO forwarding, key handling, disconnect state reset, and restore application/finalization. Added focused unit coverage for the extracted collaborators while keeping the existing pool and persistent-session terminal tests green.
+
+**Why:** This completed the `terminal-slot.ts` readability item from `docs/plan-csharp-readability-followups.md`. Before the refactor, DOM parking, xterm setup, reconnect-on-visibility logic, restore sequencing, and general slot orchestration were mixed together in one large class body and especially in a noisy constructor. Pulling the DOM-hosting and visibility lifecycle concerns into named collaborators makes reconnect, restore, and hosting responsibilities easier to find without changing the slot's runtime contract.
+
+**Files touched:**
+- `web-ui/src/terminal/terminal-slot.ts` — slimmed the slot into a clearer orchestrator with named setup and restore helpers
+- `web-ui/src/terminal/slot-dom-host.ts` — new DOM-hosting and parking collaborator
+- `web-ui/src/terminal/slot-visibility-lifecycle.ts` — new visibility refresh and reconnect collaborator
+- `web-ui/src/terminal/slot-dom-host.test.ts` — regression coverage for staging, reveal/hide, and parking behavior
+- `web-ui/src/terminal/slot-visibility-lifecycle.test.ts` — regression coverage for tab-return refresh and reconnect behavior
+- `docs/plan-csharp-readability-followups.md` — marked the terminal-slot readability item done
+- `docs/todo.md` — removed the completed terminal-slot readability item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Verification:** `npm --prefix web-ui run test -- src/terminal/slot-dom-host.test.ts src/terminal/slot-visibility-lifecycle.test.ts src/terminal/terminal-pool-acquire.test.ts src/terminal/terminal-pool-lifecycle.test.ts src/terminal/terminal-pool-dedicated.test.ts src/terminal/use-persistent-terminal-session.test.tsx`; `npm --prefix web-ui run typecheck`; `npx @biomejs/biome check web-ui/src/terminal/terminal-slot.ts web-ui/src/terminal/slot-dom-host.ts web-ui/src/terminal/slot-visibility-lifecycle.ts web-ui/src/terminal/slot-dom-host.test.ts web-ui/src/terminal/slot-visibility-lifecycle.test.ts`
+
+**Commit:** Pending user-requested commit (current HEAD: `30ad3201`).
+
+## Refactor: split runtime state hub coordination helpers (2026-04-17)
+
+**What:** Refactored `src/server/runtime-state-hub.ts` so the main hub now reads primarily as high-level connection and broadcast coordination. Added `src/server/runtime-state-client-registry.ts` to own websocket client registration, workspace-scoped membership, disconnect cleanup, final error payload delivery, and shutdown termination. Added `src/server/runtime-state-message-batcher.ts` to own task-session summary batching, debug-log batching, timer cleanup, and terminal-manager subscription lifecycle. The hub now composes those collaborators with the existing workspace metadata monitor and snapshot/broadcast APIs, while preserving the public `RuntimeStateHub` surface. Added focused tests for the extracted collaborators under `test/runtime/server/`.
+
+**Why:** This completed the `runtime-state-hub.ts` readability item from `docs/plan-csharp-readability-followups.md`. Before the refactor, websocket client bookkeeping, workspace client tracking, summary batching, debug-log batching, metadata-monitor integration, and high-level broadcast APIs were all interleaved inside one class. Splitting the client registry and batching concerns into named modules makes the main runtime hub substantially easier to navigate without changing websocket timing or workspace disposal behavior.
+
+**Files touched:**
+- `src/server/runtime-state-hub.ts` — slimmed the hub into a coordinator over extracted client-registry and batching helpers
+- `src/server/runtime-state-client-registry.ts` — new websocket client bookkeeping and cleanup module
+- `src/server/runtime-state-message-batcher.ts` — new summary/debug-log batching module
+- `test/runtime/server/runtime-state-client-registry.test.ts` — regression coverage for workspace client tracking, targeted broadcasts, and disconnect cleanup
+- `test/runtime/server/runtime-state-message-batcher.test.ts` — regression coverage for task-summary coalescing and debug-log batching
+- `docs/plan-csharp-readability-followups.md` — marked the runtime-state-hub readability item done
+- `docs/todo.md` — removed the completed runtime-state-hub readability item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Verification:** `npm run test -- test/runtime/server/runtime-state-client-registry.test.ts test/runtime/server/runtime-state-message-batcher.test.ts`; `npm run typecheck`; `npx @biomejs/biome check src/server/runtime-state-hub.ts src/server/runtime-state-client-registry.ts src/server/runtime-state-message-batcher.ts test/runtime/server/runtime-state-client-registry.test.ts test/runtime/server/runtime-state-message-batcher.test.ts`
+
+**Commit:** Pending user-requested commit (current HEAD: `20cbc414`).
+
+## Refactor: decompose project navigation panel into a composition hook (2026-04-17)
+
+**What:** Refactored `web-ui/src/components/app/project-navigation-panel.tsx` so the sidebar panel now reads as a composition surface instead of keeping its local controller logic inline. Added `web-ui/src/hooks/project/use-project-navigation-panel.ts` to own optimistic project reorder state, drag/drop reorder handling, permission-request badge counts, and removal confirmation dialog state. In the component file, extracted the draggable list into `ProjectList` and `DraggableProjectRow`, gave the portal-backed drag rendering a named helper, and moved task badge derivation behind `buildTaskCountBadges()` so the row component stays focused on rendering and event wiring. Added a dedicated hook test file covering the new orchestration paths.
+
+**Why:** This completed the `project-navigation-panel.tsx` readability item from `docs/plan-csharp-readability-followups.md`. Before the refactor, the panel mixed optimistic ordering, drag controller behavior, removal workflow state, badge derivation, and the full render tree in one component body. Pulling the stateful behavior into a named hook makes the main panel easier to scan top-to-bottom and makes the drag/removal rules easier to find in isolation.
+
+**Files touched:**
+- `web-ui/src/components/app/project-navigation-panel.tsx` — replaced inline orchestration with the new hook and slimmer view sections
+- `web-ui/src/hooks/project/use-project-navigation-panel.ts` — new composition hook for reorder/removal/badge state
+- `web-ui/src/hooks/project/use-project-navigation-panel.test.tsx` — regression coverage for the extracted hook behavior
+- `web-ui/src/hooks/project/index.ts` — exported the new hook
+- `docs/plan-csharp-readability-followups.md` — marked the project navigation panel item done
+- `docs/todo.md` — removed the completed project navigation panel readability item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Verification:** `npm --prefix web-ui run test -- project-navigation-panel.test.tsx use-project-navigation-panel.test.tsx`; `npm --prefix web-ui run typecheck`
+
+**Commit:** Pending user-requested commit (current HEAD: `b9e3418d`).
+
 ## Chore: dead code cleanup (2026-04-17)
 
 **What:** Comprehensive sweep to remove dead code, orphaned files, unused dependencies, and vestigial barrel re-exports.
@@ -32,13 +112,16 @@
 
 ## Refactor: consolidate board rules behind the runtime board module (2026-04-17)
 
-**What:** Refactored `web-ui/src/state/board-state.ts` so several browser-side wrappers now defer directly to `src/core/task-board-mutations.ts` instead of maintaining adjacent board-rule logic locally. `updateTask()` now builds a runtime update payload from the selected card and delegates to the runtime task updater; `removeTask()` and `clearColumnTasks()` now use `deleteTasksFromBoard()` for task/dependency cleanup; `toggleTaskPinned()` now routes through the runtime updater rather than mutating board cards inline. The browser file still owns browser-specific responsibilities: persisted-board parsing, drag/drop placement, and task metadata reconciliation (`branch`, `workingDirectory`).
+**What:** Refactored `web-ui/src/state/board-state.ts` so several browser-side wrappers now defer directly to `src/core/task-board-mutations.ts` instead of maintaining adjacent board-rule logic locally. `updateTask()` now builds a runtime update payload from the selected card and delegates to the runtime task updater; `removeTask()` and `clearColumnTasks()` now use `deleteTasksFromBoard()` for task/dependency cleanup; `toggleTaskPinned()` now routes through the runtime updater rather than mutating board cards inline. The follow-up cleanup in this slice also moved post-parse board canonicalization behind a new runtime helper, `canonicalizeTaskBoard()`: persisted dependency parsing in `board-state-parser.ts` now only trims and validates raw saved dependency records, while the runtime module owns the canonical rule pass that drops invalid links, reorients backlog-linked pairs, and removes duplicates after hydration. The browser file still owns browser-specific responsibilities: persisted-board parsing, drag/drop placement, browser UUID generation, and task metadata reconciliation (`branch`, `workingDirectory`).
 
 **Why:** This completed the remaining board-related item from `docs/plan-csharp-readability-followups.md`. Before this change, readers still had to compare the runtime board mutation module with `web-ui/src/state/board-state.ts` to understand which task update/delete rules were authoritative. Delegating shared mutation behavior back to the runtime module makes ownership clearer: the core module is the canonical source of board mutation rules, and the browser layer is mostly an adapter around browser-only concerns.
 
 **Files touched:**
-- `web-ui/src/state/board-state.ts` — routed task update/delete/pin wrappers through runtime board mutations and removed duplicated dependency cleanup logic
-- `web-ui/src/state/board-state-mutations.test.ts` — added regression coverage for remove-task, clear-column, and toggle-pinned browser adapters
+- `src/core/task-board-mutations.ts` — added the runtime-owned `canonicalizeTaskBoard()` entry point for post-parse board cleanup
+- `src/core/index.ts`, `src/state/workspace-state-index.ts` — exported and adopted the canonicalization helper so runtime hydration also reads through the named board-rules entry point
+- `web-ui/src/state/board-state.ts` — routed task update/delete/pin wrappers and normalization cleanup through runtime board mutations
+- `web-ui/src/state/board-state-parser.ts` — narrowed persisted dependency parsing to raw-record normalization instead of task-existence/domain cleanup
+- `web-ui/src/state/board-state-mutations.test.ts`, `web-ui/src/state/board-state-normalization.test.ts`, `test/runtime/task-board-mutations.test.ts` — added regression coverage for the thinner browser adapters, parser boundary, and runtime canonicalization path
 - `docs/todo.md` — removed the completed board-rule consolidation item
 - `CHANGELOG.md` — added an unreleased refactor entry
 - `docs/implementation-log.md` — recorded the refactor scope and rationale

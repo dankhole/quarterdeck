@@ -89,6 +89,7 @@ export {
 	addTaskDependency,
 	addTaskToColumn,
 	canAddTaskDependency,
+	canonicalizeTaskBoard,
 	deleteTasksFromBoard,
 	findCardInBoard,
 	getReadyLinkedTaskIdsForTaskInTrash,

@@ -113,7 +113,6 @@ export function parsePersistedBoardCard(
 
 export function parsePersistedBoardDependency(
 	rawDependency: unknown,
-	taskIds: ReadonlySet<string>,
 	options: { createDependencyId: () => string; now?: number },
 ): BoardDependency | null {
 	const result = rawPersistedBoardDependencySchema.safeParse(rawDependency);
@@ -124,9 +123,6 @@ export function parsePersistedBoardDependency(
 	const fromTaskId = parseRequiredTrimmedString(result.data.fromTaskId);
 	const toTaskId = parseRequiredTrimmedString(result.data.toTaskId);
 	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
-		return null;
-	}
-	if (!taskIds.has(fromTaskId) || !taskIds.has(toTaskId)) {
 		return null;
 	}
 

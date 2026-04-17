@@ -3,17 +3,18 @@
 // and fans out workspace-scoped snapshots and deltas.
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
+
 import type {
 	IRuntimeBroadcaster,
-	LogEntry,
 	LogLevel,
 	RuntimeProjectSummary,
 	RuntimeStateStreamMessage,
-	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core";
 import { Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
 import type { TerminalSessionManager } from "../terminal";
+import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
+import { RuntimeStateMessageBatcher } from "./runtime-state-message-batcher";
 import {
 	buildDebugLogBatchMessage,
 	buildDebugLoggingStateMessage,
@@ -31,9 +32,6 @@ import {
 } from "./runtime-state-messages";
 import { createWorkspaceMetadataMonitor, type WorkspaceMetadataPollIntervals } from "./workspace-metadata-monitor";
 import type { WorkspaceRegistry } from "./workspace-registry";
-
-const TASK_SESSION_STREAM_BATCH_MS = 150;
-const DEBUG_LOG_BATCH_MS = 150;
 
 export interface DisposeRuntimeStateWorkspaceOptions {
 	disconnectClients?: boolean;
@@ -67,19 +65,11 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 }
 
 export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
-	private readonly terminalSummaryUnsubscribes = new Map<string, () => void>();
-	private readonly pendingSummaries = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
-	private readonly broadcastTimers = new Map<string, NodeJS.Timeout>();
-	private readonly clientsByWorkspace = new Map<string, Set<WebSocket>>();
-	private readonly allClients = new Set<WebSocket>();
-	private readonly clientToWorkspace = new Map<WebSocket, string>();
 	private readonly resumeAttempted = new Set<string>();
 	private readonly wss: WebSocketServer;
+	private readonly clients: RuntimeStateClientRegistry;
+	private readonly batcher: RuntimeStateMessageBatcher;
 	private readonly metadataMonitor: ReturnType<typeof createWorkspaceMetadataMonitor>;
-
-	// Debug log batching
-	private readonly pendingDebugLogEntries: LogEntry[] = [];
-	private debugLogBroadcastTimer: NodeJS.Timeout | null = null;
 
 	constructor(private readonly deps: CreateRuntimeStateHubDependencies) {
 		super();
@@ -88,9 +78,31 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		// wss is NOT registered with _register — it requires an async close
 		// with a callback to properly drain connections. Handled in close().
 
+		this.clients = new RuntimeStateClientRegistry({
+			onWorkspaceClientDisconnected: (workspaceId) => {
+				this.metadataMonitor.disconnectWorkspace(workspaceId);
+			},
+		});
+
+		this.batcher = new RuntimeStateMessageBatcher({
+			hasClients: () => this.clients.hasClients,
+			onTaskSessionBatch: (workspaceId, summaries) => {
+				this.clients.broadcastToWorkspace(workspaceId, buildTaskSessionsUpdatedMessage(workspaceId, summaries));
+			},
+			onTaskNotificationBatch: (workspaceId, summaries) => {
+				this.clients.broadcastToAll(buildTaskNotificationMessage(workspaceId, summaries));
+			},
+			onProjectsRefreshRequested: (preferredCurrentProjectId) => {
+				void this.broadcastRuntimeProjectsUpdated(preferredCurrentProjectId);
+			},
+			onDebugLogBatch: (entries) => {
+				this.clients.broadcastToAll(buildDebugLogBatchMessage(entries));
+			},
+		});
+
 		this.metadataMonitor = createWorkspaceMetadataMonitor({
 			onMetadataUpdated: (workspaceId, workspaceMetadata) => {
-				this.broadcastToWorkspace(
+				this.clients.broadcastToWorkspace(
 					workspaceId,
 					buildWorkspaceMetadataUpdatedMessage(workspaceId, workspaceMetadata),
 				);
@@ -107,14 +119,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		this._register(
 			toDisposable(
 				onLogEntry((entry) => {
-					if (this.allClients.size === 0) {
-						return;
-					}
-					this.pendingDebugLogEntries.push(entry);
-					if (this.debugLogBroadcastTimer === null) {
-						this.debugLogBroadcastTimer = setTimeout(() => this.flushDebugLogEntries(), DEBUG_LOG_BATCH_MS);
-						this.debugLogBroadcastTimer.unref();
-					}
+					this.batcher.queueDebugLogEntry(entry);
 				}),
 			),
 		);
@@ -125,13 +130,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	// ── Public API (arrow fields for stable `this` when passed as refs) ──
 
 	trackTerminalManager = (workspaceId: string, manager: TerminalSessionManager): void => {
-		if (this.terminalSummaryUnsubscribes.has(workspaceId)) {
-			return;
-		}
-		const unsubscribe = manager.store.onChange((summary) => {
-			this.queueSummaryBroadcast(workspaceId, summary);
-		});
-		this.terminalSummaryUnsubscribes.set(workspaceId, unsubscribe);
+		this.batcher.trackTerminalManager(workspaceId, manager);
 	};
 
 	handleUpgrade = (
@@ -146,16 +145,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	disposeWorkspace = (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions): void => {
-		const unsubscribe = this.terminalSummaryUnsubscribes.get(workspaceId);
-		if (unsubscribe) {
-			try {
-				unsubscribe();
-			} catch {
-				// Ignore listener cleanup errors during project removal.
-			}
-		}
-		this.terminalSummaryUnsubscribes.delete(workspaceId);
-		this.disposeSummaryBroadcast(workspaceId);
+		this.batcher.disposeWorkspace(workspaceId);
 		this.resumeAttempted.delete(workspaceId);
 		this.metadataMonitor.disposeWorkspace(workspaceId);
 
@@ -163,28 +153,15 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			return;
 		}
 
-		const runtimeClients = this.clientsByWorkspace.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			this.clientsByWorkspace.delete(workspaceId);
-			return;
-		}
-
-		for (const runtimeClient of runtimeClients) {
-			if (options.closeClientErrorMessage) {
-				this.send(runtimeClient, buildErrorMessage(options.closeClientErrorMessage));
-			}
-			try {
-				runtimeClient.close();
-			} catch {
-				// Ignore close failures while disposing removed workspace clients.
-			}
-			this.cleanupClient(runtimeClient);
-		}
-		this.clientsByWorkspace.delete(workspaceId);
+		this.clients.disconnectWorkspaceClients(workspaceId, {
+			closeClientPayload: options.closeClientErrorMessage
+				? buildErrorMessage(options.closeClientErrorMessage)
+				: undefined,
+		});
 	};
 
 	broadcastRuntimeWorkspaceStateUpdated = async (workspaceId: string, workspacePath: string): Promise<void> => {
-		const clients = this.clientsByWorkspace.get(workspaceId);
+		const clients = this.clients.getWorkspaceClients(workspaceId);
 		if (!clients || clients.size === 0) {
 			return;
 		}
@@ -193,10 +170,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				workspaceId,
 				workspacePath,
 			);
-			const payload = buildWorkspaceStateUpdatedMessage(workspaceId, workspaceState);
-			for (const client of clients) {
-				this.send(client, payload);
-			}
+			this.clients.broadcastToWorkspace(workspaceId, buildWorkspaceStateUpdatedMessage(workspaceId, workspaceState));
 			await this.metadataMonitor.updateWorkspaceState({
 				workspaceId,
 				workspacePath,
@@ -208,22 +182,19 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
-		if (this.allClients.size === 0) {
+		if (!this.clients.hasClients) {
 			return;
 		}
 		try {
 			const payload = await this.deps.workspaceRegistry.buildProjectsPayload(preferredCurrentProjectId);
-			const message = buildProjectsUpdatedMessage(payload.currentProjectId, payload.projects);
-			for (const client of this.allClients) {
-				this.send(client, message);
-			}
+			this.clients.broadcastToAll(buildProjectsUpdatedMessage(payload.currentProjectId, payload.projects));
 		} catch {
 			// Ignore transient project summary failures; next update will resync.
 		}
 	};
 
 	broadcastTaskReadyForReview = (workspaceId: string, taskId: string): void => {
-		this.broadcastToWorkspace(workspaceId, buildTaskReadyForReviewMessage(workspaceId, taskId));
+		this.clients.broadcastToWorkspace(workspaceId, buildTaskReadyForReviewMessage(workspaceId, taskId));
 	};
 
 	broadcastTaskTitleUpdated = (
@@ -232,11 +203,11 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		title: string,
 		options?: { autoGenerated?: boolean },
 	): void => {
-		this.broadcastToWorkspace(workspaceId, buildTaskTitleUpdatedMessage(workspaceId, taskId, title, options));
+		this.clients.broadcastToWorkspace(workspaceId, buildTaskTitleUpdatedMessage(workspaceId, taskId, title, options));
 	};
 
 	broadcastTaskBaseRefUpdated = (workspaceId: string, taskId: string, baseRef: string): void => {
-		this.broadcastToWorkspace(workspaceId, buildTaskBaseRefUpdatedMessage(workspaceId, taskId, baseRef));
+		this.clients.broadcastToWorkspace(workspaceId, buildTaskBaseRefUpdatedMessage(workspaceId, taskId, baseRef));
 	};
 
 	broadcastTaskWorkingDirectoryUpdated = (
@@ -245,7 +216,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 		workingDirectory: string,
 		useWorktree: boolean,
 	): void => {
-		this.broadcastToWorkspace(
+		this.clients.broadcastToWorkspace(
 			workspaceId,
 			buildTaskWorkingDirectoryUpdatedMessage(workspaceId, taskId, workingDirectory, useWorktree),
 		);
@@ -268,51 +239,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	};
 
 	broadcastLogLevel = (level: LogLevel): void => {
-		const payload = buildDebugLoggingStateMessage(level, getRecentLogEntries());
-		for (const client of this.allClients) {
-			this.send(client, payload);
-		}
+		this.clients.broadcastToAll(buildDebugLoggingStateMessage(level, getRecentLogEntries()));
 	};
 
 	close = async (): Promise<void> => {
 		// Dispose base class resources (metadata monitor, debug log subscription)
 		this.dispose();
-
-		// Dispose debug log resources
-		if (this.debugLogBroadcastTimer) {
-			clearTimeout(this.debugLogBroadcastTimer);
-			this.debugLogBroadcastTimer = null;
-		}
-		this.pendingDebugLogEntries.length = 0;
-
-		// Dispose broadcast timers
-		for (const timer of this.broadcastTimers.values()) {
-			clearTimeout(timer);
-		}
-		this.broadcastTimers.clear();
-		this.pendingSummaries.clear();
-
-		// Dispose terminal summary subscriptions
-		for (const unsubscribe of this.terminalSummaryUnsubscribes.values()) {
-			try {
-				unsubscribe();
-			} catch {
-				// Ignore listener cleanup errors during shutdown.
-			}
-		}
-		this.terminalSummaryUnsubscribes.clear();
-
-		// Terminate all clients
-		for (const client of this.allClients) {
-			try {
-				client.terminate();
-			} catch {
-				// Ignore websocket termination errors during shutdown.
-			}
-		}
-		this.allClients.clear();
-		this.clientsByWorkspace.clear();
-		this.clientToWorkspace.clear();
+		this.batcher.close();
+		this.clients.terminateAllClients();
 
 		// Wait for the WebSocketServer to finish closing (must be last —
 		// it needs connections terminated first for a clean shutdown).
@@ -325,112 +259,11 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 
 	// ── Private helpers ───────────────────────────────────────────────────
 
-	private send(client: WebSocket, payload: RuntimeStateStreamMessage): void {
-		if (client.readyState !== WebSocket.OPEN) {
-			return;
-		}
-		try {
-			client.send(JSON.stringify(payload));
-		} catch {
-			// Ignore websocket write errors; close handlers clean up disconnected sockets.
-		}
-	}
-
-	private broadcastToWorkspace(workspaceId: string, payload: RuntimeStateStreamMessage): void {
-		const clients = this.clientsByWorkspace.get(workspaceId);
-		if (!clients || clients.size === 0) {
-			return;
-		}
-		for (const client of clients) {
-			this.send(client, payload);
-		}
-	}
-
-	private broadcastTaskNotification(workspaceId: string, summaries: RuntimeTaskSessionSummary[]): void {
-		if (this.allClients.size === 0) {
-			return;
-		}
-		const payload = buildTaskNotificationMessage(workspaceId, summaries);
-		for (const client of this.allClients) {
-			this.send(client, payload);
-		}
-	}
-
-	private queueSummaryBroadcast(workspaceId: string, summary: RuntimeTaskSessionSummary): void {
-		const pending = this.pendingSummaries.get(workspaceId) ?? new Map<string, RuntimeTaskSessionSummary>();
-		pending.set(summary.taskId, summary);
-		this.pendingSummaries.set(workspaceId, pending);
-		if (this.broadcastTimers.has(workspaceId)) {
-			return;
-		}
-		const timer = setTimeout(() => {
-			this.broadcastTimers.delete(workspaceId);
-			this.flushSummaries(workspaceId);
-		}, TASK_SESSION_STREAM_BATCH_MS);
-		timer.unref();
-		this.broadcastTimers.set(workspaceId, timer);
-	}
-
-	private flushSummaries(workspaceId: string): void {
-		const pending = this.pendingSummaries.get(workspaceId);
-		if (!pending || pending.size === 0) {
-			return;
-		}
-		this.pendingSummaries.delete(workspaceId);
-		const summaries = Array.from(pending.values());
-		const runtimeClients = this.clientsByWorkspace.get(workspaceId);
-		if (runtimeClients && runtimeClients.size > 0) {
-			const payload = buildTaskSessionsUpdatedMessage(workspaceId, summaries);
-			for (const client of runtimeClients) {
-				this.send(client, payload);
-			}
-		}
-		this.broadcastTaskNotification(workspaceId, summaries);
-		void this.broadcastRuntimeProjectsUpdated(workspaceId);
-	}
-
-	private disposeSummaryBroadcast(workspaceId: string): void {
-		const timer = this.broadcastTimers.get(workspaceId);
-		if (timer) {
-			clearTimeout(timer);
-		}
-		this.broadcastTimers.delete(workspaceId);
-		this.pendingSummaries.delete(workspaceId);
-	}
-
-	private cleanupClient(client: WebSocket): void {
-		const workspaceId = this.clientToWorkspace.get(client);
-		if (workspaceId) {
-			this.metadataMonitor.disconnectWorkspace(workspaceId);
-			const clients = this.clientsByWorkspace.get(workspaceId);
-			if (clients) {
-				clients.delete(client);
-				if (clients.size === 0) {
-					this.clientsByWorkspace.delete(workspaceId);
-				}
-			}
-		}
-		this.clientToWorkspace.delete(client);
-		this.allClients.delete(client);
-	}
-
-	private flushDebugLogEntries(): void {
-		this.debugLogBroadcastTimer = null;
-		if (this.pendingDebugLogEntries.length === 0 || this.allClients.size === 0) {
-			this.pendingDebugLogEntries.length = 0;
-			return;
-		}
-		const entries = this.pendingDebugLogEntries.splice(0);
-		const payload = buildDebugLogBatchMessage(entries);
-		for (const client of this.allClients) {
-			this.send(client, payload);
-		}
-	}
-
 	private async handleConnection(client: WebSocket, context: unknown): Promise<void> {
 		client.on("close", () => {
-			this.cleanupClient(client);
+			this.clients.removeClient(client);
 		});
+
 		try {
 			const requestedWorkspaceId = this.parseWorkspaceId(context);
 			const workspace = await this.deps.workspaceRegistry.resolveWorkspaceForStream(requestedWorkspaceId, {
@@ -442,73 +275,53 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				},
 			});
 			if (client.readyState !== WebSocket.OPEN) {
-				this.cleanupClient(client);
+				this.clients.removeClient(client);
 				return;
 			}
 
-			this.allClients.add(client);
+			this.clients.registerGlobalClient(client);
 			let monitorWorkspaceId: string | null = null;
 			let didConnectWorkspaceMonitor = false;
 
 			try {
-				let projectsPayload: {
-					currentProjectId: string | null;
-					projects: RuntimeProjectSummary[];
-				};
-				let workspaceState: RuntimeWorkspaceStateResponse | null;
-				if (workspace.workspaceId && workspace.workspacePath) {
-					monitorWorkspaceId = workspace.workspaceId;
-					[projectsPayload, workspaceState] = await Promise.all([
-						this.deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
-						this.deps.workspaceRegistry.buildWorkspaceStateSnapshot(
-							workspace.workspaceId,
-							workspace.workspacePath,
-						),
-					]);
-				} else {
-					projectsPayload = await this.deps.workspaceRegistry.buildProjectsPayload(null);
-					workspaceState = null;
-				}
+				const snapshot = await this.loadInitialSnapshot(workspace);
 				if (client.readyState !== WebSocket.OPEN) {
-					this.cleanupClient(client);
+					this.clients.removeClient(client);
 					return;
 				}
-				// Workspace metadata is delivered asynchronously via workspace_metadata_updated
-				// after connectWorkspace resolves, avoiding git probe latency on the snapshot.
-				this.send(
+
+				this.sendMessage(
 					client,
-					buildSnapshotMessage(projectsPayload.currentProjectId, projectsPayload.projects, workspaceState),
+					buildSnapshotMessage(snapshot.currentProjectId, snapshot.projects, snapshot.workspaceState),
 				);
 				if (client.readyState !== WebSocket.OPEN) {
-					this.cleanupClient(client);
+					this.clients.removeClient(client);
 					return;
 				}
+
+				monitorWorkspaceId = snapshot.workspaceId;
 				if (monitorWorkspaceId) {
-					const workspaceClients = this.clientsByWorkspace.get(monitorWorkspaceId) ?? new Set<WebSocket>();
-					workspaceClients.add(client);
-					this.clientsByWorkspace.set(monitorWorkspaceId, workspaceClients);
-					this.clientToWorkspace.set(client, monitorWorkspaceId);
+					this.clients.registerWorkspaceClient(monitorWorkspaceId, client);
 				}
-				// Connect the workspace metadata monitor after registering the client
-				// so the onMetadataUpdated callback can deliver results to it.
-				if (monitorWorkspaceId && workspace.workspacePath && workspaceState) {
+
+				if (snapshot.workspaceId && snapshot.workspacePath && snapshot.workspaceState) {
 					didConnectWorkspaceMonitor = true;
 					void this.metadataMonitor
 						.connectWorkspace({
-							workspaceId: monitorWorkspaceId,
-							workspacePath: workspace.workspacePath,
-							board: workspaceState.board,
+							workspaceId: snapshot.workspaceId,
+							workspacePath: snapshot.workspacePath,
+							board: snapshot.workspaceState.board,
 							pollIntervals: this.deps.getActivePollIntervals(),
 						})
 						.catch(() => {
 							// Non-fatal: metadata arrives on the next poll cycle.
 						});
 				}
-				// Send current log level so newly connected clients can show it.
-				this.send(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentLogEntries()));
+
+				this.sendMessage(client, buildDebugLoggingStateMessage(getLogLevel(), getRecentLogEntries()));
 
 				if (workspace.removedRequestedWorkspacePath) {
-					this.send(
+					this.sendMessage(
 						client,
 						buildErrorMessage(
 							`Project no longer exists on disk and was removed: ${workspace.removedRequestedWorkspacePath}`,
@@ -518,24 +331,63 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				if (workspace.didPruneProjects) {
 					void this.broadcastRuntimeProjectsUpdated(workspace.workspaceId);
 				}
-				// Resume interrupted sessions on first UI connection per workspace.
-				// Fire-and-forget — resumed sessions broadcast state changes via
-				// the normal onChange subscription, so the client sees them arrive.
-				if (monitorWorkspaceId && workspace.workspacePath && !this.resumeAttempted.has(monitorWorkspaceId)) {
-					this.resumeAttempted.add(monitorWorkspaceId);
-					void this.deps.workspaceRegistry.resumeInterruptedSessions(monitorWorkspaceId, workspace.workspacePath);
+				if (snapshot.workspaceId && snapshot.workspacePath && !this.resumeAttempted.has(snapshot.workspaceId)) {
+					this.resumeAttempted.add(snapshot.workspaceId);
+					void this.deps.workspaceRegistry.resumeInterruptedSessions(snapshot.workspaceId, snapshot.workspacePath);
 				}
 			} catch (error) {
 				if (didConnectWorkspaceMonitor && monitorWorkspaceId) {
 					this.metadataMonitor.disconnectWorkspace(monitorWorkspaceId);
 				}
 				const message = error instanceof Error ? error.message : String(error);
-				this.send(client, buildErrorMessage(message));
+				this.sendMessage(client, buildErrorMessage(message));
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.send(client, buildErrorMessage(message));
+			this.sendMessage(client, buildErrorMessage(message));
 			client.close();
+		}
+	}
+
+	private async loadInitialSnapshot(workspace: { workspaceId: string | null; workspacePath: string | null }): Promise<{
+		currentProjectId: string | null;
+		projects: RuntimeProjectSummary[];
+		workspaceId: string | null;
+		workspacePath: string | null;
+		workspaceState: RuntimeWorkspaceStateResponse | null;
+	}> {
+		if (workspace.workspaceId && workspace.workspacePath) {
+			const [projectsPayload, workspaceState] = await Promise.all([
+				this.deps.workspaceRegistry.buildProjectsPayload(workspace.workspaceId),
+				this.deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
+			]);
+			return {
+				currentProjectId: projectsPayload.currentProjectId,
+				projects: projectsPayload.projects,
+				workspaceId: workspace.workspaceId,
+				workspacePath: workspace.workspacePath,
+				workspaceState,
+			};
+		}
+
+		const projectsPayload = await this.deps.workspaceRegistry.buildProjectsPayload(null);
+		return {
+			currentProjectId: projectsPayload.currentProjectId,
+			projects: projectsPayload.projects,
+			workspaceId: null,
+			workspacePath: null,
+			workspaceState: null,
+		};
+	}
+
+	private sendMessage(client: WebSocket, payload: RuntimeStateStreamMessage): void {
+		if (client.readyState !== WebSocket.OPEN) {
+			return;
+		}
+		try {
+			client.send(JSON.stringify(payload));
+		} catch {
+			// Ignore websocket write errors; close handlers clean up disconnected sockets.
 		}
 	}
 

@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { z } from "zod";
 
 import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
-import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema, updateTaskDependencies } from "../core";
+import { canonicalizeTaskBoard, runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
 import { isNodeError, lockedFileSystem } from "../fs";
 import {
 	getWorkspaceBoardPath,
@@ -219,7 +219,7 @@ export function parseWorkspaceStateSavePayload<T>(payload: T, schema: z.ZodType<
 export async function readWorkspaceBoard(workspaceId: string): Promise<RuntimeBoardData> {
 	const boardPath = getWorkspaceBoardPath(workspaceId);
 	const rawBoard = await readJsonFile(boardPath);
-	return updateTaskDependencies(
+	return canonicalizeTaskBoard(
 		parsePersistedStateFile(boardPath, "board.json", rawBoard, runtimeBoardDataSchema, createEmptyBoard()),
 	);
 }

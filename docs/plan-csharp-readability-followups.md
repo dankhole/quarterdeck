@@ -173,7 +173,7 @@ No class is required, but the code should read as a pipeline of named phases.
 - each startup phase has a small, named helper
 - the lazy import boundary remains intact
 
-## 5. Decompose `terminal-slot.ts` so terminal concerns are easier to locate
+## 5. Decompose `terminal-slot.ts` so terminal concerns are easier to locate — done
 
 Primary file: `web-ui/src/terminal/terminal-slot.ts`
 
@@ -212,7 +212,7 @@ Potential directions:
 - the constructor mainly wires collaborators together
 - `TerminalSlot` has a smaller, clearer responsibility boundary
 
-## 6. Split `runtime-state-hub.ts` by client registry versus broadcast coordination
+## 6. Split `runtime-state-hub.ts` by client registry versus broadcast coordination — done
 
 Primary file: `src/server/runtime-state-hub.ts`
 
@@ -251,7 +251,7 @@ The public surface can stay the same; the goal is internal ownership clarity.
 - batching behavior has a clear home
 - the main hub implementation reads as coordination of smaller parts
 
-## 7. Decompose `project-navigation-panel.tsx` into hooks and slimmer view components
+## 7. Decompose `project-navigation-panel.tsx` into hooks and slimmer view components — done
 
 Primary file: `web-ui/src/components/app/project-navigation-panel.tsx`
 
@@ -286,7 +286,7 @@ Use the same approach that worked for `App.tsx`:
 - the main component reads top-to-bottom as UI composition
 - drag/reorder and removal flows are easier to find in isolation
 
-## 8. Reassess `terminal-pool.ts` for allocation-policy versus lifecycle splitting
+## 8. Reassess `terminal-pool.ts` for allocation-policy versus lifecycle splitting — done
 
 Primary file: `web-ui/src/terminal/terminal-pool.ts`
 
@@ -319,6 +319,12 @@ First reassess whether the current size reflects necessary complexity or removab
 - the main pool module makes its ownership rules and lifecycle easier to follow
 - allocation policy is easier to inspect independently
 - readers do not need to infer core invariants from unrelated UI-facing code
+
+### Outcome
+
+Keep the shared-slot allocation and lifecycle state machine in `terminal-pool.ts`; that complexity is intrinsic to the `FREE -> PRELOADING -> READY -> ACTIVE -> PREVIOUS` policy and the timed warmup/previous eviction behavior. A small split is still worthwhile around dedicated terminals: they have different ownership rules, are not governed by pool eviction/rotation, and were obscuring the shared-pool invariants by living in the same module.
+
+The implemented readability refactor extracts dedicated-terminal registry concerns into `terminal-dedicated-registry.ts` while leaving the pool state machine and its public acquisition/release policy in `terminal-pool.ts`. That keeps allocation/eviction logic inspectable in one place without mixing it with the separate dedicated-terminal lifecycle.
 
 ## Suggested sequence
 

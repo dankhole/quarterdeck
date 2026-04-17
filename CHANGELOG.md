@@ -34,6 +34,17 @@
 - Added `useLoadingGuard` hook to `utils/react-use.ts` — replaces the repeated `useState(false)` + `try/finally` pattern with a ref-guarded async wrapper that prevents double-clicks and auto-resets. Includes `reset()` for force-clearing on project switch.
 - Applied both to `use-git-actions.ts` (626→515 lines) and `use-branch-actions.ts` (520→493 lines). Net ~56 line reduction across the two hooks.
 
+### Refactor: split terminal slot hosting and visibility lifecycle
+
+- Refactored `web-ui/src/terminal/terminal-slot.ts` so the main class now reads primarily as terminal orchestration. Constructor/setup work is grouped behind named helper methods for xterm creation, addon wiring, socket/write-queue setup, and restore handling.
+- Added `slot-dom-host.ts` to own the persistent parking-root host element, stage-container attachment, reveal/hide behavior, and parking transitions. Added `slot-visibility-lifecycle.ts` to own the tab-visibility refresh and reconnect-on-return behavior that previously lived inline in `TerminalSlot`.
+- Added focused regression coverage for the extracted collaborators and kept the existing terminal pool/session tests green to verify that reconnect, restore, and hosting behavior stayed stable.
+
+### Refactor: split dedicated terminal registry from terminal pool
+
+- Kept the shared-slot allocation and lifecycle state machine in `web-ui/src/terminal/terminal-pool.ts`, where the `FREE/PRELOADING/READY/ACTIVE/PREVIOUS` policy and eviction invariants are easier to inspect together.
+- Extracted dedicated-terminal ownership into `web-ui/src/terminal/terminal-dedicated-registry.ts`, separating the home/detail terminal registry from shared pool allocation and making the pool module read more clearly as shared-slot policy plus cross-terminal utilities.
+
 ### Refactor: extract `updateCardInBoard` helper in board-state
 
 - Extracted repeated nested `columns.map → cards.map` pattern into a single `updateCardInBoard` helper. Refactored `updateTask`, `reconcileTaskWorkingDirectory`, `reconcileTaskBranch`, and `toggleTaskPinned` to use it. ~33 line net reduction, zero behavior changes.
@@ -52,7 +63,18 @@
 
 ### Refactor: consolidate board rules behind the runtime board module
 
-- Trimmed `web-ui/src/state/board-state.ts` so task update, task deletion, column clearing, and pinned-state toggling now delegate to `src/core/task-board-mutations.ts` instead of re-implementing nearby board rules in the browser layer. The browser module keeps parsing, drag/drop placement, and metadata reconciliation concerns, while the runtime module is more clearly the canonical home for task mutation semantics. Added regression coverage for the thinner browser adapters and kept existing runtime board tests green.
+- Trimmed `web-ui/src/state/board-state.ts` so task update, task deletion, column clearing, pinned-state toggling, and post-parse dependency cleanup all delegate to `src/core/task-board-mutations.ts` instead of re-implementing nearby board rules in the browser layer. Persisted dependency parsing now only normalizes raw saved records; the runtime module canonically drops invalid links, reorients backlog-linked pairs, and dedupes adjacent dependency concepts after hydration. The browser module keeps parsing, drag/drop placement, and metadata reconciliation concerns. Added regression coverage for the thinner browser adapters and the runtime-owned board canonicalization path.
+
+### Refactor: slim project navigation panel composition
+
+- Moved project sidebar orchestration into `useProjectNavigationPanel`, consolidating optimistic reorder state, drag/drop handling, removal confirmation state, and needs-input badge counts behind a named project hook.
+- Split the render surface in `project-navigation-panel.tsx` into smaller view sections for the draggable list and portal-backed drag row, so the main component now reads as UI composition instead of mixed controller/render logic.
+- Added focused hook coverage for approval-count derivation, optimistic reorder reset, and removal confirmation flow.
+
+### Refactor: split runtime state hub coordination
+
+- Split `src/server/runtime-state-hub.ts` into a slimmer coordinator plus two focused collaborators: `runtime-state-client-registry.ts` now owns websocket client registration, workspace-scoped tracking, and cleanup, while `runtime-state-message-batcher.ts` owns task-summary and debug-log batching. Public hub behavior, websocket payload shapes, and workspace disposal semantics stay the same.
+- Added targeted server-side unit coverage for the extracted registry and batching helpers, including workspace client disconnect cleanup and summary/debug-log batch timing.
 
 ## [0.9.4] — 2026-04-16
 

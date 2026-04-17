@@ -86,6 +86,10 @@ export interface RuntimeDeleteTasksResult {
 	deletedTaskIds: string[];
 }
 
+export function canonicalizeTaskBoard(board: RuntimeBoardData): RuntimeBoardData {
+	return updateTaskDependencies(board);
+}
+
 function collectExistingTaskIds(board: RuntimeBoardData): Set<string> {
 	const existingIds = new Set<string>();
 	for (const column of board.columns) {
