@@ -551,9 +551,6 @@ export class TerminalSlot {
 			this.resizer.request();
 			if (shouldReveal) {
 				this.terminal.scrollToBottom();
-				// Arm a one-shot for the first ResizeObserver callback in case
-				// its fit() reflow undoes this scroll.
-				this.resizer.pendingScrollToBottom = true;
 			}
 			if (options.autoFocus) {
 				if (shouldReveal) {
