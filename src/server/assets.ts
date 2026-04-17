@@ -81,7 +81,7 @@ export async function readAsset(rootDir: string, requestPathname: string): Promi
 		const content = await readFile(resolvedPath);
 		return {
 			content,
-			contentType: MIME_TYPES[".html"],
+			contentType: MIME_TYPES[".html"] ?? "text/html; charset=utf-8",
 		};
 	}
 }

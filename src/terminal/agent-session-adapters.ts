@@ -99,6 +99,7 @@ function buildHooksCommandParts(args: string[]): string[] {
 function hasCliOption(args: string[], optionName: string): boolean {
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
+		if (!arg) continue;
 		if (arg === optionName || arg.startsWith(`${optionName}=`)) {
 			return true;
 		}
