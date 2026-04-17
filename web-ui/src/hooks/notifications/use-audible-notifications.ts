@@ -6,6 +6,7 @@ import {
 	EVENT_PRIORITY,
 	getSettleWindowMs,
 	isEventSuppressedForProject,
+	isTabVisible,
 	resolveSessionSoundEvent,
 	type TaskColumn,
 } from "@/hooks/notifications/audible-notifications";
@@ -66,6 +67,7 @@ export function useAudibleNotifications({
 		const eventType = pending.eventType;
 		if (!latestEventsRef.current[eventType]) return;
 		if (
+			isTabVisible() &&
 			isEventSuppressedForProject(
 				eventType,
 				latestSuppressRef.current,

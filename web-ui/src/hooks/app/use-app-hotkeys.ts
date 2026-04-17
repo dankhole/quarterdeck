@@ -146,7 +146,7 @@ export function useAppHotkeys({
 	);
 
 	useHotkeys(
-		"mod+shift+t",
+		"mod+p",
 		() => {
 			if (!currentProjectId) return;
 			handleToggleFileFinder();

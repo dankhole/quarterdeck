@@ -77,7 +77,7 @@ export function createDefaultSavePayload(overrides?: Record<string, unknown>): R
 		audibleNotificationsOnlyWhenHidden: true,
 		audibleNotificationSuppressCurrentProject: {
 			permission: false,
-			review: false,
+			review: true,
 			failure: false,
 		},
 		focusedTaskPollMs: 2000,

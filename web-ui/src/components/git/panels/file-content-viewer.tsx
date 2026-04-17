@@ -53,6 +53,8 @@ export function FileContentViewer({
 	isError,
 	filePath,
 	onClose,
+	scrollToLine,
+	onScrollToLineConsumed,
 }: {
 	content: string | null;
 	binary: boolean;
@@ -61,6 +63,8 @@ export function FileContentViewer({
 	isError: boolean;
 	filePath: string | null;
 	onClose?: () => void;
+	scrollToLine?: number | null;
+	onScrollToLineConsumed?: () => void;
 }): React.ReactElement {
 	const [wordWrap, setWordWrap] = useBooleanLocalStorageValue(LocalStorageKey.FileBrowserWordWrap, true);
 	const toggleWordWrap = useCallback(() => setWordWrap((prev) => !prev), [setWordWrap]);
@@ -114,6 +118,15 @@ export function FileContentViewer({
 	useEffect(() => {
 		virtualizer.measure();
 	}, [wordWrap, virtualizer]);
+
+	useEffect(() => {
+		if (scrollToLine == null || lines.length === 0) return;
+		const index = scrollToLine - 1;
+		if (index >= 0 && index < lines.length) {
+			virtualizer.scrollToIndex(index, { align: "center" });
+		}
+		onScrollToLineConsumed?.();
+	}, [scrollToLine, lines.length, virtualizer, onScrollToLineConsumed]);
 
 	const handleCopyPath = useCallback(() => {
 		if (!filePath) {

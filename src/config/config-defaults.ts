@@ -45,7 +45,7 @@ export const DEFAULT_AUDIBLE_NOTIFICATION_EVENTS: AudibleNotificationEvents = {
 
 export const DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT: AudibleNotificationSuppressCurrentProject = {
 	permission: false,
-	review: false,
+	review: true,
 	failure: false,
 };
 

@@ -40,7 +40,7 @@ export interface FilesViewProps {
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
 	/** External file navigation from commit panel — selects a file when arriving from another view. */
-	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string } | null;
+	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string; lineNumber?: number } | null;
 	/** Called after consuming pendingFileNavigation. */
 	onFileNavigationConsumed?: () => void;
 	/** Scope key for persisting expanded dirs and scroll position across unmount/remount cycles. */
@@ -66,6 +66,7 @@ export function FilesView({
 		scopeKey ? initializedExpansionByScope.has(scopeKey) : false,
 	);
 
+	const [pendingScrollLine, setPendingScrollLine] = useState<number | null>(null);
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 
@@ -83,10 +84,11 @@ export function FilesView({
 		}
 	}, [scopeKey]);
 
-	// Navigate to a specific file when external file navigation arrives (from commit panel)
+	// Navigate to a specific file when external file navigation arrives (from commit panel or search)
 	useEffect(() => {
 		if (pendingFileNavigation?.targetView === "files") {
 			fileBrowserData.onSelectPath(pendingFileNavigation.filePath);
+			setPendingScrollLine(pendingFileNavigation.lineNumber ?? null);
 			onFileNavigationConsumed?.();
 		}
 	}, [pendingFileNavigation, onFileNavigationConsumed, fileBrowserData]);
@@ -203,6 +205,8 @@ export function FilesView({
 								isError={fileBrowserData.isContentError}
 								filePath={fileBrowserData.selectedPath}
 								onClose={fileBrowserData.onCloseFile}
+								scrollToLine={pendingScrollLine}
+								onScrollToLineConsumed={() => setPendingScrollLine(null)}
 							/>
 						</div>
 					</>

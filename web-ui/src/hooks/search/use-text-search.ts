@@ -32,7 +32,7 @@ export interface UseTextSearchResult {
 
 interface UseTextSearchOptions {
 	workspaceId: string | null;
-	onSelect: (filePath: string) => void;
+	onSelect: (filePath: string, lineNumber?: number) => void;
 }
 
 export function useTextSearch({ workspaceId, onSelect }: UseTextSearchOptions): UseTextSearchResult {
@@ -117,7 +117,7 @@ export function useTextSearch({ workspaceId, onSelect }: UseTextSearchOptions): 
 		if (selectedIndex >= 0 && selectedIndex < flatMatches.length) {
 			const match = flatMatches[selectedIndex];
 			if (match) {
-				onSelectRef.current(match.path);
+				onSelectRef.current(match.path, match.line);
 			}
 		}
 	}, [selectedIndex, flatMatches]);

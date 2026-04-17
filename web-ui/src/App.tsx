@@ -223,10 +223,10 @@ function AppContent({
 	}, []);
 
 	const handleSearchFileSelect = useCallback(
-		(filePath: string) => {
+		(filePath: string, lineNumber?: number) => {
 			setIsFileFinderOpen(false);
 			setIsTextSearchOpen(false);
-			git.navigateToFile({ targetView: "files", filePath });
+			git.navigateToFile({ targetView: "files", filePath, lineNumber });
 		},
 		[git.navigateToFile],
 	);

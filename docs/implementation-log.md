@@ -2,7 +2,38 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
-## Feature: file finder (Cmd+Shift+T) and text search (Cmd+Shift+F) (2026-04-17)
+## Enhancement: notification muting — "Mute project viewed" (2026-04-17)
+
+**What:** Renamed "Mute focused project" to "Mute project viewed" and changed per-project notification suppression to only apply while the tab is visible. Defaulted review suppression to `true` for new users.
+
+**Why:** The previous behavior muted sounds even when the user had tabbed away from Quarterdeck, defeating the purpose of audio notifications. The "focused" label was also misleading — it's about the project being viewed, not window focus.
+
+**Approach:** Moved the `isTabVisible()` guard from inside `isEventSuppressedForProject` (which would have mixed browser concerns into a pure config predicate) to the `fireSound` call site in `use-audible-notifications.ts`. This keeps the domain function testable without DOM mocking and puts the visibility decision at the orchestration layer alongside the existing `areSoundsSuppressed` global gate.
+
+**Files touched:**
+- `src/config/config-defaults.ts` — `review` default changed to `true` in `DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT`
+- `test/runtime/config/runtime-config-helpers.ts` — aligned hardcoded test fixture with new default
+- `web-ui/src/components/settings/display-sections.tsx` — label and comment rename
+- `web-ui/src/hooks/notifications/use-audible-notifications.ts` — added `isTabVisible()` guard at `fireSound` call site
+- `web-ui/src/hooks/notifications/audible-notifications-suppress.test.tsx` — tests mock tab as visible and use `onlyWhenHidden: false` to test suppression in isolation
+
+## Feature: scroll-to-line on text search result click (2026-04-17)
+
+**What:** Clicking a text search result (Cmd+Shift+F) now scrolls the file content viewer to the matched line number.
+
+**Why:** Previously, selecting a search result opened the file but left the user at the top — they had to manually scroll to find the match. This closes the loop on the text search UX.
+
+**Approach:** Extended `onSelect` in `use-text-search.ts` to pass `match.line` alongside `match.path`. The line number flows through `pendingFileNavigation` in `App.tsx` → `useGitNavigation` → `FilesView` → `FileContentViewer`, which calls `virtualizer.scrollToIndex(lineNumber - 1)` after the file content loads.
+
+**Files touched:**
+- `web-ui/src/hooks/search/use-text-search.ts` — `onSelect` signature extended with optional `lineNumber`
+- `web-ui/src/components/search/text-search-overlay.tsx` — passes line number through to `onSelect`
+- `web-ui/src/App.tsx` — `pendingFileNavigation` state extended with `lineNumber`, wired to git navigation
+- `web-ui/src/hooks/git/use-git-navigation.ts` — `NavigateToFileOptions` extended with `lineNumber`
+- `web-ui/src/components/git/files-view.tsx` — passes `lineNumber` to `FileContentViewer`
+- `web-ui/src/components/git/panels/file-content-viewer.tsx` — `useEffect` scrolls virtualizer to line on mount/change
+
+## Feature: file finder (Cmd+P) and text search (Cmd+Shift+F) (2026-04-17)
 
 **What:** Added two VS Code-style search overlays to the web UI — a file finder opened via Cmd+P for fuzzy filename search, and a text search opened via Cmd+Shift+F for full-text grep across the workspace using `git grep`.
 

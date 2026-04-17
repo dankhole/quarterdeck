@@ -151,12 +151,12 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 					{Math.round(fields.audibleNotificationVolume * 100)}%
 				</span>
 			</div>
-			{/* Per-event grid: Enabled | Other projects only | Event label */}
+			{/* Per-event grid: Enabled | Mute project viewed | Event label */}
 			<div className={cn("mt-3", masterOff && "opacity-40")}>
 				<div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-2 items-center text-[13px]">
 					{/* Header row */}
 					<span className="text-text-tertiary text-[12px] font-medium">Enabled</span>
-					<span className="text-text-tertiary text-[12px] font-medium">Mute focused project</span>
+					<span className="text-text-tertiary text-[12px] font-medium">Mute project viewed</span>
 					<span />
 					{/* Event rows */}
 					{NOTIFICATION_EVENTS.map(([key, label, description]) => (

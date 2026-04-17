@@ -11,6 +11,7 @@ interface UseGitNavigationInput {
 export interface FileNavigation {
 	targetView: "git" | "files";
 	filePath: string;
+	lineNumber?: number;
 }
 
 interface UseGitNavigationResult {

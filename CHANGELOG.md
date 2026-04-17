@@ -2,12 +2,22 @@
 
 ## [Unreleased]
 
-### Feature: file finder (Cmd+Shift+T) and text search (Cmd+Shift+F)
+### Feature: file finder (Cmd+P) and text search (Cmd+Shift+F)
 
-- Added two VS Code-style search overlays — file finder (Cmd+Shift+T) for fuzzy filename search and text search (Cmd+Shift+F) for full-text grep across the workspace. Both open as centered floating panels with keyboard navigation (arrow keys, Enter, Escape) and outside-click dismiss.
+- Added two VS Code-style search overlays — file finder (Cmd+P) for fuzzy filename search and text search (Cmd+Shift+F) for full-text grep across the workspace. Both open as centered floating panels with keyboard navigation (arrow keys, Enter, Escape) and outside-click dismiss.
 - File finder uses the existing `workspace.searchFiles` endpoint with 150ms debounce and request-ID race protection. Text search uses a new `workspace.searchText` endpoint backed by `git grep`, with case sensitivity and regex toggles, results grouped by file with match highlighting, and truncation at 100 matches.
 - Selecting a result in either modal opens the file in the file content viewer via the existing `pendingFileNavigation` mechanism. Both modals are only active when a workspace is selected and close on project switch.
 - Follow-up fixes from sanity review: added request-ID race protection to text search hook, replaced mutable render-time counter with precomputed `useMemo` array for flat-index mapping, removed dead `onDismiss` parameter from hook interfaces, stabilized Escape listener with ref to avoid re-registration on every render.
+
+### Feature: scroll-to-line on text search result click
+
+- Clicking a text search result now scrolls the file content viewer to the matched line. The line number is passed through `pendingFileNavigation` to `FileContentViewer`, which calls `scrollToIndex()` on the virtualizer after the file loads.
+
+### Enhancement: notification muting — "Mute project viewed"
+
+- Renamed "Mute focused project" to "Mute project viewed" in the notification settings grid.
+- Per-project notification suppression now only applies while the tab is visible — sounds always play when the user has tabbed away, even for the viewed project.
+- Defaulted review event suppression to `true` for new users — review sounds are muted for the project you're actively watching, reducing noise without missing anything.
 
 ### Chore: dead code cleanup
 

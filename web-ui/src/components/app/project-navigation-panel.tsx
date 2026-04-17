@@ -358,7 +358,7 @@ const ESSENTIAL_SHORTCUTS = [
 ];
 
 const MORE_SHORTCUTS = [
-	{ keys: [MOD, "Shift", "T"], label: "Find file" },
+	{ keys: [MOD, "P"], label: "Find file" },
 	{ keys: [MOD, "Shift", "F"], label: "Search in files" },
 	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
 	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },

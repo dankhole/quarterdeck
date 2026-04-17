@@ -27,6 +27,8 @@ describe("useAudibleNotifications — suppress current project", () => {
 		playMock.mockReset();
 		ensureContextMock.mockReset();
 		harness = setupTestHarness();
+		vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+		vi.spyOn(document, "hasFocus").mockReturnValue(true);
 	});
 
 	afterEach(() => {
@@ -36,6 +38,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 	it("suppresses failure for current-project tasks when failure suppress is enabled", async () => {
 		const props: HookProps = {
 			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
 			audibleNotificationSuppressCurrentProject: {
 				permission: false,
 				review: false,
@@ -78,6 +81,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 	it("plays non-suppressed event types for current-project tasks", async () => {
 		const props: HookProps = {
 			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
 			audibleNotificationSuppressCurrentProject: {
 				permission: false,
 				review: true,
@@ -120,6 +124,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 	it("plays sounds for other-project tasks even when suppress is enabled", async () => {
 		const props: HookProps = {
 			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
 			audibleNotificationSuppressCurrentProject: {
 				permission: true,
 				review: true,
@@ -162,6 +167,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 	it("suppresses current-project and plays other-project in same batch", async () => {
 		const props: HookProps = {
 			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
 			audibleNotificationSuppressCurrentProject: {
 				permission: true,
 				review: true,

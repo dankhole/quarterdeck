@@ -7,7 +7,7 @@ import type { RuntimeWorkspaceTextSearchFile } from "@/runtime/types";
 
 export interface TextSearchOverlayProps {
 	workspaceId: string | null;
-	onSelect: (filePath: string) => void;
+	onSelect: (filePath: string, lineNumber?: number) => void;
 	onDismiss: () => void;
 }
 
@@ -126,7 +126,7 @@ export function TextSearchOverlay({ workspaceId, onSelect, onDismiss }: TextSear
 							selectedIndex={search.selectedIndex}
 							flatIndexStart={flatIndexStarts[fileIdx] ?? 0}
 							selectedRowRef={selectedRowRef}
-							onClickMatch={(path: string) => onSelect(path)}
+							onClickMatch={(path: string, lineNumber: number) => onSelect(path, lineNumber)}
 							onHoverMatch={search.setSelectedIndex}
 						/>
 					))}
@@ -144,7 +144,7 @@ interface FileGroupProps {
 	selectedIndex: number;
 	flatIndexStart: number;
 	selectedRowRef: React.RefObject<HTMLDivElement>;
-	onClickMatch: (path: string) => void;
+	onClickMatch: (path: string, lineNumber: number) => void;
 	onHoverMatch: (index: number) => void;
 }
 
@@ -175,7 +175,7 @@ function FileGroup({
 						className={`flex items-center gap-3 px-4 py-1 cursor-pointer text-sm ${
 							isSelected ? "bg-zinc-700" : "hover:bg-zinc-800"
 						}`}
-						onClick={() => onClickMatch(file.path)}
+						onClick={() => onClickMatch(file.path, match.line)}
 						onMouseEnter={() => onHoverMatch(currentFlatIndex)}
 						onKeyDown={undefined}
 					>
