@@ -162,21 +162,14 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 - **Interaction between the two**: Selecting a file in the browser triggers a diff load — if this round-trips to the server each time, latency compounds. Consider pre-fetching diffs for visible files or caching previously viewed diffs.
 - **Commit from sidebar is slow**: The commit action triggered from the sidebar loads for a while before completing. Profile whether the bottleneck is the git commit itself, pre-commit hooks, diff recomputation after commit, or UI update.
 
-## Runtime & cross-cutting readability refactors
-
-Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readability-refactors.md). Independent refactors targeting repeated patterns and navigability gaps identified in a codebase audit.
-
-- ~~**workspace-api.ts handler pipeline**~~ — Addressed by the domain split (ec698f8) which broke the 1,092-line file into 5 modules of 106–314 lines each. Higher-order helpers no longer justified against the smaller files.
-- ~~**Runtime barrel exports**~~ — Done. Added `index.ts` to 9 directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`). Updated ~150 import paths across `src/` and `test/`. Three source files kept direct imports to preserve vitest mock compatibility.
-
 ## Design investigation follow-ups
 
 Full plan at [docs/plan-design-investigation.md](plan-design-investigation.md). These are architectural follow-ups for places where the concern may be incorrect responsibility boundaries or overlapping ownership, not just readability.
 
-- **Reassess board-state ownership between browser and runtime** — Verify that `web-ui/src/state/board-state.ts` and `src/core/task-board-mutations.ts` have a clean canonical owner for board domain rules after the readability refactors.
-- **Reassess terminal architecture across `terminal-slot.ts` and `terminal-pool.ts`** — Investigate whether pooling, reconnect, restore, focus, and DOM attachment still depend on implicit cross-file invariants.
-- **Reassess runtime coordination boundaries between `runtime-state-hub.ts` and `workspace-registry.ts`** — Determine whether these remain overlapping smart hubs or have cleanly separated service responsibilities.
-- **Reassess large UI components that still own workflow state** — Audit `project-navigation-panel.tsx`, `top-bar.tsx`, and similar large components to distinguish healthy UI complexity from misplaced workflow logic.
+- ~~**Reassess board-state ownership between browser and runtime**~~ — Done (cbf81f71). Board rule consolidation confirmed `task-board-mutations.ts` as the canonical owner; browser layer is a thin adapter.
+- ~~**Reassess terminal architecture across `terminal-slot.ts` and `terminal-pool.ts`**~~ — Done (c9abe225). Slot decomposed into `slot-dom-host.ts` + `slot-visibility-lifecycle.ts`; pool split into shared-pool policy + `terminal-dedicated-registry.ts`.
+- ~~**Reassess runtime coordination boundaries between `runtime-state-hub.ts` and `workspace-registry.ts`**~~ — Done (c9abe225). Hub split into coordinator + `runtime-state-client-registry.ts` + `runtime-state-message-batcher.ts`.
+- **Reassess large UI components that still own workflow state** — `project-navigation-panel.tsx` decomposed (c9abe225), but `top-bar.tsx` (624L) and other large components still need audit.
 
 ## Frontend feature folders, component decomposition, and barrel exports
 
