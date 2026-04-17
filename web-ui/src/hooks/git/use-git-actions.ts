@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { showAppToast } from "@/components/app-toaster";
 import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git/history";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import {
@@ -10,6 +9,9 @@ import {
 	getGitSyncSuccessLabel,
 	isTaskGitActionInFlight,
 	matchesWorkspaceInfoSelection,
+	showGitErrorToast,
+	showGitSuccessToast,
+	showGitWarningToast,
 	type TaskGitActionLoadingState,
 	type TaskGitActionSource,
 } from "@/hooks/git/git-actions";
@@ -29,6 +31,7 @@ import {
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
+import { useLoadingGuard } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseGitActionsInput {
@@ -91,9 +94,12 @@ export function useGitActions({
 	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] = useState<
 		Record<string, TaskGitActionLoadingState>
 	>({});
-	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
-	const [isDiscardingHomeWorkingChanges, setIsDiscardingHomeWorkingChanges] = useState(false);
-	const [isStashAndRetryingPull, setIsStashAndRetryingPull] = useState(false);
+	const switchHomeBranchGuard = useLoadingGuard();
+	const discardHomeChangesGuard = useLoadingGuard();
+	const stashAndRetryPullGuard = useLoadingGuard();
+	const isSwitchingHomeBranch = switchHomeBranchGuard.isLoading;
+	const isDiscardingHomeWorkingChanges = discardHomeChangesGuard.isLoading;
+	const isStashAndRetryingPull = stashAndRetryPullGuard.isLoading;
 	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
@@ -175,21 +181,11 @@ export function useGitActions({
 			try {
 				const selection = findCardSelection(board, taskId);
 				if (!selection) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: "Could not find the selected task card.",
-						timeout: 5000,
-					});
+					showGitErrorToast("Could not find the selected task card.", { timeout: 5000 });
 					return false;
 				}
 				if (selection.column.id !== "review") {
-					showAppToast({
-						intent: "warning",
-						icon: "warning-sign",
-						message: "Commit and PR actions are only available for tasks in Review.",
-						timeout: 5000,
-					});
+					showGitWarningToast("Commit and PR actions are only available for tasks in Review.", 5000);
 					return false;
 				}
 
@@ -210,12 +206,7 @@ export function useGitActions({
 					? storedWorkspaceInfo
 					: (snapshotWorkspaceInfo ?? (await fetchTaskWorkspaceInfo(selection.card)));
 				if (!workspaceInfo) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: "Could not resolve task workspace details.",
-						timeout: 6000,
-					});
+					showGitErrorToast("Could not resolve task workspace details.", { timeout: 6000 });
 					return false;
 				}
 				setTaskWorkspaceInfo(workspaceInfo);
@@ -234,12 +225,7 @@ export function useGitActions({
 				});
 				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
 				if (!typed.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: typed.message ?? "Could not send instructions to the task session.",
-						timeout: 7000,
-					});
+					showGitErrorToast(typed.message ?? "Could not send instructions to the task session.");
 					return false;
 				}
 				await new Promise<void>((resolve) => {
@@ -247,12 +233,7 @@ export function useGitActions({
 				});
 				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
 				if (!submitted.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: submitted.message ?? "Could not submit instructions to the task session.",
-						timeout: 7000,
-					});
+					showGitErrorToast(submitted.message ?? "Could not submit instructions to the task session.");
 					return false;
 				}
 				getTerminalController(taskId)?.focus?.();
@@ -335,7 +316,7 @@ export function useGitActions({
 					setHomeGitSummary(payload.summary);
 				}
 				refreshGitHistory();
-				showAppToast({ intent: "success", message: getGitSyncSuccessLabel(action), timeout: 3000 });
+				showGitSuccessToast(getGitSyncSuccessLabel(action));
 			} catch (error) {
 				const message = toErrorMessage(error);
 				setGitActionError({
@@ -354,134 +335,89 @@ export function useGitActions({
 		async (branch: string) => {
 			const normalizedBranch = branch.trim();
 			const currentBranch = homeGitSummary?.currentBranch ?? null;
-			if (!currentProjectId || isSwitchingHomeBranch || !normalizedBranch || normalizedBranch === currentBranch) {
+			if (!currentProjectId || !normalizedBranch || normalizedBranch === currentBranch) {
 				return;
 			}
-			setIsSwitchingHomeBranch(true);
-			try {
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
-					branch: normalizedBranch,
-				});
-				if (!payload.ok || !payload.summary) {
-					const errorMessage = payload.error ?? "Switch branch failed.";
-					const fallbackSummary = payload.summary ?? null;
-					if (fallbackSummary) {
-						setHomeGitSummary(fallbackSummary);
-					}
-					if (payload.dirtyTree) {
-						showAppToast({
-							intent: "danger",
-							icon: "warning-sign",
-							message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
-							timeout: 12000,
-							action: {
-								label: "Stash & Switch",
-								onClick: () => {
-									void (async () => {
-										try {
-											const stashClient = getRuntimeTrpcClient(currentProjectId);
-											const stashResult = await stashClient.workspace.stashPush.mutate({
-												taskScope: null,
-												paths: [],
-											});
-											if (!stashResult.ok) {
-												showAppToast({
-													intent: "danger",
-													icon: "warning-sign",
-													message: `Stash failed: ${stashResult.error ?? "Unknown error"}`,
-													timeout: 7000,
+			await switchHomeBranchGuard.run(async () => {
+				try {
+					const trpcClient = getRuntimeTrpcClient(currentProjectId);
+					const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
+						branch: normalizedBranch,
+					});
+					if (!payload.ok || !payload.summary) {
+						const errorMessage = payload.error ?? "Switch branch failed.";
+						const fallbackSummary = payload.summary ?? null;
+						if (fallbackSummary) {
+							setHomeGitSummary(fallbackSummary);
+						}
+						if (payload.dirtyTree) {
+							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`, {
+								timeout: 12000,
+								action: {
+									label: "Stash & Switch",
+									onClick: () => {
+										void (async () => {
+											try {
+												const stashClient = getRuntimeTrpcClient(currentProjectId);
+												const stashResult = await stashClient.workspace.stashPush.mutate({
+													taskScope: null,
+													paths: [],
 												});
-												return;
+												if (!stashResult.ok) {
+													showGitErrorToast(`Stash failed: ${stashResult.error ?? "Unknown error"}`);
+													return;
+												}
+												await switchHomeBranch(normalizedBranch);
+											} catch (stashError) {
+												showGitErrorToast(`Stash failed: ${toErrorMessage(stashError)}`);
 											}
-											await switchHomeBranch(normalizedBranch);
-										} catch (stashError) {
-											const stashMsg = toErrorMessage(stashError);
-											showAppToast({
-												intent: "danger",
-												icon: "warning-sign",
-												message: `Stash failed: ${stashMsg}`,
-												timeout: 7000,
-											});
-										}
-									})();
+										})();
+									},
 								},
-							},
-						});
-					} else {
-						showAppToast({
-							intent: "danger",
-							icon: "warning-sign",
-							message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
-							timeout: 7000,
-						});
+							});
+						} else {
+							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`);
+						}
+						return;
 					}
-					return;
+					setHomeGitSummary(payload.summary);
+					refreshGitHistory();
+					await refreshWorkspaceState();
+				} catch (error) {
+					showGitErrorToast(`Could not switch to ${normalizedBranch}. ${toErrorMessage(error)}`);
 				}
-				setHomeGitSummary(payload.summary);
-				refreshGitHistory();
-				await refreshWorkspaceState();
-			} catch (error) {
-				const message = toErrorMessage(error);
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: `Could not switch to ${normalizedBranch}. ${message}`,
-					timeout: 7000,
-				});
-			} finally {
-				setIsSwitchingHomeBranch(false);
-			}
+			});
 		},
 		[
 			currentProjectId,
+			switchHomeBranchGuard.run,
 			homeGitSummary?.currentBranch,
-			isSwitchingHomeBranch,
 			refreshGitHistory,
 			refreshWorkspaceState,
 		],
 	);
 
 	const discardHomeWorkingChanges = useCallback(async () => {
-		if (!currentProjectId || isDiscardingHomeWorkingChanges) {
-			return;
-		}
-		setIsDiscardingHomeWorkingChanges(true);
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.discardGitChanges.mutate(null);
-			if (!payload.ok) {
-				if (payload.summary) {
-					setHomeGitSummary(payload.summary);
+		if (!currentProjectId) return;
+		await discardHomeChangesGuard.run(async () => {
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.discardGitChanges.mutate(null);
+				if (!payload.ok) {
+					if (payload.summary) {
+						setHomeGitSummary(payload.summary);
+					}
+					showGitErrorToast(payload.error ?? "Could not discard working copy changes.");
+					return;
 				}
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: payload.error ?? "Could not discard working copy changes.",
-					timeout: 7000,
-				});
-				return;
+				setHomeGitSummary(payload.summary);
+				refreshGitHistory();
+				showGitSuccessToast("Discarded working copy changes.", 4000);
+			} catch (error) {
+				showGitErrorToast(`Could not discard working copy changes. ${toErrorMessage(error)}`);
 			}
-			setHomeGitSummary(payload.summary);
-			refreshGitHistory();
-			showAppToast({
-				intent: "success",
-				icon: "tick",
-				message: "Discarded working copy changes.",
-				timeout: 4000,
-			});
-		} catch (error) {
-			const message = toErrorMessage(error);
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: `Could not discard working copy changes. ${message}`,
-				timeout: 7000,
-			});
-		} finally {
-			setIsDiscardingHomeWorkingChanges(false);
-		}
-	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
+		});
+	}, [currentProjectId, discardHomeChangesGuard.run, refreshGitHistory]);
 
 	const runAutoReviewGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction) => {
@@ -491,104 +427,75 @@ export function useGitActions({
 	);
 
 	const stashAndRetryPull = useCallback(async () => {
-		if (!currentProjectId || isStashAndRetryingPull) {
-			return;
-		}
-		setIsStashAndRetryingPull(true);
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+		if (!currentProjectId) return;
+		await stashAndRetryPullGuard.run(async () => {
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 
-			// Step 1: Stash all changes
-			const stashResult = await trpcClient.workspace.stashPush.mutate({
-				taskScope: null,
-				paths: [],
-			});
-			if (!stashResult.ok) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: `Stash failed: ${stashResult.error ?? "Unknown error"}`,
-					timeout: 7000,
+				const stashResult = await trpcClient.workspace.stashPush.mutate({
+					taskScope: null,
+					paths: [],
 				});
-				return;
-			}
-
-			// Step 2: Retry pull
-			const pullResult = await trpcClient.workspace.runGitSyncAction.mutate({ action: "pull" });
-			if (!pullResult.ok || !pullResult.summary) {
-				const fallbackSummary = pullResult.summary ?? null;
-				if (fallbackSummary) {
-					setHomeGitSummary(fallbackSummary);
+				if (!stashResult.ok) {
+					showGitErrorToast(`Stash failed: ${stashResult.error ?? "Unknown error"}`);
+					return;
 				}
-				setGitActionError({
-					action: "pull",
-					message: pullResult.error ?? "Pull failed after stash",
-					output: pullResult.output ?? "",
-					dirtyTree: false,
-				});
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: `Pull failed after stash: ${pullResult.error ?? "Unknown error"}. Your changes are still stashed.`,
-					timeout: 10000,
-				});
-				return;
-			}
-			setHomeGitSummary(pullResult.summary);
 
-			// Step 3: Auto-pop stash on pull success
-			const popResult = await trpcClient.workspace.stashPop.mutate({
-				taskScope: null,
-				index: 0,
-			});
-			if (!popResult.ok) {
-				if (popResult.conflicted) {
-					showAppToast({
-						intent: "warning",
-						icon: "warning-sign",
-						message: "Pull succeeded. Stash pop has conflicts — resolve them in the commit panel.",
-						timeout: 10000,
+				const pullResult = await trpcClient.workspace.runGitSyncAction.mutate({ action: "pull" });
+				if (!pullResult.ok || !pullResult.summary) {
+					const fallbackSummary = pullResult.summary ?? null;
+					if (fallbackSummary) {
+						setHomeGitSummary(fallbackSummary);
+					}
+					setGitActionError({
+						action: "pull",
+						message: pullResult.error ?? "Pull failed after stash",
+						output: pullResult.output ?? "",
+						dirtyTree: false,
 					});
+					showGitErrorToast(
+						`Pull failed after stash: ${pullResult.error ?? "Unknown error"}. Your changes are still stashed.`,
+						{ timeout: 10000 },
+					);
+					return;
+				}
+				setHomeGitSummary(pullResult.summary);
+
+				const popResult = await trpcClient.workspace.stashPop.mutate({
+					taskScope: null,
+					index: 0,
+				});
+				if (!popResult.ok) {
+					if (popResult.conflicted) {
+						showGitWarningToast(
+							"Pull succeeded. Stash pop has conflicts \u2014 resolve them in the commit panel.",
+							10000,
+						);
+					} else {
+						showGitErrorToast(`Pull succeeded but stash pop failed: ${popResult.error ?? "Unknown error"}`, {
+							timeout: 10000,
+						});
+					}
 				} else {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: `Pull succeeded but stash pop failed: ${popResult.error ?? "Unknown error"}`,
-						timeout: 10000,
-					});
+					showGitSuccessToast("Pull succeeded. Stashed changes restored.", 5000);
 				}
-			} else {
-				showAppToast({
-					intent: "success",
-					icon: "tick",
-					message: "Pull succeeded. Stashed changes restored.",
-					timeout: 5000,
-				});
-			}
 
-			setGitActionError(null);
-			refreshGitHistory();
-		} catch (error) {
-			const message = toErrorMessage(error);
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: `Stash & Pull failed: ${message}`,
-				timeout: 7000,
-			});
-		} finally {
-			setIsStashAndRetryingPull(false);
-		}
-	}, [currentProjectId, isStashAndRetryingPull, refreshGitHistory]);
+				setGitActionError(null);
+				refreshGitHistory();
+			} catch (error) {
+				showGitErrorToast(`Stash & Pull failed: ${toErrorMessage(error)}`);
+			}
+		});
+	}, [currentProjectId, stashAndRetryPullGuard.run, refreshGitHistory]);
 
 	const resetGitActionState = useCallback(() => {
 		setRunningGitAction(null);
 		setTaskGitActionLoadingByTaskId({});
-		setIsSwitchingHomeBranch(false);
-		setIsDiscardingHomeWorkingChanges(false);
-		setIsStashAndRetryingPull(false);
+		switchHomeBranchGuard.reset();
+		discardHomeChangesGuard.reset();
+		stashAndRetryPullGuard.reset();
 		setGitActionError(null);
-	}, []);
+	}, [switchHomeBranchGuard, discardHomeChangesGuard, stashAndRetryPullGuard]);
 
 	const onStashAndRetry =
 		gitActionError?.dirtyTree && gitActionError.action === "pull" ? stashAndRetryPull : undefined;

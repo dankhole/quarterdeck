@@ -1,5 +1,5 @@
 import type { DependencyList, Dispatch, SetStateAction } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
 	useDebounce as useReactUseDebounce,
 	useEvent as useReactUseEvent,
@@ -112,4 +112,31 @@ export function useMeasure<T extends Element = Element>() {
 
 export function useUnmount(fn: () => void): void {
 	useReactUseUnmount(fn);
+}
+
+export interface LoadingGuard {
+	isLoading: boolean;
+	run: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
+	reset: () => void;
+}
+
+export function useLoadingGuard(): LoadingGuard {
+	const [isLoading, setIsLoading] = useState(false);
+	const loadingRef = useRef(false);
+	const run = useCallback(async <T>(fn: () => Promise<T>): Promise<T | undefined> => {
+		if (loadingRef.current) return undefined;
+		loadingRef.current = true;
+		setIsLoading(true);
+		try {
+			return await fn();
+		} finally {
+			loadingRef.current = false;
+			setIsLoading(false);
+		}
+	}, []);
+	const reset = useCallback(() => {
+		loadingRef.current = false;
+		setIsLoading(false);
+	}, []);
+	return useMemo(() => ({ isLoading, run, reset }), [isLoading, run, reset]);
 }

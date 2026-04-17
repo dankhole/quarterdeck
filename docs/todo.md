@@ -167,7 +167,6 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readability-refactors.md). Independent refactors targeting repeated patterns and navigability gaps identified in a codebase audit.
 
 - ~~**workspace-api.ts handler pipeline**~~ — Addressed by the domain split (ec698f8) which broke the 1,092-line file into 5 modules of 106–314 lines each. Higher-order helpers no longer justified against the smaller files.
-- **Git action toast + loading guard helpers** — Add `showGitErrorToast`/`showGitSuccessToast` to `hooks/git/git-actions.ts` and `useLoadingGuard` to `utils/react-use.ts`. Simplifies 21 toast calls and 5 loading patterns across `use-git-actions.ts` (626L) and `use-branch-actions.ts` (520L). ~100-150 line reduction.
 - **Runtime barrel exports** — Add `index.ts` to `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`. Re-export public surface, update ~100-150 import paths. No logic changes.
 
 ## Frontend feature folders, component decomposition, and barrel exports

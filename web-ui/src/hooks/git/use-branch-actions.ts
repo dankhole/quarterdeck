@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
-import { showAppToast } from "@/components/app-toaster";
 import {
 	type CheckoutDialogState,
 	type CreateBranchDialogState,
 	resolveCheckoutDialogState,
 } from "@/components/git/panels";
+import { showGitErrorToast, showGitSuccessToast, showGitWarningToast } from "@/hooks/git/git-actions";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { setHomeGitSummary } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
+import { useLoadingGuard } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseBranchActionsOptions {
@@ -98,7 +99,8 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	const [isBranchPopoverOpen, setBranchPopoverOpen] = useState(false);
 	const [checkoutDialogState, setCheckoutDialogState] = useState<CheckoutDialogState>({ type: "closed" });
-	const [isStashingAndCheckingOut, setIsStashingAndCheckingOut] = useState(false);
+	const stashAndCheckoutGuard = useLoadingGuard();
+	const isStashingAndCheckingOut = stashAndCheckoutGuard.isLoading;
 
 	// Fetch git refs when popover opens
 	const refsQueryFn = useCallback(async () => {
@@ -167,16 +169,13 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 					setHomeGitSummary(result.summary);
 				}
 				if (result.ok) {
-					showAppToast({ intent: "success", message: `Switched to ${branch}` });
+					showGitSuccessToast(`Switched to ${branch}`);
 					onCheckoutSuccess?.();
 				} else {
-					showAppToast({ intent: "danger", message: result.error ?? `Failed to switch to ${branch}` });
+					showGitErrorToast(result.error ?? `Failed to switch to ${branch}`);
 				}
 			} catch (error) {
-				showAppToast({
-					intent: "danger",
-					message: `Checkout failed: ${toErrorMessage(error)}`,
-				});
+				showGitErrorToast(`Checkout failed: ${toErrorMessage(error)}`);
 			}
 		},
 		[workspaceId, onCheckoutSuccess],
@@ -207,21 +206,15 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				...(baseRef ? { baseRef } : {}),
 			});
 			if (result.ok) {
-				showAppToast({
-					intent: "success",
-					message: `Merged ${branchName} into ${currentBranch ?? "current branch"}`,
-				});
+				showGitSuccessToast(`Merged ${branchName} into ${currentBranch ?? "current branch"}`);
 			} else if (result.conflictState) {
-				showAppToast({ intent: "warning", message: "Merge has conflicts \u2014 opening resolver" });
+				showGitWarningToast("Merge has conflicts \u2014 opening resolver");
 				onConflictDetected?.();
 			} else {
-				showAppToast({ intent: "danger", message: result.error ?? `Failed to merge ${branchName}` });
+				showGitErrorToast(result.error ?? `Failed to merge ${branchName}`);
 			}
 		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: `Merge failed: ${toErrorMessage(error)}`,
-			});
+			showGitErrorToast(`Merge failed: ${toErrorMessage(error)}`);
 		}
 	}, [workspaceId, mergeBranchDialogState, taskId, baseRef, currentBranch, onConflictDetected]);
 
@@ -280,25 +273,20 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		const { branch, scope, taskId: checkoutTaskId, baseRef: checkoutBaseRef } = checkoutDialogState;
 		const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
 
-		setIsStashingAndCheckingOut(true);
-		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const stashResult = await trpc.workspace.stashPush.mutate({ taskScope, paths: [], message: undefined });
-			if (!stashResult.ok) {
-				showAppToast({ intent: "danger", message: stashResult.error ?? "Failed to stash changes" });
-				return;
+		await stashAndCheckoutGuard.run(async () => {
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				const stashResult = await trpc.workspace.stashPush.mutate({ taskScope, paths: [], message: undefined });
+				if (!stashResult.ok) {
+					showGitErrorToast(stashResult.error ?? "Failed to stash changes");
+					return;
+				}
+				setCheckoutDialogState({ type: "closed" });
+				await performCheckout(branch, scope, checkoutTaskId, checkoutBaseRef);
+			} catch (error) {
+				showGitErrorToast(`Stash failed: ${toErrorMessage(error)}`);
 			}
-			// Stash succeeded — close dialog and perform checkout
-			setCheckoutDialogState({ type: "closed" });
-			await performCheckout(branch, scope, checkoutTaskId, checkoutBaseRef);
-		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: `Stash failed: ${toErrorMessage(error)}`,
-			});
-		} finally {
-			setIsStashingAndCheckingOut(false);
-		}
+		});
 	}, [workspaceId, checkoutDialogState, taskId, baseRef, performCheckout]);
 
 	const closeCheckoutDialog = useCallback(() => {
@@ -339,16 +327,13 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 			const trpc = getRuntimeTrpcClient(workspaceId);
 			const result = await trpc.workspace.deleteBranch.mutate({ branchName });
 			if (result.ok) {
-				showAppToast({ intent: "success", message: `Deleted branch ${branchName}` });
+				showGitSuccessToast(`Deleted branch ${branchName}`);
 				void refetchRefs();
 			} else {
-				showAppToast({ intent: "danger", message: result.error ?? `Failed to delete ${branchName}` });
+				showGitErrorToast(result.error ?? `Failed to delete ${branchName}`);
 			}
 		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: `Delete failed: ${toErrorMessage(error)}`,
-			});
+			showGitErrorToast(`Delete failed: ${toErrorMessage(error)}`);
 		}
 	}, [workspaceId, deleteBranchDialogState, refetchRefs]);
 
@@ -387,21 +372,15 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				...(baseRef ? { baseRef } : {}),
 			});
 			if (result.ok) {
-				showAppToast({
-					intent: "success",
-					message: `Rebased onto ${onto}`,
-				});
+				showGitSuccessToast(`Rebased onto ${onto}`);
 			} else if (result.conflictState) {
-				showAppToast({ intent: "warning", message: "Rebase has conflicts \u2014 opening resolver" });
+				showGitWarningToast("Rebase has conflicts \u2014 opening resolver");
 				onConflictDetected?.();
 			} else {
-				showAppToast({ intent: "danger", message: result.error ?? `Failed to rebase onto ${onto}` });
+				showGitErrorToast(result.error ?? `Failed to rebase onto ${onto}`);
 			}
 		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: `Rebase failed: ${toErrorMessage(error)}`,
-			});
+			showGitErrorToast(`Rebase failed: ${toErrorMessage(error)}`);
 		}
 	}, [workspaceId, rebaseBranchDialogState, taskId, baseRef, onConflictDetected]);
 
@@ -427,16 +406,13 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				const trpc = getRuntimeTrpcClient(workspaceId);
 				const result = await trpc.workspace.renameBranch.mutate({ oldName, newName });
 				if (result.ok) {
-					showAppToast({ intent: "success", message: `Renamed ${oldName} to ${newName}` });
+					showGitSuccessToast(`Renamed ${oldName} to ${newName}`);
 					void refetchRefs();
 				} else {
-					showAppToast({ intent: "danger", message: result.error ?? `Failed to rename ${oldName}` });
+					showGitErrorToast(result.error ?? `Failed to rename ${oldName}`);
 				}
 			} catch (error) {
-				showAppToast({
-					intent: "danger",
-					message: `Rename failed: ${toErrorMessage(error)}`,
-				});
+				showGitErrorToast(`Rename failed: ${toErrorMessage(error)}`);
 			}
 		},
 		[workspaceId, renameBranchDialogState, refetchRefs],
@@ -467,15 +443,12 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				...(baseRef ? { baseRef } : {}),
 			});
 			if (result.ok) {
-				showAppToast({ intent: "success", message: `Reset to ${ref}` });
+				showGitSuccessToast(`Reset to ${ref}`);
 			} else {
-				showAppToast({ intent: "danger", message: result.error ?? `Failed to reset to ${ref}` });
+				showGitErrorToast(result.error ?? `Failed to reset to ${ref}`);
 			}
 		} catch (error) {
-			showAppToast({
-				intent: "danger",
-				message: `Reset failed: ${toErrorMessage(error)}`,
-			});
+			showGitErrorToast(`Reset failed: ${toErrorMessage(error)}`);
 		}
 	}, [workspaceId, resetToRefDialogState, taskId, baseRef]);
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: git action toast helpers and loading guard
+
+- Added `showGitErrorToast`/`showGitWarningToast`/`showGitSuccessToast` helpers to `hooks/git/git-actions.ts` — standardize icon, intent, and timeout defaults across all git toast calls. Normalized `use-branch-actions.ts` error toasts to include `warning-sign` icon and 7s timeout (previously inconsistent with `use-git-actions.ts`).
+- Added `useLoadingGuard` hook to `utils/react-use.ts` — replaces the repeated `useState(false)` + `try/finally` pattern with a ref-guarded async wrapper that prevents double-clicks and auto-resets. Includes `reset()` for force-clearing on project switch.
+- Applied both to `use-git-actions.ts` (626→515 lines) and `use-branch-actions.ts` (520→493 lines). Net ~56 line reduction across the two hooks.
+
 ### Refactor: extract `updateCardInBoard` helper in board-state
 
 - Extracted repeated nested `columns.map → cards.map` pattern into a single `updateCardInBoard` helper. Refactored `updateTask`, `reconcileTaskWorkingDirectory`, `reconcileTaskBranch`, and `toggleTaskPinned` to use it. ~33 line net reduction, zero behavior changes.

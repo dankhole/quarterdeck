@@ -1,11 +1,12 @@
 /**
- * Pure domain logic for git actions (sync, branch switch, task git actions).
+ * Domain logic and toast helpers for git actions (sync, branch switch, task git actions).
  *
- * No React imports — functions here take explicit parameters and return
- * plain data. The companion hook (`use-git-actions.ts`) handles React
- * state, effects, and tRPC mutations.
+ * Functions here take explicit parameters and return plain data or trigger
+ * side-effects (toasts). No React imports. The companion hook
+ * (`use-git-actions.ts`) handles React state, effects, and tRPC mutations.
  */
 
+import { showAppToast } from "@/components/app-toaster";
 import type { RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
@@ -145,4 +146,40 @@ export function getGitSyncSuccessLabel(action: RuntimeGitSyncAction): string {
 		return "Pulled";
 	}
 	return "Fetched";
+}
+
+// ---------------------------------------------------------------------------
+// Git toast helpers
+// ---------------------------------------------------------------------------
+
+interface GitErrorToastOptions {
+	timeout?: number;
+	action?: { label: string; onClick: () => void };
+}
+
+export function showGitErrorToast(message: string, options?: GitErrorToastOptions): void {
+	showAppToast({
+		intent: "danger",
+		icon: "warning-sign",
+		message,
+		timeout: options?.timeout ?? 7000,
+		action: options?.action,
+	});
+}
+
+export function showGitWarningToast(message: string, timeout?: number): void {
+	showAppToast({
+		intent: "warning",
+		icon: "warning-sign",
+		message,
+		timeout: timeout ?? 7000,
+	});
+}
+
+export function showGitSuccessToast(message: string, timeout?: number): void {
+	showAppToast({
+		intent: "success",
+		message,
+		timeout: timeout ?? 3000,
+	});
 }
