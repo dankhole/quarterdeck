@@ -7,7 +7,6 @@ describe("generateTaskTitle", () => {
 	beforeEach(() => {
 		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
 		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
-		delete process.env.QUARTERDECK_TITLE_MODEL;
 	});
 
 	afterEach(() => {
@@ -88,19 +87,6 @@ describe("generateTaskTitle", () => {
 		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
 		expect(body.messages[1].content).toHaveLength(1600);
 	});
-
-	it("uses QUARTERDECK_TITLE_MODEL env var when set", async () => {
-		process.env.QUARTERDECK_TITLE_MODEL = "custom/model-id";
-		const fetchSpy = vi
-			.spyOn(globalThis, "fetch")
-			.mockResolvedValue(
-				new Response(JSON.stringify({ choices: [{ message: { content: "Title" } }] }), { status: 200 }),
-			);
-
-		await generateTaskTitle("some prompt");
-		const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
-		expect(body.model).toBe("custom/model-id");
-	});
 });
 
 describe("generateBranchName", () => {
@@ -109,7 +95,6 @@ describe("generateBranchName", () => {
 	beforeEach(() => {
 		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://proxy.example.com/bedrock";
 		process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
-		delete process.env.QUARTERDECK_TITLE_MODEL;
 	});
 
 	afterEach(() => {

@@ -15,7 +15,6 @@
  *
  * Optional:
  *   QUARTERDECK_LLM_MODEL — model override (default: Haiku on Bedrock)
- *   QUARTERDECK_TITLE_MODEL — legacy alias for QUARTERDECK_LLM_MODEL
  */
 
 import { createTaggedLogger } from "../core";
@@ -137,7 +136,7 @@ export async function callLlm(options: LlmCallOptions): Promise<string | null> {
 	}
 
 	try {
-		const model = process.env.QUARTERDECK_LLM_MODEL || process.env.QUARTERDECK_TITLE_MODEL || DEFAULT_LLM_MODEL;
+		const model = process.env.QUARTERDECK_LLM_MODEL || DEFAULT_LLM_MODEL;
 		const startTime = Date.now();
 		log.debug("LLM call starting", { model, maxTokens: options.maxTokens, promptLength: options.userPrompt.length });
 		const origin = baseUrl.replace(/\/bedrock\/?$/, "");

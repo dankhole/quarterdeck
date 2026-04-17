@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Chore: dead code cleanup
+
+- Deleted orphaned `task-chat.ts` API contract (unimplemented feature) and `OpenWorkspaceButton` component (unused).
+- Removed dead `getGitSummary` and `notifyStateUpdated` tRPC procedures — full chain through router, context interface, and factory functions.
+- Removed deprecated `mcp` and `update` CLI command stubs.
+- Removed legacy `QUARTERDECK_TITLE_MODEL` env var alias — use `QUARTERDECK_LLM_MODEL` instead.
+- Removed unused `neverthrow` and `mitt` npm dependencies.
+- Removed dead `.kb-line-clamp-2` / `.kb-line-clamp-5` CSS classes.
+- Pruned barrel re-exports with no external consumers from `core/`, `state/`, and `config/` index files.
+
 ### Fix: terminal restore snapshot renders at wrong dimensions
 
 - Deferred the initial restore snapshot on the server until the client's first resize message arrives (100ms timeout fallback). Previously, the snapshot was serialized before the resize updated the server-side mirror, causing cursor-positioned content (status bars, prompts) to appear garbled or half-wide.

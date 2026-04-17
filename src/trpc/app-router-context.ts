@@ -41,7 +41,6 @@ import type {
 	RuntimeGitRenameBranchResponse,
 	RuntimeGitResetToRefRequest,
 	RuntimeGitResetToRefResponse,
-	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeHookIngestRequest,
@@ -79,7 +78,6 @@ import type {
 	RuntimeWorkspaceChangesResponse,
 	RuntimeWorkspaceFileSearchRequest,
 	RuntimeWorkspaceFileSearchResponse,
-	RuntimeWorkspaceStateNotifyResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 	RuntimeWorktreeDeleteRequest,
@@ -137,10 +135,6 @@ export interface RuntimeTrpcContext {
 		) => Promise<{ ok: boolean }>;
 	};
 	workspaceApi: {
-		loadGitSummary: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
-		) => Promise<RuntimeGitSummaryResponse>;
 		runGitSyncAction: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: {
@@ -246,7 +240,6 @@ export interface RuntimeTrpcContext {
 			input: RuntimeFileContentRequest,
 		) => Promise<RuntimeFileContentResponse>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
-		notifyStateUpdated: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateNotifyResponse>;
 		saveState: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceStateSaveRequest,

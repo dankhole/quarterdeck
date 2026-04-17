@@ -41,7 +41,6 @@ import {
 	runtimeGitRenameBranchResponseSchema,
 	runtimeGitResetToRefRequestSchema,
 	runtimeGitResetToRefResponseSchema,
-	runtimeGitSummaryResponseSchema,
 	runtimeGitSyncActionSchema,
 	runtimeGitSyncResponseSchema,
 	runtimeListFilesRequestSchema,
@@ -59,7 +58,6 @@ import {
 	runtimeWorkspaceChangesResponseSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
 	runtimeWorkspaceFileSearchResponseSchema,
-	runtimeWorkspaceStateNotifyResponseSchema,
 	runtimeWorkspaceStateResponseSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
@@ -84,12 +82,6 @@ const gitSyncActionInputSchema = z.object({
 });
 
 export const workspaceRouter = t.router({
-	getGitSummary: workspaceProcedure
-		.input(optionalTaskWorkspaceInfoRequestSchema)
-		.output(runtimeGitSummaryResponseSchema)
-		.query(async ({ ctx, input }) => {
-			return await ctx.workspaceApi.loadGitSummary(ctx.workspaceScope, input ?? null);
-		}),
 	runGitSyncAction: workspaceProcedure
 		.input(gitSyncActionInputSchema)
 		.output(runtimeGitSyncResponseSchema)
@@ -243,11 +235,6 @@ export const workspaceRouter = t.router({
 	getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 		return await ctx.workspaceApi.loadState(ctx.workspaceScope);
 	}),
-	notifyStateUpdated: workspaceProcedure
-		.output(runtimeWorkspaceStateNotifyResponseSchema)
-		.mutation(async ({ ctx }) => {
-			return await ctx.workspaceApi.notifyStateUpdated(ctx.workspaceScope);
-		}),
 	saveState: workspaceProcedure
 		.input(runtimeWorkspaceStateSaveRequestSchema)
 		.output(runtimeWorkspaceStateResponseSchema)

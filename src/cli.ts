@@ -649,20 +649,6 @@ function createProgram(invocationArgs: string[]): Command {
 	registerStatuslineCommand(program);
 	registerBackupCommand(program);
 
-	program
-		.command("mcp")
-		.description("Deprecated compatibility command.")
-		.action(() => {
-			console.warn("Deprecated. Please uninstall Quarterdeck MCP.");
-		});
-
-	program
-		.command("update")
-		.description("Deprecated. Auto-update has been removed.")
-		.action(() => {
-			console.warn("The update command has been removed. To update Quarterdeck, re-run: npx quarterdeck@latest");
-		});
-
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand(
 			{

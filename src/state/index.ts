@@ -28,13 +28,7 @@ export {
 export {
 	getRuntimeHomePath,
 	getTaskWorktreesHomePath,
-	getWorkspaceBoardPath,
-	getWorkspaceDirectoryPath,
-	getWorkspaceIndexLockRequest,
-	getWorkspaceIndexPath,
 	getWorkspacePinnedBranchesPath,
-	getWorkspaceSessionsPath,
-	getWorkspacesRootLockRequest,
 	getWorkspacesRootPath,
 	isUnderWorktreesHome,
 	resolveWorkspacePath,

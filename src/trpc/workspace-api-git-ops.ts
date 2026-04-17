@@ -3,7 +3,6 @@ import {
 	cherryPickCommit,
 	createBranchFromRef,
 	deleteBranch,
-	getGitSyncSummary,
 	renameBranch,
 	resetToRef,
 	resolveTaskWorkingDirectory,
@@ -25,7 +24,6 @@ import {
 
 type GitOps = Pick<
 	RuntimeTrpcContext["workspaceApi"],
-	| "loadGitSummary"
 	| "runGitSyncAction"
 	| "checkoutGitBranch"
 	| "mergeBranch"
@@ -39,19 +37,6 @@ type GitOps = Pick<
 
 export function createGitOps(ctx: WorkspaceApiContext): GitOps {
 	return {
-		loadGitSummary: async (workspaceScope, input) => {
-			try {
-				const cwd = await resolveWorkingDir(
-					workspaceScope.workspacePath,
-					normalizeOptionalTaskWorkspaceScopeInput(input),
-				);
-				const summary = await getGitSyncSummary(cwd);
-				return { ok: true, summary };
-			} catch (error) {
-				return { ok: false, summary: { ...EMPTY_GIT_SUMMARY }, error: errorMessage(error) };
-			}
-		},
-
 		runGitSyncAction: async (workspaceScope, input) => {
 			try {
 				const cwd = await resolveWorkingDir(

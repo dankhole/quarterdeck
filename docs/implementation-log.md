@@ -2,6 +2,34 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Chore: dead code cleanup (2026-04-17)
+
+**What:** Comprehensive sweep to remove dead code, orphaned files, unused dependencies, and vestigial barrel re-exports.
+
+**Why:** Accumulated dead code from removed features (MCP integration, auto-update, task chat) and unused dependencies (`neverthrow`, `mitt`) were adding confusion and install weight with no benefit.
+
+**What was removed:**
+
+1. **Orphaned files:** `src/core/api/task-chat.ts` (88 lines — full API contract for a never-built task chat feature) and `web-ui/src/components/open-workspace-button.tsx` (110 lines — complete component rendered nowhere).
+
+2. **Dead tRPC procedures:** `workspace.getGitSummary` and `workspace.notifyStateUpdated` — removed from router (`workspace-procedures.ts`), context interface (`app-router-context.ts`), and factory functions (`workspace-api-git-ops.ts`, `workspace-api-state.ts`). The frontend never called either; git operations go through `runGitSyncAction` and state notifications go through the single-writer `saveState` flow.
+
+3. **Deprecated CLI stubs:** `mcp` and `update` subcommands that only printed deprecation warnings. The MCP integration and auto-update features they referenced no longer exist.
+
+4. **Legacy env var:** `QUARTERDECK_TITLE_MODEL` — backward-compat alias for `QUARTERDECK_LLM_MODEL` in `src/title/llm-client.ts`. Removed from code, doc comment, and test.
+
+5. **Unused npm dependencies:** `neverthrow` and `mitt` — zero imports anywhere in the codebase.
+
+6. **Dead CSS:** `.kb-line-clamp-2` and `.kb-line-clamp-5` in `web-ui/src/styles/utilities.css` — only `.kb-line-clamp-1` was used.
+
+7. **Barrel export pruning:** Removed re-exports with no external consumers — `parseTaskWorkspaceInfoRequest`, `parseWorkspaceStateSaveRequest`, 6 task mutation result/input types, `RuntimeAddTaskDependencyResult`, `RuntimeRemoveTaskDependencyResult`, `RuntimeTrashTaskResult` from `core/index.ts`; 6 internal path helpers from `state/index.ts`; `DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE` from `config/index.ts`.
+
+**Files touched:**
+- Deleted: `src/core/api/task-chat.ts`, `web-ui/src/components/open-workspace-button.tsx`
+- Modified: `package.json`, `src/cli.ts`, `src/config/index.ts`, `src/core/api/index.ts`, `src/core/index.ts`, `src/state/index.ts`, `src/title/llm-client.ts`, `src/trpc/app-router-context.ts`, `src/trpc/workspace-api-git-ops.ts`, `src/trpc/workspace-api-state.ts`, `src/trpc/workspace-procedures.ts`, `web-ui/src/styles/utilities.css`, `test/runtime/title-generator.test.ts`
+
+**Commit:** `82c5155d`
+
 ## Fix: terminal restore snapshot renders at wrong dimensions (2026-04-16)
 
 **What:** Fixed three related terminal rendering issues — garbled/half-wide content on initial connection, wrong dimensions after server restart, and post-restore scroll position jank.

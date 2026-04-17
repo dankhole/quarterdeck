@@ -5,7 +5,6 @@ export * from "./git-merge.js";
 export * from "./git-sync.js";
 export * from "./shared.js";
 export * from "./streams.js";
-export * from "./task-chat.js";
 export * from "./task-session.js";
 export * from "./workspace-files.js";
 export * from "./workspace-state.js";

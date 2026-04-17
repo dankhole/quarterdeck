@@ -14,7 +14,6 @@ type StateOps = Pick<
 	| "deleteWorktree"
 	| "loadTaskContext"
 	| "loadState"
-	| "notifyStateUpdated"
 	| "saveState"
 	| "notifyTaskTitleUpdated"
 	| "setTaskDisplaySummary"
@@ -64,12 +63,6 @@ export function createStateOps(ctx: WorkspaceApiContext): StateOps {
 				workspaceScope.workspaceId,
 				workspaceScope.workspacePath,
 			);
-		},
-
-		notifyStateUpdated: async (workspaceScope) => {
-			ctx.broadcastStateUpdate(workspaceScope);
-			void ctx.deps.broadcaster.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
-			return { ok: true };
 		},
 
 		saveState: async (workspaceScope, input) => {
