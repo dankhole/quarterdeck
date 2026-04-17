@@ -1,5 +1,9 @@
+export type { UseAppActionModelsResult } from "./use-app-action-models";
+export { useAppActionModels } from "./use-app-action-models";
 export type { UseAppDialogsResult } from "./use-app-dialogs";
 export { useAppDialogs } from "./use-app-dialogs";
 export { useAppHotkeys } from "./use-app-hotkeys";
+export { useAppSideEffects } from "./use-app-side-effects";
 export { useEscapeHandler } from "./use-escape-handler";
+export { useHomeSidePanelResize } from "./use-home-side-panel-resize";
 export { useNavbarState } from "./use-navbar-state";

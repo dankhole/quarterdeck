@@ -169,6 +169,15 @@ Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readabili
 - ~~**workspace-api.ts handler pipeline**~~ — Addressed by the domain split (ec698f8) which broke the 1,092-line file into 5 modules of 106–314 lines each. Higher-order helpers no longer justified against the smaller files.
 - ~~**Runtime barrel exports**~~ — Done. Added `index.ts` to 9 directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`). Updated ~150 import paths across `src/` and `test/`. Three source files kept direct imports to preserve vitest mock compatibility.
 
+## C# readability follow-ups
+
+Full plan at [docs/plan-csharp-readability-followups.md](plan-csharp-readability-followups.md). These are readability-first refactors aimed at making the TypeScript codebase easier to navigate for developers coming from C#-style service and composition patterns.
+
+- **Decompose `terminal-slot.ts` so terminal concerns are easier to locate** — Reduce the “god object” feel in `web-ui/src/terminal/terminal-slot.ts` by making reconnect, restore, DOM-hosting, and xterm setup responsibilities more explicit.
+- **Split `runtime-state-hub.ts` by client registry versus broadcast coordination** — Separate websocket client bookkeeping, batching, and higher-level broadcast responsibilities in `src/server/runtime-state-hub.ts`.
+- **Decompose `project-navigation-panel.tsx` into hooks and slimmer view components** — Move reorder/removal/badge logic out of `web-ui/src/components/app/project-navigation-panel.tsx` so the component reads more like a render surface.
+- **Reassess `terminal-pool.ts` for allocation-policy versus lifecycle splitting** — Inspect `web-ui/src/terminal/terminal-pool.ts` for a cleaner separation between pooling policy, slot lifecycle, and public API ownership.
+
 ## Frontend feature folders, component decomposition, and barrel exports
 
 Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folders.md). Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.

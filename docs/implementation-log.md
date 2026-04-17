@@ -30,26 +30,72 @@
 
 **Commit:** `82c5155d`
 
-## Fix: terminal restore snapshot renders at wrong dimensions (2026-04-16)
+## Refactor: consolidate board rules behind the runtime board module (2026-04-17)
 
-**What:** Fixed three related terminal rendering issues — garbled/half-wide content on initial connection, wrong dimensions after server restart, and post-restore scroll position jank.
+**What:** Refactored `web-ui/src/state/board-state.ts` so several browser-side wrappers now defer directly to `src/core/task-board-mutations.ts` instead of maintaining adjacent board-rule logic locally. `updateTask()` now builds a runtime update payload from the selected card and delegates to the runtime task updater; `removeTask()` and `clearColumnTasks()` now use `deleteTasksFromBoard()` for task/dependency cleanup; `toggleTaskPinned()` now routes through the runtime updater rather than mutating board cards inline. The browser file still owns browser-specific responsibilities: persisted-board parsing, drag/drop placement, and task metadata reconciliation (`branch`, `workingDirectory`).
 
-**Why:** On initial connection (or after slot eviction), the server serialized the restore snapshot before the client's resize message updated the server-side `TerminalStateMirror`. The snapshot content was rendered at stale PTY dimensions (e.g. 120 cols instead of the actual container's 180 cols). Cursor-positioned output (agent status bars, prompts) doesn't reflow on client-side resize, so it stayed garbled. The "Re-sync terminal content" button in settings worked because by then the mirror was already at correct dimensions.
-
-**Root cause:** Race condition between snapshot serialization and resize processing. `sendRestoreSnapshot()` calls `getSnapshot()` which awaits the mirror's operation queue. The client's resize message arrives on the same control socket but gets processed after the snapshot await started, so the resize operation is enqueued after `getSnapshot()` was already waiting — it serializes at old dimensions.
-
-**Approach:**
-
-1. **Server-side deferred snapshot** (`ws-server.ts`): Instead of calling `sendRestoreSnapshot()` immediately on control socket open, set a 100ms deferred timer. When the first resize message arrives, cancel the timer, apply the resize to the mirror (synchronously enqueuing onto the operation queue), then call `sendRestoreSnapshot()`. Since `getSnapshot()` awaits the queue, the resize executes before serialization. The 100ms fallback handles cases where no resize is needed (reconnecting idle sessions, dimensions already correct).
-
-2. **Resize on control socket open** (`slot-socket-manager.ts`): Added `invalidateResize()` + `requestResize()` in the control socket `onopen` handler. `invalidateResize()` bumps the resize epoch so the request isn't deduped by `SlotResizeManager`. This ensures the server learns the actual container dimensions on every new connection — including after server restart or sleep/wake reconnect, where previously no resize was ever sent.
-
-3. **Post-restore scroll guard** (`terminal-slot.ts`): Armed `pendingScrollToBottom` in `handleRestore()` after `scrollToBottom()`. The existing ResizeObserver callback in `SlotResizeManager` checks this one-shot flag and does fit+scroll synchronously, preventing a debounced reflow from undoing the scroll position after the terminal becomes visible. This is the same pattern `show()` already uses for the reveal path.
+**Why:** This completed the remaining board-related item from `docs/plan-csharp-readability-followups.md`. Before this change, readers still had to compare the runtime board mutation module with `web-ui/src/state/board-state.ts` to understand which task update/delete rules were authoritative. Delegating shared mutation behavior back to the runtime module makes ownership clearer: the core module is the canonical source of board mutation rules, and the browser layer is mostly an adapter around browser-only concerns.
 
 **Files touched:**
-- `src/terminal/ws-server.ts` — deferred snapshot timer, resize-triggered snapshot, timer cleanup on socket close
-- `web-ui/src/terminal/slot-socket-manager.ts` — invalidateResize + requestResize on control socket open
-- `web-ui/src/terminal/terminal-slot.ts` — pendingScrollToBottom in handleRestore
+- `web-ui/src/state/board-state.ts` — routed task update/delete/pin wrappers through runtime board mutations and removed duplicated dependency cleanup logic
+- `web-ui/src/state/board-state-mutations.test.ts` — added regression coverage for remove-task, clear-column, and toggle-pinned browser adapters
+- `docs/todo.md` — removed the completed board-rule consolidation item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Verification:** `npm --prefix web-ui run test -- board-state-mutations.test.ts board-state-dependencies.test.ts board-state-drag.test.ts board-state-normalization.test.ts`; `npm run test -- test/runtime/task-board-mutations.test.ts`; `npm --prefix web-ui run typecheck`
+
+**Commit:** Pending user-requested commit (current HEAD: `b9f398b1`).
+
+## Refactor: extract board-state parser/schema helpers (2026-04-17)
+
+**What:** Refactored the persisted board hydration path in `web-ui/src/state/board-state.ts` by moving raw `unknown` parsing into a new companion module, `web-ui/src/state/board-state-parser.ts`. The new module defines named `zod`-backed parser helpers for persisted board payloads, cards, dependencies, and task images, while preserving the existing permissive normalization semantics such as trimmed prompt/base-ref requirements, generated fallback ids, nullable branch handling, and filtering invalid images/dependencies. Updated `normalizeBoardData()` to consume those helpers instead of inlining long manual shape checks, and expanded `board-state-normalization.test.ts` with direct parser coverage.
+
+**Why:** This completed the next C# readability follow-up item from `docs/plan-csharp-readability-followups.md`. The old hydration path mixed persistence-contract parsing with board assembly logic, forcing readers to infer accepted payload shapes from repeated `typeof`, `Array.isArray`, and ad hoc casts. Extracting named parser/schema helpers makes the accepted persisted shape discoverable beside `board-state.ts` and leaves the browser board module smaller and easier to scan.
+
+**Files touched:**
+- `web-ui/src/state/board-state.ts` — replaced inline normalization helpers with calls into the new parser module
+- `web-ui/src/state/board-state-parser.ts` — new companion parser/schema module for persisted board payloads
+- `web-ui/src/state/board-state-normalization.test.ts` — added parser-focused regression coverage
+- `docs/todo.md` — removed the completed board-state parser/schema readability item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Verification:** `npm --prefix web-ui run test -- board-state-normalization.test.ts board-state-dependencies.test.ts`; `npm --prefix web-ui run typecheck`
+
+**Commit:** Pending user-requested commit (current HEAD: `b9f398b1`).
+
+## Refactor: extract App.tsx composition hooks (2026-04-17)
+
+**What:** Refactored `web-ui/src/App.tsx` by moving three dense orchestration areas into named hooks under `web-ui/src/hooks/app/`: `use-app-side-effects.ts` (notification wiring, metadata sync, workspace persistence, hotkeys, cleanup, and pending-start effect), `use-app-action-models.ts` (card action callbacks, migrate dialog state, badge colors, detail session selection, and main-view/card-selection handlers), and `use-home-side-panel-resize.ts` (sidebar resize state + drag handling). Updated `hooks/app/index.ts` exports and rewired `App.tsx` to use the new composition hooks while keeping the JSX surface and provider structure intact.
+
+**Why:** This completed the `App.tsx` readability item from the C# follow-up plan. `App.tsx` had accumulated several different responsibilities at once: context reads, global side effects, persistence wiring, callback assembly, badge derivation, and resize plumbing. Pulling those concerns into named hooks makes the file read more like a composition root and reduces the amount of local state a reader has to hold in their head.
+
+**Files touched:**
+- `web-ui/src/App.tsx` — removed large inline orchestration blocks and switched to the new composition hooks
+- `web-ui/src/hooks/app/use-app-side-effects.ts` — new side-effect orchestration hook
+- `web-ui/src/hooks/app/use-app-action-models.ts` — new action/view-model hook for card actions and app-level handlers
+- `web-ui/src/hooks/app/use-home-side-panel-resize.ts` — new resize hook for the home side panel
+- `web-ui/src/hooks/app/index.ts` — exported the new hooks
+- `docs/todo.md` — removed the completed `App.tsx` readability item
+- `CHANGELOG.md` — added an unreleased refactor entry
+- `docs/implementation-log.md` — recorded the refactor scope and rationale
+
+**Commit:** Pending user-requested commit (working tree only).
+
+## Refactor: decompose CLI startup into named bootstrap phases (2026-04-17)
+
+**What:** Refactored `src/cli.ts` so the runtime startup path is now expressed as a small pipeline of named helpers instead of one long `startServer()` function. Added helper functions for prefixed runtime warnings, lazy startup module loading, startup cleanup phases, orphaned agent cleanup, runtime bootstrap state creation, and runtime server handle creation. The lazy import boundary remains in place for command-style invocations, and the runtime startup order is unchanged.
+
+**Why:** This completed the lowest-risk item from the C# readability follow-up plan. The existing startup logic was correct, but it required readers to scroll through one large procedural block to understand the boot sequence. The new helper structure makes the control flow more legible for developers used to bootstrapper/service initialization patterns.
+
+**Files touched:**
+- `src/cli.ts` — extracted the CLI startup pipeline into named helpers and simplified `startServer()`
+- `docs/todo.md` — removed the completed CLI startup readability item from the C# follow-up section
+- `CHANGELOG.md` — added an unreleased refactor entry for the CLI startup decomposition
+- `docs/implementation-log.md` — recorded the change and rationale
+
+**Commit:** Pending user-requested commit (working tree only).
 
 ## Feature: syntax highlighting in file browser (2026-04-17)
 
@@ -77,6 +123,27 @@
 - `docs/ui-component-cheatsheet.md` — updated stale path
 
 **Verification:** TypeScript clean, Biome lint clean, all 86 web-ui test files / 787 tests pass.
+
+## Fix: terminal restore snapshot renders at wrong dimensions (2026-04-16)
+
+**What:** Fixed three related terminal rendering issues — garbled/half-wide content on initial connection, wrong dimensions after server restart, and post-restore scroll position jank.
+
+**Why:** On initial connection (or after slot eviction), the server serialized the restore snapshot before the client's resize message updated the server-side `TerminalStateMirror`. The snapshot content was rendered at stale PTY dimensions (e.g. 120 cols instead of the actual container's 180 cols). Cursor-positioned output (agent status bars, prompts) doesn't reflow on client-side resize, so it stayed garbled. The "Re-sync terminal content" button in settings worked because by then the mirror was already at correct dimensions.
+
+**Root cause:** Race condition between snapshot serialization and resize processing. `sendRestoreSnapshot()` calls `getSnapshot()` which awaits the mirror's operation queue. The client's resize message arrives on the same control socket but gets processed after the snapshot await started, so the resize operation is enqueued after `getSnapshot()` was already waiting — it serializes at old dimensions.
+
+**Approach:**
+
+1. **Server-side deferred snapshot** (`ws-server.ts`): Instead of calling `sendRestoreSnapshot()` immediately on control socket open, set a 100ms deferred timer. When the first resize message arrives, cancel the timer, apply the resize to the mirror (synchronously enqueuing onto the operation queue), then call `sendRestoreSnapshot()`. Since `getSnapshot()` awaits the queue, the resize executes before serialization. The 100ms fallback handles cases where no resize is needed (reconnecting idle sessions, dimensions already correct).
+
+2. **Resize on control socket open** (`slot-socket-manager.ts`): Added `invalidateResize()` + `requestResize()` in the control socket `onopen` handler. `invalidateResize()` bumps the resize epoch so the request isn't deduped by `SlotResizeManager`. This ensures the server learns the actual container dimensions on every new connection — including after server restart or sleep/wake reconnect, where previously no resize was ever sent.
+
+3. **Post-restore scroll guard** (`terminal-slot.ts`): Armed `pendingScrollToBottom` in `handleRestore()` after `scrollToBottom()`. The existing ResizeObserver callback in `SlotResizeManager` checks this one-shot flag and does fit+scroll synchronously, preventing a debounced reflow from undoing the scroll position after the terminal becomes visible. This is the same pattern `show()` already uses for the reveal path.
+
+**Files touched:**
+- `src/terminal/ws-server.ts` — deferred snapshot timer, resize-triggered snapshot, timer cleanup on socket close
+- `web-ui/src/terminal/slot-socket-manager.ts` — invalidateResize + requestResize on control socket open
+- `web-ui/src/terminal/terminal-slot.ts` — pendingScrollToBottom in handleRestore
 
 ## Refactor: runtime barrel exports (2026-04-16)
 

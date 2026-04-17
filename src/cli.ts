@@ -340,7 +340,13 @@ interface RuntimeServerHandle {
 	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
 }
 
-async function startServer(): Promise<RuntimeServerHandle> {
+function createRuntimeWarnLogger(): (message: string) => void {
+	return (message: string): void => {
+		console.warn(`[quarterdeck] ${message}`);
+	};
+}
+
+async function loadRuntimeStartupModules() {
 	/*
 		Server-only modules are loaded lazily because subcommands like
 		`quarterdeck hooks ingest` do not need the runtime server.
@@ -379,41 +385,69 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		import("./state/state-backup.js"),
 	]);
 
-	const cleanupWarn = (message: string): void => {
-		console.warn(`[quarterdeck] ${message}`);
+	return {
+		resolveProjectInputPath,
+		pickDirectoryPathFromSystemDialog,
+		createRuntimeServer,
+		createRuntimeStateHub,
+		resolveInteractiveShellCommand,
+		shutdownRuntimeServer,
+		collectProjectWorktreeTaskIdsForRemoval,
+		createWorkspaceRegistry,
+		cleanupGlobalStaleLockArtifacts,
+		cleanupProjectStaleLockArtifacts,
+		listWorkspaceIndexEntries,
+		initEventLog,
+		setEventLogEnabled,
+		setLogLevel,
+		createBackup,
+		startPeriodicBackups,
+		stopPeriodicBackups,
 	};
+}
 
+async function runRuntimeStartupCleanup(
+	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
+	warn: (message: string) => void,
+): Promise<void> {
 	// Phase 0: Ensure the event log directory exists before any sessions emit events.
-	await initEventLog();
+	await modules.initEventLog();
 
 	// Phase 1: Clean stale lock artifacts from ~/.quarterdeck/ (before registry load).
-	await cleanupGlobalStaleLockArtifacts(cleanupWarn);
+	await modules.cleanupGlobalStaleLockArtifacts(warn);
 
 	// Phase 2: Clean stale lock artifacts from per-project directories.
 	// Read the workspace index (now safe after phase 1 cleaned its lock files)
 	// to discover project repo paths, then clean their .git/ and .quarterdeck/ dirs.
 	try {
-		const indexEntries = await listWorkspaceIndexEntries();
+		const indexEntries = await modules.listWorkspaceIndexEntries();
 		const projectPaths = indexEntries.map((entry) => entry.repoPath);
 		if (projectPaths.length > 0) {
-			await cleanupProjectStaleLockArtifacts(projectPaths, cleanupWarn);
+			await modules.cleanupProjectStaleLockArtifacts(projectPaths, warn);
 		}
 	} catch {
 		// Workspace index may not exist yet on first run — safe to skip.
 	}
+}
 
+function startOrphanedAgentCleanup(warn: (message: string) => void): void {
 	// Phase 3: Kill orphaned agent processes left by a previously crashed instance.
 	// Non-blocking — runs in the background while the server finishes booting.
 	killOrphanedAgentProcesses()
 		.then((killed) => {
 			if (killed > 0) {
-				console.warn(`[quarterdeck] Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
+				warn(`Cleaned up ${killed} orphaned agent process(es) from a previous session.`);
 			}
 		})
 		.catch(() => {});
+}
 
+async function createRuntimeBootstrapState(
+	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
+	warn: (message: string) => void,
+) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
-	const workspaceRegistry = await createWorkspaceRegistry({
+	const workspaceRegistry = await modules.createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
@@ -424,19 +458,20 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		},
 	});
 	const activeConfig = workspaceRegistry.getActiveRuntimeConfig();
-	setEventLogEnabled(activeConfig.eventLogEnabled);
-	setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
+	modules.setEventLogEnabled(activeConfig.eventLogEnabled);
+	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
 
 	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
-	createBackup({ trigger: "startup" })
+	modules
+		.createBackup({ trigger: "startup" })
 		.then((path) => {
 			if (path) {
 				console.log(`[quarterdeck] Startup backup created: ${path}`);
 			}
 		})
 		.catch(() => {});
-	startPeriodicBackups(activeConfig.backupIntervalMinutes);
-	runtimeStateHub = createRuntimeStateHub({
+	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
+	runtimeStateHub = modules.createRuntimeStateHub({
 		workspaceRegistry,
 		getActivePollIntervals: () => {
 			const config = workspaceRegistry.getActiveRuntimeConfig();
@@ -465,20 +500,33 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		return disposed;
 	};
 
-	const runtimeServer = await createRuntimeServer({
+	return {
 		workspaceRegistry,
-		runtimeStateHub: runtimeHub,
-		warn: (message) => {
-			console.warn(`[quarterdeck] ${message}`);
+		runtimeHub,
+		disposeTrackedWorkspace,
+		warn,
+		stopPeriodicBackups: () => {
+			modules.stopPeriodicBackups();
 		},
-		resolveInteractiveShellCommand,
+	};
+}
+
+async function createRuntimeServerHandle(
+	modules: Awaited<ReturnType<typeof loadRuntimeStartupModules>>,
+	bootstrap: Awaited<ReturnType<typeof createRuntimeBootstrapState>>,
+): Promise<RuntimeServerHandle> {
+	const runtimeServer = await modules.createRuntimeServer({
+		workspaceRegistry: bootstrap.workspaceRegistry,
+		runtimeStateHub: bootstrap.runtimeHub,
+		warn: bootstrap.warn,
+		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
 		runCommand: runScopedCommand,
-		resolveProjectInputPath,
+		resolveProjectInputPath: modules.resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,
-		disposeWorkspace: disposeTrackedWorkspace,
-		collectProjectWorktreeTaskIdsForRemoval,
-		pickDirectoryPathFromSystemDialog,
+		disposeWorkspace: bootstrap.disposeTrackedWorkspace,
+		collectProjectWorktreeTaskIdsForRemoval: modules.collectProjectWorktreeTaskIdsForRemoval,
+		pickDirectoryPathFromSystemDialog: modules.pickDirectoryPathFromSystemDialog,
 	});
 
 	const close = async () => {
@@ -486,12 +534,10 @@ async function startServer(): Promise<RuntimeServerHandle> {
 	};
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
-		stopPeriodicBackups();
-		await shutdownRuntimeServer({
-			workspaceRegistry,
-			warn: (message) => {
-				console.warn(`[quarterdeck] ${message}`);
-			},
+		bootstrap.stopPeriodicBackups();
+		await modules.shutdownRuntimeServer({
+			workspaceRegistry: bootstrap.workspaceRegistry,
+			warn: bootstrap.warn,
 			closeRuntimeServer: close,
 			skipSessionCleanup: options?.skipSessionCleanup ?? false,
 		});
@@ -502,6 +548,15 @@ async function startServer(): Promise<RuntimeServerHandle> {
 		close,
 		shutdown,
 	};
+}
+
+async function startServer(): Promise<RuntimeServerHandle> {
+	const modules = await loadRuntimeStartupModules();
+	const warn = createRuntimeWarnLogger();
+	await runRuntimeStartupCleanup(modules, warn);
+	startOrphanedAgentCleanup(warn);
+	const bootstrap = await createRuntimeBootstrapState(modules, warn);
+	return await createRuntimeServerHandle(modules, bootstrap);
 }
 
 async function startServerWithAutoPortRetry(options: CliOptions): Promise<RuntimeServerHandle> {

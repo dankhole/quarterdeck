@@ -2,9 +2,8 @@
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
 
-import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
-import type { Dispatch, ReactElement, MouseEvent as ReactMouseEvent, ReactNode, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
 	AppDialogs,
 	ConnectedTopBar,
@@ -13,31 +12,16 @@ import {
 	QuarterdeckAccessBlockedFallback,
 	RuntimeDisconnectedFallback,
 } from "@/components/app";
-import { showAppToast } from "@/components/app-toaster";
 import { GitHistoryView } from "@/components/git";
 import { CommitPanel } from "@/components/git/panels";
 import { CardDetailView, TaskInlineCreateCard } from "@/components/task";
-import { DetailToolbar, TOOLBAR_WIDTH } from "@/components/terminal";
+import { DetailToolbar } from "@/components/terminal";
 import { createInitialBoardData } from "@/data/board-data";
-import { useAppHotkeys, useEscapeHandler, useNavbarState } from "@/hooks/app";
-import {
-	useBoardMetadataSync,
-	useDisplaySummaryOnHover,
-	usePromptShortcuts,
-	useTaskBaseRefSync,
-	useTaskTitleSync,
-	useTaskWorkingDirectorySync,
-	useTitleActions,
-} from "@/hooks/board";
-import {
-	useAudibleNotifications,
-	useFocusedTaskNotification,
-	useReviewReadyNotifications,
-	useStreamErrorHandler,
-} from "@/hooks/notifications";
-import { useProjectSwitchCleanup, useProjectUiState } from "@/hooks/project";
+import { useAppActionModels, useAppSideEffects, useHomeSidePanelResize, useNavbarState } from "@/hooks/app";
+import { usePromptShortcuts } from "@/hooks/board";
+import { useProjectUiState } from "@/hooks/project";
 import { useShortcutActions } from "@/hooks/settings";
-import { useMigrateTaskDialog, useTerminalConfigSync } from "@/hooks/terminal";
+import { useTerminalConfigSync } from "@/hooks/terminal";
 import { BoardProvider, useBoardContext } from "@/providers/board-provider";
 import { DialogProvider, useDialogContext } from "@/providers/dialog-provider";
 import { GitProvider, useGitContext } from "@/providers/git-provider";
@@ -46,24 +30,15 @@ import { ProjectProvider, useProjectContext } from "@/providers/project-provider
 import { TerminalProvider, useTerminalContext } from "@/providers/terminal-provider";
 import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
 import { ResizeHandle } from "@/resize/resize-handle";
-import type { MainViewId } from "@/resize/use-card-detail-layout";
-import { useResizeDrag } from "@/resize/use-resize-drag";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
-import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { findCardSelection, toggleTaskPinned } from "@/state/board-state";
-import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
+import { CardActionsProvider } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
-import { getTerminalController } from "@/terminal/terminal-controller-registry";
-import { cancelWarmup, initPool, warmup } from "@/terminal/terminal-pool";
+import { initPool } from "@/terminal/terminal-pool";
 import type { BoardData } from "@/types";
-import { createIdleTaskSession } from "@/utils/app-utils";
-import { isApprovalState } from "@/utils/session-status";
 
 initPool();
 
@@ -171,19 +146,17 @@ export default function App(): ReactElement {
 
 function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId }: AppContentProps): ReactElement {
 	const project = useProjectContext();
+	const boardContext = useBoardContext();
 	const {
 		board,
-		setBoard,
-		sessions,
 		selectedTaskId,
 		selectedCard,
 		setSelectedTaskId,
 		sendTaskSessionInput,
-		stopTaskSession,
 		taskEditor,
 		createTaskBranchOptions,
 		isAwaitingWorkspaceSnapshot,
-	} = useBoardContext();
+	} = boardContext;
 	const git = useGitContext();
 	const terminal = useTerminalContext();
 	const interactions = useInteractionsContext();
@@ -223,160 +196,20 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 
 	const serverMutationInFlightRef = useRef(false);
 
-	// --- Side-effect hooks ---
-
-	useFocusedTaskNotification({ currentProjectId: project.currentProjectId, selectedTaskId });
-	useBoardMetadataSync({ workspaceMetadata: project.workspaceMetadata, setBoard });
-	useReviewReadyNotifications({
-		activeWorkspaceId: project.navigationCurrentProjectId,
-		latestTaskReadyForReview: project.latestTaskReadyForReview,
-		workspacePath: project.workspacePath,
-	});
-
-	const trashTaskIdSet = useMemo(() => {
-		const trashColumn = board.columns.find((col) => col.id === "trash");
-		return trashColumn ? new Set(trashColumn.cards.map((c) => c.id)) : new Set<string>();
-	}, [board.columns]);
-
-	useAudibleNotifications({
-		notificationSessions: project.notificationSessions,
-		audibleNotificationsEnabled: project.audibleNotificationsEnabled,
-		audibleNotificationVolume: project.audibleNotificationVolume,
-		audibleNotificationEvents: project.audibleNotificationEvents,
-		audibleNotificationsOnlyWhenHidden: project.audibleNotificationsOnlyWhenHidden,
-		audibleNotificationSuppressCurrentProject: project.audibleNotificationSuppressCurrentProject,
-		notificationWorkspaceIds: project.notificationWorkspaceIds,
-		currentProjectId: project.currentProjectId,
-		suppressedTaskIds: trashTaskIdSet,
-	});
-
 	useTerminalConfigSync({
 		terminalFontWeight: project.terminalFontWeight,
 	});
-	useTaskTitleSync({ latestTaskTitleUpdate: project.latestTaskTitleUpdate, setBoard });
-	useTaskBaseRefSync({ latestTaskBaseRefUpdate: project.latestTaskBaseRefUpdate, setBoard });
-	useTaskWorkingDirectorySync({
-		latestTaskWorkingDirectoryUpdate: project.latestTaskWorkingDirectoryUpdate,
-		setBoard,
+	useAppSideEffects({
+		project,
+		board: boardContext,
+		git,
+		terminal,
+		interactions,
+		dialog,
+		pendingTaskStartAfterEditId,
+		clearPendingTaskStartAfterEditId,
+		serverMutationInFlightRef,
 	});
-	useStreamErrorHandler({ streamError: project.streamError, isRuntimeDisconnected: project.isRuntimeDisconnected });
-
-	useProjectSwitchCleanup({
-		currentProjectId: project.currentProjectId,
-		navigationCurrentProjectId: project.navigationCurrentProjectId,
-		isProjectSwitching: project.isProjectSwitching,
-		resetTaskEditorState: taskEditor.resetTaskEditorState,
-		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen as Dispatch<SetStateAction<boolean>>,
-		resetGitActionState: git.resetGitActionState,
-		resetProjectNavigationState: project.resetProjectNavigationState,
-		resetTerminalPanelsState: terminal.resetTerminalPanelsState,
-		resetWorkspaceSyncState: project.resetWorkspaceSyncState,
-	});
-
-	useEffect(() => {
-		if (selectedCard) return;
-		if (project.hasNoProjects || !project.currentProjectId) {
-			if (terminal.isHomeTerminalOpen) terminal.closeHomeTerminal();
-			return;
-		}
-	}, [
-		terminal.closeHomeTerminal,
-		project.currentProjectId,
-		project.hasNoProjects,
-		terminal.isHomeTerminalOpen,
-		selectedCard,
-	]);
-
-	useAppHotkeys({
-		selectedCard,
-		isDetailTerminalOpen: terminal.isDetailTerminalOpen,
-		isHomeTerminalOpen: terminal.showHomeBottomTerminal,
-		canUseCreateTaskShortcut: !project.hasNoProjects && project.currentProjectId !== null,
-		handleToggleDetailTerminal: terminal.handleToggleDetailTerminal,
-		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
-		handleToggleExpandDetailTerminal: terminal.handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal: terminal.handleToggleExpandHomeTerminal,
-		handleOpenCreateTask: taskEditor.handleOpenCreateTask,
-		handleOpenSettings: dialog.handleOpenSettings,
-		handleToggleGitHistory: git.handleToggleGitHistory,
-		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
-		handleToggleDebugLogPanel: dialog.debugLogging.toggleDebugLogPanel,
-	});
-
-	useEscapeHandler({
-		isGitHistoryOpen: git.isGitHistoryOpen,
-		setIsGitHistoryOpen: git.setIsGitHistoryOpen,
-		selectedCard,
-		setSelectedTaskId,
-	});
-
-	// --- Workspace persistence ---
-
-	const persistWorkspaceStateAsync = useCallback(
-		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>
-			await saveWorkspaceState(input.workspaceId, input.payload),
-		[],
-	);
-	const handleWorkspaceStateConflict = useCallback(() => {
-		if (serverMutationInFlightRef.current) return;
-		showAppToast(
-			{
-				intent: "warning",
-				icon: "warning-sign",
-				message:
-					"Workspace changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
-				timeout: 5000,
-			},
-			"workspace-state-conflict",
-		);
-	}, []);
-
-	useWorkspacePersistence({
-		board,
-		sessions,
-		currentProjectId: project.currentProjectId,
-		workspaceRevision: project.workspaceRevision,
-		hydrationNonce: project.workspaceHydrationNonce,
-		canPersistWorkspaceState: project.canPersistWorkspaceState,
-		isDocumentVisible: project.isDocumentVisible,
-		isWorkspaceStateRefreshing: project.isWorkspaceStateRefreshing,
-		persistWorkspaceState: persistWorkspaceStateAsync,
-		refetchWorkspaceState: project.refreshWorkspaceState,
-		onWorkspaceRevisionChange: project.setWorkspaceRevision,
-		onWorkspaceStateConflict: handleWorkspaceStateConflict,
-	});
-
-	// --- pendingTaskStartAfterEditId effect ---
-
-	useEffect(() => {
-		if (!pendingTaskStartAfterEditId) return;
-		const selection = findCardSelection(board, pendingTaskStartAfterEditId);
-		if (!selection || selection.column.id !== "backlog") return;
-		interactions.handleStartTaskFromBoard(pendingTaskStartAfterEditId);
-		clearPendingTaskStartAfterEditId();
-	}, [board, interactions.handleStartTaskFromBoard, pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId]);
-
-	// --- JSX-producing hooks ---
-
-	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
-		project.currentProjectId,
-		project.runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
-		project.runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
-		project.llmConfigured,
-	);
-
-	const handleTerminalWarmup = useCallback(
-		(taskId: string) => {
-			if (project.currentProjectId) warmup(taskId, project.currentProjectId);
-		},
-		[project.currentProjectId],
-	);
-	const handleTerminalCancelWarmup = useCallback(
-		(taskId: string) => {
-			if (project.currentProjectId) cancelWarmup(taskId);
-		},
-		[project.currentProjectId],
-	);
 
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
@@ -402,79 +235,32 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 		sendTaskSessionInput,
 	});
 
-	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({
-		currentProjectId: project.currentProjectId,
+	const {
+		stableCardActions,
+		reactiveCardState,
+		pendingMigrate,
+		migratingTaskId,
+		handleConfirmMigrate,
+		cancelMigrate,
+		handleMainViewChange,
+		handleCardSelectWithFocus,
+		handleCardDoubleClick,
+		handleBack,
+		projectsBadgeColor,
+		boardBadgeColor,
+		detailSession,
+	} = useAppActionModels({
+		project,
+		board: boardContext,
+		git,
+		interactions,
+		serverMutationInFlightRef,
 	});
 
-	const handleToggleTaskPinned = useCallback(
-		(taskId: string) => {
-			setBoard((prev) => toggleTaskPinned(prev, taskId).board);
-		},
-		[setBoard],
-	);
-
-	const { pendingMigrate, migratingTaskId, handleMigrateWorkingDirectory, handleConfirmMigrate, cancelMigrate } =
-		useMigrateTaskDialog({
-			currentProjectId: project.currentProjectId,
-			serverMutationInFlightRef: serverMutationInFlightRef,
-			stopTaskSession,
-			refreshWorkspaceState: project.refreshWorkspaceState,
-		});
-
-	const handleMainViewChange = useCallback(
-		(view: MainViewId) => {
-			git.setMainView(view, { setSelectedTaskId });
-		},
-		[git.setMainView, setSelectedTaskId],
-	);
-
-	const handleCardSelectWithFocus = useCallback(
-		(taskId: string) => {
-			interactions.handleCardSelect(taskId);
-			if (git.mainView === "terminal") {
-				requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
-			}
-		},
-		[interactions.handleCardSelect, git.mainView],
-	);
-
-	const handleCardDoubleClick = useCallback(
-		(taskId: string) => {
-			interactions.handleCardSelect(taskId);
-			git.setMainView("terminal", { setSelectedTaskId });
-			// Ensure the terminal gets focus even when the task is already selected
-			// and the view is already "terminal" (no re-render to trigger autoFocus).
-			requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
-		},
-		[interactions.handleCardSelect, git.setMainView, setSelectedTaskId],
-	);
-
-	// --- Home side panel resize ---
-	const { startDrag: startHomeSidePanelResize } = useResizeDrag();
-	const sidebarAreaRef = useRef<HTMLDivElement | null>(null);
-
-	const handleHomeSidePanelSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = sidebarAreaRef.current;
-			if (!container) return;
-			const containerWidth = Math.max(container.offsetWidth - TOOLBAR_WIDTH, 1);
-			const startX = event.clientX;
-			const startRatio = git.sidePanelRatio;
-			startHomeSidePanelResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					git.setSidePanelRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					git.setSidePanelRatio(startRatio + deltaRatio);
-				},
-			});
-		},
-		[git.setSidePanelRatio, startHomeSidePanelResize, git.sidePanelRatio],
-	);
+	const { sidebarAreaRef, homeSidePanelPercent, handleHomeSidePanelSeparatorMouseDown } = useHomeSidePanelResize({
+		sidePanelRatio: git.sidePanelRatio,
+		setSidePanelRatio: git.setSidePanelRatio,
+	});
 
 	const { navbarWorkspacePath, navbarWorkspaceHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
 		useNavbarState({
@@ -536,111 +322,6 @@ function AppContent({ pendingTaskStartAfterEditId, clearPendingTaskStartAfterEdi
 			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>
 	) : undefined;
-
-	const handleFlagForDebug = useCallback(
-		(taskId: string) => {
-			if (!project.currentProjectId) return;
-			getRuntimeTrpcClient(project.currentProjectId)
-				.runtime.flagTaskForDebug.mutate({ taskId })
-				.then((result) => {
-					if (result.ok) showAppToast({ message: "Flagged in event log", intent: "success", timeout: 2000 });
-				})
-				.catch(() => {});
-		},
-		[project.currentProjectId],
-	);
-
-	const stableCardActions = useMemo<StableCardActions>(
-		() => ({
-			onStartTask: interactions.handleStartTaskFromBoard,
-			onRestartSessionTask: interactions.handleRestartTaskSession,
-			onMoveToTrashTask: interactions.handleMoveReviewCardToTrash,
-			onRestoreFromTrashTask: interactions.handleRestoreTaskFromTrash,
-			onHardDeleteTrashTask: interactions.handleHardDeleteTrashTask,
-			onCancelAutomaticTaskAction: interactions.handleCancelAutomaticTaskAction,
-			onRegenerateTitleTask: handleRegenerateTitleTask,
-			onUpdateTaskTitle: handleUpdateTaskTitle,
-			onTogglePinTask: handleToggleTaskPinned,
-			onMigrateWorkingDirectory: handleMigrateWorkingDirectory,
-			onRequestDisplaySummary: handleRequestDisplaySummary,
-			onTerminalWarmup: handleTerminalWarmup,
-			onTerminalCancelWarmup: handleTerminalCancelWarmup,
-			onFlagForDebug: project.runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
-		}),
-		[
-			interactions.handleStartTaskFromBoard,
-			interactions.handleRestartTaskSession,
-			interactions.handleMoveReviewCardToTrash,
-			interactions.handleRestoreTaskFromTrash,
-			interactions.handleHardDeleteTrashTask,
-			interactions.handleCancelAutomaticTaskAction,
-			handleRegenerateTitleTask,
-			handleUpdateTaskTitle,
-			handleToggleTaskPinned,
-			handleMigrateWorkingDirectory,
-			handleRequestDisplaySummary,
-			handleTerminalWarmup,
-			handleTerminalCancelWarmup,
-			handleFlagForDebug,
-			project.runtimeProjectConfig?.eventLogEnabled,
-		],
-	);
-
-	const reactiveCardState = useMemo<ReactiveCardState>(
-		() => ({
-			moveToTrashLoadingById: interactions.moveToTrashLoadingById ?? {},
-			migratingTaskId: migratingTaskId ?? null,
-			isLlmGenerationDisabled: project.isLlmGenerationDisabled,
-			showSummaryOnCards: project.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
-			uncommittedChangesOnCardsEnabled:
-				project.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
-				CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
-			showRunningTaskEmergencyActions:
-				project.runtimeProjectConfig?.showRunningTaskEmergencyActions ??
-				CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
-		}),
-		[
-			interactions.moveToTrashLoadingById,
-			migratingTaskId,
-			project.isLlmGenerationDisabled,
-			project.runtimeProjectConfig?.showSummaryOnCards,
-			project.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
-			project.runtimeProjectConfig?.showRunningTaskEmergencyActions,
-		],
-	);
-
-	const projectsBadgeColor: "orange" | undefined = useMemo(
-		() =>
-			Object.entries(project.notificationSessions).some(
-				([taskId, session]) =>
-					project.notificationWorkspaceIds[taskId] !== project.currentProjectId && isApprovalState(session),
-			)
-				? "orange"
-				: undefined,
-		[project.notificationSessions, project.notificationWorkspaceIds, project.currentProjectId],
-	);
-
-	const boardBadgeColor: "orange" | undefined = useMemo(
-		() =>
-			Object.entries(project.notificationSessions).some(
-				([taskId, session]) =>
-					project.notificationWorkspaceIds[taskId] === project.currentProjectId && isApprovalState(session),
-			)
-				? "orange"
-				: undefined,
-		[project.notificationSessions, project.notificationWorkspaceIds, project.currentProjectId],
-	);
-
-	const homeSidePanelPercent = `${(git.sidePanelRatio * 100).toFixed(1)}%`;
-
-	const handleBack = useCallback(() => {
-		setSelectedTaskId(null);
-		git.setIsGitHistoryOpen(false);
-	}, [setSelectedTaskId, git.setIsGitHistoryOpen]);
-
-	const detailSession = selectedCard
-		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
-		: null;
 
 	const topBar = (
 		<ConnectedTopBar

@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialBoardData } from "@/data/board-data";
 import { addTaskToColumn, normalizeBoardData } from "@/state/board-state";
+import {
+	parsePersistedBoardCard,
+	parsePersistedBoardDependency,
+	parsePersistedBoardPayload,
+	parsePersistedTaskImages,
+} from "@/state/board-state-parser";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -114,5 +120,83 @@ describe("normalizeBoardData", () => {
 		expect(cards).toHaveLength(2);
 		expect(cards[0]?.branch).toBeUndefined();
 		expect(cards[1]?.branch).toBe("feat/x");
+	});
+});
+
+describe("board-state parser helpers", () => {
+	it("parses persisted payload columns and ignores invalid column entries", () => {
+		const parsed = parsePersistedBoardPayload({
+			columns: [
+				{ id: "backlog", cards: [{ prompt: "Task A", baseRef: "main" }] },
+				{ id: "unknown", cards: [] },
+				{ id: "review", cards: "nope" },
+			],
+			dependencies: [{ fromTaskId: "a", toTaskId: "b" }],
+		});
+
+		expect(parsed).toEqual({
+			columns: [{ id: "backlog", cards: [{ prompt: "Task A", baseRef: "main" }] }],
+			dependencies: [{ fromTaskId: "a", toTaskId: "b" }],
+		});
+	});
+
+	it("parses cards with the same defaults as the legacy normalization path", () => {
+		const card = parsePersistedBoardCard(
+			{
+				prompt: "  Task A  ",
+				baseRef: "  main  ",
+				autoReviewMode: "not-a-mode",
+				images: [{ id: "img-1", data: "data", mimeType: "image/png" }, { id: 123 }],
+				workingDirectory: null,
+				branch: 123,
+			},
+			{ createTaskId: () => "task-1", now: 42 },
+		);
+
+		expect(card).toEqual({
+			id: "task-1",
+			title: null,
+			prompt: "Task A",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "move_to_trash",
+			images: [{ id: "img-1", data: "data", mimeType: "image/png" }],
+			baseRef: "main",
+			useWorktree: undefined,
+			workingDirectory: null,
+			branch: undefined,
+			pinned: undefined,
+			createdAt: 42,
+			updatedAt: 42,
+		});
+	});
+
+	it("filters invalid persisted images and returns undefined when none survive", () => {
+		expect(parsePersistedTaskImages([{ id: "img-1", data: "data", mimeType: "image/png" }, { id: 1 }])).toEqual([
+			{ id: "img-1", data: "data", mimeType: "image/png" },
+		]);
+		expect(parsePersistedTaskImages([{ id: 1 }])).toBeUndefined();
+	});
+
+	it("drops invalid dependencies and generates ids for valid ones", () => {
+		const taskIds = new Set(["task-a", "task-b"]);
+
+		expect(
+			parsePersistedBoardDependency({ fromTaskId: " task-a ", toTaskId: "task-b" }, taskIds, {
+				createDependencyId: () => "dep-1",
+				now: 99,
+			}),
+		).toEqual({
+			id: "dep-1",
+			fromTaskId: "task-a",
+			toTaskId: "task-b",
+			createdAt: 99,
+		});
+		expect(
+			parsePersistedBoardDependency({ fromTaskId: "task-a", toTaskId: "missing" }, taskIds, {
+				createDependencyId: () => "dep-2",
+				now: 99,
+			}),
+		).toBeNull();
 	});
 });

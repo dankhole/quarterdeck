@@ -38,6 +38,22 @@
 
 - Extracted repeated nested `columns.map → cards.map` pattern into a single `updateCardInBoard` helper. Refactored `updateTask`, `reconcileTaskWorkingDirectory`, `reconcileTaskBranch`, and `toggleTaskPinned` to use it. ~33 line net reduction, zero behavior changes.
 
+### Refactor: decompose CLI startup into named bootstrap phases
+
+- Split `src/cli.ts` startup flow into focused helpers for lazy runtime module loading, startup cleanup, orphaned-agent cleanup, runtime bootstrap state, and runtime server handle creation. Preserved the existing lazy import boundary and startup behavior while making `startServer()` read as a small bootstrap pipeline.
+
+### Refactor: extract App.tsx composition hooks
+
+- Broke `web-ui/src/App.tsx` orchestration into named app hooks for side effects, card action models, and home side-panel resize. The render tree stays intact, but the top-level app component now reads more like a composition root and less like a merged effect/callback registry.
+
+### Refactor: extract board-state parser/schema helpers
+
+- Moved the persisted board hydration path in `web-ui/src/state/board-state.ts` into a companion `board-state-parser.ts` module built around named `zod` schemas and parser helpers for board payloads, cards, dependencies, and task images. Behavior stays the same, but the browser normalization flow now reads as parse-and-assemble instead of inline `unknown` inspection. Added direct parser coverage in the board-state normalization tests.
+
+### Refactor: consolidate board rules behind the runtime board module
+
+- Trimmed `web-ui/src/state/board-state.ts` so task update, task deletion, column clearing, and pinned-state toggling now delegate to `src/core/task-board-mutations.ts` instead of re-implementing nearby board rules in the browser layer. The browser module keeps parsing, drag/drop placement, and metadata reconciliation concerns, while the runtime module is more clearly the canonical home for task mutation semantics. Added regression coverage for the thinner browser adapters and kept existing runtime board tests green.
+
 ## [0.9.4] — 2026-04-16
 
 ### Refactor: split session-manager into concern-based modules

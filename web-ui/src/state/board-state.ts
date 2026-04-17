@@ -3,6 +3,11 @@ import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/data/board-data";
+import {
+	parsePersistedBoardCard,
+	parsePersistedBoardDependency,
+	parsePersistedBoardPayload,
+} from "@/state/board-state-parser";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import {
 	type BoardCard,
@@ -78,98 +83,11 @@ function updateCardInBoard(
 	return { columns, updated };
 }
 
-function normalizeColumnId(id: string): BoardColumnId | null {
-	if (id === "backlog" || id === "in_progress" || id === "review" || id === "trash") {
-		return id;
-	}
-	return null;
-}
-
 function createBrowserUuid(): string {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
 	}
 	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-}
-
-function normalizeTaskImages(rawImages: unknown): TaskImage[] | undefined {
-	if (!Array.isArray(rawImages)) {
-		return undefined;
-	}
-	const images: TaskImage[] = [];
-	for (const rawImage of rawImages) {
-		if (!rawImage || typeof rawImage !== "object") {
-			continue;
-		}
-		const image = rawImage as { id?: unknown; data?: unknown; mimeType?: unknown; name?: unknown };
-		if (typeof image.id !== "string" || typeof image.data !== "string" || typeof image.mimeType !== "string") {
-			continue;
-		}
-		images.push({
-			id: image.id,
-			data: image.data,
-			mimeType: image.mimeType,
-			...(typeof image.name === "string" ? { name: image.name } : {}),
-		});
-	}
-	return images.length > 0 ? images : undefined;
-}
-
-function normalizeCard(rawCard: unknown): BoardCard | null {
-	if (!rawCard || typeof rawCard !== "object") {
-		return null;
-	}
-
-	const card = rawCard as {
-		id?: unknown;
-		title?: unknown;
-		prompt?: unknown;
-		startInPlanMode?: unknown;
-		autoReviewEnabled?: unknown;
-		autoReviewMode?: unknown;
-		images?: unknown;
-		baseRef?: unknown;
-		useWorktree?: unknown;
-		workingDirectory?: unknown;
-		branch?: unknown;
-		pinned?: unknown;
-		createdAt?: unknown;
-		updatedAt?: unknown;
-	};
-	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
-	if (!prompt) {
-		return null;
-	}
-	const baseRef = typeof card.baseRef === "string" ? card.baseRef.trim() : "";
-	if (!baseRef) {
-		return null;
-	}
-
-	const now = Date.now();
-
-	return {
-		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
-		title: typeof card.title === "string" ? card.title : null,
-		prompt,
-		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
-		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
-		autoReviewMode: resolveTaskAutoReviewMode(
-			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
-		),
-		images: normalizeTaskImages(card.images),
-		baseRef,
-		useWorktree: typeof card.useWorktree === "boolean" ? card.useWorktree : undefined,
-		workingDirectory:
-			typeof card.workingDirectory === "string"
-				? card.workingDirectory
-				: card.workingDirectory === null
-					? null
-					: undefined,
-		branch: typeof card.branch === "string" ? card.branch : card.branch === null ? null : undefined,
-		pinned: typeof card.pinned === "boolean" ? card.pinned : undefined,
-		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
-		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
-	};
 }
 
 function createDependencyId(): string {
@@ -186,56 +104,27 @@ function collectTaskIds(columns: BoardColumn[]): Set<string> {
 	return taskIds;
 }
 
-function normalizeDependency(rawDependency: unknown, taskIds: Set<string>): BoardDependency | null {
-	if (!rawDependency || typeof rawDependency !== "object") {
-		return null;
-	}
-
-	const dependency = rawDependency as {
-		id?: unknown;
-		fromTaskId?: unknown;
-		toTaskId?: unknown;
-		createdAt?: unknown;
-	};
-	const fromTaskId = typeof dependency.fromTaskId === "string" ? dependency.fromTaskId.trim() : "";
-	const toTaskId = typeof dependency.toTaskId === "string" ? dependency.toTaskId.trim() : "";
-	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
-		return null;
-	}
-	if (!taskIds.has(fromTaskId) || !taskIds.has(toTaskId)) {
-		return null;
-	}
-
+function createRuntimeTaskUpdateInput(
+	card: BoardCard,
+	overrides: Partial<runtimeTaskState.RuntimeUpdateTaskInput>,
+): runtimeTaskState.RuntimeUpdateTaskInput {
 	return {
-		id: typeof dependency.id === "string" && dependency.id ? dependency.id : createDependencyId(),
-		fromTaskId,
-		toTaskId,
-		createdAt: typeof dependency.createdAt === "number" ? dependency.createdAt : Date.now(),
+		title: overrides.title === undefined ? card.title : overrides.title,
+		prompt: overrides.prompt === undefined ? card.prompt : overrides.prompt,
+		startInPlanMode: overrides.startInPlanMode === undefined ? card.startInPlanMode : overrides.startInPlanMode,
+		autoReviewEnabled:
+			overrides.autoReviewEnabled === undefined ? card.autoReviewEnabled : overrides.autoReviewEnabled,
+		autoReviewMode: overrides.autoReviewMode === undefined ? card.autoReviewMode : overrides.autoReviewMode,
+		images: overrides.images === undefined ? card.images : overrides.images,
+		baseRef: overrides.baseRef === undefined ? card.baseRef : overrides.baseRef,
+		useWorktree: overrides.useWorktree === undefined ? card.useWorktree : overrides.useWorktree,
+		pinned: overrides.pinned === undefined ? card.pinned : overrides.pinned,
 	};
 }
-function removeDependenciesByTaskIds(board: BoardData, taskIds: Set<string>): BoardData {
-	if (taskIds.size === 0 || board.dependencies.length === 0) {
-		return board;
-	}
-	const dependencies = board.dependencies.filter(
-		(dependency) => !taskIds.has(dependency.fromTaskId) && !taskIds.has(dependency.toTaskId),
-	);
-	if (dependencies.length === board.dependencies.length) {
-		return board;
-	}
-	return {
-		...board,
-		dependencies,
-	};
-}
+
 export function normalizeBoardData(rawBoard: unknown): BoardData | null {
-	if (!rawBoard || typeof rawBoard !== "object") {
-		return null;
-	}
-
-	const candidateColumns = (rawBoard as { columns?: unknown }).columns;
-	const candidateDependencies = (rawBoard as { dependencies?: unknown }).dependencies;
-	if (!Array.isArray(candidateColumns)) {
+	const parsedBoard = parsePersistedBoardPayload(rawBoard);
+	if (!parsedBoard) {
 		return null;
 	}
 
@@ -243,24 +132,15 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	const normalizedColumns = initial.columns.map((column) => ({ ...column, cards: [] as BoardCard[] }));
 	const columnById = new Map(normalizedColumns.map((column) => [column.id, column]));
 
-	for (const rawColumn of candidateColumns) {
-		if (!rawColumn || typeof rawColumn !== "object") {
+	for (const parsedColumn of parsedBoard.columns) {
+		const normalizedColumn = columnById.get(parsedColumn.id);
+		if (!normalizedColumn) {
 			continue;
 		}
-		const column = rawColumn as { id?: unknown; cards?: unknown };
-		if (typeof column.id !== "string") {
-			continue;
-		}
-		const normalizedId = normalizeColumnId(column.id);
-		if (!normalizedId) {
-			continue;
-		}
-		const normalizedColumn = columnById.get(normalizedId);
-		if (!normalizedColumn || !Array.isArray(column.cards)) {
-			continue;
-		}
-		for (const rawCard of column.cards) {
-			const card = normalizeCard(rawCard);
+		for (const rawCard of parsedColumn.cards) {
+			const card = parsePersistedBoardCard(rawCard, {
+				createTaskId: () => createShortTaskId(createBrowserUuid),
+			});
 			if (card) {
 				normalizedColumn.cards.push(card);
 			}
@@ -269,14 +149,14 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 
 	const taskIds = collectTaskIds(normalizedColumns);
 	const normalizedDependencies: BoardDependency[] = [];
-	if (Array.isArray(candidateDependencies)) {
-		for (const rawDependency of candidateDependencies) {
-			const dependency = normalizeDependency(rawDependency, taskIds);
-			if (!dependency) {
-				continue;
-			}
-			normalizedDependencies.push(dependency);
+	for (const rawDependency of parsedBoard.dependencies) {
+		const dependency = parsePersistedBoardDependency(rawDependency, taskIds, {
+			createDependencyId,
+		});
+		if (!dependency) {
+			continue;
 		}
+		normalizedDependencies.push(dependency);
 	}
 
 	return runtimeTaskState.updateTaskDependencies({
@@ -490,28 +370,25 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		return { board, updated: false };
 	}
 
-	const { columns, updated } = updateCardInBoard(board, taskId, (card) => ({
-		...card,
-		prompt,
-		startInPlanMode: Boolean(draft.startInPlanMode),
-		autoReviewEnabled: Boolean(draft.autoReviewEnabled),
-		autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
-		images:
-			draft.images === undefined
-				? card.images
-				: draft.images.length > 0
-					? draft.images.map((image) => ({ ...image }))
-					: undefined,
-		baseRef,
-		useWorktree: draft.useWorktree ?? card.useWorktree,
-		pinned: card.pinned,
-		updatedAt: Date.now(),
-	}));
-
-	if (!updated) {
+	const selection = findCardSelection(board, taskId);
+	if (!selection) {
 		return { board, updated: false };
 	}
-	return { board: withUpdatedColumns(board, columns), updated: true };
+
+	const updated = runtimeTaskState.updateTask(
+		board,
+		taskId,
+		createRuntimeTaskUpdateInput(selection.card, {
+			prompt,
+			startInPlanMode: Boolean(draft.startInPlanMode),
+			autoReviewEnabled: Boolean(draft.autoReviewEnabled),
+			autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
+			images: draft.images,
+			baseRef,
+			useWorktree: draft.useWorktree ?? selection.card.useWorktree,
+		}),
+	);
+	return { board: updated.board, updated: updated.updated };
 }
 
 export function disableTaskAutoReview(board: BoardData, taskId: string): { board: BoardData; updated: boolean } {
@@ -594,23 +471,8 @@ export function reconcileTaskBranch(
 }
 
 export function removeTask(board: BoardData, taskId: string): { board: BoardData; removed: boolean } {
-	let removed = false;
-	const columns = board.columns.map((column) => {
-		const nextCards = column.cards.filter((card) => card.id !== taskId);
-		if (nextCards.length !== column.cards.length) {
-			removed = true;
-			return { ...column, cards: nextCards };
-		}
-		return column;
-	});
-	if (!removed) {
-		return { board, removed: false };
-	}
-	const boardWithUpdatedColumns = withUpdatedColumns(board, columns);
-	return {
-		board: removeDependenciesByTaskIds(boardWithUpdatedColumns, new Set([taskId])),
-		removed: true,
-	};
+	const removed = runtimeTaskState.deleteTasksFromBoard(board, [taskId]);
+	return { board: removed.board, removed: removed.deleted };
 }
 
 export function clearColumnTasks(
@@ -623,11 +485,10 @@ export function clearColumnTasks(
 	}
 
 	const clearedTaskIds = targetColumn.cards.map((card) => card.id);
-	const columns = board.columns.map((column) => (column.id === columnId ? { ...column, cards: [] } : column));
-	const boardWithUpdatedColumns = withUpdatedColumns(board, columns);
+	const cleared = runtimeTaskState.deleteTasksFromBoard(board, clearedTaskIds);
 
 	return {
-		board: removeDependenciesByTaskIds(boardWithUpdatedColumns, new Set(clearedTaskIds)),
+		board: cleared.board,
 		clearedTaskIds,
 	};
 }
@@ -647,15 +508,18 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 }
 
 export function toggleTaskPinned(board: BoardData, taskId: string): { board: BoardData; toggled: boolean } {
-	const { columns, updated: toggled } = updateCardInBoard(board, taskId, (card) => ({
-		...card,
-		pinned: card.pinned ? undefined : true,
-	}));
-
-	if (!toggled) {
+	const selection = findCardSelection(board, taskId);
+	if (!selection) {
 		return { board, toggled: false };
 	}
-	return { board: withUpdatedColumns(board, columns), toggled: true };
+	const updated = runtimeTaskState.updateTask(
+		board,
+		taskId,
+		createRuntimeTaskUpdateInput(selection.card, {
+			pinned: !selection.card.pinned,
+		}),
+	);
+	return { board: updated.board, toggled: updated.updated };
 }
 
 export function getTaskColumnId(board: BoardData, taskId: string): BoardColumnId | null {
