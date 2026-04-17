@@ -40,6 +40,7 @@ function findOrphanedAgentPids(): number[] {
 		const pid = Number(match[1]);
 		const ppid = Number(match[2]);
 		const comm = match[3]?.trim();
+		if (!comm) continue;
 
 		if (ppid !== 1) continue;
 		if (pid === process.pid) continue;

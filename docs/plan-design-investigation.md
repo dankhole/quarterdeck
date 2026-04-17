@@ -38,13 +38,13 @@ Primary files:
 
 **Conclusion (c9abe225):** Hub split into coordinator + `runtime-state-client-registry.ts` (WebSocket client bookkeeping/cleanup) + `runtime-state-message-batcher.ts` (summary/debug-log batching). Service boundaries are now understandable — hub coordinates, registry tracks clients, batcher coalesces messages.
 
-## 4. Reassess large UI components that still own workflow state — partially done
+## 4. Reassess large UI components that still own workflow state — done
 
 Primary candidates:
 
 - ~~`web-ui/src/components/app/project-navigation-panel.tsx`~~ — Decomposed (c9abe225)
-- `web-ui/src/components/app/top-bar.tsx` (624L) — still needs audit
-- git/history panels and other large UI orchestrators as needed
+- ~~`web-ui/src/components/app/top-bar.tsx`~~ — Decomposed on the current branch
+- other large UI orchestrators are better tracked as Phase 3 component decomposition work in `docs/todo.md`
 
 ### Question
 
@@ -66,4 +66,4 @@ Large components are large for understandable UI reasons, not because they are h
 
 ## Status
 
-Items 1–3 completed. Item 4 partially done — `project-navigation-panel.tsx` decomposed, `top-bar.tsx` and other large components remain.
+Items 1–4 completed. The remaining large-component cleanup is now tracked in one place under Phase 3 in `docs/todo.md` rather than split between this investigation doc and the main todo list.

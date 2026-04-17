@@ -2,6 +2,38 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: app shell component decomposition and design guardrails (2026-04-17)
+
+**What:** Split two large app-shell components (`project-navigation-panel.tsx` and `top-bar.tsx`) into focused sub-components, added four design/architecture docs, fixed a pre-existing TS error, and completed a stale workspace→project prop rename.
+
+**Why:** Both components were 600+ lines with multiple independent concerns (drag-and-drop list, removal dialog, onboarding tips, shortcut controls, scope indicators). The design docs capture recurring architectural patterns (optimization-shaped architecture) observed during recent refactor work, giving future agents self-contained context for planned terminal and state-management refactors.
+
+**Approach:** Mechanical extraction — no behavior changes except one minor improvement: the removal dialog now guards `onOpenChange` during pending removal to prevent closing mid-operation. The `isWorkspacePathLoading` prop was renamed to `isProjectPathLoading` at both the `TopBar` interface and the `ConnectedTopBar` call site to complete the workspace→project migration for this surface.
+
+**Files touched:**
+- `web-ui/src/components/app/project-navigation-panel.tsx` — gutted to 74L shell importing 4 new files
+- `web-ui/src/components/app/project-navigation-list.tsx` — new: drag-and-drop project list + add button
+- `web-ui/src/components/app/project-navigation-row.tsx` — new: single project row + skeleton + badge logic
+- `web-ui/src/components/app/project-navigation-removal-dialog.tsx` — new: removal confirmation dialog
+- `web-ui/src/components/app/project-navigation-sidebar-sections.tsx` — new: onboarding tips, shortcuts card, beta notice
+- `web-ui/src/components/app/top-bar.tsx` — reduced to 176L shell importing 3 new files
+- `web-ui/src/components/app/top-bar-scope-section.tsx` — new: back button, task title, project path, hints
+- `web-ui/src/components/app/top-bar-project-shortcut-control.tsx` — new: project shortcut split-button + create dialog
+- `web-ui/src/components/app/top-bar-prompt-shortcut-control.tsx` — new: prompt shortcut split-button
+- `web-ui/src/components/app/git-branch-status-control.tsx` — new: git branch pill (moved from top-bar.tsx)
+- `web-ui/src/components/app/connected-top-bar.tsx` — prop rename `isWorkspacePathLoading` → `isProjectPathLoading`
+- `web-ui/src/components/app/index.ts` — barrel export updated
+- `src/terminal/orphan-cleanup.ts` — added `if (!comm) continue` guard fixing TS2345/TS18048
+- `docs/design-guardrails.md` — new: reusable rules for preventing optimization-shaped architecture
+- `docs/design-weaknesses-roadmap.md` — new: ranked architectural weaknesses
+- `docs/optimization-shaped-architecture-followups.md` — new: subsystem-level follow-up tracker
+- `docs/terminal-architecture-refactor-brief.md` — new: self-contained terminal refactor planning brief
+- `docs/README.md` — added refactor docs map
+- `docs/todo.md` — added optimization follow-ups section, updated Phase 3 status
+- `docs/plan-design-investigation.md` — marked item 4 done
+- `CHANGELOG.md` — added entry
+- `package-lock.json` — removed unused `mitt`, `neverthrow` entries
+
 ## Refactor: rename "workspace" to "project" throughout codebase (2026-04-17)
 
 **What:** Unified the state-container concept under "project". Previously the backend used "workspace" while the UI/API layer used "project". All types, files, functions, variables, API routes, wire protocol strings, HTTP headers, WebSocket messages, and on-disk paths now consistently use "project". Renamed `src/workspace/` to `src/workdir/` for working directory operations. Agent workspace trust files left unchanged intentionally.

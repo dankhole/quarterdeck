@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: app shell component decomposition and design guardrails
+
+- Decomposed `project-navigation-panel.tsx` (679L → 74L) into `project-navigation-list.tsx`, `project-navigation-row.tsx`, `project-navigation-removal-dialog.tsx`, and `project-navigation-sidebar-sections.tsx`.
+- Decomposed `top-bar.tsx` (624L → 176L) into `top-bar-scope-section.tsx`, `top-bar-project-shortcut-control.tsx`, `top-bar-prompt-shortcut-control.tsx`, and `git-branch-status-control.tsx`.
+- Added design guardrails doc, design weaknesses roadmap, optimization-shaped architecture follow-ups, and terminal architecture refactor brief.
+- Fixed pre-existing type error in `orphan-cleanup.ts` (`comm` possibly undefined).
+- Completed the `isWorkspacePathLoading` → `isProjectPathLoading` prop rename across `TopBar` and `ConnectedTopBar`.
+
 ### Refactor: rename "workspace" to "project" throughout codebase
 
 - Unified the state-container concept under "project" — the backend previously used "workspace" while the UI/API layer used "project", causing confusion. All types, files, functions, variables, API routes, wire protocol strings, HTTP headers, and on-disk paths now consistently use "project".

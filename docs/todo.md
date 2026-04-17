@@ -2,6 +2,23 @@
 
 Ordered hardest-first so easy items at the bottom are less likely to cause merge conflicts.
 
+## Optimization-shaped architecture follow-ups
+
+Use this section together with:
+
+- [docs/design-guardrails.md](./design-guardrails.md)
+- [docs/optimization-shaped-architecture-followups.md](./optimization-shaped-architecture-followups.md)
+- [docs/terminal-architecture-refactor-brief.md](./terminal-architecture-refactor-brief.md)
+
+These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
+
+- Refactor the frontend terminal architecture toward a cleaner session-handle / viewport / attachment / reuse-manager split, while preserving fast switching, reconnect/restore behavior, and optional prewarming. Planning brief: [docs/terminal-architecture-refactor-brief.md](./terminal-architecture-refactor-brief.md)
+- Reassess `src/server/project-metadata-monitor.ts` so metadata ownership is easier to separate from polling cadence, focused/background prioritization, and remote-fetch policy.
+- Reassess `web-ui/src/hooks/project/use-project-sync.ts` together with `web-ui/src/runtime/project-board-cache.ts` so project-state application stays authoritative and board-cache restore remains an optional acceleration layer instead of part of the core sync model.
+- Reassess `src/terminal/ws-server.ts` so multi-viewer buffering, backpressure, and restore timing remain useful but are easier to understand as transport policy rather than the primary terminal model.
+- Reassess `src/server/runtime-state-message-batcher.ts` so batching remains intact while the boundary between runtime event semantics and delivery policy becomes clearer.
+- Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility.
+
 ## Standalone desktop app (Electron/Tauri)
 
 Move from a browser-based UI to a standalone desktop application, similar to how VS Code works. The current architecture — a Node.js server with a separate Vite dev server and the user opening a browser tab — has inherent limitations: no control over window management, tab lifecycle, or OS-level integration.
@@ -169,15 +186,15 @@ Full plan at [docs/plan-design-investigation.md](plan-design-investigation.md). 
 - ~~**Reassess board-state ownership between browser and runtime**~~ — Done (cbf81f71). Board rule consolidation confirmed `task-board-mutations.ts` as the canonical owner; browser layer is a thin adapter.
 - ~~**Reassess terminal architecture across `terminal-slot.ts` and `terminal-pool.ts`**~~ — Done (c9abe225). Slot decomposed into `slot-dom-host.ts` + `slot-visibility-lifecycle.ts`; pool split into shared-pool policy + `terminal-dedicated-registry.ts`.
 - ~~**Reassess runtime coordination boundaries between `runtime-state-hub.ts` and `workspace-registry.ts`**~~ — Done (c9abe225). Hub split into coordinator + `runtime-state-client-registry.ts` + `runtime-state-message-batcher.ts`.
-- **Reassess large UI components that still own workflow state** — `project-navigation-panel.tsx` decomposed (c9abe225), but `top-bar.tsx` (624L) and other large components still need audit.
+- ~~**Reassess large UI components that still own workflow state**~~ — Done. The app-shell audit is wrapped up: `project-navigation-panel.tsx` and `top-bar.tsx` are decomposed, and the remaining component line-count cleanup is tracked below in Phase 3 so the work only has one active home.
 
 ## Frontend feature folders, component decomposition, and barrel exports
 
-Full plan at [docs/plan-frontend-feature-folders.md](plan-frontend-feature-folders.md). Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.
+Four phases to make the frontend navigable like a C#/Angular solution — feature-grouped directories, no 700-line components, clean barrel imports.
 
 - ~~**Phase 1**~~ — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves. Done.
 - ~~**Phase 2**~~ — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves. Done.
-- **Phase 3** — Decompose 6 oversized components (board-card 784L, task-create-dialog 725L, branch-selector-popover 698L, project-navigation-panel 679L, top-bar 624L, card-detail-view 587L) into sub-components targeting ~400 lines max. git-view done (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels).
+- **Phase 3** — Finish the remaining oversized component decompositions, targeting ~400 lines max where the structure still supports it. Done on this branch: `project-navigation-panel.tsx` (679L → 74L), `top-bar.tsx` (624L → 176L), and `git-view` (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels). Remaining planned work: `board-card.tsx` (521L), `task-create-dialog.tsx` (544L), `branch-selector-popover.tsx` (698L), and `card-detail-view.tsx` (585L).
 - ~~**Phase 4**~~ — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`. Done.
 
 ## Readability refactoring roadmap (C#-style navigability) — completed

@@ -206,7 +206,7 @@ export function ConnectedTopBar({
 		<TopBar
 			onBack={onBack}
 			projectPath={navbarProjectPath}
-			isWorkspacePathLoading={shouldShowProjectLoadingState}
+			isProjectPathLoading={shouldShowProjectLoadingState}
 			projectHint={navbarProjectHint}
 			runtimeHint={navbarRuntimeHint}
 			selectedTaskId={selectedCard?.card.id ?? null}
