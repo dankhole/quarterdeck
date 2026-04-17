@@ -51,7 +51,7 @@ export function useDisplaySummaryOnHover(
 			timerRef.current = setTimeout(() => {
 				timerRef.current = null;
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				void trpcClient.workspace.generateDisplaySummary.mutate({ taskId, staleAfterSeconds }).catch(() => {
+				void trpcClient.project.generateDisplaySummary.mutate({ taskId, staleAfterSeconds }).catch(() => {
 					// Best-effort — no toast for background summary generation.
 				});
 			}, HOVER_DEBOUNCE_MS);

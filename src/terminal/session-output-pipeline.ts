@@ -1,6 +1,6 @@
 // Output processing pipeline for PTY sessions (task and shell).
 // Extracted from session-manager.ts — processes each chunk of PTY stdout
-// through an ordered pipeline: protocol filter → state mirror → workspace
+// through an ordered pipeline: protocol filter → state mirror →
 // trust → store timestamp → codex deferred input → transition detection →
 // listener broadcast.
 
@@ -56,7 +56,7 @@ export function processTaskSessionOutput(
 	entry.terminalStateMirror?.applyOutput(filteredChunk);
 
 	// 3. Decode to text only when needed — avoid toString("utf8") cost unless
-	//    workspace trust or transition detection actually need the text.
+	//    trust or transition detection actually need the text.
 	const liveSummary = deps.getSummary(taskId);
 	const needsDecodedOutput =
 		entry.active.workspaceTrustBuffer !== null ||
@@ -106,7 +106,7 @@ export function processTaskSessionOutput(
 /**
  * Process a chunk of shell session PTY output. Simpler than the task pipeline —
  * no transition detection, no Codex deferred input, but shares protocol filtering,
- * state mirror, workspace trust buffering, and listener broadcast.
+ * state mirror, trust buffering, and listener broadcast.
  */
 export function processShellSessionOutput(
 	entry: ProcessEntry,

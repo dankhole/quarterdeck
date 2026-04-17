@@ -1,17 +1,17 @@
 import { emitSessionEvent } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface FlagTaskForDebugDeps {
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }
 
 export async function handleFlagTaskForDebug(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: { taskId: string; note?: string },
 	deps: FlagTaskForDebugDeps,
 ) {
-	const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+	const terminalManager = await deps.getScopedTerminalManager(projectScope);
 	const summary = terminalManager.store.getSummary(input.taskId);
 	if (!summary) {
 		return { ok: false };

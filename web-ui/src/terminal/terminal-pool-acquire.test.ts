@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 interface MockSlot {
 	slotId: number;
 	_taskId: string | null;
-	_workspaceId: string | null;
+	_projectId: string | null;
 	_sessionState: string | null;
 	connectToTask: ReturnType<typeof vi.fn>;
 	ensureConnected: ReturnType<typeof vi.fn>;
@@ -24,7 +24,7 @@ interface MockSlot {
 	setAppearance: ReturnType<typeof vi.fn>;
 	getBufferDebugInfo: ReturnType<typeof vi.fn>;
 	connectedTaskId: string | null;
-	connectedWorkspaceId: string | null;
+	connectedProjectId: string | null;
 	sessionState: string | null;
 }
 
@@ -33,16 +33,16 @@ vi.mock("@/terminal/terminal-slot", () => {
 		const mock: MockSlot = {
 			slotId,
 			_taskId: null,
-			_workspaceId: null,
+			_projectId: null,
 			_sessionState: null,
-			connectToTask: vi.fn((taskId: string, workspaceId: string) => {
+			connectToTask: vi.fn((taskId: string, projectId: string) => {
 				mock._taskId = taskId;
-				mock._workspaceId = workspaceId;
+				mock._projectId = projectId;
 			}),
 			ensureConnected: vi.fn(),
 			disconnectFromTask: vi.fn(async () => {
 				mock._taskId = null;
-				mock._workspaceId = null;
+				mock._projectId = null;
 			}),
 			onceConnectionReady: vi.fn(),
 			attachToStageContainer: vi.fn(),
@@ -67,8 +67,8 @@ vi.mock("@/terminal/terminal-slot", () => {
 			get connectedTaskId() {
 				return mock._taskId;
 			},
-			get connectedWorkspaceId() {
-				return mock._workspaceId;
+			get connectedProjectId() {
+				return mock._projectId;
 			},
 			get sessionState() {
 				return mock._sessionState;
@@ -89,9 +89,9 @@ vi.mock("@/terminal/terminal-slot", () => {
 			},
 			configurable: true,
 		});
-		Object.defineProperty(this, "connectedWorkspaceId", {
+		Object.defineProperty(this, "connectedProjectId", {
 			get() {
-				return self._workspaceId;
+				return self._projectId;
 			},
 			configurable: true,
 		});
@@ -101,13 +101,13 @@ vi.mock("@/terminal/terminal-slot", () => {
 			},
 			configurable: true,
 		});
-		this.connectToTask = vi.fn((taskId: string, workspaceId: string) => {
+		this.connectToTask = vi.fn((taskId: string, projectId: string) => {
 			self._taskId = taskId;
-			self._workspaceId = workspaceId;
+			self._projectId = projectId;
 		});
 		this.disconnectFromTask = vi.fn(async () => {
 			self._taskId = null;
-			self._workspaceId = null;
+			self._projectId = null;
 		});
 	});
 

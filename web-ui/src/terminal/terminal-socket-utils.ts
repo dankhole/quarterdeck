@@ -10,13 +10,13 @@ export function generateTerminalClientId(): string {
 export function getTerminalWebSocketUrl(
 	path: "io" | "control",
 	taskId: string,
-	workspaceId: string,
+	projectId: string,
 	clientId: string,
 ): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/${path}`);
 	url.searchParams.set("taskId", taskId);
-	url.searchParams.set("workspaceId", workspaceId);
+	url.searchParams.set("projectId", projectId);
 	url.searchParams.set("clientId", clientId);
 	return url.toString();
 }

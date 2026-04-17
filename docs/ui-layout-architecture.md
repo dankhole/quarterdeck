@@ -84,7 +84,7 @@ The sidebar is rendered in **two different places** depending on whether a task 
 - **No task**: App.tsx renders the sidebar directly (ProjectNavigationPanel, or home-context FileBrowserTreePanel).
 - **Task selected**: `CardDetailView` renders its own left panel (task-scoped FileBrowserTreePanel or ColumnContextPanel).
 
-This split exists because task-scoped sidebar panels need access to task context (workspace info, scope resolution, branch actions) that `CardDetailView` already manages. The `mainView === "git"` view suppresses the sidebar highlight — it has an integrated tree panel that replaces the sidebar visually. The `mainView === "files"` view (`FilesView`) also has an integrated tree panel but does **not** suppress the sidebar, allowing the Board/Projects sidebar to coexist alongside it.
+This split exists because task-scoped sidebar panels need access to task context (project info, scope resolution, branch actions) that `CardDetailView` already manages. The `mainView === "git"` view suppresses the sidebar highlight — it has an integrated tree panel that replaces the sidebar visually. The `mainView === "files"` view (`FilesView`) also has an integrated tree panel but does **not** suppress the sidebar, allowing the Board/Projects sidebar to coexist alongside it.
 
 ---
 
@@ -197,12 +197,12 @@ The old `DetailActivePanel` key stored a single `SidebarTabId`. Migration runs i
 #### Uncommitted (default)
 - Shows HEAD vs working tree changes
 - Polls on 1-second interval when visible
-- Data: `useRuntimeWorkspaceChanges(taskId, projectId, baseRef, "working_copy", ...)`
+- Data: `useRuntimeProjectChanges(taskId, projectId, baseRef, "working_copy", ...)`
 
 #### Last Turn
 - Shows changes since the agent's last turn checkpoint
 - Disabled when no task is selected
-- Data: `useRuntimeWorkspaceChanges(taskId, projectId, baseRef, "last_turn", ...)`
+- Data: `useRuntimeProjectChanges(taskId, projectId, baseRef, "last_turn", ...)`
 
 #### Compare
 - Branch-to-branch diff with dual pill dropdowns (`BranchSelectorPopover`)

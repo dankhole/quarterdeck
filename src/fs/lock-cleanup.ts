@@ -8,12 +8,12 @@
  * named artifacts only), and provides a two-phase cleanup API:
  *
  *   Phase 1 — {@link cleanupGlobalStaleLockArtifacts}
- *     Cleans `~/.quarterdeck/` hierarchy. Safe to call before the workspace
+ *     Cleans `~/.quarterdeck/` hierarchy. Safe to call before the project
  *     registry is loaded.
  *
  *   Phase 2 — {@link cleanupProjectStaleLockArtifacts}
  *     Cleans per-project directories. Requires project repo paths (typically
- *     read from the workspace index after phase 1 has run).
+ *     read from the project index after phase 1 has run).
  *
  * When adding a new lock anywhere in the codebase, register its cleanup target
  * in the appropriate function below so it gets automatic coverage.
@@ -22,8 +22,8 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { getRuntimeHomePath, getWorkspacesRootPath } from "../state/workspace-state.js";
-import { getGitCommonDir, getGitDir } from "../workspace/git-utils.js";
+import { getProjectsRootPath, getRuntimeHomePath } from "../state/project-state.js";
+import { getGitCommonDir, getGitDir } from "../workdir/git-utils.js";
 import { cleanupStaleLockAndTempFiles, DEFAULT_LOCK_STALE_MS } from "./locked-file-system.js";
 import { isNodeError } from "./node-error.js";
 
@@ -49,20 +49,20 @@ type WarnFn = (message: string) => void;
  */
 async function getGlobalCleanupDirectories(): Promise<string[]> {
 	const runtimeHome = getRuntimeHomePath();
-	const workspacesRoot = getWorkspacesRootPath();
+	const projectsRoot = getProjectsRootPath();
 
-	const dirs = [runtimeHome, workspacesRoot];
+	const dirs = [runtimeHome, projectsRoot];
 
-	// Include per-workspace subdirectories (for temp file cleanup).
+	// Include per-project subdirectories (for temp file cleanup).
 	try {
-		const entries = await readdir(workspacesRoot, { withFileTypes: true });
+		const entries = await readdir(projectsRoot, { withFileTypes: true });
 		for (const entry of entries) {
 			if (entry.isDirectory() && !entry.name.endsWith(".lock") && !entry.name.includes(".tmp.")) {
-				dirs.push(join(workspacesRoot, entry.name));
+				dirs.push(join(projectsRoot, entry.name));
 			}
 		}
 	} catch {
-		// workspacesRoot may not exist yet — safe to skip.
+		// projectsRoot may not exist yet — safe to skip.
 	}
 
 	return dirs;
@@ -70,7 +70,7 @@ async function getGlobalCleanupDirectories(): Promise<string[]> {
 
 /**
  * Phase 1: Remove stale lock directories and orphaned temp files from the
- * `~/.quarterdeck/` hierarchy. Safe to call before the workspace registry is
+ * `~/.quarterdeck/` hierarchy. Safe to call before the project registry is
  * loaded — only touches Quarterdeck-owned directories.
  */
 export async function cleanupGlobalStaleLockArtifacts(warn?: WarnFn): Promise<void> {
@@ -162,7 +162,7 @@ async function getProjectCleanupTargets(repoPath: string): Promise<{
 
 /**
  * Phase 2: Remove stale lock artifacts from per-project directories. Requires
- * project repository paths — typically obtained by reading the workspace index
+ * project repository paths — typically obtained by reading the project index
  * after phase 1 has cleaned the `~/.quarterdeck/` hierarchy.
  *
  * Handles two kinds of directories:

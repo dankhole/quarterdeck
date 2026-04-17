@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { type LockRequest, lockedFileSystem } from "../fs";
-import { getRuntimeHomePath, getWorkspacePinnedBranchesPath } from "../state";
+import { getProjectPinnedBranchesPath, getRuntimeHomePath } from "../state";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,
@@ -34,8 +34,6 @@ import {
 // --- Constants ---
 
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_DIR = ".quarterdeck";
-const PROJECT_CONFIG_FILENAME = "config.json";
 
 // --- Path resolution ---
 
@@ -49,7 +47,7 @@ export function getRuntimeGlobalConfigPath(): string {
 }
 
 export function getRuntimeProjectConfigPath(cwd: string): string {
-	return join(resolve(cwd), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
+	return join(resolve(cwd), ".quarterdeck", CONFIG_FILENAME);
 }
 
 function normalizePathForComparison(path: string): string {
@@ -81,7 +79,7 @@ export function resolveRuntimeConfigPaths(cwd: string | null): RuntimeConfigPath
 	};
 }
 
-export function getRuntimeConfigLockRequests(cwd: string | null, workspaceId?: string | null): LockRequest[] {
+export function getRuntimeConfigLockRequests(cwd: string | null, projectId?: string | null): LockRequest[] {
 	const paths = resolveRuntimeConfigPaths(cwd);
 	const requests: LockRequest[] = [
 		{
@@ -95,9 +93,9 @@ export function getRuntimeConfigLockRequests(cwd: string | null, workspaceId?: s
 			type: "file",
 		});
 	}
-	if (workspaceId) {
+	if (projectId) {
 		requests.push({
-			path: getWorkspacePinnedBranchesPath(workspaceId),
+			path: getProjectPinnedBranchesPath(projectId),
 			type: "file",
 		});
 	}
@@ -115,9 +113,9 @@ export async function readRuntimeConfigFile<T>(configPath: string): Promise<T | 
 	}
 }
 
-export async function readPinnedBranchesFile(workspaceId: string): Promise<string[]> {
+export async function readPinnedBranchesFile(projectId: string): Promise<string[]> {
 	try {
-		const filePath = getWorkspacePinnedBranchesPath(workspaceId);
+		const filePath = getProjectPinnedBranchesPath(projectId);
 		const raw = await readFile(filePath, "utf8");
 		return normalizePinnedBranches(JSON.parse(raw));
 	} catch {
@@ -125,9 +123,9 @@ export async function readPinnedBranchesFile(workspaceId: string): Promise<strin
 	}
 }
 
-export async function writePinnedBranchesFile(workspaceId: string, pinnedBranches: string[]): Promise<void> {
+export async function writePinnedBranchesFile(projectId: string, pinnedBranches: string[]): Promise<void> {
 	const normalized = normalizePinnedBranches(pinnedBranches);
-	const filePath = getWorkspacePinnedBranchesPath(workspaceId);
+	const filePath = getProjectPinnedBranchesPath(projectId);
 	if (normalized.length === 0) {
 		await rm(filePath, { force: true });
 		return;

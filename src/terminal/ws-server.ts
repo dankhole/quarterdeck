@@ -12,7 +12,7 @@ const log = createTaggedLogger("ws-server");
 
 interface TerminalWebSocketConnectionContext {
 	taskId: string;
-	workspaceId: string;
+	projectId: string;
 	clientId: string;
 	terminalManager: TerminalSessionService;
 }
@@ -23,7 +23,7 @@ interface UpgradeRequest extends IncomingMessage {
 
 export interface CreateTerminalWebSocketBridgeRequest {
 	server: Server;
-	resolveTerminalManager: (workspaceId: string) => TerminalSessionService | null;
+	resolveTerminalManager: (projectId: string) => TerminalSessionService | null;
 	isTerminalIoWebSocketPath: (pathname: string) => boolean;
 	isTerminalControlWebSocketPath: (pathname: string) => boolean;
 }
@@ -139,8 +139,8 @@ function sendRestoreSnapshot(ws: WebSocket, terminalManager: TerminalSessionServ
 		});
 }
 
-function buildConnectionKey(workspaceId: string, taskId: string): string {
-	return `${workspaceId}:${taskId}`;
+function buildConnectionKey(projectId: string, taskId: string): string {
+	return `${projectId}:${taskId}`;
 }
 
 function getTerminalClientId(url: URL): string {
@@ -418,12 +418,12 @@ export function createTerminalWebSocketBridge({
 			upgradeRequest.__quarterdeckUpgradeHandled = true;
 
 			const taskId = url.searchParams.get("taskId")?.trim();
-			const workspaceId = url.searchParams.get("workspaceId")?.trim();
-			if (!taskId || !workspaceId) {
+			const projectId = url.searchParams.get("projectId")?.trim();
+			if (!taskId || !projectId) {
 				socket.destroy();
 				return;
 			}
-			const terminalManager = resolveTerminalManager(workspaceId);
+			const terminalManager = resolveTerminalManager(projectId);
 			if (!terminalManager) {
 				socket.destroy();
 				return;
@@ -432,7 +432,7 @@ export function createTerminalWebSocketBridge({
 			const targetServer = isIoRequest ? ioServer : controlServer;
 			const clientId = getTerminalClientId(url);
 			targetServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-				targetServer.emit("connection", ws, { taskId, workspaceId, clientId, terminalManager });
+				targetServer.emit("connection", ws, { taskId, projectId, clientId, terminalManager });
 			});
 		} catch {
 			socket.destroy();
@@ -441,10 +441,10 @@ export function createTerminalWebSocketBridge({
 
 	ioServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
-		const workspaceId = (context as TerminalWebSocketConnectionContext).workspaceId;
+		const projectId = (context as TerminalWebSocketConnectionContext).projectId;
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
-		const connectionKey = buildConnectionKey(workspaceId, taskId);
+		const connectionKey = buildConnectionKey(projectId, taskId);
 		terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
 		const viewerState = getOrCreateViewerState(streamState, clientId);
@@ -483,10 +483,10 @@ export function createTerminalWebSocketBridge({
 
 	controlServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
-		const workspaceId = (context as TerminalWebSocketConnectionContext).workspaceId;
+		const projectId = (context as TerminalWebSocketConnectionContext).projectId;
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
-		const connectionKey = buildConnectionKey(workspaceId, taskId);
+		const connectionKey = buildConnectionKey(projectId, taskId);
 		terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
 		const viewerState = getOrCreateViewerState(streamState, clientId);

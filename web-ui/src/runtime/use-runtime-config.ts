@@ -14,14 +14,14 @@ export interface UseRuntimeConfigResult {
 
 export function useRuntimeConfig(
 	open: boolean,
-	workspaceId: string | null,
+	projectId: string | null,
 	initialConfig: RuntimeConfigResponse | null = null,
 ): UseRuntimeConfigResult {
 	const [isSaving, setIsSaving] = useState(false);
-	const previousWorkspaceIdRef = useRef<string | null>(null);
+	const previousProjectIdRef = useRef<string | null>(null);
 	const didRetryAfterInitialErrorRef = useRef(false);
 	const lastLoggedErrorKeyRef = useRef<string | null>(null);
-	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
+	const queryFn = useCallback(async () => await fetchRuntimeConfig(projectId), [projectId]);
 	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
 		enabled: open,
 		queryFn,
@@ -30,9 +30,9 @@ export function useRuntimeConfig(
 	const setConfigData = configQuery.setData;
 
 	useEffect(() => {
-		const workspaceChanged = previousWorkspaceIdRef.current !== workspaceId;
-		previousWorkspaceIdRef.current = workspaceId;
-		if (workspaceChanged) {
+		const projectChanged = previousProjectIdRef.current !== projectId;
+		previousProjectIdRef.current = projectId;
+		if (projectChanged) {
 			didRetryAfterInitialErrorRef.current = false;
 			lastLoggedErrorKeyRef.current = null;
 			setConfigData(initialConfig);
@@ -41,7 +41,7 @@ export function useRuntimeConfig(
 		if (configQuery.data === null && initialConfig !== null) {
 			setConfigData(initialConfig);
 		}
-	}, [configQuery.data, initialConfig, setConfigData, workspaceId]);
+	}, [configQuery.data, initialConfig, setConfigData, projectId]);
 
 	useEffect(() => {
 		if (!open || configQuery.data !== null) {
@@ -52,7 +52,7 @@ export function useRuntimeConfig(
 		if (!configQuery.isError) {
 			return;
 		}
-		const scopeLabel = workspaceId ?? "global";
+		const scopeLabel = projectId ?? "global";
 		const message = configQuery.error?.message ?? "Unknown runtime config load error.";
 		const errorKey = `${scopeLabel}:${message}`;
 		if (lastLoggedErrorKeyRef.current !== errorKey) {
@@ -65,13 +65,13 @@ export function useRuntimeConfig(
 		didRetryAfterInitialErrorRef.current = true;
 		console.warn(`[quarterdeck][settings] Retrying runtime.getConfig once for scope ${scopeLabel}.`);
 		void configQuery.refetch();
-	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, workspaceId]);
+	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, projectId]);
 
 	const save = useCallback(
 		async (nextConfig: RuntimeConfigSaveRequest): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);
 			try {
-				const saved = await saveRuntimeConfig(workspaceId, nextConfig);
+				const saved = await saveRuntimeConfig(projectId, nextConfig);
 				setConfigData(saved);
 				return saved;
 			} catch {
@@ -80,7 +80,7 @@ export function useRuntimeConfig(
 				setIsSaving(false);
 			}
 		},
-		[setConfigData, workspaceId],
+		[setConfigData, projectId],
 	);
 
 	const refresh = useCallback(() => {

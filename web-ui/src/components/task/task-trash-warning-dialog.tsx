@@ -1,13 +1,13 @@
 import type { ReactElement } from "react";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AlertDialogDescription } from "@/components/ui/dialog";
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 
 export interface TaskTrashWarningViewModel {
 	taskTitle: string;
 	fileCount: number;
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
+	worktreeInfo: RuntimeTaskWorktreeInfoResponse | null;
 	isNonIsolated: boolean;
 }
 
@@ -60,9 +60,9 @@ export function TaskTrashWarningDialog({
 						Moving to Trash will delete this task's worktree. Uncommitted work will be captured in a patch file
 						and can be recovered if you restore the task.
 					</p>
-					{warning?.workspaceInfo?.path ? (
+					{warning?.worktreeInfo?.path ? (
 						<pre className="overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
-							{formatPathForDisplay(warning.workspaceInfo.path)}
+							{formatPathForDisplay(warning.worktreeInfo.path)}
 						</pre>
 					) : null}
 					<p>The patch file is saved automatically — no action needed to preserve your work.</p>

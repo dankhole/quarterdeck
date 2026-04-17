@@ -6,7 +6,7 @@
  * state, effects, and tRPC mutations.
  */
 
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 
 // ---------------------------------------------------------------------------
 // File selection sync
@@ -25,7 +25,7 @@ export interface SelectionSyncResult {
  * `prevPaths` is empty), all files are checked.
  */
 export function computeSelectionSync(
-	files: RuntimeWorkspaceFileChange[],
+	files: RuntimeWorkdirFileChange[],
 	prevPaths: Set<string>,
 	currentSelection: Map<string, boolean>,
 ): SelectionSyncResult {
@@ -65,7 +65,7 @@ export function computeSelectionSync(
  * selection map.
  */
 export function computeSelectedPaths(
-	files: RuntimeWorkspaceFileChange[] | null,
+	files: RuntimeWorkdirFileChange[] | null,
 	selection: Map<string, boolean>,
 ): string[] {
 	if (!files) {

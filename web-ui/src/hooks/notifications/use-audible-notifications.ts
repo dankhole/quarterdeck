@@ -22,7 +22,7 @@ interface UseAudibleNotificationsOptions {
 	audibleNotificationsOnlyWhenHidden: boolean;
 	/** Per-event suppression for tasks in the currently viewed project. */
 	audibleNotificationSuppressCurrentProject: AudibleNotificationEventConfig;
-	/** Maps task IDs to their workspace/project IDs. */
+	/** Maps task IDs to their project IDs. */
 	notificationWorkspaceIds: Record<string, string>;
 	/** The currently viewed project ID. */
 	currentProjectId: string | null;

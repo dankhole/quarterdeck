@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeStashEntry } from "@/runtime/types";
-import { useHomeStashCount, useTaskWorkspaceInfoValue } from "@/stores/workspace-metadata-store";
+import { useHomeStashCount, useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
 
 export interface UseStashListResult {
 	entries: RuntimeStashEntry[];
@@ -16,13 +16,13 @@ export interface UseStashListResult {
 	showStashDiff: (index: number) => Promise<string>;
 }
 
-export function useStashList(taskId: string | undefined, workspaceId: string): UseStashListResult {
+export function useStashList(taskId: string | undefined, projectId: string): UseStashListResult {
 	const [entries, setEntries] = useState<RuntimeStashEntry[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	// Build taskScope from taskId + baseRef from the metadata store.
-	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(taskId ?? null);
+	const taskWorkspaceInfo = useTaskWorktreeInfoValue(taskId ?? null);
 	const baseRef = taskWorkspaceInfo?.baseRef ?? null;
 	const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
 
@@ -37,8 +37,8 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 	const fetchStashList = useCallback(async () => {
 		setIsLoading(true);
 		try {
-			const trpcClient = getRuntimeTrpcClient(workspaceId);
-			const result = await trpcClient.workspace.stashList.query({ taskScope: taskScopeRef.current });
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const result = await trpcClient.project.stashList.query({ taskScope: taskScopeRef.current });
 			if (result.ok) {
 				setEntries(result.entries);
 			} else {
@@ -53,7 +53,7 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 		} finally {
 			setIsLoading(false);
 		}
-	}, [workspaceId]);
+	}, [projectId]);
 
 	// Fetch when the section becomes expanded.
 	useEffect(() => {
@@ -74,8 +74,8 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 	const popStash = useCallback(
 		async (index: number) => {
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const result = await trpcClient.workspace.stashPop.mutate({ taskScope: taskScopeRef.current, index });
+				const trpcClient = getRuntimeTrpcClient(projectId);
+				const result = await trpcClient.project.stashPop.mutate({ taskScope: taskScopeRef.current, index });
 				if (result.ok) {
 					showAppToast({ intent: "success", message: "Stash popped.", timeout: 4000 });
 				} else {
@@ -90,14 +90,14 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 			}
 			void fetchStashList();
 		},
-		[workspaceId, fetchStashList],
+		[projectId, fetchStashList],
 	);
 
 	const applyStash = useCallback(
 		async (index: number) => {
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const result = await trpcClient.workspace.stashApply.mutate({ taskScope: taskScopeRef.current, index });
+				const trpcClient = getRuntimeTrpcClient(projectId);
+				const result = await trpcClient.project.stashApply.mutate({ taskScope: taskScopeRef.current, index });
 				if (result.ok) {
 					showAppToast({ intent: "success", message: "Stash applied.", timeout: 4000 });
 				} else {
@@ -112,14 +112,14 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 			}
 			void fetchStashList();
 		},
-		[workspaceId, fetchStashList],
+		[projectId, fetchStashList],
 	);
 
 	const dropStash = useCallback(
 		async (index: number) => {
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const result = await trpcClient.workspace.stashDrop.mutate({ taskScope: taskScopeRef.current, index });
+				const trpcClient = getRuntimeTrpcClient(projectId);
+				const result = await trpcClient.project.stashDrop.mutate({ taskScope: taskScopeRef.current, index });
 				if (result.ok) {
 					showAppToast({ intent: "success", message: "Stash dropped.", timeout: 4000 });
 				} else {
@@ -134,14 +134,14 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 			}
 			void fetchStashList();
 		},
-		[workspaceId, fetchStashList],
+		[projectId, fetchStashList],
 	);
 
 	const showStashDiff = useCallback(
 		async (index: number): Promise<string> => {
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const result = await trpcClient.workspace.stashShow.query({ taskScope: taskScopeRef.current, index });
+				const trpcClient = getRuntimeTrpcClient(projectId);
+				const result = await trpcClient.project.stashShow.query({ taskScope: taskScopeRef.current, index });
 				if (result.ok) {
 					return result.diff ?? "";
 				}
@@ -156,7 +156,7 @@ export function useStashList(taskId: string | undefined, workspaceId: string): U
 				return "";
 			}
 		},
-		[workspaceId],
+		[projectId],
 	);
 
 	return {

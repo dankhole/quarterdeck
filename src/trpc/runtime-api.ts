@@ -5,7 +5,7 @@
 
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider, RuntimeCommandRunResponse } from "../core";
 import type { TerminalSessionManager } from "../terminal";
-import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router-context";
+import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import { handleFlagTaskForDebug } from "./handlers/flag-task-for-debug";
 import { handleLoadConfig } from "./handlers/load-config";
 import { handleMigrateTaskWorkingDirectory } from "./handlers/migrate-task-working-directory";
@@ -22,13 +22,13 @@ export interface CreateRuntimeApiDependencies {
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<
 		IRuntimeBroadcaster,
-		| "broadcastRuntimeWorkspaceStateUpdated"
+		| "broadcastRuntimeProjectStateUpdated"
 		| "broadcastTaskWorkingDirectoryUpdated"
 		| "setPollIntervals"
 		| "broadcastLogLevel"
 	>;
-	getActiveWorkspaceId: () => string | null;
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getActiveProjectId: () => string | null;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 }
@@ -40,36 +40,36 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	// ── Config ────────────────────────────────────────────────────────────
 
-	async loadConfig(workspaceScope: RuntimeTrpcWorkspaceScope | null) {
-		return handleLoadConfig(workspaceScope, this.deps);
+	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {
+		return handleLoadConfig(projectScope, this.deps);
 	}
 
-	async saveConfig(workspaceScope: RuntimeTrpcWorkspaceScope | null, input: unknown) {
-		return handleSaveConfig(workspaceScope, input, this.deps);
+	async saveConfig(projectScope: RuntimeTrpcProjectScope | null, input: unknown) {
+		return handleSaveConfig(projectScope, input, this.deps);
 	}
 
 	// ── Sessions ──────────────────────────────────────────────────────────
 
-	async startTaskSession(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
-		return handleStartTaskSession(workspaceScope, input, this.deps);
+	async startTaskSession(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleStartTaskSession(projectScope, input, this.deps);
 	}
 
-	async stopTaskSession(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
-		return handleStopTaskSession(workspaceScope, input, this.deps);
+	async stopTaskSession(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleStopTaskSession(projectScope, input, this.deps);
 	}
 
-	async sendTaskSessionInput(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
-		return handleSendTaskSessionInput(workspaceScope, input, this.deps);
+	async sendTaskSessionInput(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleSendTaskSessionInput(projectScope, input, this.deps);
 	}
 
 	// ── Shell ─────────────────────────────────────────────────────────────
 
-	async startShellSession(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
-		return handleStartShellSession(workspaceScope, input, this.deps);
+	async startShellSession(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleStartShellSession(projectScope, input, this.deps);
 	}
 
-	async runCommand(workspaceScope: RuntimeTrpcWorkspaceScope, input: unknown) {
-		return handleRunCommand(workspaceScope, input, this.deps);
+	async runCommand(projectScope: RuntimeTrpcProjectScope, input: unknown) {
+		return handleRunCommand(projectScope, input, this.deps);
 	}
 
 	// ── Debug / utility ───────────────────────────────────────────────────
@@ -78,8 +78,8 @@ class RuntimeApiImpl implements RuntimeApi {
 		return handleSetLogLevel(level, this.deps);
 	}
 
-	async flagTaskForDebug(workspaceScope: RuntimeTrpcWorkspaceScope, input: { taskId: string; note?: string }) {
-		return handleFlagTaskForDebug(workspaceScope, input, this.deps);
+	async flagTaskForDebug(projectScope: RuntimeTrpcProjectScope, input: { taskId: string; note?: string }) {
+		return handleFlagTaskForDebug(projectScope, input, this.deps);
 	}
 
 	async openFile(input: { filePath: string }) {
@@ -89,10 +89,10 @@ class RuntimeApiImpl implements RuntimeApi {
 	// ── Migration ─────────────────────────────────────────────────────────
 
 	async migrateTaskWorkingDirectory(
-		workspaceScope: RuntimeTrpcWorkspaceScope,
+		projectScope: RuntimeTrpcProjectScope,
 		input: { taskId: string; direction: "isolate" | "de-isolate" },
 	) {
-		return handleMigrateTaskWorkingDirectory(workspaceScope, input, this.deps);
+		return handleMigrateTaskWorkingDirectory(projectScope, input, this.deps);
 	}
 }
 

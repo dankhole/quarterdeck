@@ -9,7 +9,7 @@ import {
 } from "@/hooks/board/review-auto-actions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
-import { subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
+import { subscribeToAnyTaskMetadata } from "@/stores/project-metadata-store";
 import type { BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
 import { isApprovalState } from "@/utils/session-status";
 

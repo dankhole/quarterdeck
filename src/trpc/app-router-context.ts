@@ -58,6 +58,8 @@ import type {
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectReorderRequest,
 	RuntimeProjectReorderResponse,
+	RuntimeProjectStateResponse,
+	RuntimeProjectStateSaveRequest,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
@@ -72,59 +74,57 @@ import type {
 	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopRequest,
 	RuntimeTaskSessionStopResponse,
-	RuntimeTaskWorkspaceInfoRequest,
-	RuntimeTaskWorkspaceInfoResponse,
-	RuntimeWorkspaceChangesRequest,
-	RuntimeWorkspaceChangesResponse,
-	RuntimeWorkspaceFileSearchRequest,
-	RuntimeWorkspaceFileSearchResponse,
-	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
-	RuntimeWorkspaceTextSearchRequest,
-	RuntimeWorkspaceTextSearchResponse,
+	RuntimeTaskWorktreeInfoRequest,
+	RuntimeTaskWorktreeInfoResponse,
+	RuntimeWorkdirChangesRequest,
+	RuntimeWorkdirChangesResponse,
+	RuntimeWorkdirFileSearchRequest,
+	RuntimeWorkdirFileSearchResponse,
+	RuntimeWorkdirTextSearchRequest,
+	RuntimeWorkdirTextSearchResponse,
 	RuntimeWorktreeDeleteRequest,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
 
-export interface RuntimeTrpcWorkspaceScope {
-	workspaceId: string;
-	workspacePath: string;
+export interface RuntimeTrpcProjectScope {
+	projectId: string;
+	projectPath: string;
 }
 
 export interface RuntimeTrpcContext {
-	requestedWorkspaceId: string | null;
-	workspaceScope: RuntimeTrpcWorkspaceScope | null;
+	requestedProjectId: string | null;
+	projectScope: RuntimeTrpcProjectScope | null;
 	runtimeApi: {
-		loadConfig: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeConfigResponse>;
+		loadConfig: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
-			scope: RuntimeTrpcWorkspaceScope | null,
+			scope: RuntimeTrpcProjectScope | null,
 			input: RuntimeConfigSaveRequest,
 		) => Promise<RuntimeConfigResponse>;
 		startTaskSession: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionStartRequest,
 		) => Promise<RuntimeTaskSessionStartResponse>;
 		stopTaskSession: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionStopRequest,
 		) => Promise<RuntimeTaskSessionStopResponse>;
 		sendTaskSessionInput: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskSessionInputRequest,
 		) => Promise<RuntimeTaskSessionInputResponse>;
 		startShellSession: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeShellSessionStartRequest,
 		) => Promise<RuntimeShellSessionStartResponse>;
 		runCommand: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeCommandRunRequest,
 		) => Promise<RuntimeCommandRunResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
 		migrateTaskWorkingDirectory: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeMigrateTaskWorkingDirectoryRequest,
 		) => Promise<RuntimeMigrateTaskWorkingDirectoryResponse>;
 		setLogLevel: (level: "debug" | "info" | "warn" | "error") => {
@@ -132,185 +132,176 @@ export interface RuntimeTrpcContext {
 			level: "debug" | "info" | "warn" | "error";
 		};
 		flagTaskForDebug: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskId: string; note?: string },
 		) => Promise<{ ok: boolean }>;
 	};
-	workspaceApi: {
+	projectApi: {
 		runGitSyncAction: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: {
 				action: RuntimeGitSyncAction;
-				taskScope?: RuntimeTaskWorkspaceInfoRequest | null;
+				taskScope?: RuntimeTaskWorktreeInfoRequest | null;
 				branch?: string | null;
 			},
 		) => Promise<RuntimeGitSyncResponse>;
 		checkoutGitBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCheckoutRequest,
 		) => Promise<RuntimeGitCheckoutResponse>;
-		mergeBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeGitMergeRequest,
-		) => Promise<RuntimeGitMergeResponse>;
+		mergeBranch: (scope: RuntimeTrpcProjectScope, input: RuntimeGitMergeRequest) => Promise<RuntimeGitMergeResponse>;
 		getConflictFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeConflictFilesRequest,
 		) => Promise<RuntimeConflictFilesResponse>;
 		getAutoMergedFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeAutoMergedFilesRequest,
 		) => Promise<RuntimeAutoMergedFilesResponse>;
 		resolveConflictFile: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeConflictResolveRequest,
 		) => Promise<{ ok: boolean; error?: string }>;
 		continueConflictResolution: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeConflictContinueRequest,
 		) => Promise<RuntimeConflictContinueResponse>;
 		abortConflictResolution: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeConflictAbortRequest,
 		) => Promise<RuntimeConflictAbortResponse>;
 		createBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCreateBranchRequest,
 		) => Promise<RuntimeGitCreateBranchResponse>;
 		deleteBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitDeleteBranchRequest,
 		) => Promise<RuntimeGitDeleteBranchResponse>;
 		renameBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitRenameBranchRequest,
 		) => Promise<RuntimeGitRenameBranchResponse>;
 		rebaseBranch: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitRebaseRequest,
 		) => Promise<RuntimeGitRebaseResponse>;
 		resetToRef: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitResetToRefRequest,
 		) => Promise<RuntimeGitResetToRefResponse>;
 		cherryPickCommit: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCherryPickRequest,
 		) => Promise<RuntimeGitCherryPickResponse>;
 		discardGitChanges: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeTaskWorktreeInfoRequest | null,
 		) => Promise<RuntimeGitDiscardResponse>;
 		commitSelectedFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCommitRequest,
 		) => Promise<RuntimeGitCommitResponse>;
 		discardFile: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitDiscardFileRequest,
 		) => Promise<RuntimeGitDiscardResponse>;
 		loadChanges: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceChangesRequest,
-		) => Promise<RuntimeWorkspaceChangesResponse>;
-		loadFileDiff: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeFileDiffRequest,
-		) => Promise<RuntimeFileDiffResponse>;
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirChangesRequest,
+		) => Promise<RuntimeWorkdirChangesResponse>;
+		loadFileDiff: (scope: RuntimeTrpcProjectScope, input: RuntimeFileDiffRequest) => Promise<RuntimeFileDiffResponse>;
 		ensureWorktree: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeWorktreeEnsureRequest,
 		) => Promise<RuntimeWorktreeEnsureResponse>;
 		deleteWorktree: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeWorktreeDeleteRequest,
 		) => Promise<RuntimeWorktreeDeleteResponse>;
 		loadTaskContext: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest,
-		) => Promise<RuntimeTaskWorkspaceInfoResponse>;
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeTaskWorktreeInfoRequest,
+		) => Promise<RuntimeTaskWorktreeInfoResponse>;
 		searchFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceFileSearchRequest,
-		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirFileSearchRequest,
+		) => Promise<RuntimeWorkdirFileSearchResponse>;
 		searchText: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceTextSearchRequest,
-		) => Promise<RuntimeWorkspaceTextSearchResponse>;
-		listFiles: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeListFilesRequest,
-		) => Promise<RuntimeListFilesResponse>;
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeWorkdirTextSearchRequest,
+		) => Promise<RuntimeWorkdirTextSearchResponse>;
+		listFiles: (scope: RuntimeTrpcProjectScope, input: RuntimeListFilesRequest) => Promise<RuntimeListFilesResponse>;
 		getFileContent: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeFileContentRequest,
 		) => Promise<RuntimeFileContentResponse>;
-		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
+		loadState: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeProjectStateResponse>;
 		saveState: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeWorkspaceStateSaveRequest,
-		) => Promise<RuntimeWorkspaceStateResponse>;
-		loadWorkspaceChanges: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceChangesResponse>;
-		loadGitLog: (scope: RuntimeTrpcWorkspaceScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeProjectStateSaveRequest,
+		) => Promise<RuntimeProjectStateResponse>;
+		loadWorkspaceChanges: (scope: RuntimeTrpcProjectScope) => Promise<RuntimeWorkdirChangesResponse>;
+		loadGitLog: (scope: RuntimeTrpcProjectScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
 		loadGitRefs: (
-			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeTaskWorkspaceInfoRequest | null,
+			scope: RuntimeTrpcProjectScope,
+			input: RuntimeTaskWorktreeInfoRequest | null,
 		) => Promise<RuntimeGitRefsResponse>;
 		loadCommitDiff: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
 		getDiffText: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			taskScope: { taskId: string; baseRef: string } | null,
 			paths?: string[],
 		) => Promise<string>;
-		notifyTaskTitleUpdated: (scope: RuntimeTrpcWorkspaceScope, taskId: string, title: string) => void;
+		notifyTaskTitleUpdated: (scope: RuntimeTrpcProjectScope, taskId: string, title: string) => void;
 		setTaskDisplaySummary: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			taskId: string,
 			text: string,
 			generatedAt: number | null,
 		) => Promise<void>;
-		setFocusedTask: (scope: RuntimeTrpcWorkspaceScope, taskId: string | null) => void;
+		setFocusedTask: (scope: RuntimeTrpcProjectScope, taskId: string | null) => void;
 		stashPush: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; paths: string[]; message?: string },
 		) => Promise<RuntimeStashPushResponse>;
 		stashList: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null },
 		) => Promise<RuntimeStashListResponse>;
 		stashPop: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
 		) => Promise<RuntimeStashPopApplyResponse>;
 		stashApply: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
 		) => Promise<RuntimeStashPopApplyResponse>;
 		stashDrop: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
 		) => Promise<RuntimeStashDropResponse>;
 		stashShow: (
-			scope: RuntimeTrpcWorkspaceScope,
+			scope: RuntimeTrpcProjectScope,
 			input: { taskScope: { taskId: string; baseRef: string } | null; index: number },
 		) => Promise<RuntimeStashShowResponse>;
 	};
 	projectsApi: {
-		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
+		listProjects: (preferredProjectId: string | null) => Promise<RuntimeProjectsResponse>;
 		addProject: (
-			preferredWorkspaceId: string | null,
+			preferredProjectId: string | null,
 			input: RuntimeProjectAddRequest,
 		) => Promise<RuntimeProjectAddResponse>;
 		removeProject: (
-			preferredWorkspaceId: string | null,
+			preferredProjectId: string | null,
 			input: RuntimeProjectRemoveRequest,
 		) => Promise<RuntimeProjectRemoveResponse>;
-		pickProjectDirectory: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
+		pickProjectDirectory: (preferredProjectId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
 		reorderProjects: (
-			preferredWorkspaceId: string | null,
+			preferredProjectId: string | null,
 			input: RuntimeProjectReorderRequest,
 		) => Promise<RuntimeProjectReorderResponse>;
 	};
@@ -319,6 +310,6 @@ export interface RuntimeTrpcContext {
 	};
 }
 
-export interface RuntimeTrpcContextWithWorkspaceScope extends RuntimeTrpcContext {
-	workspaceScope: RuntimeTrpcWorkspaceScope;
+export interface RuntimeTrpcContextWithProjectScope extends RuntimeTrpcContext {
+	projectScope: RuntimeTrpcProjectScope;
 }

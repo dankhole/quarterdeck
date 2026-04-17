@@ -4,7 +4,7 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
-import { useTaskWorkspaceInfoValue } from "@/stores/workspace-metadata-store";
+import { useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
 
 export interface GitViewCompareNavigation {
@@ -49,7 +49,7 @@ export function useGitViewCompare({
 	pendingNavigation,
 	onNavigationConsumed,
 }: UseGitViewCompareOptions): UseGitViewCompareResult {
-	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
+	const taskWorkspaceInfo = useTaskWorktreeInfoValue(selectedCard?.card.id ?? null, selectedCard?.card.baseRef);
 
 	// Default refs based on context
 	const defaultSourceRef = useMemo(() => {
@@ -118,14 +118,14 @@ export function useGitViewCompare({
 	// Fetch git refs when compare tab is active
 	const refsQueryFn = useCallback(async () => {
 		if (!currentProjectId) {
-			throw new Error("Missing workspace.");
+			throw new Error("Missing project.");
 		}
 		const trpc = getRuntimeTrpcClient(currentProjectId);
 		const taskScope =
 			selectedCard?.card.id && selectedCard?.card.baseRef
 				? { taskId: selectedCard.card.id, baseRef: selectedCard.card.baseRef }
 				: null;
-		const payload = await trpc.workspace.getGitRefs.query(taskScope);
+		const payload = await trpc.project.getGitRefs.query(taskScope);
 		if (!payload.ok) {
 			throw new Error(payload.error ?? "Could not load git refs.");
 		}

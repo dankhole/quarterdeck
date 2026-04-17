@@ -301,7 +301,7 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 
 export function TaskStartAgentOnboardingCarousel({
 	open,
-	workspaceId: _workspaceId,
+	projectId: _projectId,
 	runtimeConfig: _runtimeConfig,
 	selectedAgentId,
 	agents,
@@ -310,7 +310,7 @@ export function TaskStartAgentOnboardingCarousel({
 	onDoneActionChange,
 }: {
 	open: boolean;
-	workspaceId: string | null;
+	projectId: string | null;
 	runtimeConfig: RuntimeConfigResponse | null;
 	selectedAgentId: RuntimeAgentId | null;
 	agents: RuntimeAgentDefinition[];

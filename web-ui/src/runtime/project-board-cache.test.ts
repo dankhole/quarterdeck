@@ -17,8 +17,8 @@ function createEntry(
 		board: { columns: [], dependencies: [] } as BoardData,
 		sessions: {},
 		revision: 1,
-		workspacePath: "/test",
-		workspaceGit: null,
+		projectPath: "/test",
+		projectGit: null,
 		...overrides,
 	};
 }
@@ -36,7 +36,7 @@ describe("project-board-cache", () => {
 		const restored = restoreProjectBoard("proj-1");
 		expect(restored).not.toBeNull();
 		expect(restored!.revision).toBe(5);
-		expect(restored!.workspacePath).toBe("/test");
+		expect(restored!.projectPath).toBe("/test");
 	});
 
 	it("returns null for unknown project", () => {

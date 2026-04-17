@@ -68,7 +68,7 @@ function createSummary(taskId: string): RuntimeTaskSessionSummary {
 		taskId,
 		state: "running",
 		agentId: "codex",
-		workspacePath: `/tmp/${taskId}`,
+		projectPath: `/tmp/${taskId}`,
 		pid: 123,
 		startedAt: 1,
 		updatedAt: 1,
@@ -106,7 +106,7 @@ function HookHarness({
 	const result = useTerminalPanels({
 		currentProjectId: "project-1",
 		selectedCard,
-		workspaceGit: null,
+		projectGit: null,
 		configDefaultBaseRef: "",
 		agentCommand: null,
 		shellAutoRestartEnabled: true,
@@ -210,7 +210,7 @@ describe("useTerminalPanels", () => {
 		expect(startShellSessionMutateMock).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				taskId: "__detail_terminal__:task-a",
-				workspaceTaskId: "task-a",
+				projectTaskId: "task-a",
 			}),
 		);
 

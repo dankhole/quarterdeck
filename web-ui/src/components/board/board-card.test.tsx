@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import type { ReviewTaskWorkspaceSnapshot } from "@/types";
+import type { ReviewTaskProjectSnapshot } from "@/types";
 
-let mockWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | undefined;
+let mockWorkspaceSnapshot: ReviewTaskProjectSnapshot | undefined;
 
 vi.mock("@hello-pangea/dnd", () => ({
 	Draggable: ({
@@ -27,9 +27,9 @@ vi.mock("@hello-pangea/dnd", () => ({
 	),
 }));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	useTaskWorkspaceSnapshotValue: () => mockWorkspaceSnapshot,
-	getWorkspacePath: () => "/mock/workspace",
+vi.mock("@/stores/project-metadata-store", () => ({
+	useTaskProjectSnapshotValue: () => mockWorkspaceSnapshot,
+	getProjectPath: () => "/mock/project",
 }));
 
 vi.mock("@/utils/task-prompt", async () => {
@@ -63,7 +63,7 @@ function createSummary(
 		taskId: "task-1",
 		state,
 		agentId: "claude",
-		workspacePath: "/tmp/worktree",
+		projectPath: "/tmp/worktree",
 		pid: null,
 		startedAt: 1,
 		updatedAt: 1,
@@ -202,7 +202,7 @@ describe("BoardCard", () => {
 							taskId: "task-1",
 							state: "running",
 							agentId: "claude",
-							workspacePath: "/tmp/worktree",
+							projectPath: "/tmp/worktree",
 							pid: null,
 							startedAt: Date.now(),
 							updatedAt: Date.now(),
@@ -308,7 +308,7 @@ describe("BoardCard", () => {
 							taskId: "task-1",
 							state: "running",
 							agentId: "claude",
-							workspacePath: "/tmp/worktree",
+							projectPath: "/tmp/worktree",
 							pid: null,
 							startedAt: Date.now(),
 							updatedAt: Date.now(),
@@ -445,7 +445,7 @@ describe("BoardCard", () => {
 	});
 
 	describe("branch display precedence", () => {
-		function createSnapshot(overrides?: Partial<ReviewTaskWorkspaceSnapshot>): ReviewTaskWorkspaceSnapshot {
+		function createSnapshot(overrides?: Partial<ReviewTaskProjectSnapshot>): ReviewTaskProjectSnapshot {
 			return {
 				taskId: "task-1",
 				path: "/tmp/worktree",

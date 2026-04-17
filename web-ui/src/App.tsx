@@ -36,9 +36,9 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { CardActionsProvider } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorkspaceInfoValue,
-	useTaskWorkspaceSnapshotValue,
-} from "@/stores/workspace-metadata-store";
+	useTaskProjectSnapshotValue,
+	useTaskWorktreeInfoValue,
+} from "@/stores/project-metadata-store";
 import { initPool } from "@/terminal/terminal-pool";
 import type { BoardData } from "@/types";
 
@@ -89,7 +89,7 @@ function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
-	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
+	const [canPersistProjectState, setCanPersistWorkspaceState] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
@@ -115,7 +115,7 @@ export default function App(): ReactElement {
 			sessionsRef={sessionsRef}
 			setBoard={setBoard}
 			setSessions={setSessions}
-			canPersistWorkspaceState={canPersistWorkspaceState}
+			canPersistProjectState={canPersistProjectState}
 			setCanPersistWorkspaceState={setCanPersistWorkspaceState}
 		>
 			<AppEarlyBailout>
@@ -166,7 +166,7 @@ function AppContent({
 		sendTaskSessionInput,
 		taskEditor,
 		createTaskBranchOptions,
-		isAwaitingWorkspaceSnapshot,
+		isAwaitingProjectSnapshot,
 	} = boardContext;
 	const git = useGitContext();
 	const terminal = useTerminalContext();
@@ -175,8 +175,8 @@ function AppContent({
 
 	// --- Store subscriptions + derived UI state ---
 
-	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {
@@ -187,7 +187,7 @@ function AppContent({
 		shouldUseNavigationPath,
 	} = useProjectUiState({
 		board,
-		canPersistWorkspaceState: project.canPersistWorkspaceState,
+		canPersistProjectState: project.canPersistProjectState,
 		currentProjectId: project.currentProjectId,
 		projects: project.projects,
 		navigationCurrentProjectId: project.navigationCurrentProjectId,
@@ -199,8 +199,8 @@ function AppContent({
 			project.currentProjectId === null &&
 			project.projects.length === 0 &&
 			!project.streamError,
-		isAwaitingWorkspaceSnapshot,
-		isWorkspaceMetadataPending: project.isWorkspaceMetadataPending,
+		isAwaitingProjectSnapshot,
+		isProjectMetadataPending: project.isProjectMetadataPending,
 		isServedFromBoardCache: project.isServedFromBoardCache,
 		hasReceivedSnapshot: project.hasReceivedSnapshot,
 	});
@@ -308,19 +308,19 @@ function AppContent({
 		setSidePanelRatio: git.setSidePanelRatio,
 	});
 
-	const { navbarWorkspacePath, navbarWorkspaceHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
+	const { navbarProjectPath, navbarProjectHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
 		useNavbarState({
 			selectedCard,
-			selectedTaskWorkspaceInfo: selectedTaskWorkspaceInfo,
-			selectedTaskWorkspaceSnapshot: selectedTaskWorkspaceSnapshot,
-			workspacePath: project.workspacePath,
+			selectedTaskWorktreeInfo: selectedTaskWorktreeInfo,
+			selectedTaskProjectSnapshot: selectedTaskProjectSnapshot,
+			projectPath: project.projectPath,
 			shouldUseNavigationPath: shouldUseNavigationPath,
 			navigationProjectPath: navigationProjectPath,
 			runtimeProjectConfig: project.runtimeProjectConfig,
 			hasNoProjects: project.hasNoProjects,
 			isProjectSwitching: project.isProjectSwitching,
-			isAwaitingWorkspaceSnapshot: isAwaitingWorkspaceSnapshot,
-			isWorkspaceMetadataPending: project.isWorkspaceMetadataPending,
+			isAwaitingProjectSnapshot: isAwaitingProjectSnapshot,
+			isProjectMetadataPending: project.isProjectMetadataPending,
 		});
 
 	// Destructure taskEditor for JSX usage
@@ -358,7 +358,7 @@ function AppContent({
 			startInPlanModeDisabled={isEditTaskStartInPlanModeDisabled}
 			autoReviewEnabled={editTaskAutoReviewEnabled}
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
-			workspaceId={project.currentProjectId}
+			projectId={project.currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
@@ -380,13 +380,13 @@ function AppContent({
 			isPromptShortcutRunning={isPromptShortcutRunning}
 			runPromptShortcut={runPromptShortcut}
 			selectPromptShortcutLabel={selectPromptShortcutLabel}
-			navbarWorkspacePath={navbarWorkspacePath}
-			navbarWorkspaceHint={navbarWorkspaceHint}
+			navbarProjectPath={navbarProjectPath}
+			navbarProjectHint={navbarProjectHint}
 			navbarRuntimeHint={navbarRuntimeHint}
 			shouldHideProjectDependentTopBarActions={shouldHideProjectDependentTopBarActions}
 			shouldShowProjectLoadingState={shouldShowProjectLoadingState}
 			homeGitSummary={homeGitSummary}
-			selectedTaskWorkspaceSnapshot={selectedTaskWorkspaceSnapshot}
+			selectedTaskProjectSnapshot={selectedTaskProjectSnapshot}
 		/>
 	);
 
@@ -409,10 +409,10 @@ function AppContent({
 							hasSelectedTask={selectedCard !== null}
 							gitBadgeColor={
 								selectedCard
-									? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) > 0
+									? (selectedTaskProjectSnapshot?.changedFiles ?? 0) > 0
 										? "red"
 										: project.unmergedChangesIndicatorEnabled &&
-												(selectedTaskWorkspaceSnapshot?.hasUnmergedChanges ?? false)
+												(selectedTaskProjectSnapshot?.hasUnmergedChanges ?? false)
 											? "blue"
 											: undefined
 									: (homeGitSummary?.changedFiles ?? 0) > 0
@@ -421,7 +421,7 @@ function AppContent({
 							}
 							isBehindBase={
 								project.behindBaseIndicatorEnabled && selectedCard
-									? (selectedTaskWorkspaceSnapshot?.behindBaseCount ?? 0) > 0
+									? (selectedTaskProjectSnapshot?.behindBaseCount ?? 0) > 0
 									: false
 							}
 							projectsBadgeColor={projectsBadgeColor}
@@ -441,7 +441,7 @@ function AppContent({
 									}}
 								>
 									<CommitPanel
-										workspaceId={project.currentProjectId ?? ""}
+										projectId={project.currentProjectId ?? ""}
 										taskId={null}
 										baseRef={null}
 										navigateToFile={git.navigateToFile}
@@ -513,7 +513,7 @@ function AppContent({
 							gitHistoryPanel={
 								git.isGitHistoryOpen ? (
 									<GitHistoryView
-										workspaceId={project.currentProjectId}
+										projectId={project.currentProjectId}
 										gitHistory={git.gitHistory}
 										onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
 										onPullLatest={() => {
@@ -574,14 +574,14 @@ function AppContent({
 					/>
 					{isFileFinderOpen && (
 						<FileFinderOverlay
-							workspaceId={project.currentProjectId}
+							projectId={project.currentProjectId}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsFileFinderOpen(false)}
 						/>
 					)}
 					{isTextSearchOpen && (
 						<TextSearchOverlay
-							workspaceId={project.currentProjectId}
+							projectId={project.currentProjectId}
 							onSelect={handleSearchFileSelect}
 							onDismiss={() => setIsTextSearchOpen(false)}
 						/>

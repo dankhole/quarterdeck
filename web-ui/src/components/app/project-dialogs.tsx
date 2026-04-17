@@ -27,7 +27,7 @@ export function ProjectDialogs(): ReactElement {
 				onClose={handleCloseStartupOnboardingDialog}
 				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 				agents={runtimeProjectConfig?.agents ?? []}
-				workspaceId={currentProjectId}
+				projectId={currentProjectId}
 				runtimeConfig={runtimeProjectConfig ?? null}
 				onSelectAgent={handleSelectOnboardingAgent}
 			/>

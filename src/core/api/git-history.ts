@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runtimeTaskWorkspaceInfoRequestSchema } from "./shared.js";
+import { runtimeTaskWorktreeInfoRequestSchema } from "./shared.js";
 
 export const runtimeGitCommitSchema = z.object({
 	hash: z.string(),
@@ -29,7 +29,7 @@ export const runtimeGitLogRequestSchema = z.object({
 	refs: z.array(z.string()).optional(),
 	maxCount: z.number().int().positive().optional(),
 	skip: z.number().int().nonnegative().optional(),
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable().optional(),
 });
 export type RuntimeGitLogRequest = z.infer<typeof runtimeGitLogRequestSchema>;
 
@@ -53,7 +53,7 @@ export type RuntimeGitCommitDiffFile = z.infer<typeof runtimeGitCommitDiffFileSc
 
 export const runtimeGitCommitDiffRequestSchema = z.object({
 	commitHash: z.string(),
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable().optional(),
 });
 export type RuntimeGitCommitDiffRequest = z.infer<typeof runtimeGitCommitDiffRequestSchema>;
 
@@ -75,7 +75,7 @@ export type RuntimeGitRefsResponse = z.infer<typeof runtimeGitRefsResponseSchema
 export const runtimeGitCherryPickRequestSchema = z.object({
 	commitHash: z.string().min(1),
 	targetBranch: z.string().min(1),
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable().optional(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable().optional(),
 });
 export type RuntimeGitCherryPickRequest = z.infer<typeof runtimeGitCherryPickRequestSchema>;
 

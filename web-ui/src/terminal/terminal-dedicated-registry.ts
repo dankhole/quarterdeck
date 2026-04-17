@@ -6,28 +6,28 @@ const log = createClientLogger("terminal-dedicated-registry");
 
 export interface EnsureDedicatedTerminalInput extends PersistentTerminalAppearance {
 	taskId: string;
-	workspaceId: string;
+	projectId: string;
 }
 
-const dedicatedTerminals = new Map<string, TerminalSlot>(); // workspaceId:taskId -> TerminalSlot
+const dedicatedTerminals = new Map<string, TerminalSlot>(); // projectId:taskId -> TerminalSlot
 
-function buildDedicatedTerminalKey(workspaceId: string, taskId: string): string {
-	return `${workspaceId}:${taskId}`;
+function buildDedicatedTerminalKey(projectId: string, taskId: string): string {
+	return `${projectId}:${taskId}`;
 }
 
 export function isDedicatedTerminalTaskId(taskId: string): boolean {
 	return taskId === HOME_TERMINAL_TASK_ID || taskId.startsWith(DETAIL_TERMINAL_TASK_PREFIX);
 }
 
-export function getDedicatedTerminal(workspaceId: string, taskId: string): TerminalSlot | null {
-	return dedicatedTerminals.get(buildDedicatedTerminalKey(workspaceId, taskId)) ?? null;
+export function getDedicatedTerminal(projectId: string, taskId: string): TerminalSlot | null {
+	return dedicatedTerminals.get(buildDedicatedTerminalKey(projectId, taskId)) ?? null;
 }
 
 export function ensureDedicatedTerminal(
 	input: EnsureDedicatedTerminalInput,
 	createSlot: (appearance: PersistentTerminalAppearance) => TerminalSlot,
 ): TerminalSlot {
-	const key = buildDedicatedTerminalKey(input.workspaceId, input.taskId);
+	const key = buildDedicatedTerminalKey(input.projectId, input.taskId);
 	const existing = dedicatedTerminals.get(key);
 	if (existing) {
 		existing.setAppearance({
@@ -42,14 +42,14 @@ export function ensureDedicatedTerminal(
 		cursorColor: input.cursorColor,
 		terminalBackgroundColor: input.terminalBackgroundColor,
 	});
-	slot.connectToTask(input.taskId, input.workspaceId);
+	slot.connectToTask(input.taskId, input.projectId);
 	dedicatedTerminals.set(key, slot);
 	log.debug(`ensureDedicatedTerminal — created slot ${slot.slotId} for ${key}`);
 	return slot;
 }
 
-export function disposeDedicatedTerminal(workspaceId: string, taskId: string): void {
-	const key = buildDedicatedTerminalKey(workspaceId, taskId);
+export function disposeDedicatedTerminal(projectId: string, taskId: string): void {
+	const key = buildDedicatedTerminalKey(projectId, taskId);
 	const slot = dedicatedTerminals.get(key);
 	if (!slot) {
 		return;
@@ -59,15 +59,15 @@ export function disposeDedicatedTerminal(workspaceId: string, taskId: string): v
 	log.debug(`disposeDedicatedTerminal — disposed ${key}`);
 }
 
-export function disposeAllDedicatedTerminalsForWorkspace(workspaceId: string): void {
-	const prefix = `${workspaceId}:`;
+export function disposeAllDedicatedTerminalsForProject(projectId: string): void {
+	const prefix = `${projectId}:`;
 	for (const [key, slot] of dedicatedTerminals.entries()) {
 		if (!key.startsWith(prefix)) {
 			continue;
 		}
 		slot.dispose();
 		dedicatedTerminals.delete(key);
-		log.debug(`disposeAllDedicatedTerminalsForWorkspace — disposed ${key}`);
+		log.debug(`disposeAllDedicatedTerminalsForProject — disposed ${key}`);
 	}
 }
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTurbopackNodeModulesSymlinkSkipPaths } from "../../src/workspace";
+import { listTurbopackNodeModulesSymlinkSkipPaths } from "../../src/workdir";
 import { createTempDir } from "../utilities/temp-dir";
 
 describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {

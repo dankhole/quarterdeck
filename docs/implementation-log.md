@@ -2,6 +2,26 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: rename "workspace" to "project" throughout codebase (2026-04-17)
+
+**What:** Unified the state-container concept under "project". Previously the backend used "workspace" while the UI/API layer used "project". All types, files, functions, variables, API routes, wire protocol strings, HTTP headers, WebSocket messages, and on-disk paths now consistently use "project". Renamed `src/workspace/` to `src/workdir/` for working directory operations. Agent workspace trust files left unchanged intentionally.
+
+**Why:** The dual terminology was a constant source of confusion — the same concept had two names depending on which layer you were in. Grepping for "workspace" returned a mix of state-container references and agent trust references, making navigation harder.
+
+**Approach:** Used forge to generate a spec, research inventory, and 8-task execution plan. The build phase used bulk `find | xargs sed` for the initial pass (~4900 occurrences across ~290 files), then manual cleanup of ~260 remaining local variables, interface members, comments, and error messages. Migration code was spec'd but dropped in favor of manual migration (3 known installations). Completeness verified with a grep that returns zero results outside the intentional workspace-trust exclusions.
+
+**Key changes:**
+- State files: `workspace-state*.ts` → `project-state*.ts`
+- Server: `workspace-registry.ts` → `project-registry.ts`, metadata monitor/loaders renamed
+- tRPC: `workspace` router → `project` router, all procedure files renamed
+- API contracts: Zod schemas, wire protocol strings (`workspace_state_updated` → `project_state_updated`), HTTP header (`x-quarterdeck-workspace-id` → `x-quarterdeck-project-id`)
+- Frontend: stores, hooks, providers, runtime queries, all local variables and props
+- Working dir ops: `src/workspace/` → `src/workdir/`, functions from `*Workspace*` to `*Workdir*`
+- On-disk path: `~/.quarterdeck/workspaces/` → `~/.quarterdeck/projects/`
+- Documentation: `CLAUDE.md`, `AGENTS.md`, `docs/ui-layout-architecture.md`, `docs/web-ui-conventions.md`
+
+**Files touched:** 289 files changed. 288 in the committed diff plus the lessons file. All tests pass (1535 total — 733 runtime, 802 web-ui), typecheck/lint/build clean.
+
 ## Enhancement: notification muting — "Mute project viewed" (2026-04-17)
 
 **What:** Renamed "Mute focused project" to "Mute project viewed" and changed per-project notification suppression to only apply while the tab is visible. Defaulted review suppression to `true` for new users.

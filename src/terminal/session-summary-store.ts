@@ -1,6 +1,6 @@
 // Owns the Map<taskId, RuntimeTaskSessionSummary> and all pure-data mutations.
 // TerminalSessionManager delegates summary operations here; external callers
-// (TRPC handlers, workspace-registry, shutdown-coordinator) read/mutate through
+// (TRPC handlers, project-registry, shutdown-coordinator) read/mutate through
 // this interface instead of reaching into the terminal layer.
 //
 // Designed as a synchronous, process-agnostic store so it maps 1:1 to a Go interface.
@@ -71,7 +71,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		taskId,
 		state: "idle",
 		agentId: null,
-		workspacePath: null,
+		projectPath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: now(),
@@ -406,7 +406,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		// when a task is restored from trash.
 		return this.update(taskId, {
 			state: "idle",
-			workspacePath: null,
+			projectPath: null,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,

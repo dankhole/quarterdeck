@@ -35,16 +35,16 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 
 function HookHarness({
 	open,
-	workspaceId,
+	projectId,
 	initialConfig,
 	onSnapshot,
 }: {
 	open: boolean;
-	workspaceId: string | null;
+	projectId: string | null;
 	initialConfig?: RuntimeConfigResponse | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const snapshot = useRuntimeConfig(open, workspaceId, initialConfig);
+	const snapshot = useRuntimeConfig(open, projectId, initialConfig);
 
 	useEffect(() => {
 		onSnapshot(snapshot);
@@ -91,7 +91,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={false}
-					workspaceId="project-1"
+					projectId="project-1"
 					initialConfig={initialConfig}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -111,7 +111,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={true}
-					workspaceId="project-1"
+					projectId="project-1"
 					initialConfig={initialConfig}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -130,7 +130,7 @@ describe("useRuntimeConfig", () => {
 		expect(refreshedSnapshot.isLoading).toBe(false);
 	});
 
-	it("fetches runtime config without a selected workspace when the dialog opens", async () => {
+	it("fetches runtime config without a selected project when the dialog opens", async () => {
 		const startupConfig = createRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock.mockResolvedValue(startupConfig);
 		let latestSnapshot: HookSnapshot | null = null;
@@ -139,7 +139,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={true}
-					workspaceId={null}
+					projectId={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -167,7 +167,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={true}
-					workspaceId={null}
+					projectId={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -188,7 +188,7 @@ describe("useRuntimeConfig", () => {
 		expect(snapshot.isLoading).toBe(false);
 	});
 
-	it("retries once again after workspace changes", async () => {
+	it("retries once again after project changes", async () => {
 		const projectConfig = createRuntimeConfigResponse("claude");
 		const globalConfig = createRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock
@@ -202,7 +202,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={true}
-					workspaceId="project-1"
+					projectId="project-1"
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -216,7 +216,7 @@ describe("useRuntimeConfig", () => {
 			root.render(
 				<HookHarness
 					open={true}
-					workspaceId={null}
+					projectId={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -232,7 +232,7 @@ describe("useRuntimeConfig", () => {
 		expect(fetchRuntimeConfigMock).toHaveBeenNthCalledWith(4, null);
 		expect(fetchRuntimeConfigMock).toHaveBeenCalledTimes(4);
 		if (latestSnapshot === null) {
-			throw new Error("Expected a runtime config snapshot after workspace switch retry.");
+			throw new Error("Expected a runtime config snapshot after project switch retry.");
 		}
 		const snapshot = latestSnapshot as HookSnapshot;
 		expect(snapshot.config?.selectedAgentId).toBe("codex");

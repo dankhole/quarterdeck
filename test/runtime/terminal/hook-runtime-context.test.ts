@@ -11,7 +11,7 @@ describe("hook-runtime-context", () => {
 	it("creates expected environment variables", () => {
 		const env = createHookRuntimeEnv({
 			taskId: "task-1",
-			workspaceId: "workspace-1",
+			projectId: "workspace-1",
 		});
 		expect(env).toEqual({
 			[QUARTERDECK_HOOK_TASK_ID_ENV]: "task-1",
@@ -26,7 +26,7 @@ describe("hook-runtime-context", () => {
 		});
 		expect(parsed).toEqual({
 			taskId: "task-2",
-			workspaceId: "workspace-2",
+			projectId: "workspace-2",
 		});
 	});
 

@@ -22,7 +22,7 @@ function createBoard(): BoardData {
 function HookHarness({ onResult }: { onResult: (result: ReturnType<typeof useProjectUiState>) => void }): null {
 	const result = useProjectUiState({
 		board: createBoard(),
-		canPersistWorkspaceState: true,
+		canPersistProjectState: true,
 		currentProjectId: "project-b",
 		projects: [
 			{
@@ -43,8 +43,8 @@ function HookHarness({ onResult }: { onResult: (result: ReturnType<typeof usePro
 		streamError: null,
 		isProjectSwitching: false,
 		isInitialRuntimeLoad: false,
-		isAwaitingWorkspaceSnapshot: false,
-		isWorkspaceMetadataPending: true,
+		isAwaitingProjectSnapshot: false,
+		isProjectMetadataPending: true,
 		isServedFromBoardCache: false,
 		hasReceivedSnapshot: true,
 	});
@@ -80,7 +80,7 @@ describe("useProjectUiState", () => {
 		}
 	});
 
-	it("keeps the project loading state visible while workspace metadata is still syncing", async () => {
+	it("keeps the project loading state visible while project metadata is still syncing", async () => {
 		let latestResult: ProjectUiStateResult | null = null;
 
 		await act(async () => {

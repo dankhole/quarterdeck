@@ -13,7 +13,7 @@ export interface CreateBranchDialogState {
 
 interface CreateBranchDialogProps {
 	state: CreateBranchDialogState;
-	workspaceId: string | null;
+	projectId: string | null;
 	onClose: () => void;
 	onBranchCreated?: (branchName: string) => void;
 }
@@ -24,7 +24,7 @@ interface CreateBranchDialogProps {
  */
 export function CreateBranchDialog({
 	state,
-	workspaceId,
+	projectId,
 	onClose,
 	onBranchCreated,
 }: CreateBranchDialogProps): React.ReactElement | null {
@@ -40,13 +40,13 @@ export function CreateBranchDialog({
 
 	const handleCreate = useCallback(async () => {
 		const trimmedName = branchName.trim();
-		if (!trimmedName || !state.sourceRef || !workspaceId) {
+		if (!trimmedName || !state.sourceRef || !projectId) {
 			return;
 		}
 		setIsCreating(true);
 		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const result = await trpc.workspace.createBranch.mutate({
+			const trpc = getRuntimeTrpcClient(projectId);
+			const result = await trpc.project.createBranch.mutate({
 				branchName: trimmedName,
 				startRef: state.sourceRef,
 			});
@@ -65,7 +65,7 @@ export function CreateBranchDialog({
 		} finally {
 			setIsCreating(false);
 		}
-	}, [branchName, state.sourceRef, workspaceId, onBranchCreated, onClose]);
+	}, [branchName, state.sourceRef, projectId, onBranchCreated, onClose]);
 
 	const handleKeyDown = useCallback(
 		(e: React.KeyboardEvent) => {

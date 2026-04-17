@@ -10,8 +10,8 @@ type RuntimeTrpcClient = ReturnType<typeof createTRPCProxyClient<RuntimeAppRoute
 
 const clientByWorkspaceId = new Map<string, RuntimeTrpcClient>();
 
-export function getRuntimeTrpcClient(workspaceId: string | null): RuntimeTrpcClient {
-	const key = workspaceId ?? "__unscoped__";
+export function getRuntimeTrpcClient(projectId: string | null): RuntimeTrpcClient {
+	const key = projectId ?? "__unscoped__";
 	const existing = clientByWorkspaceId.get(key);
 	if (existing) {
 		return existing;
@@ -20,7 +20,7 @@ export function getRuntimeTrpcClient(workspaceId: string | null): RuntimeTrpcCli
 		links: [
 			httpBatchLink({
 				url: "/api/trpc",
-				headers: () => (workspaceId ? { "x-quarterdeck-workspace-id": workspaceId } : {}),
+				headers: () => (projectId ? { "x-quarterdeck-project-id": projectId } : {}),
 			}),
 		],
 	});
@@ -28,8 +28,8 @@ export function getRuntimeTrpcClient(workspaceId: string | null): RuntimeTrpcCli
 	return created;
 }
 
-export function createWorkspaceTrpcClient(workspaceId: string): RuntimeTrpcClient {
-	return getRuntimeTrpcClient(workspaceId);
+export function createProjectTrpcClient(projectId: string): RuntimeTrpcClient {
+	return getRuntimeTrpcClient(projectId);
 }
 
 function readTrpcErrorData(error: TRPCClientError<RuntimeAppRouter>): TrpcErrorDataWithConflictRevision | null {

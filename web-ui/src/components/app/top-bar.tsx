@@ -31,7 +31,7 @@ import { isMacPlatform } from "@/utils/platform";
 type SettingsSection = "shortcuts";
 type CreateShortcutResult = { ok: boolean; message?: string };
 
-function getWorkspacePathSegments(path: string): string[] {
+function getProjectPathSegments(path: string): string[] {
 	return path
 		.replaceAll("\\", "/")
 		.split("/")
@@ -156,9 +156,9 @@ export function GitBranchStatusControl({
 
 export function TopBar({
 	onBack,
-	workspacePath,
+	projectPath,
 	isWorkspacePathLoading = false,
-	workspaceHint,
+	projectHint,
 	runtimeHint,
 	onToggleTerminal,
 	isTerminalOpen,
@@ -185,9 +185,9 @@ export function TopBar({
 	taskTitle,
 }: {
 	onBack?: () => void;
-	workspacePath?: string;
+	projectPath?: string;
 	isWorkspacePathLoading?: boolean;
-	workspaceHint?: string;
+	projectHint?: string;
 	runtimeHint?: string;
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
@@ -215,9 +215,9 @@ export function TopBar({
 	/** Task title to display as a scope indicator when in task scope. */
 	taskTitle?: string | null;
 }): React.ReactElement {
-	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
-	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
-	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
+	const displayProjectPath = projectPath ? formatPathForDisplay(projectPath) : null;
+	const projectSegments = displayProjectPath ? getProjectPathSegments(displayProjectPath) : [];
+	const hasAbsoluteLeadingSlash = Boolean(displayProjectPath?.startsWith("/"));
 	const handleAddShortcut = () => {
 		onOpenSettings?.("shortcuts");
 	};
@@ -309,16 +309,16 @@ export function TopBar({
 							style={{ height: 14, width: 320, borderRadius: 3 }}
 							aria-hidden
 						/>
-					) : displayWorkspacePath ? (
+					) : displayProjectPath ? (
 						<div className="shrink min-w-0 max-w-[640px] overflow-hidden">
 							<span
 								className="font-mono truncate block w-full min-w-0 text-xs max-w-full text-text-secondary"
-								title={workspacePath}
-								data-testid="workspace-path"
+								title={projectPath}
+								data-testid="project-path"
 							>
 								{hasAbsoluteLeadingSlash ? "/" : ""}
-								{workspaceSegments.map((segment, index) => {
-									const isLast = index === workspaceSegments.length - 1;
+								{projectSegments.map((segment, index) => {
+									const isLast = index === projectSegments.length - 1;
 									return (
 										<span key={`${segment}-${index}`}>
 											{index === 0 ? "" : "/"}
@@ -329,9 +329,9 @@ export function TopBar({
 							</span>
 						</div>
 					) : null}
-					{!hideProjectDependentActions && workspaceHint ? (
+					{!hideProjectDependentActions && projectHint ? (
 						<span className="kb-navbar-tag inline-flex items-center rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs text-text-secondary">
-							{workspaceHint}
+							{projectHint}
 						</span>
 					) : null}
 					{!hideProjectDependentActions && runtimeHint ? (

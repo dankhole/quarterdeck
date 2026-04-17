@@ -13,7 +13,7 @@ import {
 	getConflictState,
 	resolveConflictFile,
 	runGitMergeAction,
-} from "../../src/workspace";
+} from "../../src/workdir";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

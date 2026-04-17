@@ -395,7 +395,7 @@ describe("useAudibleNotifications — basic sound events", () => {
 		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 
-	it("plays sound for tasks from different workspaces", async () => {
+	it("plays sound for tasks from different projects", async () => {
 		const props = defaultProps();
 
 		await act(async () => {

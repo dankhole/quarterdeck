@@ -1,5 +1,5 @@
 import type { TaskTrashWarningViewModel } from "@/components/task";
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
 /**
@@ -28,12 +28,12 @@ export function getDependencyAddErrorMessage(
 export function buildTrashWarningViewModel(
 	card: BoardCard,
 	changedFiles: number,
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
+	worktreeInfo: RuntimeTaskWorktreeInfoResponse | null,
 ): TaskTrashWarningViewModel {
 	return {
 		taskTitle: card.title ?? "Untitled task",
 		fileCount: changedFiles,
-		workspaceInfo,
+		worktreeInfo,
 		isNonIsolated: card.useWorktree === false,
 	};
 }

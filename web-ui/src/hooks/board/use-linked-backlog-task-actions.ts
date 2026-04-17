@@ -13,7 +13,7 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
-import { getTaskWorkspaceInfo, getTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
+import { getTaskProjectSnapshot, getTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 
@@ -114,7 +114,7 @@ export function useLinkedBacklogTaskActions({
 			});
 			if (!trashed.moved) {
 				// Card is already in trash (e.g. optimistic drag move applied before confirmation dialog).
-				// Still need to update selection and stop sessions and cleanup the workspace.
+				// Still need to update selection and stop sessions and cleanup the worktree.
 				console.debug("[trash] card already in trash, cleaning up", { taskId: task.id });
 				setSelectedTaskId((currentSelectedTaskId) =>
 					currentSelectedTaskId === task.id
@@ -234,9 +234,9 @@ export function useLinkedBacklogTaskActions({
 
 			// Always show confirmation dialog before trashing
 			if (onRequestTrashConfirmation) {
-				const snapshot = getTaskWorkspaceSnapshot(taskId);
-				const workspaceInfo = getTaskWorkspaceInfo(taskId);
-				const viewModel = buildTrashWarningViewModel(selection.card, snapshot?.changedFiles ?? 0, workspaceInfo);
+				const snapshot = getTaskProjectSnapshot(taskId);
+				const worktreeInfo = getTaskWorktreeInfo(taskId);
+				const viewModel = buildTrashWarningViewModel(selection.card, snapshot?.changedFiles ?? 0, worktreeInfo);
 				onRequestTrashConfirmation(viewModel, selection.card, fromColumnId, !!options?.optimisticMoveApplied);
 				return;
 			}
@@ -251,7 +251,7 @@ export function useLinkedBacklogTaskActions({
 				showTrashWorktreeNotice &&
 				(fromColumnId === "in_progress" || fromColumnId === "review")
 			) {
-				toast("Task workspace removed", {
+				toast("Task worktree removed", {
 					description: "The worktree was deleted. Uncommitted work was captured in a patch file.",
 					duration: 7000,
 					className: "toast-with-dismiss-link",

@@ -33,7 +33,7 @@ vi.mock("@/resize/layout-customizations", () => ({
 }));
 
 vi.mock("@/runtime/use-runtime-config", () => ({
-	useRuntimeConfig: (_open: boolean, _workspaceId: string | null, initialConfig?: RuntimeConfigResponse | null) => ({
+	useRuntimeConfig: (_open: boolean, _projectId: string | null, initialConfig?: RuntimeConfigResponse | null) => ({
 		config: initialConfig ?? null,
 		isLoading: false,
 		isSaving: false,
@@ -106,7 +106,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -122,7 +122,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -139,7 +139,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -156,7 +156,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={createSavedConfig({ autoGenerateSummary: false })}
 					onOpenChange={() => {}}
 				/>,
@@ -172,7 +172,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={createSavedConfig({ autoGenerateSummary: true })}
 					onOpenChange={() => {}}
 				/>,
@@ -189,7 +189,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={createSavedConfig({ llmConfigured: false })}
 					onOpenChange={() => {}}
 				/>,
@@ -206,7 +206,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={createSavedConfig({ llmConfigured: true })}
 					onOpenChange={() => {}}
 				/>,
@@ -222,7 +222,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -244,7 +244,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -279,7 +279,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={configWithAudioOff}
 					onOpenChange={() => {}}
 				/>,
@@ -309,7 +309,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
@@ -357,7 +357,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					workspaceId={"workspace-1"}
+					projectId={"project-1"}
 					initialConfig={customConfig}
 					onOpenChange={() => {}}
 				/>,

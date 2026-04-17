@@ -2,18 +2,18 @@ import { WebSocket } from "ws";
 
 import type { RuntimeStateStreamMessage } from "../core";
 
-export interface DisconnectWorkspaceClientsOptions {
+export interface DisconnectProjectClientsOptions {
 	closeClientPayload?: RuntimeStateStreamMessage;
 }
 
 export interface CreateRuntimeStateClientRegistryDependencies {
-	onWorkspaceClientDisconnected: (workspaceId: string) => void;
+	onProjectClientDisconnected: (projectId: string) => void;
 }
 
 export class RuntimeStateClientRegistry {
-	private readonly clientsByWorkspace = new Map<string, Set<WebSocket>>();
+	private readonly clientsByProject = new Map<string, Set<WebSocket>>();
 	private readonly allClients = new Set<WebSocket>();
-	private readonly clientToWorkspace = new Map<WebSocket, string>();
+	private readonly clientToProject = new Map<WebSocket, string>();
 
 	constructor(private readonly deps: CreateRuntimeStateClientRegistryDependencies) {}
 
@@ -21,60 +21,60 @@ export class RuntimeStateClientRegistry {
 		return this.allClients.size > 0;
 	}
 
-	getWorkspaceClients(workspaceId: string): ReadonlySet<WebSocket> | undefined {
-		return this.clientsByWorkspace.get(workspaceId);
+	getProjectClients(projectId: string): ReadonlySet<WebSocket> | undefined {
+		return this.clientsByProject.get(projectId);
 	}
 
 	registerGlobalClient(client: WebSocket): void {
 		this.allClients.add(client);
 	}
 
-	registerWorkspaceClient(workspaceId: string, client: WebSocket): void {
-		const workspaceClients = this.clientsByWorkspace.get(workspaceId) ?? new Set<WebSocket>();
-		workspaceClients.add(client);
-		this.clientsByWorkspace.set(workspaceId, workspaceClients);
-		this.clientToWorkspace.set(client, workspaceId);
+	registerProjectClient(projectId: string, client: WebSocket): void {
+		const projectClients = this.clientsByProject.get(projectId) ?? new Set<WebSocket>();
+		projectClients.add(client);
+		this.clientsByProject.set(projectId, projectClients);
+		this.clientToProject.set(client, projectId);
 	}
 
 	removeClient(client: WebSocket): void {
-		const workspaceId = this.clientToWorkspace.get(client);
-		if (workspaceId) {
-			this.deps.onWorkspaceClientDisconnected(workspaceId);
-			const clients = this.clientsByWorkspace.get(workspaceId);
+		const projectId = this.clientToProject.get(client);
+		if (projectId) {
+			this.deps.onProjectClientDisconnected(projectId);
+			const clients = this.clientsByProject.get(projectId);
 			if (clients) {
 				clients.delete(client);
 				if (clients.size === 0) {
-					this.clientsByWorkspace.delete(workspaceId);
+					this.clientsByProject.delete(projectId);
 				}
 			}
 		}
-		this.clientToWorkspace.delete(client);
+		this.clientToProject.delete(client);
 		this.allClients.delete(client);
 	}
 
-	disconnectWorkspaceClients(workspaceId: string, options?: DisconnectWorkspaceClientsOptions): void {
-		const workspaceClients = this.clientsByWorkspace.get(workspaceId);
-		if (!workspaceClients || workspaceClients.size === 0) {
-			this.clientsByWorkspace.delete(workspaceId);
+	disconnectProjectClients(projectId: string, options?: DisconnectProjectClientsOptions): void {
+		const projectClients = this.clientsByProject.get(projectId);
+		if (!projectClients || projectClients.size === 0) {
+			this.clientsByProject.delete(projectId);
 			return;
 		}
 
-		for (const client of Array.from(workspaceClients)) {
+		for (const client of Array.from(projectClients)) {
 			if (options?.closeClientPayload) {
 				this.send(client, options.closeClientPayload);
 			}
 			try {
 				client.close();
 			} catch {
-				// Ignore close failures while disposing removed workspace clients.
+				// Ignore close failures while disposing removed project clients.
 			}
 			this.removeClient(client);
 		}
-		this.clientsByWorkspace.delete(workspaceId);
+		this.clientsByProject.delete(projectId);
 	}
 
-	broadcastToWorkspace(workspaceId: string, payload: RuntimeStateStreamMessage): void {
-		const clients = this.clientsByWorkspace.get(workspaceId);
+	broadcastToProject(projectId: string, payload: RuntimeStateStreamMessage): void {
+		const clients = this.clientsByProject.get(projectId);
 		if (!clients || clients.size === 0) {
 			return;
 		}
@@ -98,8 +98,8 @@ export class RuntimeStateClientRegistry {
 			}
 		}
 		this.allClients.clear();
-		this.clientsByWorkspace.clear();
-		this.clientToWorkspace.clear();
+		this.clientsByProject.clear();
+		this.clientToProject.clear();
 	}
 
 	private send(client: WebSocket, payload: RuntimeStateStreamMessage): void {

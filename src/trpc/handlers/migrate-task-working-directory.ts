@@ -4,7 +4,7 @@ import type { ResolvedAgentCommand, RuntimeConfigState } from "../../config";
 import { resolveAgentCommand } from "../../config";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
 import { createTaggedLogger, findCardInBoard } from "../../core";
-import { loadWorkspaceState } from "../../state";
+import { loadProjectState } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
 import {
 	applyTaskPatch,
@@ -13,13 +13,13 @@ import {
 	ensureTaskWorktreeIfDoesntExist,
 	findTaskPatch,
 	resolveTaskCwd,
-} from "../../workspace";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+} from "../../workdir";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface MigrateTaskWorkingDirectoryDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastTaskWorkingDirectoryUpdated">;
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }
 
 // NOTE: This handler is not concurrent-safe. Two browser tabs migrating the
@@ -27,7 +27,7 @@ export interface MigrateTaskWorkingDirectoryDeps {
 // benign (duplicate session start, not data loss) and the terminal manager
 // replaces existing sessions, so this is an accepted trade-off.
 export async function handleMigrateTaskWorkingDirectory(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: { taskId: string; direction: "isolate" | "de-isolate" },
 	deps: MigrateTaskWorkingDirectoryDeps,
 ) {
@@ -36,7 +36,7 @@ export async function handleMigrateTaskWorkingDirectory(
 		migrateLog.info(`[${input.taskId} ${input.direction}] ${message}`, data);
 
 	try {
-		const state = await loadWorkspaceState(workspaceScope.workspacePath);
+		const state = await loadProjectState(projectScope.projectPath);
 		const card = findCardInBoard(state.board, input.taskId);
 		if (!card) {
 			log("card not found");
@@ -48,28 +48,28 @@ export async function handleMigrateTaskWorkingDirectory(
 		// worktree state.
 		let currentWorkingDirectory = card.workingDirectory ?? null;
 		if (!currentWorkingDirectory) {
-			log("workingDirectory not persisted, resolving from worktree/workspace state");
+			log("workingDirectory not persisted, resolving from worktree/project state");
 			if (card.useWorktree !== false) {
 				try {
 					currentWorkingDirectory = await resolveTaskCwd({
-						cwd: workspaceScope.workspacePath,
+						cwd: projectScope.projectPath,
 						taskId: input.taskId,
 						baseRef: card.baseRef,
 						ensure: false,
 					});
 				} catch {
-					// Worktree doesn't exist — fall back to workspace path.
-					currentWorkingDirectory = workspaceScope.workspacePath;
+					// Worktree doesn't exist — fall back to project path.
+					currentWorkingDirectory = projectScope.projectPath;
 				}
 			} else {
-				currentWorkingDirectory = workspaceScope.workspacePath;
+				currentWorkingDirectory = projectScope.projectPath;
 			}
 			log("resolved currentWorkingDirectory", currentWorkingDirectory);
 		}
 
 		// If the task is already in the requested state, bail early to avoid
 		// wasteful session stop/restart cycles.
-		const isAlreadyIsolated = resolve(currentWorkingDirectory) !== resolve(workspaceScope.workspacePath);
+		const isAlreadyIsolated = resolve(currentWorkingDirectory) !== resolve(projectScope.projectPath);
 		if (
 			(input.direction === "isolate" && isAlreadyIsolated) ||
 			(input.direction === "de-isolate" && !isAlreadyIsolated)
@@ -78,7 +78,7 @@ export async function handleMigrateTaskWorkingDirectory(
 			return { ok: true, newWorkingDirectory: currentWorkingDirectory };
 		}
 
-		const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+		const terminalManager = await deps.getScopedTerminalManager(projectScope);
 		const summary = terminalManager.store.getSummary(input.taskId);
 		const wasRunning = summary && (summary.state === "running" || summary.state === "awaiting_review");
 		log("session state check", { wasRunning, state: summary?.state ?? "no session" });
@@ -90,7 +90,7 @@ export async function handleMigrateTaskWorkingDirectory(
 		let scopedRuntimeConfig: RuntimeConfigState | undefined;
 
 		if (wasRunning) {
-			scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(workspaceScope);
+			scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 			resolved = resolveAgentCommand(scopedRuntimeConfig) ?? undefined;
 			if (!resolved) {
 				log("no agent command configured");
@@ -117,8 +117,8 @@ export async function handleMigrateTaskWorkingDirectory(
 				prompt: "",
 				resumeConversation,
 				awaitReview: summary?.state === "awaiting_review",
-				workspaceId: workspaceScope.workspaceId,
-				workspacePath: workspaceScope.workspacePath,
+				projectId: projectScope.projectId,
+				projectPath: projectScope.projectPath,
 				statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 				worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 				worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
@@ -147,13 +147,13 @@ export async function handleMigrateTaskWorkingDirectory(
 			// because git has no per-task change tracking.
 			log("capturing patch", currentWorkingDirectory);
 			await captureTaskPatch({
-				repoPath: workspaceScope.workspacePath,
+				repoPath: projectScope.projectPath,
 				taskId: input.taskId,
 				worktreePath: currentWorkingDirectory,
 			});
 			log("creating worktree");
 			const ensured = await ensureTaskWorktreeIfDoesntExist({
-				cwd: workspaceScope.workspacePath,
+				cwd: projectScope.projectPath,
 				taskId: input.taskId,
 				baseRef: card.baseRef,
 			});
@@ -189,7 +189,7 @@ export async function handleMigrateTaskWorkingDirectory(
 		} else {
 			// Worktree -> main checkout (de-isolate).
 			// Uncommitted changes stay in the worktree as a safety net.
-			newWorkingDirectory = workspaceScope.workspacePath;
+			newWorkingDirectory = projectScope.projectPath;
 			log("de-isolating", newWorkingDirectory);
 		}
 
@@ -198,7 +198,7 @@ export async function handleMigrateTaskWorkingDirectory(
 		try {
 			log("broadcasting workingDirectory update", newWorkingDirectory);
 			deps.broadcaster.broadcastTaskWorkingDirectoryUpdated(
-				workspaceScope.workspaceId,
+				projectScope.projectId,
 				input.taskId,
 				newWorkingDirectory,
 				input.direction === "isolate",

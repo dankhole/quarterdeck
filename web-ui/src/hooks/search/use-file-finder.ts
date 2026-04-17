@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeWorkspaceFileSearchMatch } from "@/runtime/types";
+import type { RuntimeWorkdirFileSearchMatch } from "@/runtime/types";
 import { useDebouncedEffect } from "@/utils/react-use";
 
 const SEARCH_DEBOUNCE_MS = 150;
@@ -10,7 +10,7 @@ const SEARCH_RESULT_LIMIT = 50;
 export interface UseFileFinderResult {
 	query: string;
 	setQuery: (q: string) => void;
-	results: RuntimeWorkspaceFileSearchMatch[];
+	results: RuntimeWorkdirFileSearchMatch[];
 	isLoading: boolean;
 	selectedIndex: number;
 	setSelectedIndex: (i: number) => void;
@@ -19,13 +19,13 @@ export interface UseFileFinderResult {
 }
 
 export function useFileFinder(options: {
-	workspaceId: string | null;
+	projectId: string | null;
 	onSelect: (filePath: string) => void;
 }): UseFileFinderResult {
-	const { workspaceId, onSelect } = options;
+	const { projectId, onSelect } = options;
 
 	const [query, setQuery] = useState("");
-	const [results, setResults] = useState<RuntimeWorkspaceFileSearchMatch[]>([]);
+	const [results, setResults] = useState<RuntimeWorkdirFileSearchMatch[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const requestIdRef = useRef(0);
@@ -33,7 +33,7 @@ export function useFileFinder(options: {
 	useDebouncedEffect(
 		() => {
 			const trimmed = query.trim();
-			if (!trimmed || !workspaceId) {
+			if (!trimmed || !projectId) {
 				requestIdRef.current += 1;
 				setResults([]);
 				setIsLoading(false);
@@ -45,8 +45,8 @@ export function useFileFinder(options: {
 
 			void (async () => {
 				try {
-					const trpcClient = getRuntimeTrpcClient(workspaceId);
-					const payload = await trpcClient.workspace.searchFiles.query({
+					const trpcClient = getRuntimeTrpcClient(projectId);
+					const payload = await trpcClient.project.searchFiles.query({
 						query: trimmed,
 						limit: SEARCH_RESULT_LIMIT,
 					});
@@ -68,7 +68,7 @@ export function useFileFinder(options: {
 			})();
 		},
 		SEARCH_DEBOUNCE_MS,
-		[query, workspaceId],
+		[query, projectId],
 	);
 
 	const confirmSelection = useCallback(() => {

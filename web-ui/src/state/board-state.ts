@@ -401,9 +401,9 @@ export function reconcileTaskWorkingDirectory(
 	board: BoardData,
 	taskId: string,
 	metadataPath: string,
-	workspacePath: string | null,
+	projectPath: string | null,
 ): { board: BoardData; updated: boolean } {
-	const isWorktree = workspacePath ? metadataPath !== workspacePath : undefined;
+	const isWorktree = projectPath ? metadataPath !== projectPath : undefined;
 	const { columns, updated } = updateCardInBoard(board, taskId, (card) => {
 		if (card.workingDirectory === metadataPath && (isWorktree === undefined || card.useWorktree === isWorktree)) {
 			return null;

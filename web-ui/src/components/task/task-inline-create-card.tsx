@@ -49,7 +49,7 @@ export function TaskInlineCreateCard({
 	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
-	workspaceId,
+	projectId,
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
@@ -73,7 +73,7 @@ export function TaskInlineCreateCard({
 	startInPlanModeDisabled?: boolean;
 	useWorktree?: boolean;
 	onUseWorktreeChange?: (value: boolean) => void;
-	workspaceId: string | null;
+	projectId: string | null;
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
 	onBranchRefChange: (value: string) => void;
@@ -165,7 +165,7 @@ export function TaskInlineCreateCard({
 					placeholder="Describe the task..."
 					enabled={enabled}
 					autoFocus
-					workspaceId={workspaceId}
+					projectId={projectId}
 					showAttachImageButton={false}
 				/>
 				<p className="text-[11px] text-text-tertiary mt-1 mb-0">

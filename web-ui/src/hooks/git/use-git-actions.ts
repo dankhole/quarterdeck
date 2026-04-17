@@ -8,7 +8,7 @@ import {
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
 	isTaskGitActionInFlight,
-	matchesWorkspaceInfoSelection,
+	matchesWorktreeInfoSelection,
 	showGitErrorToast,
 	showGitSuccessToast,
 	showGitWarningToast,
@@ -16,18 +16,18 @@ import {
 	type TaskGitActionSource,
 } from "@/hooks/git/git-actions";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
-	getTaskWorkspaceInfo,
-	getTaskWorkspaceSnapshot,
+	getTaskProjectSnapshot,
+	getTaskWorktreeInfo,
 	setHomeGitSummary,
-	setTaskWorkspaceInfo,
+	setTaskWorktreeInfo,
 	useHomeGitStateVersionValue,
 	useHomeGitSummaryValue,
-	useTaskWorkspaceSnapshotValue,
-	useTaskWorkspaceStateVersionValue,
-} from "@/stores/workspace-metadata-store";
+	useTaskProjectSnapshotValue,
+	useTaskProjectStateVersionValue,
+} from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
@@ -44,7 +44,7 @@ interface UseGitActionsInput {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
+	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 	isGitHistoryOpen: boolean;
 	refreshWorkspaceState: () => Promise<void>;
 }
@@ -103,8 +103,8 @@ export function useGitActions({
 	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
-	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id ?? null);
-	const selectedTaskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selectedCard?.card.id ?? null);
+	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id ?? null);
+	const selectedTaskWorkspaceStateVersion = useTaskProjectStateVersionValue(selectedCard?.card.id ?? null);
 
 	const gitHistoryTaskScope = useMemo(() => {
 		if (!selectedCard) {
@@ -120,23 +120,23 @@ export function useGitActions({
 		if (!selectedCard) {
 			return homeGitSummary;
 		}
-		if (!selectedTaskWorkspaceSnapshot) {
+		if (!selectedTaskProjectSnapshot) {
 			return null;
 		}
 		return {
-			currentBranch: selectedTaskWorkspaceSnapshot.branch,
+			currentBranch: selectedTaskProjectSnapshot.branch,
 			upstreamBranch: null,
-			changedFiles: selectedTaskWorkspaceSnapshot.changedFiles ?? 0,
-			additions: selectedTaskWorkspaceSnapshot.additions ?? 0,
-			deletions: selectedTaskWorkspaceSnapshot.deletions ?? 0,
+			changedFiles: selectedTaskProjectSnapshot.changedFiles ?? 0,
+			additions: selectedTaskProjectSnapshot.additions ?? 0,
+			deletions: selectedTaskProjectSnapshot.deletions ?? 0,
 			aheadCount: 0,
 			behindCount: 0,
 		};
-	}, [homeGitSummary, selectedCard, selectedTaskWorkspaceSnapshot]);
+	}, [homeGitSummary, selectedCard, selectedTaskProjectSnapshot]);
 	const gitHistoryStateVersion = selectedCard ? selectedTaskWorkspaceStateVersion : homeGitStateVersion;
 
 	const gitHistory = useGitHistoryData({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		taskScope: gitHistoryTaskScope,
 		gitSummary: gitHistorySummary,
 		stateVersion: gitHistoryStateVersion,
@@ -189,7 +189,7 @@ export function useGitActions({
 					return false;
 				}
 
-				const snapshot = getTaskWorkspaceSnapshot(taskId);
+				const snapshot = getTaskProjectSnapshot(taskId);
 				const snapshotWorkspaceInfo = snapshot
 					? {
 							taskId,
@@ -201,19 +201,19 @@ export function useGitActions({
 							headCommit: snapshot.headCommit,
 						}
 					: null;
-				const storedWorkspaceInfo = getTaskWorkspaceInfo(selection.card.id, selection.card.baseRef);
-				const workspaceInfo = matchesWorkspaceInfoSelection(storedWorkspaceInfo, selection.card)
-					? storedWorkspaceInfo
+				const storedWorktreeInfo = getTaskWorktreeInfo(selection.card.id, selection.card.baseRef);
+				const worktreeInfo = matchesWorktreeInfoSelection(storedWorktreeInfo, selection.card)
+					? storedWorktreeInfo
 					: (snapshotWorkspaceInfo ?? (await fetchTaskWorkspaceInfo(selection.card)));
-				if (!workspaceInfo) {
-					showGitErrorToast("Could not resolve task workspace details.", { timeout: 6000 });
+				if (!worktreeInfo) {
+					showGitErrorToast("Could not resolve task worktree details.", { timeout: 6000 });
 					return false;
 				}
-				setTaskWorkspaceInfo(workspaceInfo);
+				setTaskWorktreeInfo(worktreeInfo);
 
 				const prompt = buildTaskGitActionPrompt({
 					action,
-					workspaceInfo,
+					worktreeInfo,
 					templates: runtimeProjectConfig
 						? {
 								commitPromptTemplate: runtimeProjectConfig.commitPromptTemplate,
@@ -292,7 +292,7 @@ export function useGitActions({
 			setRunningGitAction(action);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.runGitSyncAction.mutate({
+				const payload = await trpcClient.project.runGitSyncAction.mutate({
 					action,
 					taskScope: taskScope ?? null,
 					branch: branch ?? null,
@@ -341,7 +341,7 @@ export function useGitActions({
 			await switchHomeBranchGuard.run(async () => {
 				try {
 					const trpcClient = getRuntimeTrpcClient(currentProjectId);
-					const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
+					const payload = await trpcClient.project.checkoutGitBranch.mutate({
 						branch: normalizedBranch,
 					});
 					if (!payload.ok || !payload.summary) {
@@ -359,7 +359,7 @@ export function useGitActions({
 										void (async () => {
 											try {
 												const stashClient = getRuntimeTrpcClient(currentProjectId);
-												const stashResult = await stashClient.workspace.stashPush.mutate({
+												const stashResult = await stashClient.project.stashPush.mutate({
 													taskScope: null,
 													paths: [],
 												});
@@ -402,7 +402,7 @@ export function useGitActions({
 		await discardHomeChangesGuard.run(async () => {
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.discardGitChanges.mutate(null);
+				const payload = await trpcClient.project.discardGitChanges.mutate(null);
 				if (!payload.ok) {
 					if (payload.summary) {
 						setHomeGitSummary(payload.summary);
@@ -432,7 +432,7 @@ export function useGitActions({
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 
-				const stashResult = await trpcClient.workspace.stashPush.mutate({
+				const stashResult = await trpcClient.project.stashPush.mutate({
 					taskScope: null,
 					paths: [],
 				});
@@ -441,7 +441,7 @@ export function useGitActions({
 					return;
 				}
 
-				const pullResult = await trpcClient.workspace.runGitSyncAction.mutate({ action: "pull" });
+				const pullResult = await trpcClient.project.runGitSyncAction.mutate({ action: "pull" });
 				if (!pullResult.ok || !pullResult.summary) {
 					const fallbackSummary = pullResult.summary ?? null;
 					if (fallbackSummary) {
@@ -461,7 +461,7 @@ export function useGitActions({
 				}
 				setHomeGitSummary(pullResult.summary);
 
-				const popResult = await trpcClient.workspace.stashPop.mutate({
+				const popResult = await trpcClient.project.stashPop.mutate({
 					taskScope: null,
 					index: 0,
 				});

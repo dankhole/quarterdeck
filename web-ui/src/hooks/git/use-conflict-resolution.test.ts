@@ -12,7 +12,7 @@ import type { RuntimeConflictState } from "@/runtime/types";
 const useConflictStateMock = vi.hoisted(() => vi.fn((_taskId: string | null) => null as RuntimeConflictState | null));
 const useHomeConflictStateMock = vi.hoisted(() => vi.fn(() => null as RuntimeConflictState | null));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
+vi.mock("@/stores/project-metadata-store", () => ({
 	useConflictState: useConflictStateMock,
 	useHomeConflictState: useHomeConflictStateMock,
 }));
@@ -52,7 +52,7 @@ const getConflictFilesMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: tru
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		workspace: {
+		project: {
 			resolveConflictFile: { mutate: resolveConflictFileMutateMock },
 			continueConflictResolution: { mutate: continueConflictResolutionMutateMock },
 			abortConflictResolution: { mutate: abortConflictResolutionMutateMock },
@@ -89,14 +89,14 @@ function createConflictState(overrides: Partial<RuntimeConflictState> = {}): Run
 
 function HookHarness({
 	taskId,
-	workspaceId,
+	projectId,
 	onSnapshot,
 }: {
 	taskId: string | null;
-	workspaceId: string | null;
+	projectId: string | null;
 	onSnapshot: (snapshot: UseConflictResolutionResult) => void;
 }): null {
-	const result = useConflictResolution({ taskId, workspaceId });
+	const result = useConflictResolution({ taskId, projectId });
 	useEffect(() => {
 		onSnapshot(result);
 	});
@@ -147,12 +147,12 @@ describe("useConflictResolution", () => {
 		}
 	});
 
-	function render(props: { taskId?: string | null; workspaceId?: string | null } = {}): void {
+	function render(props: { taskId?: string | null; projectId?: string | null } = {}): void {
 		act(() => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: props.taskId ?? "task-1",
-					workspaceId: props.workspaceId ?? "ws-1",
+					projectId: props.projectId ?? "ws-1",
 					onSnapshot: (snapshot: UseConflictResolutionResult) => {
 						latest = snapshot;
 					},
@@ -266,7 +266,7 @@ describe("useConflictResolution", () => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: "task-1",
-					workspaceId: "ws-1",
+					projectId: "ws-1",
 					onSnapshot: (snapshot: UseConflictResolutionResult) => {
 						latest = snapshot;
 					},

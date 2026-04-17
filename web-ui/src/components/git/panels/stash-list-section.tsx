@@ -168,14 +168,14 @@ function StashEntryRow({
 
 export interface StashListSectionProps {
 	taskId: string | undefined;
-	workspaceId: string;
+	projectId: string;
 	stashCount: number;
 }
 
-export function StashListSection({ taskId, workspaceId, stashCount }: StashListSectionProps): React.ReactElement {
+export function StashListSection({ taskId, projectId, stashCount }: StashListSectionProps): React.ReactElement {
 	const { entries, isLoading, isExpanded, setExpanded, popStash, applyStash, dropStash, showStashDiff } = useStashList(
 		taskId,
-		workspaceId,
+		projectId,
 	);
 
 	// Drop confirmation dialog state.

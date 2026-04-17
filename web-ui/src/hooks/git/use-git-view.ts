@@ -26,11 +26,11 @@ import {
 } from "@/resize/resize-preferences";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitSyncSummary, RuntimeTaskSessionSummary, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeGitSyncSummary, RuntimeTaskSessionSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
 import { type FileLoadingState, useAllFileDiffContent } from "@/runtime/use-all-file-diff-content";
-import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
+import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
+import { useTaskProjectStateVersionValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
 
 const POLL_INTERVAL_MS = 1_000;
@@ -96,7 +96,7 @@ export function useGitView({
 
 	const conflictResolution = useConflictResolution({
 		taskId,
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 	});
 
 	// --- Resize ---
@@ -134,11 +134,11 @@ export function useGitView({
 	// --- Data fetching ---
 
 	const baseRef = selectedCard?.card.baseRef ?? null;
-	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(taskId);
+	const taskWorkspaceStateVersion = useTaskProjectStateVersionValue(taskId);
 
 	// Uncommitted tab data
 	const isUncommittedActive = activeTab === "uncommitted";
-	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = useRuntimeWorkspaceChanges(
+	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = useRuntimeProjectChanges(
 		isUncommittedActive ? (taskId ?? null) : null,
 		isUncommittedActive ? currentProjectId : null,
 		isUncommittedActive ? baseRef : null,
@@ -158,7 +158,7 @@ export function useGitView({
 		].join(":");
 	}, [isLastTurnActive, sessionSummary]);
 
-	const { changes: lastTurnChanges, isRuntimeAvailable: lastTurnAvailable } = useRuntimeWorkspaceChanges(
+	const { changes: lastTurnChanges, isRuntimeAvailable: lastTurnAvailable } = useRuntimeProjectChanges(
 		isLastTurnActive ? taskId : null,
 		isLastTurnActive ? currentProjectId : null,
 		isLastTurnActive ? baseRef : null,
@@ -203,7 +203,7 @@ export function useGitView({
 	const compareDiffMode = compareThreeDot ? ("three_dot" as const) : ("two_dot" as const);
 	const comparePollInterval =
 		isCompareActive && compareIncludeUncommitted && isDocumentVisible ? POLL_INTERVAL_MS : null;
-	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeWorkspaceChanges(
+	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeProjectChanges(
 		isCompareActive && hasCompareRefs ? (taskId ?? null) : null,
 		isCompareActive && hasCompareRefs ? currentProjectId : null,
 		isCompareActive ? baseRef : null,
@@ -220,14 +220,14 @@ export function useGitView({
 	);
 
 	// Derive active file list for file tree
-	const activeFiles: RuntimeWorkspaceFileChange[] | null = useMemo(
+	const activeFiles: RuntimeWorkdirFileChange[] | null = useMemo(
 		() => deriveActiveFiles(activeTab, uncommittedChanges?.files, lastTurnChanges?.files, compareChanges?.files),
 		[activeTab, uncommittedChanges, lastTurnChanges, compareChanges],
 	);
 
 	// Batch diff content loading
 	const { enrichedFiles, fileLoadingState } = useAllFileDiffContent({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		taskId,
 		baseRef,
 		mode: activeTab === "last_turn" ? "last_turn" : "working_copy",
@@ -275,7 +275,7 @@ export function useGitView({
 			isRollingBackRef.current = true;
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const result = await trpcClient.workspace.discardFile.mutate({
+				const result = await trpcClient.project.discardFile.mutate({
 					taskScope,
 					path,
 					fileStatus: file.status,
@@ -360,8 +360,8 @@ export interface UseGitViewResult {
 	conflictResolution: UseConflictResolutionResult;
 	compare: UseGitViewCompareResult;
 	hasCompareRefs: boolean;
-	activeFiles: RuntimeWorkspaceFileChange[] | null;
-	enrichedFiles: RuntimeWorkspaceFileChange[] | null;
+	activeFiles: RuntimeWorkdirFileChange[] | null;
+	enrichedFiles: RuntimeWorkdirFileChange[] | null;
 	fileLoadingState: FileLoadingState;
 	isRuntimeAvailable: boolean;
 	isChangesPending: boolean;

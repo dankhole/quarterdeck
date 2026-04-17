@@ -1,11 +1,11 @@
-import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core";
-import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state";
+import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../core";
+import { listProjectIndexEntries, loadProjectState, saveProjectState } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { killOrphanedAgentProcesses } from "../terminal";
-import type { WorkspaceRegistry } from "./workspace-registry";
+import type { ProjectRegistry } from "./project-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {
-	workspaceRegistry: Pick<WorkspaceRegistry, "listManagedWorkspaces">;
+	projectRegistry: Pick<ProjectRegistry, "listManagedProjects">;
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
 	skipSessionCleanup?: boolean;
@@ -18,22 +18,22 @@ export interface RuntimeShutdownCoordinatorDependencies {
  * and `--continue` works on resume.
  */
 async function persistInterruptedSessions(
-	workspacePath: string,
+	projectPath: string,
 	interruptedTaskIds: string[],
 	options?: {
-		workspaceState?: RuntimeWorkspaceStateResponse;
+		projectState?: RuntimeProjectStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	},
 ): Promise<void> {
 	if (interruptedTaskIds.length === 0) {
 		return;
 	}
-	const workspaceState = options?.workspaceState ?? (await loadWorkspaceState(workspacePath));
+	const projectState = options?.projectState ?? (await loadProjectState(projectPath));
 	const nextSessions = {
-		...workspaceState.sessions,
+		...projectState.sessions,
 	};
 	for (const taskId of interruptedTaskIds) {
-		const summary = options?.resolveSummary?.(taskId) ?? workspaceState.sessions[taskId] ?? null;
+		const summary = options?.resolveSummary?.(taskId) ?? projectState.sessions[taskId] ?? null;
 		if (summary && shouldInterruptSessionOnShutdown(summary)) {
 			nextSessions[taskId] = {
 				...summary,
@@ -44,8 +44,8 @@ async function persistInterruptedSessions(
 			};
 		}
 	}
-	await saveWorkspaceState(workspacePath, {
-		board: workspaceState.board,
+	await saveProjectState(projectPath, {
+		board: projectState.board,
 		sessions: nextSessions,
 	});
 }
@@ -79,9 +79,9 @@ function collectShutdownInterruptedTaskIds(
 }
 
 /** Collect task IDs from all work columns (everything except backlog and trash). */
-function collectWorkColumnTaskIds(workspaceState: RuntimeWorkspaceStateResponse): string[] {
+function collectWorkColumnTaskIds(projectState: RuntimeProjectStateResponse): string[] {
 	const taskIds: string[] = [];
-	for (const column of workspaceState.board.columns) {
+	for (const column of projectState.board.columns) {
 		if (column.id === "backlog" || column.id === "trash") {
 			continue;
 		}
@@ -98,60 +98,60 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		return;
 	}
 
-	const interruptedByWorkspace: Array<{
-		workspacePath: string;
+	const interruptedByProject: Array<{
+		projectPath: string;
 		interruptedTaskIds: string[];
-		workspaceState?: RuntimeWorkspaceStateResponse;
+		projectState?: RuntimeProjectStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	}> = [];
-	const managedWorkspacePaths = new Set<string>();
+	const managedProjectPaths = new Set<string>();
 
-	for (const { workspacePath, terminalManager } of deps.workspaceRegistry.listManagedWorkspaces()) {
+	for (const { projectPath, terminalManager } of deps.projectRegistry.listManagedProjects()) {
 		terminalManager.stopReconciliation();
 		const interrupted = terminalManager.markInterruptedAndStopAll();
 		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
-		if (!workspacePath) {
+		if (!projectPath) {
 			continue;
 		}
-		managedWorkspacePaths.add(workspacePath);
+		managedProjectPaths.add(projectPath);
 		try {
-			const workspaceState = await loadWorkspaceState(workspacePath);
-			for (const taskId of collectWorkColumnTaskIds(workspaceState)) {
+			const projectState = await loadProjectState(projectPath);
+			for (const taskId of collectWorkColumnTaskIds(projectState)) {
 				interruptedTaskIds.add(taskId);
 			}
-			interruptedByWorkspace.push({
-				workspacePath,
+			interruptedByProject.push({
+				projectPath,
 				interruptedTaskIds: Array.from(interruptedTaskIds),
-				workspaceState,
+				projectState,
 				resolveSummary: (taskId) => terminalManager.store.getSummary(taskId),
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			deps.warn(`Could not load workspace state for ${workspacePath} during shutdown cleanup. ${message}`);
+			deps.warn(`Could not load project state for ${projectPath} during shutdown cleanup. ${message}`);
 		}
 	}
 
-	const indexedWorkspaces = await listWorkspaceIndexEntries();
-	for (const workspace of indexedWorkspaces) {
-		if (managedWorkspacePaths.has(workspace.repoPath)) {
+	const indexedProjects = await listProjectIndexEntries();
+	for (const indexed of indexedProjects) {
+		if (managedProjectPaths.has(indexed.repoPath)) {
 			continue;
 		}
 		try {
-			const workspaceState = await loadWorkspaceState(workspace.repoPath);
+			const projectState = await loadProjectState(indexed.repoPath);
 			// Over-collects — tasks without a pre-existing session record are
 			// silently skipped by persistInterruptedSessions's `if (summary)` guard.
-			const interruptedTaskIds = collectWorkColumnTaskIds(workspaceState);
+			const interruptedTaskIds = collectWorkColumnTaskIds(projectState);
 			if (interruptedTaskIds.length === 0) {
 				continue;
 			}
-			interruptedByWorkspace.push({
-				workspacePath: workspace.repoPath,
+			interruptedByProject.push({
+				projectPath: indexed.repoPath,
 				interruptedTaskIds,
-				workspaceState,
+				projectState,
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			deps.warn(`Could not load workspace state for ${workspace.repoPath} during shutdown cleanup. ${message}`);
+			deps.warn(`Could not load project state for ${indexed.repoPath} during shutdown cleanup. ${message}`);
 		}
 	}
 
@@ -161,10 +161,10 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	// close entirely.
 	const CLEANUP_TIMEOUT_MS = 7000;
 	const cleanupPromise = Promise.all(
-		interruptedByWorkspace.map(async (workspace) => {
-			await persistInterruptedSessions(workspace.workspacePath, workspace.interruptedTaskIds, {
-				workspaceState: workspace.workspaceState,
-				resolveSummary: workspace.resolveSummary,
+		interruptedByProject.map(async (entry) => {
+			await persistInterruptedSessions(entry.projectPath, entry.interruptedTaskIds, {
+				projectState: entry.projectState,
+				resolveSummary: entry.resolveSummary,
 			});
 		}),
 	);

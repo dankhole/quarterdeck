@@ -15,12 +15,12 @@ let mockRuntimeHome: ReturnType<typeof createTempDir>;
 /** Temp dir representing a project repo */
 let mockProjectRepo: ReturnType<typeof createTempDir>;
 
-vi.mock("../../src/state/workspace-state", () => ({
+vi.mock("../../src/state/project-state", () => ({
 	getRuntimeHomePath: () => mockRuntimeHome.path,
-	getWorkspacesRootPath: () => join(mockRuntimeHome.path, "workspaces"),
+	getProjectsRootPath: () => join(mockRuntimeHome.path, "projects"),
 }));
 
-vi.mock("../../src/workspace/git-utils", () => ({
+vi.mock("../../src/workdir/git-utils", () => ({
 	getGitCommonDir: async (repoPath: string) => join(repoPath, ".git"),
 	getGitDir: async (cwd: string) => join(cwd, ".git"),
 }));
@@ -83,7 +83,7 @@ describe("cleanupGlobalStaleLockArtifacts (phase 1)", () => {
 	});
 
 	it("removes stale artifacts from workspaces root and subdirectories", async () => {
-		const workspacesRoot = join(mockRuntimeHome.path, "workspaces");
+		const workspacesRoot = join(mockRuntimeHome.path, "projects");
 		mkdirSync(workspacesRoot);
 
 		// Stale lock in workspaces root

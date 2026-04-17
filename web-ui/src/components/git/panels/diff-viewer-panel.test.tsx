@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type DiffLineComment, DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 
 const hotkeyRegistrations: Array<{
 	keys: string;
@@ -60,7 +60,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("scrolls to the selected file using section position relative to the scroll container", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/a.ts",
 				status: "modified",
@@ -83,7 +83,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={comments}
@@ -130,7 +130,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath="src/b.ts"
 					onSelectedPathChange={() => {}}
 					comments={comments}
@@ -143,7 +143,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("renders replaced lines side by side in split view", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/example.ts",
 				status: "modified",
@@ -157,7 +157,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={new Map<string, DiffLineComment>()}
@@ -175,7 +175,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("renders uneven split replacements with an empty placeholder cell", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/example.ts",
 				status: "modified",
@@ -189,7 +189,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={new Map<string, DiffLineComment>()}
@@ -212,7 +212,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("does not mark the last line changed when only the final newline differs", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/example.ts",
 				status: "modified",
@@ -226,7 +226,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={new Map<string, DiffLineComment>()}
@@ -240,7 +240,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("does not render diff rows for binary file paths", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "assets/logo.png",
 				status: "modified",
@@ -254,7 +254,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={new Map<string, DiffLineComment>()}
@@ -269,7 +269,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("shows shortcut indicators on Add and Send", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/example.ts",
 				status: "modified",
@@ -295,7 +295,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={comments}
@@ -319,7 +319,7 @@ describe("DiffViewerPanel", () => {
 	});
 
 	it("uses Cmd or Ctrl Enter to add comments and Cmd or Ctrl Shift Enter to send comments", async () => {
-		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
 				path: "src/example.ts",
 				status: "modified",
@@ -348,7 +348,7 @@ describe("DiffViewerPanel", () => {
 		await act(async () => {
 			root.render(
 				<DiffViewerPanel
-					workspaceFiles={workspaceFiles}
+					projectFiles={projectFiles}
 					selectedPath={null}
 					onSelectedPathChange={() => {}}
 					comments={comments}

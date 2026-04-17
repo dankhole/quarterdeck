@@ -10,9 +10,9 @@ export interface UseRuntimeProjectConfigResult {
 	refresh: () => void;
 }
 
-export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeProjectConfigResult {
-	const previousWorkspaceIdRef = useRef<string | null>(null);
-	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
+export function useRuntimeProjectConfig(projectId: string | null): UseRuntimeProjectConfigResult {
+	const previousProjectIdRef = useRef<string | null>(null);
+	const queryFn = useCallback(async () => await fetchRuntimeConfig(projectId), [projectId]);
 	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
 		enabled: true,
 		queryFn,
@@ -20,12 +20,12 @@ export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeP
 	const setConfigData = configQuery.setData;
 
 	useEffect(() => {
-		const workspaceChanged = previousWorkspaceIdRef.current !== workspaceId;
-		previousWorkspaceIdRef.current = workspaceId;
-		if (workspaceChanged) {
+		const projectChanged = previousProjectIdRef.current !== projectId;
+		previousProjectIdRef.current = projectId;
+		if (projectChanged) {
 			setConfigData(null);
 		}
-	}, [setConfigData, workspaceId]);
+	}, [setConfigData, projectId]);
 
 	const refresh = useCallback(() => {
 		void configQuery.refetch();

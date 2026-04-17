@@ -2,7 +2,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client.js";
-import type { RuntimeWorkspaceTextSearchFile } from "@/runtime/types";
+import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
 
 export interface FlatMatch {
 	path: string;
@@ -17,7 +17,7 @@ export interface UseTextSearchResult {
 	toggleCaseSensitive: () => void;
 	isRegex: boolean;
 	toggleIsRegex: () => void;
-	results: RuntimeWorkspaceTextSearchFile[];
+	results: RuntimeWorkdirTextSearchFile[];
 	totalMatches: number;
 	truncated: boolean;
 	isLoading: boolean;
@@ -31,15 +31,15 @@ export interface UseTextSearchResult {
 }
 
 interface UseTextSearchOptions {
-	workspaceId: string | null;
+	projectId: string | null;
 	onSelect: (filePath: string, lineNumber?: number) => void;
 }
 
-export function useTextSearch({ workspaceId, onSelect }: UseTextSearchOptions): UseTextSearchResult {
+export function useTextSearch({ projectId, onSelect }: UseTextSearchOptions): UseTextSearchResult {
 	const [query, setQuery] = useState("");
 	const [caseSensitive, setCaseSensitive] = useState(false);
 	const [isRegex, setIsRegex] = useState(false);
-	const [results, setResults] = useState<RuntimeWorkspaceTextSearchFile[]>([]);
+	const [results, setResults] = useState<RuntimeWorkdirTextSearchFile[]>([]);
 	const [totalMatches, setTotalMatches] = useState(0);
 	const [truncated, setTruncated] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -61,14 +61,14 @@ export function useTextSearch({ workspaceId, onSelect }: UseTextSearchOptions): 
 	}, [results]);
 
 	const executeSearch = useCallback(async () => {
-		if (query.length < 2 || !workspaceId) {
+		if (query.length < 2 || !projectId) {
 			return;
 		}
 		const requestId = ++requestIdRef.current;
 		setIsLoading(true);
 		try {
-			const trpcClient = getRuntimeTrpcClient(workspaceId);
-			const response = await trpcClient.workspace.searchText.query({ query, caseSensitive, isRegex });
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const response = await trpcClient.project.searchText.query({ query, caseSensitive, isRegex });
 			if (requestId !== requestIdRef.current) return;
 			setResults(response.files);
 			setTotalMatches(response.totalMatches);
@@ -86,7 +86,7 @@ export function useTextSearch({ workspaceId, onSelect }: UseTextSearchOptions): 
 				setIsLoading(false);
 			}
 		}
-	}, [query, workspaceId, caseSensitive, isRegex]);
+	}, [query, projectId, caseSensitive, isRegex]);
 
 	const executeSearchRef = useRef(executeSearch);
 	executeSearchRef.current = executeSearch;

@@ -23,8 +23,8 @@ export interface AgentAdapterLaunchInput {
 	startInPlanMode?: boolean;
 	resumeConversation?: boolean;
 	env?: Record<string, string | undefined>;
-	workspaceId?: string;
-	workspacePath?: string;
+	projectId?: string;
+	projectPath?: string;
 	statuslineEnabled?: boolean;
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
@@ -50,7 +50,7 @@ export interface PreparedAgentLaunch {
 
 interface HookContext {
 	taskId: string;
-	workspaceId: string;
+	projectId: string;
 }
 
 interface HookCommandMetadata {
@@ -65,13 +65,13 @@ interface AgentSessionAdapter {
 }
 
 function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null {
-	const workspaceId = input.workspaceId?.trim();
-	if (!workspaceId) {
+	const projectId = input.projectId?.trim();
+	if (!projectId) {
 		return null;
 	}
 	return {
 		taskId: input.taskId,
-		workspaceId,
+		projectId,
 	};
 }
 
@@ -230,24 +230,24 @@ const claudeAdapter: AgentSessionAdapter = {
 				env,
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
-					workspaceId: hooks.workspaceId,
+					projectId: hooks.projectId,
 				}),
 			);
 		}
 
 		// When running in a worktree, optionally give the agent access to the
 		// parent repo directory and/or the ~/.quarterdeck state directory via --add-dir.
-		const isWorktree = input.workspacePath && resolve(input.cwd) !== resolve(input.workspacePath);
+		const isWorktree = input.projectPath && resolve(input.cwd) !== resolve(input.projectPath);
 		log.debug("claude adapter --add-dir check", {
 			cwd: input.cwd,
-			workspacePath: input.workspacePath ?? null,
+			projectPath: input.projectPath ?? null,
 			isWorktree,
 			worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
 			worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		});
-		if (isWorktree && input.workspacePath) {
+		if (isWorktree && input.projectPath) {
 			if (input.worktreeAddParentGitDir) {
-				const gitDir = join(input.workspacePath, ".git");
+				const gitDir = join(input.projectPath, ".git");
 				log.debug("adding --add-dir for parent .git dir", { path: gitDir });
 				args.push("--add-dir", gitDir);
 			}
@@ -263,7 +263,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		if (!hasCliOption(args, "--append-system-prompt") && !hasCliOption(args, "--system-prompt")) {
 			const worktreeContext = await buildWorktreeContextPrompt({
 				cwd: input.cwd,
-				workspacePath: input.workspacePath,
+				projectPath: input.projectPath,
 				template: input.worktreeSystemPromptTemplate,
 			});
 			if (worktreeContext) {
@@ -340,7 +340,7 @@ const codexAdapter: AgentSessionAdapter = {
 				env,
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
-					workspaceId: hooks.workspaceId,
+					projectId: hooks.projectId,
 				}),
 			);
 		}
@@ -394,7 +394,7 @@ export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promis
 		taskId: input.taskId,
 		agentId: input.agentId,
 		cwd: input.cwd,
-		workspacePath: input.workspacePath ?? null,
+		projectPath: input.projectPath ?? null,
 		worktreeAddParentGitDir: input.worktreeAddParentGitDir ?? false,
 		worktreeAddQuarterdeckDir: input.worktreeAddQuarterdeckDir ?? false,
 		hasPrompt: input.prompt.trim().length > 0,

@@ -47,7 +47,7 @@ describe.sequential("project discovery integration", () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshot.currentProjectId).toBeNull();
-			expect(snapshot.workspaceState).toBeNull();
+			expect(snapshot.projectState).toBeNull();
 			expect(snapshot.projects).toEqual([]);
 		} finally {
 			if (stream) {
@@ -89,7 +89,7 @@ describe.sequential("project discovery integration", () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshot.currentProjectId).toBeNull();
-			expect(snapshot.workspaceState).toBeNull();
+			expect(snapshot.projectState).toBeNull();
 			expect(snapshot.projects).toEqual([]);
 		} finally {
 			if (stream) {
@@ -130,7 +130,7 @@ describe.sequential("project discovery integration", () => {
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "projects.add",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					path: projectBPath,
 				},
@@ -172,7 +172,7 @@ describe.sequential("project discovery integration", () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshot.currentProjectId).toBe(workspaceAId);
-			expect(snapshot.workspaceState?.repoPath).toBe(expectedProjectAPath);
+			expect(snapshot.projectState?.repoPath).toBe(expectedProjectAPath);
 		} finally {
 			if (secondStream) {
 				await secondStream.close();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildNoWorkspaceAbortResponse,
-	buildNoWorkspaceContinueResponse,
+	buildNoWorktreeAbortResponse,
+	buildNoWorktreeContinueResponse,
 	detectExternallyResolvedFiles,
 	EMPTY_GIT_SYNC_SUMMARY,
 	filterUnresolvedPaths,
@@ -99,9 +99,9 @@ describe("detectExternallyResolvedFiles", () => {
 // Fallback responses
 // ---------------------------------------------------------------------------
 
-describe("buildNoWorkspaceContinueResponse", () => {
+describe("buildNoWorktreeContinueResponse", () => {
 	it("returns a failed response with empty summary", () => {
-		const response = buildNoWorkspaceContinueResponse();
+		const response = buildNoWorktreeContinueResponse();
 
 		expect(response.ok).toBe(false);
 		expect(response.completed).toBe(false);
@@ -110,9 +110,9 @@ describe("buildNoWorkspaceContinueResponse", () => {
 	});
 });
 
-describe("buildNoWorkspaceAbortResponse", () => {
+describe("buildNoWorktreeAbortResponse", () => {
 	it("returns a failed response with empty summary", () => {
-		const response = buildNoWorkspaceAbortResponse();
+		const response = buildNoWorktreeAbortResponse();
 
 		expect(response.ok).toBe(false);
 		expect(response.summary).toEqual(EMPTY_GIT_SYNC_SUMMARY);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BoardCard, BoardData } from "@/types";
 import {
 	applyDeferredMoveToInProgress,
-	buildWorkspaceInfoFromEnsureResponse,
+	buildWorktreeInfoFromEnsureResponse,
 	isNonIsolatedTask,
 	revertOptimisticMoveToInProgress,
 	revertOptimisticMoveToReview,
@@ -56,12 +56,12 @@ describe("isNonIsolatedTask", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildWorkspaceInfoFromEnsureResponse
+// buildWorktreeInfoFromEnsureResponse
 // ---------------------------------------------------------------------------
 
-describe("buildWorkspaceInfoFromEnsureResponse", () => {
-	it("maps ensure response fields to workspace info shape", () => {
-		const result = buildWorkspaceInfoFromEnsureResponse("task-1", {
+describe("buildWorktreeInfoFromEnsureResponse", () => {
+	it("maps ensure response fields to worktree info shape", () => {
+		const result = buildWorktreeInfoFromEnsureResponse("task-1", {
 			ok: true,
 			path: "/tmp/worktrees/task-1",
 			baseRef: "main",
@@ -81,7 +81,7 @@ describe("buildWorkspaceInfoFromEnsureResponse", () => {
 	});
 
 	it("sets isDetached to true when branch is null", () => {
-		const result = buildWorkspaceInfoFromEnsureResponse("task-2", {
+		const result = buildWorktreeInfoFromEnsureResponse("task-2", {
 			ok: true,
 			path: "/tmp/worktrees/task-2",
 			baseRef: "develop",
@@ -94,7 +94,7 @@ describe("buildWorkspaceInfoFromEnsureResponse", () => {
 	});
 
 	it("sets isDetached to true when branch is undefined", () => {
-		const result = buildWorkspaceInfoFromEnsureResponse("task-3", {
+		const result = buildWorktreeInfoFromEnsureResponse("task-3", {
 			ok: true,
 			path: "/tmp/worktrees/task-3",
 			baseRef: "main",

@@ -4,10 +4,10 @@ import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core
 import { shutdownRuntimeServer } from "../../src/server";
 import type { TerminalSessionManager } from "../../src/terminal";
 
-vi.mock("../../src/state/workspace-state.js", () => ({
-	loadWorkspaceState: vi.fn(),
-	saveWorkspaceState: vi.fn(),
-	listWorkspaceIndexEntries: vi.fn().mockResolvedValue([]),
+vi.mock("../../src/state/project-state.js", () => ({
+	loadProjectState: vi.fn(),
+	saveProjectState: vi.fn(),
+	listProjectIndexEntries: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../src/terminal/orphan-cleanup.js", () => ({
@@ -43,7 +43,7 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 		taskId,
 		state: "running" as const,
 		agentId: "codex",
-		workspacePath: `/tmp/${taskId}`,
+		projectPath: `/tmp/${taskId}`,
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
@@ -76,9 +76,9 @@ describe("shutdown coordinator timeout", () => {
 	it("calls closeRuntimeServer even when cleanup operations hang", async () => {
 		vi.useFakeTimers();
 
-		const { loadWorkspaceState, saveWorkspaceState } = await import("../../src/state/workspace-state.js");
-		const mockLoadWorkspaceState = vi.mocked(loadWorkspaceState);
-		const mockSaveWorkspaceState = vi.mocked(saveWorkspaceState);
+		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
+		const mockLoadWorkspaceState = vi.mocked(loadProjectState);
+		const mockSaveWorkspaceState = vi.mocked(saveProjectState);
 
 		const board = createBoard(["task-1"]);
 		mockLoadWorkspaceState.mockResolvedValue({
@@ -89,18 +89,18 @@ describe("shutdown coordinator timeout", () => {
 			sessions: {},
 			revision: 1,
 		});
-		// saveWorkspaceState never resolves — simulates hung filesystem I/O
+		// saveProjectState never resolves — simulates hung filesystem I/O
 		mockSaveWorkspaceState.mockReturnValue(new Promise(() => {}));
 
 		const closeRuntimeServer = vi.fn().mockResolvedValue(undefined);
 		const warn = vi.fn();
 
 		const shutdownPromise = shutdownRuntimeServer({
-			workspaceRegistry: {
-				listManagedWorkspaces: () => [
+			projectRegistry: {
+				listManagedProjects: () => [
 					{
-						workspaceId: "test-workspace",
-						workspacePath: "/tmp/test-project",
+						projectId: "test-workspace",
+						projectPath: "/tmp/test-project",
 						terminalManager: createTerminalManagerStub(["task-1"]),
 					},
 				],
@@ -118,9 +118,9 @@ describe("shutdown coordinator timeout", () => {
 	});
 
 	it("completes normally when cleanup finishes within timeout", async () => {
-		const { loadWorkspaceState, saveWorkspaceState } = await import("../../src/state/workspace-state.js");
-		const mockLoadWorkspaceState = vi.mocked(loadWorkspaceState);
-		const mockSaveWorkspaceState = vi.mocked(saveWorkspaceState);
+		const { loadProjectState, saveProjectState } = await import("../../src/state/project-state.js");
+		const mockLoadWorkspaceState = vi.mocked(loadProjectState);
+		const mockSaveWorkspaceState = vi.mocked(saveProjectState);
 
 		const board = createBoard(["task-1"]);
 		mockLoadWorkspaceState.mockResolvedValue({
@@ -137,11 +137,11 @@ describe("shutdown coordinator timeout", () => {
 		const warn = vi.fn();
 
 		await shutdownRuntimeServer({
-			workspaceRegistry: {
-				listManagedWorkspaces: () => [
+			projectRegistry: {
+				listManagedProjects: () => [
 					{
-						workspaceId: "test-workspace",
-						workspacePath: "/tmp/test-project",
+						projectId: "test-workspace",
+						projectPath: "/tmp/test-project",
 						terminalManager: createTerminalManagerStub(["task-1"]),
 					},
 				],

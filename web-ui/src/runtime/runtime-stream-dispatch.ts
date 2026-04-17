@@ -24,9 +24,9 @@ type StreamAction =
 	| { type: "snapshot"; payload: RuntimeStateStreamSnapshotMessage }
 	| { type: "projects_updated"; payload: RuntimeStateStreamProjectsMessage; nextProjectId: string | null }
 	| {
-			type: "workspace_metadata_updated";
-			workspaceMetadata: RuntimeStateStreamMessage extends infer M
-				? M extends { type: "workspace_metadata_updated"; workspaceMetadata: infer W }
+			type: "project_metadata_updated";
+			projectMetadata: RuntimeStateStreamMessage extends infer M
+				? M extends { type: "project_metadata_updated"; projectMetadata: infer W }
 					? W
 					: never
 				: never;
@@ -36,8 +36,8 @@ type StreamAction =
 	| { type: "task_base_ref_updated"; taskId: string; baseRef: string }
 	| { type: "task_working_directory_updated"; taskId: string; workingDirectory: string; useWorktree: boolean }
 	| {
-			type: "workspace_state_updated";
-			workspaceState: Extract<RuntimeStateStreamMessage, { type: "workspace_state_updated" }>["workspaceState"];
+			type: "project_state_updated";
+			projectState: Extract<RuntimeStateStreamMessage, { type: "project_state_updated" }>["projectState"];
 	  }
 	| {
 			type: "task_sessions_updated";
@@ -45,7 +45,7 @@ type StreamAction =
 	  }
 	| {
 			type: "task_notification";
-			workspaceId: string;
+			projectId: string;
 			summaries: Extract<RuntimeStateStreamMessage, { type: "task_notification" }>["summaries"];
 	  }
 	| {
@@ -55,15 +55,15 @@ type StreamAction =
 	  }
 	| { type: "debug_log_batch"; entries: Extract<RuntimeStateStreamMessage, { type: "debug_log_batch" }>["entries"] }
 	| { type: "stream_error"; message: string }
-	| { type: "requested_workspace_changed"; preloadedWorkspaceState: null; requestedWorkspaceId: string };
+	| { type: "requested_project_changed"; preloadedProjectState: null; requestedProjectId: string };
 
 // ── Dispatch context ─────────────────────────────────────────────────────────
 
 /** Connection-scoped mutable state that some handlers need for side effects. */
 export interface StreamDispatchContext {
-	getActiveWorkspaceId: () => string | null;
-	setActiveWorkspaceId: (id: string | null) => void;
-	reconnectToWorkspace: (workspaceId: string) => void;
+	getActiveProjectId: () => string | null;
+	setActiveProjectId: (id: string | null) => void;
+	reconnectToWorkspace: (projectId: string) => void;
 	dispatch: Dispatch<StreamAction>;
 }
 
@@ -92,46 +92,46 @@ const streamMessageHandlers: {
 	[K in RuntimeStateStreamMessage["type"]]: StreamMessageHandler<K>;
 } = {
 	snapshot: (msg, ctx) => {
-		ctx.setActiveWorkspaceId(msg.currentProjectId);
+		ctx.setActiveProjectId(msg.currentProjectId);
 		ctx.dispatch({ type: "snapshot", payload: msg });
 	},
 
 	projects_updated: (msg, ctx) => {
-		const previousWorkspaceId = ctx.getActiveWorkspaceId();
+		const previousWorkspaceId = ctx.getActiveProjectId();
 		const nextProjectId = resolveProjectIdAfterProjectsUpdate(previousWorkspaceId, msg);
-		ctx.setActiveWorkspaceId(nextProjectId);
+		ctx.setActiveProjectId(nextProjectId);
 		ctx.dispatch({ type: "projects_updated", payload: msg, nextProjectId });
 		if (nextProjectId && nextProjectId !== previousWorkspaceId) {
 			ctx.reconnectToWorkspace(nextProjectId);
 		}
 	},
 
-	workspace_state_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
-		ctx.dispatch({ type: "workspace_state_updated", workspaceState: msg.workspaceState });
+	project_state_updated: (msg, ctx) => {
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
+		ctx.dispatch({ type: "project_state_updated", projectState: msg.projectState });
 	},
 
-	workspace_metadata_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
-		ctx.dispatch({ type: "workspace_metadata_updated", workspaceMetadata: msg.workspaceMetadata });
+	project_metadata_updated: (msg, ctx) => {
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
+		ctx.dispatch({ type: "project_metadata_updated", projectMetadata: msg.projectMetadata });
 	},
 
 	task_sessions_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
 		ctx.dispatch({ type: "task_sessions_updated", summaries: msg.summaries });
 	},
 
 	task_notification: (msg, ctx) => {
-		ctx.dispatch({ type: "task_notification", workspaceId: msg.workspaceId, summaries: msg.summaries });
+		ctx.dispatch({ type: "task_notification", projectId: msg.projectId, summaries: msg.summaries });
 	},
 
 	task_ready_for_review: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
 		ctx.dispatch({ type: "task_ready_for_review", payload: msg });
 	},
 
 	task_title_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
 		ctx.dispatch({
 			type: "task_title_updated",
 			taskId: msg.taskId,
@@ -141,7 +141,7 @@ const streamMessageHandlers: {
 	},
 
 	task_base_ref_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
 		ctx.dispatch({
 			type: "task_base_ref_updated",
 			taskId: msg.taskId,
@@ -150,7 +150,7 @@ const streamMessageHandlers: {
 	},
 
 	task_working_directory_updated: (msg, ctx) => {
-		if (msg.workspaceId !== ctx.getActiveWorkspaceId()) return;
+		if (msg.projectId !== ctx.getActiveProjectId()) return;
 		ctx.dispatch({
 			type: "task_working_directory_updated",
 			taskId: msg.taskId,

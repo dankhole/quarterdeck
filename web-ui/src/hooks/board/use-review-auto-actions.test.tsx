@@ -3,8 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReviewAutoActions } from "@/hooks/board/use-review-auto-actions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
-import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
+import { resetProjectMetadataStore, setTaskProjectSnapshot } from "@/stores/project-metadata-store";
+import type { BoardColumnId, BoardData, ReviewTaskProjectSnapshot } from "@/types";
 
 function createBoard(autoReviewEnabled: boolean): BoardData {
 	return {
@@ -34,7 +34,7 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 	};
 }
 
-const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
+const projectSnapshots: Record<string, ReviewTaskProjectSnapshot> = {
 	"task-1": {
 		taskId: "task-1",
 		path: "/tmp/task-1",
@@ -59,7 +59,7 @@ function HookHarness({
 	sessions?: Record<string, import("@/runtime/types").RuntimeTaskSessionSummary>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
-	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
+	setTaskProjectSnapshot(projectSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
 		sessions,
@@ -87,7 +87,7 @@ describe("useReviewAutoActions", () => {
 		act(() => {
 			root.unmount();
 		});
-		resetWorkspaceMetadataStore();
+		resetProjectMetadataStore();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -122,7 +122,7 @@ describe("useReviewAutoActions", () => {
 			taskId: "task-1",
 			state: "awaiting_review",
 			agentId: "claude",
-			workspacePath: "/tmp/worktree",
+			projectPath: "/tmp/worktree",
 			pid: 1234,
 			startedAt: Date.now(),
 			updatedAt: Date.now(),
@@ -172,7 +172,7 @@ describe("useReviewAutoActions", () => {
 			taskId: "task-1",
 			state: "awaiting_review",
 			agentId: "claude",
-			workspacePath: "/tmp/worktree",
+			projectPath: "/tmp/worktree",
 			pid: null,
 			startedAt: Date.now(),
 			updatedAt: Date.now(),
@@ -230,7 +230,7 @@ describe("useReviewAutoActions", () => {
 			taskId: "task-1",
 			state: "awaiting_review",
 			agentId: "claude",
-			workspacePath: "/tmp/worktree",
+			projectPath: "/tmp/worktree",
 			pid: 1234,
 			startedAt: Date.now(),
 			updatedAt: Date.now(),

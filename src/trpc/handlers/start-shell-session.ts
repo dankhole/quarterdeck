@@ -1,27 +1,27 @@
 import { parseShellSessionStartRequest } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
-import { resolveTaskWorkingDirectory } from "../../workspace";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import { resolveTaskWorkingDirectory } from "../../workdir";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface StartShellSessionDeps {
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 }
 
 export async function handleStartShellSession(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: unknown,
 	deps: StartShellSessionDeps,
 ) {
 	try {
 		const body = parseShellSessionStartRequest(input);
-		const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+		const terminalManager = await deps.getScopedTerminalManager(projectScope);
 		const shell = deps.resolveInteractiveShellCommand();
-		let shellCwd = workspaceScope.workspacePath;
-		if (body.workspaceTaskId) {
+		let shellCwd = projectScope.projectPath;
+		if (body.projectTaskId) {
 			shellCwd = await resolveTaskWorkingDirectory({
-				workspacePath: workspaceScope.workspacePath,
-				taskId: body.workspaceTaskId,
+				projectPath: projectScope.projectPath,
+				taskId: body.projectTaskId,
 				baseRef: body.baseRef,
 				ensure: true,
 			});

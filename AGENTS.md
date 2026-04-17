@@ -50,7 +50,7 @@ web-ui conventions
 - **When modifying or creating hooks** in `web-ui/src/hooks/`: if the hook has >50 lines of non-React logic (validation, data transforms, state machine guards), extract that logic into a companion domain module (`foo-bar.ts` alongside `use-foo-bar.ts`). Domain modules are pure TS with no React imports — testable with plain `describe`/`it`. See `docs/web-ui-conventions.md` § "Hooks architecture" for the full pattern and the reference table of existing extractions.
 
 Board state single-writer rule
-- When the browser UI is connected, the UI is the **single writer** of board state via `saveWorkspaceState` (optimistic concurrency with `expectedRevision`). Server code must **never** write board state directly — doing so bumps the server-side revision and causes the UI's next persist to hit a `WorkspaceStateConflictError`, surfacing a disruptive "Workspace changed elsewhere" toast.
+- When the browser UI is connected, the UI is the **single writer** of board state via `saveProjectState` (optimistic concurrency with `expectedRevision`). Server code must **never** write board state directly — doing so bumps the server-side revision and causes the UI's next persist to hit a `ProjectStateConflictError`, surfacing a disruptive "Project changed elsewhere" toast.
 - Instead of writing board state from the server, send a lightweight WebSocket message (via `RuntimeStateHub.broadcast*`) with just the data the UI needs, and let the UI apply it to its local board + persist through its normal debounced cycle. See `task_title_updated` and `task_working_directory_updated` as reference patterns.
 
 Completing a feature or fix (release hygiene)

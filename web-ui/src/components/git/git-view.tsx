@@ -208,7 +208,7 @@ export function GitView({
 										}}
 									>
 										<FileTreePanel
-											workspaceFiles={isRuntimeAvailable ? activeFiles : null}
+											projectFiles={isRuntimeAvailable ? activeFiles : null}
 											selectedPath={selectedPath}
 											onSelectPath={setSelectedPath}
 											panelFlex="1 1 0"
@@ -232,7 +232,7 @@ export function GitView({
 								}}
 							>
 								<DiffViewerPanel
-									workspaceFiles={isRuntimeAvailable ? enrichedFiles : null}
+									projectFiles={isRuntimeAvailable ? enrichedFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
 									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}

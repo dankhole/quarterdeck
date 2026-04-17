@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type {
-	RuntimeTaskWorkspaceInfoResponse,
-	RuntimeWorkspaceStateResponse,
+	RuntimeProjectStateResponse,
+	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
@@ -36,14 +36,14 @@ describe.sequential("server restart integration", () => {
 
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const stateResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(stateResponse.status).toBe(200);
 
@@ -56,11 +56,11 @@ describe.sequential("server restart integration", () => {
 			backlogColumn.cards[0].id = taskId;
 			backlogColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const saveResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.saveState",
+				procedure: "project.saveState",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					board,
 					sessions: stateResponse.payload.sessions,
@@ -71,9 +71,9 @@ describe.sequential("server restart integration", () => {
 
 			const firstEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.ensureWorktree",
+				procedure: "project.ensureWorktree",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef,
@@ -97,9 +97,9 @@ describe.sequential("server restart integration", () => {
 
 			const secondEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.ensureWorktree",
+				procedure: "project.ensureWorktree",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef,
@@ -113,11 +113,11 @@ describe.sequential("server restart integration", () => {
 			expect(secondEnsure.payload.path).toBe(firstEnsure.payload.path);
 			expect(secondEnsure.payload.baseCommit).toBe(taskWorktreeCommit);
 
-			const taskContext = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+			const taskContext = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.getTaskContext",
+				procedure: "project.getTaskContext",
 				type: "query",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef,
@@ -152,22 +152,22 @@ describe.sequential("server restart integration", () => {
 
 		try {
 			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+			const currentState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(currentState.status).toBe(200);
 
-			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const seedResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.saveState",
+				procedure: "project.saveState",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					board: createReviewBoard(taskId, taskTitle),
 					sessions: {
@@ -175,7 +175,7 @@ describe.sequential("server restart integration", () => {
 							taskId,
 							state: "awaiting_review",
 							agentId: "codex",
-							workspacePath: projectPath,
+							projectPath: projectPath,
 							pid: null,
 							startedAt: now - 2_000,
 							updatedAt: now,
@@ -190,11 +190,11 @@ describe.sequential("server restart integration", () => {
 				},
 			});
 			expect(seedResponse.status).toBe(200);
-			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.getTaskContext",
+				procedure: "project.getTaskContext",
 				type: "query",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef: "HEAD",
@@ -215,14 +215,14 @@ describe.sequential("server restart integration", () => {
 
 		try {
 			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+			const finalState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(finalState.status).toBe(200);
 
@@ -232,11 +232,11 @@ describe.sequential("server restart integration", () => {
 			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("exit");
-			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+			const workspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getTaskContext",
+				procedure: "project.getTaskContext",
 				type: "query",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef: "HEAD",
@@ -272,22 +272,22 @@ describe.sequential("server restart integration", () => {
 
 		try {
 			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+			const currentState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(currentState.status).toBe(200);
 
-			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const seedResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.saveState",
+				procedure: "project.saveState",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					board: createReviewBoard(taskId, taskTitle),
 					sessions: {
@@ -295,7 +295,7 @@ describe.sequential("server restart integration", () => {
 							taskId,
 							state: "awaiting_review",
 							agentId: "codex",
-							workspacePath: projectPath,
+							projectPath: projectPath,
 							pid: null,
 							startedAt: now - 2_000,
 							updatedAt: now,
@@ -311,11 +311,11 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(seedResponse.status).toBe(200);
 
-			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
-				procedure: "workspace.getTaskContext",
+				procedure: "project.getTaskContext",
 				type: "query",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef: "HEAD",
@@ -336,14 +336,14 @@ describe.sequential("server restart integration", () => {
 
 		try {
 			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+			const finalState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(finalState.status).toBe(200);
 
@@ -354,11 +354,11 @@ describe.sequential("server restart integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
 
-			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+			const workspaceInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getTaskContext",
+				procedure: "project.getTaskContext",
 				type: "query",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef: "HEAD",

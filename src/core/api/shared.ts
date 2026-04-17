@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const runtimeWorkspaceFileStatusSchema = z.enum([
+export const runtimeWorkdirFileStatusSchema = z.enum([
 	"modified",
 	"added",
 	"deleted",
@@ -10,7 +10,7 @@ export const runtimeWorkspaceFileStatusSchema = z.enum([
 	"conflicted",
 	"unknown",
 ]);
-export type RuntimeWorkspaceFileStatus = z.infer<typeof runtimeWorkspaceFileStatusSchema>;
+export type RuntimeWorkdirFileStatus = z.infer<typeof runtimeWorkdirFileStatusSchema>;
 
 export const runtimeAgentIdSchema = z.enum(["claude", "codex"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
@@ -80,8 +80,8 @@ export const runtimeOpenFileResponseSchema = z.object({
 });
 export type RuntimeOpenFileResponse = z.infer<typeof runtimeOpenFileResponseSchema>;
 
-export const runtimeTaskWorkspaceInfoRequestSchema = z.object({
+export const runtimeTaskWorktreeInfoRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),
 });
-export type RuntimeTaskWorkspaceInfoRequest = z.infer<typeof runtimeTaskWorkspaceInfoRequestSchema>;
+export type RuntimeTaskWorktreeInfoRequest = z.infer<typeof runtimeTaskWorktreeInfoRequestSchema>;

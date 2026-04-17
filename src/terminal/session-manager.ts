@@ -1,4 +1,4 @@
-// PTY-backed runtime for task sessions and the workspace shell terminal.
+// PTY-backed runtime for task sessions and the project shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, and shell sessions.
 //

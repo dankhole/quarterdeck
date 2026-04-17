@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const readGitHeadInfoMock = vi.hoisted(() =>
 	vi.fn().mockResolvedValue({ branch: "feature-branch", headCommit: "abc123", isDetached: false }),
 );
-vi.mock("../../../src/workspace/git-utils.js", () => ({
+vi.mock("../../../src/workdir/git-utils.js", () => ({
 	readGitHeadInfo: readGitHeadInfoMock,
 }));
 
@@ -16,27 +16,27 @@ describe("buildWorktreeContextPrompt", () => {
 			.mockResolvedValue({ branch: "feature-branch", headCommit: "abc123", isDetached: false });
 	});
 
-	it("returns empty string when cwd equals workspacePath", async () => {
+	it("returns empty string when cwd equals projectPath", async () => {
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/repo",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 		});
 		expect(result).toBe("");
 	});
 
-	it("returns empty string when workspacePath is undefined", async () => {
+	it("returns empty string when projectPath is undefined", async () => {
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/some/worktree",
 		});
 		expect(result).toBe("");
 	});
 
-	it("returns context when cwd differs from workspacePath", async () => {
+	it("returns context when cwd differs from projectPath", async () => {
 		readGitHeadInfoMock.mockResolvedValue({ branch: "feature", headCommit: "abc", isDetached: false });
 
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/worktrees/task-1",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 		});
 
 		expect(result).toContain("You are working in a git worktree.");
@@ -52,7 +52,7 @@ describe("buildWorktreeContextPrompt", () => {
 
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/worktrees/task-2",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 		});
 
 		expect(result).toContain("detached HEAD state");
@@ -62,7 +62,7 @@ describe("buildWorktreeContextPrompt", () => {
 	it("handles resolve() normalizing trailing slashes", async () => {
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/repo/",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 		});
 		expect(result).toBe("");
 	});
@@ -72,7 +72,7 @@ describe("buildWorktreeContextPrompt", () => {
 
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/worktrees/task-3",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 		});
 
 		expect(result).toContain("You are working in a git worktree.");
@@ -84,8 +84,8 @@ describe("buildWorktreeContextPrompt", () => {
 
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/worktrees/task-4",
-			workspacePath: "/repo",
-			template: "CWD={{cwd}} REPO={{workspace_path}} NOTE={{detached_head_note}}",
+			projectPath: "/repo",
+			template: "CWD={{cwd}} REPO={{project_path}} NOTE={{detached_head_note}}",
 		});
 
 		expect(result).toBe("CWD=/worktrees/task-4 REPO=/repo NOTE=");
@@ -96,7 +96,7 @@ describe("buildWorktreeContextPrompt", () => {
 
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/worktrees/task-5",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 			template: "Hello{{detached_head_note}}",
 		});
 
@@ -107,7 +107,7 @@ describe("buildWorktreeContextPrompt", () => {
 	it("returns empty for custom template when not in a worktree", async () => {
 		const result = await buildWorktreeContextPrompt({
 			cwd: "/repo",
-			workspacePath: "/repo",
+			projectPath: "/repo",
 			template: "Custom prompt for {{cwd}}",
 		});
 

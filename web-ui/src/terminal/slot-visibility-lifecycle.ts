@@ -9,7 +9,7 @@ interface SlotVisibilityLifecycleCallbacks {
 	hasIoSocket: () => boolean;
 	hasControlSocket: () => boolean;
 	refreshTerminal: () => void;
-	reconnectSockets: (taskId: string, workspaceId: string) => void;
+	reconnectSockets: (taskId: string, projectId: string) => void;
 	isDisposed: () => boolean;
 }
 
@@ -33,11 +33,11 @@ export class SlotVisibilityLifecycle {
 			log.debug(`slot ${this.slotId} tab-return refresh`, { task: taskId });
 			this.callbacks.refreshTerminal();
 
-			const workspaceId = this.callbacks.getWorkspaceId();
+			const projectId = this.callbacks.getWorkspaceId();
 			const hasDeadSocket = !this.callbacks.hasIoSocket() || !this.callbacks.hasControlSocket();
-			if (taskId && workspaceId && hasDeadSocket) {
+			if (taskId && projectId && hasDeadSocket) {
 				log.info(`slot ${this.slotId} tab-return reconnecting dead sockets`, { task: taskId });
-				this.callbacks.reconnectSockets(taskId, workspaceId);
+				this.callbacks.reconnectSockets(taskId, projectId);
 			}
 		};
 

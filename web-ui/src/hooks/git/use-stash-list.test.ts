@@ -10,8 +10,8 @@ import type { UseStashListResult } from "@/hooks/git/use-stash-list";
 
 const homeStashCountMock = vi.hoisted(() => ({ value: 0 }));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	useTaskWorkspaceInfoValue: () => ({ baseRef: "main" }),
+vi.mock("@/stores/project-metadata-store", () => ({
+	useTaskWorktreeInfoValue: () => ({ baseRef: "main" }),
 	useHomeStashCount: () => homeStashCountMock.value,
 }));
 
@@ -28,7 +28,7 @@ const stashShowQueryMock = vi.hoisted(() => vi.fn(async () => ({ ok: true, diff:
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		workspace: {
+		project: {
 			stashList: { query: stashListQueryMock },
 			stashPop: { mutate: stashPopMutateMock },
 			stashApply: { mutate: stashApplyMutateMock },
@@ -62,14 +62,14 @@ const mockEntries = [mockEntry0, mockEntry1];
 
 function HookHarness({
 	taskId,
-	workspaceId,
+	projectId,
 	onSnapshot,
 }: {
 	taskId: string | undefined;
-	workspaceId: string;
+	projectId: string;
 	onSnapshot: (snapshot: UseStashListResult) => void;
 }): null {
-	const result = useStashList(taskId, workspaceId);
+	const result = useStashList(taskId, projectId);
 	useEffect(() => {
 		onSnapshot(result);
 	});
@@ -119,12 +119,12 @@ describe("useStashList", () => {
 		}
 	});
 
-	function render(props: { taskId?: string | undefined; workspaceId?: string } = {}): void {
+	function render(props: { taskId?: string | undefined; projectId?: string } = {}): void {
 		act(() => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: props.taskId ?? "task-1",
-					workspaceId: props.workspaceId ?? "ws-1",
+					projectId: props.projectId ?? "ws-1",
 					onSnapshot: (snapshot: UseStashListResult) => {
 						latest = snapshot;
 					},
@@ -187,7 +187,7 @@ describe("useStashList", () => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: "task-1",
-					workspaceId: "ws-1",
+					projectId: "ws-1",
 					onSnapshot: (snapshot: UseStashListResult) => {
 						latest = snapshot;
 					},

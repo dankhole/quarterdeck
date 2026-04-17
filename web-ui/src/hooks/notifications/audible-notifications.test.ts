@@ -17,7 +17,7 @@ function mockSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runtim
 		taskId: "task-1",
 		state: "idle",
 		agentId: "claude",
-		workspacePath: "/tmp/repo",
+		projectPath: "/tmp/repo",
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),
@@ -257,7 +257,7 @@ describe("isEventSuppressedForProject", () => {
 		expect(isEventSuppressedForProject("failure", suppress, "proj-a", "proj-a")).toBe(false);
 	});
 
-	it("returns false when task workspace is undefined", () => {
+	it("returns false when task project is undefined", () => {
 		expect(isEventSuppressedForProject("review", suppress, undefined, "proj-a")).toBe(false);
 	});
 });

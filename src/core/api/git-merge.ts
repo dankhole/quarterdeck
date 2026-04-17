@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { runtimeGitSyncSummarySchema } from "./git-sync.js";
-import { runtimeTaskWorkspaceInfoRequestSchema } from "./shared.js";
+import { runtimeTaskWorktreeInfoRequestSchema } from "./shared.js";
 
 export const runtimeGitMergeRequestSchema = z.object({
 	branch: z.string(),
@@ -179,13 +179,13 @@ export type RuntimeStashListResponse = z.infer<typeof runtimeStashListResponseSc
 
 // Stash push request
 export const runtimeStashPushRequestSchema = z.object({
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable(),
 	paths: z.array(z.string()),
 	message: z.string().optional(),
 });
 
 // Stash action request (pop/apply/drop)
 export const runtimeStashActionRequestSchema = z.object({
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable(),
 	index: z.number().int().nonnegative(),
 });

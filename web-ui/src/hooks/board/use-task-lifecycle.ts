@@ -3,14 +3,14 @@ import { useCallback } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { disableTaskAutoReview } from "@/state/board-state";
-import { setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
+import { setTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
 import {
 	applyDeferredMoveToInProgress,
-	buildWorkspaceInfoFromEnsureResponse,
+	buildWorktreeInfoFromEnsureResponse,
 	isNonIsolatedTask,
 	revertOptimisticMoveToInProgress,
 	revertOptimisticMoveToReview,
@@ -31,7 +31,7 @@ interface UseTaskLifecycleInput {
 	selectedTaskId: string | null;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
+	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 }
 
 export interface UseTaskLifecycleResult {
@@ -68,7 +68,7 @@ export function useTaskLifecycle({
 			if (!isNonIsolatedTask(task)) {
 				const ensured = await ensureTaskWorkspace(task);
 				if (!ensured.ok) {
-					notifyError(ensured.message ?? "Could not set up task workspace.");
+					notifyError(ensured.message ?? "Could not set up task worktree.");
 					if (optimisticMove) {
 						setBoard((board) => revertOptimisticMoveToInProgress(board, taskId, fromColumnId) ?? board);
 					}
@@ -84,11 +84,11 @@ export function useTaskLifecycle({
 				}
 				if (selectedTaskId === taskId) {
 					if (ensured.response) {
-						setTaskWorkspaceInfo(buildWorkspaceInfoFromEnsureResponse(taskId, ensured.response));
+						setTaskWorktreeInfo(buildWorktreeInfoFromEnsureResponse(taskId, ensured.response));
 					}
 					const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
 					if (infoAfterEnsure) {
-						setTaskWorkspaceInfo(infoAfterEnsure);
+						setTaskWorktreeInfo(infoAfterEnsure);
 					}
 				}
 			}
@@ -122,7 +122,7 @@ export function useTaskLifecycle({
 			if (!isNonIsolatedTask(task)) {
 				const ensured = await ensureTaskWorkspace(task);
 				if (!ensured.ok) {
-					notifyError(ensured.message ?? "Could not set up task workspace.");
+					notifyError(ensured.message ?? "Could not set up task worktree.");
 					revertToTrash();
 					return;
 				}

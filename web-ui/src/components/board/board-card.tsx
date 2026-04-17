@@ -16,7 +16,7 @@ import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { getWorkspacePath, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
+import { getProjectPath, useTaskProjectSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import {
@@ -110,12 +110,12 @@ export function BoardCard({
 	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
 	const closeTitleEditor = useCallback(() => setIsEditingTitle(false), []);
 
-	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
+	const reviewWorkspaceSnapshot = useTaskProjectSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 
 	const isSharedCheckout = useMemo(() => {
-		const wsPath = getWorkspacePath();
+		const wsPath = getProjectPath();
 		if (reviewWorkspaceSnapshot?.path && wsPath) {
 			return reviewWorkspaceSnapshot.path === wsPath;
 		}
@@ -123,10 +123,10 @@ export function BoardCard({
 	}, [reviewWorkspaceSnapshot?.path, card.useWorktree]);
 
 	const isCwdDiverged = useMemo(() => {
-		if (!sessionSummary?.workspacePath || !reviewWorkspaceSnapshot?.path) return false;
+		if (!sessionSummary?.projectPath || !reviewWorkspaceSnapshot?.path) return false;
 		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
-		return sessionSummary.workspacePath !== reviewWorkspaceSnapshot.path;
-	}, [sessionSummary?.workspacePath, sessionSummary?.state, reviewWorkspaceSnapshot?.path]);
+		return sessionSummary.projectPath !== reviewWorkspaceSnapshot.path;
+	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewWorkspaceSnapshot?.path]);
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 

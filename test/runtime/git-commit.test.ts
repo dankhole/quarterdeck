@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { commitSelectedFiles, discardSingleFile } from "../../src/workspace";
+import { commitSelectedFiles, discardSingleFile } from "../../src/workdir";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

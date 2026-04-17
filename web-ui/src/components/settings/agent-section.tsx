@@ -175,7 +175,7 @@ export function AgentSection({
 						<p className="text-text-secondary text-[13px] mt-1 mb-2">
 							Appended to the agent's system prompt when running in a worktree. Supports{" "}
 							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
-							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{workspace_path}}"}</code>, and{" "}
+							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
 							<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code>{" "}
 							placeholders.
 						</p>

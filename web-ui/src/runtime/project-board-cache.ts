@@ -5,8 +5,8 @@ export interface ProjectBoardCacheEntry {
 	board: BoardData;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	revision: number;
-	workspacePath: string | null;
-	workspaceGit: RuntimeGitRepositoryInfo | null;
+	projectPath: string | null;
+	projectGit: RuntimeGitRepositoryInfo | null;
 	cachedAt: number;
 }
 

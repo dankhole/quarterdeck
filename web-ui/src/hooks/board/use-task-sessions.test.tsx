@@ -67,7 +67,7 @@ describe("useTaskSessions", () => {
 				taskId: "task-1",
 				state: "running",
 				agentId: "codex",
-				workspacePath: "/tmp/task-1",
+				projectPath: "/tmp/task-1",
 				pid: 123,
 				startedAt: 1,
 				updatedAt: 1,

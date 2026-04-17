@@ -52,7 +52,7 @@ export interface BoardContextValue {
 
 	// --- Derived loading flags ---
 	isInitialRuntimeLoad: boolean;
-	isAwaitingWorkspaceSnapshot: boolean;
+	isAwaitingProjectSnapshot: boolean;
 }
 
 export const BoardContext = createContext<BoardContextValue | null>(null);
@@ -92,12 +92,12 @@ export function BoardProvider({
 	const {
 		currentProjectId,
 		projects,
-		streamedWorkspaceState,
+		streamedProjectState,
 		hasReceivedSnapshot,
 		streamError,
 		configDefaultBaseRef,
-		workspacePath,
-		workspaceGit,
+		projectPath,
+		projectGit,
 	} = useProjectContext();
 
 	// --- useDetailTaskNavigation ---
@@ -110,7 +110,7 @@ export function BoardProvider({
 	// --- Derived loading flags ---
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
-	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
+	const isAwaitingProjectSnapshot = currentProjectId !== null && streamedProjectState === null;
 
 	// --- useTaskSessions ---
 	const {
@@ -126,7 +126,7 @@ export function BoardProvider({
 		setSessions,
 		onWorkingDirectoryResolved: (taskId, workingDirectory) => {
 			setBoard((current) => {
-				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, workspacePath);
+				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, projectPath);
 				return result.updated ? result.board : current;
 			});
 		},
@@ -134,7 +134,7 @@ export function BoardProvider({
 
 	// --- useTaskBranchOptions ---
 	const { createTaskBranchOptions, defaultTaskBranchRef, isConfigDefaultBaseRef } = useTaskBranchOptions({
-		workspaceGit,
+		projectGit,
 		configDefaultBaseRef,
 	});
 
@@ -187,7 +187,7 @@ export function BoardProvider({
 			handleCancelCreateTask,
 			createTaskBranchOptions,
 			isInitialRuntimeLoad,
-			isAwaitingWorkspaceSnapshot,
+			isAwaitingProjectSnapshot,
 		}),
 		[
 			board,
@@ -209,7 +209,7 @@ export function BoardProvider({
 			handleCancelCreateTask,
 			createTaskBranchOptions,
 			isInitialRuntimeLoad,
-			isAwaitingWorkspaceSnapshot,
+			isAwaitingProjectSnapshot,
 		],
 	);
 

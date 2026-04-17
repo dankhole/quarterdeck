@@ -4,8 +4,8 @@ import { type BackupListEntry, createBackup, getBackupHomePath, listBackups, res
 
 function formatBackupRow(entry: BackupListEntry): string {
 	const date = new Date(entry.manifest.timestamp).toLocaleString();
-	const workspaces = entry.manifest.workspaceIds.length;
-	return `  ${entry.name}  ${entry.manifest.trigger.padEnd(8)}  ${String(workspaces).padStart(2)} workspace(s)  ${date}`;
+	const projects = entry.manifest.projectIds.length;
+	return `  ${entry.name}  ${entry.manifest.trigger.padEnd(8)}  ${String(projects).padStart(2)} project(s)  ${date}`;
 }
 
 export function registerBackupCommand(program: Command): void {
@@ -69,7 +69,7 @@ export function registerBackupCommand(program: Command): void {
 			try {
 				const manifest = await restoreBackup(backupPathOrName);
 				const date = new Date(manifest.timestamp).toLocaleString();
-				console.log(`Restored backup from ${date} (${manifest.workspaceIds.length} workspace(s)).`);
+				console.log(`Restored backup from ${date} (${manifest.projectIds.length} project(s)).`);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				console.error(`Restore failed: ${message}`);

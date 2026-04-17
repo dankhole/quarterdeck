@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export type ScopeMode = "contextual" | "home_override" | "branch_view";
 
 export type ResolvedScope =
-	| { type: "home"; workspaceId: string }
-	| { type: "task"; taskId: string; baseRef: string; workspaceId: string; branch: string | null }
-	| { type: "branch_view"; ref: string; workspaceId: string };
+	| { type: "home"; projectId: string }
+	| { type: "task"; taskId: string; baseRef: string; projectId: string; branch: string | null }
+	| { type: "branch_view"; ref: string; projectId: string };
 
 interface ScopeState {
 	mode: ScopeMode;
@@ -45,11 +45,11 @@ export function useScopeContext(options: {
 		}
 
 		if (state.mode === "branch_view" && state.branchViewRef !== null) {
-			return { type: "branch_view", ref: state.branchViewRef, workspaceId: currentProjectId };
+			return { type: "branch_view", ref: state.branchViewRef, projectId: currentProjectId };
 		}
 
 		if (state.mode === "home_override") {
-			return { type: "home", workspaceId: currentProjectId };
+			return { type: "home", projectId: currentProjectId };
 		}
 
 		// mode === "contextual"
@@ -58,12 +58,12 @@ export function useScopeContext(options: {
 				type: "task",
 				taskId: selectedTaskId,
 				baseRef: selectedCard.baseRef,
-				workspaceId: currentProjectId,
+				projectId: currentProjectId,
 				branch: selectedCard.branch ?? null,
 			};
 		}
 
-		return { type: "home", workspaceId: currentProjectId };
+		return { type: "home", projectId: currentProjectId };
 	}, [state.mode, state.branchViewRef, currentProjectId, selectedTaskId, selectedCard]);
 
 	const switchToHome = useCallback(() => {

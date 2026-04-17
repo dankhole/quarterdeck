@@ -37,7 +37,7 @@ interface TaskPromptComposerProps {
 	disabled?: boolean;
 	enabled?: boolean;
 	autoFocus?: boolean;
-	workspaceId?: string | null;
+	projectId?: string | null;
 	showAttachImageButton?: boolean;
 }
 
@@ -54,7 +54,7 @@ export function TaskPromptComposer({
 	disabled,
 	enabled = true,
 	autoFocus = false,
-	workspaceId = null,
+	projectId = null,
 	showAttachImageButton = true,
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -96,19 +96,19 @@ export function TaskPromptComposer({
 			setMentionInsertTextMap(new Map());
 			setIsMentionSearchLoading(false);
 		}
-	}, [activeToken, enabled, workspaceId]);
+	}, [activeToken, enabled, projectId]);
 
 	useDebouncedEffect(
 		() => {
-			if (!enabled || !activeToken || !workspaceId) {
+			if (!enabled || !activeToken || !projectId) {
 				return;
 			}
 			const requestId = ++mentionSearchRequestIdRef.current;
 			setIsMentionSearchLoading(true);
 			void (async () => {
 				try {
-					const trpcClient = getRuntimeTrpcClient(workspaceId);
-					const payload = await trpcClient.workspace.searchFiles.query({
+					const trpcClient = getRuntimeTrpcClient(projectId);
+					const payload = await trpcClient.project.searchFiles.query({
 						query: activeToken.query,
 						limit: FILE_MENTION_LIMIT,
 					});
@@ -137,7 +137,7 @@ export function TaskPromptComposer({
 			})();
 		},
 		MENTION_QUERY_DEBOUNCE_MS,
-		[activeToken, enabled, workspaceId],
+		[activeToken, enabled, projectId],
 	);
 
 	const suggestions = useMemo(() => {

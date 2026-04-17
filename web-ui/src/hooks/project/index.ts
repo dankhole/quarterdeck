@@ -1,13 +1,13 @@
 export type { UseDetailTaskNavigationResult } from "./use-detail-task-navigation";
 export { useDetailTaskNavigation } from "./use-detail-task-navigation";
-export { useOpenWorkspace } from "./use-open-workspace";
+export { useOpenProject } from "./use-open-project";
 export type { UseProjectNavigationResult } from "./use-project-navigation";
 export { useProjectNavigation } from "./use-project-navigation";
 export type { UseProjectNavigationPanelResult } from "./use-project-navigation-panel";
 export { useProjectNavigationPanel } from "./use-project-navigation-panel";
 export { useProjectSwitchCleanup } from "./use-project-switch-cleanup";
+export { useProjectSync } from "./use-project-sync";
 export { useProjectUiState } from "./use-project-ui-state";
 export { useQuarterdeckAccessGate } from "./use-quarterdeck-access-gate";
 export type { UseStartupOnboardingResult } from "./use-startup-onboarding";
 export { useStartupOnboarding } from "./use-startup-onboarding";
-export { useWorkspaceSync } from "./use-workspace-sync";

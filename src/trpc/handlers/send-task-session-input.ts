@@ -1,20 +1,20 @@
 import { parseTaskSessionInputRequest } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface SendTaskSessionInputDeps {
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }
 
 export async function handleSendTaskSessionInput(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: unknown,
 	deps: SendTaskSessionInputDeps,
 ) {
 	try {
 		const body = parseTaskSessionInputRequest(input);
 		const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
-		const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+		const terminalManager = await deps.getScopedTerminalManager(projectScope);
 		const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
 		if (!summary) {
 			return {

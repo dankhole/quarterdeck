@@ -13,7 +13,7 @@ import { showNonIsolatedResumeWarning, useTaskLifecycle } from "@/hooks/board/us
 import type { UseTaskSessionsResult } from "@/hooks/board/use-task-sessions";
 import { useTaskStart } from "@/hooks/board/use-task-start";
 import { type HardDeleteDialogState, type TrashWarningState, useTrashWorkflow } from "@/hooks/board/use-trash-workflow";
-import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeTaskSessionSummary, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { findCardSelection, updateTask } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -40,7 +40,7 @@ interface UseBoardInteractionsInput {
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
+	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 	showTrashWorktreeNotice: boolean;
 	saveTrashWorktreeNoticeDismissed: () => void;
 }

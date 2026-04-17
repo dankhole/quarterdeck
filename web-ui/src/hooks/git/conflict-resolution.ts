@@ -66,13 +66,13 @@ export function detectExternallyResolvedFiles(
 }
 
 // ---------------------------------------------------------------------------
-// Fallback responses (when no workspace is available)
+// Fallback responses (when no project is available)
 // ---------------------------------------------------------------------------
 
-export function buildNoWorkspaceContinueResponse(): RuntimeConflictContinueResponse {
+export function buildNoWorktreeContinueResponse(): RuntimeConflictContinueResponse {
 	return { ok: false, completed: false, summary: EMPTY_GIT_SYNC_SUMMARY, output: "" };
 }
 
-export function buildNoWorkspaceAbortResponse(): RuntimeConflictAbortResponse {
+export function buildNoWorktreeAbortResponse(): RuntimeConflictAbortResponse {
 	return { ok: false, summary: EMPTY_GIT_SYNC_SUMMARY };
 }

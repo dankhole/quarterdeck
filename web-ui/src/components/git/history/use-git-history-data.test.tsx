@@ -8,7 +8,7 @@ import type {
 	RuntimeGitLogResponse,
 	RuntimeGitRefsResponse,
 	RuntimeGitSyncSummary,
-	RuntimeWorkspaceChangesResponse,
+	RuntimeWorkdirChangesResponse,
 } from "@/runtime/types";
 
 const getGitRefsQueryMock = vi.hoisted(() => vi.fn());
@@ -19,7 +19,7 @@ const getWorkspaceChangesQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		workspace: {
+		project: {
 			getGitRefs: {
 				query: getGitRefsQueryMock,
 			},
@@ -130,7 +130,7 @@ function createDiffResponse(hash: string): RuntimeGitCommitDiffResponse {
 	};
 }
 
-function createWorkspaceChangesResponse(): RuntimeWorkspaceChangesResponse {
+function createWorkspaceChangesResponse(): RuntimeWorkdirChangesResponse {
 	return {
 		repoRoot: "/tmp/project",
 		generatedAt: Date.now(),
@@ -154,7 +154,7 @@ function HookHarness({
 	onRender: (snapshot: HookSnapshot) => void;
 }): null {
 	const gitHistory = useGitHistoryData({
-		workspaceId: "project-1",
+		projectId: "project-1",
 		taskScope,
 		gitSummary: createGitSummary(taskScope ? "task-branch" : "main"),
 		enabled,

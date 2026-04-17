@@ -217,11 +217,11 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachQuarterdeckServer(workspaceId: string | null): Promise<boolean> {
+async function canReachQuarterdeckServer(projectId: string | null): Promise<boolean> {
 	try {
 		const headers: Record<string, string> = {};
-		if (workspaceId) {
-			headers["x-quarterdeck-workspace-id"] = workspaceId;
+		if (projectId) {
+			headers["x-quarterdeck-project-id"] = projectId;
 		}
 		const response = await fetch(buildQuarterdeckRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
@@ -242,20 +242,20 @@ async function canReachQuarterdeckServer(workspaceId: string | null): Promise<bo
 }
 
 async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
-	let workspaceId: string | null = null;
+	let projectId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
-		const { isUnderWorktreesHome, loadWorkspaceContext } = await import("./state/workspace-state.js");
+		const { isUnderWorktreesHome, loadProjectContext } = await import("./state/project-state.js");
 		if (!isUnderWorktreesHome(process.cwd())) {
-			const context = await loadWorkspaceContext(process.cwd());
-			workspaceId = context.workspaceId;
+			const context = await loadProjectContext(process.cwd());
+			projectId = context.projectId;
 		}
 	}
-	const running = await canReachQuarterdeckServer(workspaceId);
+	const running = await canReachQuarterdeckServer(projectId);
 	if (!running) {
 		return false;
 	}
-	const projectUrl = workspaceId
-		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
+	const projectUrl = projectId
+		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(projectId)}`)
 		: getQuarterdeckRuntimeOrigin();
 	console.log(`Quarterdeck already running at ${getQuarterdeckRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
@@ -364,9 +364,9 @@ async function loadRuntimeStartupModules() {
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
-		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ collectProjectWorktreeTaskIdsForRemoval, createProjectRegistry },
 		{ cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts },
-		{ listWorkspaceIndexEntries },
+		{ listProjectIndexEntries },
 		{ initEventLog, setEventLogEnabled },
 		{ setLogLevel },
 		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
@@ -377,9 +377,9 @@ async function loadRuntimeStartupModules() {
 		import("./server/runtime-state-hub.js"),
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
-		import("./server/workspace-registry.js"),
+		import("./server/project-registry.js"),
 		import("./fs/lock-cleanup.js"),
-		import("./state/workspace-state.js"),
+		import("./state/project-state.js"),
 		import("./core/event-log.js"),
 		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
@@ -393,10 +393,10 @@ async function loadRuntimeStartupModules() {
 		resolveInteractiveShellCommand,
 		shutdownRuntimeServer,
 		collectProjectWorktreeTaskIdsForRemoval,
-		createWorkspaceRegistry,
+		createProjectRegistry,
 		cleanupGlobalStaleLockArtifacts,
 		cleanupProjectStaleLockArtifacts,
-		listWorkspaceIndexEntries,
+		listProjectIndexEntries,
 		initEventLog,
 		setEventLogEnabled,
 		setLogLevel,
@@ -417,10 +417,10 @@ async function runRuntimeStartupCleanup(
 	await modules.cleanupGlobalStaleLockArtifacts(warn);
 
 	// Phase 2: Clean stale lock artifacts from per-project directories.
-	// Read the workspace index (now safe after phase 1 cleaned its lock files)
+	// Read the project index (now safe after phase 1 cleaned its lock files)
 	// to discover project repo paths, then clean their .git/ and .quarterdeck/ dirs.
 	try {
-		const indexEntries = await modules.listWorkspaceIndexEntries();
+		const indexEntries = await modules.listProjectIndexEntries();
 		const projectPaths = indexEntries.map((entry) => entry.repoPath);
 		if (projectPaths.length > 0) {
 			await modules.cleanupProjectStaleLockArtifacts(projectPaths, warn);
@@ -447,17 +447,17 @@ async function createRuntimeBootstrapState(
 	warn: (message: string) => void,
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
-	const workspaceRegistry = await modules.createWorkspaceRegistry({
+	const projectRegistry = await modules.createProjectRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
-		onTerminalManagerReady: (workspaceId, manager) => {
-			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
+		onTerminalManagerReady: (projectId, manager) => {
+			runtimeStateHub?.trackTerminalManager(projectId, manager);
 		},
 	});
-	const activeConfig = workspaceRegistry.getActiveRuntimeConfig();
+	const activeConfig = projectRegistry.getActiveRuntimeConfig();
 	modules.setEventLogEnabled(activeConfig.eventLogEnabled);
 	modules.setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
 
@@ -472,9 +472,9 @@ async function createRuntimeBootstrapState(
 		.catch(() => {});
 	modules.startPeriodicBackups(activeConfig.backupIntervalMinutes);
 	runtimeStateHub = modules.createRuntimeStateHub({
-		workspaceRegistry,
+		projectRegistry,
 		getActivePollIntervals: () => {
-			const config = workspaceRegistry.getActiveRuntimeConfig();
+			const config = projectRegistry.getActiveRuntimeConfig();
 			return {
 				focusedTaskPollMs: config.focusedTaskPollMs,
 				backgroundTaskPollMs: config.backgroundTaskPollMs,
@@ -483,25 +483,25 @@ async function createRuntimeBootstrapState(
 		},
 	});
 	const runtimeHub = runtimeStateHub;
-	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
-		runtimeHub.trackTerminalManager(workspaceId, terminalManager);
+	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
+		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
 
 	const disposeTrackedWorkspace = (
-		workspaceId: string,
+		projectId: string,
 		options?: {
 			stopTerminalSessions?: boolean;
 		},
-	): { terminalManager: TerminalSessionManager | null; workspacePath: string | null } => {
-		const disposed = workspaceRegistry.disposeWorkspace(workspaceId, {
+	): { terminalManager: TerminalSessionManager | null; projectPath: string | null } => {
+		const disposed = projectRegistry.disposeProject(projectId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
-		runtimeHub.disposeWorkspace(workspaceId);
+		runtimeHub.disposeProject(projectId);
 		return disposed;
 	};
 
 	return {
-		workspaceRegistry,
+		projectRegistry,
 		runtimeHub,
 		disposeTrackedWorkspace,
 		warn,
@@ -516,7 +516,7 @@ async function createRuntimeServerHandle(
 	bootstrap: Awaited<ReturnType<typeof createRuntimeBootstrapState>>,
 ): Promise<RuntimeServerHandle> {
 	const runtimeServer = await modules.createRuntimeServer({
-		workspaceRegistry: bootstrap.workspaceRegistry,
+		projectRegistry: bootstrap.projectRegistry,
 		runtimeStateHub: bootstrap.runtimeHub,
 		warn: bootstrap.warn,
 		resolveInteractiveShellCommand: modules.resolveInteractiveShellCommand,
@@ -524,7 +524,7 @@ async function createRuntimeServerHandle(
 		resolveProjectInputPath: modules.resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,
-		disposeWorkspace: bootstrap.disposeTrackedWorkspace,
+		disposeProject: bootstrap.disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval: modules.collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog: modules.pickDirectoryPathFromSystemDialog,
 	});
@@ -536,7 +536,7 @@ async function createRuntimeServerHandle(
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
 		bootstrap.stopPeriodicBackups();
 		await modules.shutdownRuntimeServer({
-			workspaceRegistry: bootstrap.workspaceRegistry,
+			projectRegistry: bootstrap.projectRegistry,
 			warn: bootstrap.warn,
 			closeRuntimeServer: close,
 			skipSessionCleanup: options?.skipSessionCleanup ?? false,

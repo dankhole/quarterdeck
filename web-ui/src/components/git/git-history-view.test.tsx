@@ -103,7 +103,7 @@ describe("GitHistoryView", () => {
 		window.localStorage.setItem(LocalStorageKey.GitHistoryCommitsPanelWidth, "500");
 
 		await act(async () => {
-			root.render(<GitHistoryView workspaceId="workspace-1" gitHistory={createGitHistory()} />);
+			root.render(<GitHistoryView projectId="project-1" gitHistory={createGitHistory()} />);
 		});
 
 		expect(mockGitRefsPanel).toHaveBeenCalled();

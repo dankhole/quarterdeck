@@ -43,14 +43,14 @@ vi.mock("@/resize/resizable-bottom-pane", () => ({
 	ResizableBottomPane: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
-	useRuntimeWorkspaceChanges: (...args: unknown[]) => mockUseRuntimeWorkspaceChanges(...args),
+vi.mock("@/runtime/use-runtime-project-changes", () => ({
+	useRuntimeProjectChanges: (...args: unknown[]) => mockUseRuntimeWorkspaceChanges(...args),
 }));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	useTaskWorkspaceStateVersionValue: () => 0,
-	useTaskWorkspaceInfoValue: () => null,
-	useTaskWorkspaceSnapshotValue: () => null,
+vi.mock("@/stores/project-metadata-store", () => ({
+	useTaskProjectStateVersionValue: () => 0,
+	useTaskWorktreeInfoValue: () => null,
+	useTaskProjectSnapshotValue: () => null,
 	useHomeGitSummaryValue: () => null,
 }));
 
@@ -211,7 +211,7 @@ const noopBoardContext: BoardContextValue = {
 	handleCancelCreateTask: () => {},
 	createTaskBranchOptions: [],
 	isInitialRuntimeLoad: false,
-	isAwaitingWorkspaceSnapshot: false,
+	isAwaitingProjectSnapshot: false,
 };
 
 const noopGitContext: GitContextValue = {
@@ -435,7 +435,7 @@ describe("CardDetailView", () => {
 				root,
 				<CardDetailView
 					selection={createSelection()}
-					currentProjectId="workspace-1"
+					currentProjectId="project-1"
 					sessionSummary={null}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}
@@ -460,7 +460,7 @@ describe("CardDetailView", () => {
 				root,
 				<CardDetailView
 					selection={createSelection()}
-					currentProjectId="workspace-1"
+					currentProjectId="project-1"
 					sessionSummary={null}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}
@@ -485,7 +485,7 @@ describe("CardDetailView", () => {
 				root,
 				<CardDetailView
 					selection={createSelection()}
-					currentProjectId="workspace-1"
+					currentProjectId="project-1"
 					sessionSummary={null}
 					onCardSelect={() => {}}
 					bottomTerminalOpen={false}

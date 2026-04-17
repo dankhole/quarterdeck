@@ -8,13 +8,13 @@ import { showGitErrorToast, showGitSuccessToast, showGitWarningToast } from "@/h
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
-import { setHomeGitSummary } from "@/stores/workspace-metadata-store";
+import { setHomeGitSummary } from "@/stores/project-metadata-store";
 import type { BoardData } from "@/types";
 import { useLoadingGuard } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 interface UseBranchActionsOptions {
-	workspaceId: string | null;
+	projectId: string | null;
 	board: BoardData;
 	selectBranchView: (ref: string) => void;
 	homeGitSummary: RuntimeGitSyncSummary | null;
@@ -83,7 +83,7 @@ export interface UseBranchActionsResult {
 
 export function useBranchActions(options: UseBranchActionsOptions): UseBranchActionsResult {
 	const {
-		workspaceId,
+		projectId,
 		board,
 		selectBranchView,
 		homeGitSummary,
@@ -104,20 +104,20 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	// Fetch git refs when popover opens
 	const refsQueryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("Missing workspace.");
+		if (!projectId) {
+			throw new Error("Missing project.");
 		}
-		const trpc = getRuntimeTrpcClient(workspaceId);
+		const trpc = getRuntimeTrpcClient(projectId);
 		const taskScope = taskId && baseRef ? { taskId, baseRef } : null;
-		const payload = await trpc.workspace.getGitRefs.query(taskScope);
+		const payload = await trpc.project.getGitRefs.query(taskScope);
 		if (!payload.ok) {
 			throw new Error(payload.error ?? "Could not load git refs.");
 		}
 		return payload;
-	}, [workspaceId, taskId, baseRef]);
+	}, [projectId, taskId, baseRef]);
 
 	const refsQuery = useTrpcQuery<RuntimeGitRefsResponse>({
-		enabled: isBranchPopoverOpen && workspaceId !== null,
+		enabled: isBranchPopoverOpen && projectId !== null,
 		queryFn: refsQueryFn,
 	});
 
@@ -154,12 +154,12 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	const performCheckout = useCallback(
 		async (branch: string, scope: "home" | "task", checkoutTaskId?: string, checkoutBaseRef?: string) => {
-			if (!workspaceId) {
+			if (!projectId) {
 				return;
 			}
 			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const result = await trpc.workspace.checkoutGitBranch.mutate({
+				const trpc = getRuntimeTrpcClient(projectId);
+				const result = await trpc.project.checkoutGitBranch.mutate({
 					branch,
 					...(scope === "task" && checkoutTaskId ? { taskId: checkoutTaskId } : {}),
 					...(checkoutBaseRef ? { baseRef: checkoutBaseRef } : {}),
@@ -178,7 +178,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				showGitErrorToast(`Checkout failed: ${toErrorMessage(error)}`);
 			}
 		},
-		[workspaceId, onCheckoutSuccess],
+		[projectId, onCheckoutSuccess],
 	);
 
 	// Merge branch dialog
@@ -193,14 +193,14 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	}, []);
 
 	const handleConfirmMergeBranch = useCallback(async () => {
-		if (!workspaceId || mergeBranchDialogState.type !== "open") {
+		if (!projectId || mergeBranchDialogState.type !== "open") {
 			return;
 		}
 		const { branchName } = mergeBranchDialogState;
 		setMergeBranchDialogState({ type: "closed" });
 		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const result = await trpc.workspace.mergeBranch.mutate({
+			const trpc = getRuntimeTrpcClient(projectId);
+			const result = await trpc.project.mergeBranch.mutate({
 				branch: branchName,
 				...(taskId ? { taskId } : {}),
 				...(baseRef ? { baseRef } : {}),
@@ -216,7 +216,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showGitErrorToast(`Merge failed: ${toErrorMessage(error)}`);
 		}
-	}, [workspaceId, mergeBranchDialogState, taskId, baseRef, currentBranch, onConflictDetected]);
+	}, [projectId, mergeBranchDialogState, taskId, baseRef, currentBranch, onConflictDetected]);
 
 	const handleCheckoutBranch = useCallback(
 		(branch: string) => {
@@ -267,7 +267,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	);
 
 	const handleStashAndCheckout = useCallback(async () => {
-		if (!workspaceId || checkoutDialogState.type !== "dirty_warning") {
+		if (!projectId || checkoutDialogState.type !== "dirty_warning") {
 			return;
 		}
 		const { branch, scope, taskId: checkoutTaskId, baseRef: checkoutBaseRef } = checkoutDialogState;
@@ -275,8 +275,8 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 		await stashAndCheckoutGuard.run(async () => {
 			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const stashResult = await trpc.workspace.stashPush.mutate({ taskScope, paths: [], message: undefined });
+				const trpc = getRuntimeTrpcClient(projectId);
+				const stashResult = await trpc.project.stashPush.mutate({ taskScope, paths: [], message: undefined });
 				if (!stashResult.ok) {
 					showGitErrorToast(stashResult.error ?? "Failed to stash changes");
 					return;
@@ -287,7 +287,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				showGitErrorToast(`Stash failed: ${toErrorMessage(error)}`);
 			}
 		});
-	}, [workspaceId, checkoutDialogState, taskId, baseRef, performCheckout]);
+	}, [projectId, checkoutDialogState, taskId, baseRef, performCheckout]);
 
 	const closeCheckoutDialog = useCallback(() => {
 		setCheckoutDialogState({ type: "closed" });
@@ -318,14 +318,14 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	const refetchRefs = refsQuery.refetch;
 
 	const handleConfirmDeleteBranch = useCallback(async () => {
-		if (!workspaceId || deleteBranchDialogState.type !== "open") {
+		if (!projectId || deleteBranchDialogState.type !== "open") {
 			return;
 		}
 		const { branchName } = deleteBranchDialogState;
 		setDeleteBranchDialogState({ type: "closed" });
 		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const result = await trpc.workspace.deleteBranch.mutate({ branchName });
+			const trpc = getRuntimeTrpcClient(projectId);
+			const result = await trpc.project.deleteBranch.mutate({ branchName });
 			if (result.ok) {
 				showGitSuccessToast(`Deleted branch ${branchName}`);
 				void refetchRefs();
@@ -335,7 +335,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showGitErrorToast(`Delete failed: ${toErrorMessage(error)}`);
 		}
-	}, [workspaceId, deleteBranchDialogState, refetchRefs]);
+	}, [projectId, deleteBranchDialogState, refetchRefs]);
 
 	const handleBranchCreated = useCallback(
 		(branchName: string) => {
@@ -359,14 +359,14 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	}, []);
 
 	const handleConfirmRebaseBranch = useCallback(async () => {
-		if (!workspaceId || rebaseBranchDialogState.type !== "open") {
+		if (!projectId || rebaseBranchDialogState.type !== "open") {
 			return;
 		}
 		const { onto } = rebaseBranchDialogState;
 		setRebaseBranchDialogState({ type: "closed" });
 		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const result = await trpc.workspace.rebaseBranch.mutate({
+			const trpc = getRuntimeTrpcClient(projectId);
+			const result = await trpc.project.rebaseBranch.mutate({
 				onto,
 				...(taskId ? { taskId } : {}),
 				...(baseRef ? { baseRef } : {}),
@@ -382,7 +382,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showGitErrorToast(`Rebase failed: ${toErrorMessage(error)}`);
 		}
-	}, [workspaceId, rebaseBranchDialogState, taskId, baseRef, onConflictDetected]);
+	}, [projectId, rebaseBranchDialogState, taskId, baseRef, onConflictDetected]);
 
 	// Rename branch dialog
 	const [renameBranchDialogState, setRenameBranchDialogState] = useState<RenameBranchDialogState>({ type: "closed" });
@@ -397,14 +397,14 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	const handleConfirmRenameBranch = useCallback(
 		async (newName: string) => {
-			if (!workspaceId || renameBranchDialogState.type !== "open") {
+			if (!projectId || renameBranchDialogState.type !== "open") {
 				return;
 			}
 			const { branchName: oldName } = renameBranchDialogState;
 			setRenameBranchDialogState({ type: "closed" });
 			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const result = await trpc.workspace.renameBranch.mutate({ oldName, newName });
+				const trpc = getRuntimeTrpcClient(projectId);
+				const result = await trpc.project.renameBranch.mutate({ oldName, newName });
 				if (result.ok) {
 					showGitSuccessToast(`Renamed ${oldName} to ${newName}`);
 					void refetchRefs();
@@ -415,7 +415,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				showGitErrorToast(`Rename failed: ${toErrorMessage(error)}`);
 			}
 		},
-		[workspaceId, renameBranchDialogState, refetchRefs],
+		[projectId, renameBranchDialogState, refetchRefs],
 	);
 
 	// Reset to ref dialog
@@ -430,14 +430,14 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	}, []);
 
 	const handleConfirmResetToRef = useCallback(async () => {
-		if (!workspaceId || resetToRefDialogState.type !== "open") {
+		if (!projectId || resetToRefDialogState.type !== "open") {
 			return;
 		}
 		const { ref } = resetToRefDialogState;
 		setResetToRefDialogState({ type: "closed" });
 		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const result = await trpc.workspace.resetToRef.mutate({
+			const trpc = getRuntimeTrpcClient(projectId);
+			const result = await trpc.project.resetToRef.mutate({
 				ref,
 				...(taskId ? { taskId } : {}),
 				...(baseRef ? { baseRef } : {}),
@@ -450,7 +450,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		} catch (error) {
 			showGitErrorToast(`Reset failed: ${toErrorMessage(error)}`);
 		}
-	}, [workspaceId, resetToRefDialogState, taskId, baseRef]);
+	}, [projectId, resetToRefDialogState, taskId, baseRef]);
 
 	return {
 		isBranchPopoverOpen,

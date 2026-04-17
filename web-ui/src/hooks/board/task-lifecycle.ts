@@ -6,7 +6,7 @@
  * state, side effects, and async orchestration.
  */
 
-import type { RuntimeTaskWorkspaceInfoResponse, RuntimeWorktreeEnsureResponse } from "@/runtime/types";
+import type { RuntimeTaskWorktreeInfoResponse, RuntimeWorktreeEnsureResponse } from "@/runtime/types";
 import { getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
@@ -24,15 +24,15 @@ export function isNonIsolatedTask(task: BoardCard): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a `RuntimeTaskWorkspaceInfoResponse` from the result of an
+ * Build a `RuntimeTaskWorktreeInfoResponse` from the result of an
  * `ensureWorktree` call. This bridges the shape difference between the
- * ensure response (which carries `baseCommit`) and the workspace-info
+ * ensure response (which carries `baseCommit`) and the worktree-info
  * shape (which uses `headCommit`).
  */
-export function buildWorkspaceInfoFromEnsureResponse(
+export function buildWorktreeInfoFromEnsureResponse(
 	taskId: string,
 	response: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>,
-): RuntimeTaskWorkspaceInfoResponse {
+): RuntimeTaskWorktreeInfoResponse {
 	return {
 		taskId,
 		path: response.path,
@@ -81,7 +81,7 @@ export function revertOptimisticMoveToReview(board: BoardData, taskId: string): 
 
 /**
  * Apply a non-optimistic move to in_progress (used when the caller
- * deferred the column move until after workspace + session succeeded).
+ * deferred the column move until after worktree + session succeeded).
  * Returns `null` if no move is needed.
  */
 export function applyDeferredMoveToInProgress(

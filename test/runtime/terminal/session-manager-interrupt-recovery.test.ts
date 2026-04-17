@@ -54,7 +54,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		taskId: "task-1",
 		state: "running",
 		agentId: "claude",
-		workspacePath: "/tmp/worktree",
+		projectPath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),

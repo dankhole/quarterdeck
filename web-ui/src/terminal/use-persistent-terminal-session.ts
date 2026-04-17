@@ -15,7 +15,7 @@ import type { TerminalSlot } from "@/terminal/terminal-slot";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
-	workspaceId: string | null;
+	projectId: string | null;
 	enabled?: boolean;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
@@ -38,7 +38,7 @@ export interface UsePersistentTerminalSessionResult {
 
 export function usePersistentTerminalSession({
 	taskId,
-	workspaceId,
+	projectId,
 	enabled = true,
 	onSummary,
 	onConnectionReady,
@@ -61,7 +61,7 @@ export function usePersistentTerminalSession({
 		onExit,
 	});
 	const previousSessionRef = useRef<{
-		workspaceId: string;
+		projectId: string;
 		taskId: string;
 		sessionStartedAt: number | null;
 	} | null>(null);
@@ -82,7 +82,7 @@ export function usePersistentTerminalSession({
 			if (!enabled) {
 				const previousSession = previousSessionRef.current;
 				if (previousSession) {
-					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
+					disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
 				}
 				terminalRef.current?.hide();
 				terminalRef.current = null;
@@ -93,10 +93,10 @@ export function usePersistentTerminalSession({
 				return;
 			}
 
-			if (!workspaceId) {
+			if (!projectId) {
 				const previousSession = previousSessionRef.current;
 				if (previousSession) {
-					disposeDedicatedTerminal(previousSession.workspaceId, previousSession.taskId);
+					disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
 				}
 				terminalRef.current?.hide();
 				terminalRef.current = null;
@@ -112,13 +112,13 @@ export function usePersistentTerminalSession({
 			const previousSession = previousSessionRef.current;
 			const didSessionRestart =
 				previousSession !== null &&
-				previousSession.workspaceId === workspaceId &&
+				previousSession.projectId === projectId &&
 				previousSession.taskId === taskId &&
 				previousSession.sessionStartedAt !== sessionStartedAt;
 
 			const terminal = ensureDedicatedTerminal({
 				taskId,
-				workspaceId,
+				projectId,
 				cursorColor,
 				terminalBackgroundColor,
 			});
@@ -126,7 +126,7 @@ export function usePersistentTerminalSession({
 				terminal.reset();
 			}
 			previousSessionRef.current = {
-				workspaceId,
+				projectId,
 				taskId,
 				sessionStartedAt,
 			};
@@ -174,7 +174,7 @@ export function usePersistentTerminalSession({
 			return;
 		}
 
-		if (!workspaceId) {
+		if (!projectId) {
 			releaseTask(taskId);
 			terminalRef.current?.hide();
 			terminalRef.current = null;
@@ -193,15 +193,15 @@ export function usePersistentTerminalSession({
 		const previousSession = previousSessionRef.current;
 		const didSessionRestart =
 			previousSession !== null &&
-			previousSession.workspaceId === workspaceId &&
+			previousSession.projectId === projectId &&
 			previousSession.taskId === taskId &&
 			previousSession.sessionStartedAt !== sessionStartedAt;
 
-		const terminal = acquireForTask(taskId, workspaceId);
+		const terminal = acquireForTask(taskId, projectId);
 		if (didSessionRestart) {
 			terminal.reset();
 		}
-		previousSessionRef.current = { workspaceId, taskId, sessionStartedAt };
+		previousSessionRef.current = { projectId, taskId, sessionStartedAt };
 		terminalRef.current = terminal;
 		setLastError(null);
 		setIsLoading(true);
@@ -227,7 +227,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
+	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, projectId]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {

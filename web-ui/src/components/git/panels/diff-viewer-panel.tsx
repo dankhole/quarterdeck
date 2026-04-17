@@ -10,7 +10,7 @@ import { cn } from "@/components/ui/cn";
 import { useDiffComments } from "@/hooks/git/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/git/use-diff-scroll-sync";
 import type { FileNavigation } from "@/hooks/git/use-git-navigation";
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
@@ -27,7 +27,7 @@ import {
 export type { DiffLineComment, DiffViewMode } from "./diff-viewer-utils";
 
 export function DiffViewerPanel({
-	workspaceFiles,
+	projectFiles,
 	selectedPath,
 	onSelectedPathChange,
 	onAddToTerminal,
@@ -40,7 +40,7 @@ export function DiffViewerPanel({
 	isContentLoading,
 	fileLoadingState,
 }: {
-	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
+	projectFiles: RuntimeWorkdirFileChange[] | null;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
 	onAddToTerminal?: (formatted: string) => void;
@@ -59,15 +59,15 @@ export function DiffViewerPanel({
 
 	const fileStatusByPath = useMemo(() => {
 		const map = new Map<string, string>();
-		for (const file of workspaceFiles ?? []) {
+		for (const file of projectFiles ?? []) {
 			map.set(file.path, file.status);
 		}
 		return map;
-	}, [workspaceFiles]);
+	}, [projectFiles]);
 
 	const diffEntries = useMemo(() => {
-		return (workspaceFiles ?? []).map((file, index) => ({
-			id: `workspace-${file.path}-${index}`,
+		return (projectFiles ?? []).map((file, index) => ({
+			id: `project-${file.path}-${index}`,
 			path: file.path,
 			isBinary: isBinaryFilePath(file.path),
 			oldText: file.oldText,
@@ -77,10 +77,10 @@ export function DiffViewerPanel({
 			timestamp: 0,
 			toolTitle: `${file.status} (${file.additions}+/${file.deletions}-)`,
 		}));
-	}, [workspaceFiles]);
+	}, [projectFiles]);
 
 	const groupedByPath = useMemo((): FileDiffGroup[] => {
-		const sourcePaths = workspaceFiles?.map((file) => file.path) ?? [];
+		const sourcePaths = projectFiles?.map((file) => file.path) ?? [];
 		const orderedPaths = flattenFilePathsForDisplay(sourcePaths);
 		const orderIndex = new Map(orderedPaths.map((path, index) => [path, index]));
 		const map = new Map<string, FileDiffGroup>();
@@ -114,7 +114,7 @@ export function DiffViewerPanel({
 			}
 			return a.path.localeCompare(b.path);
 		});
-	}, [diffEntries, workspaceFiles]);
+	}, [diffEntries, projectFiles]);
 
 	const { scrollContainerRef, sectionElementsRef, handleDiffScroll, suppressScrollSyncUntilRef } = useDiffScrollSync({
 		groupedByPath,

@@ -8,9 +8,9 @@
 //     {ISO-timestamp}/
 //       manifest.json
 //       config.json
-//       workspaces/
+//       projects/
 //         index.json
-//         {workspaceId}/
+//         {projectId}/
 //           board.json, sessions.json, meta.json, pinned-branches.json
 
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -20,17 +20,17 @@ import { isAbsolute, join, resolve } from "node:path";
 import { isNodeError } from "../fs";
 import {
 	BOARD_FILENAME,
+	getProjectBoardPath,
+	getProjectDirectoryPath,
+	getProjectMetaPath,
+	getProjectPinnedBranchesPath,
+	getProjectSessionsPath,
+	getProjectsRootPath,
 	getRuntimeHomePath,
-	getWorkspaceBoardPath,
-	getWorkspaceDirectoryPath,
-	getWorkspaceMetaPath,
-	getWorkspacePinnedBranchesPath,
-	getWorkspaceSessionsPath,
-	getWorkspacesRootPath,
 	META_FILENAME,
 	PINNED_BRANCHES_FILENAME,
 	SESSIONS_FILENAME,
-} from "./workspace-state-utils";
+} from "./project-state-utils";
 
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
@@ -39,7 +39,7 @@ const WORKSPACE_STATE_FILENAMES = [BOARD_FILENAME, SESSIONS_FILENAME, META_FILEN
 export interface BackupManifest {
 	timestamp: number;
 	version: number;
-	workspaceIds: string[];
+	projectIds: string[];
 	trigger: "startup" | "periodic" | "manual";
 }
 
@@ -93,7 +93,7 @@ async function readJsonFileSafe(path: string): Promise<unknown | null> {
 	}
 }
 
-async function discoverWorkspaceIds(indexPath: string): Promise<string[]> {
+async function discoverProjectIds(indexPath: string): Promise<string[]> {
 	const raw = await readJsonFileSafe(indexPath);
 	if (!raw || typeof raw !== "object") {
 		return [];
@@ -133,8 +133,8 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 
 	const runtimeHome = getRuntimeHomePath();
 	const globalConfigPath = join(runtimeHome, "config.json");
-	const workspacesRoot = getWorkspacesRootPath();
-	const indexPath = join(workspacesRoot, "index.json");
+	const projectsRoot = getProjectsRootPath();
+	const indexPath = join(projectsRoot, "index.json");
 
 	const indexExists = await fileExists(indexPath);
 	const configExists = await fileExists(globalConfigPath);
@@ -142,7 +142,7 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 		return null;
 	}
 
-	const workspaceIds = await discoverWorkspaceIds(indexPath);
+	const projectIds = await discoverProjectIds(indexPath);
 	const now = new Date();
 	const backupDir = join(getBackupHomePath(), toBackupDirectoryName(now));
 	await mkdir(backupDir, { recursive: true });
@@ -150,29 +150,26 @@ export async function createBackup(options: CreateBackupOptions = {}): Promise<s
 	try {
 		await copyFileIfExists(globalConfigPath, join(backupDir, "config.json"));
 
-		const backupWorkspacesDir = join(backupDir, "workspaces");
+		const backupWorkspacesDir = join(backupDir, "projects");
 		if (indexExists) {
 			await mkdir(backupWorkspacesDir, { recursive: true });
 			await copyFileIfExists(indexPath, join(backupWorkspacesDir, "index.json"));
 		}
 
-		for (const workspaceId of workspaceIds) {
-			const wsBackupDir = join(backupWorkspacesDir, workspaceId);
+		for (const projectId of projectIds) {
+			const wsBackupDir = join(backupWorkspacesDir, projectId);
 			await mkdir(wsBackupDir, { recursive: true });
-			await copyFileIfExists(getWorkspaceBoardPath(workspaceId), join(wsBackupDir, BOARD_FILENAME));
-			await copyFileIfExists(getWorkspaceSessionsPath(workspaceId), join(wsBackupDir, SESSIONS_FILENAME));
-			await copyFileIfExists(getWorkspaceMetaPath(workspaceId), join(wsBackupDir, META_FILENAME));
-			await copyFileIfExists(
-				getWorkspacePinnedBranchesPath(workspaceId),
-				join(wsBackupDir, PINNED_BRANCHES_FILENAME),
-			);
+			await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
+			await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
+			await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
+			await copyFileIfExists(getProjectPinnedBranchesPath(projectId), join(wsBackupDir, PINNED_BRANCHES_FILENAME));
 		}
 
 		// Manifest written last — acts as the commit signal.
 		const manifest: BackupManifest = {
 			timestamp: now.getTime(),
 			version: 1,
-			workspaceIds,
+			projectIds,
 			trigger,
 		};
 		await writeFile(join(backupDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
@@ -225,7 +222,7 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 	}
 
 	const runtimeHome = getRuntimeHomePath();
-	const workspacesRoot = getWorkspacesRootPath();
+	const projectsRoot = getProjectsRootPath();
 
 	const backupConfigPath = join(backupDir, "config.json");
 	if (await fileExists(backupConfigPath)) {
@@ -233,15 +230,15 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		await cp(backupConfigPath, join(runtimeHome, "config.json"));
 	}
 
-	const backupIndexPath = join(backupDir, "workspaces", "index.json");
+	const backupIndexPath = join(backupDir, "projects", "index.json");
 	if (await fileExists(backupIndexPath)) {
-		await mkdir(workspacesRoot, { recursive: true });
-		await cp(backupIndexPath, join(workspacesRoot, "index.json"));
+		await mkdir(projectsRoot, { recursive: true });
+		await cp(backupIndexPath, join(projectsRoot, "index.json"));
 	}
 
-	for (const workspaceId of manifest.workspaceIds) {
-		const wsBackupDir = join(backupDir, "workspaces", workspaceId);
-		const wsDir = getWorkspaceDirectoryPath(workspaceId);
+	for (const projectId of manifest.projectIds) {
+		const wsBackupDir = join(backupDir, "projects", projectId);
+		const wsDir = getProjectDirectoryPath(projectId);
 		await mkdir(wsDir, { recursive: true });
 		for (const filename of WORKSPACE_STATE_FILENAMES) {
 			await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
@@ -280,7 +277,7 @@ let lastFingerprint: string | null = null;
 async function computeStateFingerprint(): Promise<string> {
 	const parts: string[] = [];
 	const runtimeHome = getRuntimeHomePath();
-	const indexPath = join(getWorkspacesRootPath(), "index.json");
+	const indexPath = join(getProjectsRootPath(), "index.json");
 
 	for (const path of [join(runtimeHome, "config.json"), indexPath]) {
 		try {
@@ -291,9 +288,9 @@ async function computeStateFingerprint(): Promise<string> {
 		}
 	}
 
-	for (const workspaceId of await discoverWorkspaceIds(indexPath)) {
-		for (const getter of [getWorkspaceBoardPath, getWorkspaceSessionsPath, getWorkspaceMetaPath]) {
-			const path = getter(workspaceId);
+	for (const projectId of await discoverProjectIds(indexPath)) {
+		for (const getter of [getProjectBoardPath, getProjectSessionsPath, getProjectMetaPath]) {
+			const path = getter(projectId);
 			try {
 				const info = await stat(path);
 				parts.push(`${path}:${info.mtimeMs}:${info.size}`);

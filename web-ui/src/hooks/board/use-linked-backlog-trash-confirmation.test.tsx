@@ -13,17 +13,17 @@ import {
 
 const toastMock = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorkspaceSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskProjectSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorkspaceInfoMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): any => null));
 
 vi.mock("sonner", () => ({
 	toast: toastMock,
 }));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	getTaskWorkspaceSnapshot: getTaskWorkspaceSnapshotMock,
-	getTaskWorkspaceInfo: getTaskWorkspaceInfoMock,
+vi.mock("@/stores/project-metadata-store", () => ({
+	getTaskProjectSnapshot: getTaskProjectSnapshotMock,
+	getTaskWorktreeInfo: getTaskWorktreeInfoMock,
 }));
 
 describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
@@ -31,14 +31,14 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 	beforeEach(() => {
 		toastMock.mockReset();
-		getTaskWorkspaceSnapshotMock.mockReset();
-		getTaskWorkspaceInfoMock.mockReset();
+		getTaskProjectSnapshotMock.mockReset();
+		getTaskWorktreeInfoMock.mockReset();
 	});
 
 	it("calls onRequestTrashConfirmation when task has uncommitted changes", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: "task-2-branch",
@@ -46,7 +46,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 			headCommit: "abc123",
 			changedFiles: 3,
 		});
-		getTaskWorkspaceInfoMock.mockReturnValue({
+		getTaskWorktreeInfoMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			exists: true,
@@ -88,7 +88,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("passes optimisticMoveApplied through to the confirmation callback", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -121,7 +121,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
 		const cleanupTaskWorkspace = vi.fn(async () => null);
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -159,7 +159,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when changedFiles is 0", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -200,7 +200,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when snapshot is null", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue(null);
+		getTaskProjectSnapshotMock.mockReturnValue(null);
 
 		await act(async () => {
 			ctx.root.render(
@@ -234,7 +234,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when changedFiles is null", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,

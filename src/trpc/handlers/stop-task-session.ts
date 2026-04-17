@@ -1,19 +1,19 @@
 import { parseTaskSessionStopRequest } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface StopTaskSessionDeps {
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }
 
 export async function handleStopTaskSession(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: unknown,
 	deps: StopTaskSessionDeps,
 ) {
 	try {
 		const body = parseTaskSessionStopRequest(input);
-		const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+		const terminalManager = await deps.getScopedTerminalManager(projectScope);
 		const summary = body.waitForExit
 			? await terminalManager.stopTaskSessionAndWaitForExit(body.taskId)
 			: terminalManager.stopTaskSession(body.taskId);

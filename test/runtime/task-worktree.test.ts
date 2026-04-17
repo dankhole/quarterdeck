@@ -16,14 +16,14 @@ const lockedFileSystemMocks = vi.hoisted(() => ({
 	writeTextFileAtomic: vi.fn(),
 }));
 
-const workspaceStateMocks = vi.hoisted(() => ({
+const projectStateMocks = vi.hoisted(() => ({
 	getRuntimeHomePath: vi.fn(),
 	getTaskWorktreesHomePath: vi.fn(),
-	loadWorkspaceContext: vi.fn(),
+	loadProjectContext: vi.fn(),
 }));
 
 const taskWorktreePathMocks = vi.hoisted(() => ({
-	getWorkspaceFolderLabelForWorktreePath: vi.fn(),
+	getWorkdirFolderLabelForWorktreePath: vi.fn(),
 	normalizeTaskIdForWorktreePath: vi.fn(),
 }));
 
@@ -40,19 +40,19 @@ vi.mock("../../src/fs/locked-file-system.js", () => ({
 	},
 }));
 
-vi.mock("../../src/state/workspace-state.js", () => ({
-	getRuntimeHomePath: workspaceStateMocks.getRuntimeHomePath,
-	getTaskWorktreesHomePath: workspaceStateMocks.getTaskWorktreesHomePath,
-	loadWorkspaceContext: workspaceStateMocks.loadWorkspaceContext,
+vi.mock("../../src/state/project-state.js", () => ({
+	getRuntimeHomePath: projectStateMocks.getRuntimeHomePath,
+	getTaskWorktreesHomePath: projectStateMocks.getTaskWorktreesHomePath,
+	loadProjectContext: projectStateMocks.loadProjectContext,
 }));
 
-vi.mock("../../src/workspace/task-worktree-path.js", () => ({
-	getWorkspaceFolderLabelForWorktreePath: taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath,
+vi.mock("../../src/workdir/task-worktree-path.js", () => ({
+	getWorkdirFolderLabelForWorktreePath: taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath,
 	QUARTERDECK_TASK_WORKTREES_DIR_NAME: "worktrees",
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
-import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
+import { ensureTaskWorktreeIfDoesntExist } from "../../src/workdir/task-worktree";
 
 type ExecFileOptions = {
 	cwd?: string;
@@ -106,10 +106,10 @@ describe.sequential("task-worktree serialization", () => {
 		childProcessMocks.execFilePromise.mockReset();
 		lockedFileSystemMocks.withLock.mockReset();
 		lockedFileSystemMocks.writeTextFileAtomic.mockReset();
-		workspaceStateMocks.getRuntimeHomePath.mockReset();
-		workspaceStateMocks.getTaskWorktreesHomePath.mockReset();
-		workspaceStateMocks.loadWorkspaceContext.mockReset();
-		taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath.mockReset();
+		projectStateMocks.getRuntimeHomePath.mockReset();
+		projectStateMocks.getTaskWorktreesHomePath.mockReset();
+		projectStateMocks.loadProjectContext.mockReset();
+		taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReset();
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
 
 		let lockQueue = Promise.resolve();
@@ -145,12 +145,12 @@ describe.sequential("task-worktree serialization", () => {
 			mkdirSync(runtimeHomePath, { recursive: true });
 			mkdirSync(worktreesHomePath, { recursive: true });
 
-			workspaceStateMocks.getRuntimeHomePath.mockReturnValue(runtimeHomePath);
-			workspaceStateMocks.getTaskWorktreesHomePath.mockReturnValue(worktreesHomePath);
-			workspaceStateMocks.loadWorkspaceContext.mockResolvedValue({
+			projectStateMocks.getRuntimeHomePath.mockReturnValue(runtimeHomePath);
+			projectStateMocks.getTaskWorktreesHomePath.mockReturnValue(worktreesHomePath);
+			projectStateMocks.loadProjectContext.mockResolvedValue({
 				repoPath,
 			});
-			taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath.mockReturnValue("repo");
+			taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReturnValue("repo");
 			taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockImplementation((taskId: string) => taskId);
 
 			const worktreeHeads = new Map<string, string>();
@@ -283,10 +283,10 @@ describe.sequential("branch-aware worktree creation", () => {
 		childProcessMocks.execFilePromise.mockReset();
 		lockedFileSystemMocks.withLock.mockReset();
 		lockedFileSystemMocks.writeTextFileAtomic.mockReset();
-		workspaceStateMocks.getRuntimeHomePath.mockReset();
-		workspaceStateMocks.getTaskWorktreesHomePath.mockReset();
-		workspaceStateMocks.loadWorkspaceContext.mockReset();
-		taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath.mockReset();
+		projectStateMocks.getRuntimeHomePath.mockReset();
+		projectStateMocks.getTaskWorktreesHomePath.mockReset();
+		projectStateMocks.loadProjectContext.mockReset();
+		taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReset();
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockReset();
 
 		let lockQueue = Promise.resolve();
@@ -321,10 +321,10 @@ describe.sequential("branch-aware worktree creation", () => {
 		mkdirSync(runtimeHomePath, { recursive: true });
 		mkdirSync(worktreesHomePath, { recursive: true });
 
-		workspaceStateMocks.getRuntimeHomePath.mockReturnValue(runtimeHomePath);
-		workspaceStateMocks.getTaskWorktreesHomePath.mockReturnValue(worktreesHomePath);
-		workspaceStateMocks.loadWorkspaceContext.mockResolvedValue({ repoPath });
-		taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath.mockReturnValue("repo");
+		projectStateMocks.getRuntimeHomePath.mockReturnValue(runtimeHomePath);
+		projectStateMocks.getTaskWorktreesHomePath.mockReturnValue(worktreesHomePath);
+		projectStateMocks.loadProjectContext.mockResolvedValue({ repoPath });
+		taskWorktreePathMocks.getWorkdirFolderLabelForWorktreePath.mockReturnValue("repo");
 		taskWorktreePathMocks.normalizeTaskIdForWorktreePath.mockImplementation((taskId: string) => taskId);
 
 		return { sandboxRoot, repoPath, runtimeHomePath, worktreesHomePath, cleanup };

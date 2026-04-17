@@ -1,4 +1,27 @@
 export {
+	type LoadProjectContextOptions,
+	listProjectIndexEntries,
+	loadProjectBoardById,
+	loadProjectContext,
+	loadProjectContextById,
+	loadProjectState,
+	ProjectStateConflictError,
+	type RuntimeProjectContext,
+	type RuntimeProjectIndexEntry,
+	removeProjectIndexEntry,
+	removeProjectStateFiles,
+	saveProjectState,
+	updateProjectOrder,
+} from "./project-state";
+export {
+	getProjectPinnedBranchesPath,
+	getProjectsRootPath,
+	getRuntimeHomePath,
+	getTaskWorktreesHomePath,
+	isUnderWorktreesHome,
+	resolveProjectPath,
+} from "./project-state-utils";
+export {
 	type BackupListEntry,
 	type BackupManifest,
 	type CreateBackupOptions,
@@ -10,26 +33,3 @@ export {
 	startPeriodicBackups,
 	stopPeriodicBackups,
 } from "./state-backup";
-export {
-	type LoadWorkspaceContextOptions,
-	listWorkspaceIndexEntries,
-	loadWorkspaceBoardById,
-	loadWorkspaceContext,
-	loadWorkspaceContextById,
-	loadWorkspaceState,
-	type RuntimeWorkspaceContext,
-	type RuntimeWorkspaceIndexEntry,
-	removeWorkspaceIndexEntry,
-	removeWorkspaceStateFiles,
-	saveWorkspaceState,
-	updateProjectOrder,
-	WorkspaceStateConflictError,
-} from "./workspace-state";
-export {
-	getRuntimeHomePath,
-	getTaskWorktreesHomePath,
-	getWorkspacePinnedBranchesPath,
-	getWorkspacesRootPath,
-	isUnderWorktreesHome,
-	resolveWorkspacePath,
-} from "./workspace-state-utils";

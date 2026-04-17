@@ -62,7 +62,7 @@ export function TaskCreateDialog({
 	onGenerateBranchName,
 	isGeneratingBranchName,
 	isLlmGenerationDisabled = false,
-	workspaceId,
+	projectId,
 	currentBranch,
 	branchRef,
 	branchOptions,
@@ -95,7 +95,7 @@ export function TaskCreateDialog({
 	onGenerateBranchName: () => void;
 	isGeneratingBranchName: boolean;
 	isLlmGenerationDisabled?: boolean;
-	workspaceId: string | null;
+	projectId: string | null;
 	currentBranch: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -278,7 +278,7 @@ export function TaskCreateDialog({
 							onSubmitAndStart={() => handleRunSingleStartAction("start")}
 							placeholder="Describe the task..."
 							autoFocus
-							workspaceId={workspaceId}
+							projectId={projectId}
 							showAttachImageButton={false}
 						/>
 						<div className="flex items-center justify-between mt-1.5">

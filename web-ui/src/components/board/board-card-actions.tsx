@@ -172,7 +172,7 @@ export function BoardCardActions({
 						<>
 							Restore session
 							<br />
-							in new workspace
+							in new worktree
 						</>
 					}
 				>

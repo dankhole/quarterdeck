@@ -27,7 +27,7 @@ export function GitInitDialog({
 		>
 			<AlertDialogDescription asChild>
 				<div className="flex flex-col gap-3">
-					<p>Quarterdeck requires git to manage workspaces for tasks. This folder is not a git repository yet.</p>
+					<p>Quarterdeck requires git to manage worktrees for tasks. This folder is not a git repository yet.</p>
 					{path ? <p className="font-mono text-xs text-text-secondary break-all">{path}</p> : null}
 					<p>If you cancel, the project will not be added.</p>
 				</div>

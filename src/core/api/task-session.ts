@@ -47,7 +47,7 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	state: runtimeTaskSessionStateSchema,
 	mode: runtimeTaskSessionModeSchema.nullable().optional(),
 	agentId: runtimeAgentIdSchema.nullable(),
-	workspacePath: z.string().nullable(),
+	projectPath: z.string().nullable(),
 	pid: z.number().nullable(),
 	startedAt: z.number().nullable(),
 	updatedAt: z.number(),
@@ -134,7 +134,7 @@ export const runtimeShellSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
-	workspaceTaskId: z.string().optional(),
+	projectTaskId: z.string().optional(),
 	baseRef: z.string(),
 });
 export type RuntimeShellSessionStartRequest = z.infer<typeof runtimeShellSessionStartRequestSchema>;
@@ -152,7 +152,7 @@ export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 
 export const runtimeHookIngestRequestSchema = z.object({
 	taskId: z.string(),
-	workspaceId: z.string(),
+	projectId: z.string(),
 	event: runtimeHookEventSchema,
 	metadata: runtimeTaskHookActivitySchema.partial().optional(),
 });

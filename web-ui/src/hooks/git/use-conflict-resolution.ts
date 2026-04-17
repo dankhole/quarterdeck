@@ -8,11 +8,11 @@ import type {
 	RuntimeConflictFile,
 	RuntimeConflictState,
 } from "@/runtime/types";
-import { useConflictState, useHomeConflictState } from "@/stores/workspace-metadata-store";
+import { useConflictState, useHomeConflictState } from "@/stores/project-metadata-store";
 
 import {
-	buildNoWorkspaceAbortResponse,
-	buildNoWorkspaceContinueResponse,
+	buildNoWorktreeAbortResponse,
+	buildNoWorktreeContinueResponse,
 	detectExternallyResolvedFiles,
 	filterUnresolvedPaths,
 	shouldResetOnStepChange,
@@ -36,7 +36,7 @@ export interface UseConflictResolutionResult {
 
 export function useConflictResolution(options: {
 	taskId: string | null;
-	workspaceId: string | null;
+	projectId: string | null;
 }): UseConflictResolutionResult {
 	// 1. Call both hooks unconditionally (React rules of hooks).
 	const taskConflictState = useConflictState(options.taskId);
@@ -80,15 +80,15 @@ export function useConflictResolution(options: {
 
 	// 6. Load conflict file content when conflict state changes.
 	useEffect(() => {
-		if (!isActive || !conflictState || !options.workspaceId) return;
+		if (!isActive || !conflictState || !options.projectId) return;
 
 		const unresolvedPaths = filterUnresolvedPaths(conflictState.conflictedFiles, resolvedFilesRef.current);
 		if (unresolvedPaths.length === 0) return;
 
 		let cancelled = false;
 		setIsLoading(true);
-		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
-		trpcClient.workspace.getConflictFiles
+		const trpcClient = getRuntimeTrpcClient(options.projectId);
+		trpcClient.project.getConflictFiles
 			.mutate({
 				taskId: options.taskId ?? undefined,
 				paths: unresolvedPaths,
@@ -111,7 +111,7 @@ export function useConflictResolution(options: {
 			cancelled = true;
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on conflictedFiles identity
-	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.workspaceId]);
+	}, [conflictState?.conflictedFiles, isActive, options.taskId, options.projectId]);
 
 	// 7. Detect external resolutions (metadata poll shows fewer conflicted files).
 	const previousConflictedFilesRef = useRef<string[]>([]);
@@ -133,7 +133,7 @@ export function useConflictResolution(options: {
 
 	// 8. Fetch auto-merged file content when autoMergedFiles changes.
 	useEffect(() => {
-		if (!isActive || !conflictState || !options.workspaceId) return;
+		if (!isActive || !conflictState || !options.projectId) return;
 		const paths = conflictState.autoMergedFiles;
 		if (paths.length === 0) {
 			setAutoMergedFiles([]);
@@ -141,8 +141,8 @@ export function useConflictResolution(options: {
 		}
 
 		let cancelled = false;
-		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
-		trpcClient.workspace.getAutoMergedFiles
+		const trpcClient = getRuntimeTrpcClient(options.projectId);
+		trpcClient.project.getAutoMergedFiles
 			.mutate({
 				taskId: options.taskId ?? undefined,
 				paths,
@@ -164,7 +164,7 @@ export function useConflictResolution(options: {
 			cancelled = true;
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on autoMergedFiles identity
-	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.workspaceId]);
+	}, [conflictState?.autoMergedFiles, isActive, options.taskId, options.projectId]);
 
 	// 9. Accept auto-merged file callback.
 	const acceptAutoMergedFile = useCallback((path: string) => {
@@ -174,11 +174,11 @@ export function useConflictResolution(options: {
 	// 10. Mutation wrappers.
 	const resolveFile = useCallback(
 		async (path: string, resolution: "ours" | "theirs"): Promise<{ ok: boolean; error?: string }> => {
-			if (!options.workspaceId) {
-				return { ok: false, error: "No workspace available" };
+			if (!options.projectId) {
+				return { ok: false, error: "No project available" };
 			}
-			const trpcClient = getRuntimeTrpcClient(options.workspaceId);
-			const result = await trpcClient.workspace.resolveConflictFile.mutate({
+			const trpcClient = getRuntimeTrpcClient(options.projectId);
+			const result = await trpcClient.project.resolveConflictFile.mutate({
 				taskId: options.taskId ?? undefined,
 				path,
 				resolution,
@@ -188,28 +188,28 @@ export function useConflictResolution(options: {
 			}
 			return result;
 		},
-		[options.taskId, options.workspaceId],
+		[options.taskId, options.projectId],
 	);
 
 	const continueResolution = useCallback(async (): Promise<RuntimeConflictContinueResponse> => {
-		if (!options.workspaceId) {
-			return buildNoWorkspaceContinueResponse();
+		if (!options.projectId) {
+			return buildNoWorktreeContinueResponse();
 		}
-		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
-		return await trpcClient.workspace.continueConflictResolution.mutate({
+		const trpcClient = getRuntimeTrpcClient(options.projectId);
+		return await trpcClient.project.continueConflictResolution.mutate({
 			taskId: options.taskId ?? undefined,
 		});
-	}, [options.taskId, options.workspaceId]);
+	}, [options.taskId, options.projectId]);
 
 	const abortResolution = useCallback(async (): Promise<RuntimeConflictAbortResponse> => {
-		if (!options.workspaceId) {
-			return buildNoWorkspaceAbortResponse();
+		if (!options.projectId) {
+			return buildNoWorktreeAbortResponse();
 		}
-		const trpcClient = getRuntimeTrpcClient(options.workspaceId);
-		return await trpcClient.workspace.abortConflictResolution.mutate({
+		const trpcClient = getRuntimeTrpcClient(options.projectId);
+		return await trpcClient.project.abortConflictResolution.mutate({
 			taskId: options.taskId ?? undefined,
 		});
-	}, [options.taskId, options.workspaceId]);
+	}, [options.taskId, options.projectId]);
 
 	return {
 		isActive,

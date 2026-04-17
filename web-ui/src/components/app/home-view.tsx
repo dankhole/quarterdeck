@@ -101,7 +101,7 @@ export function HomeView({
 									gitHistoryPanel={
 										git.isGitHistoryOpen ? (
 											<GitHistoryView
-												workspaceId={project.currentProjectId}
+												projectId={project.currentProjectId}
 												gitHistory={git.gitHistory}
 												onCheckoutBranch={(branch) => {
 													void git.switchHomeBranch(branch);
@@ -201,7 +201,7 @@ export function HomeView({
 										/>
 									}
 									fileBrowserData={git.homeFileBrowserData}
-									rootPath={project.workspacePath}
+									rootPath={project.projectPath}
 									pendingFileNavigation={git.pendingFileNavigation}
 									onFileNavigationConsumed={git.clearPendingFileNavigation}
 									scopeKey={`home-${project.currentProjectId ?? "no-project"}`}
@@ -244,7 +244,7 @@ export function HomeView({
 									<AgentTerminalPanel
 										key={`home-shell-${terminal.homeTerminalTaskId}`}
 										taskId={terminal.homeTerminalTaskId}
-										workspaceId={project.currentProjectId}
+										projectId={project.currentProjectId}
 										summary={terminal.homeTerminalSummary}
 										onSummary={upsertSession}
 										showSessionToolbar={false}

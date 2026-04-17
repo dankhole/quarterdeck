@@ -90,8 +90,8 @@ export async function spawnTaskSession(
 			startInPlanMode: request.startInPlanMode,
 			resumeConversation: request.resumeConversation,
 			env: request.env,
-			workspaceId: request.workspaceId,
-			workspacePath: request.workspacePath,
+			projectId: request.projectId,
+			projectPath: request.projectPath,
 			statuslineEnabled: request.statuslineEnabled,
 			worktreeAddParentGitDir: request.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: request.worktreeAddQuarterdeckDir,
@@ -108,14 +108,14 @@ export async function spawnTaskSession(
 	const hasCodexLaunchSignature = [commandBinary, ...commandArgs].some((part) => part.toLowerCase().includes("codex"));
 
 	const willAutoTrust =
-		shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.workspacePath) ||
+		shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd, request.projectPath) ||
 		shouldAutoConfirmCodexWorkspaceTrust(request.agentId, request.cwd) ||
 		hasCodexLaunchSignature;
 	const spawnData = {
 		agentId: request.agentId,
 		binary: commandBinary,
 		cwd: request.cwd,
-		workspacePath: request.workspacePath ?? null,
+		projectPath: request.projectPath ?? null,
 		argCount: commandArgs.length,
 		willAutoTrust,
 		worktreeAddParentGitDir: request.worktreeAddParentGitDir ?? false,
@@ -156,7 +156,7 @@ export async function spawnTaskSession(
 		deps.updateStore(request.taskId, {
 			state: "failed",
 			agentId: request.agentId,
-			workspacePath: request.cwd,
+			projectPath: request.cwd,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,
@@ -191,7 +191,7 @@ export async function spawnTaskSession(
 	const summary = deps.updateStore(request.taskId, {
 		state: request.awaitReview ? "awaiting_review" : "running",
 		agentId: request.agentId,
-		workspacePath: request.cwd,
+		projectPath: request.cwd,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,
@@ -375,7 +375,7 @@ export async function spawnShellSession(
 		deps.updateStore(request.taskId, {
 			state: "failed",
 			agentId: null,
-			workspacePath: request.cwd,
+			projectPath: request.cwd,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,
@@ -405,7 +405,7 @@ export async function spawnShellSession(
 	const summary = deps.updateStore(request.taskId, {
 		state: "running",
 		agentId: null,
-		workspacePath: request.cwd,
+		projectPath: request.cwd,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,

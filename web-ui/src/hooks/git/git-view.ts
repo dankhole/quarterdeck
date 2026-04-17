@@ -1,4 +1,4 @@
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
 // --- Types ---
@@ -60,10 +60,10 @@ export function setLastSelectedPath(taskId: string | null, tab: GitViewTab, path
 
 export function deriveActiveFiles(
 	activeTab: GitViewTab,
-	uncommittedFiles: RuntimeWorkspaceFileChange[] | null | undefined,
-	lastTurnFiles: RuntimeWorkspaceFileChange[] | null | undefined,
-	compareFiles: RuntimeWorkspaceFileChange[] | null | undefined,
-): RuntimeWorkspaceFileChange[] | null {
+	uncommittedFiles: RuntimeWorkdirFileChange[] | null | undefined,
+	lastTurnFiles: RuntimeWorkdirFileChange[] | null | undefined,
+	compareFiles: RuntimeWorkdirFileChange[] | null | undefined,
+): RuntimeWorkdirFileChange[] | null {
 	if (activeTab === "uncommitted") return uncommittedFiles ?? null;
 	if (activeTab === "last_turn") return lastTurnFiles ?? null;
 	if (activeTab === "compare") return compareFiles ?? null;

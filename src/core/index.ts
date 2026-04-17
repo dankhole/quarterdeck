@@ -78,11 +78,11 @@ export {
 	type TaggedLogger,
 } from "./runtime-logger";
 export type {
+	IProjectDataProvider,
+	IProjectResolver,
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
-	IWorkspaceDataProvider,
-	IWorkspaceResolver,
 } from "./service-interfaces";
 export { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "./shell";
 export {

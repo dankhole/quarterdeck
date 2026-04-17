@@ -4,19 +4,19 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeDiffMode,
 	RuntimeFileDiffResponse,
-	RuntimeWorkspaceChangesMode,
-	RuntimeWorkspaceFileChange,
+	RuntimeWorkdirChangesMode,
+	RuntimeWorkdirFileChange,
 } from "@/runtime/types";
 
 export interface UseFileDiffContentOptions {
-	workspaceId: string | null;
+	projectId: string | null;
 	taskId: string | null;
 	baseRef: string | null;
-	mode: RuntimeWorkspaceChangesMode;
+	mode: RuntimeWorkdirChangesMode;
 	fromRef?: string | null;
 	toRef?: string | null;
 	diffMode?: RuntimeDiffMode | null;
-	selectedFile: RuntimeWorkspaceFileChange | null;
+	selectedFile: RuntimeWorkdirFileChange | null;
 	/** Bumped when the file list changes (e.g. generatedAt from getChanges). Triggers a refetch of the selected file. */
 	changesGeneratedAt?: number | null;
 }
@@ -31,7 +31,7 @@ const EMPTY_RESULT: UseFileDiffContentResult = { oldText: null, newText: null, i
 
 function buildCacheKey(
 	path: string,
-	mode: RuntimeWorkspaceChangesMode,
+	mode: RuntimeWorkdirChangesMode,
 	fromRef: string | null | undefined,
 	toRef: string | null | undefined,
 ): string {
@@ -39,7 +39,7 @@ function buildCacheKey(
 }
 
 export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileDiffContentResult {
-	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode, selectedFile, changesGeneratedAt } = options;
+	const { projectId, taskId, baseRef, mode, fromRef, toRef, diffMode, selectedFile, changesGeneratedAt } = options;
 
 	const [result, setResult] = useState<UseFileDiffContentResult>(EMPTY_RESULT);
 	const requestIdRef = useRef(0);
@@ -49,7 +49,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 	const isBackgroundRefetchRef = useRef(false);
 
 	// Track the context key — clear cache when context changes.
-	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
+	const contextKey = `${projectId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
 	const prevContextKeyRef = useRef(contextKey);
 
 	useEffect(() => {
@@ -68,7 +68,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 	}, [contextKey]);
 
 	const fetchContent = useCallback(async () => {
-		if (!workspaceId || !selectedFile) {
+		if (!projectId || !selectedFile) {
 			setResult(EMPTY_RESULT);
 			return;
 		}
@@ -88,8 +88,8 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 		isBackgroundRefetchRef.current = false;
 
 		try {
-			const trpcClient = getRuntimeTrpcClient(workspaceId);
-			const response: RuntimeFileDiffResponse = await trpcClient.workspace.getFileDiff.query({
+			const trpcClient = getRuntimeTrpcClient(projectId);
+			const response: RuntimeFileDiffResponse = await trpcClient.project.getFileDiff.query({
 				taskId,
 				baseRef: baseRef ?? undefined,
 				mode,
@@ -114,7 +114,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 			}
 			setResult({ oldText: null, newText: null, isLoading: false });
 		}
-	}, [baseRef, diffMode, fromRef, mode, selectedFile, taskId, toRef, workspaceId]);
+	}, [baseRef, diffMode, fromRef, mode, selectedFile, taskId, toRef, projectId]);
 
 	// Fetch when selected file changes.
 	useEffect(() => {
@@ -140,7 +140,7 @@ export function useFileDiffContent(options: UseFileDiffContentOptions): UseFileD
 		void fetchContent();
 	}, [changesGeneratedAt, fetchContent, fromRef, mode, selectedFile, toRef]);
 
-	if (!workspaceId || !selectedFile) {
+	if (!projectId || !selectedFile) {
 		return EMPTY_RESULT;
 	}
 

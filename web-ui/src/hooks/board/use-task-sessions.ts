@@ -9,7 +9,7 @@ import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeTaskSessionSummary,
-	RuntimeTaskWorkspaceInfoResponse,
+	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
@@ -59,7 +59,7 @@ export interface UseTaskSessionsResult {
 		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
+	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorktreeInfoResponse | null>;
 }
 
 export function useTaskSessions({
@@ -77,7 +77,7 @@ export function useTaskSessions({
 		1. A new live session started and the terminal correctly saw a new startedAt.
 		2. usePersistentTerminalSession reset the xterm instance for the new session.
 		3. A stale summary from an older interrupted session was replayed back into
-		   React state from workspace hydration or the persistent terminal cache.
+		   React state from project hydration or the persistent terminal cache.
 		4. That older summary overwrote the newer running one.
 		5. The UI then bounced between old and new session identities, causing extra
 		   cleanup, remount, and reset cycles that looked like the terminal output
@@ -124,7 +124,7 @@ export function useTaskSessions({
 			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.ensureWorktree.mutate({
+				const payload = await trpcClient.project.ensureWorktree.mutate({
 					taskId: task.id,
 					baseRef: task.baseRef,
 					branch: task.branch ?? null,
@@ -175,8 +175,8 @@ export function useTaskSessions({
 				upsertSession(payload.summary);
 				// The server resolves the working directory but no longer persists
 				// it — the client caches it on the card through its normal persist.
-				if (payload.summary.workspacePath) {
-					onWorkingDirectoryResolved?.(task.id, payload.summary.workspacePath);
+				if (payload.summary.projectPath) {
+					onWorkingDirectoryResolved?.(task.id, payload.summary.projectPath);
 				}
 				return { ok: true };
 			} catch (error) {
@@ -251,9 +251,9 @@ export function useTaskSessions({
 			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.deleteWorktree.mutate({ taskId });
+				const payload = await trpcClient.project.deleteWorktree.mutate({ taskId });
 				if (!payload.ok) {
-					const message = payload.error ?? "Could not clean up task workspace.";
+					const message = payload.error ?? "Could not clean up task worktree.";
 					console.error(`[cleanupTaskWorkspace] ${message}`);
 					return null;
 				}
@@ -268,13 +268,13 @@ export function useTaskSessions({
 	);
 
 	const fetchTaskWorkspaceInfo = useCallback(
-		async (task: BoardCard): Promise<RuntimeTaskWorkspaceInfoResponse | null> => {
+		async (task: BoardCard): Promise<RuntimeTaskWorktreeInfoResponse | null> => {
 			if (!currentProjectId) {
 				return null;
 			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				return await trpcClient.workspace.getTaskContext.query({
+				return await trpcClient.project.getTaskContext.query({
 					taskId: task.id,
 					baseRef: task.baseRef,
 				});

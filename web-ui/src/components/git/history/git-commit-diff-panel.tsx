@@ -11,12 +11,12 @@ import {
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useGitCommitDiffLayout } from "@/resize/use-git-commit-diff-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import type { RuntimeGitCommitDiffFile, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeGitCommitDiffFile, RuntimeWorkdirFileChange } from "@/runtime/types";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 
 export type GitCommitDiffSource =
 	| { type: "commit"; files: RuntimeGitCommitDiffFile[] }
-	| { type: "working-copy"; files: RuntimeWorkspaceFileChange[] };
+	| { type: "working-copy"; files: RuntimeWorkdirFileChange[] };
 
 function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTMLElement): number {
 	const containerRect = container.getBoundingClientRect();
@@ -62,7 +62,7 @@ function getFileStats(source: GitCommitDiffSource, path: string): { additions: n
 	return { additions: file?.additions ?? 0, deletions: file?.deletions ?? 0 };
 }
 
-function toWorkspaceFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkspaceFileChange[] {
+function toWorkspaceFileChangeFormat(source: GitCommitDiffSource): RuntimeWorkdirFileChange[] {
 	if (source.type === "working-copy") {
 		return source.files;
 	}
@@ -117,7 +117,7 @@ export function GitCommitDiffPanel({
 		return diffSource.type === "commit" ? diffSource.files.map((f) => f.path) : diffSource.files.map((f) => f.path);
 	}, [diffSource]);
 
-	const workspaceFilesForTree = useMemo(() => {
+	const projectFilesForTree = useMemo(() => {
 		if (!diffSource) {
 			return null;
 		}
@@ -478,7 +478,7 @@ export function GitCommitDiffPanel({
 				}}
 			>
 				<FileTreePanel
-					workspaceFiles={workspaceFilesForTree}
+					projectFiles={projectFilesForTree}
 					selectedPath={selectedPath}
 					onSelectPath={onSelectPath}
 					panelFlex="1 1 0"

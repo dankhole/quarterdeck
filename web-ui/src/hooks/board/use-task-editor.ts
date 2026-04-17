@@ -236,7 +236,7 @@ export function useTaskEditor({
 		setIsGeneratingBranchName(true);
 		try {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const result = await trpcClient.workspace.generateBranchName.mutate({ prompt });
+			const result = await trpcClient.project.generateBranchName.mutate({ prompt });
 			if (result.ok && result.branchName) {
 				setBranchName(slugifyBranchName(result.branchName));
 			} else {

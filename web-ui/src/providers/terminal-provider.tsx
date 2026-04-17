@@ -11,7 +11,7 @@ import {
 	useTerminalConnectionReady,
 } from "@/runtime/use-terminal-connection-ready";
 import { findCardSelection } from "@/state/board-state";
-import { useTaskWorkspaceInfoValue, useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
+import { useTaskProjectSnapshotValue, useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
 // Context value — terminal panel state, connection readiness, and
@@ -84,12 +84,12 @@ interface TerminalProviderProps {
 export function TerminalProvider({ children }: TerminalProviderProps): ReactNode {
 	const {
 		currentProjectId,
-		workspaceGit,
+		projectGit,
 		configDefaultBaseRef,
 		agentCommand,
 		runtimeProjectConfig,
 		hasNoProjects,
-		workspacePath,
+		projectPath,
 		projects,
 		navigationCurrentProjectId,
 	} = useProjectContext();
@@ -105,8 +105,8 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 	);
 
 	// Store subscriptions for detail terminal metadata.
-	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
 
 	// --- useTerminalConnectionReady ---
 	const {
@@ -149,7 +149,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 	} = useTerminalPanels({
 		currentProjectId,
 		selectedCard,
-		workspaceGit,
+		projectGit,
 		configDefaultBaseRef,
 		agentCommand,
 		shellAutoRestartEnabled: runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
@@ -167,12 +167,12 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 		[navigationCurrentProjectId, projects],
 	);
 	const homeTerminalSubtitle = useMemo(
-		() => workspacePath ?? navigationProjectPath ?? null,
-		[navigationProjectPath, workspacePath],
+		() => projectPath ?? navigationProjectPath ?? null,
+		[navigationProjectPath, projectPath],
 	);
 
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
-	const detailTerminalSubtitle = selectedTaskWorkspaceInfo?.path ?? selectedTaskWorkspaceSnapshot?.path ?? null;
+	const detailTerminalSubtitle = selectedTaskWorktreeInfo?.path ?? selectedTaskProjectSnapshot?.path ?? null;
 
 	// --- Context value ---
 	const value = useMemo<TerminalContextValue>(

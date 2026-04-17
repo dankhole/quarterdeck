@@ -53,13 +53,13 @@ export interface UseFileBrowserDataResult {
  * can be rendered in separate layout areas (sidebar vs main).
  */
 export function useFileBrowserData(options: {
-	workspaceId: string | null;
+	projectId: string | null;
 	taskId: string | null;
 	baseRef?: string;
 	/** Browse files at a git ref (read-only). */
 	ref?: string | null;
 }): UseFileBrowserDataResult {
-	const { workspaceId, taskId, baseRef, ref: browseRef } = options;
+	const { projectId, taskId, baseRef, ref: browseRef } = options;
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
 	// Wrap setSelectedPath to also persist in the module-level cache + localStorage.
@@ -78,19 +78,19 @@ export function useFileBrowserData(options: {
 	);
 
 	const listFilesQueryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("Missing workspace.");
+		if (!projectId) {
+			throw new Error("Missing project.");
 		}
-		const trpcClient = getRuntimeTrpcClient(workspaceId);
-		return await trpcClient.workspace.listFiles.query({
+		const trpcClient = getRuntimeTrpcClient(projectId);
+		return await trpcClient.project.listFiles.query({
 			taskId,
 			...(baseRef ? { baseRef } : {}),
 			...(browseRef ? { ref: browseRef } : {}),
 		});
-	}, [workspaceId, taskId, baseRef, browseRef]);
+	}, [projectId, taskId, baseRef, browseRef]);
 
 	const fileListQuery = useTrpcQuery<RuntimeListFilesResponse>({
-		enabled: workspaceId !== null,
+		enabled: projectId !== null,
 		queryFn: listFilesQueryFn,
 	});
 
@@ -98,7 +98,7 @@ export function useFileBrowserData(options: {
 	useEffect(() => {
 		const restored = lastSelectedPathByScope.get(scopeKey(taskId)) ?? null;
 		setSelectedPathPersisted(restored);
-	}, [taskId, browseRef, workspaceId, setSelectedPathPersisted]);
+	}, [taskId, browseRef, projectId, setSelectedPathPersisted]);
 
 	// Clear restored selection if the file no longer exists in the loaded file list.
 	const files = fileListQuery.data?.files;
@@ -122,20 +122,20 @@ export function useFileBrowserData(options: {
 	}, [browseRef]);
 
 	const fileContentQueryFn = useCallback(async () => {
-		if (!selectedPath || !workspaceId) {
+		if (!selectedPath || !projectId) {
 			throw new Error("No file selected.");
 		}
-		const trpcClient = getRuntimeTrpcClient(workspaceId);
-		return await trpcClient.workspace.getFileContent.query({
+		const trpcClient = getRuntimeTrpcClient(projectId);
+		return await trpcClient.project.getFileContent.query({
 			taskId,
 			...(baseRef ? { baseRef } : {}),
 			path: selectedPath,
 			...(browseRef ? { ref: browseRef } : {}),
 		});
-	}, [workspaceId, taskId, baseRef, selectedPath, browseRef]);
+	}, [projectId, taskId, baseRef, selectedPath, browseRef]);
 
 	const fileContentQuery = useTrpcQuery<RuntimeFileContentResponse>({
-		enabled: selectedPath !== null && workspaceId !== null,
+		enabled: selectedPath !== null && projectId !== null,
 		queryFn: fileContentQueryFn,
 	});
 
@@ -152,10 +152,10 @@ export function useFileBrowserData(options: {
 
 	const getFileContent = useCallback(
 		async (path: string): Promise<RuntimeFileContentResponse | null> => {
-			if (!workspaceId) return null;
+			if (!projectId) return null;
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				return await trpcClient.workspace.getFileContent.query({
+				const trpcClient = getRuntimeTrpcClient(projectId);
+				return await trpcClient.project.getFileContent.query({
 					taskId,
 					...(baseRef ? { baseRef } : {}),
 					path,
@@ -165,7 +165,7 @@ export function useFileBrowserData(options: {
 				return null;
 			}
 		},
-		[workspaceId, taskId, baseRef, browseRef],
+		[projectId, taskId, baseRef, browseRef],
 	);
 
 	return {

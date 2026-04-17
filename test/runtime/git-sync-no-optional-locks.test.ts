@@ -19,12 +19,12 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 import {
-	type GitWorkspaceProbe,
+	type GitWorkdirProbe,
 	getCommitsBehindBase,
 	getGitSyncSummary,
-	probeGitWorkspaceState,
+	probeGitWorkdirState,
 	stashCount,
-} from "../../src/workspace";
+} from "../../src/workdir";
 
 const FAKE_REPO = "/fake/repo";
 const FAKE_COMMIT = "abc123def456789012345678901234567890abcd";
@@ -89,17 +89,17 @@ describe("git-sync --no-optional-locks", () => {
 		childProcessMocks.execFilePromise.mockReset();
 	});
 
-	it("probeGitWorkspaceState passes --no-optional-locks to git status", async () => {
+	it("probeGitWorkdirState passes --no-optional-locks to git status", async () => {
 		setupExecFileMock();
-		await probeGitWorkspaceState(FAKE_REPO);
+		await probeGitWorkdirState(FAKE_REPO);
 
 		const statusCall = findCallContaining("status");
 		assertFlagBeforeSubcommand(statusCall, "status");
 	});
 
-	it("probeGitWorkspaceState passes --no-optional-locks to git rev-parse HEAD", async () => {
+	it("probeGitWorkdirState passes --no-optional-locks to git rev-parse HEAD", async () => {
 		setupExecFileMock();
-		await probeGitWorkspaceState(FAKE_REPO);
+		await probeGitWorkdirState(FAKE_REPO);
 
 		const revParseCall = findCallContaining("rev-parse", "HEAD");
 		assertFlagBeforeSubcommand(revParseCall, "rev-parse");
@@ -108,7 +108,7 @@ describe("git-sync --no-optional-locks", () => {
 	it("getGitSyncSummary passes --no-optional-locks to git diff", async () => {
 		setupExecFileMock();
 
-		const fakeProbe: GitWorkspaceProbe = {
+		const fakeProbe: GitWorkdirProbe = {
 			repoRoot: FAKE_REPO,
 			headCommit: FAKE_COMMIT,
 			currentBranch: "main",
@@ -129,7 +129,7 @@ describe("git-sync --no-optional-locks", () => {
 
 	it("resolveRepoRoot passes --no-optional-locks to git rev-parse --show-toplevel", async () => {
 		setupExecFileMock();
-		await probeGitWorkspaceState(FAKE_REPO);
+		await probeGitWorkdirState(FAKE_REPO);
 
 		const repoRootCall = findCallContaining("rev-parse", "--show-toplevel");
 		assertFlagBeforeSubcommand(repoRootCall, "rev-parse");
@@ -169,7 +169,7 @@ describe("git-sync --no-optional-locks", () => {
 		assertFlagBeforeSubcommand(stashListCall, "stash");
 	});
 
-	it("probeGitWorkspaceState output is unchanged with --no-optional-locks", async () => {
+	it("probeGitWorkdirState output is unchanged with --no-optional-locks", async () => {
 		const statusOutput = [
 			`# branch.oid ${FAKE_COMMIT}`,
 			"# branch.head main",
@@ -180,7 +180,7 @@ describe("git-sync --no-optional-locks", () => {
 		].join("\n");
 
 		setupExecFileMock(statusOutput);
-		const result = await probeGitWorkspaceState(FAKE_REPO);
+		const result = await probeGitWorkdirState(FAKE_REPO);
 
 		expect(result.currentBranch).toBe("main");
 		expect(result.upstreamBranch).toBe("origin/main");

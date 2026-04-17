@@ -18,48 +18,48 @@ function createFakeSocket() {
 }
 
 describe("RuntimeStateClientRegistry", () => {
-	it("disconnects workspace clients with an optional final payload and cleanup callback", () => {
-		const onWorkspaceClientDisconnected = vi.fn();
-		const registry = new RuntimeStateClientRegistry({ onWorkspaceClientDisconnected });
+	it("disconnects project clients with an optional final payload and cleanup callback", () => {
+		const onProjectClientDisconnected = vi.fn();
+		const registry = new RuntimeStateClientRegistry({ onProjectClientDisconnected });
 		const clientA = createFakeSocket();
 		const clientB = createFakeSocket();
 
 		registry.registerGlobalClient(clientA.socket);
 		registry.registerGlobalClient(clientB.socket);
-		registry.registerWorkspaceClient("workspace-1", clientA.socket);
-		registry.registerWorkspaceClient("workspace-1", clientB.socket);
+		registry.registerProjectClient("project-1", clientA.socket);
+		registry.registerProjectClient("project-1", clientB.socket);
 
-		registry.disconnectWorkspaceClients("workspace-1", {
-			closeClientPayload: { type: "error", message: "workspace removed" },
+		registry.disconnectProjectClients("project-1", {
+			closeClientPayload: { type: "error", message: "project removed" },
 		});
 
-		expect(clientA.sent).toEqual([JSON.stringify({ type: "error", message: "workspace removed" })]);
-		expect(clientB.sent).toEqual([JSON.stringify({ type: "error", message: "workspace removed" })]);
+		expect(clientA.sent).toEqual([JSON.stringify({ type: "error", message: "project removed" })]);
+		expect(clientB.sent).toEqual([JSON.stringify({ type: "error", message: "project removed" })]);
 		expect(clientA.socket.close).toHaveBeenCalledOnce();
 		expect(clientB.socket.close).toHaveBeenCalledOnce();
-		expect(onWorkspaceClientDisconnected).toHaveBeenCalledTimes(2);
-		expect(onWorkspaceClientDisconnected).toHaveBeenNthCalledWith(1, "workspace-1");
-		expect(onWorkspaceClientDisconnected).toHaveBeenNthCalledWith(2, "workspace-1");
-		expect(registry.getWorkspaceClients("workspace-1")).toBeUndefined();
+		expect(onProjectClientDisconnected).toHaveBeenCalledTimes(2);
+		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(1, "project-1");
+		expect(onProjectClientDisconnected).toHaveBeenNthCalledWith(2, "project-1");
+		expect(registry.getProjectClients("project-1")).toBeUndefined();
 		expect(registry.hasClients).toBe(false);
 	});
 
-	it("broadcasts workspace messages only to registered workspace clients", () => {
+	it("broadcasts project messages only to registered project clients", () => {
 		const registry = new RuntimeStateClientRegistry({
-			onWorkspaceClientDisconnected: vi.fn(),
+			onProjectClientDisconnected: vi.fn(),
 		});
-		const workspaceClient = createFakeSocket();
+		const projectClient = createFakeSocket();
 		const otherClient = createFakeSocket();
 
-		registry.registerGlobalClient(workspaceClient.socket);
+		registry.registerGlobalClient(projectClient.socket);
 		registry.registerGlobalClient(otherClient.socket);
-		registry.registerWorkspaceClient("workspace-1", workspaceClient.socket);
+		registry.registerProjectClient("project-1", projectClient.socket);
 
-		registry.broadcastToWorkspace("workspace-1", { type: "error", message: "workspace only" });
+		registry.broadcastToProject("project-1", { type: "error", message: "project only" });
 		registry.broadcastToAll({ type: "error", message: "everyone" });
 
-		expect(workspaceClient.sent).toEqual([
-			JSON.stringify({ type: "error", message: "workspace only" }),
+		expect(projectClient.sent).toEqual([
+			JSON.stringify({ type: "error", message: "project only" }),
 			JSON.stringify({ type: "error", message: "everyone" }),
 		]);
 		expect(otherClient.sent).toEqual([JSON.stringify({ type: "error", message: "everyone" })]);

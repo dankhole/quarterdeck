@@ -51,20 +51,20 @@ const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex"];
 
 export function RuntimeSettingsDialog({
 	open,
-	workspaceId,
+	projectId,
 	initialConfig = null,
 	onOpenChange,
 	onSaved,
 	initialSection,
 }: {
 	open: boolean;
-	workspaceId: string | null;
+	projectId: string | null;
 	initialConfig?: RuntimeConfigResponse | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
-	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
+	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, projectId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [saveError, setSaveError] = useState<string | null>(null);
 	useEffect(() => {
@@ -127,14 +127,14 @@ export function RuntimeSettingsDialog({
 
 	// Reset default prompt shortcuts — handler (separate save path, bypasses form save)
 	const handleResetDefaultShortcuts = useCallback(async () => {
-		if (!workspaceId) return;
+		if (!projectId) return;
 		setIsResettingDefaultShortcuts(true);
 		try {
 			const defaultLabelSet = new Set(DEFAULT_PROMPT_SHORTCUTS.map((d) => d.label.trim().toLowerCase()));
 			const userOnlyShortcuts = (config?.promptShortcuts ?? []).filter(
 				(s) => !defaultLabelSet.has(s.label.trim().toLowerCase()),
 			);
-			await saveRuntimeConfig(workspaceId, {
+			await saveRuntimeConfig(projectId, {
 				promptShortcuts: userOnlyShortcuts,
 				hiddenDefaultPromptShortcuts: [],
 			});
@@ -157,7 +157,7 @@ export function RuntimeSettingsDialog({
 		} finally {
 			setIsResettingDefaultShortcuts(false);
 		}
-	}, [workspaceId, config?.promptShortcuts, onSaved]);
+	}, [projectId, config?.promptShortcuts, onSaved]);
 
 	// Scroll to shortcuts section when opened with initialSection
 	useEffect(() => {
@@ -195,12 +195,12 @@ export function RuntimeSettingsDialog({
 	const handleOpenFilePath = useCallback(
 		(filePath: string) => {
 			setSaveError(null);
-			void openFileOnHost(workspaceId, filePath).catch((error) => {
+			void openFileOnHost(projectId, filePath).catch((error) => {
 				const message = toErrorMessage(error);
 				setSaveError(`Could not open file on host: ${message}`);
 			});
 		},
-		[workspaceId],
+		[projectId],
 	);
 
 	const sectionProps = { fields, setField, disabled: controlsDisabled } as const;

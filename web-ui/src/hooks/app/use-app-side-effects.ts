@@ -15,8 +15,8 @@ import type { GitContextValue } from "@/providers/git-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type { ProjectContextValue } from "@/providers/project-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
-import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
-import { saveWorkspaceState } from "@/runtime/workspace-state-query";
+import { saveProjectState } from "@/runtime/project-state-query";
+import { useProjectPersistence } from "@/runtime/use-project-persistence";
 import { findCardSelection } from "@/state/board-state";
 import { useAppHotkeys } from "./use-app-hotkeys";
 import { useEscapeHandler } from "./use-escape-handler";
@@ -49,11 +49,11 @@ export function useAppSideEffects({
 	handleToggleTextSearch,
 }: UseAppSideEffectsInput): void {
 	useFocusedTaskNotification({ currentProjectId: project.currentProjectId, selectedTaskId: board.selectedTaskId });
-	useBoardMetadataSync({ workspaceMetadata: project.workspaceMetadata, setBoard: board.setBoard });
+	useBoardMetadataSync({ projectMetadata: project.projectMetadata, setBoard: board.setBoard });
 	useReviewReadyNotifications({
-		activeWorkspaceId: project.navigationCurrentProjectId,
+		activeProjectId: project.navigationCurrentProjectId,
 		latestTaskReadyForReview: project.latestTaskReadyForReview,
-		workspacePath: project.workspacePath,
+		projectPath: project.projectPath,
 	});
 
 	const trashTaskIdSet = useMemo(() => {
@@ -133,8 +133,8 @@ export function useAppSideEffects({
 	});
 
 	const persistWorkspaceStateAsync = useCallback(
-		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>
-			await saveWorkspaceState(input.workspaceId, input.payload),
+		async (input: { projectId: string; payload: Parameters<typeof saveProjectState>[1] }) =>
+			await saveProjectState(input.projectId, input.payload),
 		[],
 	);
 
@@ -148,19 +148,19 @@ export function useAppSideEffects({
 					"Workspace changed elsewhere (e.g. another tab). Synced latest state. Retry your last edit if needed.",
 				timeout: 5000,
 			},
-			"workspace-state-conflict",
+			"project-state-conflict",
 		);
 	}, [serverMutationInFlightRef]);
 
-	useWorkspacePersistence({
+	useProjectPersistence({
 		board: board.board,
 		sessions: board.sessions,
 		currentProjectId: project.currentProjectId,
-		workspaceRevision: project.workspaceRevision,
-		hydrationNonce: project.workspaceHydrationNonce,
-		canPersistWorkspaceState: project.canPersistWorkspaceState,
+		projectRevision: project.projectRevision,
+		hydrationNonce: project.projectHydrationNonce,
+		canPersistProjectState: project.canPersistProjectState,
 		isDocumentVisible: project.isDocumentVisible,
-		isWorkspaceStateRefreshing: project.isWorkspaceStateRefreshing,
+		isProjectStateRefreshing: project.isProjectStateRefreshing,
 		persistWorkspaceState: persistWorkspaceStateAsync,
 		refetchWorkspaceState: project.refreshWorkspaceState,
 		onWorkspaceRevisionChange: project.setWorkspaceRevision,

@@ -19,7 +19,7 @@ import {
 } from "@/resize/use-git-history-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeGitCommit, RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeGitCommit, RuntimeWorkdirFileChange } from "@/runtime/types";
 import { useFileDiffContent } from "@/runtime/use-file-diff-content";
 import { useWindowEvent } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -102,7 +102,7 @@ function CommitDiffHeader({
 }
 
 interface GitHistoryViewProps {
-	workspaceId: string | null;
+	projectId: string | null;
 	gitHistory: UseGitHistoryDataResult;
 	onCheckoutBranch?: (branch: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
@@ -117,7 +117,7 @@ interface GitHistoryViewProps {
 }
 
 export function GitHistoryView({
-	workspaceId,
+	projectId,
 	gitHistory,
 	onCheckoutBranch,
 	onCreateBranch,
@@ -154,13 +154,13 @@ export function GitHistoryView({
 
 	const handleConfirmCherryPick = useCallback(
 		async (commitHash: string, targetBranch: string) => {
-			if (!workspaceId) {
+			if (!projectId) {
 				return;
 			}
 			setIsCherryPickLoading(true);
 			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const result = await trpc.workspace.cherryPickCommit.mutate({
+				const trpc = getRuntimeTrpcClient(projectId);
+				const result = await trpc.project.cherryPickCommit.mutate({
 					commitHash,
 					targetBranch,
 					taskScope: taskScope ?? null,
@@ -190,7 +190,7 @@ export function GitHistoryView({
 				setIsCherryPickLoading(false);
 			}
 		},
-		[workspaceId, taskScope, gitHistory.refresh],
+		[projectId, taskScope, gitHistory.refresh],
 	);
 
 	const handleLandOnBranch = useCallback(
@@ -283,7 +283,7 @@ export function GitHistoryView({
 	);
 
 	// Lazy file content loading for working-copy view in git history
-	const wcSelectedFile = useMemo((): RuntimeWorkspaceFileChange | null => {
+	const wcSelectedFile = useMemo((): RuntimeWorkdirFileChange | null => {
 		if (gitHistory.viewMode !== "working-copy" || !gitHistory.selectedDiffPath || !gitHistory.diffSource) {
 			return null;
 		}
@@ -294,7 +294,7 @@ export function GitHistoryView({
 	// changesGeneratedAt omitted: the git history working-copy view is a one-shot load (no polling),
 	// so cached diff content doesn't go stale between polls like in git-view.tsx.
 	const wcFileDiff = useFileDiffContent({
-		workspaceId,
+		projectId,
 		taskId: taskScope?.taskId ?? null,
 		baseRef: taskScope?.baseRef ?? null,
 		mode: "working_copy",
@@ -313,7 +313,7 @@ export function GitHistoryView({
 		return { type: "working-copy" as const, files: enrichedFiles };
 	}, [gitHistory.diffSource, gitHistory.selectedDiffPath, wcFileDiff.oldText, wcFileDiff.newText]);
 
-	if (!workspaceId) {
+	if (!projectId) {
 		return (
 			<div
 				className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary"

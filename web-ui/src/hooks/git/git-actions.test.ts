@@ -6,15 +6,15 @@ import {
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
 	isTaskGitActionInFlight,
-	matchesWorkspaceInfoSelection,
+	matchesWorktreeInfoSelection,
 	type TaskGitActionLoadingState,
 } from "./git-actions";
 
 // ---------------------------------------------------------------------------
-// matchesWorkspaceInfoSelection
+// matchesWorktreeInfoSelection
 // ---------------------------------------------------------------------------
 
-describe("matchesWorkspaceInfoSelection", () => {
+describe("matchesWorktreeInfoSelection", () => {
 	it("returns true when taskId and baseRef match", () => {
 		const info = {
 			taskId: "t1",
@@ -25,8 +25,8 @@ describe("matchesWorkspaceInfoSelection", () => {
 			isDetached: false,
 			headCommit: "abc",
 		};
-		const card = { id: "t1", baseRef: "main" } as Parameters<typeof matchesWorkspaceInfoSelection>[1] & {};
-		expect(matchesWorkspaceInfoSelection(info, card)).toBe(true);
+		const card = { id: "t1", baseRef: "main" } as Parameters<typeof matchesWorktreeInfoSelection>[1] & {};
+		expect(matchesWorktreeInfoSelection(info, card)).toBe(true);
 	});
 
 	it("returns false when taskId differs", () => {
@@ -39,13 +39,13 @@ describe("matchesWorkspaceInfoSelection", () => {
 			isDetached: false,
 			headCommit: "abc",
 		};
-		const card = { id: "t2", baseRef: "main" } as Parameters<typeof matchesWorkspaceInfoSelection>[1] & {};
-		expect(matchesWorkspaceInfoSelection(info, card)).toBe(false);
+		const card = { id: "t2", baseRef: "main" } as Parameters<typeof matchesWorktreeInfoSelection>[1] & {};
+		expect(matchesWorktreeInfoSelection(info, card)).toBe(false);
 	});
 
 	it("returns false when either argument is null", () => {
-		expect(matchesWorkspaceInfoSelection(null, null)).toBe(false);
-		expect(matchesWorkspaceInfoSelection(null, { id: "t1", baseRef: "main" } as never)).toBe(false);
+		expect(matchesWorktreeInfoSelection(null, null)).toBe(false);
+		expect(matchesWorktreeInfoSelection(null, { id: "t1", baseRef: "main" } as never)).toBe(false);
 	});
 });
 

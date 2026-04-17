@@ -4,14 +4,14 @@ import { SearchOverlayShell } from "@/components/search/search-overlay-shell";
 import { useFileFinder } from "@/hooks/search/use-file-finder";
 
 export interface FileFinderOverlayProps {
-	workspaceId: string | null;
+	projectId: string | null;
 	onSelect: (filePath: string) => void;
 	onDismiss: () => void;
 }
 
-export function FileFinderOverlay({ workspaceId, onSelect, onDismiss }: FileFinderOverlayProps): ReactElement {
+export function FileFinderOverlay({ projectId, onSelect, onDismiss }: FileFinderOverlayProps): ReactElement {
 	const { query, setQuery, results, isLoading, selectedIndex, setSelectedIndex, handleKeyDown } = useFileFinder({
-		workspaceId,
+		projectId,
 		onSelect,
 	});
 

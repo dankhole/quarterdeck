@@ -2,6 +2,22 @@ export { openInBrowser } from "./browser";
 export { pickDirectoryPathFromSystemDialog } from "./directory-picker";
 export { terminateProcessForTimeout } from "./process-termination";
 export {
+	type CreateProjectMetadataMonitorDependencies,
+	createProjectMetadataMonitor,
+	type ProjectMetadataMonitor,
+	type ProjectMetadataPollIntervals,
+} from "./project-metadata-monitor";
+export {
+	type CreateProjectRegistryDependencies,
+	collectProjectWorktreeTaskIdsForRemoval,
+	createProjectRegistry,
+	type DisposeProjectRegistryOptions,
+	type ProjectRegistry,
+	type ProjectRegistryScope,
+	type RemovedProjectNotice,
+	type ResolvedProjectStreamTarget,
+} from "./project-registry";
+export {
 	type CreateRuntimeServerDependencies,
 	createRuntimeServer,
 	type RuntimeServer,
@@ -9,7 +25,7 @@ export {
 export {
 	type CreateRuntimeStateHubDependencies,
 	createRuntimeStateHub,
-	type DisposeRuntimeStateWorkspaceOptions,
+	type DisposeRuntimeStateProjectOptions,
 	type RuntimeStateHub,
 	RuntimeStateHubImpl,
 } from "./runtime-state-hub";
@@ -17,6 +33,8 @@ export {
 	buildDebugLogBatchMessage,
 	buildDebugLoggingStateMessage,
 	buildErrorMessage,
+	buildProjectMetadataUpdatedMessage,
+	buildProjectStateUpdatedMessage,
 	buildProjectsUpdatedMessage,
 	buildSnapshotMessage,
 	buildTaskBaseRefUpdatedMessage,
@@ -25,26 +43,8 @@ export {
 	buildTaskSessionsUpdatedMessage,
 	buildTaskTitleUpdatedMessage,
 	buildTaskWorkingDirectoryUpdatedMessage,
-	buildWorkspaceMetadataUpdatedMessage,
-	buildWorkspaceStateUpdatedMessage,
 } from "./runtime-state-messages";
 export {
 	type RuntimeShutdownCoordinatorDependencies,
 	shutdownRuntimeServer,
 } from "./shutdown-coordinator";
-export {
-	type CreateWorkspaceMetadataMonitorDependencies,
-	createWorkspaceMetadataMonitor,
-	type WorkspaceMetadataMonitor,
-	type WorkspaceMetadataPollIntervals,
-} from "./workspace-metadata-monitor";
-export {
-	type CreateWorkspaceRegistryDependencies,
-	collectProjectWorktreeTaskIdsForRemoval,
-	createWorkspaceRegistry,
-	type DisposeWorkspaceRegistryOptions,
-	type RemovedWorkspaceNotice,
-	type ResolvedWorkspaceStreamTarget,
-	type WorkspaceRegistry,
-	type WorkspaceRegistryScope,
-} from "./workspace-registry";

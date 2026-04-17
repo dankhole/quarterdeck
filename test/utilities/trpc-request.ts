@@ -2,7 +2,7 @@ export async function requestJson<T>(input: {
 	baseUrl: string;
 	procedure: string;
 	type: "query" | "mutation";
-	workspaceId?: string | null;
+	projectId?: string | null;
 	payload?: unknown;
 }): Promise<{ status: number; payload: T }> {
 	const unwrapTrpcPayload = (value: unknown): unknown => {
@@ -24,8 +24,8 @@ export async function requestJson<T>(input: {
 		return value;
 	};
 	const headers = new Headers();
-	if (input.workspaceId) {
-		headers.set("x-quarterdeck-workspace-id", input.workspaceId);
+	if (input.projectId) {
+		headers.set("x-quarterdeck-project-id", input.projectId);
 	}
 	let url = `${input.baseUrl}/api/trpc/${input.procedure}`;
 	let method: "GET" | "POST";

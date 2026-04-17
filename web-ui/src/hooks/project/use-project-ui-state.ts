@@ -8,7 +8,7 @@ type ProjectSummaries = ComponentProps<typeof ProjectNavigationPanel>["projects"
 
 interface UseProjectUiStateInput {
 	board: BoardData;
-	canPersistWorkspaceState: boolean;
+	canPersistProjectState: boolean;
 	currentProjectId: string | null;
 	projects: ProjectSummaries;
 	navigationCurrentProjectId: string | null;
@@ -16,8 +16,8 @@ interface UseProjectUiStateInput {
 	streamError: string | null;
 	isProjectSwitching: boolean;
 	isInitialRuntimeLoad: boolean;
-	isAwaitingWorkspaceSnapshot: boolean;
-	isWorkspaceMetadataPending: boolean;
+	isAwaitingProjectSnapshot: boolean;
+	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
 	hasReceivedSnapshot: boolean;
 }
@@ -32,7 +32,7 @@ interface UseProjectUiStateResult {
 
 export function useProjectUiState({
 	board,
-	canPersistWorkspaceState,
+	canPersistProjectState,
 	currentProjectId,
 	projects,
 	navigationCurrentProjectId,
@@ -40,13 +40,13 @@ export function useProjectUiState({
 	streamError,
 	isProjectSwitching,
 	isInitialRuntimeLoad,
-	isAwaitingWorkspaceSnapshot,
-	isWorkspaceMetadataPending,
+	isAwaitingProjectSnapshot,
+	isProjectMetadataPending,
 	isServedFromBoardCache,
 	hasReceivedSnapshot,
 }: UseProjectUiStateInput): UseProjectUiStateResult {
 	const displayedProjects = useMemo(() => {
-		if (!canPersistWorkspaceState || !currentProjectId) {
+		if (!canPersistProjectState || !currentProjectId) {
 			return projects;
 		}
 		const localCounts = countTasksByColumn(board);
@@ -58,7 +58,7 @@ export function useProjectUiState({
 					}
 				: project,
 		);
-	}, [board, canPersistWorkspaceState, currentProjectId, projects]);
+	}, [board, canPersistProjectState, currentProjectId, projects]);
 
 	const navigationProjectPath = useMemo(() => {
 		if (!navigationCurrentProjectId) {
@@ -71,9 +71,9 @@ export function useProjectUiState({
 		selectedTaskId === null &&
 		!streamError &&
 		!isServedFromBoardCache &&
-		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
+		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingProjectSnapshot || isProjectMetadataPending);
 	const isProjectListLoading = !hasReceivedSnapshot && !streamError;
-	const shouldUseNavigationPath = isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
+	const shouldUseNavigationPath = isProjectSwitching || isAwaitingProjectSnapshot || isProjectMetadataPending;
 
 	return {
 		displayedProjects,

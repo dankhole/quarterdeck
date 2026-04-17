@@ -6,7 +6,7 @@ const mutateMock = vi.hoisted(() => vi.fn(async () => ({})));
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		workspace: {
+		project: {
 			generateDisplaySummary: {
 				mutate: mutateMock,
 			},

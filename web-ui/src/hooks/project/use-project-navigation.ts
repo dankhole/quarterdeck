@@ -5,15 +5,15 @@ import {
 	isDirectoryPickerUnavailableErrorMessage,
 	promptForManualProjectPath,
 } from "@/hooks/project/project-navigation";
-import { preloadProjectWorkspaceState } from "@/runtime/project-preload-cache";
+import { preloadProjectState } from "@/runtime/project-preload-cache";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeDebugLogEntry,
+	RuntimeProjectMetadata,
+	RuntimeProjectStateResponse,
 	RuntimeProjectSummary,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeTaskSessionSummary,
-	RuntimeWorkspaceMetadata,
-	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
 import type {
 	TaskBaseRefUpdate,
@@ -42,8 +42,8 @@ export interface UseProjectNavigationResult {
 	isInitializingGitProject: boolean;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
-	workspaceState: RuntimeWorkspaceStateResponse | null;
-	workspaceMetadata: RuntimeWorkspaceMetadata | null;
+	projectState: RuntimeProjectStateResponse | null;
+	projectMetadata: RuntimeProjectMetadata | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
 	latestTaskBaseRefUpdate: TaskBaseRefUpdate | null;
@@ -82,8 +82,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 	const {
 		currentProjectId,
 		projects,
-		workspaceState,
-		workspaceMetadata,
+		projectState,
+		projectMetadata,
 		notificationSessions,
 		notificationWorkspaceIds,
 		latestTaskReadyForReview,
@@ -117,7 +117,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 			if (!projectId || projectId === currentProjectId) {
 				return;
 			}
-			preloadProjectWorkspaceState(projectId);
+			preloadProjectState(projectId);
 		},
 		[currentProjectId],
 	);
@@ -330,8 +330,8 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		isInitializingGitProject,
 		currentProjectId,
 		projects,
-		workspaceState,
-		workspaceMetadata,
+		projectState,
+		projectMetadata,
 		latestTaskReadyForReview,
 		latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate,

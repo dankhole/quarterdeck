@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef } from "react";
-import { resetWorkspaceMetadataStore } from "@/stores/workspace-metadata-store";
-import { disposeAllDedicatedTerminalsForWorkspace, releaseAll } from "@/terminal/terminal-pool";
+import { resetProjectMetadataStore } from "@/stores/project-metadata-store";
+import { disposeAllDedicatedTerminalsForProject, releaseAll } from "@/terminal/terminal-pool";
 
 interface UseProjectSwitchCleanupInput {
 	currentProjectId: string | null;
@@ -39,19 +39,19 @@ export function useProjectSwitchCleanup({
 		previousProjectIdRef.current = currentProjectId;
 		if (previousProjectId && previousProjectId !== currentProjectId) {
 			releaseAll();
-			disposeAllDedicatedTerminalsForWorkspace(previousProjectId);
+			disposeAllDedicatedTerminalsForProject(previousProjectId);
 		}
 	}, [currentProjectId]);
 
-	// Reset workspace metadata store when switching projects.
+	// Reset project metadata store when switching projects.
 	useEffect(() => {
 		if (!isProjectSwitching) {
 			return;
 		}
-		resetWorkspaceMetadataStore();
+		resetProjectMetadataStore();
 	}, [isProjectSwitching]);
 
-	// Reset workspace sync state when switching projects — pass the target project
+	// Reset project sync state when switching projects — pass the target project
 	// so the board cache can restore its data immediately (stale-while-revalidate).
 	useEffect(() => {
 		if (!isProjectSwitching) {

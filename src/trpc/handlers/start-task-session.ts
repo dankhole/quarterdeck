@@ -1,31 +1,31 @@
 import { resolveAgentCommand } from "../../config";
 import type { IRuntimeConfigProvider } from "../../core";
 import { findCardInBoard, parseTaskSessionStartRequest } from "../../core";
-import { loadWorkspaceState } from "../../state";
+import { loadProjectState } from "../../state";
 import type { TerminalSessionManager } from "../../terminal";
-import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workspace";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workdir";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface StartTaskSessionDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
-	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 }
 
 export async function handleStartTaskSession(
-	workspaceScope: RuntimeTrpcWorkspaceScope,
+	projectScope: RuntimeTrpcProjectScope,
 	input: unknown,
 	deps: StartTaskSessionDeps,
 ) {
 	try {
 		const body = parseTaskSessionStartRequest(input);
-		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(workspaceScope);
+		const scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 		const useWorktree = body.useWorktree !== false;
 		// Prefer the persisted working directory if it still exists on disk.
-		const state = await loadWorkspaceState(workspaceScope.workspacePath);
+		const state = await loadProjectState(projectScope.projectPath);
 		const existingCard = findCardInBoard(state.board, body.taskId);
 		const persisted = existingCard?.workingDirectory ?? null;
 		// Branch must be threaded to resolveTaskCwd for branch-aware worktree creation.
-		// The other path to ensureTaskWorktreeIfDoesntExist is workspace-api.ts:ensureWorktree,
+		// The other path to ensureTaskWorktreeIfDoesntExist is workdir-api.ts:ensureWorktree,
 		// which receives branch from the client request instead.
 		const savedBranch = existingCard?.branch ?? null;
 		const persistedExists = persisted !== null && (await pathExists(persisted));
@@ -38,24 +38,24 @@ export async function handleStartTaskSession(
 			taskCwd = persisted;
 		} else if (useWorktree) {
 			taskCwd = await resolveTaskCwd({
-				cwd: workspaceScope.workspacePath,
+				cwd: projectScope.projectPath,
 				taskId: body.taskId,
 				baseRef: body.baseRef,
 				ensure: true,
 				branch: savedBranch,
 			});
 		} else {
-			taskCwd = workspaceScope.workspacePath;
+			taskCwd = projectScope.projectPath;
 		}
 
 		// workingDirectory is persisted by the client after the response
-		// arrives (via summary.workspacePath). This avoids a dual-writer
+		// arrives (via summary.projectPath). This avoids a dual-writer
 		// race where the server bumps the revision while the client's
 		// persist debounce is in flight.
 
 		const shouldCaptureTurnCheckpoint = !body.resumeConversation;
 
-		const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+		const terminalManager = await deps.getScopedTerminalManager(projectScope);
 		const previousTerminalAgentId = body.resumeConversation
 			? (terminalManager.store.getSummary(body.taskId)?.agentId ?? null)
 			: null;
@@ -87,8 +87,8 @@ export async function handleStartTaskSession(
 			awaitReview: body.awaitReview,
 			cols: body.cols,
 			rows: body.rows,
-			workspaceId: workspaceScope.workspaceId,
-			workspacePath: workspaceScope.workspacePath,
+			projectId: projectScope.projectId,
+			projectPath: projectScope.projectPath,
 			statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 			worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,

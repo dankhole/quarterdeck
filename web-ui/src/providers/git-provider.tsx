@@ -22,9 +22,9 @@ import { type MainViewId, type SidebarId, useCardDetailLayout } from "@/resize/u
 import type { RuntimeGitSyncAction } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorkspaceInfoValue,
-	useTaskWorkspaceSnapshotValue,
-} from "@/stores/workspace-metadata-store";
+	useTaskProjectSnapshotValue,
+	useTaskWorktreeInfoValue,
+} from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
 // Context value — git actions, git history, git navigation, scope context,
@@ -151,8 +151,8 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		useBoardContext();
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
-	const selectedTaskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
+	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	// --- useScopeContext ---
@@ -174,7 +174,7 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 
 	// --- useBranchActions (file browser) ---
 	const fileBrowserBranchActions = useBranchActions({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		board,
 		selectBranchView: fileBrowserSelectBranchView,
 		homeGitSummary,
@@ -186,12 +186,12 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 
 	// --- useBranchActions (topbar) ---
 	const topbarBranchActions = useBranchActions({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		board,
 		selectBranchView: topbarBranchViewNoop,
 		homeGitSummary,
-		taskBranch: selectedCard ? (selectedTaskWorkspaceInfo?.branch ?? selectedCard.card.branch ?? null) : undefined,
-		taskChangedFiles: selectedCard ? (selectedTaskWorkspaceSnapshot?.changedFiles ?? 0) : undefined,
+		taskBranch: selectedCard ? (selectedTaskWorktreeInfo?.branch ?? selectedCard.card.branch ?? null) : undefined,
+		taskChangedFiles: selectedCard ? (selectedTaskProjectSnapshot?.changedFiles ?? 0) : undefined,
 		taskId: selectedCard?.card.id ?? null,
 		baseRef: selectedCard?.card.baseRef ?? null,
 		skipTaskCheckoutConfirmation,
@@ -202,17 +202,16 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 	// --- topbarBranchLabel ---
 	const topbarBranchLabel = useMemo(() => {
 		if (selectedCard) {
-			if (selectedTaskWorkspaceInfo?.branch) return selectedTaskWorkspaceInfo.branch;
-			if (selectedTaskWorkspaceInfo?.isDetached)
-				return selectedTaskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
-			return selectedCard.card.branch ?? selectedTaskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
+			if (selectedTaskWorktreeInfo?.branch) return selectedTaskWorktreeInfo.branch;
+			if (selectedTaskWorktreeInfo?.isDetached) return selectedTaskWorktreeInfo.headCommit?.substring(0, 7) ?? null;
+			return selectedCard.card.branch ?? selectedTaskWorktreeInfo?.headCommit?.substring(0, 7) ?? null;
 		}
 		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, selectedTaskWorkspaceInfo, homeGitSummary]);
+	}, [selectedCard, selectedTaskWorktreeInfo, homeGitSummary]);
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		taskId: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.taskId : null,
 		baseRef: fileBrowserResolvedScope?.type === "task" ? fileBrowserResolvedScope.baseRef : undefined,
 		ref: fileBrowserResolvedScope?.type === "branch_view" ? fileBrowserResolvedScope.ref : undefined,

@@ -17,7 +17,7 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		taskId: "task-1",
 		state: "running",
 		agentId: "claude",
-		workspacePath: "/tmp/worktree",
+		projectPath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
@@ -66,12 +66,12 @@ export function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): R
 
 export function createTestApi(manager: TerminalSessionManager, overrides: Partial<CreateHooksApiDependencies> = {}) {
 	return createHooksApi({
-		workspaces: { getWorkspacePathById: vi.fn(() => "/tmp/repo") },
+		projects: { getProjectPathById: vi.fn(() => "/tmp/repo") },
 		terminals: {
-			getTerminalManagerForWorkspace: vi.fn(() => null),
-			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			getTerminalManagerForProject: vi.fn(() => null),
+			ensureTerminalManagerForProject: vi.fn(async () => manager),
 		},
-		broadcaster: { broadcastRuntimeWorkspaceStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
+		broadcaster: { broadcastRuntimeProjectStateUpdated: vi.fn(), broadcastTaskReadyForReview: vi.fn() },
 		...overrides,
 	});
 }

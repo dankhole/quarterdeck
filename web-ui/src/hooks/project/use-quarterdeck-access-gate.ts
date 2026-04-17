@@ -1,5 +1,5 @@
 interface UseQuarterdeckAccessGateInput {
-	workspaceId: string | null;
+	projectId: string | null;
 }
 
 export function useQuarterdeckAccessGate(_input: UseQuarterdeckAccessGateInput): { isBlocked: boolean } {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../src/state/workspace-state.js", () => ({
+vi.mock("../../../src/state/project-state.js", () => ({
 	getTaskWorktreesHomePath: () => "/home/user/.quarterdeck/worktrees",
 }));
 

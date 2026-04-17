@@ -58,13 +58,13 @@ function findLatestLoadedSnapshot(snapshots: HookSnapshot[]): HookSnapshot | nul
 }
 
 function HookHarness({
-	workspaceId,
+	projectId,
 	onSnapshot,
 }: {
-	workspaceId: string | null;
+	projectId: string | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const snapshot = useRuntimeProjectConfig(workspaceId);
+	const snapshot = useRuntimeProjectConfig(projectId);
 
 	useEffect(() => {
 		onSnapshot(snapshot);
@@ -101,7 +101,7 @@ describe("useRuntimeProjectConfig", () => {
 		}
 	});
 
-	it("clears the previous project config immediately when switching workspaces", async () => {
+	it("clears the previous project config immediately when switching projects", async () => {
 		const projectAConfig = createRuntimeConfigResponse("claude", [
 			{ label: "Ship it", command: "npm run ship", icon: "rocket" },
 		]);
@@ -114,7 +114,7 @@ describe("useRuntimeProjectConfig", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					workspaceId="project-a"
+					projectId="project-a"
 					onSnapshot={(snapshot) => {
 						snapshots = [...snapshots, snapshot];
 					}}
@@ -130,7 +130,7 @@ describe("useRuntimeProjectConfig", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					workspaceId="project-b"
+					projectId="project-b"
 					onSnapshot={(snapshot) => {
 						snapshots = [...snapshots, snapshot];
 					}}
@@ -157,7 +157,7 @@ describe("useRuntimeProjectConfig", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					workspaceId={null}
+					projectId={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}

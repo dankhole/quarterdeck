@@ -194,7 +194,7 @@ export function AdvancedSection({ fields, setField, disabled }: SettingsSectionP
 						directory
 					</>
 				}
-				description="Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees). Rogue writes can corrupt workspace state and cause revision conflicts. The agent can also navigate into other task worktrees, breaking isolation. Claude Code only."
+				description="Gives agents read/write access to Quarterdeck state files (board data, session state, other worktrees). Rogue writes can corrupt project state and cause revision conflicts. The agent can also navigate into other task worktrees, breaking isolation. Claude Code only."
 			/>
 			<SettingsSwitch
 				className="mt-3"

@@ -48,7 +48,7 @@ describe("buildTrashWarningViewModel", () => {
 		const vm = buildTrashWarningViewModel(card({ title: "Build feature" }), 5, null);
 		expect(vm.taskTitle).toBe("Build feature");
 		expect(vm.fileCount).toBe(5);
-		expect(vm.workspaceInfo).toBeNull();
+		expect(vm.worktreeInfo).toBeNull();
 		expect(vm.isNonIsolated).toBe(false);
 	});
 

@@ -25,9 +25,9 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useStableCardActions } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
-	useTaskWorkspaceInfoValue,
-	useTaskWorkspaceSnapshotValue,
-} from "@/stores/workspace-metadata-store";
+	useTaskProjectSnapshotValue,
+	useTaskWorktreeInfoValue,
+} from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
@@ -197,8 +197,8 @@ export function CardDetailView({
 		[setSidePanelRatio, startSidePanelResize, sidePanelRatio],
 	);
 
-	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selection.card.id, selection.card.baseRef);
-	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selection.card.id);
+	const taskWorkspaceInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
+	const taskWorkspaceSnapshot = useTaskProjectSnapshotValue(selection.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {
@@ -213,7 +213,7 @@ export function CardDetailView({
 	});
 
 	const taskBranchActions = useBranchActions({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		board,
 		selectBranchView: taskSelectBranchView,
 		homeGitSummary,
@@ -233,20 +233,20 @@ export function CardDetailView({
 	const fileBrowserRef = taskResolvedScope?.type === "branch_view" ? taskResolvedScope.ref : undefined;
 
 	const fileBrowserData = useFileBrowserData({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 		taskId: fileBrowserTaskId,
 		baseRef: fileBrowserBaseRef,
 		ref: fileBrowserRef,
 	});
 
 	// Branch pill label: branch name for named-branch worktrees, short commit hash for headless,
-	// browsed ref for branch_view. Null only when workspace info hasn't loaded yet (genuinely initializing).
+	// browsed ref for branch_view. Null only when worktree info hasn't loaded yet (genuinely initializing).
 	const pillBranchLabel = useMemo(() => {
 		if (taskResolvedScope?.type === "branch_view") {
 			return taskResolvedScope.ref;
 		}
 		if (taskWorkspaceInfo?.branch) return taskWorkspaceInfo.branch;
-		// When workspace info reports detached HEAD, skip stale card.branch and show commit hash
+		// When worktree info reports detached HEAD, skip stale card.branch and show commit hash
 		if (taskWorkspaceInfo?.isDetached) return taskWorkspaceInfo.headCommit?.substring(0, 7) ?? null;
 		return selection.card.branch ?? taskWorkspaceInfo?.headCommit?.substring(0, 7) ?? null;
 	}, [taskResolvedScope, taskWorkspaceInfo, selection.card.branch]);
@@ -325,7 +325,7 @@ export function CardDetailView({
 					>
 						{sidebar === "commit" ? (
 							<CommitPanel
-								workspaceId={currentProjectId ?? ""}
+								projectId={currentProjectId ?? ""}
 								taskId={selection.card.id}
 								baseRef={selection.card.baseRef}
 								navigateToFile={navigateToFile}
@@ -479,7 +479,7 @@ export function CardDetailView({
 							<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0 }}>
 								<AgentTerminalPanel
 									taskId={selection.card.id}
-									workspaceId={currentProjectId}
+									projectId={currentProjectId}
 									terminalEnabled={isTaskTerminalEnabled}
 									summary={sessionSummary}
 									onSummary={onSessionSummary}
@@ -520,7 +520,7 @@ export function CardDetailView({
 									<AgentTerminalPanel
 										key={`detail-shell-${bottomTerminalTaskId}`}
 										taskId={bottomTerminalTaskId}
-										workspaceId={currentProjectId}
+										projectId={currentProjectId}
 										summary={bottomTerminalSummary}
 										onSummary={onSessionSummary}
 										showSessionToolbar={false}
@@ -555,7 +555,7 @@ export function CardDetailView({
 			/>
 			<CreateBranchDialog
 				state={taskBranchActions.createBranchDialogState}
-				workspaceId={currentProjectId}
+				projectId={currentProjectId}
 				onClose={taskBranchActions.closeCreateBranchDialog}
 				onBranchCreated={taskBranchActions.handleBranchCreated}
 			/>

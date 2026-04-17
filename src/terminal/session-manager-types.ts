@@ -63,8 +63,8 @@ export interface StartTaskSessionRequest {
 	cols?: number;
 	rows?: number;
 	env?: Record<string, string | undefined>;
-	workspaceId?: string;
-	workspacePath?: string;
+	projectId?: string;
+	projectPath?: string;
 	statuslineEnabled?: boolean;
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;

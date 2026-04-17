@@ -15,7 +15,7 @@ export function StartupOnboardingDialog({
 	selectedAgentId,
 	agents,
 	onSelectAgent,
-	workspaceId,
+	projectId,
 	runtimeConfig,
 }: {
 	open: boolean;
@@ -23,7 +23,7 @@ export function StartupOnboardingDialog({
 	selectedAgentId?: RuntimeAgentId | null;
 	agents?: RuntimeAgentDefinition[];
 	onSelectAgent?: (agentId: RuntimeAgentId) => Promise<{ ok: boolean; message?: string }>;
-	workspaceId?: string | null;
+	projectId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
 }): ReactElement {
 	const [onboardingSlideIndex, setOnboardingSlideIndex] = useState(0);
@@ -80,7 +80,7 @@ export function StartupOnboardingDialog({
 			<DialogBody className="px-4 pt-2 pb-4">
 				<TaskStartAgentOnboardingCarousel
 					open={open}
-					workspaceId={workspaceId ?? null}
+					projectId={projectId ?? null}
 					runtimeConfig={runtimeConfig ?? null}
 					selectedAgentId={selectedAgentId ?? null}
 					agents={agents ?? []}

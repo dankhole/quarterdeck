@@ -4,20 +4,20 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeDiffMode,
 	RuntimeFileDiffResponse,
-	RuntimeWorkspaceChangesMode,
-	RuntimeWorkspaceFileChange,
+	RuntimeWorkdirChangesMode,
+	RuntimeWorkdirFileChange,
 } from "@/runtime/types";
 
 export interface UseAllFileDiffContentOptions {
-	workspaceId: string | null;
+	projectId: string | null;
 	taskId: string | null;
 	baseRef: string | null;
-	mode: RuntimeWorkspaceChangesMode;
+	mode: RuntimeWorkdirChangesMode;
 	fromRef?: string | null;
 	toRef?: string | null;
 	diffMode?: RuntimeDiffMode | null;
 	/** All files from the changes list. Diffs are fetched for each file progressively. */
-	files: RuntimeWorkspaceFileChange[] | null;
+	files: RuntimeWorkdirFileChange[] | null;
 }
 
 export interface FileLoadingState {
@@ -29,7 +29,7 @@ export interface FileLoadingState {
 
 export interface UseAllFileDiffContentResult {
 	/** The files list enriched with oldText/newText from diff fetches. Null until the source files are available. */
-	enrichedFiles: RuntimeWorkspaceFileChange[] | null;
+	enrichedFiles: RuntimeWorkdirFileChange[] | null;
 	/** Per-file loading state. */
 	fileLoadingState: FileLoadingState;
 }
@@ -41,7 +41,7 @@ interface CachedDiff {
 
 function buildCacheKey(
 	path: string,
-	mode: RuntimeWorkspaceChangesMode,
+	mode: RuntimeWorkdirChangesMode,
 	fromRef: string | null | undefined,
 	toRef: string | null | undefined,
 ): string {
@@ -49,21 +49,21 @@ function buildCacheKey(
 }
 
 /** Build a stable fingerprint from the file list so we can detect actual content changes vs timestamp-only bumps. */
-function buildFileListFingerprint(files: RuntimeWorkspaceFileChange[]): string {
+function buildFileListFingerprint(files: RuntimeWorkdirFileChange[]): string {
 	return files.map((f) => `${f.path}:${f.status}:${f.additions}:${f.deletions}`).join("|");
 }
 
 const EMPTY_LOADING_STATE: FileLoadingState = { loaded: new Set(), loading: new Set() };
 
 /**
- * Fetches diff content for ALL files in a workspace changes list, progressively.
+ * Fetches diff content for ALL files in a project changes list, progressively.
  * Files are fetched sequentially to avoid overwhelming the server with concurrent requests.
  * Results are cached per context and incrementally merged into the file list.
  */
 export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): UseAllFileDiffContentResult {
-	const { workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode, files } = options;
+	const { projectId, taskId, baseRef, mode, fromRef, toRef, diffMode, files } = options;
 
-	const [enrichedFiles, setEnrichedFiles] = useState<RuntimeWorkspaceFileChange[] | null>(null);
+	const [enrichedFiles, setEnrichedFiles] = useState<RuntimeWorkdirFileChange[] | null>(null);
 	const [fileLoadingState, setFileLoadingState] = useState<FileLoadingState>(EMPTY_LOADING_STATE);
 
 	const cacheRef = useRef(new Map<string, CachedDiff>());
@@ -73,7 +73,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 	const isBackgroundRefetchRef = useRef(false);
 
 	// Track context so we can clear cache when it changes.
-	const contextKey = `${workspaceId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
+	const contextKey = `${projectId}::${taskId}::${baseRef}::${mode}::${fromRef ?? ""}::${toRef ?? ""}::${diffMode ?? ""}`;
 	const prevContextKeyRef = useRef(contextKey);
 	const prevFileFingerprintRef = useRef<string>("");
 
@@ -84,7 +84,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 		};
 	}, []);
 
-	// Clear cache on context change (workspace/task/mode/refs changed).
+	// Clear cache on context change (project/task/mode/refs changed).
 	useEffect(() => {
 		if (prevContextKeyRef.current !== contextKey) {
 			prevContextKeyRef.current = contextKey;
@@ -96,15 +96,15 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 	}, [contextKey]);
 
 	const fetchAllDiffs = useCallback(
-		async (filesToFetch: RuntimeWorkspaceFileChange[], signal: AbortSignal) => {
-			if (!workspaceId) return;
+		async (filesToFetch: RuntimeWorkdirFileChange[], signal: AbortSignal) => {
+			if (!projectId) return;
 
 			const cache = cacheRef.current;
 			const isBackground = isBackgroundRefetchRef.current;
 			isBackgroundRefetchRef.current = false;
 
 			// Build the queue: files not yet cached.
-			const queue: RuntimeWorkspaceFileChange[] = [];
+			const queue: RuntimeWorkdirFileChange[] = [];
 			for (const file of filesToFetch) {
 				const cacheKey = buildCacheKey(file.path, mode, fromRef, toRef);
 				if (!cache.has(cacheKey)) {
@@ -123,7 +123,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 				});
 			}
 
-			const trpcClient = getRuntimeTrpcClient(workspaceId);
+			const trpcClient = getRuntimeTrpcClient(projectId);
 
 			for (const file of queue) {
 				if (signal.aborted || !isMountedRef.current) return;
@@ -134,7 +134,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 
 				let diff: CachedDiff;
 				try {
-					const response: RuntimeFileDiffResponse = await trpcClient.workspace.getFileDiff.query({
+					const response: RuntimeFileDiffResponse = await trpcClient.project.getFileDiff.query({
 						taskId,
 						baseRef: baseRef ?? undefined,
 						mode,
@@ -172,7 +172,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 				});
 			}
 		},
-		[workspaceId, taskId, baseRef, mode, fromRef, toRef, diffMode],
+		[projectId, taskId, baseRef, mode, fromRef, toRef, diffMode],
 	);
 
 	// Main effect: when files change, build enriched list from cache and start fetching uncached diffs.
@@ -184,7 +184,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 		abortRef.current?.abort();
 		abortRef.current = null;
 
-		if (!files || files.length === 0 || !workspaceId) {
+		if (!files || files.length === 0 || !projectId) {
 			setEnrichedFiles(files);
 			setFileLoadingState(EMPTY_LOADING_STATE);
 			prevFileFingerprintRef.current = "";
@@ -235,7 +235,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			abortRef.current?.abort();
 			abortRef.current = null;
 		};
-	}, [files, workspaceId, mode, fromRef, toRef, diffMode, fetchAllDiffs]);
+	}, [files, projectId, mode, fromRef, toRef, diffMode, fetchAllDiffs]);
 
-	return { enrichedFiles: workspaceId && files ? enrichedFiles : null, fileLoadingState };
+	return { enrichedFiles: projectId && files ? enrichedFiles : null, fileLoadingState };
 }

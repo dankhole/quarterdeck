@@ -24,7 +24,7 @@ interface AgentTerminalSessionControls {
 
 export interface AgentTerminalPanelProps {
 	taskId: string;
-	workspaceId: string | null;
+	projectId: string | null;
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
@@ -279,7 +279,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 	// We disable it for non-active task contexts so backlog and trash views do not keep extra websocket sockets open.
 	const sessionControls = usePersistentTerminalSession({
 		taskId: props.taskId,
-		workspaceId: props.workspaceId,
+		projectId: props.projectId,
 		enabled: props.terminalEnabled ?? true,
 		onSummary: props.onSummary,
 		onConnectionReady: props.onConnectionReady,

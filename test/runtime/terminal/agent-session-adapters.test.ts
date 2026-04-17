@@ -63,7 +63,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			workspaceId: "workspace-1",
+			projectId: "workspace-1",
 		});
 
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-1");
@@ -89,7 +89,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			workspaceId: "workspace-1",
+			projectId: "workspace-1",
 		});
 
 		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
@@ -263,8 +263,8 @@ describe("worktree context system prompt", () => {
 			args: [],
 			cwd: "/worktree",
 			prompt: "Fix the bug",
-			workspaceId: "ws-1",
-			workspacePath: "/repo",
+			projectId: "ws-1",
+			projectPath: "/repo",
 		});
 
 		expect(launch.args).toContain("--append-system-prompt");
@@ -287,8 +287,8 @@ describe("worktree context system prompt", () => {
 			args: [],
 			cwd: "/repo",
 			prompt: "Fix the bug",
-			workspaceId: "ws-1",
-			workspacePath: "/repo",
+			projectId: "ws-1",
+			projectPath: "/repo",
 		});
 
 		expect(launch.args).not.toContain("--append-system-prompt");
@@ -305,8 +305,8 @@ describe("worktree context system prompt", () => {
 			args: ["--append-system-prompt", "Custom prompt"],
 			cwd: "/worktree",
 			prompt: "Fix the bug",
-			workspaceId: "ws-1",
-			workspacePath: "/repo",
+			projectId: "ws-1",
+			projectPath: "/repo",
 		});
 
 		const matches = launch.args.filter((a) => a === "--append-system-prompt");
@@ -325,8 +325,8 @@ describe("worktree context system prompt", () => {
 			args: ["--system-prompt", "Full override"],
 			cwd: "/worktree",
 			prompt: "Fix the bug",
-			workspaceId: "ws-1",
-			workspacePath: "/repo",
+			projectId: "ws-1",
+			projectPath: "/repo",
 		});
 
 		expect(launch.args).not.toContain("--append-system-prompt");

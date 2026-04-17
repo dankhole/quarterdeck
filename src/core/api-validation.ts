@@ -8,13 +8,13 @@ import {
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
 	type RuntimeProjectReorderRequest,
+	type RuntimeProjectStateSaveRequest,
 	type RuntimeShellSessionStartRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionStopRequest,
-	type RuntimeTaskWorkspaceInfoRequest,
+	type RuntimeTaskWorktreeInfoRequest,
 	type RuntimeTerminalWsClientMessage,
-	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
 	runtimeCommandRunRequestSchema,
@@ -24,13 +24,13 @@ import {
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectReorderRequestSchema,
+	runtimeProjectStateSaveRequestSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStopRequestSchema,
-	runtimeTaskWorkspaceInfoRequestSchema,
+	runtimeTaskWorktreeInfoRequestSchema,
 	runtimeTerminalWsClientMessageSchema,
-	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeEnsureRequestSchema,
 } from "./api-contract";
@@ -46,7 +46,7 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown): T {
 	return parsed.data;
 }
 
-export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest {
+export function parseTaskWorktreeInfoRequest(query: URLSearchParams): RuntimeTaskWorktreeInfoRequest {
 	const taskId = parseWithSchema(
 		requiredTrimmedStringSchema("Missing taskId query parameter."),
 		query.get("taskId") ?? "",
@@ -55,7 +55,7 @@ export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTa
 		requiredTrimmedStringSchema("Missing baseRef query parameter."),
 		query.get("baseRef") ?? "",
 	);
-	return parseWithSchema(runtimeTaskWorkspaceInfoRequestSchema, { taskId, baseRef });
+	return parseWithSchema(runtimeTaskWorktreeInfoRequestSchema, { taskId, baseRef });
 }
 
 export function parseGitCheckoutRequest(value: unknown): RuntimeGitCheckoutRequest {
@@ -97,8 +97,8 @@ export function parseWorktreeDeleteRequest(value: unknown): RuntimeWorktreeDelet
 	};
 }
 
-export function parseWorkspaceStateSaveRequest(value: unknown): RuntimeWorkspaceStateSaveRequest {
-	return parseWithSchema(runtimeWorkspaceStateSaveRequestSchema, value);
+export function parseProjectStateSaveRequest(value: unknown): RuntimeProjectStateSaveRequest {
+	return parseWithSchema(runtimeProjectStateSaveRequestSchema, value);
 }
 
 export function parseProjectAddRequest(value: unknown): RuntimeProjectAddRequest {
@@ -196,10 +196,10 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 	if (!taskId) {
 		throw new Error("Shell session taskId cannot be empty.");
 	}
-	if (parsed.workspaceTaskId !== undefined && !parsed.workspaceTaskId.trim()) {
-		throw new Error("Invalid shell session workspaceTaskId.");
+	if (parsed.projectTaskId !== undefined && !parsed.projectTaskId.trim()) {
+		throw new Error("Invalid shell session projectTaskId.");
 	}
-	const workspaceTaskId = parsed.workspaceTaskId?.trim() || undefined;
+	const projectTaskId = parsed.projectTaskId?.trim() || undefined;
 	const baseRef = parsed.baseRef.trim();
 	if (!baseRef) {
 		throw new Error("Shell session baseRef cannot be empty.");
@@ -207,7 +207,7 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 	return {
 		...parsed,
 		taskId,
-		workspaceTaskId,
+		projectTaskId,
 		baseRef,
 	};
 }
@@ -215,12 +215,12 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest {
 	const parsed = parseWithSchema(runtimeHookIngestRequestSchema, value);
 	const taskId = parsed.taskId.trim();
-	const workspaceId = parsed.workspaceId.trim();
+	const projectId = parsed.projectId.trim();
 	if (!taskId) {
 		throw new Error("Missing taskId");
 	}
-	if (!workspaceId) {
-		throw new Error("Missing workspaceId");
+	if (!projectId) {
+		throw new Error("Missing projectId");
 	}
 	const metadata = parsed.metadata
 		? {
@@ -237,7 +237,7 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 	return {
 		...parsed,
 		taskId,
-		workspaceId,
+		projectId,
 		metadata,
 	};
 }

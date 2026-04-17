@@ -6,7 +6,7 @@ describe("parseHookIngestRequest", () => {
 	it("parses and trims task and workspace identifiers", () => {
 		const parsed = parseHookIngestRequest({
 			taskId: "  task-123  ",
-			workspaceId: "  workspace-456  ",
+			projectId: "  workspace-456  ",
 			event: "to_review",
 			metadata: {
 				source: " claude ",
@@ -15,7 +15,7 @@ describe("parseHookIngestRequest", () => {
 		});
 		expect(parsed).toEqual({
 			taskId: "task-123",
-			workspaceId: "workspace-456",
+			projectId: "workspace-456",
 			event: "to_review",
 			metadata: {
 				source: "claude",
@@ -30,14 +30,14 @@ describe("parseHookIngestRequest", () => {
 		});
 	});
 
-	it("throws when workspaceId is missing", () => {
+	it("throws when projectId is missing", () => {
 		expect(() => {
 			parseHookIngestRequest({
 				taskId: "task-1",
-				workspaceId: "   ",
+				projectId: "   ",
 				event: "to_review",
 			});
-		}).toThrow("Missing workspaceId");
+		}).toThrow("Missing projectId");
 	});
 });
 

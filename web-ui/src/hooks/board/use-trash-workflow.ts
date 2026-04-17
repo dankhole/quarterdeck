@@ -11,7 +11,7 @@ import {
 import type { UseTaskLifecycleResult } from "@/hooks/board/use-task-lifecycle";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearColumnTasks, findCardSelection, moveTaskToColumn, removeTask } from "@/state/board-state";
-import { clearTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
+import { clearTaskWorktreeInfo } from "@/stores/project-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 
 export type { HardDeleteDialogState, TrashWarningState } from "@/hooks/board/trash-workflow";
@@ -198,7 +198,7 @@ export function useTrashWorkflow({
 			});
 			setSelectedTaskId((current) => {
 				if (current === taskId) {
-					clearTaskWorkspaceInfo(taskId);
+					clearTaskWorktreeInfo(taskId);
 					return null;
 				}
 				return current;
@@ -268,7 +268,7 @@ export function useTrashWorkflow({
 		});
 		if (selectedTaskId && taskIds.includes(selectedTaskId)) {
 			setSelectedTaskId(null);
-			clearTaskWorkspaceInfo(selectedTaskId);
+			clearTaskWorktreeInfo(selectedTaskId);
 		}
 
 		void (async () => {

@@ -52,7 +52,7 @@ function pickBestInstalledAgentId() {
 	return pickBestInstalledAgentIdFromDetected(detectInstalledCommands());
 }
 
-async function loadRuntimeConfigLocked(cwd: string | null, workspaceId?: string | null): Promise<RuntimeConfigState> {
+async function loadRuntimeConfigLocked(cwd: string | null, projectId?: string | null): Promise<RuntimeConfigState> {
 	const configFiles = await readRuntimeConfigFiles(cwd);
 	if (configFiles.globalConfig === null) {
 		const autoSelectedAgentId = pickBestInstalledAgentId();
@@ -65,20 +65,20 @@ async function loadRuntimeConfigLocked(cwd: string | null, workspaceId?: string 
 			};
 		}
 	}
-	const pinnedBranches = workspaceId ? await readPinnedBranchesFile(workspaceId) : [];
+	const pinnedBranches = projectId ? await readPinnedBranchesFile(projectId) : [];
 	return toRuntimeConfigState({ ...configFiles, pinnedBranches });
 }
 
 async function applyConfigUpdates({
 	globalConfigPath,
 	projectConfigPath,
-	workspaceId,
+	projectId,
 	current,
 	updates,
 }: {
 	globalConfigPath: string;
 	projectConfigPath: string | null;
-	workspaceId: string | null;
+	projectId: string | null;
 	current: RuntimeConfigState;
 	updates: RuntimeConfigUpdateInput;
 }): Promise<RuntimeConfigState> {
@@ -105,11 +105,11 @@ async function applyConfigUpdates({
 			})
 		: current.audibleNotificationSuppressCurrentProject;
 	const nextShortcuts = projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts;
-	const nextPinnedBranches = workspaceId ? (updates.pinnedBranches ?? current.pinnedBranches) : current.pinnedBranches;
+	const nextPinnedBranches = projectId ? (updates.pinnedBranches ?? current.pinnedBranches) : current.pinnedBranches;
 	const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
 	const nextHiddenDefaults = updates.hiddenDefaultPromptShortcuts ?? current.hiddenDefaultPromptShortcuts;
 	const pinnedBranchesChanged =
-		workspaceId !== null && JSON.stringify(nextPinnedBranches) !== JSON.stringify(current.pinnedBranches);
+		projectId !== null && JSON.stringify(nextPinnedBranches) !== JSON.stringify(current.pinnedBranches);
 
 	const hasChanges =
 		hasGlobalConfigFieldChanges(currentFields, mergedFields) ||
@@ -153,8 +153,8 @@ async function applyConfigUpdates({
 			shortcuts: nextShortcuts,
 		});
 	}
-	if (pinnedBranchesChanged && workspaceId !== null) {
-		await writePinnedBranchesFile(workspaceId, nextPinnedBranches);
+	if (pinnedBranchesChanged && projectId !== null) {
+		await writePinnedBranchesFile(projectId, nextPinnedBranches);
 	}
 	return createRuntimeConfigStateFromValues({
 		...mergedFields,
@@ -173,15 +173,15 @@ async function applyConfigUpdates({
 
 // --- Public API ---
 
-export async function loadRuntimeConfig(cwd: string, workspaceId?: string | null): Promise<RuntimeConfigState> {
+export async function loadRuntimeConfig(cwd: string, projectId?: string | null): Promise<RuntimeConfigState> {
 	const configFiles = await readRuntimeConfigFiles(cwd);
 	if (configFiles.globalConfig !== null) {
-		const pinnedBranches = workspaceId ? await readPinnedBranchesFile(workspaceId) : [];
+		const pinnedBranches = projectId ? await readPinnedBranchesFile(projectId) : [];
 		return toRuntimeConfigState({ ...configFiles, pinnedBranches });
 	}
 	return await lockedFileSystem.withLocks(
-		getRuntimeConfigLockRequests(cwd, workspaceId),
-		async () => await loadRuntimeConfigLocked(cwd, workspaceId),
+		getRuntimeConfigLockRequests(cwd, projectId),
+		async () => await loadRuntimeConfigLocked(cwd, projectId),
 	);
 }
 
@@ -198,7 +198,7 @@ export async function loadGlobalRuntimeConfig(): Promise<RuntimeConfigState> {
 
 export async function saveRuntimeConfig(
 	cwd: string,
-	workspaceId: string | null,
+	projectId: string | null,
 	config: GlobalConfigFieldValues & {
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutLabel: string | null;
@@ -211,12 +211,12 @@ export async function saveRuntimeConfig(
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
-	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd, workspaceId), async () => {
+	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd, projectId), async () => {
 		const { shortcuts, pinnedBranches, ...globalFields } = config;
 		await writeRuntimeGlobalConfigFile(globalConfigPath, globalFields);
 		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts });
-		if (workspaceId) {
-			await writePinnedBranchesFile(workspaceId, pinnedBranches);
+		if (projectId) {
+			await writePinnedBranchesFile(projectId, pinnedBranches);
 		}
 		return createRuntimeConfigStateFromValues({
 			...config,
@@ -228,16 +228,16 @@ export async function saveRuntimeConfig(
 
 export async function updateRuntimeConfig(
 	cwd: string,
-	workspaceId: string | null,
+	projectId: string | null,
 	updates: RuntimeConfigUpdateInput,
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
-	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd, workspaceId), async () => {
-		const current = await loadRuntimeConfigLocked(cwd, workspaceId);
+	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd, projectId), async () => {
+		const current = await loadRuntimeConfigLocked(cwd, projectId);
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
-		return applyConfigUpdates({ globalConfigPath, projectConfigPath, workspaceId, current, updates });
+		return applyConfigUpdates({ globalConfigPath, projectConfigPath, projectId, current, updates });
 	});
 }
 
@@ -250,7 +250,7 @@ export async function updateGlobalRuntimeConfig(
 		const result = await applyConfigUpdates({
 			globalConfigPath,
 			projectConfigPath: null,
-			workspaceId: null,
+			projectId: null,
 			current,
 			updates,
 		});

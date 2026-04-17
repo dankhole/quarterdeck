@@ -18,7 +18,7 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 				return;
 			}
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.workspace.regenerateTaskTitle.mutate({ taskId }).catch(() => {
+			void trpcClient.project.regenerateTaskTitle.mutate({ taskId }).catch(() => {
 				showAppToast({ message: "Could not regenerate title", intent: "danger" });
 			});
 		},
@@ -31,7 +31,7 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 				return;
 			}
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.workspace.updateTaskTitle.mutate({ taskId, title }).catch(() => {
+			void trpcClient.project.updateTaskTitle.mutate({ taskId, title }).catch(() => {
 				showAppToast({ message: "Could not update title", intent: "danger" });
 			});
 		},

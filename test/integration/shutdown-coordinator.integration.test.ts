@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
 import { shutdownRuntimeServer } from "../../src/server";
-import { loadWorkspaceState, saveWorkspaceState } from "../../src/state";
+import { loadProjectState, saveProjectState } from "../../src/state";
 import type { TerminalSessionManager } from "../../src/terminal";
 import { initGitRepository } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
@@ -47,7 +47,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 		taskId,
 		state,
 		agentId: "codex",
-		workspacePath: `/tmp/${taskId}`,
+		projectPath: `/tmp/${taskId}`,
 		pid: state === "idle" ? null : 1234,
 		startedAt: state === "idle" ? null : Date.now() - 1_000,
 		updatedAt: Date.now(),
@@ -75,8 +75,8 @@ describe.sequential("shutdown coordinator integration", () => {
 				initGitRepository(managedProjectPath);
 				initGitRepository(indexedProjectPath);
 
-				const managedInitial = await loadWorkspaceState(managedProjectPath);
-				await saveWorkspaceState(managedProjectPath, {
+				const managedInitial = await loadProjectState(managedProjectPath);
+				await saveProjectState(managedProjectPath, {
 					board: createBoard({
 						inProgress: ["managed-running", "managed-missing-session"],
 						review: ["managed-idle"],
@@ -88,8 +88,8 @@ describe.sequential("shutdown coordinator integration", () => {
 					expectedRevision: managedInitial.revision,
 				});
 
-				const indexedInitial = await loadWorkspaceState(indexedProjectPath);
-				await saveWorkspaceState(indexedProjectPath, {
+				const indexedInitial = await loadProjectState(indexedProjectPath);
+				await saveProjectState(indexedProjectPath, {
 					board: createBoard({
 						inProgress: ["indexed-missing-session"],
 						review: ["indexed-awaiting-review"],
@@ -118,11 +118,11 @@ describe.sequential("shutdown coordinator integration", () => {
 					},
 				} as unknown as TerminalSessionManager;
 				await shutdownRuntimeServer({
-					workspaceRegistry: {
-						listManagedWorkspaces: () => [
+					projectRegistry: {
+						listManagedProjects: () => [
 							{
-								workspaceId: "managed-project",
-								workspacePath: managedProjectPath,
+								projectId: "managed-project",
+								projectPath: managedProjectPath,
 								terminalManager: managedTerminalManager,
 							},
 						],
@@ -136,7 +136,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(didCloseRuntimeServer).toBe(true);
 
 				// Cards stay in their original columns — not moved to trash.
-				const managedAfter = await loadWorkspaceState(managedProjectPath);
+				const managedAfter = await loadProjectState(managedProjectPath);
 				const managedInProgress =
 					managedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
 				const managedReview = managedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
@@ -155,7 +155,7 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
 				// Indexed (non-managed) workspaces are also preserved in place.
-				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
+				const indexedAfter = await loadProjectState(indexedProjectPath);
 				const indexedInProgress =
 					indexedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
 				const indexedReview = indexedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];

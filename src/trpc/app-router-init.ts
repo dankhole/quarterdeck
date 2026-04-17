@@ -1,6 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
-import type { RuntimeTrpcContext, RuntimeTrpcContextWithWorkspaceScope } from "./app-router-context";
+import type { RuntimeTrpcContext, RuntimeTrpcContextWithProjectScope } from "./app-router-context";
 
 function readConflictRevision(cause: unknown): number | null {
 	if (!cause || typeof cause !== "object" || !("currentRevision" in cause)) {
@@ -26,23 +26,23 @@ export const t = initTRPC.context<RuntimeTrpcContext>().create({
 	},
 });
 
-export const workspaceProcedure = t.procedure.use(({ ctx, next }) => {
-	if (!ctx.requestedWorkspaceId) {
+export const projectProcedure = t.procedure.use(({ ctx, next }) => {
+	if (!ctx.requestedProjectId) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message: "Missing workspace scope. Include x-quarterdeck-workspace-id header or workspaceId query parameter.",
+			message: "Missing project scope. Include x-quarterdeck-project-id header or projectId query parameter.",
 		});
 	}
-	if (!ctx.workspaceScope) {
+	if (!ctx.projectScope) {
 		throw new TRPCError({
 			code: "NOT_FOUND",
-			message: `Unknown workspace ID: ${ctx.requestedWorkspaceId}`,
+			message: `Unknown project ID: ${ctx.requestedProjectId}`,
 		});
 	}
 	return next({
 		ctx: {
 			...ctx,
-			workspaceScope: ctx.workspaceScope,
-		} satisfies RuntimeTrpcContextWithWorkspaceScope,
+			projectScope: ctx.projectScope,
+		} satisfies RuntimeTrpcContextWithProjectScope,
 	});
 });

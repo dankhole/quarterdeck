@@ -69,7 +69,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 			binary: "claude",
 			args: [],
 			cwd: "/tmp/workspace",
-			workspacePath: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
 			prompt: "Fix the bug",
 		});
 
@@ -136,7 +136,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 			args: [],
 			cwd: "/some/random/path",
 			prompt: "Fix the bug",
-			// No workspacePath, and cwd is not under worktrees home
+			// No projectPath, and cwd is not under worktrees home
 		});
 
 		const session = spawnedSessions[0];
@@ -165,7 +165,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 			binary: "claude",
 			args: [],
 			cwd: "/tmp/workspace",
-			workspacePath: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
 			prompt: "Fix the bug",
 		});
 
@@ -200,7 +200,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 			binary: "claude",
 			args: [],
 			cwd: "/tmp/workspace",
-			workspacePath: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
 			prompt: "Fix the bug",
 		});
 
@@ -240,7 +240,7 @@ describe("TerminalSessionManager workspace trust auto-confirm", () => {
 			binary: "claude",
 			args: [],
 			cwd: "/tmp/workspace",
-			workspacePath: "/tmp/workspace",
+			projectPath: "/tmp/workspace",
 			prompt: "Fix the bug",
 		});
 

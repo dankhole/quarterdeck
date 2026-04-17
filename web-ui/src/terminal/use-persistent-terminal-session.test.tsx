@@ -44,14 +44,14 @@ function createTerminalSlotMock() {
 
 function HookHarness({
 	taskId,
-	workspaceId,
+	projectId,
 	sessionStartedAt,
 	enabled = true,
 	onSummary,
 	onConnectionReady,
 }: {
 	taskId: string;
-	workspaceId: string | null;
+	projectId: string | null;
 	sessionStartedAt: number | null;
 	enabled?: boolean;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
@@ -59,7 +59,7 @@ function HookHarness({
 }) {
 	const { containerRef } = usePersistentTerminalSession({
 		taskId,
-		workspaceId,
+		projectId,
 		enabled,
 		onSummary,
 		onConnectionReady,
@@ -112,7 +112,7 @@ describe("usePersistentTerminalSession", () => {
 
 	it("acquires slot from pool on mount", async () => {
 		await act(async () => {
-			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} />);
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
 		});
 
 		expect(acquireForTaskMock).toHaveBeenCalledTimes(1);
@@ -124,7 +124,7 @@ describe("usePersistentTerminalSession", () => {
 		acquireForTaskMock.mockReturnValue(terminal);
 
 		await act(async () => {
-			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} />);
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
 		});
 
 		expect(terminal.show).toHaveBeenCalledTimes(1);
@@ -132,11 +132,11 @@ describe("usePersistentTerminalSession", () => {
 
 	it("does not dispose slot on task switch (pool manages lifecycle)", async () => {
 		await act(async () => {
-			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} />);
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
 		});
 
 		await act(async () => {
-			root.render(<HookHarness taskId="task-b" workspaceId="project-1" sessionStartedAt={200} />);
+			root.render(<HookHarness taskId="task-b" projectId="project-1" sessionStartedAt={200} />);
 		});
 
 		expect(releaseTaskMock).not.toHaveBeenCalled();
@@ -145,13 +145,13 @@ describe("usePersistentTerminalSession", () => {
 
 	it("releases task when disabled", async () => {
 		await act(async () => {
-			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} enabled />);
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} enabled />);
 		});
 
 		releaseTaskMock.mockClear();
 
 		await act(async () => {
-			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} enabled={false} />);
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} enabled={false} />);
 		});
 
 		expect(releaseTaskMock).toHaveBeenCalledTimes(1);
@@ -166,7 +166,7 @@ describe("usePersistentTerminalSession", () => {
 			root.render(
 				<HookHarness
 					taskId="task-a"
-					workspaceId="project-1"
+					projectId="project-1"
 					sessionStartedAt={100}
 					onSummary={() => {}}
 					onConnectionReady={() => {}}
@@ -181,7 +181,7 @@ describe("usePersistentTerminalSession", () => {
 			root.render(
 				<HookHarness
 					taskId="task-a"
-					workspaceId="project-1"
+					projectId="project-1"
 					sessionStartedAt={100}
 					onSummary={() => {}}
 					onConnectionReady={() => {}}
@@ -197,7 +197,7 @@ describe("usePersistentTerminalSession", () => {
 		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
 
 		await act(async () => {
-			root.render(<HookHarness taskId="__home_terminal__" workspaceId="project-1" sessionStartedAt={100} />);
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
 		});
 
 		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
@@ -208,14 +208,14 @@ describe("usePersistentTerminalSession", () => {
 		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
 
 		await act(async () => {
-			root.render(<HookHarness taskId="__home_terminal__" workspaceId="project-1" sessionStartedAt={100} enabled />);
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} enabled />);
 		});
 
 		disposeDedicatedTerminalMock.mockClear();
 
 		await act(async () => {
 			root.render(
-				<HookHarness taskId="__home_terminal__" workspaceId="project-1" sessionStartedAt={100} enabled={false} />,
+				<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} enabled={false} />,
 			);
 		});
 

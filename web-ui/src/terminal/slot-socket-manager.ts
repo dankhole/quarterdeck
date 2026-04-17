@@ -66,12 +66,12 @@ export class SlotSocketManager {
 		return true;
 	}
 
-	connectIo(taskId: string, workspaceId: string): void {
+	connectIo(taskId: string, projectId: string): void {
 		if (this.ioSocket) {
 			return;
 		}
 		const t0 = performance.now();
-		const ioSocket = new WebSocket(getTerminalWebSocketUrl("io", taskId, workspaceId, this.clientId));
+		const ioSocket = new WebSocket(getTerminalWebSocketUrl("io", taskId, projectId, this.clientId));
 		ioSocket.binaryType = "arraybuffer";
 		ioSocket.addEventListener("message", (event) => {
 			if (this.callbacks.isDisposed() || this.ioSocket !== ioSocket) {
@@ -122,12 +122,12 @@ export class SlotSocketManager {
 		};
 	}
 
-	connectControl(taskId: string, workspaceId: string): void {
+	connectControl(taskId: string, projectId: string): void {
 		if (this.controlSocket) {
 			return;
 		}
 		const t0 = performance.now();
-		const controlSocket = new WebSocket(getTerminalWebSocketUrl("control", taskId, workspaceId, this.clientId));
+		const controlSocket = new WebSocket(getTerminalWebSocketUrl("control", taskId, projectId, this.clientId));
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.callbacks.isDisposed() || this.controlSocket !== controlSocket) {

@@ -53,11 +53,11 @@ src/                         # Runtime (Node.js TypeScript)
 ├── fs/                      # File system locking utilities
 ├── projects/                # Project detection & discovery
 ├── prompts/                 # System prompt injection for agents
-├── server/                  # HTTP server, runtime state hub, workspace registry
-├── state/                   # Workspace state persistence (JSON in .quarterdeck/)
+├── server/                  # HTTP server, runtime state hub, project registry
+├── state/                   # Project state persistence (JSON in .quarterdeck/)
 ├── terminal/                # PTY sessions, agent registry, adapters, state machine
-├── trpc/                    # tRPC API routers (runtime, workspace, projects, hooks)
-└── workspace/               # Worktree lifecycle, git sync, history, file changes
+├── trpc/                    # tRPC API routers (runtime, project, projects, hooks)
+└── workdir/                 # Worktree lifecycle, git sync, history, file changes
 
 web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
 ├── src/
@@ -66,7 +66,7 @@ web-ui/                      # Frontend (React 18 + Vite + Tailwind v4)
 │   ├── hooks/               # Custom hooks (57 files)
 │   ├── runtime/             # tRPC client, config queries, state streams
 │   ├── state/               # Local board state (Immer-based reducer)
-│   ├── stores/              # External store (workspace metadata, useSyncExternalStore)
+│   ├── stores/              # External store (project metadata, useSyncExternalStore)
 │   ├── terminal/            # xterm.js wrapper, terminal panels
 │   ├── styles/              # Tailwind CSS (globals.css with @theme tokens)
 │   └── types/               # Type definitions
@@ -88,9 +88,9 @@ test/                        # Runtime test suites (Vitest)
 
 ### State management
 
-- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeWorkspaceState` (JSON persistence in `.quarterdeck/workspaces/`)
+- **Runtime**: `RuntimeStateHub` (WebSocket broadcast), `RuntimeProjectState` (JSON persistence in `.quarterdeck/projects/`)
 - **Frontend board**: Custom Immer-based reducer (`web-ui/src/state/board-state.ts`), not Redux/Zustand
-- **Frontend workspace metadata**: `useSyncExternalStore` pattern (`web-ui/src/stores/workspace-metadata-store.ts`)
+- **Frontend project metadata**: `useSyncExternalStore` pattern (`web-ui/src/stores/project-metadata-store.ts`)
 - **Runtime-to-frontend sync**: tRPC subscriptions + WebSocket for terminal output
 
 ## Tech stack

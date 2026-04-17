@@ -10,7 +10,7 @@ describe("buildTaskGitActionPrompt", () => {
 		expect(
 			buildTaskGitActionPrompt({
 				action: "commit",
-				workspaceInfo: {
+				worktreeInfo: {
 					taskId: "task-123",
 					path: "/tmp/task-123",
 					exists: true,
@@ -30,7 +30,7 @@ describe("buildTaskGitActionPrompt", () => {
 		expect(
 			buildTaskGitActionPrompt({
 				action: "pr",
-				workspaceInfo: {
+				worktreeInfo: {
 					taskId: "task-123",
 					path: "/tmp/task-123",
 					exists: true,

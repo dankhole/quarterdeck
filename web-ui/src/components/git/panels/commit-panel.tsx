@@ -31,12 +31,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommitPanel } from "@/hooks/git/use-commit-panel";
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
-import { useHomeStashCount } from "@/stores/workspace-metadata-store";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
+import { useHomeStashCount } from "@/stores/project-metadata-store";
 import { StashListSection } from "./stash-list-section";
 
 export interface CommitPanelProps {
-	workspaceId: string;
+	projectId: string;
 	taskId: string | null;
 	baseRef: string | null;
 	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
@@ -60,7 +60,7 @@ function CommitFileRow({
 	onRollback,
 	onNavigateToFile,
 }: {
-	file: RuntimeWorkspaceFileChange;
+	file: RuntimeWorkdirFileChange;
 	checked: boolean;
 	onToggle: () => void;
 	onRollback: () => void;
@@ -147,7 +147,7 @@ function CommitFileRow({
 	);
 }
 
-export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: CommitPanelProps): React.ReactElement {
+export function CommitPanel({ projectId, taskId, baseRef, navigateToFile }: CommitPanelProps): React.ReactElement {
 	const {
 		files,
 		selectedPaths,
@@ -175,7 +175,7 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 		commitFiles,
 		commitAndPush,
 		rollbackFile,
-	} = useCommitPanel(taskId, workspaceId, baseRef);
+	} = useCommitPanel(taskId, projectId, baseRef);
 
 	const stashCount = useHomeStashCount();
 	const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
@@ -375,7 +375,7 @@ export function CommitPanel({ workspaceId, taskId, baseRef, navigateToFile }: Co
 			</div>
 
 			{/* Stash list */}
-			<StashListSection taskId={taskId ?? undefined} workspaceId={workspaceId} stashCount={stashCount} />
+			<StashListSection taskId={taskId ?? undefined} projectId={projectId} stashCount={stashCount} />
 
 			{/* Discard All confirmation */}
 			<AlertDialog open={discardDialogOpen} onOpenChange={(open) => !open && setDiscardDialogOpen(false)}>

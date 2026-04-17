@@ -7,7 +7,7 @@
  */
 
 import { showAppToast } from "@/components/app-toaster";
-import type { RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -33,17 +33,17 @@ export interface GitActionErrorState {
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether cached workspace info matches the currently selected card.
- * Returns a type-narrowed `RuntimeTaskWorkspaceInfoResponse` when it matches.
+ * Check whether cached worktree info matches the currently selected card.
+ * Returns a type-narrowed `RuntimeTaskWorktreeInfoResponse` when it matches.
  */
-export function matchesWorkspaceInfoSelection(
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
+export function matchesWorktreeInfoSelection(
+	worktreeInfo: RuntimeTaskWorktreeInfoResponse | null,
 	card: BoardCard | null,
-): workspaceInfo is RuntimeTaskWorkspaceInfoResponse {
-	if (!workspaceInfo || !card) {
+): worktreeInfo is RuntimeTaskWorktreeInfoResponse {
+	if (!worktreeInfo || !card) {
 		return false;
 	}
-	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
+	return worktreeInfo.taskId === card.id && worktreeInfo.baseRef === card.baseRef;
 }
 
 // ---------------------------------------------------------------------------

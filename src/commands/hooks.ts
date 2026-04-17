@@ -31,7 +31,7 @@ const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "
 interface HooksIngestArgs {
 	event: RuntimeHookEvent;
 	taskId: string;
-	workspaceId: string;
+	projectId: string;
 	metadata?: Partial<RuntimeTaskHookActivity>;
 	payload?: Record<string, unknown> | null;
 }
@@ -85,7 +85,7 @@ function parseHooksIngestArgs(
 	return {
 		event,
 		taskId: context.taskId,
-		workspaceId: context.workspaceId,
+		projectId: context.projectId,
 		metadata,
 		payload,
 	};
@@ -108,7 +108,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 		const ingestResponse = await withTimeout(
 			trpcClient.hooks.ingest.mutate({
 				taskId: args.taskId,
-				workspaceId: args.workspaceId,
+				projectId: args.projectId,
 				event: args.event,
 				metadata: args.metadata,
 			}),

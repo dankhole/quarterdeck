@@ -93,7 +93,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		taskId,
 		state: "idle",
 		agentId: null,
-		workspacePath: null,
+		projectPath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

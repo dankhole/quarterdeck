@@ -1,6 +1,6 @@
 import { ArrowRight, GitMerge } from "lucide-react";
 
-import { useConflictState, useHomeConflictState } from "@/stores/workspace-metadata-store";
+import { useConflictState, useHomeConflictState } from "@/stores/project-metadata-store";
 
 export function ConflictBanner({
 	taskId,

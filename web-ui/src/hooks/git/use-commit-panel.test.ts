@@ -8,7 +8,7 @@ import type { UseCommitPanelResult } from "@/hooks/git/use-commit-panel";
 // Mocks — hoisted so they are available before any imports run.
 // ---------------------------------------------------------------------------
 
-const useRuntimeWorkspaceChangesMock = vi.hoisted(() =>
+const useRuntimeProjectChangesMock = vi.hoisted(() =>
 	vi.fn(() => ({
 		changes: null as {
 			files: Array<{
@@ -24,23 +24,23 @@ const useRuntimeWorkspaceChangesMock = vi.hoisted(() =>
 	})),
 );
 
-vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
-	useRuntimeWorkspaceChanges: useRuntimeWorkspaceChangesMock,
+vi.mock("@/runtime/use-runtime-project-changes", () => ({
+	useRuntimeProjectChanges: useRuntimeProjectChangesMock,
 }));
 
 const useHomeGitSummaryValueMock = vi.hoisted(() =>
 	vi.fn(() => ({ currentBranch: "main" }) as { currentBranch: string | null } | null),
 );
 
-const useTaskWorkspaceSnapshotValueMock = vi.hoisted(() =>
+const useTaskProjectSnapshotValueMock = vi.hoisted(() =>
 	vi.fn(() => null as { branch: string | null; isDetached: boolean } | null),
 );
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	useTaskWorkspaceStateVersionValue: () => 0,
+vi.mock("@/stores/project-metadata-store", () => ({
+	useTaskProjectStateVersionValue: () => 0,
 	useHomeGitStateVersionValue: () => 0,
 	useHomeGitSummaryValue: useHomeGitSummaryValueMock,
-	useTaskWorkspaceSnapshotValue: useTaskWorkspaceSnapshotValueMock,
+	useTaskProjectSnapshotValue: useTaskProjectSnapshotValueMock,
 }));
 
 const commitMutateMock = vi.hoisted(() =>
@@ -54,7 +54,7 @@ const discardFileMutateMock = vi.hoisted(() => vi.fn(async () => ({ ok: true }))
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		workspace: {
+		project: {
 			commitSelectedFiles: { mutate: commitMutateMock },
 			discardGitChanges: { mutate: discardGitChangesMutateMock },
 			discardFile: { mutate: discardFileMutateMock },
@@ -88,16 +88,16 @@ const mockFiles = [
 
 function HookHarness({
 	taskId,
-	workspaceId,
+	projectId,
 	baseRef,
 	onSnapshot,
 }: {
 	taskId: string | null;
-	workspaceId: string | null;
+	projectId: string | null;
 	baseRef: string | null;
 	onSnapshot: (snapshot: UseCommitPanelResult) => void;
 }): null {
-	const result = useCommitPanel(taskId, workspaceId, baseRef);
+	const result = useCommitPanel(taskId, projectId, baseRef);
 	useEffect(() => {
 		onSnapshot(result);
 	});
@@ -128,14 +128,14 @@ describe("useCommitPanel", () => {
 		discardFileMutateMock.mockClear();
 
 		// Default: return the three mock files.
-		useRuntimeWorkspaceChangesMock.mockReturnValue({
+		useRuntimeProjectChangesMock.mockReturnValue({
 			changes: { files: mockFiles },
 			isLoading: false,
 		});
 
 		// Default: on a named branch.
 		useHomeGitSummaryValueMock.mockReturnValue({ currentBranch: "main" });
-		useTaskWorkspaceSnapshotValueMock.mockReturnValue(null);
+		useTaskProjectSnapshotValueMock.mockReturnValue(null);
 	});
 
 	afterEach(() => {
@@ -151,12 +151,12 @@ describe("useCommitPanel", () => {
 		}
 	});
 
-	function render(props: { taskId?: string | null; workspaceId?: string | null; baseRef?: string | null } = {}): void {
+	function render(props: { taskId?: string | null; projectId?: string | null; baseRef?: string | null } = {}): void {
 		act(() => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: props.taskId ?? "task-1",
-					workspaceId: props.workspaceId ?? "ws-1",
+					projectId: props.projectId ?? "ws-1",
 					baseRef: props.baseRef ?? "main",
 					onSnapshot: (snapshot: UseCommitPanelResult) => {
 						latest = snapshot;
@@ -284,7 +284,7 @@ describe("useCommitPanel", () => {
 			{ path: "src/bar.ts", status: "added", additions: 10, deletions: 0, oldText: "", newText: "" },
 			{ path: "src/new.ts", status: "added", additions: 3, deletions: 0, oldText: "", newText: "" },
 		];
-		useRuntimeWorkspaceChangesMock.mockReturnValue({
+		useRuntimeProjectChangesMock.mockReturnValue({
 			changes: { files: updatedFiles },
 			isLoading: false,
 		});
@@ -294,7 +294,7 @@ describe("useCommitPanel", () => {
 			root.render(
 				createElement(HookHarness, {
 					taskId: "task-1",
-					workspaceId: "ws-1",
+					projectId: "ws-1",
 					baseRef: "main",
 					onSnapshot: (snapshot: UseCommitPanelResult) => {
 						latest = snapshot;
@@ -315,7 +315,7 @@ describe("useCommitPanel", () => {
 	// 9. canPush is true on named branch with valid commit conditions
 	// -----------------------------------------------------------------------
 	it("canPush is true on named branch with valid commit conditions", () => {
-		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
 		render();
 
 		act(() => {
@@ -330,7 +330,7 @@ describe("useCommitPanel", () => {
 	// 10. canPush is false when on detached HEAD
 	// -----------------------------------------------------------------------
 	it("canPush is false when on detached HEAD", () => {
-		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: null, isDetached: true });
+		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: null, isDetached: true });
 		render();
 
 		act(() => {
@@ -345,7 +345,7 @@ describe("useCommitPanel", () => {
 	// 11. commitAndPush sends pushAfterCommit: true in the mutation
 	// -----------------------------------------------------------------------
 	it("commitAndPush sends pushAfterCommit: true in the mutation", async () => {
-		useTaskWorkspaceSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
 		commitMutateMock.mockResolvedValueOnce({ ok: true, pushOk: true, commitHash: "abc1234" });
 		render();
 

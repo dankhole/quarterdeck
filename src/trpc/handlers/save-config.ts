@@ -3,23 +3,23 @@ import type { RuntimeConfigState } from "../../config";
 import { buildRuntimeConfigResponse, updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config";
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
 import { type LogLevel, parseRuntimeConfigSaveRequest, setEventLogEnabled, setLogLevel } from "../../core";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface SaveConfigDeps {
 	config: IRuntimeConfigProvider;
 	broadcaster: Pick<IRuntimeBroadcaster, "setPollIntervals" | "broadcastLogLevel">;
-	getActiveWorkspaceId: () => string | null;
+	getActiveProjectId: () => string | null;
 }
 
 export async function handleSaveConfig(
-	workspaceScope: RuntimeTrpcWorkspaceScope | null,
+	projectScope: RuntimeTrpcProjectScope | null,
 	input: unknown,
 	deps: SaveConfigDeps,
 ) {
 	const parsed = parseRuntimeConfigSaveRequest(input);
 	let nextRuntimeConfig: RuntimeConfigState;
-	if (workspaceScope) {
-		nextRuntimeConfig = await updateRuntimeConfig(workspaceScope.workspacePath, workspaceScope.workspaceId, parsed);
+	if (projectScope) {
+		nextRuntimeConfig = await updateRuntimeConfig(projectScope.projectPath, projectScope.projectId, parsed);
 	} else {
 		const activeRuntimeConfig = deps.config.getActiveRuntimeConfig();
 		if (!activeRuntimeConfig) {
@@ -30,14 +30,14 @@ export async function handleSaveConfig(
 		}
 		nextRuntimeConfig = await updateGlobalRuntimeConfig(activeRuntimeConfig, parsed);
 	}
-	if (workspaceScope && workspaceScope.workspaceId === deps.getActiveWorkspaceId()) {
+	if (projectScope && projectScope.projectId === deps.getActiveProjectId()) {
 		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 	}
-	if (!workspaceScope) {
+	if (!projectScope) {
 		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 	}
-	if (workspaceScope) {
-		deps.broadcaster.setPollIntervals(workspaceScope.workspaceId, {
+	if (projectScope) {
+		deps.broadcaster.setPollIntervals(projectScope.projectId, {
 			focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
 			backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
 			homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,

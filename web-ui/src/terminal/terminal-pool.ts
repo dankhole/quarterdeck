@@ -1,6 +1,6 @@
 import {
 	_disposeAllDedicatedTerminalsForTesting,
-	disposeAllDedicatedTerminalsForWorkspace,
+	disposeAllDedicatedTerminalsForProject,
 	disposeDedicatedTerminal,
 	type EnsureDedicatedTerminalInput,
 	ensureDedicatedTerminal as ensureDedicatedTerminalInRegistry,
@@ -253,7 +253,7 @@ export function detachPoolContainer(): void {
  * - Demotes the current ACTIVE to PREVIOUS, evicts stale PREVIOUS.
  * - Finds a FREE slot or evicts the oldest PRELOADING/READY.
  */
-export function acquireForTask(taskId: string, workspaceId: string): TerminalSlot {
+export function acquireForTask(taskId: string, projectId: string): TerminalSlot {
 	const t0 = performance.now();
 	// 1. If task already has a slot: cancel warmup, transition to ACTIVE, return it
 	const existing = slotTaskIds.get(taskId);
@@ -307,7 +307,7 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 		if (previousSlot) {
 			log.warn("acquireForTask — no free slots, evicting PREVIOUS");
 			evictSlot(previousSlot);
-			const result = acquireForTaskIntoSlot(previousSlot, taskId, workspaceId);
+			const result = acquireForTaskIntoSlot(previousSlot, taskId, projectId);
 			log.debug(`[perf] acquireForTask — fallback slot ${previousSlot.slotId} to ${taskId}`, {
 				elapsedMs: (performance.now() - t0).toFixed(1),
 			});
@@ -320,15 +320,15 @@ export function acquireForTask(taskId: string, workspaceId: string): TerminalSlo
 		);
 	}
 
-	const result = acquireForTaskIntoSlot(freeSlot, taskId, workspaceId);
+	const result = acquireForTaskIntoSlot(freeSlot, taskId, projectId);
 	log.debug(`[perf] acquireForTask — assigned slot ${freeSlot.slotId} to ${taskId}`, {
 		elapsedMs: (performance.now() - t0).toFixed(1),
 	});
 	return result;
 }
 
-function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, workspaceId: string): TerminalSlot {
-	slot.connectToTask(taskId, workspaceId);
+function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, projectId: string): TerminalSlot {
+	slot.connectToTask(taskId, projectId);
 	slotTaskIds.set(taskId, slot);
 	setRole(slot, "ACTIVE");
 	return slot;
@@ -339,7 +339,7 @@ function acquireForTaskIntoSlot(slot: TerminalSlot, taskId: string, workspaceId:
  * Connects the slot and begins preloading. If acquireForTask is not called
  * within WARMUP_TIMEOUT_MS, the warmup is cancelled.
  */
-export function warmup(taskId: string, workspaceId: string): void {
+export function warmup(taskId: string, projectId: string): void {
 	const t0 = performance.now();
 	// 1. If task already has a slot (any role): no-op
 	if (slotTaskIds.has(taskId)) {
@@ -355,7 +355,7 @@ export function warmup(taskId: string, workspaceId: string): void {
 	}
 
 	// 3. Connect and set PRELOADING
-	slot.connectToTask(taskId, workspaceId);
+	slot.connectToTask(taskId, projectId);
 	slotTaskIds.set(taskId, slot);
 	setRole(slot, "PRELOADING");
 	log.debug(`[perf] warmup — slot ${slot.slotId} preloading for ${taskId}`, {
@@ -511,7 +511,7 @@ function rotateOldestFreeSlot(): void {
 // Dedicated terminal functions
 // ---------------------------------------------------------------------------
 
-export { disposeAllDedicatedTerminalsForWorkspace, disposeDedicatedTerminal, isDedicatedTerminalTaskId };
+export { disposeAllDedicatedTerminalsForProject, disposeDedicatedTerminal, isDedicatedTerminalTaskId };
 
 /**
  * Ensure a dedicated terminal exists for the given task. Creates or reuses.
@@ -627,7 +627,7 @@ export function dumpTerminalDebugInfo(): void {
 /**
  * Write text to a terminal buffer. Checks pool first, then dedicated terminals.
  */
-export function writeToTerminalBuffer(workspaceId: string, taskId: string, text: string): void {
+export function writeToTerminalBuffer(projectId: string, taskId: string, text: string): void {
 	// Check pool first
 	const poolSlot = slotTaskIds.get(taskId);
 	if (poolSlot) {
@@ -635,7 +635,7 @@ export function writeToTerminalBuffer(workspaceId: string, taskId: string, text:
 		return;
 	}
 	// Check dedicated terminals
-	const dedicated = getDedicatedTerminal(workspaceId, taskId);
+	const dedicated = getDedicatedTerminal(projectId, taskId);
 	if (dedicated) {
 		dedicated.writeText(text);
 	}
@@ -644,14 +644,14 @@ export function writeToTerminalBuffer(workspaceId: string, taskId: string, text:
 /**
  * Check if a terminal session is running. Checks pool first, then dedicated.
  */
-export function isTerminalSessionRunning(workspaceId: string, taskId: string): boolean {
+export function isTerminalSessionRunning(projectId: string, taskId: string): boolean {
 	// Check pool first
 	const poolSlot = slotTaskIds.get(taskId);
 	if (poolSlot) {
 		return poolSlot.sessionState === "running";
 	}
 	// Check dedicated terminals
-	const dedicated = getDedicatedTerminal(workspaceId, taskId);
+	const dedicated = getDedicatedTerminal(projectId, taskId);
 	if (dedicated) {
 		return dedicated.sessionState === "running";
 	}

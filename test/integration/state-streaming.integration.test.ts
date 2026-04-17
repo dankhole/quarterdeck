@@ -7,12 +7,12 @@ import { describe, expect, it } from "vitest";
 import type {
 	RuntimeHookIngestResponse,
 	RuntimeProjectAddResponse,
+	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartResponse,
+	RuntimeStateStreamProjectStateMessage,
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
-	RuntimeStateStreamWorkspaceStateMessage,
-	RuntimeWorkspaceStateResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
@@ -55,7 +55,7 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					path: projectBPath,
 				},
@@ -69,36 +69,36 @@ describe.sequential("state streaming integration", () => {
 			}
 
 			streamA = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceAId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceAId)}`,
 			);
 			const snapshotA = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshotA.currentProjectId).toBe(workspaceAId);
-			expect(snapshotA.workspaceState?.repoPath).toBe(expectedProjectAPath);
+			expect(snapshotA.projectState?.repoPath).toBe(expectedProjectAPath);
 			expect(snapshotA.projects.map((project) => project.id).sort()).toEqual([workspaceAId, workspaceBId].sort());
 
 			streamB = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceBId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceBId)}`,
 			);
 			const snapshotB = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshotB.currentProjectId).toBe(workspaceBId);
-			expect(snapshotB.workspaceState?.repoPath).toBe(expectedProjectBPath);
+			expect(snapshotB.projectState?.repoPath).toBe(expectedProjectBPath);
 
-			const currentWorkspaceBState = await requestJson<RuntimeWorkspaceStateResponse>({
+			const currentWorkspaceBState = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId: workspaceBId,
+				projectId: workspaceBId,
 			});
 			const previousRevision = currentWorkspaceBState.payload.revision;
-			const saveWorkspaceBResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const saveWorkspaceBResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.saveState",
+				procedure: "project.saveState",
 				type: "mutation",
-				workspaceId: workspaceBId,
+				projectId: workspaceBId,
 				payload: {
 					board: createBoard("Realtime Task"),
 					sessions: currentWorkspaceBState.payload.sessions,
@@ -109,16 +109,16 @@ describe.sequential("state streaming integration", () => {
 			expect(saveWorkspaceBResponse.payload.revision).toBe(previousRevision + 1);
 
 			const workspaceUpdateB = (await streamB.waitForMessage(
-				(message): message is RuntimeStateStreamWorkspaceStateMessage =>
-					message.type === "workspace_state_updated" && message.workspaceId === workspaceBId,
-			)) as RuntimeStateStreamWorkspaceStateMessage;
-			expect(workspaceUpdateB.workspaceState.revision).toBe(previousRevision + 1);
-			expect(workspaceUpdateB.workspaceState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
+				(message): message is RuntimeStateStreamProjectStateMessage =>
+					message.type === "project_state_updated" && message.projectId === workspaceBId,
+			)) as RuntimeStateStreamProjectStateMessage;
+			expect(workspaceUpdateB.projectState.revision).toBe(previousRevision + 1);
+			expect(workspaceUpdateB.projectState.board.columns[0]?.cards[0]?.prompt).toBe("Realtime Task");
 
 			const streamAMessages = await streamA.collectFor(500);
 			expect(
 				streamAMessages.some(
-					(message) => message.type === "workspace_state_updated" && message.workspaceId === workspaceBId,
+					(message) => message.type === "project_state_updated" && message.projectId === workspaceBId,
 				),
 			).toBe(false);
 
@@ -126,7 +126,7 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 			});
 			expect(projectsAfterUpdate.status).toBe(200);
 			const projectB = projectsAfterUpdate.payload.projects.find((project) => project.id === workspaceBId) ?? null;
@@ -162,11 +162,11 @@ describe.sequential("state streaming integration", () => {
 
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
 			stream = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
 			);
 			await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -177,7 +177,7 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "runtime.startShellSession",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef: "HEAD",
@@ -192,7 +192,7 @@ describe.sequential("state streaming integration", () => {
 				type: "mutation",
 				payload: {
 					taskId,
-					workspaceId,
+					projectId,
 					event: "to_review",
 				},
 			});
@@ -201,9 +201,7 @@ describe.sequential("state streaming integration", () => {
 
 			const readyMessage = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamTaskReadyForReviewMessage =>
-					message.type === "task_ready_for_review" &&
-					message.workspaceId === workspaceId &&
-					message.taskId === taskId,
+					message.type === "task_ready_for_review" && message.projectId === projectId && message.taskId === taskId,
 			)) as RuntimeStateStreamTaskReadyForReviewMessage;
 			expect(readyMessage.type).toBe("task_ready_for_review");
 			expect(readyMessage.triggeredAt).toBeGreaterThan(0);
@@ -212,7 +210,7 @@ describe.sequential("state streaming integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "runtime.stopTaskSession",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: { taskId },
 			});
 		} finally {
@@ -247,14 +245,14 @@ describe.sequential("state streaming integration", () => {
 
 		try {
 			const runtimeUrl = new URL(server.runtimeUrl);
-			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
+			const projectId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(projectId).not.toBe("");
 
-			const stateResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const stateResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.getState",
+				procedure: "project.getState",
 				type: "query",
-				workspaceId,
+				projectId,
 			});
 			expect(stateResponse.status).toBe(200);
 
@@ -273,11 +271,11 @@ describe.sequential("state streaming integration", () => {
 			}
 			trashColumn.cards[0].baseRef = baseRef;
 
-			const saveResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+			const saveResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.saveState",
+				procedure: "project.saveState",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					board,
 					sessions: stateResponse.payload.sessions,
@@ -288,9 +286,9 @@ describe.sequential("state streaming integration", () => {
 
 			const ensureResponse = await requestJson<RuntimeWorktreeEnsureResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
-				procedure: "workspace.ensureWorktree",
+				procedure: "project.ensureWorktree",
 				type: "mutation",
-				workspaceId,
+				projectId,
 				payload: {
 					taskId,
 					baseRef,
@@ -303,47 +301,47 @@ describe.sequential("state streaming integration", () => {
 			}
 
 			stream = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectId)}`,
 			);
 			const snapshot = (await stream.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
-			expect(snapshot.workspaceMetadata).toBeNull();
+			expect(snapshot.projectMetadata).toBeNull();
 			const initialMetadataMessage = await stream.waitForMessage(
 				(message) =>
-					message.type === "workspace_metadata_updated" &&
-					message.workspaceId === workspaceId &&
-					message.workspaceMetadata.taskWorkspaces.some((task) => task.taskId === taskId),
+					message.type === "project_metadata_updated" &&
+					message.projectId === projectId &&
+					message.projectMetadata.taskWorkspaces.some((task) => task.taskId === taskId),
 				10_000,
 			);
-			expect(initialMetadataMessage.type).toBe("workspace_metadata_updated");
-			if (initialMetadataMessage.type !== "workspace_metadata_updated") {
+			expect(initialMetadataMessage.type).toBe("project_metadata_updated");
+			if (initialMetadataMessage.type !== "project_metadata_updated") {
 				throw new Error("Expected initial workspace metadata update message.");
 			}
 			const initialTaskMetadata =
-				initialMetadataMessage.workspaceMetadata.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
+				initialMetadataMessage.projectMetadata.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
 			expect(initialTaskMetadata).not.toBeNull();
 			expect(initialTaskMetadata?.changedFiles ?? 0).toBe(0);
-			expect(
-				initialMetadataMessage.workspaceMetadata.taskWorkspaces.some((task) => task.taskId === trashTaskId),
-			).toBe(false);
+			expect(initialMetadataMessage.projectMetadata.taskWorkspaces.some((task) => task.taskId === trashTaskId)).toBe(
+				false,
+			);
 
 			writeFileSync(join(ensureResponse.payload.path, "task-change.txt"), "updated\n", "utf8");
 
 			const metadataMessage = await stream.waitForMessage(
 				(message) =>
-					message.type === "workspace_metadata_updated" &&
-					message.workspaceId === workspaceId &&
-					message.workspaceMetadata.taskWorkspaces.some(
+					message.type === "project_metadata_updated" &&
+					message.projectId === projectId &&
+					message.projectMetadata.taskWorkspaces.some(
 						(task) => task.taskId === taskId && (task.changedFiles ?? 0) > 0,
 					),
 				10_000,
 			);
-			expect(metadataMessage.type).toBe("workspace_metadata_updated");
-			if (metadataMessage.type !== "workspace_metadata_updated") {
+			expect(metadataMessage.type).toBe("project_metadata_updated");
+			if (metadataMessage.type !== "project_metadata_updated") {
 				throw new Error("Expected workspace metadata update message.");
 			}
-			const updatedTaskMetadata = metadataMessage.workspaceMetadata.taskWorkspaces.find(
+			const updatedTaskMetadata = metadataMessage.projectMetadata.taskWorkspaces.find(
 				(task) => task.taskId === taskId,
 			);
 			expect(updatedTaskMetadata?.changedFiles).toBeGreaterThan(0);

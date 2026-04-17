@@ -45,7 +45,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					path: nonGitPath,
 				},
@@ -59,7 +59,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 			});
 			expect(projectsAfterDeclinedInit.status).toBe(200);
 			expect(projectsAfterDeclinedInit.payload.projects).toHaveLength(1);
@@ -68,7 +68,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					path: nonGitPath,
 					initializeGit: true,
@@ -116,7 +116,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.add",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					path: projectBPath,
 				},
@@ -130,7 +130,7 @@ describe.sequential("project management integration", () => {
 			}
 
 			streamA = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceAId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceAId)}`,
 			);
 			const initialSnapshot = (await streamA.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
@@ -141,7 +141,7 @@ describe.sequential("project management integration", () => {
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.remove",
 				type: "mutation",
-				workspaceId: workspaceAId,
+				projectId: workspaceAId,
 				payload: {
 					projectId: workspaceAId,
 				},
@@ -157,19 +157,19 @@ describe.sequential("project management integration", () => {
 			expect(projectsUpdated.projects.map((project) => project.id)).toEqual([workspaceBId]);
 
 			streamB = await connectRuntimeStream(
-				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceBId)}`,
+				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(workspaceBId)}`,
 			);
 			const fallbackSnapshot = (await streamB.waitForMessage(
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(fallbackSnapshot.currentProjectId).toBe(workspaceBId);
-			expect(fallbackSnapshot.workspaceState?.repoPath).toBe(expectedProjectBPath);
+			expect(fallbackSnapshot.projectState?.repoPath).toBe(expectedProjectBPath);
 
 			const projectsAfterRemoval = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				procedure: "projects.list",
 				type: "query",
-				workspaceId: workspaceBId,
+				projectId: workspaceBId,
 			});
 			expect(projectsAfterRemoval.status).toBe(200);
 			expect(projectsAfterRemoval.payload.currentProjectId).toBe(workspaceBId);

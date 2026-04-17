@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import {
 	canPerformCommit,
 	computeSelectedPaths,
@@ -11,7 +11,7 @@ import {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function makeFile(path: string): RuntimeWorkspaceFileChange {
+function makeFile(path: string): RuntimeWorkdirFileChange {
 	return { path, status: "modified", additions: 0, deletions: 0, oldText: null, newText: null };
 }
 

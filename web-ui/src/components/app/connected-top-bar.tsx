@@ -12,7 +12,7 @@ import { useGitContext } from "@/providers/git-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
 import type { PromptShortcut, RuntimeGitRef, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
-import type { BoardCard, ReviewTaskWorkspaceSnapshot } from "@/types";
+import type { BoardCard, ReviewTaskProjectSnapshot } from "@/types";
 
 function BaseRefLabel({
 	card,
@@ -154,13 +154,13 @@ interface ConnectedTopBarProps {
 	isPromptShortcutRunning: boolean;
 	runPromptShortcut: (taskId: string, shortcutLabel: string) => Promise<void>;
 	selectPromptShortcutLabel: (label: string) => void;
-	navbarWorkspacePath: string | undefined;
-	navbarWorkspaceHint: string | undefined;
+	navbarProjectPath: string | undefined;
+	navbarProjectHint: string | undefined;
 	navbarRuntimeHint: string | undefined;
 	shouldHideProjectDependentTopBarActions: boolean;
 	shouldShowProjectLoadingState: boolean;
 	homeGitSummary: RuntimeGitSyncSummary | null;
-	selectedTaskWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | null;
+	selectedTaskProjectSnapshot: ReviewTaskProjectSnapshot | null;
 }
 
 export function ConnectedTopBar({
@@ -173,13 +173,13 @@ export function ConnectedTopBar({
 	isPromptShortcutRunning,
 	runPromptShortcut,
 	selectPromptShortcutLabel,
-	navbarWorkspacePath,
-	navbarWorkspaceHint,
+	navbarProjectPath,
+	navbarProjectHint,
 	navbarRuntimeHint,
 	shouldHideProjectDependentTopBarActions,
 	shouldShowProjectLoadingState,
 	homeGitSummary,
-	selectedTaskWorkspaceSnapshot,
+	selectedTaskProjectSnapshot,
 }: ConnectedTopBarProps): ReactElement {
 	const project = useProjectContext();
 	const { selectedCard, setBoard } = useBoardContext();
@@ -205,9 +205,9 @@ export function ConnectedTopBar({
 	return (
 		<TopBar
 			onBack={onBack}
-			workspacePath={navbarWorkspacePath}
+			projectPath={navbarProjectPath}
 			isWorkspacePathLoading={shouldShowProjectLoadingState}
-			workspaceHint={navbarWorkspaceHint}
+			projectHint={navbarProjectHint}
 			runtimeHint={navbarRuntimeHint}
 			selectedTaskId={selectedCard?.card.id ?? null}
 			scopeType={selectedCard ? "task" : (git.fileBrowserResolvedScope?.type ?? "home")}
@@ -274,7 +274,7 @@ export function ConnectedTopBar({
 						{selectedCard?.card.baseRef ? (
 							<BaseRefLabel
 								card={selectedCard.card}
-								behindBaseCount={selectedTaskWorkspaceSnapshot?.behindBaseCount}
+								behindBaseCount={selectedTaskProjectSnapshot?.behindBaseCount}
 								branches={git.topbarBranchActions.branches}
 								onUpdateBaseRef={handleUpdateBaseRef}
 							/>

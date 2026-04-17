@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runtimeTaskWorkspaceInfoRequestSchema, runtimeWorkspaceFileStatusSchema } from "./shared.js";
+import { runtimeTaskWorktreeInfoRequestSchema, runtimeWorkdirFileStatusSchema } from "./shared.js";
 
 export const runtimeGitRepositoryInfoSchema = z.object({
 	currentBranch: z.string().nullable(),
@@ -90,7 +90,7 @@ export const runtimeGitDeleteBranchResponseSchema = z.object({
 export type RuntimeGitDeleteBranchResponse = z.infer<typeof runtimeGitDeleteBranchResponseSchema>;
 
 export const runtimeGitCommitRequestSchema = z.object({
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable(),
 	paths: z.array(z.string()).min(1),
 	message: z.string().min(1),
 	pushAfterCommit: z.boolean().optional(),
@@ -109,9 +109,9 @@ export const runtimeGitCommitResponseSchema = z.object({
 export type RuntimeGitCommitResponse = z.infer<typeof runtimeGitCommitResponseSchema>;
 
 export const runtimeGitDiscardFileRequestSchema = z.object({
-	taskScope: runtimeTaskWorkspaceInfoRequestSchema.nullable(),
+	taskScope: runtimeTaskWorktreeInfoRequestSchema.nullable(),
 	path: z.string().min(1),
-	fileStatus: runtimeWorkspaceFileStatusSchema,
+	fileStatus: runtimeWorkdirFileStatusSchema,
 });
 export type RuntimeGitDiscardFileRequest = z.infer<typeof runtimeGitDiscardFileRequestSchema>;
 

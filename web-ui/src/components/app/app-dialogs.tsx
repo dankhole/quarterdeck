@@ -78,7 +78,7 @@ export function AppDialogs({
 			<DebugShelf />
 			<RuntimeSettingsDialog
 				open={dialog.isSettingsOpen}
-				workspaceId={project.settingsWorkspaceId}
+				projectId={project.settingsWorkspaceId}
 				initialConfig={project.settingsRuntimeProjectConfig}
 				initialSection={dialog.settingsInitialSection}
 				onOpenChange={(nextOpen) => {
@@ -116,7 +116,7 @@ export function AppDialogs({
 				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 				useWorktree={newTaskUseWorktree}
 				onUseWorktreeChange={setNewTaskUseWorktree}
-				currentBranch={project.workspaceGit?.currentBranch ?? null}
+				currentBranch={project.projectGit?.currentBranch ?? null}
 				createFeatureBranch={createFeatureBranch}
 				onCreateFeatureBranchChange={setCreateFeatureBranch}
 				branchName={branchName}
@@ -124,7 +124,7 @@ export function AppDialogs({
 				onGenerateBranchName={generateBranchNameFromPrompt}
 				isGeneratingBranchName={isGeneratingBranchName}
 				isLlmGenerationDisabled={project.isLlmGenerationDisabled}
-				workspaceId={project.currentProjectId}
+				projectId={project.currentProjectId}
 				branchRef={newTaskBranchRef}
 				branchOptions={createTaskBranchOptions}
 				onBranchRefChange={setNewTaskBranchRef}
@@ -166,13 +166,13 @@ export function AppDialogs({
 			/>
 			<CreateBranchDialog
 				state={git.fileBrowserBranchActions.createBranchDialogState}
-				workspaceId={project.currentProjectId}
+				projectId={project.currentProjectId}
 				onClose={git.fileBrowserBranchActions.closeCreateBranchDialog}
 				onBranchCreated={git.fileBrowserBranchActions.handleBranchCreated}
 			/>
 			<CreateBranchDialog
 				state={git.topbarBranchActions.createBranchDialogState}
-				workspaceId={project.currentProjectId}
+				projectId={project.currentProjectId}
 				onClose={git.topbarBranchActions.closeCreateBranchDialog}
 				onBranchCreated={git.topbarBranchActions.handleBranchCreated}
 			/>

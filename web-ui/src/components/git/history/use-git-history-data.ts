@@ -8,7 +8,7 @@ import type {
 	RuntimeGitRef,
 	RuntimeGitRefsResponse,
 	RuntimeGitSyncSummary,
-	RuntimeWorkspaceChangesResponse,
+	RuntimeWorkdirChangesResponse,
 } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -26,7 +26,7 @@ interface GitHistoryTaskScope {
 }
 
 interface UseGitHistoryDataOptions {
-	workspaceId: string | null;
+	projectId: string | null;
 	taskScope?: GitHistoryTaskScope | null;
 	gitSummary: RuntimeGitSyncSummary | null;
 	stateVersion?: number;
@@ -65,7 +65,7 @@ export interface UseGitHistoryDataResult {
 }
 
 export function useGitHistoryData({
-	workspaceId,
+	projectId,
 	taskScope,
 	gitSummary,
 	stateVersion = 0,
@@ -100,24 +100,24 @@ export function useGitHistoryData({
 	}, []);
 
 	const refsQueryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("Missing workspace.");
+		if (!projectId) {
+			throw new Error("Missing project.");
 		}
-		const trpc = getRuntimeTrpcClient(workspaceId);
-		const payload = await trpc.workspace.getGitRefs.query(taskScope ?? null);
+		const trpc = getRuntimeTrpcClient(projectId);
+		const payload = await trpc.project.getGitRefs.query(taskScope ?? null);
 		if (!payload.ok) {
 			throw new Error(payload.error ?? "Could not load git refs.");
 		}
 		return payload;
-	}, [taskScope, workspaceId]);
+	}, [taskScope, projectId]);
 
 	const refsQuery = useTrpcQuery<RuntimeGitRefsResponse>({
-		enabled: enabled && workspaceId !== null,
+		enabled: enabled && projectId !== null,
 		queryFn: refsQueryFn,
 		retainDataOnError: true,
 	});
 
-	const scopeKey = `${workspaceId ?? "__none__"}:${taskScope?.taskId ?? "__home__"}:${taskScope?.baseRef ?? "__home__"}`;
+	const scopeKey = `${projectId ?? "__none__"}:${taskScope?.taskId ?? "__home__"}:${taskScope?.baseRef ?? "__home__"}`;
 	const prevScopeKeyRef = useRef(scopeKey);
 	const isScopeTransitioning = prevScopeKeyRef.current !== scopeKey;
 
@@ -137,7 +137,7 @@ export function useGitHistoryData({
 	const refs = isScopeTransitioning ? EMPTY_REFS : (refsQuery.data?.refs ?? EMPTY_REFS);
 	const isRefsLoadingVisible =
 		isScopeTransitioning ||
-		(enabled && workspaceId !== null && refsQuery.data === null && !refsQuery.isError) ||
+		(enabled && projectId !== null && refsQuery.data === null && !refsQuery.isError) ||
 		(refsQuery.isLoading && refs.length === 0);
 	const refsErrorMessage =
 		!isScopeTransitioning && refsQuery.isError && refs.length === 0
@@ -172,7 +172,7 @@ export function useGitHistoryData({
 
 	const loadCommits = useCallback(
 		async (options: { skip: number; maxCount: number; append: boolean; silent?: boolean }) => {
-			if (!enabled || !workspaceId || logRefs.length === 0) {
+			if (!enabled || !projectId || logRefs.length === 0) {
 				abortInFlightLogRequest();
 				setCommits([]);
 				setTotalCommitCount(0);
@@ -197,8 +197,8 @@ export function useGitHistoryData({
 			}
 
 			try {
-				const trpc = getRuntimeTrpcClient(workspaceId);
-				const payload = await trpc.workspace.getGitLog.query(
+				const trpc = getRuntimeTrpcClient(projectId);
+				const payload = await trpc.project.getGitLog.query(
 					{
 						ref: logRefs[0] ?? null,
 						refs: logRefs,
@@ -266,7 +266,7 @@ export function useGitHistoryData({
 				}
 			}
 		},
-		[abortInFlightLogRequest, enabled, isAbortError, logKey, logRefs, taskScope, workspaceId],
+		[abortInFlightLogRequest, enabled, isAbortError, logKey, logRefs, taskScope, projectId],
 	);
 
 	useEffect(() => {
@@ -277,7 +277,7 @@ export function useGitHistoryData({
 		setIsLoadingMoreCommits(false);
 		setLogErrorMessage(null);
 		setResolvedLogKey(null);
-		if (!enabled || !workspaceId || logRefs.length === 0) {
+		if (!enabled || !projectId || logRefs.length === 0) {
 			return;
 		}
 		void loadCommits({
@@ -285,7 +285,7 @@ export function useGitHistoryData({
 			maxCount: INITIAL_COMMIT_PAGE_SIZE,
 			append: false,
 		});
-	}, [abortInFlightLogRequest, enabled, loadCommits, logRefs, workspaceId]);
+	}, [abortInFlightLogRequest, enabled, loadCommits, logRefs, projectId]);
 
 	useEffect(() => {
 		return () => {
@@ -294,7 +294,7 @@ export function useGitHistoryData({
 	}, [abortInFlightLogRequest]);
 
 	const loadMoreCommits = useCallback(() => {
-		if (!enabled || !workspaceId || logRefs.length === 0 || isLogLoading || isLoadingMoreCommits) {
+		if (!enabled || !projectId || logRefs.length === 0 || isLogLoading || isLoadingMoreCommits) {
 			return;
 		}
 		if (commits.length >= totalCommitCount) {
@@ -305,20 +305,11 @@ export function useGitHistoryData({
 			maxCount: COMMIT_PAGE_SIZE,
 			append: true,
 		});
-	}, [
-		commits.length,
-		enabled,
-		isLoadingMoreCommits,
-		isLogLoading,
-		loadCommits,
-		logRefs,
-		totalCommitCount,
-		workspaceId,
-	]);
+	}, [commits.length, enabled, isLoadingMoreCommits, isLogLoading, loadCommits, logRefs, totalCommitCount, projectId]);
 
 	const refreshCommits = useCallback(
 		(options?: { silent?: boolean }) => {
-			if (!enabled || !workspaceId || logRefs.length === 0) {
+			if (!enabled || !projectId || logRefs.length === 0) {
 				return;
 			}
 			void loadCommits({
@@ -328,7 +319,7 @@ export function useGitHistoryData({
 				silent: options?.silent ?? false,
 			});
 		},
-		[commits.length, enabled, loadCommits, logRefs, workspaceId],
+		[commits.length, enabled, loadCommits, logRefs, projectId],
 	);
 
 	const resolvedLogErrorMessage = refsErrorMessage ?? logErrorMessage;
@@ -348,45 +339,41 @@ export function useGitHistoryData({
 	}, [activeRef, commits, selectedCommitHash, viewMode]);
 
 	const diffQueryFn = useCallback(async () => {
-		if (!workspaceId || !selectedCommitHash) {
+		if (!projectId || !selectedCommitHash) {
 			throw new Error("Missing scope.");
 		}
-		const trpc = getRuntimeTrpcClient(workspaceId);
-		return await trpc.workspace.getCommitDiff.query({
+		const trpc = getRuntimeTrpcClient(projectId);
+		return await trpc.project.getCommitDiff.query({
 			commitHash: selectedCommitHash,
 			taskScope: taskScope ?? null,
 		});
-	}, [selectedCommitHash, taskScope, workspaceId]);
+	}, [selectedCommitHash, taskScope, projectId]);
 
 	const diffQuery = useTrpcQuery<RuntimeGitCommitDiffResponse>({
 		enabled:
-			!isScopeTransitioning &&
-			enabled &&
-			workspaceId !== null &&
-			selectedCommitHash !== null &&
-			viewMode === "commit",
+			!isScopeTransitioning && enabled && projectId !== null && selectedCommitHash !== null && viewMode === "commit",
 		queryFn: diffQueryFn,
 	});
 
 	const summaryWorkingCopyFileCount = gitSummary?.changedFiles ?? null;
 
 	const workingCopyQueryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("Missing workspace.");
+		if (!projectId) {
+			throw new Error("Missing project.");
 		}
-		const trpc = getRuntimeTrpcClient(workspaceId);
+		const trpc = getRuntimeTrpcClient(projectId);
 		if (taskScope) {
-			return await trpc.workspace.getChanges.query(taskScope);
+			return await trpc.project.getChanges.query(taskScope);
 		}
-		return await trpc.workspace.getWorkspaceChanges.query();
-	}, [taskScope, workspaceId]);
+		return await trpc.project.getWorkspaceChanges.query();
+	}, [taskScope, projectId]);
 	const shouldLoadWorkingCopyChanges =
 		!isScopeTransitioning &&
 		enabled &&
-		workspaceId !== null &&
+		projectId !== null &&
 		(taskScope != null || (summaryWorkingCopyFileCount ?? 0) > 0);
 
-	const workingCopyQuery = useTrpcQuery<RuntimeWorkspaceChangesResponse>({
+	const workingCopyQuery = useTrpcQuery<RuntimeWorkdirChangesResponse>({
 		enabled: shouldLoadWorkingCopyChanges,
 		queryFn: workingCopyQueryFn,
 		retainDataOnError: true,
@@ -442,7 +429,7 @@ export function useGitHistoryData({
 		isScopeTransitioning ||
 		isRefsLoadingVisible ||
 		isLogLoading ||
-		(enabled && workspaceId !== null && logRefs.length > 0 && resolvedLogKey !== logKey);
+		(enabled && projectId !== null && logRefs.length > 0 && resolvedLogKey !== logKey);
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
@@ -450,7 +437,7 @@ export function useGitHistoryData({
 			return;
 		}
 		previousStateVersionRef.current = stateVersion;
-		if (!enabled || !workspaceId || isScopeTransitioning) {
+		if (!enabled || !projectId || isScopeTransitioning) {
 			return;
 		}
 		void refsQuery.refetch();
@@ -467,7 +454,7 @@ export function useGitHistoryData({
 		isScopeTransitioning,
 		workingCopyQuery.data,
 		workingCopyQuery.refetch,
-		workspaceId,
+		projectId,
 	]);
 
 	const selectWorkingCopy = useCallback(() => {

@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core";
+import type { RuntimeCommandRunResponse, RuntimeProjectStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
 	createTaggedLogger,
@@ -12,31 +12,31 @@ import {
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
 } from "../core";
-import { loadWorkspaceContextById } from "../state";
+import { loadProjectContextById } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { createTerminalWebSocketBridge } from "../terminal";
 import {
 	createHooksApi,
+	createProjectApi,
 	createProjectsApi,
 	createRuntimeApi,
-	createWorkspaceApi,
 	type RuntimeTrpcContext,
-	type RuntimeTrpcWorkspaceScope,
+	type RuntimeTrpcProjectScope,
 	runtimeAppRouter,
 } from "../trpc";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import type { ProjectRegistry } from "./project-registry";
 import type { RuntimeStateHub } from "./runtime-state-hub";
-import type { WorkspaceRegistry } from "./workspace-registry";
 
 const serverLog = createTaggedLogger("runtime-server");
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;
-	workspacePath: string | null;
+	projectPath: string | null;
 }
 
 export interface CreateRuntimeServerDependencies {
-	workspaceRegistry: WorkspaceRegistry;
+	projectRegistry: ProjectRegistry;
 	runtimeStateHub: RuntimeStateHub;
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
@@ -44,13 +44,13 @@ export interface CreateRuntimeServerDependencies {
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
 	hasGitRepository: (path: string) => boolean;
-	disposeWorkspace: (
-		workspaceId: string,
+	disposeProject: (
+		projectId: string,
 		options?: {
 			stopTerminalSessions?: boolean;
 		},
 	) => DisposeTrackedWorkspaceResult;
-	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
+	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeProjectStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
 }
 
@@ -60,7 +60,7 @@ export interface RuntimeServer {
 }
 
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
-	const headerValue = request.headers["x-quarterdeck-workspace-id"];
+	const headerValue = request.headers["x-quarterdeck-project-id"];
 	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
 	if (typeof headerWorkspaceId === "string") {
 		const normalized = headerWorkspaceId.trim();
@@ -68,7 +68,7 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 			return normalized;
 		}
 	}
-	const queryWorkspaceId = requestUrl.searchParams.get("workspaceId");
+	const queryWorkspaceId = requestUrl.searchParams.get("projectId");
 	if (typeof queryWorkspaceId === "string") {
 		const normalized = queryWorkspaceId.trim();
 		if (normalized) {
@@ -91,69 +91,69 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		request: IncomingMessage,
 		requestUrl: URL,
 	): Promise<{
-		requestedWorkspaceId: string | null;
-		workspaceScope: RuntimeTrpcWorkspaceScope | null;
+		requestedProjectId: string | null;
+		projectScope: RuntimeTrpcProjectScope | null;
 	}> => {
-		const requestedWorkspaceId = readWorkspaceIdFromRequest(request, requestUrl);
-		if (!requestedWorkspaceId) {
+		const requestedProjectId = readWorkspaceIdFromRequest(request, requestUrl);
+		if (!requestedProjectId) {
 			return {
-				requestedWorkspaceId: null,
-				workspaceScope: null,
+				requestedProjectId: null,
+				projectScope: null,
 			};
 		}
-		const requestedWorkspaceContext = await loadWorkspaceContextById(requestedWorkspaceId);
-		if (!requestedWorkspaceContext) {
+		const requestedProjectContext = await loadProjectContextById(requestedProjectId);
+		if (!requestedProjectContext) {
 			return {
-				requestedWorkspaceId,
-				workspaceScope: null,
+				requestedProjectId,
+				projectScope: null,
 			};
 		}
 		return {
-			requestedWorkspaceId,
-			workspaceScope: {
-				workspaceId: requestedWorkspaceContext.workspaceId,
-				workspacePath: requestedWorkspaceContext.repoPath,
+			requestedProjectId,
+			projectScope: {
+				projectId: requestedProjectContext.projectId,
+				projectPath: requestedProjectContext.repoPath,
 			},
 		};
 	};
 
-	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
-		await deps.workspaceRegistry.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+	const getScopedTerminalManager = async (scope: RuntimeTrpcProjectScope): Promise<TerminalSessionManager> =>
+		await deps.projectRegistry.ensureTerminalManagerForProject(scope.projectId, scope.projectPath);
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
 		return {
-			requestedWorkspaceId: scope.requestedWorkspaceId,
-			workspaceScope: scope.workspaceScope,
+			requestedProjectId: scope.requestedProjectId,
+			projectScope: scope.projectScope,
 			runtimeApi: createRuntimeApi({
-				config: deps.workspaceRegistry,
+				config: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
-				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
+				getActiveProjectId: deps.projectRegistry.getActiveProjectId,
 				getScopedTerminalManager,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 			}),
-			workspaceApi: createWorkspaceApi({
-				terminals: deps.workspaceRegistry,
+			projectApi: createProjectApi({
+				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
-				data: deps.workspaceRegistry,
+				data: deps.projectRegistry,
 			}),
 			projectsApi: createProjectsApi({
-				workspaces: deps.workspaceRegistry,
-				terminals: deps.workspaceRegistry,
+				projects: deps.projectRegistry,
+				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
-				data: deps.workspaceRegistry,
+				data: deps.projectRegistry,
 				resolveProjectInputPath: deps.resolveProjectInputPath,
 				assertPathIsDirectory: deps.assertPathIsDirectory,
 				hasGitRepository: deps.hasGitRepository,
-				disposeWorkspace: deps.disposeWorkspace,
+				disposeProject: deps.disposeProject,
 				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
 				warn: deps.warn,
 				pickDirectoryPathFromSystemDialog: deps.pickDirectoryPathFromSystemDialog,
 			}),
 			hooksApi: createHooksApi({
-				workspaces: deps.workspaceRegistry,
-				terminals: deps.workspaceRegistry,
+				projects: deps.projectRegistry,
+				terminals: deps.projectRegistry,
 				broadcaster: deps.runtimeStateHub,
 			}),
 		};
@@ -202,12 +202,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			return;
 		}
 		(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
-		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
-		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
+		const requestedProjectId = requestUrl.searchParams.get("projectId")?.trim() || null;
+		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedProjectId });
 	});
 	const terminalWebSocketBridge = createTerminalWebSocketBridge({
 		server,
-		resolveTerminalManager: (workspaceId) => deps.workspaceRegistry.getTerminalManagerForWorkspace(workspaceId),
+		resolveTerminalManager: (projectId) => deps.projectRegistry.getTerminalManagerForProject(projectId),
 		isTerminalIoWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/io",
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
 	});
@@ -235,9 +235,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const serverPort = typeof address === "object" ? address.port : null;
 	serverLog.warn("server started", { port: serverPort, pid: process.pid });
 	emitEvent("server.started", { port: serverPort, pid: process.pid });
-	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
-	const url = activeWorkspaceId
-		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
+	const activeProjectId = deps.projectRegistry.getActiveProjectId();
+	const url = activeProjectId
+		? buildQuarterdeckRuntimeUrl(`/${encodeURIComponent(activeProjectId)}`)
 		: getQuarterdeckRuntimeOrigin();
 
 	return {

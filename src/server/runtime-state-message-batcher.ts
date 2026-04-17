@@ -6,8 +6,8 @@ const DEBUG_LOG_BATCH_MS = 150;
 
 export interface CreateRuntimeStateMessageBatcherDependencies {
 	hasClients: () => boolean;
-	onTaskSessionBatch: (workspaceId: string, summaries: RuntimeTaskSessionSummary[]) => void;
-	onTaskNotificationBatch: (workspaceId: string, summaries: RuntimeTaskSessionSummary[]) => void;
+	onTaskSessionBatch: (projectId: string, summaries: RuntimeTaskSessionSummary[]) => void;
+	onTaskNotificationBatch: (projectId: string, summaries: RuntimeTaskSessionSummary[]) => void;
 	onProjectsRefreshRequested: (preferredCurrentProjectId: string | null) => void;
 	onDebugLogBatch: (entries: LogEntry[]) => void;
 }
@@ -21,14 +21,14 @@ export class RuntimeStateMessageBatcher {
 
 	constructor(private readonly deps: CreateRuntimeStateMessageBatcherDependencies) {}
 
-	trackTerminalManager(workspaceId: string, manager: TerminalSessionManager): void {
-		if (this.terminalSummaryUnsubscribes.has(workspaceId)) {
+	trackTerminalManager(projectId: string, manager: TerminalSessionManager): void {
+		if (this.terminalSummaryUnsubscribes.has(projectId)) {
 			return;
 		}
 		const unsubscribe = manager.store.onChange((summary) => {
-			this.queueSummaryBroadcast(workspaceId, summary);
+			this.queueSummaryBroadcast(projectId, summary);
 		});
-		this.terminalSummaryUnsubscribes.set(workspaceId, unsubscribe);
+		this.terminalSummaryUnsubscribes.set(projectId, unsubscribe);
 	}
 
 	queueDebugLogEntry(entry: LogEntry): void {
@@ -43,8 +43,8 @@ export class RuntimeStateMessageBatcher {
 		this.debugLogTimer.unref();
 	}
 
-	disposeWorkspace(workspaceId: string): void {
-		const unsubscribe = this.terminalSummaryUnsubscribes.get(workspaceId);
+	disposeProject(projectId: string): void {
+		const unsubscribe = this.terminalSummaryUnsubscribes.get(projectId);
 		if (unsubscribe) {
 			try {
 				unsubscribe();
@@ -52,8 +52,8 @@ export class RuntimeStateMessageBatcher {
 				// Ignore listener cleanup errors during project removal.
 			}
 		}
-		this.terminalSummaryUnsubscribes.delete(workspaceId);
-		this.disposeSummaryBroadcast(workspaceId);
+		this.terminalSummaryUnsubscribes.delete(projectId);
+		this.disposeSummaryBroadcast(projectId);
 	}
 
 	close(): void {
@@ -79,40 +79,40 @@ export class RuntimeStateMessageBatcher {
 		this.terminalSummaryUnsubscribes.clear();
 	}
 
-	private queueSummaryBroadcast(workspaceId: string, summary: RuntimeTaskSessionSummary): void {
-		const pending = this.pendingSummaries.get(workspaceId) ?? new Map<string, RuntimeTaskSessionSummary>();
+	private queueSummaryBroadcast(projectId: string, summary: RuntimeTaskSessionSummary): void {
+		const pending = this.pendingSummaries.get(projectId) ?? new Map<string, RuntimeTaskSessionSummary>();
 		pending.set(summary.taskId, summary);
-		this.pendingSummaries.set(workspaceId, pending);
-		if (this.summaryTimers.has(workspaceId)) {
+		this.pendingSummaries.set(projectId, pending);
+		if (this.summaryTimers.has(projectId)) {
 			return;
 		}
 		const timer = setTimeout(() => {
-			this.summaryTimers.delete(workspaceId);
-			this.flushSummaries(workspaceId);
+			this.summaryTimers.delete(projectId);
+			this.flushSummaries(projectId);
 		}, TASK_SESSION_STREAM_BATCH_MS);
 		timer.unref();
-		this.summaryTimers.set(workspaceId, timer);
+		this.summaryTimers.set(projectId, timer);
 	}
 
-	private flushSummaries(workspaceId: string): void {
-		const pending = this.pendingSummaries.get(workspaceId);
+	private flushSummaries(projectId: string): void {
+		const pending = this.pendingSummaries.get(projectId);
 		if (!pending || pending.size === 0) {
 			return;
 		}
-		this.pendingSummaries.delete(workspaceId);
+		this.pendingSummaries.delete(projectId);
 		const summaries = Array.from(pending.values());
-		this.deps.onTaskSessionBatch(workspaceId, summaries);
-		this.deps.onTaskNotificationBatch(workspaceId, summaries);
-		this.deps.onProjectsRefreshRequested(workspaceId);
+		this.deps.onTaskSessionBatch(projectId, summaries);
+		this.deps.onTaskNotificationBatch(projectId, summaries);
+		this.deps.onProjectsRefreshRequested(projectId);
 	}
 
-	private disposeSummaryBroadcast(workspaceId: string): void {
-		const timer = this.summaryTimers.get(workspaceId);
+	private disposeSummaryBroadcast(projectId: string): void {
+		const timer = this.summaryTimers.get(projectId);
 		if (timer) {
 			clearTimeout(timer);
 		}
-		this.summaryTimers.delete(workspaceId);
-		this.pendingSummaries.delete(workspaceId);
+		this.summaryTimers.delete(projectId);
+		this.pendingSummaries.delete(projectId);
 	}
 
 	private flushDebugLogEntries(): void {

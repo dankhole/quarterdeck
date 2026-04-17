@@ -23,8 +23,8 @@ const turnCheckpointMocks = vi.hoisted(() => ({
 	captureTaskTurnCheckpoint: vi.fn(),
 }));
 
-const workspaceStateMocks = vi.hoisted(() => ({
-	loadWorkspaceState: vi.fn(),
+const projectStateMocks = vi.hoisted(() => ({
+	loadProjectState: vi.fn(),
 }));
 
 const taskBoardMutationMocks = vi.hoisted(() => ({
@@ -48,7 +48,7 @@ vi.mock("../../../src/config/agent-registry.js", () => ({
 	buildRuntimeConfigResponse: agentRegistryMocks.buildRuntimeConfigResponse,
 }));
 
-vi.mock("../../../src/workspace/task-worktree.js", () => ({
+vi.mock("../../../src/workdir/task-worktree.js", () => ({
 	resolveTaskCwd: taskWorktreeMocks.resolveTaskCwd,
 	resolveTaskWorkingDirectory: taskWorktreeMocks.resolveTaskWorkingDirectory,
 	getTaskWorkingDirectory: taskWorktreeMocks.getTaskWorkingDirectory,
@@ -59,12 +59,12 @@ vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	findTaskPatch: taskWorktreeMocks.findTaskPatch,
 }));
 
-vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
+vi.mock("../../../src/workdir/turn-checkpoints.js", () => ({
 	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
 }));
 
-vi.mock("../../../src/state/workspace-state.js", () => ({
-	loadWorkspaceState: workspaceStateMocks.loadWorkspaceState,
+vi.mock("../../../src/state/project-state.js", () => ({
+	loadProjectState: projectStateMocks.loadProjectState,
 }));
 
 vi.mock("../../../src/core/task-board-mutations.js", () => ({
@@ -82,7 +82,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		taskId: "task-1",
 		state: "running",
 		agentId: "claude",
-		workspacePath: "/tmp/worktree",
+		projectPath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
@@ -162,12 +162,12 @@ function createDeps(flat: Record<string, unknown> = {}) {
 			setActiveRuntimeConfig: vi.fn(),
 		},
 		broadcaster: {
-			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectStateUpdated: vi.fn(),
 			broadcastTaskWorkingDirectoryUpdated: vi.fn(),
 			setPollIntervals: vi.fn(),
 			broadcastLogLevel: vi.fn(),
 		},
-		getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+		getActiveProjectId: vi.fn(() => "workspace-1"),
 		getScopedTerminalManager: vi.fn(async () => manager as never),
 		resolveInteractiveShellCommand: vi.fn(),
 		runCommand: vi.fn(),
@@ -175,8 +175,8 @@ function createDeps(flat: Record<string, unknown> = {}) {
 }
 
 const defaultScope = {
-	workspaceId: "workspace-1",
-	workspacePath: "/tmp/repo",
+	projectId: "workspace-1",
+	projectPath: "/tmp/repo",
 };
 
 describe("createRuntimeApi startTaskSession", () => {
@@ -185,7 +185,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
-		workspaceStateMocks.loadWorkspaceState.mockReset();
+		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
 		taskWorktreeMocks.pathExists.mockReset();
 
@@ -203,7 +203,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			createdAt: Date.now(),
 		});
 		// Default: card not found (legacy behavior — falls through to worktree lookup).
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
 		taskWorktreeMocks.pathExists.mockResolvedValue(true);
 	});
@@ -258,7 +258,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 	});
 
-	it("falls back to workspacePath when non-worktree task's persisted directory is deleted", async () => {
+	it("falls back to projectPath when non-worktree task's persisted directory is deleted", async () => {
 		const card = createCard({ workingDirectory: "/tmp/deleted-dir", useWorktree: false });
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.pathExists.mockResolvedValue(false);
@@ -429,7 +429,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockReset();
 		taskWorktreeMocks.findTaskPatch.mockReset();
 		taskWorktreeMocks.applyTaskPatch.mockReset();
-		workspaceStateMocks.loadWorkspaceState.mockReset();
+		projectStateMocks.loadProjectState.mockReset();
 		taskBoardMutationMocks.findCardInBoard.mockReset();
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		fsMocks.rm.mockReset();
@@ -451,7 +451,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("isolates a task from main checkout to a worktree", async () => {
 		const card = createCard({ workingDirectory: "/tmp/repo" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
@@ -491,7 +491,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("preserves awaitReview when migrating a task in awaiting_review state", async () => {
 		const card = createCard({ workingDirectory: "/tmp/repo" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
@@ -521,7 +521,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("de-isolates a task from worktree to main checkout", async () => {
 		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 
 		const terminalManager = {
@@ -545,7 +545,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 	});
 
 	it("returns error when task not found", async () => {
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(null);
 
 		const api = createRuntimeApi(createDeps());
@@ -561,7 +561,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("resolves working directory from worktree state when not persisted on card", async () => {
 		const card = createCard({ workingDirectory: undefined });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/resolved-worktree");
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
@@ -589,7 +589,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("succeeds even when patch apply fails (non-fatal)", async () => {
 		const card = createCard({ workingDirectory: "/tmp/repo" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
@@ -624,7 +624,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("returns error when no agent command is configured and session is running", async () => {
 		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
 
@@ -649,7 +649,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("succeeds for idle tasks even when no agent command is configured", async () => {
 		const card = createCard({ workingDirectory: "/tmp/worktree" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
 
@@ -674,7 +674,7 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 
 	it("restarts session at old CWD when worktree creation fails during isolate", async () => {
 		const card = createCard({ workingDirectory: "/tmp/repo" });
-		workspaceStateMocks.loadWorkspaceState.mockResolvedValue(emptyBoard());
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.captureTaskPatch.mockResolvedValue(undefined);
 		taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist.mockResolvedValue({
@@ -722,13 +722,13 @@ describe("createRuntimeApi startShellSession", () => {
 
 		const result = await api.startShellSession(defaultScope, {
 			taskId: "shell-1",
-			workspaceTaskId: "task-1",
+			projectTaskId: "task-1",
 			baseRef: "main",
 		});
 
 		expect(result.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).toHaveBeenCalledWith({
-			workspacePath: "/tmp/repo",
+			projectPath: "/tmp/repo",
 			taskId: "task-1",
 			baseRef: "main",
 			ensure: true,
@@ -738,7 +738,7 @@ describe("createRuntimeApi startShellSession", () => {
 		);
 	});
 
-	it("uses workspace path when no workspaceTaskId is provided", async () => {
+	it("uses project path when no projectTaskId is provided", async () => {
 		const terminalManager = {
 			startShellSession: vi.fn(async () => createSummary()),
 		};

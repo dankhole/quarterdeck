@@ -1,7 +1,7 @@
 import type {
+	IProjectResolver,
 	IRuntimeBroadcaster,
 	ITerminalManagerProvider,
-	IWorkspaceResolver,
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
 	RuntimeTaskHookActivity,
@@ -9,11 +9,11 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core";
 import { createTaggedLogger, emitSessionEvent, parseHookIngestRequest } from "../core";
-import { loadWorkspaceContextById } from "../state";
+import { loadProjectContextById } from "../state";
 import type { SessionSummaryStore } from "../terminal";
 import { canReturnToRunning, isPermissionActivity } from "../terminal";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
-import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace";
+import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
 
 const log = createTaggedLogger("hooks");
@@ -43,9 +43,9 @@ function applyConversationSummaryFromMetadata(
 }
 
 export interface CreateHooksApiDependencies {
-	workspaces: Pick<IWorkspaceResolver, "getWorkspacePathById">;
+	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
-	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeWorkspaceStateUpdated" | "broadcastTaskReadyForReview">;
+	broadcaster: Pick<IRuntimeBroadcaster, "broadcastRuntimeProjectStateUpdated" | "broadcastTaskReadyForReview">;
 	captureTaskTurnCheckpoint?: (input: {
 		cwd: string;
 		taskId: string;
@@ -73,7 +73,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 			try {
 				const body = parseHookIngestRequest(input);
 				const taskId = body.taskId;
-				const workspaceId = body.workspaceId;
+				const projectId = body.projectId;
 				const event = body.event;
 				const hookReceivedData = {
 					event,
@@ -86,23 +86,23 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					summarySnippet: body.metadata?.conversationSummaryText?.slice(0, 100),
 				};
 				log.info("Hook ingest received", { taskId, ...hookReceivedData });
-				const knownWorkspacePath = deps.workspaces.getWorkspacePathById(workspaceId);
-				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
-				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
-				if (!workspacePath) {
+				const knownProjectPath = deps.projects.getProjectPathById(projectId);
+				const projectContext = knownProjectPath ? null : await loadProjectContextById(projectId);
+				const projectPath = knownProjectPath ?? projectContext?.repoPath ?? null;
+				if (!projectPath) {
 					return {
 						ok: false,
-						error: `Workspace "${workspaceId}" not found`,
+						error: `Workspace "${projectId}" not found`,
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				const manager = await deps.terminals.ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
+				const manager = await deps.terminals.ensureTerminalManagerForProject(projectId, projectPath);
 				const { store } = manager;
 				const summary = store.getSummary(taskId);
 				if (!summary) {
 					return {
 						ok: false,
-						error: `Task "${taskId}" not found in workspace "${workspaceId}"`,
+						error: `Task "${taskId}" not found in project "${projectId}"`,
 					} satisfies RuntimeHookIngestResponse;
 				}
 
@@ -248,12 +248,12 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// triggered retries while the state transition has already succeeded.
 				// The checkpoint fires in the background and applies via store.update
 				// which triggers onChange listeners for downstream consumers.
-				void deps.broadcaster.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				void deps.broadcaster.broadcastRuntimeProjectStateUpdated(projectId, projectPath);
 				if (event === "to_review") {
-					deps.broadcaster.broadcastTaskReadyForReview(workspaceId, taskId);
+					deps.broadcaster.broadcastTaskReadyForReview(projectId, taskId);
 
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;
+					const checkpointCwd = transitionedSummary.projectPath ?? projectPath;
 					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
 					void (async () => {
 						try {

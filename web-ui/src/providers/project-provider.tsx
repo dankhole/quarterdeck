@@ -7,9 +7,9 @@ import {
 	type UseProjectNavigationResult,
 	type UseStartupOnboardingResult,
 	useProjectNavigation,
+	useProjectSync,
 	useQuarterdeckAccessGate,
 	useStartupOnboarding,
-	useWorkspaceSync,
 } from "@/hooks/project";
 import { isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
@@ -24,7 +24,7 @@ import type { BoardData } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Context value — project-level state: navigation, runtime config, onboarding,
-// access gate, config-derived values, mutation callbacks, and workspace sync.
+// access gate, config-derived values, mutation callbacks, and project sync.
 //
 // The value is constructed inside ProjectProvider, which owns all project-level
 // hooks. Child components read project state via useProjectContext().
@@ -34,8 +34,8 @@ export interface ProjectContextValue {
 	// --- useProjectNavigation ---
 	currentProjectId: UseProjectNavigationResult["currentProjectId"];
 	projects: UseProjectNavigationResult["projects"];
-	streamedWorkspaceState: UseProjectNavigationResult["workspaceState"];
-	workspaceMetadata: UseProjectNavigationResult["workspaceMetadata"];
+	streamedProjectState: UseProjectNavigationResult["projectState"];
+	projectMetadata: UseProjectNavigationResult["projectMetadata"];
 	notificationSessions: UseProjectNavigationResult["notificationSessions"];
 	notificationWorkspaceIds: UseProjectNavigationResult["notificationWorkspaceIds"];
 	latestTaskReadyForReview: UseProjectNavigationResult["latestTaskReadyForReview"];
@@ -103,24 +103,24 @@ export interface ProjectContextValue {
 	agentCommand: string | null;
 	configDefaultBaseRef: string;
 
-	// --- useWorkspaceSync (subset exposed via context) ---
-	workspacePath: string | null;
-	workspaceGit: RuntimeGitRepositoryInfo | null;
+	// --- useProjectSync (subset exposed via context) ---
+	projectPath: string | null;
+	projectGit: RuntimeGitRepositoryInfo | null;
 	refreshWorkspaceState: () => Promise<void>;
 
-	// --- useWorkspaceSync (additional outputs needed by AppContent) ---
-	workspaceRevision: number | null;
+	// --- useProjectSync (additional outputs needed by AppContent) ---
+	projectRevision: number | null;
 	setWorkspaceRevision: Dispatch<SetStateAction<number | null>>;
-	workspaceHydrationNonce: number;
-	isWorkspaceStateRefreshing: boolean;
-	isWorkspaceMetadataPending: boolean;
+	projectHydrationNonce: number;
+	isProjectStateRefreshing: boolean;
+	isProjectMetadataPending: boolean;
 	resetWorkspaceSyncState: (targetProjectId?: string | null) => void;
 
 	// --- Document visibility ---
 	isDocumentVisible: boolean;
 
 	// --- Board-level state bridged through for downstream consumers ---
-	canPersistWorkspaceState: boolean;
+	canPersistProjectState: boolean;
 	isServedFromBoardCache: boolean;
 
 	// --- Config mutation callbacks ---
@@ -148,7 +148,7 @@ export function useProjectContext(): ProjectContextValue {
 // Props bridge values that are owned above the provider tree:
 // - onProjectSwitchStart: cleanup callback defined in App
 // - setBoard/setSessions/setCanPersistWorkspaceState: board-level state setters
-//   needed by useWorkspaceSync (temporary — will clean up with BoardProvider)
+//   needed by useProjectSync (temporary — will clean up with BoardProvider)
 // ---------------------------------------------------------------------------
 
 export interface ProjectProviderProps {
@@ -157,7 +157,7 @@ export interface ProjectProviderProps {
 	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	canPersistWorkspaceState: boolean;
+	canPersistProjectState: boolean;
 	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
 }
@@ -168,7 +168,7 @@ export function ProjectProvider({
 	sessionsRef,
 	setBoard,
 	setSessions,
-	canPersistWorkspaceState,
+	canPersistProjectState,
 	setCanPersistWorkspaceState,
 	children,
 }: ProjectProviderProps): ReactNode {
@@ -176,8 +176,8 @@ export function ProjectProvider({
 	const {
 		currentProjectId,
 		projects,
-		workspaceState: streamedWorkspaceState,
-		workspaceMetadata,
+		projectState: streamedProjectState,
+		projectMetadata,
 		notificationSessions,
 		notificationWorkspaceIds,
 		latestTaskReadyForReview,
@@ -218,7 +218,7 @@ export function ProjectProvider({
 	} = useRuntimeProjectConfig(currentProjectId);
 
 	const { isBlocked: isQuarterdeckAccessBlocked } = useQuarterdeckAccessGate({
-		workspaceId: currentProjectId,
+		projectId: currentProjectId,
 	});
 
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
@@ -244,19 +244,19 @@ export function ProjectProvider({
 
 	// --- Workspace sync ---
 	const {
-		workspacePath,
-		workspaceGit,
-		workspaceRevision,
+		projectPath,
+		projectGit,
+		projectRevision,
 		setWorkspaceRevision,
-		workspaceHydrationNonce,
-		isWorkspaceStateRefreshing,
-		isWorkspaceMetadataPending,
+		projectHydrationNonce,
+		isProjectStateRefreshing,
+		isProjectMetadataPending,
 		isServedFromBoardCache,
 		refreshWorkspaceState,
 		resetWorkspaceSyncState,
-	} = useWorkspaceSync({
+	} = useProjectSync({
 		currentProjectId,
-		streamedWorkspaceState,
+		streamedProjectState,
 		hasNoProjects,
 		hasReceivedSnapshot,
 		isDocumentVisible,
@@ -362,8 +362,8 @@ export function ProjectProvider({
 		() => ({
 			currentProjectId,
 			projects,
-			streamedWorkspaceState,
-			workspaceMetadata,
+			streamedProjectState,
+			projectMetadata,
 			notificationSessions,
 			notificationWorkspaceIds,
 			latestTaskReadyForReview,
@@ -420,17 +420,17 @@ export function ProjectProvider({
 			terminalFontWeight,
 			agentCommand,
 			configDefaultBaseRef,
-			workspacePath,
-			workspaceGit,
+			projectPath,
+			projectGit,
 			refreshWorkspaceState,
-			workspaceRevision,
+			projectRevision,
 			setWorkspaceRevision,
-			workspaceHydrationNonce,
-			isWorkspaceStateRefreshing,
-			isWorkspaceMetadataPending,
+			projectHydrationNonce,
+			isProjectStateRefreshing,
+			isProjectMetadataPending,
 			resetWorkspaceSyncState,
 			isDocumentVisible,
-			canPersistWorkspaceState,
+			canPersistProjectState,
 			isServedFromBoardCache,
 			handleTogglePinBranch,
 			handleSkipTaskCheckoutConfirmationChange,
@@ -440,8 +440,8 @@ export function ProjectProvider({
 		[
 			currentProjectId,
 			projects,
-			streamedWorkspaceState,
-			workspaceMetadata,
+			streamedProjectState,
+			projectMetadata,
 			notificationSessions,
 			notificationWorkspaceIds,
 			latestTaskReadyForReview,
@@ -498,17 +498,17 @@ export function ProjectProvider({
 			terminalFontWeight,
 			agentCommand,
 			configDefaultBaseRef,
-			workspacePath,
-			workspaceGit,
+			projectPath,
+			projectGit,
 			refreshWorkspaceState,
-			workspaceRevision,
+			projectRevision,
 			setWorkspaceRevision,
-			workspaceHydrationNonce,
-			isWorkspaceStateRefreshing,
-			isWorkspaceMetadataPending,
+			projectHydrationNonce,
+			isProjectStateRefreshing,
+			isProjectMetadataPending,
 			resetWorkspaceSyncState,
 			isDocumentVisible,
-			canPersistWorkspaceState,
+			canPersistProjectState,
 			isServedFromBoardCache,
 			handleTogglePinBranch,
 			handleSkipTaskCheckoutConfirmationChange,

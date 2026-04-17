@@ -1,20 +1,20 @@
 import type { RuntimeConfigState } from "../../config";
 import { buildRuntimeConfigResponse } from "../../config";
 import type { IRuntimeConfigProvider } from "../../core";
-import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
+import type { RuntimeTrpcProjectScope } from "../app-router-context";
 
 export interface LoadConfigDeps {
 	config: Pick<IRuntimeConfigProvider, "getActiveRuntimeConfig" | "loadScopedRuntimeConfig">;
 }
 
-export async function handleLoadConfig(workspaceScope: RuntimeTrpcWorkspaceScope | null, deps: LoadConfigDeps) {
+export async function handleLoadConfig(projectScope: RuntimeTrpcProjectScope | null, deps: LoadConfigDeps) {
 	const activeRuntimeConfig = deps.config.getActiveRuntimeConfig();
-	if (!workspaceScope && !activeRuntimeConfig) {
+	if (!projectScope && !activeRuntimeConfig) {
 		throw new Error("No active runtime config provider is available.");
 	}
 	let scopedRuntimeConfig: RuntimeConfigState;
-	if (workspaceScope) {
-		scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(workspaceScope);
+	if (projectScope) {
+		scopedRuntimeConfig = await deps.config.loadScopedRuntimeConfig(projectScope);
 	} else if (activeRuntimeConfig) {
 		scopedRuntimeConfig = activeRuntimeConfig;
 	} else {

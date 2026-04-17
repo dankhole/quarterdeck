@@ -5,19 +5,19 @@ import { toErrorMessage } from "@/utils/to-error-message";
 
 export type MigrateDirection = "isolate" | "de-isolate";
 
-export function useMigrateWorkingDirectory(workspaceId: string | null) {
+export function useMigrateWorkingDirectory(projectId: string | null) {
 	const [migratingTaskId, setMigratingTaskId] = useState<string | null>(null);
 	const migratingRef = useRef(false);
 
 	const migrate = useCallback(
 		async (taskId: string, direction: MigrateDirection) => {
-			if (!workspaceId || migratingRef.current) {
+			if (!projectId || migratingRef.current) {
 				return;
 			}
 			migratingRef.current = true;
 			setMigratingTaskId(taskId);
 			try {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				const trpcClient = getRuntimeTrpcClient(projectId);
 				const result = await trpcClient.runtime.migrateTaskWorkingDirectory.mutate({
 					taskId,
 					direction,
@@ -38,7 +38,7 @@ export function useMigrateWorkingDirectory(workspaceId: string | null) {
 				setMigratingTaskId(null);
 			}
 		},
-		[workspaceId],
+		[projectId],
 	);
 
 	return { migrate, migratingTaskId };

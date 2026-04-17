@@ -68,7 +68,7 @@ Hooks live in `src/hooks/` organized by domain:
 - `hooks/board/` — task lifecycle, board state, drag-and-drop, trash workflow
 - `hooks/git/` — branch operations, diffs, conflict resolution, commit panel
 - `hooks/terminal/` — PTY panels, shell management, auto-restart
-- `hooks/project/` — workspace navigation, project switching, sync
+- `hooks/project/` — project navigation, project switching, sync
 - `hooks/notifications/` — alerts, sound, browser notifications
 - `hooks/` (flat) — cross-cutting hooks that don't belong to a single domain (settings, hotkeys, display)
 
@@ -112,14 +112,14 @@ export { INITIAL_HARD_DELETE_DIALOG_STATE, INITIAL_TRASH_WARNING_STATE } from "@
 
 | Domain module | Extracted from | What it contains |
 |---------------|---------------|-----------------|
-| `board/task-lifecycle.ts` | `use-task-lifecycle` | Board move helpers, workspace info transforms |
+| `board/task-lifecycle.ts` | `use-task-lifecycle` | Board move helpers, project info transforms |
 | `board/trash-workflow.ts` | `use-trash-workflow` | Types, initial states, trash column queries |
 | `git/conflict-resolution.ts` | `use-conflict-resolution` | Step change detection, path filtering, fallback responses |
-| `git/git-actions.ts` | `use-git-actions` | Loading state derivation, workspace info matching, error titles |
+| `git/git-actions.ts` | `use-git-actions` | Loading state derivation, project info matching, error titles |
 | `git/commit-panel.ts` | `use-commit-panel` | Selection sync, commit validation, success formatting |
 | `terminal/terminal-panels.ts` | `use-terminal-panels` | Geometry estimation, pane height persistence, panel state helpers |
 | `project/project-navigation.ts` | `use-project-navigation` | Error parsing, picker detection, manual path prompt |
-| `project/workspace-sync.ts` | `use-workspace-sync` | Session merging, version comparison, hydration guards |
+| `project/project-sync.ts` | `use-project-sync` | Session merging, version comparison, hydration guards |
 | `notifications/audible-notifications.ts` | `use-audible-notifications` | Column derivation, sound event resolution, settle window, visibility, project suppression |
 | `debug-logging.ts` | `use-debug-logging` | Log merging, filtering, tag extraction, disabled-tag persistence |
 | `task-editor.ts` | `use-task-editor` | Branch ref resolution, plan mode incompatibility, task save validation |

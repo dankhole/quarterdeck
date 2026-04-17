@@ -3,10 +3,10 @@ import { FileText, Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
 import { FileContextMenuItems } from "@/components/git/panels/context-menu-utils";
 import type { FileNavigation } from "@/hooks/git/use-git-navigation";
-import type { RuntimeWorkspaceFileChange, RuntimeWorkspaceFileStatus } from "@/runtime/types";
+import type { RuntimeWorkdirFileChange, RuntimeWorkdirFileStatus } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 
-const STATUS_BADGE: Record<RuntimeWorkspaceFileStatus, { letter: string; className: string }> = {
+const STATUS_BADGE: Record<RuntimeWorkdirFileStatus, { letter: string; className: string }> = {
 	modified: { letter: "M", className: "text-status-blue" },
 	added: { letter: "A", className: "text-status-green" },
 	deleted: { letter: "D", className: "text-status-red" },
@@ -20,7 +20,7 @@ const STATUS_BADGE: Record<RuntimeWorkspaceFileStatus, { letter: string; classNa
 interface FileDiffStats {
 	added: number;
 	removed: number;
-	status: RuntimeWorkspaceFileStatus;
+	status: RuntimeWorkdirFileStatus;
 }
 
 function FileTreeRow({
@@ -105,25 +105,25 @@ function FileTreeRow({
 }
 
 export function FileTreePanel({
-	workspaceFiles,
+	projectFiles,
 	selectedPath,
 	onSelectPath,
 	panelFlex,
 	navigateToFile,
 }: {
-	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
+	projectFiles: RuntimeWorkdirFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 	panelFlex?: string;
 	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
 	const referencedPaths = useMemo(() => {
-		return workspaceFiles?.map((file) => file.path) ?? [];
-	}, [workspaceFiles]);
+		return projectFiles?.map((file) => file.path) ?? [];
+	}, [projectFiles]);
 	const tree = useMemo(() => buildFileTree(referencedPaths), [referencedPaths]);
 	const diffStatsByPath = useMemo(() => {
 		const stats: Record<string, FileDiffStats> = {};
-		for (const file of workspaceFiles ?? []) {
+		for (const file of projectFiles ?? []) {
 			stats[file.path] = {
 				added: file.additions,
 				removed: file.deletions,
@@ -131,7 +131,7 @@ export function FileTreePanel({
 			};
 		}
 		return stats;
-	}, [workspaceFiles]);
+	}, [projectFiles]);
 
 	return (
 		<div

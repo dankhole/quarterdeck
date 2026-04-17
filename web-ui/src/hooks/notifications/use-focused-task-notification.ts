@@ -19,7 +19,7 @@ export function useFocusedTaskNotification({
 			return;
 		}
 		getRuntimeTrpcClient(currentProjectId)
-			.workspace.setFocusedTask.mutate({ taskId: selectedTaskId })
+			.project.setFocusedTask.mutate({ taskId: selectedTaskId })
 			.catch(() => {
 				// Fire-and-forget — polling priority is non-critical.
 			});

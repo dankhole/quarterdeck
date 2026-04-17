@@ -4,17 +4,17 @@ import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/runtime/type
 import { useDocumentTitle, useWindowEvent } from "@/utils/react-use";
 
 interface UseReviewReadyNotificationsOptions {
-	activeWorkspaceId: string | null;
+	activeProjectId: string | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
-	workspacePath: string | null;
+	projectPath: string | null;
 }
 
 const MAX_HANDLED_READY_EVENT_KEYS = 200;
 
 export function useReviewReadyNotifications({
-	activeWorkspaceId,
+	activeProjectId,
 	latestTaskReadyForReview,
-	workspacePath,
+	projectPath,
 }: UseReviewReadyNotificationsOptions): void {
 	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const handledReadyForReviewEventKeyQueueRef = useRef<string[]>([]);
@@ -26,19 +26,19 @@ export function useReviewReadyNotifications({
 		return document.hasFocus();
 	});
 	const isDocumentVisible = useDocumentVisibility();
-	const workspaceTitle = useMemo(() => {
-		if (!workspacePath) {
+	const projectTitle = useMemo(() => {
+		if (!projectPath) {
 			return null;
 		}
-		const segments = workspacePath
+		const segments = projectPath
 			.replaceAll("\\", "/")
 			.split("/")
 			.filter((segment) => segment.length > 0);
 		if (segments.length === 0) {
-			return workspacePath;
+			return projectPath;
 		}
-		return segments[segments.length - 1] ?? workspacePath;
-	}, [workspacePath]);
+		return segments[segments.length - 1] ?? projectPath;
+	}, [projectPath]);
 	const isAppActive = isDocumentVisible && isWindowFocused;
 
 	useWindowEvent("focus", () => {
@@ -60,10 +60,10 @@ export function useReviewReadyNotifications({
 		if (!latestTaskReadyForReview) {
 			return;
 		}
-		if (!activeWorkspaceId || latestTaskReadyForReview.workspaceId !== activeWorkspaceId) {
+		if (!activeProjectId || latestTaskReadyForReview.projectId !== activeProjectId) {
 			return;
 		}
-		const eventKey = `${latestTaskReadyForReview.workspaceId}:${latestTaskReadyForReview.taskId}:${latestTaskReadyForReview.triggeredAt}`;
+		const eventKey = `${latestTaskReadyForReview.projectId}:${latestTaskReadyForReview.taskId}:${latestTaskReadyForReview.triggeredAt}`;
 		if (handledReadyForReviewEventKeysRef.current.has(eventKey)) {
 			return;
 		}
@@ -82,16 +82,16 @@ export function useReviewReadyNotifications({
 			return;
 		}
 		setPendingReviewReadyNotificationCount((current) => current + 1);
-	}, [activeWorkspaceId, latestTaskReadyForReview]);
+	}, [activeProjectId, latestTaskReadyForReview]);
 
-	// Reset dedup state on workspace switch.
+	// Reset dedup state on project switch.
 	useEffect(() => {
 		handledReadyForReviewEventKeysRef.current.clear();
 		handledReadyForReviewEventKeyQueueRef.current = [];
 		setPendingReviewReadyNotificationCount(0);
-	}, [activeWorkspaceId]);
+	}, [activeProjectId]);
 
-	const baseTitle = workspaceTitle || "quarterdeck";
+	const baseTitle = projectTitle || "quarterdeck";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

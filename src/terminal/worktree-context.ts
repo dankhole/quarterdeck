@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 import { DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE } from "../config";
 import { createTaggedLogger } from "../core";
-import { readGitHeadInfo } from "../workspace";
+import { readGitHeadInfo } from "../workdir";
 
 const log = createTaggedLogger("worktree-context");
 
 export interface WorktreeContextInput {
 	cwd: string;
-	workspacePath?: string;
+	projectPath?: string;
 	/** User-editable template. Falls back to the built-in default when omitted. */
 	template?: string;
 }
@@ -17,15 +17,15 @@ export interface WorktreeContextInput {
  *
  * Supported placeholders:
  *   {{cwd}}                – the worktree working directory
- *   {{workspace_path}}     – the main repository directory
+ *   {{project_path}}     – the main repository directory
  *   {{detached_head_note}} – conditional note when HEAD is detached (or empty)
  *
  * Returns an empty string when the agent is running directly in the main repo
  * (i.e. not in a worktree), so callers can skip injection with a simple truthy check.
  */
 export async function buildWorktreeContextPrompt(input: WorktreeContextInput): Promise<string> {
-	const { cwd, workspacePath } = input;
-	if (!workspacePath || resolve(cwd) === resolve(workspacePath)) {
+	const { cwd, projectPath } = input;
+	if (!projectPath || resolve(cwd) === resolve(projectPath)) {
 		return "";
 	}
 
@@ -43,6 +43,6 @@ export async function buildWorktreeContextPrompt(input: WorktreeContextInput): P
 
 	return template
 		.replace(/\{\{cwd\}\}/g, cwd)
-		.replace(/\{\{workspace_path\}\}/g, workspacePath)
+		.replace(/\{\{project_path\}\}/g, projectPath)
 		.replace(/\{\{detached_head_note\}\}/g, detachedNote);
 }

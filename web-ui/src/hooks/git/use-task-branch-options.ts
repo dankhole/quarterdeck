@@ -8,7 +8,7 @@ interface TaskBranchOption {
 }
 
 interface UseTaskBranchOptionsInput {
-	workspaceGit: RuntimeGitRepositoryInfo | null;
+	projectGit: RuntimeGitRepositoryInfo | null;
 	configDefaultBaseRef?: string;
 }
 
@@ -20,18 +20,18 @@ interface UseTaskBranchOptionsResult {
 }
 
 export function useTaskBranchOptions({
-	workspaceGit,
+	projectGit,
 	configDefaultBaseRef,
 }: UseTaskBranchOptionsInput): UseTaskBranchOptionsResult {
 	const configRef = configDefaultBaseRef?.trim() || "";
 
 	const createTaskBranchOptions = useMemo(() => {
-		if (!workspaceGit) {
+		if (!projectGit) {
 			return [] as TaskBranchOption[];
 		}
 
 		// Resolve the effective default: config pin → git detection.
-		const effectiveDefault = configRef || workspaceGit.defaultBranch;
+		const effectiveDefault = configRef || projectGit.defaultBranch;
 
 		const options: TaskBranchOption[] = [];
 		const seen = new Set<string>();
@@ -46,16 +46,16 @@ export function useTaskBranchOptions({
 			});
 		};
 
-		const currentIsDefault = workspaceGit.currentBranch != null && workspaceGit.currentBranch === effectiveDefault;
-		append(workspaceGit.currentBranch, currentIsDefault ? "(current, default)" : "(current)");
+		const currentIsDefault = projectGit.currentBranch != null && projectGit.currentBranch === effectiveDefault;
+		append(projectGit.currentBranch, currentIsDefault ? "(current, default)" : "(current)");
 		append(effectiveDefault, "(default)");
-		for (const branch of workspaceGit.branches) {
+		for (const branch of projectGit.branches) {
 			append(branch);
 		}
-		append(workspaceGit.defaultBranch);
+		append(projectGit.defaultBranch);
 
 		return options;
-	}, [configRef, workspaceGit]);
+	}, [configRef, projectGit]);
 
 	const configRefIsValid = configRef !== "" && createTaskBranchOptions.some((opt) => opt.value === configRef);
 
@@ -63,11 +63,11 @@ export function useTaskBranchOptions({
 		if (configRefIsValid) {
 			return configRef;
 		}
-		if (!workspaceGit) {
+		if (!projectGit) {
 			return "";
 		}
-		return workspaceGit.defaultBranch ?? workspaceGit.currentBranch ?? createTaskBranchOptions[0]?.value ?? "";
-	}, [configRef, configRefIsValid, createTaskBranchOptions, workspaceGit]);
+		return projectGit.defaultBranch ?? projectGit.currentBranch ?? createTaskBranchOptions[0]?.value ?? "";
+	}, [configRef, configRefIsValid, createTaskBranchOptions, projectGit]);
 
 	return {
 		createTaskBranchOptions,

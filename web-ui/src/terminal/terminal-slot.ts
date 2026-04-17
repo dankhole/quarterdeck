@@ -61,7 +61,7 @@ export class TerminalSlot {
 	private readonly clientId = generateTerminalClientId();
 	private appearance: PersistentTerminalAppearance;
 	private taskId: string | null = null;
-	private workspaceId: string | null = null;
+	private projectId: string | null = null;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
 	private readonly resizer: SlotResizeManager;
@@ -209,14 +209,14 @@ export class TerminalSlot {
 	private createVisibilityLifecycle(): SlotVisibilityLifecycle {
 		return new SlotVisibilityLifecycle(this.slotId, {
 			getTaskId: () => this.taskId,
-			getWorkspaceId: () => this.workspaceId,
+			getWorkspaceId: () => this.projectId,
 			hasVisibleContainer: () => this.visibleContainer !== null,
 			hasIoSocket: () => this.sockets.hasIoSocket,
 			hasControlSocket: () => this.sockets.hasControlSocket,
 			refreshTerminal: () => this.terminal.refresh(0, this.terminal.rows - 1),
-			reconnectSockets: (taskId, workspaceId) => {
-				this.sockets.connectIo(taskId, workspaceId);
-				this.sockets.connectControl(taskId, workspaceId);
+			reconnectSockets: (taskId, projectId) => {
+				this.sockets.connectIo(taskId, projectId);
+				this.sockets.connectControl(taskId, projectId);
 			},
 			isDisposed: () => this.disposed,
 		});
@@ -227,9 +227,9 @@ export class TerminalSlot {
 		return this.taskId;
 	}
 
-	/** The workspace this slot is currently connected to, or null if idle. */
-	get connectedWorkspaceId(): string | null {
-		return this.workspaceId;
+	/** The project this slot is currently connected to, or null if idle. */
+	get connectedProjectId(): string | null {
+		return this.projectId;
 	}
 
 	/**
@@ -237,26 +237,26 @@ export class TerminalSlot {
 	 * No-op if sockets are already open.
 	 */
 	ensureConnected(): void {
-		if (this.disposed || !this.taskId || !this.workspaceId) return;
-		this.sockets.connectIo(this.taskId, this.workspaceId);
-		this.sockets.connectControl(this.taskId, this.workspaceId);
+		if (this.disposed || !this.taskId || !this.projectId) return;
+		this.sockets.connectIo(this.taskId, this.projectId);
+		this.sockets.connectControl(this.taskId, this.projectId);
 	}
 
-	connectToTask(taskId: string, workspaceId: string): void {
+	connectToTask(taskId: string, projectId: string): void {
 		if (this.disposed) {
 			return;
 		}
-		if (this.taskId === taskId && this.workspaceId === workspaceId) {
+		if (this.taskId === taskId && this.projectId === projectId) {
 			return;
 		}
 		if (this.taskId) {
 			this.sockets.closeAll();
 		}
 		this.taskId = taskId;
-		this.workspaceId = workspaceId;
+		this.projectId = projectId;
 		this.connectTimestamp = performance.now();
-		this.sockets.connectIo(taskId, workspaceId);
-		this.sockets.connectControl(taskId, workspaceId);
+		this.sockets.connectIo(taskId, projectId);
+		this.sockets.connectControl(taskId, projectId);
 	}
 
 	async disconnectFromTask(): Promise<void> {
@@ -354,7 +354,7 @@ export class TerminalSlot {
 		this.restoreRequestTimestamp = null;
 		clearTerminalGeometry(previousTaskId);
 		this.taskId = null;
-		this.workspaceId = null;
+		this.projectId = null;
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
 	}
@@ -747,11 +747,11 @@ export class TerminalSlot {
 	}
 
 	async stop(): Promise<void> {
-		if (!this.connectedTaskId || !this.connectedWorkspaceId) {
+		if (!this.connectedTaskId || !this.connectedProjectId) {
 			return;
 		}
 		this.sockets.sendControl({ type: "stop" });
-		const trpcClient = getRuntimeTrpcClient(this.connectedWorkspaceId);
+		const trpcClient = getRuntimeTrpcClient(this.connectedProjectId);
 		await trpcClient.runtime.stopTaskSession.mutate({ taskId: this.connectedTaskId });
 	}
 

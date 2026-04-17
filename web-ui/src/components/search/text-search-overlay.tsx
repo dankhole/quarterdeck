@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { SearchOverlayShell } from "@/components/search/search-overlay-shell.js";
 import { useTextSearch } from "@/hooks/search/use-text-search.js";
-import type { RuntimeWorkspaceTextSearchFile } from "@/runtime/types";
+import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
 
 export interface TextSearchOverlayProps {
-	workspaceId: string | null;
+	projectId: string | null;
 	onSelect: (filePath: string, lineNumber?: number) => void;
 	onDismiss: () => void;
 }
@@ -39,8 +39,8 @@ function highlightMatches(content: string, query: string, isRegex: boolean, case
 	}
 }
 
-export function TextSearchOverlay({ workspaceId, onSelect, onDismiss }: TextSearchOverlayProps): React.ReactElement {
-	const search = useTextSearch({ workspaceId, onSelect });
+export function TextSearchOverlay({ projectId, onSelect, onDismiss }: TextSearchOverlayProps): React.ReactElement {
+	const search = useTextSearch({ projectId, onSelect });
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedRowRef = useRef<HTMLDivElement>(null);
 
@@ -116,7 +116,7 @@ export function TextSearchOverlay({ workspaceId, onSelect, onDismiss }: TextSear
 
 			{!search.isLoading && search.results.length > 0 && (
 				<div className="overflow-y-auto max-h-[55vh]">
-					{search.results.map((file: RuntimeWorkspaceTextSearchFile, fileIdx: number) => (
+					{search.results.map((file: RuntimeWorkdirTextSearchFile, fileIdx: number) => (
 						<FileGroup
 							key={file.path}
 							file={file}
@@ -137,7 +137,7 @@ export function TextSearchOverlay({ workspaceId, onSelect, onDismiss }: TextSear
 }
 
 interface FileGroupProps {
-	file: RuntimeWorkspaceTextSearchFile;
+	file: RuntimeWorkdirTextSearchFile;
 	query: string;
 	isRegex: boolean;
 	caseSensitive: boolean;

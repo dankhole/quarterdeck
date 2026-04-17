@@ -13,17 +13,17 @@ import {
 
 const toastMock = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorkspaceSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskProjectSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskWorkspaceInfoMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): any => null));
 
 vi.mock("sonner", () => ({
 	toast: toastMock,
 }));
 
-vi.mock("@/stores/workspace-metadata-store", () => ({
-	getTaskWorkspaceSnapshot: getTaskWorkspaceSnapshotMock,
-	getTaskWorkspaceInfo: getTaskWorkspaceInfoMock,
+vi.mock("@/stores/project-metadata-store", () => ({
+	getTaskProjectSnapshot: getTaskProjectSnapshotMock,
+	getTaskWorktreeInfo: getTaskWorktreeInfoMock,
 }));
 
 describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
@@ -31,8 +31,8 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	beforeEach(() => {
 		toastMock.mockReset();
-		getTaskWorkspaceSnapshotMock.mockReset();
-		getTaskWorkspaceInfoMock.mockReset();
+		getTaskProjectSnapshotMock.mockReset();
+		getTaskWorktreeInfoMock.mockReset();
 	});
 
 	it("shows toast when trashing from in_progress with showTrashWorktreeNotice enabled", async () => {
@@ -73,7 +73,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 		});
 
 		expect(toastMock).toHaveBeenCalledWith(
-			"Task workspace removed",
+			"Task worktree removed",
 			expect.objectContaining({
 				description: expect.stringContaining("worktree was deleted"),
 			}),
@@ -102,7 +102,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
 		});
 
-		expect(toastMock).toHaveBeenCalledWith("Task workspace removed", expect.anything());
+		expect(toastMock).toHaveBeenCalledWith("Task worktree removed", expect.anything());
 	});
 
 	it("does not show toast when trashing from backlog", async () => {
@@ -352,7 +352,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 	it("does not show toast when confirmation dialog was triggered", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskWorkspaceSnapshotMock.mockReturnValue({
+		getTaskProjectSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
