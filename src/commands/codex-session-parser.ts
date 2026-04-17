@@ -1,4 +1,4 @@
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
 
 // ── Shared types ────────────────────────────────────────────────────────────────
 

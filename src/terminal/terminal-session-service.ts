@@ -1,4 +1,4 @@
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskSessionSummary } from "../core";
 import type { TerminalRestoreSnapshot } from "./terminal-state-mirror";
 
 export interface TerminalSessionListener {

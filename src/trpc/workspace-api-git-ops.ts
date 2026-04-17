@@ -1,16 +1,17 @@
-import { parseGitCheckoutRequest } from "../core/api-validation";
-import { cherryPickCommit } from "../workspace/git-cherry-pick";
-import { runGitMergeAction, runGitRebaseAction } from "../workspace/git-conflict";
-import { getGitSyncSummary } from "../workspace/git-probe";
+import { parseGitCheckoutRequest } from "../core";
 import {
+	cherryPickCommit,
 	createBranchFromRef,
 	deleteBranch,
+	getGitSyncSummary,
 	renameBranch,
 	resetToRef,
+	resolveTaskWorkingDirectory,
 	runGitCheckoutAction,
+	runGitMergeAction,
+	runGitRebaseAction,
 	runGitSyncAction,
-} from "../workspace/git-sync";
-import { resolveTaskWorkingDirectory } from "../workspace/task-worktree";
+} from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import {
 	createGitBranchErrorResponse,

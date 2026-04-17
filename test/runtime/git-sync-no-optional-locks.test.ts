@@ -18,9 +18,13 @@ vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
 }));
 
-import { type GitWorkspaceProbe, getGitSyncSummary, probeGitWorkspaceState } from "../../src/workspace/git-probe";
-import { stashCount } from "../../src/workspace/git-stash";
-import { getCommitsBehindBase } from "../../src/workspace/git-utils";
+import {
+	type GitWorkspaceProbe,
+	getCommitsBehindBase,
+	getGitSyncSummary,
+	probeGitWorkspaceState,
+	stashCount,
+} from "../../src/workspace";
 
 const FAKE_REPO = "/fake/repo";
 const FAKE_COMMIT = "abc123def456789012345678901234567890abcd";

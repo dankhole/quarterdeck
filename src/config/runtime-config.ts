@@ -1,7 +1,7 @@
 // Public API for runtime config: load, save, update.
 // Orchestrates normalizers (pure) and persistence (I/O).
-import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
-import { lockedFileSystem } from "../fs/locked-file-system";
+import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
+import { lockedFileSystem } from "../fs";
 import { detectInstalledCommands } from "./agent-registry";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {

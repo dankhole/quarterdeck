@@ -1,6 +1,6 @@
-import { buildRuntimeConfigResponse } from "../../config/agent-registry";
-import type { RuntimeConfigState } from "../../config/runtime-config";
-import type { IRuntimeConfigProvider } from "../../core/service-interfaces";
+import type { RuntimeConfigState } from "../../config";
+import { buildRuntimeConfigResponse } from "../../config";
+import type { IRuntimeConfigProvider } from "../../core";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface LoadConfigDeps {

@@ -1,6 +1,6 @@
-import { parseShellSessionStartRequest } from "../../core/api-validation";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
-import { resolveTaskWorkingDirectory } from "../../workspace/task-worktree";
+import { parseShellSessionStartRequest } from "../../core";
+import type { TerminalSessionManager } from "../../terminal";
+import { resolveTaskWorkingDirectory } from "../../workspace";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface StartShellSessionDeps {

@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config/runtime-config";
-import { getWorkspacePinnedBranchesPath } from "../../../src/state/workspace-state-utils";
+import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
+import { getWorkspacePinnedBranchesPath } from "../../../src/state";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv } from "./runtime-config-helpers";
 

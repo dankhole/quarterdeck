@@ -8,7 +8,7 @@ import {
 	type HandledShutdownSignal,
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
-} from "../../src/core/graceful-shutdown";
+} from "../../src/core";
 
 function createDeferredPromise() {
 	let resolvePromise!: () => void;

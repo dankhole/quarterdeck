@@ -5,7 +5,7 @@ import type {
 	RuntimeStashPopApplyResponse,
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
-} from "../core/api-contract";
+} from "../core";
 import { resolveRepoRoot, runGit, validateGitPath } from "./git-utils";
 
 /**

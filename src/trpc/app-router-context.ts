@@ -86,7 +86,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
-} from "../core/api-contract";
+} from "../core";
 
 export interface RuntimeTrpcWorkspaceScope {
 	workspaceId: string;

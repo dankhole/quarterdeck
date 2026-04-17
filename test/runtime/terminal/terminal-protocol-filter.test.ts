@@ -4,7 +4,7 @@ import {
 	createTerminalProtocolFilterState,
 	disableOscColorQueryIntercept,
 	filterTerminalProtocolOutput,
-} from "../../../src/terminal/terminal-protocol-filter";
+} from "../../../src/terminal";
 
 describe("terminal protocol filter", () => {
 	it("suppresses primary and secondary device attribute queries when enabled", () => {

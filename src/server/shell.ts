@@ -1,1 +1,1 @@
-export { resolveInteractiveShellCommand } from "../core/shell";
+export { resolveInteractiveShellCommand } from "../core";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { terminateProcessForTimeout } from "../../src/server/process-termination";
+import { terminateProcessForTimeout } from "../../src/server";
 
 describe("terminateProcessForTimeout", () => {
 	it("uses SIGTERM on non-windows platforms", () => {

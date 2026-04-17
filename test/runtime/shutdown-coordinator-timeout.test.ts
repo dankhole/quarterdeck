@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
-import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator";
-import type { TerminalSessionManager } from "../../src/terminal/session-manager";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
+import { shutdownRuntimeServer } from "../../src/server";
+import type { TerminalSessionManager } from "../../src/terminal";
 
 vi.mock("../../src/state/workspace-state.js", () => ({
 	loadWorkspaceState: vi.fn(),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../../src/core/api-contract";
+import type { RuntimeTaskSessionSummary } from "../../../../src/core";
 
 import { createMockManager, createSummary, createTestApi, mockStore, permissionActivity } from "./_helpers";
 

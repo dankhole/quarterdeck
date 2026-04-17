@@ -3,8 +3,8 @@
 // and schedules a timer to transition the session back to review if the
 // agent doesn't resume working within the recovery window.
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
+import type { RuntimeTaskSessionSummary } from "../core";
+import { emitSessionEvent } from "../core";
 import type { ActiveProcessState, ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 

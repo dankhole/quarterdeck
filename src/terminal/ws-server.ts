@@ -4,10 +4,8 @@ import type { Socket } from "node:net";
 import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
-import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
-import { parseTerminalWsClientMessage } from "../core/api-validation";
-import { getQuarterdeckRuntimeOrigin } from "../core/runtime-endpoint";
-import { createTaggedLogger } from "../core/runtime-logger";
+import type { RuntimeTerminalWsServerMessage } from "../core";
+import { createTaggedLogger, getQuarterdeckRuntimeOrigin, parseTerminalWsClientMessage } from "../core";
 import type { TerminalSessionService } from "./terminal-session-service";
 
 const log = createTaggedLogger("ws-server");

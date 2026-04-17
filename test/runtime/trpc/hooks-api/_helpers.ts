@@ -1,9 +1,8 @@
 import { vi } from "vitest";
 
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../../src/core/api-contract";
-import type { TerminalSessionManager } from "../../../../src/terminal/session-manager";
-import type { SessionSummaryStore } from "../../../../src/terminal/session-summary-store";
-import { type CreateHooksApiDependencies, createHooksApi } from "../../../../src/trpc/hooks-api";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../../src/core";
+import type { SessionSummaryStore, TerminalSessionManager } from "../../../../src/terminal";
+import { type CreateHooksApiDependencies, createHooksApi } from "../../../../src/trpc";
 
 export function createMockManager(storeMethods: Partial<SessionSummaryStore>): TerminalSessionManager {
 	return { store: storeMethods, recordHookReceived: vi.fn() } as unknown as TerminalSessionManager;

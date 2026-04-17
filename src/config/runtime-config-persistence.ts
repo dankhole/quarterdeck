@@ -3,10 +3,9 @@
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
-import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
-import { getRuntimeHomePath } from "../state/workspace-state";
-import { getWorkspacePinnedBranchesPath } from "../state/workspace-state-utils";
+import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
+import { type LockRequest, lockedFileSystem } from "../fs";
+import { getRuntimeHomePath, getWorkspacePinnedBranchesPath } from "../state";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,

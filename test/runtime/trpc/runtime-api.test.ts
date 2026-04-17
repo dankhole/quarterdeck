@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 const agentRegistryMocks = vi.hoisted(() => ({
@@ -75,7 +75,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: vi.fn(),
 }));
 
-import { createRuntimeApi } from "../../../src/trpc/runtime-api";
+import { createRuntimeApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

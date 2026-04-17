@@ -1,4 +1,4 @@
-import type { RuntimeAgentId } from "../core/api-contract";
+import type { RuntimeAgentId } from "../core";
 
 const CODEX_WORKSPACE_TRUST_TOKENS = ["do", "you", "trust", "the", "contents", "of", "this", "directory"];
 

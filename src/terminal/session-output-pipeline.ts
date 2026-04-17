@@ -4,7 +4,7 @@
 // trust → store timestamp → codex deferred input → transition detection →
 // listener broadcast.
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 import {

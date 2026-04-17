@@ -1,8 +1,8 @@
 import pLimit from "p-limit";
 
-import type { RuntimeBoardData, RuntimeWorkspaceMetadata } from "../core/api-contract";
-import { createGitProcessEnv } from "../core/git-process-env";
-import { resolveBaseRefForBranch, runGit } from "../workspace/git-utils";
+import type { RuntimeBoardData, RuntimeWorkspaceMetadata } from "../core";
+import { createGitProcessEnv } from "../core";
+import { resolveBaseRefForBranch, runGit } from "../workspace";
 import {
 	areWorkspaceMetadataEqual,
 	buildWorkspaceMetadataSnapshot,

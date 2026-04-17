@@ -9,7 +9,7 @@ import {
 	parseRuntimePort,
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
-} from "../../src/core/runtime-endpoint";
+} from "../../src/core";
 
 const originalRuntimePort = getQuarterdeckRuntimePort();
 const originalRuntimeHost = getQuarterdeckRuntimeHost();

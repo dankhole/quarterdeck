@@ -3,8 +3,8 @@
 // an ordered pipeline: terminal protocol response detection → permission
 // activity clearing → Codex prompt flagging → interrupt detection → PTY write.
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
+import type { RuntimeTaskSessionSummary } from "../core";
+import { emitSessionEvent } from "../core";
 import { detectInterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import { isPermissionActivity } from "./session-reconciliation";

@@ -1,10 +1,6 @@
 import * as pty from "node-pty";
 
-import {
-	buildWindowsCmdArgsCommandLine,
-	resolveWindowsComSpec,
-	shouldUseWindowsCmdLaunch,
-} from "../core/windows-cmd-launch";
+import { buildWindowsCmdArgsCommandLine, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core";
 
 export interface PtyExitEvent {
 	exitCode: number;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeTaskHookActivity } from "../../../src/core/api-contract";
-import { isPermissionActivity } from "../../../src/terminal/session-reconciliation";
+import type { RuntimeTaskHookActivity } from "../../../src/core";
+import { isPermissionActivity } from "../../../src/terminal";
 
 function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): RuntimeTaskHookActivity {
 	return {

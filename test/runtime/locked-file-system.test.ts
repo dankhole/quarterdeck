@@ -14,7 +14,7 @@ vi.mock("proper-lockfile", () => ({
 	lock: lockfileMocks.lock,
 }));
 
-import { cleanupStaleLockAndTempFiles, LockedFileSystem } from "../../src/fs/locked-file-system";
+import { cleanupStaleLockAndTempFiles, LockedFileSystem } from "../../src/fs";
 
 describe("LockedFileSystem", () => {
 	beforeEach(() => {

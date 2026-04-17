@@ -4,12 +4,19 @@ import type {
 	RuntimeGitSyncSummary,
 	RuntimeTaskWorkspaceMetadata,
 	RuntimeWorkspaceMetadata,
-} from "../core/api-contract";
-import { computeAutoMergedFiles, detectActiveConflict, getConflictedFiles } from "../workspace/git-conflict";
-import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-probe";
-import { stashCount } from "../workspace/git-stash";
-import { getCommitsBehindBase, runGit } from "../workspace/git-utils";
-import { getTaskWorkspacePathInfo, pathExists } from "../workspace/task-worktree";
+} from "../core";
+import {
+	computeAutoMergedFiles,
+	detectActiveConflict,
+	getCommitsBehindBase,
+	getConflictedFiles,
+	getGitSyncSummary,
+	getTaskWorkspacePathInfo,
+	pathExists,
+	probeGitWorkspaceState,
+	runGit,
+	stashCount,
+} from "../workspace";
 
 export interface TrackedTaskWorkspace {
 	taskId: string;

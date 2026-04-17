@@ -3,23 +3,27 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { emitEvent } from "../core/event-log";
+import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core";
 import {
 	buildQuarterdeckRuntimeUrl,
+	createTaggedLogger,
+	emitEvent,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
-} from "../core/runtime-endpoint";
-import { createTaggedLogger } from "../core/runtime-logger";
-import { loadWorkspaceContextById } from "../state/workspace-state";
-import type { TerminalSessionManager } from "../terminal/session-manager";
-import { createTerminalWebSocketBridge } from "../terminal/ws-server";
-import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
-import { createHooksApi } from "../trpc/hooks-api";
-import { createProjectsApi } from "../trpc/projects-api";
-import { createRuntimeApi } from "../trpc/runtime-api";
-import { createWorkspaceApi } from "../trpc/workspace-api";
+} from "../core";
+import { loadWorkspaceContextById } from "../state";
+import type { TerminalSessionManager } from "../terminal";
+import { createTerminalWebSocketBridge } from "../terminal";
+import {
+	createHooksApi,
+	createProjectsApi,
+	createRuntimeApi,
+	createWorkspaceApi,
+	type RuntimeTrpcContext,
+	type RuntimeTrpcWorkspaceScope,
+	runtimeAppRouter,
+} from "../trpc";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";

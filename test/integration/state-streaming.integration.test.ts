@@ -14,7 +14,7 @@ import type {
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorktreeEnsureResponse,
-} from "../../src/core/api-contract";
+} from "../../src/core";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";

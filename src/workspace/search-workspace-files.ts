@@ -4,8 +4,8 @@ import { readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
-import type { RuntimeWorkspaceFileSearchMatch } from "../core/api-contract";
-import { createGitProcessEnv } from "../core/git-process-env";
+import type { RuntimeWorkspaceFileSearchMatch } from "../core";
+import { createGitProcessEnv } from "../core";
 
 const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5_000;

@@ -6,10 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
-import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core/api-contract";
-import type { TerminalSessionListener, TerminalSessionService } from "../../../src/terminal/terminal-session-service";
-import type { TerminalRestoreSnapshot } from "../../../src/terminal/terminal-state-mirror";
-import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal/ws-server";
+import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core";
+import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionService } from "../../../src/terminal";
+import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
 
 const TASK_ID = "task-1";
 const WORKSPACE_ID = "workspace-1";

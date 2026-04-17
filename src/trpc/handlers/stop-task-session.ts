@@ -1,5 +1,5 @@
-import { parseTaskSessionStopRequest } from "../../core/api-validation";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
+import { parseTaskSessionStopRequest } from "../../core";
+import type { TerminalSessionManager } from "../../terminal";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface StopTaskSessionDeps {

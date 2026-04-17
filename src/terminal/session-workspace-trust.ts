@@ -3,9 +3,8 @@
 // detection pipeline and auto-confirms workspace trust prompts for both
 // Claude and Codex agents.
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
-import { createTaggedLogger } from "../core/runtime-logger";
+import type { RuntimeTaskSessionSummary } from "../core";
+import { createTaggedLogger, emitSessionEvent } from "../core";
 import { hasClaudeWorkspaceTrustPrompt, WORKSPACE_TRUST_CONFIRM_DELAY_MS } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt } from "./codex-workspace-trust";
 import type { ActiveProcessState } from "./session-manager-types";

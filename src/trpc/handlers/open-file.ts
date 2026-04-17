@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { openInBrowser } from "../../server/browser";
+import { openInBrowser } from "../../server";
 
 export async function handleOpenFile(input: { filePath: string }) {
 	const filePath = input.filePath.trim();

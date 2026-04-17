@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 
-import type { RuntimeBoardData, RuntimeTaskWorkspaceInfoResponse } from "../core/api-contract";
-import { findCardInBoard } from "../core/task-board-mutations";
-import { loadWorkspaceContext, loadWorkspaceState } from "../state/workspace-state";
+import type { RuntimeBoardData, RuntimeTaskWorkspaceInfoResponse } from "../core";
+import { findCardInBoard } from "../core";
+import { loadWorkspaceContext, loadWorkspaceState } from "../state";
 import { readGitHeadInfo } from "./git-utils";
 import { ensureTaskWorktreeIfDoesntExist, getTaskWorktreePath } from "./task-worktree-lifecycle";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";

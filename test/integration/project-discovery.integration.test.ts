@@ -8,7 +8,7 @@ import type {
 	RuntimeProjectAddResponse,
 	RuntimeProjectsResponse,
 	RuntimeStateStreamSnapshotMessage,
-} from "../../src/core/api-contract";
+} from "../../src/core";
 import { initGitRepository } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
 import { connectRuntimeStream, type RuntimeStreamClient } from "../utilities/runtime-stream-client";

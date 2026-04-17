@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { searchWorkspaceFiles } from "../../src/workspace/search-workspace-files";
+import { searchWorkspaceFiles } from "../../src/workspace";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

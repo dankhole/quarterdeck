@@ -1,11 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type {
-	RuntimeWorkspaceChangesResponse,
-	RuntimeWorkspaceFileChange,
-	RuntimeWorkspaceFileStatus,
-} from "../core/api-contract";
+import type { RuntimeWorkspaceChangesResponse, RuntimeWorkspaceFileChange, RuntimeWorkspaceFileStatus } from "../core";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
 import { countLines, getGitStdout, parseNumstatPerFile, resolveRepoRoot } from "./git-utils";

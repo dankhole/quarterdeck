@@ -11,8 +11,8 @@ import type {
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
-} from "../core/api-contract";
-import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
+} from "../core";
+import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
 import {
 	reduceSessionTransition,
 	type SessionTransitionEvent,

@@ -13,10 +13,8 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
-import { TerminalSessionManager } from "../../../src/terminal/session-manager";
-import { reduceSessionTransition } from "../../../src/terminal/session-state-machine";
-import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
+import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;

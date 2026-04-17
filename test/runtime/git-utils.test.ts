@@ -13,7 +13,7 @@ vi.mock("node:child_process", () => ({
 	}),
 }));
 
-import { runGit } from "../../src/workspace/git-utils";
+import { runGit } from "../../src/workspace";
 
 function createExecError(options: {
 	code: string | number;

@@ -4,9 +4,7 @@ import { homedir, platform } from "node:os";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { createGitProcessEnv } from "../core/git-process-env";
-import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
-import { quoteShellArg } from "../core/shell";
+import { buildQuarterdeckCommandParts, createGitProcessEnv, quoteShellArg } from "../core";
 
 // ---------------------------------------------------------------------------
 // Input types — matches Claude Code's statusline JSON contract

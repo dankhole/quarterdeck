@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	hasCodexWorkspaceTrustPrompt,
-	shouldAutoConfirmCodexWorkspaceTrust,
-} from "../../../src/terminal/codex-workspace-trust";
+import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "../../../src/terminal";
 
 describe("hasCodexWorkspaceTrustPrompt", () => {
 	it("returns true for plain 'Do you trust the contents of this directory?' text", () => {

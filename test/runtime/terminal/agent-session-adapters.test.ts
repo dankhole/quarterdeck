@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
+import { prepareAgentLaunch } from "../../../src/terminal";
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
 vi.mock("../../../src/terminal/worktree-context.js", () => ({

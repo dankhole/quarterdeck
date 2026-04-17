@@ -1,20 +1,16 @@
-import { resolveAgentCommand } from "../config/agent-registry";
-import { type RuntimeConfigState, toGlobalRuntimeConfigState } from "../config/runtime-config";
-import type {
-	RuntimeBoardColumnId,
-	RuntimeBoardData,
-	RuntimeProjectSummary,
-	RuntimeProjectTaskCounts,
-	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract";
-import { emitEvent, emitSessionEvent } from "../core/event-log";
-import { createTaggedLogger } from "../core/runtime-logger";
+import { type RuntimeConfigState, resolveAgentCommand, toGlobalRuntimeConfigState } from "../config";
 import type {
 	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
 	IWorkspaceDataProvider,
 	IWorkspaceResolver,
-} from "../core/service-interfaces";
+	RuntimeBoardColumnId,
+	RuntimeBoardData,
+	RuntimeProjectSummary,
+	RuntimeProjectTaskCounts,
+	RuntimeWorkspaceStateResponse,
+} from "../core";
+import { createTaggedLogger, emitEvent, emitSessionEvent } from "../core";
 import {
 	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
@@ -24,9 +20,8 @@ import {
 	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
-} from "../state/workspace-state";
-import { TerminalSessionManager } from "../terminal/session-manager";
-import { InMemorySessionSummaryStore } from "../terminal/session-summary-store";
+} from "../state";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../terminal";
 
 const registryLog = createTaggedLogger("workspace-registry");
 

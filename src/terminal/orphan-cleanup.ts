@@ -4,7 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { createTaggedLogger } from "../core/runtime-logger";
+import { createTaggedLogger } from "../core";
 import { isProcessAlive } from "./session-reconciliation";
 
 const log = createTaggedLogger("orphan-cleanup");

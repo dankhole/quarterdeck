@@ -3,14 +3,14 @@ import type {
 	RuntimeConflictAbortResponse,
 	RuntimeConflictContinueResponse,
 	RuntimeConflictFilesResponse,
-} from "../core/api-contract";
+} from "../core";
 import {
 	abortMergeOrRebase,
 	continueMergeOrRebase,
 	getAutoMergedFileContent,
 	getConflictFileContent,
 	resolveConflictFile as gitResolveConflictFile,
-} from "../workspace/git-conflict";
+} from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import { EMPTY_GIT_SUMMARY, errorMessage, resolveWorkingDir, type WorkspaceApiContext } from "./workspace-api-shared";
 

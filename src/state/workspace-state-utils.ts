@@ -2,9 +2,9 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import type { RuntimeGitRepositoryInfo } from "../core/api-contract";
-import type { LockRequest } from "../fs/locked-file-system";
-import { runGitSync } from "../workspace/git-utils";
+import type { RuntimeGitRepositoryInfo } from "../core";
+import type { LockRequest } from "../fs";
+import { runGitSync } from "../workspace";
 
 // --- Path constants and getters ---
 

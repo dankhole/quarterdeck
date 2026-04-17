@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { WebSocket } from "ws";
 
-import type { RuntimeStateStreamMessage } from "../../src/core/api-contract";
+import type { RuntimeStateStreamMessage } from "../../src/core";
 
 export interface RuntimeStreamClient {
 	socket: WebSocket;

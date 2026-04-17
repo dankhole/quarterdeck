@@ -1,7 +1,7 @@
-import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
-import { killOrphanedAgentProcesses } from "../terminal/orphan-cleanup";
-import type { TerminalSessionManager } from "../terminal/session-manager";
+import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core";
+import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state";
+import type { TerminalSessionManager } from "../terminal";
+import { killOrphanedAgentProcesses } from "../terminal";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {

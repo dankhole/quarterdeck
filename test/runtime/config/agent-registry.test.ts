@@ -8,11 +8,7 @@ vi.mock("../../../src/core/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
 }));
 
-import {
-	buildRuntimeConfigResponse,
-	detectInstalledCommands,
-	resolveAgentCommand,
-} from "../../../src/config/agent-registry";
+import { buildRuntimeConfigResponse, detectInstalledCommands, resolveAgentCommand } from "../../../src/config";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
 beforeEach(() => {

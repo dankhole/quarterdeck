@@ -2,10 +2,9 @@
 // corrective actions. The individual check functions live in session-reconciliation.ts;
 // this module owns the timer lifecycle and action execution.
 
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
-import { createTaggedLogger } from "../core/runtime-logger";
-import { cleanStaleGitIndexLocks } from "../fs/lock-cleanup";
+import type { RuntimeTaskSessionSummary } from "../core";
+import { createTaggedLogger, emitSessionEvent } from "../core";
+import { cleanStaleGitIndexLocks } from "../fs";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";

@@ -2,10 +2,9 @@
 // Extracted from session-manager.ts — handles PTY process creation, exit
 // processing, auto-restart decisions, and stale session recovery.
 
-import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
-import { createTaggedLogger } from "../core/runtime-logger";
-import { cleanStaleIndexLockForWorktree } from "../fs/lock-cleanup";
+import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core";
+import { createTaggedLogger, emitSessionEvent } from "../core";
+import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";

@@ -1,7 +1,7 @@
 import { access, lstat, mkdir, readFile, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { lockedFileSystem } from "../fs/locked-file-system";
+import { lockedFileSystem } from "../fs";
 import { getGitStdout, runGit } from "./git-utils";
 import { listTurbopackNodeModulesSymlinkSkipPaths } from "./task-worktree-turbopack";
 

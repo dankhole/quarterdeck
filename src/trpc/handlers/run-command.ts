@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
-import type { RuntimeCommandRunResponse } from "../../core/api-contract";
-import { parseCommandRunRequest } from "../../core/api-validation";
+import type { RuntimeCommandRunResponse } from "../../core";
+import { parseCommandRunRequest } from "../../core";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface RunCommandDeps {

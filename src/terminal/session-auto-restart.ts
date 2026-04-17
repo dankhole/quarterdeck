@@ -12,8 +12,8 @@
 //   awaiting_review → exits     = normal cleanup after handoff → no restart
 //   interrupted → exits         = user-initiated stop → no restart
 
-import type { RuntimeTaskSessionState, RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
+import type { RuntimeTaskSessionState, RuntimeTaskSessionSummary } from "../core";
+import { emitSessionEvent } from "../core";
 import type { ProcessEntry, StartTaskSessionRequest } from "./session-manager-types";
 import { cloneStartTaskSessionRequest } from "./session-manager-types";
 import { cloneSummary } from "./session-summary-store";

@@ -1,26 +1,23 @@
 import { TRPCError } from "@trpc/server";
-import type {
-	RuntimeFileContentResponse,
-	RuntimeListFilesResponse,
-	RuntimeWorkspaceFileSearchResponse,
-} from "../core/api-contract";
+import type { RuntimeFileContentResponse, RuntimeListFilesResponse, RuntimeWorkspaceFileSearchResponse } from "../core";
 import {
+	assertValidGitRef,
 	createEmptyWorkspaceChangesResponse,
+	getCommitDiff,
+	getFileContentAtRef,
+	getGitLog,
+	getGitRefs,
+	getGitStdout,
 	getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
 	getWorkspaceFileDiff,
-} from "../workspace/get-workspace-changes";
-import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
-import {
-	assertValidGitRef,
-	getFileContentAtRef,
-	getGitStdout,
+	listAllWorkspaceFiles,
 	listFilesAtRef,
+	readWorkspaceFile,
+	searchWorkspaceFiles,
 	validateGitPath,
-} from "../workspace/git-utils";
-import { readWorkspaceFile } from "../workspace/read-workspace-file";
-import { listAllWorkspaceFiles, searchWorkspaceFiles } from "../workspace/search-workspace-files";
+} from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import {
 	normalizeOptionalTaskWorkspaceScopeInput,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core";
 import {
 	checkDeadProcess,
 	checkInterruptedNoRestart,
@@ -10,9 +10,9 @@ import {
 	isPermissionActivity,
 	type ReconciliationEntry,
 	reconciliationChecks,
+	reduceSessionTransition,
 	STALLED_HOOK_THRESHOLD_MS,
-} from "../../../src/terminal/session-reconciliation";
-import { reduceSessionTransition } from "../../../src/terminal/session-state-machine";
+} from "../../../src/terminal";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

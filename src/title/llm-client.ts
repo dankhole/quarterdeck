@@ -18,7 +18,7 @@
  *   QUARTERDECK_TITLE_MODEL — legacy alias for QUARTERDECK_LLM_MODEL
  */
 
-import { createTaggedLogger } from "../core/runtime-logger";
+import { createTaggedLogger } from "../core";
 
 const log = createTaggedLogger("llm-client");
 const DEFAULT_LLM_MODEL = "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0";

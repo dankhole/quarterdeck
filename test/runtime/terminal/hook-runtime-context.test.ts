@@ -5,7 +5,7 @@ import {
 	parseHookRuntimeContextFromEnv,
 	QUARTERDECK_HOOK_TASK_ID_ENV,
 	QUARTERDECK_HOOK_WORKSPACE_ID_ENV,
-} from "../../../src/terminal/hook-runtime-context";
+} from "../../../src/terminal";
 
 describe("hook-runtime-context", () => {
 	it("creates expected environment variables", () => {

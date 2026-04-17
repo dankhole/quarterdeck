@@ -13,8 +13,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import { TerminalSessionManager } from "../../../src/terminal/session-manager";
-import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;

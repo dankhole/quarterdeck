@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace";
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 

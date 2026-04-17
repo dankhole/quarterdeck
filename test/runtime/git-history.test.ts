@@ -3,10 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
-
-import { getCommitDiff, getGitLog, getGitRefs } from "../../src/workspace/git-history";
-import { getGitSyncSummary } from "../../src/workspace/git-probe";
-import { discardGitChanges } from "../../src/workspace/git-sync";
+import { discardGitChanges, getCommitDiff, getGitLog, getGitRefs, getGitSyncSummary } from "../../src/workspace";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

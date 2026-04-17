@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _testing, sanitizeLlmResponse } from "../../../src/title/llm-client";
+import { _testing, sanitizeLlmResponse } from "../../../src/title";
 
 const { acquireSlot, releaseSlot, resetRateLimiter, MAX_CONCURRENT, MAX_PER_MINUTE, WINDOW_MS } = _testing;
 

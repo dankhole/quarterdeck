@@ -2,7 +2,7 @@
 // These are internal to the terminal layer — external consumers should only
 // import TerminalSessionManager from session-manager.ts.
 
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core";
 import type {
 	AgentAdapterLaunchInput,
 	AgentOutputTransitionDetector,

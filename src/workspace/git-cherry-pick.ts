@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeGitCherryPickResponse } from "../core/api-contract";
+import type { RuntimeGitCherryPickResponse } from "../core";
 import { hasGitRef, resolveRepoRoot, runGit, validateGitRef } from "./git-utils";
 
 /**

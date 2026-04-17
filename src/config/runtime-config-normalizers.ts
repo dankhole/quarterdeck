@@ -1,7 +1,8 @@
 // Pure normalization functions and state assembly for runtime config.
 // No file I/O — all functions are deterministic and side-effect free.
-import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
-import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
+
+import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
+import { isRuntimeAgentLaunchSupported } from "../core";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	DEFAULT_AGENT_ID,

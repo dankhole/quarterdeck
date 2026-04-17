@@ -1,7 +1,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { RuntimeWorktreeDeleteResponse, RuntimeWorktreeEnsureResponse } from "../core/api-contract";
+import type { RuntimeWorktreeDeleteResponse, RuntimeWorktreeEnsureResponse } from "../core";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state";
 import { getGitCommandErrorMessage, getGitCommonDir, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";

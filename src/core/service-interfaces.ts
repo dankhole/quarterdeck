@@ -10,9 +10,9 @@
  * every consumer, ctrl+click the `implements` clause to see the provider.
  */
 
-import type { RuntimeConfigState } from "../config/runtime-config";
-import type { WorkspaceMetadataPollIntervals } from "../server/workspace-metadata-monitor";
-import type { TerminalSessionManager } from "../terminal/session-manager";
+import type { RuntimeConfigState } from "../config";
+import type { WorkspaceMetadataPollIntervals } from "../server";
+import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeProjectSummary, RuntimeProjectTaskCounts, RuntimeWorkspaceStateResponse } from "./api-contract";
 import type { LogLevel } from "./runtime-logger";
 

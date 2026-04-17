@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactor: runtime barrel exports
+
+- Added `index.ts` barrel files to 9 runtime directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`) — each re-exports the directory's public surface. Updated ~150 import paths across `src/` and `test/` to use directory-level imports instead of specific module paths. Three source files (`lock-cleanup.ts`, `task-worktree-lifecycle.ts`, `task-worktree-patch.ts`, `claude-workspace-trust.ts`) retain direct imports to preserve vitest mock compatibility.
+
 ### Refactor: git action toast helpers and loading guard
 
 - Added `showGitErrorToast`/`showGitWarningToast`/`showGitSuccessToast` helpers to `hooks/git/git-actions.ts` — standardize icon, intent, and timeout defaults across all git toast calls. Normalized `use-branch-actions.ts` error toasts to include `warning-sign` icon and 7s timeout (previously inconsistent with `use-git-actions.ts`).

@@ -6,7 +6,7 @@ import type {
 	RuntimeStashPopApplyResponse,
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
-} from "../../../src/core/api-contract";
+} from "../../../src/core";
 
 const gitSyncMocks = vi.hoisted(() => ({
 	stashPush: vi.fn(),
@@ -138,7 +138,7 @@ vi.mock("../../../src/workspace/read-workspace-file.js", () => ({
 	readWorkspaceFile: vi.fn(),
 }));
 
-import { createWorkspaceApi } from "../../../src/trpc/workspace-api";
+import { createWorkspaceApi } from "../../../src/trpc";
 
 function createWorkspaceDeps(overrides: Record<string, unknown> = {}) {
 	return {

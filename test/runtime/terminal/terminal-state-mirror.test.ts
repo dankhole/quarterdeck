@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TerminalStateMirror } from "../../../src/terminal/terminal-state-mirror";
+import { TerminalStateMirror } from "../../../src/terminal";
 
 const mirrors: TerminalStateMirror[] = [];
 

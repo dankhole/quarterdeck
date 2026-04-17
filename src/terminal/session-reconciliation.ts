@@ -10,7 +10,7 @@
 //   - Stale hook activity metadata
 //   - Stalled sessions (running but no activity for several minutes)
 // Future candidates: auto-restart loop breaking, frontend panel state reconciliation.
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../core";
 
 export type ReconciliationAction =
 	| { type: "clear_hook_activity" }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateBranchName, generateTaskTitle } from "../../src/title/title-generator";
+import { generateBranchName, generateTaskTitle } from "../../src/title";
 
 describe("generateTaskTitle", () => {
 	const originalEnv = { ...process.env };

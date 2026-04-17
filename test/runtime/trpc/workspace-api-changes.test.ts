@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesResponse } from "../../../src/core/api-contract";
+import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesResponse } from "../../../src/core";
 
 const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -118,7 +118,7 @@ vi.mock("../../../src/workspace/read-workspace-file.js", () => ({
 	readWorkspaceFile: vi.fn(),
 }));
 
-import { createWorkspaceApi } from "../../../src/trpc/workspace-api";
+import { createWorkspaceApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

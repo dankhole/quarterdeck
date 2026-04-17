@@ -1,20 +1,19 @@
 import type {
+	IRuntimeBroadcaster,
+	ITerminalManagerProvider,
+	IWorkspaceResolver,
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
 	RuntimeTaskHookActivity,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
-} from "../core/api-contract";
-import { parseHookIngestRequest } from "../core/api-validation";
-import { emitSessionEvent } from "../core/event-log";
-import { createTaggedLogger } from "../core/runtime-logger";
-import type { IRuntimeBroadcaster, ITerminalManagerProvider, IWorkspaceResolver } from "../core/service-interfaces";
-import { loadWorkspaceContextById } from "../state/workspace-state";
-import { isPermissionActivity } from "../terminal/session-reconciliation";
-import { canReturnToRunning } from "../terminal/session-state-machine";
-import type { SessionSummaryStore } from "../terminal/session-summary-store";
-import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title/llm-client";
-import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
+} from "../core";
+import { createTaggedLogger, emitSessionEvent, parseHookIngestRequest } from "../core";
+import { loadWorkspaceContextById } from "../state";
+import type { SessionSummaryStore } from "../terminal";
+import { canReturnToRunning, isPermissionActivity } from "../terminal";
+import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
+import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router";
 
 const log = createTaggedLogger("hooks");

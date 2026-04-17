@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
-import { buildShellCommandLine } from "../../../src/core/shell";
-import { TerminalSessionManager } from "../../../src/terminal/session-manager";
-import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
+import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import { buildShellCommandLine } from "../../../src/core";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 
 function createTestManager(): TerminalSessionManager {
 	return new TerminalSessionManager(new InMemorySessionSummaryStore());

@@ -3,9 +3,8 @@
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
-import type { RuntimeCommandRunResponse } from "../core/api-contract";
-import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../core/service-interfaces";
-import type { TerminalSessionManager } from "../terminal/session-manager";
+import type { IRuntimeBroadcaster, IRuntimeConfigProvider, RuntimeCommandRunResponse } from "../core";
+import type { TerminalSessionManager } from "../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router-context";
 import { handleFlagTaskForDebug } from "./handlers/flag-task-for-debug";
 import { handleLoadConfig } from "./handlers/load-config";

@@ -6,9 +6,9 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
-} from "../core/api-contract";
-import { runtimeWorkspaceStateSaveRequestSchema } from "../core/api-contract";
-import { lockedFileSystem } from "../fs/locked-file-system";
+} from "../core";
+import { runtimeWorkspaceStateSaveRequestSchema } from "../core";
+import { lockedFileSystem } from "../fs";
 import {
 	ensureWorkspaceEntry,
 	findWorkspaceEntry,

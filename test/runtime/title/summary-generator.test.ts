@@ -6,8 +6,7 @@ vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
 
-import { callLlm } from "../../../src/title/llm-client";
-import { generateDisplaySummary } from "../../../src/title/summary-generator";
+import { callLlm, generateDisplaySummary } from "../../../src/title";
 
 const callLlmMock = vi.mocked(callLlm);
 

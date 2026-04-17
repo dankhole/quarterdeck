@@ -11,8 +11,8 @@
 //   session-interrupt-recovery.ts  — interrupt detection and recovery
 //   session-auto-restart.ts        — auto-restart after unexpected exit
 //   session-reconciliation-sweep.ts — periodic reconciliation sweep
-import type { RuntimeTaskSessionSummary } from "../core/api-contract";
-import { emitSessionEvent } from "../core/event-log";
+import type { RuntimeTaskSessionSummary } from "../core";
+import { emitSessionEvent } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { processSessionInput } from "./session-input-pipeline";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";

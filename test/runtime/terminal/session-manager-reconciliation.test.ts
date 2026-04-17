@@ -13,9 +13,8 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
-import { TerminalSessionManager } from "../../../src/terminal/session-manager";
-import { InMemorySessionSummaryStore } from "../../../src/terminal/session-summary-store";
+import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 
 // PID that is guaranteed to NOT exist — used for dead process tests.
 const DEAD_PID = 999_999_999;

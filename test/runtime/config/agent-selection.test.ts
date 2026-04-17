@@ -3,7 +3,7 @@ import { delimiter, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadRuntimeConfig, pickBestInstalledAgentIdFromDetected } from "../../../src/config/runtime-config";
+import { loadRuntimeConfig, pickBestInstalledAgentIdFromDetected } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeCommand } from "./runtime-config-helpers";
 

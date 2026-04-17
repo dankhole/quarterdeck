@@ -167,7 +167,7 @@ The file browser and diff viewer are laggy, especially for tasks with many chang
 Full plan at [docs/plan-runtime-readability-refactors.md](plan-runtime-readability-refactors.md). Independent refactors targeting repeated patterns and navigability gaps identified in a codebase audit.
 
 - ~~**workspace-api.ts handler pipeline**~~ — Addressed by the domain split (ec698f8) which broke the 1,092-line file into 5 modules of 106–314 lines each. Higher-order helpers no longer justified against the smaller files.
-- **Runtime barrel exports** — Add `index.ts` to `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`. Re-export public surface, update ~100-150 import paths. No logic changes.
+- ~~**Runtime barrel exports**~~ — Done. Added `index.ts` to 9 directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`). Updated ~150 import paths across `src/` and `test/`. Three source files kept direct imports to preserve vitest mock compatibility.
 
 ## Frontend feature folders, component decomposition, and barrel exports
 

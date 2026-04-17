@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQuarterdeckCommandParts, resolveQuarterdeckCommandParts } from "../../src/core/quarterdeck-command";
+import { buildQuarterdeckCommandParts, resolveQuarterdeckCommandParts } from "../../src/core";
 
 describe("resolveQuarterdeckCommandParts", () => {
 	it("resolves node plus script entrypoint", () => {

@@ -1,7 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
-import type { RuntimeFileContentResponse } from "../core/api-contract";
+import type { RuntimeFileContentResponse } from "../core";
 
 const MAX_FILE_SIZE = 1_048_576; // 1 MB
 const MAX_READ_SIZE = 10_485_760; // 10 MB — reject files larger than this to avoid OOM

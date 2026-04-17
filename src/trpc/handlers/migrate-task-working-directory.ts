@@ -1,21 +1,19 @@
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { ResolvedAgentCommand } from "../../config/agent-registry";
-import { resolveAgentCommand } from "../../config/agent-registry";
-import type { RuntimeConfigState } from "../../config/runtime-config";
-import { createTaggedLogger } from "../../core/runtime-logger";
-import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core/service-interfaces";
-import { findCardInBoard } from "../../core/task-board-mutations";
-import { loadWorkspaceState } from "../../state/workspace-state";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
+import type { ResolvedAgentCommand, RuntimeConfigState } from "../../config";
+import { resolveAgentCommand } from "../../config";
+import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
+import { createTaggedLogger, findCardInBoard } from "../../core";
+import { loadWorkspaceState } from "../../state";
+import type { TerminalSessionManager } from "../../terminal";
 import {
 	applyTaskPatch,
 	captureTaskPatch,
+	captureTaskTurnCheckpoint,
 	ensureTaskWorktreeIfDoesntExist,
 	findTaskPatch,
 	resolveTaskCwd,
-} from "../../workspace/task-worktree";
-import { captureTaskTurnCheckpoint } from "../../workspace/turn-checkpoints";
+} from "../../workspace";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface MigrateTaskWorkingDirectoryDeps {

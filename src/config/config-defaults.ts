@@ -5,7 +5,7 @@
 // Simple field defaults (booleans, numbers) are defined in global-config-fields.ts.
 // This file re-exports those defaults and adds complex constants (prompt templates,
 // shortcut arrays) that don't fit the field registry pattern.
-import type { PromptShortcut, RuntimeAgentId } from "../core/api-contract";
+import type { PromptShortcut, RuntimeAgentId } from "../core";
 import {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,

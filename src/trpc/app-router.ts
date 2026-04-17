@@ -30,7 +30,7 @@ import {
 	runtimeTaskSessionStartResponseSchema,
 	runtimeTaskSessionStopRequestSchema,
 	runtimeTaskSessionStopResponseSchema,
-} from "../core/api-contract";
+} from "../core";
 import { t, workspaceProcedure } from "./app-router-init";
 import { workspaceRouter } from "./workspace-procedures";
 

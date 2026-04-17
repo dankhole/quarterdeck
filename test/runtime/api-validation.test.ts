@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	parseHookIngestRequest,
-	parseTaskSessionStartRequest,
-	parseWorktreeEnsureRequest,
-} from "../../src/core/api-validation";
+import { parseHookIngestRequest, parseTaskSessionStartRequest, parseWorktreeEnsureRequest } from "../../src/core";
 
 describe("parseHookIngestRequest", () => {
 	it("parses and trims task and workspace identifiers", () => {

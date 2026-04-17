@@ -1,7 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { createGitProcessEnv } from "../core/git-process-env";
+import { createGitProcessEnv } from "../core";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;

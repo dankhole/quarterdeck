@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { buildQuarterdeckCommandParts } from "../core/quarterdeck-command";
-import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
-import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
+import {
+	buildQuarterdeckCommandParts,
+	buildWindowsCmdArgsArray,
+	resolveWindowsComSpec,
+	shouldUseWindowsCmdLaunch,
+} from "../core";
+import { parseHookRuntimeContextFromEnv } from "../terminal";
 import { type CodexMappedHookEvent, startCodexSessionWatcher } from "./codex-hook-events";
 import { appendMetadataFlags } from "./hook-metadata";
 

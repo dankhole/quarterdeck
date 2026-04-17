@@ -1,4 +1,4 @@
-import type { RuntimeBoardData } from "../../src/core/api-contract";
+import type { RuntimeBoardData } from "../../src/core";
 
 export function createBoard(title: string): RuntimeBoardData {
 	const now = Date.now();

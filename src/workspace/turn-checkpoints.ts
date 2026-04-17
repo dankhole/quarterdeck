@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract";
-import { createGitProcessEnv } from "../core/git-process-env";
+import type { RuntimeTaskTurnCheckpoint } from "../core";
+import { createGitProcessEnv } from "../core";
 import { getGitStdout, type RunGitOptions } from "./git-utils";
 
 const CHECKPOINT_AUTHOR_NAME = "quarterdeck-checkpoint";

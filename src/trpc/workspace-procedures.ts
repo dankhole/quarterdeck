@@ -1,7 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-
 import {
+	createTaggedLogger,
+	findCardInBoard,
 	runtimeAutoMergedFilesRequestSchema,
 	runtimeAutoMergedFilesResponseSchema,
 	runtimeConflictAbortRequestSchema,
@@ -65,12 +66,8 @@ import {
 	runtimeWorktreeDeleteResponseSchema,
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
-} from "../core/api-contract";
-import { createTaggedLogger } from "../core/runtime-logger";
-import { findCardInBoard } from "../core/task-board-mutations";
-import { generateCommitMessage } from "../title/commit-message-generator";
-import { generateDisplaySummary } from "../title/summary-generator";
-import { generateBranchName, generateTaskTitle } from "../title/title-generator";
+} from "../core";
+import { generateBranchName, generateCommitMessage, generateDisplaySummary, generateTaskTitle } from "../title";
 import { t, workspaceProcedure } from "./app-router-init";
 
 const log = createTaggedLogger("task-gen");

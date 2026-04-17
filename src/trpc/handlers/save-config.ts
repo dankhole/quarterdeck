@@ -1,11 +1,8 @@
 import { TRPCError } from "@trpc/server";
-import { buildRuntimeConfigResponse } from "../../config/agent-registry";
-import type { RuntimeConfigState } from "../../config/runtime-config";
-import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config/runtime-config";
-import { parseRuntimeConfigSaveRequest } from "../../core/api-validation";
-import { setEventLogEnabled } from "../../core/event-log";
-import { type LogLevel, setLogLevel } from "../../core/runtime-logger";
-import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core/service-interfaces";
+import type { RuntimeConfigState } from "../../config";
+import { buildRuntimeConfigResponse, updateGlobalRuntimeConfig, updateRuntimeConfig } from "../../config";
+import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
+import { type LogLevel, parseRuntimeConfigSaveRequest, setEventLogEnabled, setLogLevel } from "../../core";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface SaveConfigDeps {

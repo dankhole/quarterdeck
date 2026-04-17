@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { areRuntimeProjectShortcutsEqual } from "../../src/config/shortcut-utils";
-import type { RuntimeProjectShortcut } from "../../src/core/api-contract";
+import { areRuntimeProjectShortcutsEqual } from "../../src/config";
+import type { RuntimeProjectShortcut } from "../../src/core";
 
 describe("areRuntimeProjectShortcutsEqual", () => {
 	const shortcutA: RuntimeProjectShortcut = { label: "Build", command: "npm run build" };

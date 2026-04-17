@@ -1,7 +1,7 @@
 import serializeAddonModule from "@xterm/addon-serialize";
 import headlessTerminalModule from "@xterm/headless";
 
-import { createTaggedLogger } from "../core/runtime-logger";
+import { createTaggedLogger } from "../core";
 
 const log = createTaggedLogger("terminal-mirror");
 

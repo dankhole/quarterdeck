@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config/runtime-config";
+import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv } from "./runtime-config-helpers";
 

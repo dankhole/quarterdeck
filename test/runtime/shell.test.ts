@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "../../src/core/shell";
+import { buildShellCommandLine, quoteShellArg, resolveInteractiveShellCommand } from "../../src/core";
 
 describe("resolveInteractiveShellCommand", () => {
 	const originalPlatform = process.platform;

@@ -7,7 +7,7 @@ vi.mock("../../../src/workspace/git-utils.js", () => ({
 	readGitHeadInfo: readGitHeadInfoMock,
 }));
 
-import { buildWorktreeContextPrompt } from "../../../src/terminal/worktree-context";
+import { buildWorktreeContextPrompt } from "../../../src/terminal";
 
 describe("buildWorktreeContextPrompt", () => {
 	afterEach(() => {

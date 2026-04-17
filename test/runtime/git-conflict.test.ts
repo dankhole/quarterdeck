@@ -12,7 +12,7 @@ import {
 	getConflictFileContent,
 	resolveConflictFile,
 	runGitMergeAction,
-} from "../../src/workspace/git-conflict";
+} from "../../src/workspace";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 

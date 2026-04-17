@@ -1,4 +1,4 @@
-import type { RuntimeProjectShortcut } from "../core/api-contract";
+import type { RuntimeProjectShortcut } from "../core";
 
 export function areRuntimeProjectShortcutsEqual(
 	left: RuntimeProjectShortcut[],

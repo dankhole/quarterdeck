@@ -7,27 +7,25 @@ import packageJson from "../package.json" with { type: "json" };
 import { registerBackupCommand } from "./commands/backup";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerStatuslineCommand } from "./commands/statusline";
-import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
-import type { RuntimeCommandRunResponse } from "./core/api-contract";
-import { createGitProcessEnv } from "./core/git-process-env";
-import {
-	installGracefulShutdownHandlers,
-	shouldSuppressImmediateDuplicateShutdownSignals,
-} from "./core/graceful-shutdown";
+import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config";
+import type { RuntimeCommandRunResponse } from "./core";
 import {
 	buildQuarterdeckRuntimeUrl,
+	createGitProcessEnv,
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
+	installGracefulShutdownHandlers,
 	parseRuntimePort,
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
-} from "./core/runtime-endpoint";
-import { terminateProcessForTimeout } from "./server/process-termination";
-import type { RuntimeStateHub } from "./server/runtime-state-hub";
-import { killOrphanedAgentProcesses } from "./terminal/orphan-cleanup";
-import type { TerminalSessionManager } from "./terminal/session-manager";
+	shouldSuppressImmediateDuplicateShutdownSignals,
+} from "./core";
+import type { RuntimeStateHub } from "./server";
+import { terminateProcessForTimeout } from "./server";
+import type { TerminalSessionManager } from "./terminal";
+import { killOrphanedAgentProcesses } from "./terminal";
 
 interface CliOptions {
 	noOpen: boolean;

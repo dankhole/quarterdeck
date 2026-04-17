@@ -1,11 +1,9 @@
-import { resolveAgentCommand } from "../../config/agent-registry";
-import { parseTaskSessionStartRequest } from "../../core/api-validation";
-import type { IRuntimeConfigProvider } from "../../core/service-interfaces";
-import { findCardInBoard } from "../../core/task-board-mutations";
-import { loadWorkspaceState } from "../../state/workspace-state";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
-import { pathExists, resolveTaskCwd } from "../../workspace/task-worktree";
-import { captureTaskTurnCheckpoint } from "../../workspace/turn-checkpoints";
+import { resolveAgentCommand } from "../../config";
+import type { IRuntimeConfigProvider } from "../../core";
+import { findCardInBoard, parseTaskSessionStartRequest } from "../../core";
+import { loadWorkspaceState } from "../../state";
+import type { TerminalSessionManager } from "../../terminal";
+import { captureTaskTurnCheckpoint, pathExists, resolveTaskCwd } from "../../workspace";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface StartTaskSessionDeps {

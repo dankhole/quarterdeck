@@ -1,4 +1,4 @@
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
 
 function normalizeWhitespace(value: string): string {
 	return value.replace(/\s+/g, " ").trim();

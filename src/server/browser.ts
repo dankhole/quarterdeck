@@ -1,5 +1,5 @@
 import open from "open";
-import { isBinaryAvailableOnPath } from "../core/command-discovery";
+import { isBinaryAvailableOnPath } from "../core";
 
 type BrowserOpenDeps = {
 	warn?: (message: string) => void;

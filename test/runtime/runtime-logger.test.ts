@@ -8,7 +8,7 @@ import {
 	onLogEntry,
 	setDebugLoggingEnabled,
 	setLogLevel,
-} from "../../src/core/runtime-logger";
+} from "../../src/core";
 
 describe("runtime-logger", () => {
 	beforeEach(() => {

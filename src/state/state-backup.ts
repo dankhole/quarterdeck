@@ -17,7 +17,7 @@ import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promi
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { isNodeError } from "../fs/node-error";
+import { isNodeError } from "../fs";
 import {
 	BOARD_FILENAME,
 	getRuntimeHomePath,

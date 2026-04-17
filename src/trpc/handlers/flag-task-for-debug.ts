@@ -1,5 +1,5 @@
-import { emitSessionEvent } from "../../core/event-log";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
+import { emitSessionEvent } from "../../core";
+import type { TerminalSessionManager } from "../../terminal";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface FlagTaskForDebugDeps {

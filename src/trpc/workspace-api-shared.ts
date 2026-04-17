@@ -1,14 +1,16 @@
 import { resolve } from "node:path";
 import type {
+	IRuntimeBroadcaster,
+	ITerminalManagerProvider,
+	IWorkspaceDataProvider,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitMergeResponse,
 	RuntimeWorkspaceChangesMode,
-} from "../core/api-contract";
-import type { IRuntimeBroadcaster, ITerminalManagerProvider, IWorkspaceDataProvider } from "../core/service-interfaces";
-import { loadWorkspaceState } from "../state/workspace-state";
-import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workspace/task-worktree";
+} from "../core";
+import { loadWorkspaceState } from "../state";
+import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workspace";
 
 // ── Dependencies ────────────────────────────────────────────────────────────────
 

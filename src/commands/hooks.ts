@@ -1,9 +1,9 @@
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
-import { buildQuarterdeckRuntimeUrl } from "../core/runtime-endpoint";
-import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
-import type { RuntimeAppRouter } from "../trpc/app-router";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core";
+import { buildQuarterdeckRuntimeUrl } from "../core";
+import { parseHookRuntimeContextFromEnv } from "../terminal";
+import type { RuntimeAppRouter } from "../trpc";
 import { extractLastAssistantMessage } from "./claude-transcript-parser";
 import { resolveCodexRolloutFinalMessageForCwd } from "./codex-hook-events";
 import { runCodexWrapperSubcommand } from "./codex-wrapper";

@@ -7,6 +7,8 @@
  * message shape in one place.
  */
 import type {
+	LogEntry,
+	LogLevel,
 	RuntimeProjectSummary,
 	RuntimeStateStreamDebugLogBatchMessage,
 	RuntimeStateStreamDebugLoggingStateMessage,
@@ -24,8 +26,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract";
-import type { LogEntry, LogLevel } from "../core/runtime-logger";
+} from "../core";
 
 export function buildSnapshotMessage(
 	currentProjectId: string | null,

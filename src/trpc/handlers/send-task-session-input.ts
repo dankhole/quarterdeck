@@ -1,5 +1,5 @@
-import { parseTaskSessionInputRequest } from "../../core/api-validation";
-import type { TerminalSessionManager } from "../../terminal/session-manager";
+import { parseTaskSessionInputRequest } from "../../core";
+import type { TerminalSessionManager } from "../../terminal";
 import type { RuntimeTrpcWorkspaceScope } from "../app-router-context";
 
 export interface SendTaskSessionInputDeps {

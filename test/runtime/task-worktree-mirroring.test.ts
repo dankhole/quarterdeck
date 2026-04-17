@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { mirrorIgnoredPath } from "../../src/workspace/task-worktree";
+import { mirrorIgnoredPath } from "../../src/workspace";
 
 function createErrnoError(code: string): NodeJS.ErrnoException {
 	const error = new Error(code) as NodeJS.ErrnoException;

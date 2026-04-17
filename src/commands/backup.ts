@@ -1,12 +1,6 @@
 import type { Command } from "commander";
 
-import {
-	type BackupListEntry,
-	createBackup,
-	getBackupHomePath,
-	listBackups,
-	restoreBackup,
-} from "../state/state-backup";
+import { type BackupListEntry, createBackup, getBackupHomePath, listBackups, restoreBackup } from "../state";
 
 function formatBackupRow(entry: BackupListEntry): string {
 	const date = new Date(entry.manifest.timestamp).toLocaleString();

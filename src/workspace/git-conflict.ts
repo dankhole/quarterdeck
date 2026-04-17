@@ -9,7 +9,7 @@ import type {
 	RuntimeConflictState,
 	RuntimeGitMergeResponse,
 	RuntimeGitRebaseResponse,
-} from "../core/api-contract";
+} from "../core";
 import { getGitSyncSummary } from "./git-probe";
 import { resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
 

@@ -3,10 +3,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
-import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator";
-import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state";
-import type { TerminalSessionManager } from "../../src/terminal/session-manager";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
+import { shutdownRuntimeServer } from "../../src/server";
+import { loadWorkspaceState, saveWorkspaceState } from "../../src/state";
+import type { TerminalSessionManager } from "../../src/terminal";
 import { initGitRepository } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 

@@ -8,7 +8,7 @@ import {
 	loadRuntimeConfig,
 	saveRuntimeConfig,
 	updateRuntimeConfig,
-} from "../../../src/config/runtime-config";
+} from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { createDefaultSavePayload, withTemporaryEnv } from "./runtime-config-helpers";
 

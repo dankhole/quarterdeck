@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { RuntimeAgentId } from "../core/api-contract";
+import type { RuntimeAgentId } from "../core";
 import { getTaskWorktreesHomePath } from "../state/workspace-state";
 
 export const WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;

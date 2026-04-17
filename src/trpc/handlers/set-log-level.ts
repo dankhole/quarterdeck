@@ -1,5 +1,5 @@
-import { getLogLevel, type LogLevel, setLogLevel } from "../../core/runtime-logger";
-import type { IRuntimeBroadcaster } from "../../core/service-interfaces";
+import type { IRuntimeBroadcaster } from "../../core";
+import { getLogLevel, type LogLevel, setLogLevel } from "../../core";
 
 export interface SetLogLevelDeps {
 	broadcaster: Pick<IRuntimeBroadcaster, "broadcastLogLevel">;

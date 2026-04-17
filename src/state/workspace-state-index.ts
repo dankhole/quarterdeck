@@ -3,11 +3,9 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
 
-import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core/api-contract";
-import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core/api-contract";
-import { updateTaskDependencies } from "../core/task-board-mutations";
-import { lockedFileSystem } from "../fs/locked-file-system";
-import { isNodeError } from "../fs/node-error";
+import type { RuntimeBoardColumnId, RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
+import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema, updateTaskDependencies } from "../core";
+import { isNodeError, lockedFileSystem } from "../fs";
 import {
 	getWorkspaceBoardPath,
 	getWorkspaceIndexLockRequest,

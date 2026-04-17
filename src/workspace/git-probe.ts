@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { RuntimeGitSyncSummary } from "../core/api-contract";
+import type { RuntimeGitSyncSummary } from "../core";
 import { resolveRepoRoot, runGit } from "./git-utils";
 
 interface GitPathFingerprint {

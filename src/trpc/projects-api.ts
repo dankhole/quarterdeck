@@ -1,11 +1,12 @@
-import type { RuntimeBoardData, RuntimeProjectAddResponse } from "../core/api-contract";
-import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core/api-validation";
 import type {
 	IRuntimeBroadcaster,
 	ITerminalManagerProvider,
 	IWorkspaceDataProvider,
 	IWorkspaceResolver,
-} from "../core/service-interfaces";
+	RuntimeBoardData,
+	RuntimeProjectAddResponse,
+} from "../core";
+import { parseProjectAddRequest, parseProjectRemoveRequest, parseProjectReorderRequest } from "../core";
 import {
 	isUnderWorktreesHome,
 	listWorkspaceIndexEntries,
@@ -15,10 +16,9 @@ import {
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
 	updateProjectOrder,
-} from "../state/workspace-state";
-import type { TerminalSessionManager } from "../terminal/session-manager";
-import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
-import { deleteTaskWorktree } from "../workspace/task-worktree";
+} from "../state";
+import type { TerminalSessionManager } from "../terminal";
+import { deleteTaskWorktree, ensureInitialCommit, initializeGitRepository } from "../workspace";
 import type { RuntimeTrpcContext } from "./app-router";
 
 interface DisposeWorkspaceOptions {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
-import { canReturnToRunning, reduceSessionTransition } from "../../../src/terminal/session-state-machine";
+import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import { canReturnToRunning, reduceSessionTransition } from "../../../src/terminal";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

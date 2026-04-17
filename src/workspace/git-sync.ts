@@ -9,7 +9,7 @@ import type {
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
-} from "../core/api-contract";
+} from "../core";
 import { getGitSyncSummary } from "./git-probe";
 import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
 

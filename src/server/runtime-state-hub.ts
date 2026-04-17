@@ -4,16 +4,16 @@
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import type {
+	IRuntimeBroadcaster,
+	LogEntry,
+	LogLevel,
 	RuntimeProjectSummary,
 	RuntimeStateStreamMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract";
-import { Disposable, toDisposable } from "../core/disposable";
-import type { LogEntry, LogLevel } from "../core/runtime-logger";
-import { getLogLevel, getRecentLogEntries, onLogEntry } from "../core/runtime-logger";
-import type { IRuntimeBroadcaster } from "../core/service-interfaces";
-import type { TerminalSessionManager } from "../terminal/session-manager";
+} from "../core";
+import { Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
+import type { TerminalSessionManager } from "../terminal";
 import {
 	buildDebugLogBatchMessage,
 	buildDebugLoggingStateMessage,
