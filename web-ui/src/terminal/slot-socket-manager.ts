@@ -137,6 +137,8 @@ export class SlotSocketManager {
 				elapsedMs: (performance.now() - t0).toFixed(1),
 			});
 			this.callbacks.onLastError(null);
+			this.callbacks.invalidateResize();
+			this.callbacks.requestResize();
 		};
 		controlSocket.onmessage = (event) => {
 			let payload: RuntimeTerminalWsServerMessage;

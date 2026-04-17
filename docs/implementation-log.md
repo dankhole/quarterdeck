@@ -2,6 +2,27 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal restore snapshot renders at wrong dimensions (2026-04-16)
+
+**What:** Fixed three related terminal rendering issues — garbled/half-wide content on initial connection, wrong dimensions after server restart, and post-restore scroll position jank.
+
+**Why:** On initial connection (or after slot eviction), the server serialized the restore snapshot before the client's resize message updated the server-side `TerminalStateMirror`. The snapshot content was rendered at stale PTY dimensions (e.g. 120 cols instead of the actual container's 180 cols). Cursor-positioned output (agent status bars, prompts) doesn't reflow on client-side resize, so it stayed garbled. The "Re-sync terminal content" button in settings worked because by then the mirror was already at correct dimensions.
+
+**Root cause:** Race condition between snapshot serialization and resize processing. `sendRestoreSnapshot()` calls `getSnapshot()` which awaits the mirror's operation queue. The client's resize message arrives on the same control socket but gets processed after the snapshot await started, so the resize operation is enqueued after `getSnapshot()` was already waiting — it serializes at old dimensions.
+
+**Approach:**
+
+1. **Server-side deferred snapshot** (`ws-server.ts`): Instead of calling `sendRestoreSnapshot()` immediately on control socket open, set a 100ms deferred timer. When the first resize message arrives, cancel the timer, apply the resize to the mirror (synchronously enqueuing onto the operation queue), then call `sendRestoreSnapshot()`. Since `getSnapshot()` awaits the queue, the resize executes before serialization. The 100ms fallback handles cases where no resize is needed (reconnecting idle sessions, dimensions already correct).
+
+2. **Resize on control socket open** (`slot-socket-manager.ts`): Added `invalidateResize()` + `requestResize()` in the control socket `onopen` handler. `invalidateResize()` bumps the resize epoch so the request isn't deduped by `SlotResizeManager`. This ensures the server learns the actual container dimensions on every new connection — including after server restart or sleep/wake reconnect, where previously no resize was ever sent.
+
+3. **Post-restore scroll guard** (`terminal-slot.ts`): Armed `pendingScrollToBottom` in `handleRestore()` after `scrollToBottom()`. The existing ResizeObserver callback in `SlotResizeManager` checks this one-shot flag and does fit+scroll synchronously, preventing a debounced reflow from undoing the scroll position after the terminal becomes visible. This is the same pattern `show()` already uses for the reveal path.
+
+**Files touched:**
+- `src/terminal/ws-server.ts` — deferred snapshot timer, resize-triggered snapshot, timer cleanup on socket close
+- `web-ui/src/terminal/slot-socket-manager.ts` — invalidateResize + requestResize on control socket open
+- `web-ui/src/terminal/terminal-slot.ts` — pendingScrollToBottom in handleRestore
+
 ## Feature: syntax highlighting in file browser (2026-04-17)
 
 **What:** Added Prism-based syntax highlighting to two surfaces in the file browser: the plain code view (virtualized lines) and fenced code blocks inside the markdown preview.

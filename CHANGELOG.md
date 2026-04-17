@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: terminal restore snapshot renders at wrong dimensions
+
+- Deferred the initial restore snapshot on the server until the client's first resize message arrives (100ms timeout fallback). Previously, the snapshot was serialized before the resize updated the server-side mirror, causing cursor-positioned content (status bars, prompts) to appear garbled or half-wide.
+- Added resize-on-connect to the control socket open handler — every new control socket connection now sends the client's current terminal dimensions to the server. Fixes terminals rendering at default PTY dimensions after server restart or sleep/wake reconnect.
+- Armed `pendingScrollToBottom` in the restore handler to prevent a debounced ResizeObserver callback from undoing the scroll position after the terminal becomes visible.
+
 ### Feature: syntax highlighting in file browser
 
 - Added Prism syntax highlighting to the file content viewer — code lines are highlighted using the same language/grammar resolution and token theme already used by the diff viewer. Fenced code blocks in the markdown preview are also highlighted via a custom `code` component.

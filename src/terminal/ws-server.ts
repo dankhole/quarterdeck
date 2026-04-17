@@ -73,6 +73,7 @@ const OUTPUT_BUFFER_LOW_WATER_MARK_BYTES = Math.floor(OUTPUT_BUFFER_HIGH_WATER_M
 const OUTPUT_ACK_HIGH_WATER_MARK_BYTES = 100_000;
 const OUTPUT_ACK_LOW_WATER_MARK_BYTES = 5_000;
 const OUTPUT_RESUME_CHECK_INTERVAL_MS = 16;
+const SNAPSHOT_DEFER_TIMEOUT_MS = 100;
 
 function getWebSocketTransportSocket(ws: WebSocket): Socket | null {
 	const transportSocket = (ws as WebSocket & { _socket?: Socket })._socket;
@@ -513,7 +514,18 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 
-		sendRestoreSnapshot(ws, terminalManager, taskId);
+		// Defer the initial restore snapshot until the client sends its first
+		// resize message. The client calls fitAddon.fit() during show(), which
+		// sends a resize with the actual container dimensions. If we serialize
+		// the snapshot before that resize is applied to the mirror, the content
+		// is rendered at stale dimensions (e.g. the initial PTY size) and
+		// cursor-positioned output (status bars, prompts) appears garbled.
+		// A timeout fallback handles the case where no resize arrives (client
+		// already at correct dimensions, or reconnecting an idle session).
+		let deferredSnapshotTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+			deferredSnapshotTimer = null;
+			sendRestoreSnapshot(ws, terminalManager, taskId);
+		}, SNAPSHOT_DEFER_TIMEOUT_MS);
 
 		ws.on("message", (rawMessage: RawData) => {
 			const message = parseWebSocketPayload(rawMessage);
@@ -534,6 +546,11 @@ export function createTerminalWebSocketBridge({
 					message.pixelHeight,
 					message.force,
 				);
+				if (deferredSnapshotTimer !== null) {
+					clearTimeout(deferredSnapshotTimer);
+					deferredSnapshotTimer = null;
+					sendRestoreSnapshot(ws, terminalManager, taskId);
+				}
 				return;
 			}
 
@@ -562,6 +579,10 @@ export function createTerminalWebSocketBridge({
 		});
 
 		ws.on("close", () => {
+			if (deferredSnapshotTimer !== null) {
+				clearTimeout(deferredSnapshotTimer);
+				deferredSnapshotTimer = null;
+			}
 			if (viewerState.controlSocket !== ws) {
 				return;
 			}

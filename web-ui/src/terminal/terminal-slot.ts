@@ -395,6 +395,7 @@ export class TerminalSlot {
 			this.resizer.request();
 		}
 		this.terminal.scrollToBottom();
+		this.resizer.pendingScrollToBottom = true;
 		this.ensureVisible();
 		if (this.pendingAutoFocus) {
 			this.pendingAutoFocus = false;
