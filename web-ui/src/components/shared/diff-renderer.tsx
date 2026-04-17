@@ -2,18 +2,10 @@ import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-
-import { getHighlightedLineHtml, resolvePrismGrammar, resolvePrismLanguage } from "./diff-highlighting";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
 import { buildDisplayItems, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
+import { getHighlightedLineHtml, resolvePrismGrammar, resolvePrismLanguage } from "./syntax-highlighting";
 
-// Re-export everything from sub-modules for backward compatibility.
-export {
-	buildHighlightedLineMap,
-	getHighlightedLineHtml,
-	resolvePrismGrammar,
-	resolvePrismLanguage,
-} from "./diff-highlighting";
 export type {
 	CollapsedContextBlock,
 	DiffDisplayItem,
@@ -31,6 +23,14 @@ export {
 	parsePatchToRows,
 	truncatePathMiddle,
 } from "./diff-parser";
+// Re-export everything from sub-modules for backward compatibility.
+export {
+	buildHighlightedLineMap,
+	getHighlightedLineHtml,
+	resolvePrismGrammar,
+	resolvePrismLanguage,
+	resolvePrismLanguageByAlias,
+} from "./syntax-highlighting";
 
 export function DiffRowText({
 	row,

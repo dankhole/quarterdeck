@@ -67,6 +67,14 @@ function getPathBasename(path: string): string {
 	return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
 }
 
+export function resolvePrismLanguageByAlias(alias: string): string | null {
+	const lower = alias.toLowerCase();
+	if (Prism.languages[lower]) return lower;
+	const mapped = PRISM_LANGUAGE_BY_EXTENSION[lower];
+	if (mapped && Prism.languages[mapped]) return mapped;
+	return null;
+}
+
 export function resolvePrismLanguage(path: string): string | null {
 	const basename = getPathBasename(path).toLowerCase();
 	if (basename === "dockerfile") {
@@ -76,12 +84,7 @@ export function resolvePrismLanguage(path: string): string | null {
 	if (dotIndex < 0 || dotIndex === basename.length - 1) {
 		return null;
 	}
-	const extension = basename.slice(dotIndex + 1);
-	const language = PRISM_LANGUAGE_BY_EXTENSION[extension];
-	if (!language) {
-		return null;
-	}
-	return Prism.languages[language] ? language : null;
+	return resolvePrismLanguageByAlias(basename.slice(dotIndex + 1));
 }
 
 export function resolvePrismGrammar(language: string | null): Prism.Grammar | null {

@@ -176,7 +176,7 @@ Terminal main view + Board sidebar (task selected):
 | Colored dot/icon indicating column status | **Column indicator** | `ColumnIndicator` | `components/ui/column-indicator.tsx` |
 | Syntax-highlighted diff blocks | **Diff renderer** | `DiffRenderer` | `components/shared/diff-renderer.tsx` |
 | Diff parsing and hunk extraction | **Diff parser** | `parseDiff` | `components/shared/diff-parser.ts` |
-| Diff syntax highlighting | **Diff highlighting** | `highlightDiff` | `components/shared/diff-highlighting.ts` |
+| Syntax highlighting (Prism language resolution, line highlighting) | **Syntax highlighting** | `resolvePrismLanguage`, `getHighlightedLineHtml` | `components/shared/syntax-highlighting.ts` |
 | Reusable confirmation dialog (Radix AlertDialog) | **Confirmation dialog** | `ConfirmationDialog` | `components/ui/confirmation-dialog.tsx` |
 | Settings form controls (switch, checkbox, select) | **Settings controls** | various | `components/ui/settings-controls.tsx` |
 | Searchable dropdown (branches, open targets, etc.) | **Search dropdown** | `SearchSelectDropdown` | `components/search-select-dropdown.tsx` |

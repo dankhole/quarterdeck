@@ -2,6 +2,33 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Feature: syntax highlighting in file browser (2026-04-17)
+
+**What:** Added Prism-based syntax highlighting to two surfaces in the file browser: the plain code view (virtualized lines) and fenced code blocks inside the markdown preview.
+
+**Why:** The diff viewer already had full Prism infrastructure (language resolution, grammar loading, token CSS). The file browser rendered plain monospace — adding highlighting was a small lift that reuses existing work.
+
+**Approach:**
+
+1. **File viewer code lines** (`file-content-viewer.tsx`): Resolves Prism language from file path via `resolvePrismLanguage`, builds a `highlightedLines` array in a `useMemo`, renders via `dangerouslySetInnerHTML` with the `kb-syntax` CSS class. Falls back to plain text for unsupported extensions.
+
+2. **Markdown fenced code blocks** (`file-content-viewer.tsx`): Custom `MarkdownCodeBlock` component passed to react-markdown's `components.code` prop. Extracts the language from the `language-xxx` className, resolves via `resolvePrismLanguageByAlias` (handles short aliases like `ts`, `py`, `sh`), highlights with `Prism.highlight`.
+
+3. **Shared infrastructure** (`syntax-highlighting.ts`, renamed from `diff-highlighting.ts`): Added `resolvePrismLanguageByAlias()` — checks `Prism.languages` directly for full names, falls back to `PRISM_LANGUAGE_BY_EXTENSION` for short aliases. Refactored `resolvePrismLanguage` to delegate to it internally. Re-exported through `diff-renderer.tsx` for backward compatibility.
+
+4. **CSS** (`diff.css`): Collapsed duplicated token selectors using `:is(.kb-diff-text, .kb-syntax)` — reduced from 48 lines to 24. Adding future token groups now requires one rule, not two.
+
+5. **Docs** (`ui-component-cheatsheet.md`): Updated stale path reference from `diff-highlighting.ts` to `syntax-highlighting.ts`.
+
+**Files touched:**
+- `web-ui/src/components/git/panels/file-content-viewer.tsx` — new imports, `MarkdownCodeBlock` component, `highlightedLines` memo, `dangerouslySetInnerHTML` rendering
+- `web-ui/src/components/shared/syntax-highlighting.ts` — renamed from `diff-highlighting.ts`, added `resolvePrismLanguageByAlias`
+- `web-ui/src/components/shared/diff-renderer.tsx` — updated import path, added `resolvePrismLanguageByAlias` re-export
+- `web-ui/src/styles/diff.css` — collapsed token CSS with `:is()`, added `kb-syntax` class
+- `docs/ui-component-cheatsheet.md` — updated stale path
+
+**Verification:** TypeScript clean, Biome lint clean, all 86 web-ui test files / 787 tests pass.
+
 ## Refactor: runtime barrel exports (2026-04-16)
 
 **What:** Added `index.ts` barrel files to 9 directories under `src/`: `core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`. Each barrel re-exports the directory's public surface (types, classes, functions, constants used by files outside the directory). Updated ~150 import paths across `src/` and `test/` from specific module paths (e.g., `../core/api-contract`) to directory-level imports (e.g., `../core`). The original plan listed 8 directories; added `core/` (152 external imports, the most-imported directory) as a 9th. `commands/` (4 imports), `projects/` (0), and `prompts/` (1) were too low-traffic to justify barrels.

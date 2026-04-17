@@ -1,9 +1,16 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { BookOpen, Clipboard, Code, FileText, WrapText, X } from "lucide-react";
+import Prism from "prismjs";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { showAppToast } from "@/components/app-toaster";
+import {
+	getHighlightedLineHtml,
+	resolvePrismGrammar,
+	resolvePrismLanguage,
+	resolvePrismLanguageByAlias,
+} from "@/components/shared/syntax-highlighting";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -17,6 +24,26 @@ function isMarkdownFile(filePath: string): boolean {
 	const lower = filePath.toLowerCase();
 	return lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".mdx");
 }
+
+function MarkdownCodeBlock({
+	className,
+	children,
+}: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }): React.ReactElement {
+	const match = /language-(\w+)/.exec(className ?? "");
+	if (!match) {
+		return <code className={className}>{children}</code>;
+	}
+	const language = resolvePrismLanguageByAlias(match[1]!);
+	const grammar = resolvePrismGrammar(language);
+	if (!grammar || !language) {
+		return <code className={className}>{children}</code>;
+	}
+	const code = String(children ?? "").replace(/\n$/, "");
+	const html = Prism.highlight(code, grammar, language);
+	return <code className={cn(className, "kb-syntax")} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+const MARKDOWN_COMPONENTS = { code: MarkdownCodeBlock };
 
 export function FileContentViewer({
 	content,
@@ -49,6 +76,9 @@ export function FileContentViewer({
 
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+	const prismLanguage = useMemo(() => (filePath ? resolvePrismLanguage(filePath) : null), [filePath]);
+	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+
 	const lines = useMemo(() => {
 		if (!content) {
 			return [];
@@ -59,6 +89,11 @@ export function FileContentViewer({
 		}
 		return rawLines;
 	}, [content]);
+
+	const highlightedLines = useMemo(() => {
+		if (!prismGrammar || !prismLanguage) return null;
+		return lines.map((line) => getHighlightedLineHtml(line, prismGrammar, prismLanguage));
+	}, [lines, prismGrammar, prismLanguage]);
 
 	const gutterWidth = useMemo(() => {
 		const digits = String(lines.length).length;
@@ -195,7 +230,9 @@ export function FileContentViewer({
 			{showRendered ? (
 				<div className="flex-1 min-h-0 overflow-auto overscroll-contain">
 					<div className="kb-markdown-rendered px-6 py-4">
-						<Markdown remarkPlugins={REMARK_PLUGINS}>{content ?? ""}</Markdown>
+						<Markdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+							{content ?? ""}
+						</Markdown>
 					</div>
 				</div>
 			) : (
@@ -204,6 +241,7 @@ export function FileContentViewer({
 						{virtualizer.getVirtualItems().map((virtualItem) => {
 							const lineNumber = virtualItem.index + 1;
 							const line = lines[virtualItem.index] ?? "";
+							const highlightedHtml = highlightedLines?.[virtualItem.index] ?? null;
 							return (
 								<div
 									key={virtualItem.key}
@@ -222,14 +260,24 @@ export function FileContentViewer({
 									>
 										{lineNumber}
 									</span>
-									<span
-										className={cn(
-											"text-text-primary pr-4",
-											wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
-										)}
-									>
-										{line || " "}
-									</span>
+									{highlightedHtml ? (
+										<span
+											className={cn(
+												"text-text-primary pr-4 kb-syntax",
+												wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+											)}
+											dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+										/>
+									) : (
+										<span
+											className={cn(
+												"text-text-primary pr-4",
+												wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
+											)}
+										>
+											{line || " "}
+										</span>
+									)}
 								</div>
 							);
 						})}

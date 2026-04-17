@@ -186,7 +186,7 @@
 	border-radius: 2px;
 }
 
-/* -- Diff text + syntax tokens -- */
+/* -- Diff text -- */
 
 .kb-diff-text {
 	min-width: 0;
@@ -194,38 +194,29 @@
 	word-break: break-word;
 }
 
-.kb-diff-text .token.comment,
-.kb-diff-text .token.prolog,
-.kb-diff-text .token.doctype,
-.kb-diff-text .token.cdata {
+/* -- Shared Prism syntax tokens (used by diffs, file viewer, markdown code blocks) -- */
+
+:is(.kb-diff-text, .kb-syntax) :is(.token.comment, .token.prolog, .token.doctype, .token.cdata) {
 	color: var(--color-text-tertiary);
 }
 
-.kb-diff-text .token.keyword,
-.kb-diff-text .token.atrule,
-.kb-diff-text .token.selector {
+:is(.kb-diff-text, .kb-syntax) :is(.token.keyword, .token.atrule, .token.selector) {
 	color: var(--color-status-blue);
 }
 
-.kb-diff-text .token.string,
-.kb-diff-text .token.char,
-.kb-diff-text .token.inserted {
+:is(.kb-diff-text, .kb-syntax) :is(.token.string, .token.char, .token.inserted) {
 	color: var(--color-status-green);
 }
 
-.kb-diff-text .token.number,
-.kb-diff-text .token.boolean,
-.kb-diff-text .token.constant {
+:is(.kb-diff-text, .kb-syntax) :is(.token.number, .token.boolean, .token.constant) {
 	color: var(--color-status-orange);
 }
 
-.kb-diff-text .token.function,
-.kb-diff-text .token.class-name {
+:is(.kb-diff-text, .kb-syntax) :is(.token.function, .token.class-name) {
 	color: var(--color-status-blue);
 }
 
-.kb-diff-text .token.operator,
-.kb-diff-text .token.punctuation {
+:is(.kb-diff-text, .kb-syntax) :is(.token.operator, .token.punctuation) {
 	color: var(--color-text-secondary);
 }
 

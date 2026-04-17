@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Feature: syntax highlighting in file browser
+
+- Added Prism syntax highlighting to the file content viewer — code lines are highlighted using the same language/grammar resolution and token theme already used by the diff viewer. Fenced code blocks in the markdown preview are also highlighted via a custom `code` component.
+- Renamed `diff-highlighting.ts` → `syntax-highlighting.ts` to reflect shared usage across diffs, file viewer, and markdown preview. Added `resolvePrismLanguageByAlias()` for resolving short language aliases (`ts`, `py`, `sh`, `yml`) used in markdown fences.
+- Collapsed duplicated Prism token CSS selectors using `:is()` — adding future token groups is now a single rule instead of a duplicated pair.
+
 ### Refactor: runtime barrel exports
 
 - Added `index.ts` barrel files to 9 runtime directories (`core/`, `terminal/`, `workspace/`, `server/`, `config/`, `state/`, `trpc/`, `fs/`, `title/`) — each re-exports the directory's public surface. Updated ~150 import paths across `src/` and `test/` to use directory-level imports instead of specific module paths. Three source files (`lock-cleanup.ts`, `task-worktree-lifecycle.ts`, `task-worktree-patch.ts`, `claude-workspace-trust.ts`) retain direct imports to preserve vitest mock compatibility.
