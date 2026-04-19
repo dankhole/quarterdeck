@@ -346,7 +346,6 @@ export function TaskCreateDialog({
 							emptyText="No branches detected"
 							defaultValue={defaultBaseRef || null}
 							onSetDefault={onSetDefaultBaseRef}
-							ghostUntilOpen
 						/>
 					</div>
 

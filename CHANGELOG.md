@@ -12,7 +12,11 @@
 
 ### Enhancement: ghost-until-open base ref branch selector
 
-- Base ref branch dropdown in task creation (inline and dialog) now renders transparent until clicked, reducing visual noise in the create card.
+- Base ref branch dropdown in inline task creation now renders transparent until clicked, reducing visual noise in the create card. The task creation dialog keeps the standard button style.
+
+### Fix: ghost-until-open scope
+
+- Removed `ghostUntilOpen` from the task creation dialog — the ghost style was only intended for the inline create card in the top bar, not full dialogs where the dropdown should remain visible.
 
 ### Docs: refactor agent instruction docs around AGENTS.md
 

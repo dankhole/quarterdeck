@@ -2,6 +2,14 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: ghost-until-open scope — dialog should use standard button (2026-04-19)
+
+**What:** Removed `ghostUntilOpen` from the `BranchSelectDropdown` in `task-create-dialog.tsx`.
+
+**Why:** The ghost-until-open styling was intended only for the inline create card in the top bar, where the dropdown should blend in. The task creation dialog is a focused form where the branch selector should remain visually prominent. The prop was mistakenly applied to both call sites.
+
+**Files touched:** `web-ui/src/components/task/task-create-dialog.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: base ref dropdown "(default)" label only for pinned branches (2026-04-19)
 
 **What:** Changed `use-task-branch-options.ts` so the "(default)" label and "(current, default)" composite label only appear when the user has explicitly pinned a default base ref via config. Removed two stale todo items (statusline counter desync investigation, default branch resolution audit).
@@ -19,9 +27,9 @@
 **Changes:**
 - Added `ghostUntilOpen` prop to `SearchSelectDropdown` — when true, the trigger uses the `ghost` Button variant while closed and switches to `default` when the popover opens.
 - Threaded the prop through `BranchSelectDropdown`.
-- Enabled `ghostUntilOpen` on both call sites: `task-inline-create-card.tsx` and `task-create-dialog.tsx`.
+- Enabled `ghostUntilOpen` on the inline create card (`task-inline-create-card.tsx`).
 
-**Files touched:** `web-ui/src/components/search-select-dropdown.tsx`, `web-ui/src/components/git/branch-select-dropdown.tsx`, `web-ui/src/components/task/task-inline-create-card.tsx`, `web-ui/src/components/task/task-create-dialog.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+**Files touched:** `web-ui/src/components/search-select-dropdown.tsx`, `web-ui/src/components/git/branch-select-dropdown.tsx`, `web-ui/src/components/task/task-inline-create-card.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
 
 ## Docs: refactor agent instruction docs around AGENTS.md (2026-04-19)
 
