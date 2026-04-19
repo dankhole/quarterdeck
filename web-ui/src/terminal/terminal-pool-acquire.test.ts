@@ -194,10 +194,12 @@ describe("terminal-pool — acquire & release", () => {
 			const slot1 = acquireForTask("task-1", "ws-1");
 			const mock = slot1 as unknown as MockSlot;
 			mock.ensureConnected.mockClear();
+			mock.requestRestore.mockClear();
 			const slot2 = acquireForTask("task-1", "ws-1");
 			expect(slot1).toBe(slot2);
 			expect(getSlotRole(slot1)).toBe("ACTIVE");
 			expect(mock.ensureConnected).toHaveBeenCalledOnce();
+			expect(mock.requestRestore).not.toHaveBeenCalled();
 		});
 
 		it("transitions previous ACTIVE to PREVIOUS", () => {
@@ -320,6 +322,21 @@ describe("terminal-pool — acquire & release", () => {
 			const acquired = acquireForTask("task-1", "ws-1");
 			expect(acquired).toBe(slot);
 			expect(getSlotRole(slot)).toBe("ACTIVE");
+			const mockSlot = slot as unknown as MockSlot;
+			expect(mockSlot.requestRestore).toHaveBeenCalledOnce();
+		});
+
+		it("re-syncs when reacquiring a PREVIOUS slot", () => {
+			const slot1 = acquireForTask("task-1", "ws-1");
+			acquireForTask("task-2", "ws-1");
+
+			const mockSlot1 = slot1 as unknown as MockSlot;
+			mockSlot1.requestRestore.mockClear();
+
+			const reacquired = acquireForTask("task-1", "ws-1");
+			expect(reacquired).toBe(slot1);
+			expect(getSlotRole(slot1)).toBe("ACTIVE");
+			expect(mockSlot1.requestRestore).toHaveBeenCalledOnce();
 		});
 	});
 

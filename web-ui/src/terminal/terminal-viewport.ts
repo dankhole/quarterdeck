@@ -48,6 +48,7 @@ export class TerminalViewport {
 	private readonly unicode11Addon = new Unicode11Addon();
 	private readonly writeQueue: SlotWriteQueue;
 	private pendingAutoFocus = false;
+	private revealFrameId: number | null = null;
 	private appearance: PersistentTerminalAppearance;
 
 	constructor(
@@ -160,6 +161,34 @@ export class TerminalViewport {
 		this.renderer.updateAppearance(appearance, currentTerminalFontWeight);
 	}
 
+	private cancelPendingReveal(): void {
+		if (this.revealFrameId !== null) {
+			cancelAnimationFrame(this.revealFrameId);
+			this.revealFrameId = null;
+		}
+	}
+
+	private scheduleRevealAfterLayout(options: { autoFocus?: boolean }): void {
+		this.cancelPendingReveal();
+		this.revealFrameId = requestAnimationFrame(() => {
+			this.revealFrameId = requestAnimationFrame(() => {
+				this.revealFrameId = null;
+				if (this.callbacks.isDisposed() || !this.visibleContainer) {
+					return;
+				}
+				this.resizer.request();
+				if (this.resizer.pendingScrollToBottom) {
+					this.terminal.scrollToBottom();
+					this.resizer.pendingScrollToBottom = false;
+				}
+				this.domHost.reveal();
+				if (options.autoFocus) {
+					this.terminal.focus();
+				}
+			});
+		});
+	}
+
 	ensureVisible(): void {
 		this.domHost.reveal();
 	}
@@ -212,11 +241,8 @@ export class TerminalViewport {
 		}
 		this.terminal.scrollToBottom();
 		this.resizer.pendingScrollToBottom = true;
-		this.ensureVisible();
-		if (this.pendingAutoFocus) {
-			this.pendingAutoFocus = false;
-			this.terminal.focus();
-		}
+		this.scheduleRevealAfterLayout({ autoFocus: this.pendingAutoFocus });
+		this.pendingAutoFocus = false;
 		if (options.hasActiveIoSocket) {
 			options.onInteractive();
 		}
@@ -261,15 +287,12 @@ export class TerminalViewport {
 				this.resizer.pendingScrollToBottom = true;
 			}
 			if (options.autoFocus) {
-				if (options.restoreCompleted) {
-					this.terminal.focus();
-				} else {
-					this.pendingAutoFocus = true;
-				}
+				this.pendingAutoFocus = true;
 			}
 		}
-		if (options.restoreCompleted) {
-			this.domHost.reveal();
+		if (options.restoreCompleted && options.isVisible !== false) {
+			this.scheduleRevealAfterLayout({ autoFocus: this.pendingAutoFocus });
+			this.pendingAutoFocus = false;
 		}
 	}
 
@@ -277,6 +300,7 @@ export class TerminalViewport {
 		if (this.callbacks.isDisposed() && this.visibleContainer === null) {
 			return;
 		}
+		this.cancelPendingReveal();
 		this.resizer.disconnect();
 		this.renderer.clearDprListener();
 		this.pendingAutoFocus = false;
@@ -291,6 +315,7 @@ export class TerminalViewport {
 		if (this.callbacks.isDisposed()) {
 			return;
 		}
+		this.cancelPendingReveal();
 		this.domHost.park();
 	}
 
@@ -390,6 +415,8 @@ export class TerminalViewport {
 	}
 
 	dispose(): void {
+		this.cancelPendingReveal();
+		this.resizer.disconnect();
 		this.renderer.dispose();
 		this.domHost.dispose();
 		this.terminal.dispose();

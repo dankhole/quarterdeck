@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: task switch and untrash terminal restore sizing follow-up (2026-04-19)
+
+**Commit:** `6f1cf9f8`
+
+**What:** Tightened the post-refactor task-terminal restore path so pooled agent terminals repair themselves correctly when reused from hidden warm states, and restored terminals wait to reveal until after a post-layout resize pass. This specifically updates pooled task-slot promotion in `terminal-pool.ts`, deferred reveal behavior in `terminal-viewport.ts`, and adds regression coverage in `terminal-pool-acquire.test.ts`.
+
+**Why:** Two visible regressions remained after the architecture split. First, switching back to a task with a warmed `READY` / `PRELOADING` / `PREVIOUS` slot did not always repair stale hidden-slot geometry, even though the manual “Re-sync terminal content” action fixed it. Second, untrash/remount flows could reveal the terminal before layout had settled, producing a half-width first frame and imperfect bottom-scroll positioning.
+
+**Changes:**
+- `web-ui/src/terminal/terminal-pool.ts` — request a fresh restore snapshot whenever any non-`ACTIVE` pooled task slot is promoted back to `ACTIVE`, not just when reusing a `PREVIOUS` slot
+- `web-ui/src/terminal/terminal-viewport.ts` — defer reveal for restored terminals until a scheduled post-layout resize pass, preserve bottom-scroll through that reveal, and cancel pending reveal frames on hide/park/dispose
+- `web-ui/src/terminal/terminal-pool-acquire.test.ts` — added focused coverage proving restore-on-promotion for warmed and previous slots while leaving already-active reacquisition alone
+- `CHANGELOG.md` — added unreleased note for the task-switch/untrash sizing follow-up
+
+**Verification:** `npm --prefix web-ui run test -- src/terminal/terminal-pool-acquire.test.ts src/terminal/use-persistent-terminal-session.test.tsx src/terminal/terminal-pool-lifecycle.test.ts src/terminal/terminal-pool-dedicated.test.ts`; `npm --prefix web-ui run typecheck`; `npx @biomejs/biome check web-ui/src/terminal/terminal-viewport.ts web-ui/src/terminal/terminal-pool.ts web-ui/src/terminal/terminal-pool-acquire.test.ts`
+
 ## Fix: untrash does not always restart agent session (2026-04-19)
 
 **What:** Two bugs prevented untrashing a task card from reliably restarting the agent session.

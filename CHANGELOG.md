@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: task switch and untrash terminal width/scroll restoration
+
+- Reused pooled task terminals now request a fresh server restore snapshot whenever a non-active warm slot is promoted back to the visible task view. This makes normal task switches use the same repair path as the manual "Re-sync terminal content" action instead of showing stale hidden-slot geometry.
+- Restored task terminals now defer reveal until a post-layout resize pass runs, reducing half-width first-frame rendering during untrash/remount flows and preserving bottom scroll before the terminal becomes visible.
+- Added focused pool-acquire regression coverage to lock in restore-on-promotion behavior for `READY`, `PRELOADING`, and `PREVIOUS` task slots.
+
 ### Fix: untrash does not always restart agent session
 
 - Untrashing a card while another card animation was in flight silently failed — `handleRestoreTaskFromTrash` bailed on `"blocked"` without ever calling `resumeTaskFromTrash`, leaving the card stuck in trash with no feedback.

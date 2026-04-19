@@ -262,10 +262,13 @@ export function acquireForTask(taskId: string, projectId: string): TerminalSlot 
 		// Re-open sockets if they closed (e.g. after sleep/wake).
 		existing.ensureConnected();
 		const previousRole = getRole(existing);
-		// If reacquiring the PREVIOUS slot (user switched back), cancel its eviction timer
-		// and re-sync the buffer from the server so any drift while hidden is repaired.
+		// Hidden pooled task terminals can drift visually while off-screen, especially
+		// when reactivated into a different layout width. Request a fresh restore when
+		// promoting any non-ACTIVE slot back to the visible task view.
 		if (previousRole === "PREVIOUS") {
 			clearPreviousEvictionTimer();
+		}
+		if (previousRole !== "ACTIVE") {
 			existing.requestRestore();
 		}
 		setRole(existing, "ACTIVE");
