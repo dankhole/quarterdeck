@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Enhancement: restart button on review cards (2026-04-19)
+
+**What:** Review cards now show a restart button on hover for live sessions (awaiting_review), not just dead/failed ones.
+
+**Why:** Running cards show stop & trash on hover, but review cards only showed restart for dead sessions. Users had no quick way to restart a healthy session from review — they'd have to drag it back to in-progress or use other workarounds.
+
+**How:** Changed the restart button condition in `BoardCardActions` from `isSessionRestartable` (dead sessions only, after 1s delay) to `isSessionRestartable || (isHovered && !isSessionDead)`, so hovering a live review card surfaces the restart action.
+
+**Files touched:** `web-ui/src/components/board/board-card-actions.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: terminal architecture session / viewport / attachment / reuse / prewarm split (2026-04-19)
 
 **Commit:** `907d1e22`

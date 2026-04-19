@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Enhancement: restart button on review cards
+
+- Hovering a review card with a live session now shows the restart button — previously only shown for dead/failed sessions. Matches the stop & trash pattern on running cards so users can restart a session from review without moving it back to in-progress first.
+
 ### Feature: single-tab guard
 
 - Prevents multiple browser tabs from running Quarterdeck against the same server simultaneously. A second tab sees a "Quarterdeck is open in another tab" screen with a "Use here instead" button to transfer ownership. Uses localStorage heartbeat + BroadcastChannel — scoped per origin, so dogfood runs on different ports are unaffected.

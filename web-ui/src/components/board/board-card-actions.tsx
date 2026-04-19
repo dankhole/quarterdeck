@@ -132,7 +132,7 @@ export function BoardCardActions({
 						/>
 					</Tooltip>
 				) : null}
-				{isSessionRestartable && onRestartSession ? (
+				{(isSessionRestartable || (isHovered && !isSessionDead)) && onRestartSession ? (
 					<Tooltip content="Restart session">
 						<Button
 							icon={<RotateCw size={12} />}
