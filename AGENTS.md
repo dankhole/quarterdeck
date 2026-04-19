@@ -11,6 +11,13 @@ What NOT to add: Stuff you can figure out from reading a few files, obvious patt
 
 ---
 
+Agent instruction files
+- `AGENTS.md` is the canonical repo-owned instructions file shared across agents.
+- Keep shared agent instructions only in `AGENTS.md`. Do not maintain parallel instruction copies in `CLAUDE.md` or other agent-specific files.
+- `CLAUDE.md` exists only as a minimal Claude Code compatibility shim: it should import `@AGENTS.md`, keep any Claude-only notes clearly marked, and stay intentionally tiny.
+- Human-facing project overview, setup, architecture, and developer-guide content belongs in `README.md`, `DEVELOPMENT.md`, or `docs/`, not in `CLAUDE.md`.
+- When updating the instruction-file bridge, run `npm run check:agent-instructions` (or `npm run check`) to catch shim drift.
+
 TypeScript principles
 - No any types unless absolutely necessary.
 - Check node_modules for external API type definitions instead of guessing.
@@ -74,6 +81,7 @@ Misc. tribal knowledge
 - Quarterdeck is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
 - When Quarterdeck runs on a headless remote Linux instance (for example over SSH+tunnel), native folder picker commands may be unavailable (`zenity`/`kdialog`). Treat this as a normal remote-runtime limitation and use manual path entry fallback instead of requiring desktop packages.
 - **Terminal output ≠ agent working.** Agents (especially Claude Code) produce constant incidental terminal output — spinners, status bar updates, prompt redraws, ANSI cursor movements — even while idle or genuinely waiting for user input. Do not use `lastOutputAt` timestamps or output presence/volume as a heuristic for whether an agent has resumed working. The hook system (`to_review` / `to_in_progress`) is the authoritative source for state transitions. If a hook is missed, fix it at the hook layer.
+- `docs/archive/` is gitignored and contains historical context only. Do not read or reference it unless the user explicitly asks for archival material.
 - Two distinct shortcut systems exist — do not confuse them:
   - **Project shortcuts** (`RuntimeProjectShortcut`, `useShortcutActions`): Terminal commands executed in the dev shell via the top bar. Per-project config. Uses `appendNewline: true`.
   - **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`): Agent prompt injection via sidebar review cards. Global config. Uses paste mode + auto-submit.

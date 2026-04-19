@@ -5,7 +5,9 @@ This folder is the starting point for engineers working on Quarterdeck itself.
 This follows the usual split a small engineering team would want:
 
 - `README.md` explains the product, local setup, and everyday usage.
+- `DEVELOPMENT.md` is the human-facing developer guide for local commands, workflow, and repo orientation.
 - `docs/` holds stable onboarding and architecture references for humans.
+- `AGENTS.md` is the canonical repo-owned shared agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim that imports it.
 - `.plan/docs/` holds active plans, handoffs, and deeper change-history context for larger refactors.
 
 If you are new to the codebase, read these in order:

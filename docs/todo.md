@@ -146,28 +146,21 @@ The experimental HTML chat view (`terminalChatViewEnabled`) was removed because 
 
 Auto-fill a default commit message when the commit sidebar opens (not just via the generate button, which is already implemented). Pre-fill from the task title, diff summary, and optionally agent session context. The message should be fully editable. Consider using the agent's conversation context (why it made changes, not just what changed) to produce better messages than a blind diff summary — this is a differentiator over standard IDE commit message generation.
 
-## Full Codex support
+## Refactor Codex support to use native hooks
 
-Codex has basic launch, event parsing, and workspace trust working, but it's far from feature parity with Claude. The infrastructure is "make it run" — this is about "make it first-class."
+Codex now has first-party hooks (`hooks.json`, native hook events, and session-targeted resume) in the official OpenAI docs, but Quarterdeck still routes Codex through the legacy `codex-wrapper` watcher path. Replace the wrapper-first integration with native Codex hook configuration where possible: generate Codex hook files alongside launch config, map native `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` events into Quarterdeck transitions, and use native session IDs for resume instead of `codex resume --last`. Keep any log-watcher fallback only for gaps the native hook surface still cannot cover.
 
-**What works today:**
-- Agent registration, selection, and onboarding UI
-- CLI launch via `codexAdapter` (autonomous mode, resume, plan mode)
-- Hook wrapper (`codex-wrapper`) with session log and rollout log event parsing
-- Workspace trust auto-confirmation
-- Prompt readiness detection
+## Make supporting LLM features provider-neutral
 
-**Missing — core gaps:**
-- **Conversation history in UI**: Claude exposes chat messages via API; Codex has no equivalent. The sidebar chat view is blank for Codex tasks. Need to either parse Codex session logs into a chat-like format or build a Codex-specific history endpoint.
-- **Per-task session resume**: Resume uses `codex resume --last` which picks the most recent session globally, not per-task. Same session-clobbering problem as Claude non-isolated tasks (see "Per-task session identity" above). If Codex adds session ID targeting, wire it up.
-- **Hook configuration**: Claude gets a full `settings.json` with hook matchers (`PreToolUse`, `PostToolUse`, etc.). Codex gets nothing — the wrapper is a thin pass-through. Need to define what Codex-side hook configuration looks like and whether it can support the same granularity.
-- **Error diagnostics**: If session logs aren't written or rollout file discovery fails, failures are silent. Add explicit error reporting when both log sources fail, and surface it in the UI.
+Supporting LLM UX (titles, summaries, helper generations) is still Anthropic-only: `src/title/llm-client.ts` assumes Anthropic Bedrock-compatible env vars and a Claude default model, so Codex/OpenAI-only setups leave these features effectively disabled. Refactor the shared LLM client to support provider-neutral configuration, including direct OpenAI-compatible endpoints and config-driven model/provider selection, so auxiliary UX works regardless of whether the task agent is Claude or Codex.
 
-**Missing — polish:**
-- No Codex-specific documentation or setup guide
-- No version detection or capability checking beyond `isBinaryAvailableOnPath()`
-- Rollout file discovery scans up to 250 files by CWD match — may need optimization for heavy usage
-- Non-hook operations (auto-compact, plugin reload, `/resume`) likely have the same stuck-state issues as Claude (see "Fix agent state tracking bugs" above)
+## Harden Codex install and capability detection
+
+Codex detection currently stops at “binary exists on PATH,” and the install link still points to the GitHub repo instead of the current OpenAI docs surface. Add real Codex capability detection: verify CLI version and/or feature support for hooks, session-targeted resume, config/rules/AGENTS support, approvals/security modes, and app-server/remote features before enabling related UX. Update install/help links to the official OpenAI Codex docs.
+
+## Make the worktree system prompt apply to Codex too
+
+The settings UI advertises the worktree system prompt as an agent-wide feature, but only the Claude launch path currently injects it. Extend the Codex adapter so `worktreeSystemPromptTemplate` is applied for Codex sessions too, or scope the UI copy if Codex cannot support the same mechanism. Avoid the current silent mismatch where users customize the prompt and Codex ignores it.
 
 ## File browser and diff viewer performance
 

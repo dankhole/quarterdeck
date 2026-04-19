@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Docs: refactor agent instruction docs around AGENTS.md
+
+- Established `AGENTS.md` as the canonical shared agent-instructions file — slimmed `CLAUDE.md` from ~140 lines to an 11-line compatibility shim that imports `@AGENTS.md` and points to human-facing docs.
+- Moved duplicated content (quick reference, repo orientation, CI/CD notes) from `CLAUDE.md` to `DEVELOPMENT.md` and `README.md` where it belongs.
+- Added `scripts/check-agent-instructions.mjs` — validates the AGENTS.md/CLAUDE.md bridge invariants (canonical heading, shim shape, no code blocks, line cap). Wired into `npm run check`.
+- Rewrote the Codex todo section — replaced the monolithic status dump with four focused, actionable items reflecting Codex's native hook support.
+- Updated worktree system prompt example to reference `AGENTS.md` instead of `CLAUDE.md`.
+
 ### Refactor: fix workspace→project/worktree rename oversights
 
 - Fixed identifiers that were renamed from "workspace" to "project" but should have been "worktree" (per-task git worktree metadata): `RuntimeTaskProjectMetadata` → `RuntimeTaskWorktreeMetadata`, `TrackedTaskProject` → `TrackedTaskWorktree`, `CachedTaskProjectMetadata` → `CachedTaskWorktreeMetadata`, `loadTaskProjectMetadata` → `loadTaskWorktreeMetadata`, `ReviewTaskProjectSnapshot` → `ReviewTaskWorktreeSnapshot`, and all associated store hooks/functions.

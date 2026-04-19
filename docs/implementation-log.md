@@ -2,6 +2,25 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Docs: refactor agent instruction docs around AGENTS.md (2026-04-19)
+
+**What:** Established `AGENTS.md` as the single canonical agent-instructions file. Slimmed `CLAUDE.md` to a minimal compatibility shim. Moved duplicated developer content to human-facing docs. Added a CI check script to prevent drift. Rewrote the Codex todo items to reflect native hook support.
+
+**Why:** `CLAUDE.md` had grown to ~140 lines duplicating content that belonged in `README.md`, `DEVELOPMENT.md`, and `AGENTS.md`. This created maintenance drift — updates to one file didn't propagate to the other. The Codex todo section was a stale status dump rather than actionable work items.
+
+**Changes:**
+- `CLAUDE.md` — replaced ~140 lines with an 11-line shim that imports `@AGENTS.md` and points to `@README.md`, `@DEVELOPMENT.md`, `@docs/README.md`.
+- `AGENTS.md` — added "Agent instruction files" section documenting the canonical/shim relationship and the check script. Added `docs/archive/` gitignored note.
+- `DEVELOPMENT.md` — added quick reference, repo orientation, and CI/CD sections (content relocated from `CLAUDE.md`).
+- `README.md` — added "Contributor docs" section linking to `DEVELOPMENT.md`, `docs/README.md`, and `AGENTS.md`.
+- `docs/README.md` — added `DEVELOPMENT.md` and `AGENTS.md` to the file-purpose list.
+- `scripts/check-agent-instructions.mjs` — new CI check validating AGENTS.md canonical marker, CLAUDE.md shim shape (heading, imports, no code blocks, line cap).
+- `package.json` — added `check:agent-instructions` script, wired it into `npm run check`.
+- `docs/todo.md` — replaced monolithic "Full Codex support" section with four focused items: native hooks, provider-neutral LLM, capability detection, worktree system prompt.
+- `src/prompts/prompt-templates.ts` — updated worktree system prompt example from `CLAUDE.md` to `AGENTS.md`.
+
+**Files touched:** `AGENTS.md`, `CLAUDE.md`, `DEVELOPMENT.md`, `README.md`, `docs/README.md`, `docs/todo.md`, `package.json`, `scripts/check-agent-instructions.mjs`, `src/prompts/prompt-templates.ts`.
+
 ## Refactor: fix workspace→project/worktree rename oversights (2026-04-19)
 
 **What:** Corrected identifiers that the prior rename pass mis-categorized, plus a handful of stale "workspace" leftovers.

@@ -1,5 +1,9 @@
 # Development
 
+`README.md` is the product overview. This file is the human-facing developer guide for working on Quarterdeck itself.
+
+`AGENTS.md` is the canonical repo-owned agent-instructions file. `CLAUDE.md` is only a Claude Code compatibility shim and should not hold duplicated project docs.
+
 ## Requirements
 
 - Node.js 20+
@@ -10,6 +14,52 @@
 ```bash
 npm run install:all
 ```
+
+## Quick reference
+
+```bash
+npm run install:all      # Install root + web-ui deps
+npm run dev              # Runtime server (watch mode, port 3500)
+npm run dev:full         # Runtime + web UI together
+npm run web:dev          # Web UI dev server (Vite HMR, port 4173)
+npm run build            # Full production build
+npm run check            # Agent-doc check + lint + typecheck + tests
+npm run test             # All runtime tests
+npm run test:fast        # Runtime + utility tests only
+npm run test:integration # Integration tests only
+npm run web:test         # Web UI unit tests
+npm run web:typecheck    # Web UI typecheck
+npm run typecheck        # Runtime typecheck
+npm run lint             # Biome lint
+npm run format           # Biome check --write
+npm run dogfood          # Build and launch against a target project
+npm run link             # Global CLI symlink for local dev
+```
+
+## Repo orientation
+
+For deeper architecture reading, start with [`docs/README.md`](./docs/README.md) and [`docs/architecture.md`](./docs/architecture.md). The quick mental model is:
+
+```text
+Browser UI (React + Vite, port 4173)
+  | tRPC + WebSocket
+  v
+Runtime server (Node.js, port 3500)
+  | spawns PTY sessions
+  v
+Agent processes (Claude, Codex, shell)
+  | emit hook events / terminal output
+  v
+Quarterdeck task and review state
+```
+
+Major directories:
+
+- `src/`: runtime, terminal session management, tRPC, state, config, worktree lifecycle
+- `web-ui/src/`: React app, components, hooks, runtime client, stores, terminal surfaces
+- `test/`: runtime and integration tests
+- `docs/`: human-facing architecture, conventions, plans, and implementation history
+- `scripts/`: build/dev utility scripts
 
 ## Hot reload workflow
 
@@ -128,6 +178,7 @@ npm run unlink
 ## Scripts
 
 - `npm run build`: build runtime and bundled web UI into `dist`
+- `npm run check:agent-instructions`: verify `AGENTS.md`/`CLAUDE.md` stay in the canonical+shim shape
 - `npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout, optionally targeting a specific project path
 - `npm run dev`: run CLI in watch mode
 - `npm run web:dev`: run web UI dev server
@@ -143,6 +194,12 @@ npm run unlink
 - `test/integration`: integration tests for runtime behavior and startup flows
 - `test/runtime`: runtime unit tests
 - `test/utilities`: shared test helpers
+
+## CI/CD
+
+- `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
+- `test.yml`: Ubuntu and macOS matrix covering build, lint, typecheck, runtime tests, and web-ui tests
+- `publish.yml`: manual release workflow that verifies the tag, runs tests, publishes to npm via OIDC, creates the GitHub Release, and posts to Slack
 
 ## Agent tracking and runtime hooks
 
@@ -188,4 +245,3 @@ Important behavior details:
 For a full technical breakdown, see:
 
 - `.plan/docs/runtime-hooks-architecture.md`
-

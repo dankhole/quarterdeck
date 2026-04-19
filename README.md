@@ -31,6 +31,14 @@ Supports **Claude Code** and **Codex CLI** out of the box — Quarterdeck detect
 </table>
 </div>
 
+## Contributor docs
+
+If you're working on Quarterdeck itself instead of just using it:
+
+- [`DEVELOPMENT.md`](./DEVELOPMENT.md) has the local-dev workflow, command cheatsheet, repo map, and CI notes.
+- [`docs/README.md`](./docs/README.md) is the human-facing index for architecture, refactor docs, and implementation history.
+- [`AGENTS.md`](./AGENTS.md) is the canonical repo-owned agent-instructions file used for shared Claude/Codex guidance.
+
 ### 1. Install quarterdeck
 
 For the best terminal experience, install a [Nerd Font](https://www.nerdfonts.com/) (we recommend **JetBrainsMono Nerd Font**). Nerd Fonts include the glyphs that CLI agents use for status icons and UI elements. Without one installed, the terminal falls back to SF Mono / Menlo.
