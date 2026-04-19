@@ -9,12 +9,12 @@ Use this section together with:
 - [docs/design-guardrails.md](./design-guardrails.md)
 - [docs/optimization-shaped-architecture-followups.md](./optimization-shaped-architecture-followups.md)
 - [docs/terminal-architecture-refactor-brief.md](./terminal-architecture-refactor-brief.md)
+- [docs/terminal-ws-server-refactor-brief.md](./terminal-ws-server-refactor-brief.md)
 
 These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
 
 - Reassess `src/server/project-metadata-monitor.ts` so metadata ownership is easier to separate from polling cadence, focused/background prioritization, and remote-fetch policy.
 - Reassess `web-ui/src/hooks/project/use-project-sync.ts` together with `web-ui/src/runtime/project-board-cache.ts` so project-state application stays authoritative and board-cache restore remains an optional acceleration layer instead of part of the core sync model.
-- Reassess `src/terminal/ws-server.ts` so multi-viewer buffering, backpressure, and restore timing remain useful but are easier to understand as transport policy rather than the primary terminal model.
 - Reassess `src/server/runtime-state-message-batcher.ts` so batching remains intact while the boundary between runtime event semantics and delivery policy becomes clearer.
 - Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility.
 
@@ -251,4 +251,3 @@ When an agent switches branches inside a task worktree, the metadata monitor cal
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
-

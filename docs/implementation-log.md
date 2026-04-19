@@ -18,6 +18,33 @@
 
 **Verification:** `npm --prefix web-ui run test -- src/terminal/terminal-pool-acquire.test.ts src/terminal/use-persistent-terminal-session.test.tsx src/terminal/terminal-pool-lifecycle.test.ts src/terminal/terminal-pool-dedicated.test.ts`; `npm --prefix web-ui run typecheck`; `npx @biomejs/biome check web-ui/src/terminal/terminal-viewport.ts web-ui/src/terminal/terminal-pool.ts web-ui/src/terminal/terminal-pool-acquire.test.ts`
 
+## Refactor: terminal websocket bridge ownership / policy split (2026-04-19)
+
+**Commit:** `f59a66c1`
+
+**What:** Completed the backend websocket-bridge refactor described in `docs/terminal-ws-server-refactor-brief.md`. `src/terminal/ws-server.ts` is now a thin orchestrator over extracted collaborators for connection ownership, output fanout, restore coordination, backpressure policy, and protocol/state helpers.
+
+**Why:** The old bridge mixed upgrade routing, viewer identity, PTY fanout, restore timing, buffering, backpressure, and cleanup in one file. That preserved good runtime behavior, but it made the primary mental model feel like “backpressure and restore timers” instead of “who owns which viewer connection to which task stream.” This refactor keeps the current UX and coordination semantics intact while making policy layers explicit.
+
+**Details:**
+- Added `src/terminal/terminal-ws-connection-registry.ts` to own task-stream records, viewer records, same-`clientId` socket replacement, listener/socket detach, and last-viewer cleanup.
+- Added `src/terminal/terminal-ws-output-fanout.ts` to keep PTY output attachment task-scoped and distribute chunks to active viewers through the restore coordinator.
+- Added `src/terminal/terminal-ws-restore-coordinator.ts` to own resize-before-restore sequencing, deferred initial snapshot timeout, `request_restore` / `restore_complete`, and per-viewer buffering while restore is incomplete.
+- Added `src/terminal/terminal-ws-backpressure-policy.ts` to keep outbound batching, ACK accounting, websocket-buffer checks, and shared PTY pause/resume coordination out of the bridge shell.
+- Added `src/terminal/terminal-ws-protocol.ts` and `src/terminal/terminal-ws-types.ts` so websocket parsing/sending helpers, connection context, and stream/viewer state shape are no longer embedded inline in `ws-server.ts`.
+- Rewrote `src/terminal/ws-server.ts` as a smaller orchestrator that resolves managers, routes IO/control upgrades, delegates connection lifecycle to the registry, delegates restore/backpressure behavior to the extracted collaborators, and preserves `recoverStaleSession(taskId)` on both IO and control connect.
+- Expanded `test/runtime/terminal/ws-server.test.ts` with coverage for initial restore-after-resize, timeout fallback restore, restore-gap output buffering, no buffering while IO is absent, same-`clientId` IO/control replacement, last-backpressured-viewer disconnect resume, and invalid control payload isolation.
+
+**Files touched:** `src/terminal/ws-server.ts`, `src/terminal/terminal-ws-backpressure-policy.ts`, `src/terminal/terminal-ws-connection-registry.ts`, `src/terminal/terminal-ws-output-fanout.ts`, `src/terminal/terminal-ws-protocol.ts`, `src/terminal/terminal-ws-restore-coordinator.ts`, `src/terminal/terminal-ws-types.ts`, `test/runtime/terminal/ws-server.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Docs: add terminal websocket bridge refactor brief (2026-04-19)
+
+**What:** Added a dedicated planning brief for refactoring `src/terminal/ws-server.ts` at `docs/terminal-ws-server-refactor-brief.md`.
+
+**Why:** The existing terminal architecture brief covers the broader terminal system, but `ws-server.ts` now deserves its own planning artifact. The websocket bridge still carries task-stream ownership, per-viewer lifecycle, restore timing, batching, and backpressure coordination in one file. A dedicated brief makes the current responsibilities, invariants, target backend module split, rollout order, and test plan explicit enough for a future agent to execute the refactor without relying on chat history.
+
+**Files touched:** `docs/terminal-ws-server-refactor-brief.md`, `docs/optimization-shaped-architecture-followups.md`, `docs/README.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: untrash does not always restart agent session (2026-04-19)
 
 **What:** Two bugs prevented untrashing a task card from reliably restarting the agent session.

@@ -78,6 +78,10 @@ Primary file:
 
 - `src/terminal/ws-server.ts`
 
+Planning brief:
+
+- `docs/terminal-ws-server-refactor-brief.md`
+
 Simple job:
 
 - move terminal data between backend sessions and browser viewers

@@ -49,6 +49,7 @@ function rawDataToBuffer(data: RawData): Buffer {
 
 class FakeTerminalManager implements TerminalSessionService {
 	private readonly listenersByTaskId = new Map<string, Set<TerminalSessionListener>>();
+	readonly eventLog: string[] = [];
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
 		const listeners = this.listenersByTaskId.get(taskId) ?? new Set<TerminalSessionListener>();
@@ -63,16 +64,23 @@ class FakeTerminalManager implements TerminalSessionService {
 		};
 	}
 
-	getRestoreSnapshot = vi.fn(
-		async (): Promise<TerminalRestoreSnapshot> => ({
+	getRestoreSnapshot = vi.fn(async (): Promise<TerminalRestoreSnapshot> => {
+		this.eventLog.push("snapshot");
+		return {
 			snapshot: "",
 			cols: 80,
 			rows: 24,
-		}),
-	);
-	recoverStaleSession = vi.fn(() => createSummary());
+		};
+	});
+	recoverStaleSession = vi.fn((taskId: string) => {
+		this.eventLog.push(`recover:${taskId}`);
+		return createSummary(taskId);
+	});
 	writeInput = vi.fn(() => createSummary());
-	resize = vi.fn(() => true);
+	resize = vi.fn((taskId: string, cols: number, rows: number) => {
+		this.eventLog.push(`resize:${taskId}:${cols}x${rows}`);
+		return true;
+	});
 	pauseOutput = vi.fn(() => true);
 	resumeOutput = vi.fn(() => true);
 	stopTaskSession = vi.fn(() => createSummary());
@@ -81,6 +89,10 @@ class FakeTerminalManager implements TerminalSessionService {
 		for (const listener of this.listenersByTaskId.get(taskId) ?? []) {
 			listener.onOutput?.(Buffer.from(data, "utf8"));
 		}
+	}
+
+	getOutputListenerCount(taskId: string): number {
+		return [...(this.listenersByTaskId.get(taskId) ?? [])].filter((listener) => listener.onOutput).length;
 	}
 }
 
@@ -167,6 +179,21 @@ async function waitForIoMessage(queuedSocket: QueuedWebSocket, timeoutMs = 2_000
 			queuedSocket.events.removeListener("message", tryResolve);
 			reject(error);
 		});
+	});
+}
+
+async function expectNoQueuedMessage(queuedSocket: QueuedWebSocket, timeoutMs = 125): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		const onMessage = () => {
+			clearTimeout(timeoutId);
+			queuedSocket.events.removeListener("message", onMessage);
+			reject(new Error("Expected websocket to stay quiet."));
+		};
+		const timeoutId = setTimeout(() => {
+			queuedSocket.events.removeListener("message", onMessage);
+			resolve();
+		}, timeoutMs);
+		queuedSocket.events.on("message", onMessage);
 	});
 }
 
@@ -268,6 +295,120 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(controlSocketB.socket);
 	});
 
+	it("requests the initial restore snapshot after the first resize when one arrives promptly", async () => {
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+
+		controlSocket.socket.send(
+			JSON.stringify({
+				type: "resize",
+				cols: 132,
+				rows: 41,
+				pixelWidth: 1320,
+				pixelHeight: 820,
+				force: true,
+			}),
+		);
+
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+
+		expect(terminalManager.resize).toHaveBeenCalledWith(TASK_ID, 132, 41, 1320, 820, true);
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(1);
+		expect(terminalManager.eventLog).toContain(`recover:${TASK_ID}`);
+		expect(terminalManager.eventLog.indexOf(`resize:${TASK_ID}:132x41`)).toBeLessThan(
+			terminalManager.eventLog.indexOf("snapshot"),
+		);
+
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("still sends the initial restore snapshot after the timeout when no resize arrives", async () => {
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+
+		expect(terminalManager.resize).not.toHaveBeenCalled();
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(1);
+
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("buffers live output during restore and flushes it after restore_complete", async () => {
+		const ioUrl = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioSocket = await openQueuedWebSocket(ioUrl);
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		terminalManager.emitOutput(TASK_ID, "buffered-before-restore");
+
+		await expectNoQueuedMessage(ioSocket);
+
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+		await expect(waitForIoMessage(ioSocket)).resolves.toEqual(Buffer.from("buffered-before-restore", "utf8"));
+
+		await closeSocket(ioSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("does not accumulate restore-gap output while a viewer has no io socket", async () => {
+		const ioUrl = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioSocket = await openQueuedWebSocket(ioUrl);
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		await closeSocket(ioSocket.socket);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		terminalManager.emitOutput(TASK_ID, "lost-during-gap");
+
+		const replacementIoSocket = await openQueuedWebSocket(ioUrl);
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+		await expectNoQueuedMessage(replacementIoSocket);
+
+		await closeSocket(replacementIoSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("replaces io sockets for the same clientId without evicting the viewer", async () => {
+		const ioUrl = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const firstIoSocket = await openQueuedWebSocket(ioUrl);
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+		const firstClose = once(firstIoSocket.socket, "close");
+		const replacementIoSocket = await openQueuedWebSocket(ioUrl);
+		await firstClose;
+
+		terminalManager.emitOutput(TASK_ID, "from-replacement");
+
+		await expect(waitForIoMessage(replacementIoSocket)).resolves.toEqual(Buffer.from("from-replacement", "utf8"));
+		expect(terminalManager.getOutputListenerCount(TASK_ID)).toBe(1);
+
+		await closeSocket(replacementIoSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("replaces control sockets for the same clientId and keeps restore ownership on the newer socket", async () => {
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const firstControlSocket = await openQueuedWebSocket(controlUrl);
+
+		const firstClose = once(firstControlSocket.socket, "close");
+		const replacementControlSocket = await openQueuedWebSocket(controlUrl);
+		await firstClose;
+
+		await waitForControlMessage(replacementControlSocket, (message) => message.type === "restore");
+		await expectNoQueuedMessage(replacementControlSocket);
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(1);
+
+		await closeSocket(replacementControlSocket.socket);
+	});
+
 	it("keeps the PTY paused until every backpressured viewer drains", async () => {
 		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
 		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
@@ -301,6 +442,76 @@ describe("createTerminalWebSocketBridge", () => {
 		await waitForAssertion(() => {
 			expect(terminalManager.resumeOutput).toHaveBeenCalledTimes(1);
 		});
+
+		await closeSocket(ioSocketA.socket);
+		await closeSocket(controlSocketA.socket);
+		await closeSocket(ioSocketB.socket);
+		await closeSocket(controlSocketB.socket);
+	});
+
+	it("resumes the PTY when the last backpressured viewer disconnects before acknowledging", async () => {
+		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+
+		const ioSocketA = await openQueuedWebSocket(ioUrlA);
+		const controlSocketA = await openQueuedWebSocket(controlUrlA);
+		const ioSocketB = await openQueuedWebSocket(ioUrlB);
+		const controlSocketB = await openQueuedWebSocket(controlUrlB);
+
+		await waitForControlMessage(controlSocketA, (message) => message.type === "restore");
+		await waitForControlMessage(controlSocketB, (message) => message.type === "restore");
+		controlSocketA.socket.send(JSON.stringify({ type: "restore_complete" }));
+		controlSocketB.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+		const output = "x".repeat(120_000);
+		terminalManager.emitOutput(TASK_ID, output);
+
+		const outputA = await waitForIoMessage(ioSocketA);
+		await waitForIoMessage(ioSocketB);
+		expect(terminalManager.pauseOutput).toHaveBeenCalledTimes(1);
+
+		controlSocketA.socket.send(JSON.stringify({ type: "output_ack", bytes: outputA.byteLength }));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(terminalManager.resumeOutput).not.toHaveBeenCalled();
+
+		await closeSocket(ioSocketB.socket);
+		await closeSocket(controlSocketB.socket);
+		await waitForAssertion(() => {
+			expect(terminalManager.resumeOutput).toHaveBeenCalledTimes(1);
+		});
+
+		await closeSocket(ioSocketA.socket);
+		await closeSocket(controlSocketA.socket);
+	});
+
+	it("returns an error for invalid control payloads without destabilizing sibling viewers", async () => {
+		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+
+		const ioSocketA = await openQueuedWebSocket(ioUrlA);
+		const controlSocketA = await openQueuedWebSocket(controlUrlA);
+		const ioSocketB = await openQueuedWebSocket(ioUrlB);
+		const controlSocketB = await openQueuedWebSocket(controlUrlB);
+
+		await waitForControlMessage(controlSocketA, (message) => message.type === "restore");
+		await waitForControlMessage(controlSocketB, (message) => message.type === "restore");
+		controlSocketA.socket.send("not-json");
+		const errorMessage = await waitForControlMessage(
+			controlSocketA,
+			(message) => message.type === "error" && message.message === "Invalid terminal control payload.",
+		);
+		expect(errorMessage.type).toBe("error");
+
+		controlSocketA.socket.send(JSON.stringify({ type: "restore_complete" }));
+		controlSocketB.socket.send(JSON.stringify({ type: "restore_complete" }));
+		terminalManager.emitOutput(TASK_ID, "still-broadcasting");
+
+		await expect(waitForIoMessage(ioSocketA)).resolves.toEqual(Buffer.from("still-broadcasting", "utf8"));
+		await expect(waitForIoMessage(ioSocketB)).resolves.toEqual(Buffer.from("still-broadcasting", "utf8"));
 
 		await closeSocket(ioSocketA.socket);
 		await closeSocket(controlSocketA.socket);

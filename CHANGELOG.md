@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Refactor: terminal websocket bridge ownership / policy split
+
+- Split `src/terminal/ws-server.ts` into a thinner websocket orchestrator plus focused collaborators: `terminal-ws-connection-registry.ts`, `terminal-ws-output-fanout.ts`, `terminal-ws-restore-coordinator.ts`, `terminal-ws-backpressure-policy.ts`, `terminal-ws-protocol.ts`, and `terminal-ws-types.ts`.
+- Preserved the existing terminal websocket behavior while making the bridge read task-stream ownership first and transport policy second: multi-viewer fanout, same-`clientId` socket replacement, restore-after-resize timing, restore-gap buffering, shared PTY pause/resume, and `recoverStaleSession(taskId)` on connect all remain intact.
+- Expanded `test/runtime/terminal/ws-server.test.ts` to cover restore timing, restore-gap buffering, same-client socket replacement, last-viewer backpressure disconnect resume, and invalid control payload handling.
+
+### Docs: terminal websocket bridge refactor brief
+
+- Added `docs/terminal-ws-server-refactor-brief.md` — a dedicated planning brief for refactoring `src/terminal/ws-server.ts` without changing runtime behavior. It captures current responsibilities, transport-vs-policy boundaries, multi-viewer/backpressure/restore invariants, proposed backend module split, rollout order, acceptance criteria, and migration risks.
+- Linked the new brief from the refactor docs map, the optimization-shaped architecture follow-up tracker, and the todo section that tracks this work.
+
 ### Fix: task switch and untrash terminal width/scroll restoration
 
 - Reused pooled task terminals now request a fresh server restore snapshot whenever a non-active warm slot is promoted back to the visible task view. This makes normal task switches use the same repair path as the manual "Re-sync terminal content" action instead of showing stale hidden-slot geometry.
