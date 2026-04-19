@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import type { ReviewTaskProjectSnapshot } from "@/types";
+import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
-let mockProjectSnapshot: ReviewTaskProjectSnapshot | undefined;
+let mockWorktreeSnapshot: ReviewTaskWorktreeSnapshot | undefined;
 
 vi.mock("@hello-pangea/dnd", () => ({
 	Draggable: ({
@@ -28,7 +28,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 }));
 
 vi.mock("@/stores/project-metadata-store", () => ({
-	useTaskProjectSnapshotValue: () => mockProjectSnapshot,
+	useTaskWorktreeSnapshotValue: () => mockWorktreeSnapshot,
 	getProjectPath: () => "/mock/project",
 }));
 
@@ -116,7 +116,7 @@ describe("BoardCard", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		mockProjectSnapshot = undefined;
+		mockWorktreeSnapshot = undefined;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -445,7 +445,7 @@ describe("BoardCard", () => {
 	});
 
 	describe("branch display precedence", () => {
-		function createSnapshot(overrides?: Partial<ReviewTaskProjectSnapshot>): ReviewTaskProjectSnapshot {
+		function createSnapshot(overrides?: Partial<ReviewTaskWorktreeSnapshot>): ReviewTaskWorktreeSnapshot {
 			return {
 				taskId: "task-1",
 				path: "/tmp/worktree",
@@ -463,7 +463,7 @@ describe("BoardCard", () => {
 		}
 
 		it("prefers live metadata branch over stale card.branch", async () => {
-			mockProjectSnapshot = createSnapshot({ branch: "live-branch" });
+			mockWorktreeSnapshot = createSnapshot({ branch: "live-branch" });
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -481,7 +481,7 @@ describe("BoardCard", () => {
 		});
 
 		it("falls back to card.branch when metadata branch is null (detached HEAD)", async () => {
-			mockProjectSnapshot = createSnapshot({ branch: null });
+			mockWorktreeSnapshot = createSnapshot({ branch: null });
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -498,7 +498,7 @@ describe("BoardCard", () => {
 		});
 
 		it("falls back to card.branch when no metadata is available", async () => {
-			mockProjectSnapshot = undefined;
+			mockWorktreeSnapshot = undefined;
 			await act(async () => {
 				root.render(
 					<Providers>
@@ -515,7 +515,7 @@ describe("BoardCard", () => {
 		});
 
 		it("shows headCommit fallback when neither source has a branch", async () => {
-			mockProjectSnapshot = createSnapshot({ branch: null, headCommit: "deadbeef12345678" });
+			mockWorktreeSnapshot = createSnapshot({ branch: null, headCommit: "deadbeef12345678" });
 			await act(async () => {
 				root.render(
 					<Providers>

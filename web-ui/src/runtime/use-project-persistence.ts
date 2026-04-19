@@ -7,7 +7,7 @@ import type {
 } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
-const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 120;
+const PROJECT_STATE_PERSIST_DEBOUNCE_MS = 120;
 
 export interface UseProjectPersistenceParams {
 	board: BoardData;
@@ -148,7 +148,7 @@ export function useProjectPersistence({
 					}
 				}
 			})();
-		}, WORKSPACE_STATE_PERSIST_DEBOUNCE_MS);
+		}, PROJECT_STATE_PERSIST_DEBOUNCE_MS);
 		return () => {
 			window.clearTimeout(timeoutId);
 		};

@@ -32,15 +32,15 @@ const useHomeGitSummaryValueMock = vi.hoisted(() =>
 	vi.fn(() => ({ currentBranch: "main" }) as { currentBranch: string | null } | null),
 );
 
-const useTaskProjectSnapshotValueMock = vi.hoisted(() =>
+const useTaskWorktreeSnapshotValueMock = vi.hoisted(() =>
 	vi.fn(() => null as { branch: string | null; isDetached: boolean } | null),
 );
 
 vi.mock("@/stores/project-metadata-store", () => ({
-	useTaskProjectStateVersionValue: () => 0,
+	useTaskWorktreeStateVersionValue: () => 0,
 	useHomeGitStateVersionValue: () => 0,
 	useHomeGitSummaryValue: useHomeGitSummaryValueMock,
-	useTaskProjectSnapshotValue: useTaskProjectSnapshotValueMock,
+	useTaskWorktreeSnapshotValue: useTaskWorktreeSnapshotValueMock,
 }));
 
 const commitMutateMock = vi.hoisted(() =>
@@ -135,7 +135,7 @@ describe("useCommitPanel", () => {
 
 		// Default: on a named branch.
 		useHomeGitSummaryValueMock.mockReturnValue({ currentBranch: "main" });
-		useTaskProjectSnapshotValueMock.mockReturnValue(null);
+		useTaskWorktreeSnapshotValueMock.mockReturnValue(null);
 	});
 
 	afterEach(() => {
@@ -315,7 +315,7 @@ describe("useCommitPanel", () => {
 	// 9. canPush is true on named branch with valid commit conditions
 	// -----------------------------------------------------------------------
 	it("canPush is true on named branch with valid commit conditions", () => {
-		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		useTaskWorktreeSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
 		render();
 
 		act(() => {
@@ -330,7 +330,7 @@ describe("useCommitPanel", () => {
 	// 10. canPush is false when on detached HEAD
 	// -----------------------------------------------------------------------
 	it("canPush is false when on detached HEAD", () => {
-		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: null, isDetached: true });
+		useTaskWorktreeSnapshotValueMock.mockReturnValue({ branch: null, isDetached: true });
 		render();
 
 		act(() => {
@@ -345,7 +345,7 @@ describe("useCommitPanel", () => {
 	// 11. commitAndPush sends pushAfterCommit: true in the mutation
 	// -----------------------------------------------------------------------
 	it("commitAndPush sends pushAfterCommit: true in the mutation", async () => {
-		useTaskProjectSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
+		useTaskWorktreeSnapshotValueMock.mockReturnValue({ branch: "feat/my-branch", isDetached: false });
 		commitMutateMock.mockResolvedValueOnce({ ok: true, pushOk: true, commitHash: "abc1234" });
 		render();
 

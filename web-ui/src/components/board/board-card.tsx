@@ -16,7 +16,7 @@ import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { getProjectPath, useTaskProjectSnapshotValue } from "@/stores/project-metadata-store";
+import { getProjectPath, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import {
@@ -110,23 +110,23 @@ export function BoardCard({
 	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
 	const closeTitleEditor = useCallback(() => setIsEditingTitle(false), []);
 
-	const reviewProjectSnapshot = useTaskProjectSnapshotValue(card.id);
+	const reviewWorktreeSnapshot = useTaskWorktreeSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 
 	const isSharedCheckout = useMemo(() => {
 		const wsPath = getProjectPath();
-		if (reviewProjectSnapshot?.path && wsPath) {
-			return reviewProjectSnapshot.path === wsPath;
+		if (reviewWorktreeSnapshot?.path && wsPath) {
+			return reviewWorktreeSnapshot.path === wsPath;
 		}
 		return card.useWorktree === false;
-	}, [reviewProjectSnapshot?.path, card.useWorktree]);
+	}, [reviewWorktreeSnapshot?.path, card.useWorktree]);
 
 	const isCwdDiverged = useMemo(() => {
-		if (!sessionSummary?.projectPath || !reviewProjectSnapshot?.path) return false;
+		if (!sessionSummary?.projectPath || !reviewWorktreeSnapshot?.path) return false;
 		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
-		return sessionSummary.projectPath !== reviewProjectSnapshot.path;
-	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewProjectSnapshot?.path]);
+		return sessionSummary.projectPath !== reviewWorktreeSnapshot.path;
+	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewWorktreeSnapshot?.path]);
 
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 
@@ -167,17 +167,17 @@ export function BoardCard({
 		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
 	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const effectiveBranch =
-		reviewProjectSnapshot?.branch ?? (reviewProjectSnapshot?.isDetached ? null : card.branch) ?? null;
+		reviewWorktreeSnapshot?.branch ?? (reviewWorktreeSnapshot?.isDetached ? null : card.branch) ?? null;
 	const reviewBranchLabel = effectiveBranch
 		? shortenBranchName(effectiveBranch)
-		: (reviewProjectSnapshot?.headCommit?.slice(0, 8) ?? null);
-	const reviewChangeSummary = reviewProjectSnapshot
-		? reviewProjectSnapshot.changedFiles == null
+		: (reviewWorktreeSnapshot?.headCommit?.slice(0, 8) ?? null);
+	const reviewChangeSummary = reviewWorktreeSnapshot
+		? reviewWorktreeSnapshot.changedFiles == null
 			? null
 			: {
-					filesLabel: `${reviewProjectSnapshot.changedFiles} ${reviewProjectSnapshot.changedFiles === 1 ? "file" : "files"}`,
-					additions: reviewProjectSnapshot.additions ?? 0,
-					deletions: reviewProjectSnapshot.deletions ?? 0,
+					filesLabel: `${reviewWorktreeSnapshot.changedFiles} ${reviewWorktreeSnapshot.changedFiles === 1 ? "file" : "files"}`,
+					additions: reviewWorktreeSnapshot.additions ?? 0,
+					deletions: reviewWorktreeSnapshot.deletions ?? 0,
 				}
 		: null;
 	const cancelAutomaticActionLabel =
@@ -321,9 +321,9 @@ export function BoardCard({
 							{uncommittedChangesOnCardsEnabled &&
 							showProjectStatus &&
 							!isTrashCard &&
-							(reviewProjectSnapshot?.changedFiles ?? 0) > 0 ? (
+							(reviewWorktreeSnapshot?.changedFiles ?? 0) > 0 ? (
 								<Tooltip
-									content={`${reviewProjectSnapshot!.changedFiles} uncommitted change${reviewProjectSnapshot!.changedFiles === 1 ? "" : "s"}`}
+									content={`${reviewWorktreeSnapshot!.changedFiles} uncommitted change${reviewWorktreeSnapshot!.changedFiles === 1 ? "" : "s"}`}
 								>
 									<span className="inline-flex items-center shrink-0">
 										<span className="block size-1.5 rounded-full bg-status-red" />

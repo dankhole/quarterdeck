@@ -30,7 +30,7 @@ import type { RuntimeGitSyncSummary, RuntimeTaskSessionSummary, RuntimeWorkdirFi
 import { type FileLoadingState, useAllFileDiffContent } from "@/runtime/use-all-file-diff-content";
 import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { useTaskProjectStateVersionValue } from "@/stores/project-metadata-store";
+import { useTaskWorktreeStateVersionValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
 
 const POLL_INTERVAL_MS = 1_000;
@@ -134,7 +134,7 @@ export function useGitView({
 	// --- Data fetching ---
 
 	const baseRef = selectedCard?.card.baseRef ?? null;
-	const taskWorktreeStateVersion = useTaskProjectStateVersionValue(taskId);
+	const taskWorktreeStateVersion = useTaskWorktreeStateVersionValue(taskId);
 
 	// Uncommitted tab data
 	const isUncommittedActive = activeTab === "uncommitted";

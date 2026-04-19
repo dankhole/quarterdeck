@@ -19,14 +19,14 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
-	getTaskProjectSnapshot,
 	getTaskWorktreeInfo,
+	getTaskWorktreeSnapshot,
 	setHomeGitSummary,
 	setTaskWorktreeInfo,
 	useHomeGitStateVersionValue,
 	useHomeGitSummaryValue,
-	useTaskProjectSnapshotValue,
-	useTaskProjectStateVersionValue,
+	useTaskWorktreeSnapshotValue,
+	useTaskWorktreeStateVersionValue,
 } from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
@@ -103,8 +103,8 @@ export function useGitActions({
 	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
 	const homeGitSummary = useHomeGitSummaryValue();
 	const homeGitStateVersion = useHomeGitStateVersionValue();
-	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id ?? null);
-	const selectedTaskWorktreeStateVersion = useTaskProjectStateVersionValue(selectedCard?.card.id ?? null);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id ?? null);
+	const selectedTaskWorktreeStateVersion = useTaskWorktreeStateVersionValue(selectedCard?.card.id ?? null);
 
 	const gitHistoryTaskScope = useMemo(() => {
 		if (!selectedCard) {
@@ -120,19 +120,19 @@ export function useGitActions({
 		if (!selectedCard) {
 			return homeGitSummary;
 		}
-		if (!selectedTaskProjectSnapshot) {
+		if (!selectedTaskWorktreeSnapshot) {
 			return null;
 		}
 		return {
-			currentBranch: selectedTaskProjectSnapshot.branch,
+			currentBranch: selectedTaskWorktreeSnapshot.branch,
 			upstreamBranch: null,
-			changedFiles: selectedTaskProjectSnapshot.changedFiles ?? 0,
-			additions: selectedTaskProjectSnapshot.additions ?? 0,
-			deletions: selectedTaskProjectSnapshot.deletions ?? 0,
+			changedFiles: selectedTaskWorktreeSnapshot.changedFiles ?? 0,
+			additions: selectedTaskWorktreeSnapshot.additions ?? 0,
+			deletions: selectedTaskWorktreeSnapshot.deletions ?? 0,
 			aheadCount: 0,
 			behindCount: 0,
 		};
-	}, [homeGitSummary, selectedCard, selectedTaskProjectSnapshot]);
+	}, [homeGitSummary, selectedCard, selectedTaskWorktreeSnapshot]);
 	const gitHistoryStateVersion = selectedCard ? selectedTaskWorktreeStateVersion : homeGitStateVersion;
 
 	const gitHistory = useGitHistoryData({
@@ -189,7 +189,7 @@ export function useGitActions({
 					return false;
 				}
 
-				const snapshot = getTaskProjectSnapshot(taskId);
+				const snapshot = getTaskWorktreeSnapshot(taskId);
 				const snapshotWorktreeInfo = snapshot
 					? {
 							taskId,

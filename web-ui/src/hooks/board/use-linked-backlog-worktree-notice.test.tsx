@@ -13,7 +13,7 @@ import {
 
 const toastMock = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskProjectSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskWorktreeSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
 const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): any => null));
 
@@ -22,7 +22,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/stores/project-metadata-store", () => ({
-	getTaskProjectSnapshot: getTaskProjectSnapshotMock,
+	getTaskWorktreeSnapshot: getTaskWorktreeSnapshotMock,
 	getTaskWorktreeInfo: getTaskWorktreeInfoMock,
 }));
 
@@ -31,7 +31,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 
 	beforeEach(() => {
 		toastMock.mockReset();
-		getTaskProjectSnapshotMock.mockReset();
+		getTaskWorktreeSnapshotMock.mockReset();
 		getTaskWorktreeInfoMock.mockReset();
 	});
 
@@ -352,7 +352,7 @@ describe("useLinkedBacklogTaskActions — worktree notice toast", () => {
 	it("does not show toast when confirmation dialog was triggered", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,

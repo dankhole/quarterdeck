@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: fix workspace→project/worktree rename oversights
+
+- Fixed identifiers that were renamed from "workspace" to "project" but should have been "worktree" (per-task git worktree metadata): `RuntimeTaskProjectMetadata` → `RuntimeTaskWorktreeMetadata`, `TrackedTaskProject` → `TrackedTaskWorktree`, `CachedTaskProjectMetadata` → `CachedTaskWorktreeMetadata`, `loadTaskProjectMetadata` → `loadTaskWorktreeMetadata`, `ReviewTaskProjectSnapshot` → `ReviewTaskWorktreeSnapshot`, and all associated store hooks/functions.
+- Fixed remaining stale "workspace" identifiers: `WORKSPACE_STATE_FILENAMES` → `PROJECT_STATE_FILENAMES`, `WORKSPACE_STATE_PERSIST_DEBOUNCE_MS` → `PROJECT_STATE_PERSIST_DEBOUNCE_MS`, `WORKSPACE_ID` → `PROJECT_ID` in test fixture, `NOOP_FETCH_WORKSPACE_INFO` → `NOOP_FETCH_WORKTREE_INFO`.
+- Fixed stale `createWorkspaceTrpcClient` reference in biome.json lint rule (function was already renamed to `createProjectTrpcClient`).
+
 ### Refactor: app shell component decomposition and design guardrails
 
 - Decomposed `project-navigation-panel.tsx` (679L → 74L) into `project-navigation-list.tsx`, `project-navigation-row.tsx`, `project-navigation-removal-dialog.tsx`, and `project-navigation-sidebar-sections.tsx`.

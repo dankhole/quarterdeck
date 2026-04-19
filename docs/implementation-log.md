@@ -2,6 +2,20 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: fix workspace→project/worktree rename oversights (2026-04-19)
+
+**What:** Corrected identifiers that the prior rename pass mis-categorized, plus a handful of stale "workspace" leftovers.
+
+**Why:** The bulk rename (ac1001b0) converted all "workspace" to "project", but several identifiers describe per-task git worktree state (branch, changes, detached HEAD, conflict state) — not the high-level project concept. Using "project" for these muddied the semantic distinction between the project (board/state) and its worktrees (per-task git isolation).
+
+**Changes:**
+- **→ worktree** (over-corrected from workspace→project): `RuntimeTaskProjectMetadata` → `RuntimeTaskWorktreeMetadata`, `runtimeTaskProjectMetadataSchema` → `runtimeTaskWorktreeMetadataSchema`, `TrackedTaskProject` → `TrackedTaskWorktree`, `CachedTaskProjectMetadata` → `CachedTaskWorktreeMetadata`, `loadTaskProjectMetadata` → `loadTaskWorktreeMetadata`, `ReviewTaskProjectSnapshot` → `ReviewTaskWorktreeSnapshot`, `useTaskProjectSnapshotValue` → `useTaskWorktreeSnapshotValue`, `useTaskProjectStateVersionValue` → `useTaskWorktreeStateVersionValue`, plus get/set/clear store functions and all local variable names referencing these types.
+- **→ project** (stale workspace leftovers): `WORKSPACE_STATE_FILENAMES`, `WORKSPACE_STATE_PERSIST_DEBOUNCE_MS`, `WORKSPACE_ID` test constant.
+- **→ worktree** (stale workspace leftover): `NOOP_FETCH_WORKSPACE_INFO` → `NOOP_FETCH_WORKTREE_INFO`.
+- **biome.json**: Updated lint rule to reference `createProjectTrpcClient` (function was already renamed).
+
+**Files touched:** 28 files across `src/`, `web-ui/src/`, `test/`, `biome.json`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: complete workspace → project/worktree/workdir rename (2026-04-17)
 
 **What:** Eliminated all remaining "workspace" references in source, tests, and config — except agent workspace-trust files where "workspace" is the agent's own terminology.

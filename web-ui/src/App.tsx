@@ -36,8 +36,8 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { CardActionsProvider } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
-	useTaskProjectSnapshotValue,
 	useTaskWorktreeInfoValue,
+	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
 import { initPool } from "@/terminal/terminal-pool";
 import type { BoardData } from "@/types";
@@ -176,7 +176,7 @@ function AppContent({
 	// --- Store subscriptions + derived UI state ---
 
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {
@@ -312,7 +312,7 @@ function AppContent({
 		useNavbarState({
 			selectedCard,
 			selectedTaskWorktreeInfo: selectedTaskWorktreeInfo,
-			selectedTaskProjectSnapshot: selectedTaskProjectSnapshot,
+			selectedTaskWorktreeSnapshot: selectedTaskWorktreeSnapshot,
 			projectPath: project.projectPath,
 			shouldUseNavigationPath: shouldUseNavigationPath,
 			navigationProjectPath: navigationProjectPath,
@@ -386,7 +386,7 @@ function AppContent({
 			shouldHideProjectDependentTopBarActions={shouldHideProjectDependentTopBarActions}
 			shouldShowProjectLoadingState={shouldShowProjectLoadingState}
 			homeGitSummary={homeGitSummary}
-			selectedTaskProjectSnapshot={selectedTaskProjectSnapshot}
+			selectedTaskWorktreeSnapshot={selectedTaskWorktreeSnapshot}
 		/>
 	);
 
@@ -409,10 +409,10 @@ function AppContent({
 							hasSelectedTask={selectedCard !== null}
 							gitBadgeColor={
 								selectedCard
-									? (selectedTaskProjectSnapshot?.changedFiles ?? 0) > 0
+									? (selectedTaskWorktreeSnapshot?.changedFiles ?? 0) > 0
 										? "red"
 										: project.unmergedChangesIndicatorEnabled &&
-												(selectedTaskProjectSnapshot?.hasUnmergedChanges ?? false)
+												(selectedTaskWorktreeSnapshot?.hasUnmergedChanges ?? false)
 											? "blue"
 											: undefined
 									: (homeGitSummary?.changedFiles ?? 0) > 0
@@ -421,7 +421,7 @@ function AppContent({
 							}
 							isBehindBase={
 								project.behindBaseIndicatorEnabled && selectedCard
-									? (selectedTaskProjectSnapshot?.behindBaseCount ?? 0) > 0
+									? (selectedTaskWorktreeSnapshot?.behindBaseCount ?? 0) > 0
 									: false
 							}
 							projectsBadgeColor={projectsBadgeColor}

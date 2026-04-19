@@ -3,8 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReviewAutoActions } from "@/hooks/board/use-review-auto-actions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { resetProjectMetadataStore, setTaskProjectSnapshot } from "@/stores/project-metadata-store";
-import type { BoardColumnId, BoardData, ReviewTaskProjectSnapshot } from "@/types";
+import { resetProjectMetadataStore, setTaskWorktreeSnapshot } from "@/stores/project-metadata-store";
+import type { BoardColumnId, BoardData, ReviewTaskWorktreeSnapshot } from "@/types";
 
 function createBoard(autoReviewEnabled: boolean): BoardData {
 	return {
@@ -34,7 +34,7 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 	};
 }
 
-const projectSnapshots: Record<string, ReviewTaskProjectSnapshot> = {
+const worktreeSnapshots: Record<string, ReviewTaskWorktreeSnapshot> = {
 	"task-1": {
 		taskId: "task-1",
 		path: "/tmp/task-1",
@@ -59,7 +59,7 @@ function HookHarness({
 	sessions?: Record<string, import("@/runtime/types").RuntimeTaskSessionSummary>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
-	setTaskProjectSnapshot(projectSnapshots["task-1"] ?? null);
+	setTaskWorktreeSnapshot(worktreeSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
 		sessions,

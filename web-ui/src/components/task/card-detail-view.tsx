@@ -25,8 +25,8 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useStableCardActions } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
-	useTaskProjectSnapshotValue,
 	useTaskWorktreeInfoValue,
+	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
@@ -198,7 +198,7 @@ export function CardDetailView({
 	);
 
 	const taskWorktreeInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
-	const taskWorktreeSnapshot = useTaskProjectSnapshotValue(selection.card.id);
+	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selection.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	const {

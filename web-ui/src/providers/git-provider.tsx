@@ -22,8 +22,8 @@ import { type MainViewId, type SidebarId, useCardDetailLayout } from "@/resize/u
 import type { RuntimeGitSyncAction } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
-	useTaskProjectSnapshotValue,
 	useTaskWorktreeInfoValue,
+	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
 
 	// --- useScopeContext ---
@@ -191,7 +191,7 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		selectBranchView: topbarBranchViewNoop,
 		homeGitSummary,
 		taskBranch: selectedCard ? (selectedTaskWorktreeInfo?.branch ?? selectedCard.card.branch ?? null) : undefined,
-		taskChangedFiles: selectedCard ? (selectedTaskProjectSnapshot?.changedFiles ?? 0) : undefined,
+		taskChangedFiles: selectedCard ? (selectedTaskWorktreeSnapshot?.changedFiles ?? 0) : undefined,
 		taskId: selectedCard?.card.id ?? null,
 		baseRef: selectedCard?.card.baseRef ?? null,
 		skipTaskCheckoutConfirmation,

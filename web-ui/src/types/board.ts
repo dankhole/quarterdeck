@@ -66,7 +66,7 @@ export interface BoardData {
 	dependencies: BoardDependency[];
 }
 
-export interface ReviewTaskProjectSnapshot {
+export interface ReviewTaskWorktreeSnapshot {
 	taskId: string;
 	path: string;
 	branch: string | null;

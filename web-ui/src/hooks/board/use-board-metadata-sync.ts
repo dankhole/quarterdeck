@@ -4,7 +4,7 @@ import type { RuntimeProjectMetadata } from "@/runtime/types";
 import { reconcileTaskBranch, reconcileTaskWorkingDirectory } from "@/state/board-state";
 import {
 	getProjectPath,
-	getTaskProjectSnapshot,
+	getTaskWorktreeSnapshot,
 	replaceProjectMetadata,
 	subscribeToAnyTaskMetadata,
 } from "@/stores/project-metadata-store";
@@ -31,7 +31,7 @@ export function useBoardMetadataSync({ projectMetadata, setBoard }: UseBoardMeta
 
 	useEffect(() => {
 		return subscribeToAnyTaskMetadata((taskId) => {
-			const snapshot = getTaskProjectSnapshot(taskId);
+			const snapshot = getTaskWorktreeSnapshot(taskId);
 			if (!snapshot?.path) {
 				return;
 			}

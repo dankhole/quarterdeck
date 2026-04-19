@@ -4,10 +4,10 @@ import type {
 	RuntimeConflictState,
 	RuntimeGitSyncSummary,
 	RuntimeProjectMetadata,
-	RuntimeTaskProjectMetadata,
 	RuntimeTaskWorktreeInfoResponse,
+	RuntimeTaskWorktreeMetadata,
 } from "@/runtime/types";
-import type { ReviewTaskProjectSnapshot } from "@/types";
+import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 type StoreListener = () => void;
 type TaskMetadataListener = (taskId: string) => void;
@@ -18,7 +18,7 @@ interface ProjectMetadataState {
 	homeGitStateVersion: number;
 	homeStashCount: number;
 	taskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null>;
-	taskWorktreeSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null>;
+	taskWorktreeSnapshotByTaskId: Record<string, ReviewTaskWorktreeSnapshot | null>;
 	taskWorktreeStateVersionByTaskId: Record<string, number>;
 }
 
@@ -69,7 +69,7 @@ function emitTaskMetadata(taskId: string): void {
 	}
 }
 
-function toTaskWorktreeInfo(metadata: RuntimeTaskProjectMetadata): RuntimeTaskWorktreeInfoResponse {
+function toTaskWorktreeInfo(metadata: RuntimeTaskWorktreeMetadata): RuntimeTaskWorktreeInfoResponse {
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
@@ -81,7 +81,7 @@ function toTaskWorktreeInfo(metadata: RuntimeTaskProjectMetadata): RuntimeTaskWo
 	};
 }
 
-function toTaskWorktreeSnapshot(metadata: RuntimeTaskProjectMetadata): ReviewTaskProjectSnapshot {
+function toTaskWorktreeSnapshot(metadata: RuntimeTaskWorktreeMetadata): ReviewTaskWorktreeSnapshot {
 	return {
 		taskId: metadata.taskId,
 		path: metadata.path,
@@ -172,8 +172,8 @@ function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConfli
 }
 
 function areTaskWorktreeSnapshotsEqual(
-	a: ReviewTaskProjectSnapshot | null,
-	b: ReviewTaskProjectSnapshot | null,
+	a: ReviewTaskWorktreeSnapshot | null,
+	b: ReviewTaskWorktreeSnapshot | null,
 ): boolean {
 	if (a === b) {
 		return true;
@@ -276,7 +276,7 @@ export function clearTaskWorktreeInfo(taskId: string | null | undefined): boolea
 	return true;
 }
 
-export function getTaskProjectSnapshot(taskId: string | null | undefined): ReviewTaskProjectSnapshot | null {
+export function getTaskWorktreeSnapshot(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId) {
 		return null;
@@ -284,7 +284,7 @@ export function getTaskProjectSnapshot(taskId: string | null | undefined): Revie
 	return projectMetadataState.taskWorktreeSnapshotByTaskId[normalizedTaskId] ?? null;
 }
 
-export function setTaskProjectSnapshot(snapshot: ReviewTaskProjectSnapshot | null): boolean {
+export function setTaskWorktreeSnapshot(snapshot: ReviewTaskWorktreeSnapshot | null): boolean {
 	if (!snapshot) {
 		return false;
 	}
@@ -304,7 +304,7 @@ export function setTaskProjectSnapshot(snapshot: ReviewTaskProjectSnapshot | nul
 	return true;
 }
 
-export function clearTaskProjectSnapshot(taskId: string | null | undefined): boolean {
+export function clearTaskWorktreeSnapshot(taskId: string | null | undefined): boolean {
 	const normalizedTaskId = taskId?.trim();
 	if (!normalizedTaskId || !(normalizedTaskId in projectMetadataState.taskWorktreeSnapshotByTaskId)) {
 		return false;
@@ -318,9 +318,9 @@ export function clearTaskProjectSnapshot(taskId: string | null | undefined): boo
 	return true;
 }
 
-export function clearInactiveTaskProjectSnapshots(activeTaskIds: Set<string>): void {
+export function clearInactiveTaskWorktreeSnapshots(activeTaskIds: Set<string>): void {
 	let changed = false;
-	const nextSnapshots: Record<string, ReviewTaskProjectSnapshot | null> = {};
+	const nextSnapshots: Record<string, ReviewTaskWorktreeSnapshot | null> = {};
 	const nextStateVersions: Record<string, number> = {};
 	for (const [taskId, snapshot] of Object.entries(projectMetadataState.taskWorktreeSnapshotByTaskId)) {
 		if (!activeTaskIds.has(taskId)) {
@@ -379,7 +379,7 @@ export function replaceProjectMetadata(metadata: RuntimeProjectMetadata | null):
 	}
 
 	const nextTaskWorktreeInfoByTaskId: Record<string, RuntimeTaskWorktreeInfoResponse | null> = {};
-	const nextTaskWorktreeSnapshotByTaskId: Record<string, ReviewTaskProjectSnapshot | null> = {};
+	const nextTaskWorktreeSnapshotByTaskId: Record<string, ReviewTaskWorktreeSnapshot | null> = {};
 	const nextTaskWorktreeStateVersionByTaskId: Record<string, number> = {};
 
 	for (const taskMetadata of metadata?.taskWorktrees ?? []) {
@@ -473,7 +473,7 @@ export function useTaskWorktreeInfoValue(
 	);
 }
 
-export function useTaskProjectSnapshotValue(taskId: string | null | undefined): ReviewTaskProjectSnapshot | null {
+export function useTaskWorktreeSnapshotValue(taskId: string | null | undefined): ReviewTaskWorktreeSnapshot | null {
 	const normalizedTaskId = taskId?.trim() ?? "";
 	return useSyncExternalStore(
 		(listener) => {
@@ -482,12 +482,12 @@ export function useTaskProjectSnapshotValue(taskId: string | null | undefined): 
 			}
 			return subscribeToTaskId(normalizedTaskId, listener);
 		},
-		() => getTaskProjectSnapshot(normalizedTaskId),
+		() => getTaskWorktreeSnapshot(normalizedTaskId),
 		() => null,
 	);
 }
 
-export function useTaskProjectStateVersionValue(taskId: string | null | undefined): number {
+export function useTaskWorktreeStateVersionValue(taskId: string | null | undefined): number {
 	const normalizedTaskId = taskId?.trim() ?? "";
 	return useSyncExternalStore(
 		(listener) => {

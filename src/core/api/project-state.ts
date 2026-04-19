@@ -20,7 +20,7 @@ export const runtimeProjectSummarySchema = z.object({
 });
 export type RuntimeProjectSummary = z.infer<typeof runtimeProjectSummarySchema>;
 
-export const runtimeTaskProjectMetadataSchema = z.object({
+export const runtimeTaskWorktreeMetadataSchema = z.object({
 	taskId: z.string(),
 	path: z.string(),
 	exists: z.boolean(),
@@ -36,14 +36,14 @@ export const runtimeTaskProjectMetadataSchema = z.object({
 	conflictState: runtimeConflictStateSchema.nullable().optional(),
 	stateVersion: z.number().int().nonnegative(),
 });
-export type RuntimeTaskProjectMetadata = z.infer<typeof runtimeTaskProjectMetadataSchema>;
+export type RuntimeTaskWorktreeMetadata = z.infer<typeof runtimeTaskWorktreeMetadataSchema>;
 
 export const runtimeProjectMetadataSchema = z.object({
 	homeGitSummary: runtimeGitSyncSummarySchema.nullable(),
 	homeGitStateVersion: z.number().int().nonnegative(),
 	homeConflictState: runtimeConflictStateSchema.nullable().optional(),
 	homeStashCount: z.number().int().nonnegative(),
-	taskWorktrees: z.array(runtimeTaskProjectMetadataSchema),
+	taskWorktrees: z.array(runtimeTaskWorktreeMetadataSchema),
 });
 export type RuntimeProjectMetadata = z.infer<typeof runtimeProjectMetadataSchema>;
 

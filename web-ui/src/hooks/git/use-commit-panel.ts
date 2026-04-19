@@ -13,8 +13,8 @@ import { useRuntimeProjectChanges } from "@/runtime/use-runtime-project-changes"
 import {
 	useHomeGitStateVersionValue,
 	useHomeGitSummaryValue,
-	useTaskProjectSnapshotValue,
-	useTaskProjectStateVersionValue,
+	useTaskWorktreeSnapshotValue,
+	useTaskWorktreeStateVersionValue,
 } from "@/stores/project-metadata-store";
 
 export interface UseCommitPanelResult {
@@ -53,13 +53,13 @@ export function useCommitPanel(
 	baseRef: string | null,
 ): UseCommitPanelResult {
 	// State version — call both hooks unconditionally (React rules of hooks).
-	const taskStateVersion = useTaskProjectStateVersionValue(taskId);
+	const taskStateVersion = useTaskWorktreeStateVersionValue(taskId);
 	const homeStateVersion = useHomeGitStateVersionValue();
 	const stateVersion = taskId ? taskStateVersion : homeStateVersion;
 
 	// Branch awareness — determine if push is possible (requires a named branch, not detached HEAD).
 	const homeGitSummary = useHomeGitSummaryValue();
-	const taskSnapshot = useTaskProjectSnapshotValue(taskId);
+	const taskSnapshot = useTaskWorktreeSnapshotValue(taskId);
 	const isOnNamedBranch = taskId
 		? !!(taskSnapshot?.branch && !taskSnapshot.isDetached)
 		: !!homeGitSummary?.currentBranch;

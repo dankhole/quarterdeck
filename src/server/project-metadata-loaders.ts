@@ -3,7 +3,7 @@ import type {
 	RuntimeConflictState,
 	RuntimeGitSyncSummary,
 	RuntimeProjectMetadata,
-	RuntimeTaskProjectMetadata,
+	RuntimeTaskWorktreeMetadata,
 } from "../core";
 import {
 	computeAutoMergedFiles,
@@ -18,7 +18,7 @@ import {
 	stashCount,
 } from "../workdir";
 
-export interface TrackedTaskProject {
+export interface TrackedTaskWorktree {
 	taskId: string;
 	baseRef: string;
 	workingDirectory: string | null;
@@ -32,8 +32,8 @@ export interface CachedHomeGitMetadata {
 	stateVersion: number;
 }
 
-export interface CachedTaskProjectMetadata {
-	data: RuntimeTaskProjectMetadata;
+export interface CachedTaskWorktreeMetadata {
+	data: RuntimeTaskWorktreeMetadata;
 	stateToken: string | null;
 	baseRefCommit: string | null;
 	originBaseRefCommit: string | null;
@@ -42,7 +42,7 @@ export interface CachedTaskProjectMetadata {
 
 export interface ProjectMetadataEntry {
 	projectPath: string;
-	trackedTasks: TrackedTaskProject[];
+	trackedTasks: TrackedTaskWorktree[];
 	subscriberCount: number;
 	focusedTaskId: string | null;
 	homeTimer: NodeJS.Timeout | null;
@@ -51,7 +51,7 @@ export interface ProjectMetadataEntry {
 	remoteFetchTimer: NodeJS.Timeout | null;
 	refreshPromise: Promise<RuntimeProjectMetadata> | null;
 	homeGit: CachedHomeGitMetadata;
-	taskMetadataByTaskId: Map<string, CachedTaskProjectMetadata>;
+	taskMetadataByTaskId: Map<string, CachedTaskWorktreeMetadata>;
 	pollIntervals: ProjectMetadataPollIntervals;
 }
 
@@ -61,8 +61,8 @@ export interface ProjectMetadataPollIntervals {
 	homeRepoPollMs: number;
 }
 
-export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskProject[] {
-	const tracked: TrackedTaskProject[] = [];
+export function collectTrackedTasks(board: RuntimeBoardData): TrackedTaskWorktree[] {
+	const tracked: TrackedTaskWorktree[] = [];
 	for (const column of board.columns) {
 		// Backlog and trash cards do not need git metadata polling. Tracking only
 		// active columns avoids unnecessary work, and trash paths are reconstructed
@@ -112,7 +112,7 @@ function areConflictStatesEqual(a: RuntimeConflictState | null, b: RuntimeConfli
 	);
 }
 
-function areTaskMetadataEqual(a: RuntimeTaskProjectMetadata, b: RuntimeTaskProjectMetadata): boolean {
+function areTaskMetadataEqual(a: RuntimeTaskWorktreeMetadata, b: RuntimeTaskWorktreeMetadata): boolean {
 	return (
 		a.taskId === b.taskId &&
 		a.path === b.path &&
@@ -182,7 +182,7 @@ export function createProjectEntry(projectPath: string): ProjectMetadataEntry {
 			stateToken: null,
 			stateVersion: 0,
 		},
-		taskMetadataByTaskId: new Map<string, CachedTaskProjectMetadata>(),
+		taskMetadataByTaskId: new Map<string, CachedTaskWorktreeMetadata>(),
 		pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
 	};
 }
@@ -195,7 +195,7 @@ export function buildProjectMetadataSnapshot(entry: ProjectMetadataEntry): Runti
 		homeStashCount: entry.homeGit.stashCount,
 		taskWorktrees: entry.trackedTasks
 			.map((task) => entry.taskMetadataByTaskId.get(task.taskId)?.data ?? null)
-			.filter((task): task is RuntimeTaskProjectMetadata => task !== null),
+			.filter((task): task is RuntimeTaskWorktreeMetadata => task !== null),
 	};
 }
 
@@ -245,7 +245,7 @@ export async function loadHomeGitMetadata(entry: ProjectMetadataEntry): Promise<
 
 async function resolveTaskPath(
 	projectPath: string,
-	task: TrackedTaskProject,
+	task: TrackedTaskWorktree,
 ): Promise<{ path: string; exists: boolean; baseRef: string }> {
 	// Use the card's workingDirectory if available (set at session start).
 	if (task.workingDirectory) {
@@ -260,11 +260,11 @@ async function resolveTaskPath(
 	});
 }
 
-export async function loadTaskProjectMetadata(
+export async function loadTaskWorktreeMetadata(
 	projectPath: string,
-	task: TrackedTaskProject,
-	current: CachedTaskProjectMetadata | null,
-): Promise<CachedTaskProjectMetadata | null> {
+	task: TrackedTaskWorktree,
+	current: CachedTaskWorktreeMetadata | null,
+): Promise<CachedTaskWorktreeMetadata | null> {
 	const pathInfo = await resolveTaskPath(projectPath, task);
 
 	if (!pathInfo.exists) {

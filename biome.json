@@ -83,8 +83,8 @@
 							"options": {
 								"paths": {
 									"@/runtime/trpc-client": {
-										"importNames": ["createWorkspaceTrpcClient"],
-										"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
+										"importNames": ["createProjectTrpcClient"],
+										"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createProjectTrpcClient for the runtime query helpers."
 									}
 								}
 							}

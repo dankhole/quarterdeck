@@ -11,7 +11,7 @@ import {
 	useTerminalConnectionReady,
 } from "@/runtime/use-terminal-connection-ready";
 import { findCardSelection } from "@/state/board-state";
-import { useTaskProjectSnapshotValue, useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
+import { useTaskWorktreeInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
 // Context value — terminal panel state, connection readiness, and
@@ -106,7 +106,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 
 	// Store subscriptions for detail terminal metadata.
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
-	const selectedTaskProjectSnapshot = useTaskProjectSnapshotValue(selectedCard?.card.id);
+	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id);
 
 	// --- useTerminalConnectionReady ---
 	const {
@@ -172,7 +172,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 	);
 
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
-	const detailTerminalSubtitle = selectedTaskWorktreeInfo?.path ?? selectedTaskProjectSnapshot?.path ?? null;
+	const detailTerminalSubtitle = selectedTaskWorktreeInfo?.path ?? selectedTaskWorktreeSnapshot?.path ?? null;
 
 	// --- Context value ---
 	const value = useMemo<TerminalContextValue>(

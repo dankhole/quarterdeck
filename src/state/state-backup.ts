@@ -34,7 +34,7 @@ import {
 
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
-const WORKSPACE_STATE_FILENAMES = [BOARD_FILENAME, SESSIONS_FILENAME, META_FILENAME, PINNED_BRANCHES_FILENAME];
+const PROJECT_STATE_FILENAMES = [BOARD_FILENAME, SESSIONS_FILENAME, META_FILENAME, PINNED_BRANCHES_FILENAME];
 
 export interface BackupManifest {
 	timestamp: number;
@@ -240,7 +240,7 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		const wsBackupDir = join(backupDir, "projects", projectId);
 		const wsDir = getProjectDirectoryPath(projectId);
 		await mkdir(wsDir, { recursive: true });
-		for (const filename of WORKSPACE_STATE_FILENAMES) {
+		for (const filename of PROJECT_STATE_FILENAMES) {
 			await copyFileIfExists(join(wsBackupDir, filename), join(wsDir, filename));
 		}
 	}

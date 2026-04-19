@@ -12,7 +12,7 @@ import { useGitContext } from "@/providers/git-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
 import type { PromptShortcut, RuntimeGitRef, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
-import type { BoardCard, ReviewTaskProjectSnapshot } from "@/types";
+import type { BoardCard, ReviewTaskWorktreeSnapshot } from "@/types";
 
 function BaseRefLabel({
 	card,
@@ -160,7 +160,7 @@ interface ConnectedTopBarProps {
 	shouldHideProjectDependentTopBarActions: boolean;
 	shouldShowProjectLoadingState: boolean;
 	homeGitSummary: RuntimeGitSyncSummary | null;
-	selectedTaskProjectSnapshot: ReviewTaskProjectSnapshot | null;
+	selectedTaskWorktreeSnapshot: ReviewTaskWorktreeSnapshot | null;
 }
 
 export function ConnectedTopBar({
@@ -179,7 +179,7 @@ export function ConnectedTopBar({
 	shouldHideProjectDependentTopBarActions,
 	shouldShowProjectLoadingState,
 	homeGitSummary,
-	selectedTaskProjectSnapshot,
+	selectedTaskWorktreeSnapshot,
 }: ConnectedTopBarProps): ReactElement {
 	const project = useProjectContext();
 	const { selectedCard, setBoard } = useBoardContext();
@@ -274,7 +274,7 @@ export function ConnectedTopBar({
 						{selectedCard?.card.baseRef ? (
 							<BaseRefLabel
 								card={selectedCard.card}
-								behindBaseCount={selectedTaskProjectSnapshot?.behindBaseCount}
+								behindBaseCount={selectedTaskWorktreeSnapshot?.behindBaseCount}
 								branches={git.topbarBranchActions.branches}
 								onUpdateBaseRef={handleUpdateBaseRef}
 							/>

@@ -13,7 +13,7 @@ import {
 
 const toastMock = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
-const getTaskProjectSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
+const getTaskWorktreeSnapshotMock = vi.hoisted(() => vi.fn((): any => null));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock needs flexible return type
 const getTaskWorktreeInfoMock = vi.hoisted(() => vi.fn((): any => null));
 
@@ -22,7 +22,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/stores/project-metadata-store", () => ({
-	getTaskProjectSnapshot: getTaskProjectSnapshotMock,
+	getTaskWorktreeSnapshot: getTaskWorktreeSnapshotMock,
 	getTaskWorktreeInfo: getTaskWorktreeInfoMock,
 }));
 
@@ -31,14 +31,14 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 
 	beforeEach(() => {
 		toastMock.mockReset();
-		getTaskProjectSnapshotMock.mockReset();
+		getTaskWorktreeSnapshotMock.mockReset();
 		getTaskWorktreeInfoMock.mockReset();
 	});
 
 	it("calls onRequestTrashConfirmation when task has uncommitted changes", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: "task-2-branch",
@@ -88,7 +88,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("passes optimisticMoveApplied through to the confirmation callback", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -121,7 +121,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
 		const cleanupTaskWorktree = vi.fn(async () => null);
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -159,7 +159,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when changedFiles is 0", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,
@@ -200,7 +200,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when snapshot is null", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue(null);
+		getTaskWorktreeSnapshotMock.mockReturnValue(null);
 
 		await act(async () => {
 			ctx.root.render(
@@ -234,7 +234,7 @@ describe("useLinkedBacklogTaskActions — trash confirmation dialog", () => {
 	it("shows confirmation when changedFiles is null", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const onRequestTrashConfirmation = vi.fn();
-		getTaskProjectSnapshotMock.mockReturnValue({
+		getTaskWorktreeSnapshotMock.mockReturnValue({
 			taskId: "task-2",
 			path: "/tmp/task-2",
 			branch: null,

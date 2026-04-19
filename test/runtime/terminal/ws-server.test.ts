@@ -11,7 +11,7 @@ import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionS
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
 
 const TASK_ID = "task-1";
-const WORKSPACE_ID = "project-1";
+const PROJECT_ID = "project-1";
 
 function createSummary(taskId = TASK_ID): RuntimeTaskSessionSummary {
 	return {
@@ -210,7 +210,7 @@ describe("createTerminalWebSocketBridge", () => {
 		});
 		bridge = createTerminalWebSocketBridge({
 			server,
-			resolveTerminalManager: (projectId) => (projectId === WORKSPACE_ID ? terminalManager : null),
+			resolveTerminalManager: (projectId) => (projectId === PROJECT_ID ? terminalManager : null),
 			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
 			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
 		});
@@ -237,10 +237,10 @@ describe("createTerminalWebSocketBridge", () => {
 	});
 
 	it("broadcasts one PTY session to multiple viewers", async () => {
-		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-a`;
-		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-a`;
-		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-b`;
-		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-b`;
+		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
 
 		const ioSocketA = await openQueuedWebSocket(ioUrlA);
 		const controlSocketA = await openQueuedWebSocket(controlUrlA);
@@ -269,10 +269,10 @@ describe("createTerminalWebSocketBridge", () => {
 	});
 
 	it("keeps the PTY paused until every backpressured viewer drains", async () => {
-		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-a`;
-		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-a`;
-		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-b`;
-		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${WORKSPACE_ID}&clientId=client-b`;
+		const ioUrlA = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const controlUrlA = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
+		const ioUrlB = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
+		const controlUrlB = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-b`;
 
 		const ioSocketA = await openQueuedWebSocket(ioUrlA);
 		const controlSocketA = await openQueuedWebSocket(controlUrlA);

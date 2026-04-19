@@ -6,12 +6,12 @@ import { resolveBaseRefForBranch, runGit } from "../workdir";
 import {
 	areProjectMetadataEqual,
 	buildProjectMetadataSnapshot,
-	type CachedTaskProjectMetadata,
+	type CachedTaskWorktreeMetadata,
 	collectTrackedTasks,
 	createEmptyProjectMetadata,
 	createProjectEntry,
 	loadHomeGitMetadata,
-	loadTaskProjectMetadata,
+	loadTaskWorktreeMetadata,
 	type ProjectMetadataEntry,
 } from "./project-metadata-loaders";
 
@@ -93,8 +93,8 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		projectId: string,
 		entry: ProjectMetadataEntry,
 		taskId: string,
-		previous: CachedTaskProjectMetadata | null,
-		next: CachedTaskProjectMetadata,
+		previous: CachedTaskWorktreeMetadata | null,
+		next: CachedTaskWorktreeMetadata,
 	): Promise<void> => {
 		if (!deps.onTaskBaseRefChanged) return;
 		const prevBranch = previous?.lastKnownBranch ?? null;
@@ -182,7 +182,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			const previous = buildProjectMetadataSnapshot(entry);
 			const previousCached = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
 			const next = await taskProbeLimit(async () => {
-				return await loadTaskProjectMetadata(entry.projectPath, task, previousCached);
+				return await loadTaskWorktreeMetadata(entry.projectPath, task, previousCached);
 			});
 			if (next) {
 				entry.taskMetadataByTaskId.set(task.taskId, next);
@@ -208,7 +208,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				tasksToRefresh.map((task) =>
 					taskProbeLimit(async () => {
 						const previousCached = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
-						const next = await loadTaskProjectMetadata(entry.projectPath, task, previousCached);
+						const next = await loadTaskWorktreeMetadata(entry.projectPath, task, previousCached);
 						return next ? ([task.taskId, next, previousCached] as const) : null;
 					}),
 				),
@@ -243,14 +243,16 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				entry.trackedTasks.map((task) =>
 					taskProbeLimit(async () => {
 						const current = entry.taskMetadataByTaskId.get(task.taskId) ?? null;
-						const next = await loadTaskProjectMetadata(entry.projectPath, task, current);
+						const next = await loadTaskWorktreeMetadata(entry.projectPath, task, current);
 						return next ? [task.taskId, next] : null;
 					}),
 				),
 			);
 
 			entry.taskMetadataByTaskId = new Map(
-				nextTaskEntries.filter((candidate): candidate is [string, CachedTaskProjectMetadata] => candidate !== null),
+				nextTaskEntries.filter(
+					(candidate): candidate is [string, CachedTaskWorktreeMetadata] => candidate !== null,
+				),
 			);
 
 			const nextSnapshot = buildProjectMetadataSnapshot(entry);
@@ -361,7 +363,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				void taskProbeLimit(async () => {
 					const previous = buildProjectMetadataSnapshot(entry);
 					const current = entry.taskMetadataByTaskId.get(taskId) ?? null;
-					const next = await loadTaskProjectMetadata(entry.projectPath, task, current);
+					const next = await loadTaskWorktreeMetadata(entry.projectPath, task, current);
 					if (next) {
 						entry.taskMetadataByTaskId.set(taskId, next);
 					}
