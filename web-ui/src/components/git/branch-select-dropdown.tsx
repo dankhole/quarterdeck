@@ -36,6 +36,7 @@ export function BranchSelectDropdown({
 	onPopoverOpenChange,
 	defaultValue,
 	onSetDefault,
+	ghostUntilOpen = false,
 }: {
 	options: readonly BranchSelectOption[];
 	selectedValue?: string | null;
@@ -59,6 +60,8 @@ export function BranchSelectDropdown({
 	defaultValue?: string | null;
 	/** Called when the user pins/unpins a branch as the default. Null means clear. */
 	onSetDefault?: (value: string | null) => void;
+	/** When true the trigger renders as a ghost until the popover opens. */
+	ghostUntilOpen?: boolean;
 }): ReactElement {
 	const resolvedIconSize = typeof iconSize === "number" ? iconSize : 14;
 
@@ -105,6 +108,7 @@ export function BranchSelectDropdown({
 			menuStyle={menuStyle}
 			onPopoverOpenChange={onPopoverOpenChange}
 			renderOptionAction={renderOptionAction}
+			ghostUntilOpen={ghostUntilOpen}
 		/>
 	);
 }

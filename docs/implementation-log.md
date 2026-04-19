@@ -2,6 +2,19 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Enhancement: ghost-until-open base ref branch selector (2026-04-19)
+
+**What:** The base ref `BranchSelectDropdown` in task creation views now renders as a transparent ghost button until the popover is opened.
+
+**Why:** The solid button drew too much visual attention in the create card, competing with the primary input. A ghost button blends with the surrounding UI until the user interacts with it.
+
+**Changes:**
+- Added `ghostUntilOpen` prop to `SearchSelectDropdown` — when true, the trigger uses the `ghost` Button variant while closed and switches to `default` when the popover opens.
+- Threaded the prop through `BranchSelectDropdown`.
+- Enabled `ghostUntilOpen` on both call sites: `task-inline-create-card.tsx` and `task-create-dialog.tsx`.
+
+**Files touched:** `web-ui/src/components/search-select-dropdown.tsx`, `web-ui/src/components/git/branch-select-dropdown.tsx`, `web-ui/src/components/task/task-inline-create-card.tsx`, `web-ui/src/components/task/task-create-dialog.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Docs: refactor agent instruction docs around AGENTS.md (2026-04-19)
 
 **What:** Established `AGENTS.md` as the single canonical agent-instructions file. Slimmed `CLAUDE.md` to a minimal compatibility shim. Moved duplicated developer content to human-facing docs. Added a CI check script to prevent drift. Rewrote the Codex todo items to reflect native hook support.

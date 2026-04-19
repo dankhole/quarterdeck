@@ -47,6 +47,7 @@ export function SearchSelectDropdown({
 	onPopoverOpenChange,
 	footerAction,
 	renderOptionAction,
+	ghostUntilOpen = false,
 }: {
 	options: readonly SearchSelectOption[];
 	selectedValue?: string | null;
@@ -77,6 +78,8 @@ export function SearchSelectDropdown({
 		onClick: () => void;
 	};
 	renderOptionAction?: RenderOptionAction;
+	/** When true the trigger button renders as a ghost until the popover opens. */
+	ghostUntilOpen?: boolean;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -306,7 +309,7 @@ export function SearchSelectDropdown({
 				<Button
 					id={id}
 					size={size}
-					variant="default"
+					variant={ghostUntilOpen && !isOpen ? "ghost" : "default"}
 					fill={fill}
 					icon={resolvedIcon}
 					iconRight={<ChevronDown size={resolvedIconSize} />}

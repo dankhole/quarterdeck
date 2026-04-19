@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Enhancement: ghost-until-open base ref branch selector
+
+- Base ref branch dropdown in task creation (inline and dialog) now renders transparent until clicked, reducing visual noise in the create card.
+
 ### Docs: refactor agent instruction docs around AGENTS.md
 
 - Established `AGENTS.md` as the canonical shared agent-instructions file — slimmed `CLAUDE.md` from ~140 lines to an 11-line compatibility shim that imports `@AGENTS.md` and points to human-facing docs.
