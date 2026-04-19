@@ -13,7 +13,7 @@ import {
 	MergeBranchDialog,
 	ScopeBar,
 } from "@/components/git/panels";
-import { AgentTerminalPanel, ColumnContextPanel } from "@/components/terminal";
+import { AgentTerminalPanel, ColumnContextPanel, ShellTerminalPanel } from "@/components/terminal";
 import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
@@ -517,23 +517,22 @@ export function CardDetailView({
 										paddingRight: 12,
 									}}
 								>
-									<AgentTerminalPanel
+									<ShellTerminalPanel
 										key={`detail-shell-${bottomTerminalTaskId}`}
 										taskId={bottomTerminalTaskId}
 										projectId={currentProjectId}
 										summary={bottomTerminalSummary}
 										onSummary={onSessionSummary}
-										showSessionToolbar={false}
 										autoFocus
 										onClose={onBottomTerminalClose}
-										minimalHeaderTitle="Terminal"
-										minimalHeaderSubtitle={bottomTerminalSubtitle}
+										headerTitle="Shell"
+										headerSubtitle={bottomTerminalSubtitle}
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 										onConnectionReady={onBottomTerminalConnectionReady}
-										agentCommand={bottomTerminalAgentCommand}
-										onSendAgentCommand={onBottomTerminalSendAgentCommand}
+										launchCommand={bottomTerminalAgentCommand}
+										onLaunchCommand={onBottomTerminalSendAgentCommand}
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
 										onRestart={onBottomTerminalRestart}

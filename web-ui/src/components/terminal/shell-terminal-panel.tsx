@@ -7,36 +7,30 @@ import {
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
-export interface AgentTerminalPanelProps {
+export interface ShellTerminalPanelProps {
 	taskId: string;
 	projectId: string | null;
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
-	taskColumnId?: string;
-	onCancelAutomaticAction?: () => void;
-	cancelAutomaticActionLabel?: string | null;
-	showSessionToolbar?: boolean;
 	onClose?: () => void;
 	autoFocus?: boolean;
-	minimalHeaderTitle?: string;
-	minimalHeaderSubtitle?: string | null;
+	headerTitle?: string;
+	headerSubtitle?: string | null;
 	panelBackgroundColor?: string;
 	terminalBackgroundColor?: string;
 	cursorColor?: string;
 	isVisible?: boolean;
 	onConnectionReady?: (taskId: string) => void;
-	agentCommand?: string | null;
-	onSendAgentCommand?: () => void;
+	launchCommand?: string | null;
+	onLaunchCommand?: () => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 	onRestart?: () => void;
 	onExit?: (taskId: string, exitCode: number | null) => void;
 }
 
-export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement {
-	// enabled gates whether this panel should keep a live persistent terminal connection.
-	// We disable it for non-active task contexts so backlog and trash views do not keep extra websocket sockets open.
+export function ShellTerminalPanel(props: ShellTerminalPanelProps): ReactElement {
 	const sessionControls: PersistentTerminalSessionControls = usePersistentTerminalSession({
 		taskId: props.taskId,
 		projectId: props.projectId,
@@ -56,19 +50,17 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 			taskId={props.taskId}
 			summary={props.summary}
 			sessionControls={sessionControls}
-			showSessionToolbar={props.showSessionToolbar}
+			showSessionToolbar={false}
 			onClose={props.onClose}
-			onCancelAutomaticAction={props.onCancelAutomaticAction}
-			cancelAutomaticActionLabel={props.cancelAutomaticActionLabel}
-			headerTitle={props.minimalHeaderTitle ?? "Terminal"}
-			headerSubtitle={props.minimalHeaderSubtitle ?? null}
+			headerTitle={props.headerTitle ?? "Shell"}
+			headerSubtitle={props.headerSubtitle ?? null}
 			panelBackgroundColor={props.panelBackgroundColor}
 			terminalBackgroundColor={props.terminalBackgroundColor}
 			commandAction={
-				props.agentCommand && props.onSendAgentCommand
+				props.launchCommand && props.onLaunchCommand
 					? {
-							command: props.agentCommand,
-							onRun: props.onSendAgentCommand,
+							command: props.launchCommand,
+							onRun: props.onLaunchCommand,
 						}
 					: undefined
 			}

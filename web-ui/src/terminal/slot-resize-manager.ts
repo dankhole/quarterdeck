@@ -21,6 +21,7 @@ export class SlotResizeManager {
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	private _pendingScrollToBottom = false;
+	private pendingInitialFit = false;
 
 	constructor(
 		private readonly terminal: Terminal,
@@ -83,10 +84,23 @@ export class SlotResizeManager {
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
 		}
+		this.pendingInitialFit = true;
 		this.resizeObserver = new ResizeObserver(() => {
+			// First observation after observe(): do one immediate correction
+			// pass so the terminal gets real container dimensions on the first
+			// frame (prevents half-width on mount/untrash). Skip the debounce.
+			if (this.pendingInitialFit) {
+				this.pendingInitialFit = false;
+				if (this._pendingScrollToBottom) {
+					this.fitAddon.fit();
+					this.terminal.scrollToBottom();
+					this._pendingScrollToBottom = false;
+				}
+				this.request();
+				return;
+			}
 			// When pendingScrollToBottom is armed, fit + scroll synchronously
 			// in the same frame so the user never sees wrong scroll position.
-			// The debounced server resize message still follows.
 			if (this._pendingScrollToBottom) {
 				this.fitAddon.fit();
 				this.terminal.scrollToBottom();
@@ -112,5 +126,6 @@ export class SlotResizeManager {
 			clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
 		}
+		this.pendingInitialFit = false;
 	}
 }

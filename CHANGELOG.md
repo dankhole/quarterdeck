@@ -40,6 +40,13 @@
 - Fixed remaining stale "workspace" identifiers: `WORKSPACE_STATE_FILENAMES` → `PROJECT_STATE_FILENAMES`, `WORKSPACE_STATE_PERSIST_DEBOUNCE_MS` → `PROJECT_STATE_PERSIST_DEBOUNCE_MS`, `WORKSPACE_ID` → `PROJECT_ID` in test fixture, `NOOP_FETCH_WORKSPACE_INFO` → `NOOP_FETCH_WORKTREE_INFO`.
 - Fixed stale `createWorkspaceTrpcClient` reference in biome.json lint rule (function was already renamed to `createProjectTrpcClient`).
 
+### Refactor: terminal architecture split into session / viewport / attachment / reuse / prewarm layers
+
+- Extracted `terminal-session-handle.ts`, `terminal-viewport.ts`, `terminal-attachment-controller.ts`, `terminal-reuse-manager.ts`, and `terminal-prewarm-policy.ts` so terminal correctness is separated more clearly from optimization policy.
+- Slimmed `terminal-slot.ts` into a compatibility wrapper over the new layers while preserving reconnect, restore, quick switch-back, and buffer inspection behavior.
+- Split shell-vs-agent terminal UI surfaces via `shell-terminal-panel.tsx` and `persistent-terminal-panel-layout.tsx`, keeping dedicated shell behavior distinct from pooled task agent terminals.
+- Moved app-facing pooled terminal consumers off raw pool verbs and behind reuse/policy seams, so prewarm can be replaced or disabled for testing/measurement without changing correctness paths.
+
 ### Refactor: app shell component decomposition and design guardrails
 
 - Decomposed `project-navigation-panel.tsx` (679L → 74L) into `project-navigation-list.tsx`, `project-navigation-row.tsx`, `project-navigation-removal-dialog.tsx`, and `project-navigation-sidebar-sections.tsx`.

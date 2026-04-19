@@ -2,13 +2,49 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: terminal architecture session / viewport / attachment / reuse / prewarm split (2026-04-19)
+
+**Commit:** `907d1e22`
+
+**What:** Completed the frontend terminal architecture refactor described in `docs/terminal-architecture-refactor-brief.md`. The old `TerminalSlot`-centered design is now decomposed into `terminal-session-handle.ts` for task/project identity and socket lifecycle, `terminal-viewport.ts` for xterm/DOM/rendering/resize concerns, `terminal-attachment-controller.ts` for binding session to viewport and owning restore/show coordination, `terminal-reuse-manager.ts` for the app-facing pooled-task acquisition surface, and `terminal-prewarm-policy.ts` for optional hover-prewarm policy. The UI layer was also split so task agent terminals stay in `agent-terminal-panel.tsx` while dedicated shell terminals use `shell-terminal-panel.tsx` with shared rendering in `persistent-terminal-panel-layout.tsx`.
+
+**Why:** The previous design had correctness and optimization concerns intertwined closely enough that pool roles and warmup policy felt like the primary model of the terminal system. This refactor keeps reconnect, restore, quick task switching, dedicated shell behavior, and pooled agent behavior intact while making the core mental model “attach a viewport to a session” and treating reuse/prewarm as optional policy layers.
+
+**Approach:** Landed in five incremental passes on `feature/terminal-refactor`:
+- Phase 1: extracted `TerminalSessionHandle` from slot-owned socket and restore logic.
+- Phase 2: extracted `TerminalViewport` from xterm/DOM/rendering/resize responsibilities.
+- Phase 3: introduced `TerminalAttachmentController` so restore sequencing and session-to-viewport routing are explicit.
+- Phase 4: added `TerminalReuseManager` so app-facing pooled task-terminal callers no longer import raw pool verbs directly.
+- Phase 5: added `TerminalPrewarmPolicy` so hover-based prewarm behavior is expressed as optional policy rather than ambient app logic. The default remains enabled, and the policy can now also be swapped out for testing or measurement without changing correctness flows.
+
+**Files touched:**
+- `web-ui/src/terminal/terminal-session-handle.ts`
+- `web-ui/src/terminal/terminal-viewport.ts`
+- `web-ui/src/terminal/terminal-attachment-controller.ts`
+- `web-ui/src/terminal/terminal-reuse-manager.ts`
+- `web-ui/src/terminal/terminal-prewarm-policy.ts`
+- `web-ui/src/terminal/terminal-slot.ts`
+- `web-ui/src/terminal/use-persistent-terminal-session.ts`
+- `web-ui/src/terminal/use-persistent-terminal-session.test.tsx`
+- `web-ui/src/components/terminal/agent-terminal-panel.tsx`
+- `web-ui/src/components/terminal/shell-terminal-panel.tsx`
+- `web-ui/src/components/terminal/persistent-terminal-panel-layout.tsx`
+- `web-ui/src/components/terminal/index.ts`
+- `web-ui/src/components/app/home-view.tsx`
+- `web-ui/src/components/task/card-detail-view.tsx`
+- `web-ui/src/hooks/app/use-app-action-models.ts`
+- `AGENTS.md`
+- `docs/terminal-architecture-refactor-handoff-phase-2.md`
+- `docs/todo.md`
+- `CHANGELOG.md`
+
 ## Feature: single-tab guard (2026-04-19)
 
-**What:** Added a guard that prevents multiple browser tabs from running Quarterdeck against the same server. The second tab shows a fallback screen instead of mounting the app; a "Use here instead" button transfers ownership via BroadcastChannel.
+**What:** Added a guard that prevents multiple browser tabs from running Quarterdeck against the same server. The second tab shows a fallback screen instead of mounting the app; a “Use here instead” button transfers ownership via BroadcastChannel.
 
-**Why:** Multiple tabs sharing WebSocket connections, terminal sessions, and optimistic-concurrency board state causes conflicts — duplicate state writes, terminal attachment races, and confusing "Project changed elsewhere" toasts from revision mismatches.
+**Why:** Multiple tabs sharing WebSocket connections, terminal sessions, and optimistic-concurrency board state causes conflicts — duplicate state writes, terminal attachment races, and confusing “Project changed elsewhere” toasts from revision mismatches.
 
-**How it works:** `useSingleTabGuard` writes a localStorage heartbeat (every 2s, stale after 5s) keyed by origin. A new tab checks the lock before mounting providers. BroadcastChannel enables instant "yield" messaging for the takeover button. If the owning tab closes or crashes, the blocked tab auto-recovers via stale detection. Dogfood is unaffected because localStorage is scoped per origin (different ports = different locks).
+**How it works:** `useSingleTabGuard` writes a localStorage heartbeat (every 2s, stale after 5s) keyed by origin. A new tab checks the lock before mounting providers. BroadcastChannel enables instant “yield” messaging for the takeover button. If the owning tab closes or crashes, the blocked tab auto-recovers via stale detection. Dogfood is unaffected because localStorage is scoped per origin (different ports = different locks).
 
 **Files touched:** `web-ui/src/hooks/app/use-single-tab-guard.ts` (new — lock lifecycle hook), `web-ui/src/components/app/already-open-fallback.tsx` (new — blocked tab UI), `web-ui/src/App.tsx` (split into `App` + `AppInner` to gate before provider tree), `web-ui/src/hooks/app/index.ts` (barrel export), `web-ui/src/components/app/index.ts` (barrel export), `CHANGELOG.md`, `docs/implementation-log.md`.
 
@@ -28,7 +64,7 @@
 
 **Files touched:** `web-ui/src/components/task/task-create-dialog.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
 
-## Fix: base ref dropdown "(default)" label only for pinned branches (2026-04-19)
+## Fix: base ref dropdown “(default)” label only for pinned branches (2026-04-19)
 
 **What:** Changed `use-task-branch-options.ts` so the "(default)" label and "(current, default)" composite label only appear when the user has explicitly pinned a default base ref via config. Removed two stale todo items (statusline counter desync investigation, default branch resolution audit).
 

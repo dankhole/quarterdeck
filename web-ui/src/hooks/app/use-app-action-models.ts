@@ -13,7 +13,7 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { toggleTaskPinned } from "@/state/board-state";
 import type { ReactiveCardState, StableCardActions } from "@/state/card-actions-context";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
-import { cancelWarmup, warmup } from "@/terminal/terminal-pool";
+import { getTerminalPrewarmPolicy } from "@/terminal/terminal-prewarm-policy";
 import { createIdleTaskSession } from "@/utils/app-utils";
 import { isApprovalState } from "@/utils/session-status";
 
@@ -48,6 +48,7 @@ export function useAppActionModels({
 	interactions,
 	serverMutationInFlightRef,
 }: UseAppActionModelsInput): UseAppActionModelsResult {
+	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
 		project.currentProjectId,
 		project.runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
@@ -57,16 +58,20 @@ export function useAppActionModels({
 
 	const handleTerminalWarmup = useCallback(
 		(taskId: string) => {
-			if (project.currentProjectId) warmup(taskId, project.currentProjectId);
+			if (project.currentProjectId) {
+				terminalPrewarmPolicy.requestTaskHoverPrewarm(taskId, project.currentProjectId);
+			}
 		},
-		[project.currentProjectId],
+		[project.currentProjectId, terminalPrewarmPolicy],
 	);
 
 	const handleTerminalCancelWarmup = useCallback(
 		(taskId: string) => {
-			if (project.currentProjectId) cancelWarmup(taskId);
+			if (project.currentProjectId) {
+				terminalPrewarmPolicy.cancelTaskHoverPrewarm(taskId);
+			}
 		},
-		[project.currentProjectId],
+		[project.currentProjectId, terminalPrewarmPolicy],
 	);
 
 	const { handleRegenerateTitleTask, handleUpdateTaskTitle } = useTitleActions({

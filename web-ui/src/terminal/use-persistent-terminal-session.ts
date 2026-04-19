@@ -3,15 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
+import { disposeDedicatedTerminal, ensureDedicatedTerminal, isDedicatedTerminalTaskId } from "@/terminal/terminal-pool";
 import {
-	acquireForTask,
-	attachPoolContainer,
-	disposeDedicatedTerminal,
-	ensureDedicatedTerminal,
-	isDedicatedTerminalTaskId,
-	releaseTask,
-} from "@/terminal/terminal-pool";
-import type { TerminalSlot } from "@/terminal/terminal-slot";
+	acquireTaskTerminal,
+	releaseTaskTerminal,
+	stageTaskTerminalContainer,
+	type TaskTerminalHandle,
+} from "@/terminal/terminal-reuse-manager";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
@@ -36,6 +34,34 @@ export interface UsePersistentTerminalSessionResult {
 	stopTerminal: () => Promise<void>;
 }
 
+function clearMountedTerminal(
+	terminalRef: MutableRefObject<TaskTerminalHandle | null>,
+	previousSessionRef: MutableRefObject<{
+		projectId: string;
+		taskId: string;
+		sessionStartedAt: number | null;
+	} | null>,
+): void {
+	terminalRef.current?.hide();
+	terminalRef.current = null;
+	previousSessionRef.current = null;
+}
+
+function disposeDedicatedShellTerminal(
+	terminalRef: MutableRefObject<TaskTerminalHandle | null>,
+	previousSessionRef: MutableRefObject<{
+		projectId: string;
+		taskId: string;
+		sessionStartedAt: number | null;
+	} | null>,
+): void {
+	const previousSession = previousSessionRef.current;
+	if (previousSession) {
+		disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
+	}
+	clearMountedTerminal(terminalRef, previousSessionRef);
+}
+
 export function usePersistentTerminalSession({
 	taskId,
 	projectId,
@@ -50,7 +76,7 @@ export function usePersistentTerminalSession({
 	cursorColor,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
-	const terminalRef = useRef<TerminalSlot | null>(null);
+	const terminalRef = useRef<TaskTerminalHandle | null>(null);
 	const callbackRef = useRef<{
 		onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 		onConnectionReady?: (taskId: string) => void;
@@ -75,18 +101,13 @@ export function usePersistentTerminalSession({
 	};
 
 	useEffect(() => {
-		const isDedicated = isDedicatedTerminalTaskId(taskId);
+		const isDedicatedShellTerminal = isDedicatedTerminalTaskId(taskId);
 
-		// --- Dedicated path (home shell, dev shells) ---
-		if (isDedicated) {
+		// Dedicated shell terminals own their session lifecycle directly.
+		// These are workspace-scoped manual shells, not pooled task agent viewers.
+		if (isDedicatedShellTerminal) {
 			if (!enabled) {
-				const previousSession = previousSessionRef.current;
-				if (previousSession) {
-					disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
-				}
-				terminalRef.current?.hide();
-				terminalRef.current = null;
-				previousSessionRef.current = null;
+				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
 				setLastError(null);
 				setIsLoading(false);
 				setIsStopping(false);
@@ -94,13 +115,7 @@ export function usePersistentTerminalSession({
 			}
 
 			if (!projectId) {
-				const previousSession = previousSessionRef.current;
-				if (previousSession) {
-					disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
-				}
-				terminalRef.current?.hide();
-				terminalRef.current = null;
-				previousSessionRef.current = null;
+				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
 				setLastError("No project selected.");
 				setIsLoading(false);
 				return;
@@ -135,15 +150,15 @@ export function usePersistentTerminalSession({
 			setIsLoading(true);
 			setIsStopping(false);
 			const unsubscribe = terminal.subscribe({
-				onConnectionReady: (connectedTaskId) => {
+				onConnectionReady: (connectedTaskId: string) => {
 					setIsLoading(false);
 					callbackRef.current.onConnectionReady?.(connectedTaskId);
 				},
 				onLastError: setLastError,
-				onSummary: (summary) => {
+				onSummary: (summary: RuntimeTaskSessionSummary) => {
 					callbackRef.current.onSummary?.(summary);
 				},
-				onExit: (exitTaskId, exitCode) => {
+				onExit: (exitTaskId: string, exitCode: number | null) => {
 					callbackRef.current.onExit?.(exitTaskId, exitCode);
 				},
 			});
@@ -163,11 +178,10 @@ export function usePersistentTerminalSession({
 			};
 		}
 
-		// --- Pool path (regular agent task terminals) ---
+		// Shared task terminals are the pooled agent-terminal path.
 		if (!enabled) {
-			releaseTask(taskId);
-			terminalRef.current?.hide();
-			terminalRef.current = null;
+			releaseTaskTerminal(taskId);
+			clearMountedTerminal(terminalRef, previousSessionRef);
 			setLastError(null);
 			setIsLoading(false);
 			setIsStopping(false);
@@ -175,9 +189,8 @@ export function usePersistentTerminalSession({
 		}
 
 		if (!projectId) {
-			releaseTask(taskId);
-			terminalRef.current?.hide();
-			terminalRef.current = null;
+			releaseTaskTerminal(taskId);
+			clearMountedTerminal(terminalRef, previousSessionRef);
 			setLastError("No project selected.");
 			setIsLoading(false);
 			return;
@@ -187,8 +200,8 @@ export function usePersistentTerminalSession({
 			return;
 		}
 
-		// Ensure pool slots are staged in this container (idempotent for same container).
-		attachPoolContainer(container);
+		// Ensure pooled task terminals are staged in this container.
+		stageTaskTerminalContainer(container);
 
 		const previousSession = previousSessionRef.current;
 		const didSessionRestart =
@@ -197,7 +210,7 @@ export function usePersistentTerminalSession({
 			previousSession.taskId === taskId &&
 			previousSession.sessionStartedAt !== sessionStartedAt;
 
-		const terminal = acquireForTask(taskId, projectId);
+		const terminal = acquireTaskTerminal(taskId, projectId);
 		if (didSessionRestart) {
 			terminal.reset();
 		}
@@ -207,15 +220,15 @@ export function usePersistentTerminalSession({
 		setIsLoading(true);
 		setIsStopping(false);
 		const unsubscribe = terminal.subscribe({
-			onConnectionReady: (connectedTaskId) => {
+			onConnectionReady: (connectedTaskId: string) => {
 				setIsLoading(false);
 				callbackRef.current.onConnectionReady?.(connectedTaskId);
 			},
 			onLastError: setLastError,
-			onSummary: (summary) => {
+			onSummary: (summary: RuntimeTaskSessionSummary) => {
 				callbackRef.current.onSummary?.(summary);
 			},
-			onExit: (exitTaskId, exitCode) => {
+			onExit: (exitTaskId: string, exitCode: number | null) => {
 				callbackRef.current.onExit?.(exitTaskId, exitCode);
 			},
 		});

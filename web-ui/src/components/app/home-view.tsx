@@ -4,7 +4,7 @@ import { GitBranchStatusControl } from "@/components/app/top-bar";
 import { QuarterdeckBoard } from "@/components/board";
 import { ConflictBanner, FilesView, GitHistoryView, GitView } from "@/components/git";
 import { BranchPillTrigger, BranchSelectorPopover, ScopeBar } from "@/components/git/panels";
-import { AgentTerminalPanel } from "@/components/terminal";
+import { ShellTerminalPanel } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useBoardContext } from "@/providers/board-provider";
@@ -241,23 +241,22 @@ export function HomeView({
 										paddingRight: 12,
 									}}
 								>
-									<AgentTerminalPanel
+									<ShellTerminalPanel
 										key={`home-shell-${terminal.homeTerminalTaskId}`}
 										taskId={terminal.homeTerminalTaskId}
 										projectId={project.currentProjectId}
 										summary={terminal.homeTerminalSummary}
 										onSummary={upsertSession}
-										showSessionToolbar={false}
 										autoFocus
 										onClose={terminal.closeHomeTerminal}
-										minimalHeaderTitle="Terminal"
-										minimalHeaderSubtitle={terminal.homeTerminalSubtitle}
+										headerTitle="Shell"
+										headerSubtitle={terminal.homeTerminalSubtitle}
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 										onConnectionReady={terminal.markTerminalConnectionReady}
-										agentCommand={project.agentCommand}
-										onSendAgentCommand={terminal.handleSendAgentCommandToHomeTerminal}
+										launchCommand={project.agentCommand}
+										onLaunchCommand={terminal.handleSendAgentCommandToHomeTerminal}
 										isExpanded={terminal.isHomeTerminalExpanded}
 										onToggleExpand={terminal.handleToggleExpandHomeTerminal}
 										onRestart={terminal.handleRestartHomeTerminal}

@@ -12,7 +12,6 @@ Use this section together with:
 
 These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
 
-- Refactor the frontend terminal architecture toward a cleaner session-handle / viewport / attachment / reuse-manager split, while preserving fast switching, reconnect/restore behavior, and optional prewarming. Planning brief: [docs/terminal-architecture-refactor-brief.md](./terminal-architecture-refactor-brief.md)
 - Reassess `src/server/project-metadata-monitor.ts` so metadata ownership is easier to separate from polling cadence, focused/background prioritization, and remote-fetch policy.
 - Reassess `web-ui/src/hooks/project/use-project-sync.ts` together with `web-ui/src/runtime/project-board-cache.ts` so project-state application stays authoritative and board-cache restore remains an optional acceleration layer instead of part of the core sync model.
 - Reassess `src/terminal/ws-server.ts` so multi-viewer buffering, backpressure, and restore timing remain useful but are easier to understand as transport policy rather than the primary terminal model.

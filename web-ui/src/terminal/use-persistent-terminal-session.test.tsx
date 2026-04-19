@@ -5,18 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
-const acquireForTaskMock = vi.hoisted(() => vi.fn());
-const attachPoolContainerMock = vi.hoisted(() => vi.fn());
-const releaseTaskMock = vi.hoisted(() => vi.fn());
+const acquireTaskTerminalMock = vi.hoisted(() => vi.fn());
+const stageTaskTerminalContainerMock = vi.hoisted(() => vi.fn());
+const releaseTaskTerminalMock = vi.hoisted(() => vi.fn());
 const isDedicatedTerminalTaskIdMock = vi.hoisted(() => vi.fn());
 const ensureDedicatedTerminalMock = vi.hoisted(() => vi.fn());
 const disposeDedicatedTerminalMock = vi.hoisted(() => vi.fn());
 const registerTerminalControllerMock = vi.hoisted(() => vi.fn());
 
+vi.mock("@/terminal/terminal-reuse-manager", () => ({
+	acquireTaskTerminal: acquireTaskTerminalMock,
+	stageTaskTerminalContainer: stageTaskTerminalContainerMock,
+	releaseTaskTerminal: releaseTaskTerminalMock,
+}));
+
 vi.mock("@/terminal/terminal-pool", () => ({
-	acquireForTask: acquireForTaskMock,
-	attachPoolContainer: attachPoolContainerMock,
-	releaseTask: releaseTaskMock,
 	isDedicatedTerminalTaskId: isDedicatedTerminalTaskIdMock,
 	ensureDedicatedTerminal: ensureDedicatedTerminalMock,
 	disposeDedicatedTerminal: disposeDedicatedTerminalMock,
@@ -77,9 +80,9 @@ describe("usePersistentTerminalSession", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		acquireForTaskMock.mockReset();
-		attachPoolContainerMock.mockReset();
-		releaseTaskMock.mockReset();
+		acquireTaskTerminalMock.mockReset();
+		stageTaskTerminalContainerMock.mockReset();
+		releaseTaskTerminalMock.mockReset();
 		isDedicatedTerminalTaskIdMock.mockReset();
 		ensureDedicatedTerminalMock.mockReset();
 		disposeDedicatedTerminalMock.mockReset();
@@ -87,7 +90,7 @@ describe("usePersistentTerminalSession", () => {
 		registerTerminalControllerMock.mockReturnValue(() => {});
 		// Default: regular task IDs go through pool path
 		isDedicatedTerminalTaskIdMock.mockReturnValue(false);
-		acquireForTaskMock.mockImplementation(() => createTerminalSlotMock());
+		acquireTaskTerminalMock.mockImplementation(() => createTerminalSlotMock());
 		ensureDedicatedTerminalMock.mockImplementation(() => createTerminalSlotMock());
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
@@ -115,13 +118,13 @@ describe("usePersistentTerminalSession", () => {
 			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
 		});
 
-		expect(acquireForTaskMock).toHaveBeenCalledTimes(1);
-		expect(acquireForTaskMock).toHaveBeenCalledWith("task-a", "project-1");
+		expect(acquireTaskTerminalMock).toHaveBeenCalledTimes(1);
+		expect(acquireTaskTerminalMock).toHaveBeenCalledWith("task-a", "project-1");
 	});
 
 	it("shows slot into container", async () => {
 		const terminal = createTerminalSlotMock();
-		acquireForTaskMock.mockReturnValue(terminal);
+		acquireTaskTerminalMock.mockReturnValue(terminal);
 
 		await act(async () => {
 			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
@@ -139,8 +142,8 @@ describe("usePersistentTerminalSession", () => {
 			root.render(<HookHarness taskId="task-b" projectId="project-1" sessionStartedAt={200} />);
 		});
 
-		expect(releaseTaskMock).not.toHaveBeenCalled();
-		expect(acquireForTaskMock).toHaveBeenCalledTimes(2);
+		expect(releaseTaskTerminalMock).not.toHaveBeenCalled();
+		expect(acquireTaskTerminalMock).toHaveBeenCalledTimes(2);
 	});
 
 	it("releases task when disabled", async () => {
@@ -148,19 +151,19 @@ describe("usePersistentTerminalSession", () => {
 			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} enabled />);
 		});
 
-		releaseTaskMock.mockClear();
+		releaseTaskTerminalMock.mockClear();
 
 		await act(async () => {
 			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} enabled={false} />);
 		});
 
-		expect(releaseTaskMock).toHaveBeenCalledTimes(1);
-		expect(releaseTaskMock).toHaveBeenCalledWith("task-a");
+		expect(releaseTaskTerminalMock).toHaveBeenCalledTimes(1);
+		expect(releaseTaskTerminalMock).toHaveBeenCalledWith("task-a");
 	});
 
 	it("does not remount when callback props change", async () => {
 		const terminal = createTerminalSlotMock();
-		acquireForTaskMock.mockReturnValue(terminal);
+		acquireTaskTerminalMock.mockReturnValue(terminal);
 
 		await act(async () => {
 			root.render(
@@ -201,7 +204,7 @@ describe("usePersistentTerminalSession", () => {
 		});
 
 		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
-		expect(acquireForTaskMock).not.toHaveBeenCalled();
+		expect(acquireTaskTerminalMock).not.toHaveBeenCalled();
 	});
 
 	it("disposes dedicated terminal when disabled", async () => {
@@ -221,6 +224,6 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(disposeDedicatedTerminalMock).toHaveBeenCalledTimes(1);
 		expect(disposeDedicatedTerminalMock).toHaveBeenCalledWith("project-1", "__home_terminal__");
-		expect(releaseTaskMock).not.toHaveBeenCalled();
+		expect(releaseTaskTerminalMock).not.toHaveBeenCalled();
 	});
 });
