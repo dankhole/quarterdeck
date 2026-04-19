@@ -31,6 +31,7 @@ export function useTaskBranchOptions({
 		}
 
 		// Resolve the effective default: config pin → git detection.
+		const hasConfigPin = configRef !== "";
 		const effectiveDefault = configRef || projectGit.defaultBranch;
 
 		const options: TaskBranchOption[] = [];
@@ -46,9 +47,12 @@ export function useTaskBranchOptions({
 			});
 		};
 
-		const currentIsDefault = projectGit.currentBranch != null && projectGit.currentBranch === effectiveDefault;
+		const currentIsDefault =
+			hasConfigPin && projectGit.currentBranch != null && projectGit.currentBranch === effectiveDefault;
 		append(projectGit.currentBranch, currentIsDefault ? "(current, default)" : "(current)");
-		append(effectiveDefault, "(default)");
+		if (hasConfigPin) {
+			append(effectiveDefault, "(default)");
+		}
 		for (const branch of projectGit.branches) {
 			append(branch);
 		}

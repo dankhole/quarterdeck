@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: base ref dropdown shows "(default)" only when explicitly pinned
+
+- The base ref dropdown no longer labels the git-detected default branch (e.g. `main`) with "(default)" unless the user has explicitly pinned it via the pin icon. Previously, the auto-detected git default always showed the "(default)" suffix, implying the user had set it.
+
+### Housekeeping: remove stale todo items
+
+- Removed "Investigate and fix statusline counters vs task card stats" and "Audit default branch resolution" from the todo list.
+
 ### Enhancement: ghost-until-open base ref branch selector
 
 - Base ref branch dropdown in task creation (inline and dialog) now renders transparent until clicked, reducing visual noise in the create card.

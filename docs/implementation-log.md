@@ -2,6 +2,14 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: base ref dropdown "(default)" label only for pinned branches (2026-04-19)
+
+**What:** Changed `use-task-branch-options.ts` so the "(default)" label and "(current, default)" composite label only appear when the user has explicitly pinned a default base ref via config. Removed two stale todo items (statusline counter desync investigation, default branch resolution audit).
+
+**Why:** The dropdown was labeling the git-detected default branch (typically `main`) with "(default)" even when the user hadn't pinned anything. This was misleading — the pin icon correctly showed nothing was pinned, but the label implied otherwise. The "(default)" label should only reflect an explicit user choice.
+
+**Files touched:** `web-ui/src/hooks/git/use-task-branch-options.ts` (added `hasConfigPin` guard around default labeling), `docs/todo.md` (removed 2 items), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Enhancement: ghost-until-open base ref branch selector (2026-04-19)
 
 **What:** The base ref `BranchSelectDropdown` in task creation views now renders as a transparent ghost button until the popover is opened.

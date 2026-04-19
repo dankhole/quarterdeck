@@ -227,10 +227,6 @@ Three phases, done in order:
 2. ~~**Domain logic extraction**~~ — Done (16 domain modules, 211 domain-level unit tests). Split hooks into domain module + thin React wrapper pairs. Named candidates `use-board-interactions` and `use-task-start` confirmed as pure orchestration hooks with no extractable domain logic. Methodology: [docs/patterns-frontend-service-extraction.md](patterns-frontend-service-extraction.md) Pattern 1.
 3. ~~**Conventions update**~~ — Done. Added "Hooks architecture" section to `docs/web-ui-conventions.md` covering directory structure, domain module pattern, naming, re-exports, and reference table. Updated `AGENTS.md` with extraction rule.
 
-## Investigate and fix statusline ↓↑ counters vs task card stats
-
-The agent statusline shows `374↓ 207↑` (total input/output tokens from Claude's cost data) and `+0 -0` (total lines added/removed). These don't obviously correspond to what's shown on the task card, and they don't appear to update after a commit. Investigate: what exactly do these counters track, why don't they match the task card's stats, and why don't they refresh on commit? Fix the desync.
-
 ## Fix "needs input" yellow dot incorrectly persisting across project switches
 
 The yellow "needs input" indicator on the board icon sometimes shows for projects that don't actually need input. The erroneous state follows the project — switching projects brings the wrong NI status along. Investigate whether this is a stale hook state issue, a project-scoping bug in the notification system, or a UI render bug.
@@ -243,6 +239,3 @@ The trash confirmation dialog should only appear when the task has uncommitted c
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.
 
-## Audit default branch resolution for bugs
-
-The recent `resolveDefaultBaseRef` unification should be functionally tested. Also verify the three-dot compare behavior is correct with various branch configurations. This is a targeted bug audit, not new feature work.
