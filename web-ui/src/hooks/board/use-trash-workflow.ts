@@ -149,7 +149,7 @@ export function useTrashWorkflow({
 	const handleRestoreTaskFromTrash = useCallback(
 		(taskId: string) => {
 			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "trash", "review");
-			if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+			if (programmaticMoveAttempt === "started") {
 				return;
 			}
 

@@ -294,7 +294,6 @@ export function handleTaskSessionExit(
 		preExitState === "awaiting_review" &&
 		currentSummaryAtExit?.reviewReason === "attention" &&
 		event.exitCode != null &&
-		event.exitCode !== 0 &&
 		currentEntry.restartRequest?.kind === "task"
 	) {
 		scheduleAutoRestart(

@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: untrash does not always restart agent session (2026-04-19)
+
+**What:** Two bugs prevented untrashing a task card from reliably restarting the agent session.
+
+**Bug 1 — “blocked” bailout in `handleRestoreTaskFromTrash`:** When `tryProgrammaticCardMove` returned `”blocked”` (another card animation already in flight), the handler returned early without ever calling `resumeTaskFromTrash`. The card stayed in trash with no user feedback. Fix: only bail on `”started”` (animation accepted — `handleDragEnd` will handle resume). For `”blocked”`, fall through to the manual `moveTaskToColumn` + `resumeTaskFromTrash` path.
+
+**Bug 2 — exit code 0 gate on resume fallback:** When an untrashed card's session started with `--continue` but the agent exited cleanly (code 0) while still in `awaiting_review/attention`, the fallback restart was gated on `exitCode !== 0`. Since `--continue` exits 0 when there's no conversation to resume (e.g. conversation garbage-collected), the card was left stuck in review with a dead process. Fix: removed the non-zero exit code requirement. The remaining condition set (`preExitState === “awaiting_review”` + `reviewReason === “attention”`) already ensures this only fires when the agent never started working.
+
+**Files touched:** `web-ui/src/hooks/board/use-trash-workflow.ts` (removed `”blocked”` from early-return guard), `src/terminal/session-lifecycle.ts` (removed `exitCode !== 0` from resume fallback condition), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Enhancement: restart button on review cards (2026-04-19)
 
 **What:** Review cards now show a restart button on hover for live sessions (awaiting_review), not just dead/failed ones.

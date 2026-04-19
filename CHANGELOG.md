@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: untrash does not always restart agent session
+
+- Untrashing a card while another card animation was in flight silently failed — `handleRestoreTaskFromTrash` bailed on `"blocked"` without ever calling `resumeTaskFromTrash`, leaving the card stuck in trash with no feedback.
+- Resume fallback restart was gated on non-zero exit code — if `--continue` exited cleanly (code 0) because the conversation was garbage-collected, the session stayed dead in `awaiting_review` with no recovery path.
+
 ### Enhancement: restart button on review cards
 
 - Hovering a review card with a live session now shows the restart button — previously only shown for dead/failed sessions. Matches the stop & trash pattern on running cards so users can restart a session from review without moving it back to in-progress first.
