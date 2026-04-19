@@ -13,7 +13,7 @@ Use this section together with:
 
 These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
 
-- Reassess `src/server/project-metadata-monitor.ts` so metadata ownership is easier to separate from polling cadence, focused/background prioritization, and remote-fetch policy.
+- Follow up on the remaining `project-metadata-monitor` ownership/concurrency questions — shared mutable `ProjectMetadataEntry` coupling and `refreshProject()` vs per-task overwrite races. Notes: [docs/project-metadata-monitor-followups.md](./project-metadata-monitor-followups.md)
 - Reassess `web-ui/src/hooks/project/use-project-sync.ts` together with `web-ui/src/runtime/project-board-cache.ts` so project-state application stays authoritative and board-cache restore remains an optional acceleration layer instead of part of the core sync model.
 - Reassess `src/server/runtime-state-message-batcher.ts` so batching remains intact while the boundary between runtime event semantics and delivery policy becomes clearer.
 - Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility.

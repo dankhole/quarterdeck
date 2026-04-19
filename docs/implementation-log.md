@@ -2,6 +2,42 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Docs: capture project metadata monitor post-refactor follow-ups (2026-04-19)
+
+**Commit:** `(uncommitted in worktree)`
+
+**What:** Added a focused follow-up doc for the two remaining metadata-monitor architecture questions that came out of the refactor review: shared mutable `ProjectMetadataEntry` coupling and `refreshProject()` vs per-task refresh overwrite races.
+
+**Why:** Those two issues are worth preserving as explicit follow-up work, but they are deeper ownership/concurrency design questions rather than immediate refactor bugs. Without a dedicated note, they are easy to lose now that the main refactor brief has been completed and removed from the active todo list.
+
+**How:** Added `docs/project-metadata-monitor-followups.md` as a narrow post-refactor note rather than expanding the original refactor brief. The new doc explains the current shape of each issue, why it was not addressed in the refactor pass, healthy future directions, and acceptance criteria for a later pass. Linked it from `docs/README.md` and added a new optimization-shaped follow-up entry in `docs/todo.md` so the remaining work is discoverable from both the docs index and the active backlog.
+
+**Files touched:** `docs/project-metadata-monitor-followups.md`, `docs/README.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Refactor: split project metadata monitor into controller / refresher / poller / fetch policy (2026-04-19)
+
+**Commit:** `84de6043`
+
+**What:** Refactored `src/server/project-metadata-monitor.ts` from a single module that owned metadata state, timers, task prioritization, remote fetch cadence, and in-flight guards into a thin registry over four focused backend pieces: `project-metadata-controller.ts`, `project-metadata-refresher.ts`, `project-metadata-poller.ts`, and `project-metadata-remote-fetch.ts`. Added monitor-specific regression coverage in `test/runtime/server/project-metadata-monitor.test.ts`.
+
+**Why:** The previous monitor made it hard to reason about correctness without also reasoning about polling and fetch policy, and its module-scoped in-flight guards let one project's refresh block another project's refresh of the same kind. The refactor keeps the existing runtime stream contract and git metadata behavior while making ownership boundaries explicit and moving scheduling/freshness policy behind narrower seams.
+
+**How:** Kept `ProjectMetadataMonitor`'s public API stable and preserved the shared `p-limit(3)` probe cap at the facade level. Moved per-project mutable state and subscriber lifecycle into `ProjectMetadataController`; moved home/task refresh logic, snapshot-change broadcasting, and task branch/base-ref detection into `ProjectMetadataRefresher`; moved cadence timers into `ProjectMetadataPoller`; and moved `git fetch --all --prune` cadence plus follow-up invalidation/refresh into `ProjectMetadataRemoteFetchPolicy`. Reworked manual `requestTaskRefresh()` to use the same per-task refresh path as focused/background refreshes, so non-focused tasks now share the same dedupe and branch-change handling. Added targeted tests for independent multi-project refreshes, focused-vs-background cadence, manual task refreshes, and remote-fetch follow-up refreshes, then verified the stream contract with the existing runtime state streaming integration test.
+
+**Files touched:** `src/server/project-metadata-monitor.ts`, `src/server/project-metadata-controller.ts`, `src/server/project-metadata-refresher.ts`, `src/server/project-metadata-poller.ts`, `src/server/project-metadata-remote-fetch.ts`, `src/server/project-metadata-loaders.ts`, `test/runtime/server/project-metadata-monitor.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Docs: add project metadata monitor refactor brief (2026-04-19)
+
+**Commit:** `1c147a9e`
+
+**What:** Added a dedicated design brief for refactoring `src/server/project-metadata-monitor.ts`, then linked it from the docs index, optimization follow-up tracker, and active todo item.
+
+**Why:** The project metadata monitor had the same “optimization-shaped architecture” smell already documented for the terminal system, but it lacked a self-contained planning brief. That made the refactor direction clear in conversation and roadmap docs, but not mechanically discoverable for the next person picking up the work.
+
+**How:** Added `docs/project-metadata-monitor-refactor-brief.md` in the same style as the existing terminal refactor brief. The new doc captures the current mental model, non-negotiable behaviors, gotchas, target architecture, rollout order, test expectations, and acceptance criteria. Updated `docs/README.md`, `docs/optimization-shaped-architecture-followups.md`, and `docs/todo.md` so the brief is discoverable from the existing planning surfaces. Added a short changelog entry describing the new planning artifact.
+
+**Files touched:** `docs/project-metadata-monitor-refactor-brief.md`, `docs/README.md`, `docs/optimization-shaped-architecture-followups.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: task switch and untrash terminal restore sizing follow-up (2026-04-19)
 
 **Commit:** `6f1cf9f8`

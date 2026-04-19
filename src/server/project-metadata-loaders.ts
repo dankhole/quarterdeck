@@ -45,11 +45,6 @@ export interface ProjectMetadataEntry {
 	trackedTasks: TrackedTaskWorktree[];
 	subscriberCount: number;
 	focusedTaskId: string | null;
-	homeTimer: NodeJS.Timeout | null;
-	focusedTaskTimer: NodeJS.Timeout | null;
-	backgroundTaskTimer: NodeJS.Timeout | null;
-	remoteFetchTimer: NodeJS.Timeout | null;
-	refreshPromise: Promise<RuntimeProjectMetadata> | null;
 	homeGit: CachedHomeGitMetadata;
 	taskMetadataByTaskId: Map<string, CachedTaskWorktreeMetadata>;
 	pollIntervals: ProjectMetadataPollIntervals;
@@ -170,11 +165,6 @@ export function createProjectEntry(projectPath: string): ProjectMetadataEntry {
 		trackedTasks: [],
 		subscriberCount: 0,
 		focusedTaskId: null,
-		homeTimer: null,
-		focusedTaskTimer: null,
-		backgroundTaskTimer: null,
-		remoteFetchTimer: null,
-		refreshPromise: null,
 		homeGit: {
 			summary: null,
 			conflictState: null,

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Docs: capture project metadata monitor post-refactor follow-ups
+
+- Added `docs/project-metadata-monitor-followups.md` to record the two remaining metadata-monitor follow-ups that surfaced after the refactor: shared mutable `ProjectMetadataEntry` coupling and `refreshProject()` vs per-task refresh overwrite races.
+- Linked the new follow-up doc from `docs/README.md` and added a fresh todo entry in `docs/todo.md` so those architectural questions stay visible without reopening the completed refactor brief.
+
+### Refactor: split project metadata monitor ownership from refresh policy
+
+- Refactored `src/server/project-metadata-monitor.ts` into a thin registry/facade over `project-metadata-controller.ts`, `project-metadata-refresher.ts`, `project-metadata-poller.ts`, and `project-metadata-remote-fetch.ts`, so per-project metadata state/lifecycle is separated from polling cadence and remote-fetch freshness policy.
+- Replaced module-scoped refresh/fetch guards with per-project dedupe while preserving the shared `p-limit(3)` git probe concurrency cap across all connected projects.
+- Unified manual `requestTaskRefresh()` with the same per-task refresh path used by focused/background refreshes, including branch-change base-ref detection for non-focused tasks.
+- Added `test/runtime/server/project-metadata-monitor.test.ts` to lock in multi-project independence, focused-vs-background cadence, manual task refresh behavior, and remote-fetch follow-up refresh behavior alongside the existing runtime stream integration coverage.
+
+### Docs: add project metadata monitor refactor brief
+
+- Added `docs/project-metadata-monitor-refactor-brief.md`, a dedicated design brief for refactoring `src/server/project-metadata-monitor.ts` so metadata ownership can be separated from polling cadence, focused/background prioritization, and remote-fetch policy without losing current stream semantics.
+- Linked the new brief from `docs/README.md`, `docs/optimization-shaped-architecture-followups.md`, and the active todo item in `docs/todo.md`.
+
 ### Refactor: terminal websocket bridge ownership / policy split
 
 - Split `src/terminal/ws-server.ts` into a thinner websocket orchestrator plus focused collaborators: `terminal-ws-connection-registry.ts`, `terminal-ws-output-fanout.ts`, `terminal-ws-restore-coordinator.ts`, `terminal-ws-backpressure-policy.ts`, `terminal-ws-protocol.ts`, and `terminal-ws-types.ts`.

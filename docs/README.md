@@ -16,9 +16,11 @@ If you are new to the codebase, read these in order:
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
 3. [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md) for the current ranked architectural risks and prevention priorities.
 4. [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md) for the self-contained terminal refactor brief and target design.
-5. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
-6. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
-7. [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md) for the current non-terminal subsystems showing the same design smell.
+5. [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md) for the self-contained project metadata monitor refactor brief and target design.
+6. [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md) for the remaining post-refactor ownership and refresh-concurrency follow-ups in the metadata monitor.
+7. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
+8. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+9. [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md) for the current non-terminal subsystems showing the same design smell.
 
 ## Refactor Docs Map
 
@@ -31,6 +33,8 @@ Use this map when you are planning or evaluating refactor work.
 - [`design-guardrails.md`](./design-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
 - [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md): current non-terminal subsystems showing that same smell.
 - [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md): self-contained terminal refactor planning brief.
+- [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md): self-contained project metadata monitor refactor planning brief.
+- [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md): remaining post-refactor ownership and refresh-concurrency follow-ups for the metadata monitor.
 - [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md): self-contained websocket bridge refactor planning brief.
 
 ### Live architecture and implementation guidance

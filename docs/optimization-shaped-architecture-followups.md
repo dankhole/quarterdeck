@@ -44,6 +44,8 @@ Healthy direction:
 - keep a clear metadata owner
 - move polling/fetch/prioritization policy behind narrower boundaries
 
+See `docs/project-metadata-monitor-refactor-brief.md`.
+
 ### 2. Project sync plus board cache restore
 
 Primary files:
