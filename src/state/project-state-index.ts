@@ -149,8 +149,15 @@ function formatSchemaIssuePath(pathSegments: PropertyKey[]): string {
 		.join(".");
 }
 
-function formatSchemaIssues(error: z.ZodError): string {
-	return error.issues.map((issue) => `${formatSchemaIssuePath(issue.path)}: ${issue.message}`).join("; ");
+function formatSchemaIssues(error: z.ZodError, maxIssues = 5): string {
+	const issues = error.issues;
+	const formatted = issues
+		.slice(0, maxIssues)
+		.map((issue) => `${formatSchemaIssuePath(issue.path)}: ${issue.message}`);
+	if (issues.length > maxIssues) {
+		formatted.push(`(${issues.length - maxIssues} more)`);
+	}
+	return formatted.join("; ");
 }
 
 function parsePersistedStateFile<T>(

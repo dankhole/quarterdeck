@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: truncate schema validation errors in state file logging
+
+- `formatSchemaIssues` now caps output at 5 issues with a `(N more)` suffix — prevents shutdown logs from dumping hundreds of identical validation errors when a stale `sessions.json` has many entries with the same missing/invalid field.
+
 ### Fix: base ref dropdown shows "(default)" only when explicitly pinned
 
 - The base ref dropdown no longer labels the git-detected default branch (e.g. `main`) with "(default)" unless the user has explicitly pinned it via the pin icon. Previously, the auto-detected git default always showed the "(default)" suffix, implying the user had set it.

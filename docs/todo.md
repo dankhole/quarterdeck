@@ -235,6 +235,20 @@ The yellow "needs input" indicator on the board icon sometimes shows for project
 
 The trash confirmation dialog should only appear when the task has uncommitted changes or an unmerged branch. If there's nothing to lose, trash immediately without prompting.
 
+## Auto-update base ref when branch changes to an integration branch
+
+When an agent switches branches inside a task worktree, the metadata monitor calls `resolveBaseRefForBranch` to auto-update the card's base ref. If the new branch is an integration branch like `main`, `resolveBaseRefForBranch` returns `null` (it can't find a parent for `main`) and the update is silently skipped — leaving the card with a stale base ref that no longer makes sense.
+
+**Fix:** When `resolveBaseRefForBranch` returns `null`, clear the card's base ref instead of silently keeping the old value. This requires:
+
+- Allow empty-string `baseRef` to mean "unresolved — user needs to pick" (currently `baseRef` is validated as non-empty everywhere: board mutations, worktree creation, API schema).
+- Update the monitor's `checkForBranchChanges` to broadcast `""` when resolved is `null`, instead of skipping.
+- Update `useTaskBaseRefSync` to apply empty base refs instead of skipping them.
+- Update the base ref pill in the top bar to show a prompt (e.g. "select base branch") when empty, opening the existing branch selector.
+- Worktree creation already blocks on empty `baseRef`, so starting a task naturally requires picking one first — no change needed there.
+
+**Key files:** `src/workdir/git-utils.ts` (`resolveBaseRefForBranch`), `src/server/project-metadata-monitor.ts` (`checkForBranchChanges`), `web-ui/src/hooks/board/use-task-base-ref-sync.ts`, `src/core/task-board-mutations.ts` (validation), `web-ui/src/components/app/connected-top-bar.tsx` (base ref pill UI).
+
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.

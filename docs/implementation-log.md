@@ -2,6 +2,14 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: truncate schema validation errors in state file logging (2026-04-19)
+
+**What:** `formatSchemaIssues` in `project-state-index.ts` now limits output to 5 issues and appends `(N more)` for the remainder.
+
+**Why:** When a stale `sessions.json` has many entries failing the same validation (e.g. 25+ entries all missing `projectPath` after the workspace→project rename), the shutdown cleanup log dumped every single error — producing a wall of identical lines. The actual signal was one unique error repeated across entries.
+
+**Files touched:** `src/state/project-state-index.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: ghost-until-open scope — dialog should use standard button (2026-04-19)
 
 **What:** Removed `ghostUntilOpen` from the `BranchSelectDropdown` in `task-create-dialog.tsx`.
