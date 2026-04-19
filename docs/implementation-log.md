@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Feature: single-tab guard (2026-04-19)
+
+**What:** Added a guard that prevents multiple browser tabs from running Quarterdeck against the same server. The second tab shows a fallback screen instead of mounting the app; a "Use here instead" button transfers ownership via BroadcastChannel.
+
+**Why:** Multiple tabs sharing WebSocket connections, terminal sessions, and optimistic-concurrency board state causes conflicts — duplicate state writes, terminal attachment races, and confusing "Project changed elsewhere" toasts from revision mismatches.
+
+**How it works:** `useSingleTabGuard` writes a localStorage heartbeat (every 2s, stale after 5s) keyed by origin. A new tab checks the lock before mounting providers. BroadcastChannel enables instant "yield" messaging for the takeover button. If the owning tab closes or crashes, the blocked tab auto-recovers via stale detection. Dogfood is unaffected because localStorage is scoped per origin (different ports = different locks).
+
+**Files touched:** `web-ui/src/hooks/app/use-single-tab-guard.ts` (new — lock lifecycle hook), `web-ui/src/components/app/already-open-fallback.tsx` (new — blocked tab UI), `web-ui/src/App.tsx` (split into `App` + `AppInner` to gate before provider tree), `web-ui/src/hooks/app/index.ts` (barrel export), `web-ui/src/components/app/index.ts` (barrel export), `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: truncate schema validation errors in state file logging (2026-04-19)
 
 **What:** `formatSchemaIssues` in `project-state-index.ts` now limits output to 5 issues and appends `(N more)` for the remainder.

@@ -5,6 +5,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	AlreadyOpenFallback,
 	AppDialogs,
 	ConnectedTopBar,
 	HomeView,
@@ -19,7 +20,13 @@ import { TextSearchOverlay } from "@/components/search/text-search-overlay";
 import { CardDetailView, TaskInlineCreateCard } from "@/components/task";
 import { DetailToolbar } from "@/components/terminal";
 import { createInitialBoardData } from "@/data/board-data";
-import { useAppActionModels, useAppSideEffects, useHomeSidePanelResize, useNavbarState } from "@/hooks/app";
+import {
+	useAppActionModels,
+	useAppSideEffects,
+	useHomeSidePanelResize,
+	useNavbarState,
+	useSingleTabGuard,
+} from "@/hooks/app";
 import { usePromptShortcuts } from "@/hooks/board";
 import { useProjectUiState } from "@/hooks/project";
 import { useShortcutActions } from "@/hooks/settings";
@@ -87,6 +94,12 @@ function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
 // ---------------------------------------------------------------------------
 
 export default function App(): ReactElement {
+	const { isBlocked, forceOpen } = useSingleTabGuard();
+	if (isBlocked) return <AlreadyOpenFallback onForceOpen={forceOpen} />;
+	return <AppInner />;
+}
+
+function AppInner(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [canPersistProjectState, setCanPersistProjectState] = useState(false);

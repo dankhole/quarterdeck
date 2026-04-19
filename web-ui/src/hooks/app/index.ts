@@ -7,3 +7,4 @@ export { useAppSideEffects } from "./use-app-side-effects";
 export { useEscapeHandler } from "./use-escape-handler";
 export { useHomeSidePanelResize } from "./use-home-side-panel-resize";
 export { useNavbarState } from "./use-navbar-state";
+export { useSingleTabGuard } from "./use-single-tab-guard";

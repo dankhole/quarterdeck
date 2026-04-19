@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Feature: single-tab guard
+
+- Prevents multiple browser tabs from running Quarterdeck against the same server simultaneously. A second tab sees a "Quarterdeck is open in another tab" screen with a "Use here instead" button to transfer ownership. Uses localStorage heartbeat + BroadcastChannel — scoped per origin, so dogfood runs on different ports are unaffected.
+
 ### Fix: truncate schema validation errors in state file logging
 
 - `formatSchemaIssues` now caps output at 5 issues with a `(N more)` suffix — prevents shutdown logs from dumping hundreds of identical validation errors when a stale `sessions.json` has many entries with the same missing/invalid field.
