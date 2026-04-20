@@ -13,8 +13,7 @@ Use this section together with:
 
 These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
 
-- Reassess `src/server/runtime-state-message-batcher.ts` so batching remains intact while the boundary between runtime event semantics and delivery policy becomes clearer. Roadmap context: [docs/refactor-roadmap-context.md#3-runtime-state-message-batcher](./refactor-roadmap-context.md#3-runtime-state-message-batcher)
-- Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility. Roadmap context: [docs/refactor-roadmap-context.md#4-frontend-runtime-state-stream-store](./refactor-roadmap-context.md#4-frontend-runtime-state-stream-store)
+- Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility. Roadmap context: [docs/refactor-roadmap-context.md#3-frontend-runtime-state-stream-store](./refactor-roadmap-context.md#3-frontend-runtime-state-stream-store)
 
 ## Architecture follow-ups from the design roadmap
 
@@ -26,10 +25,10 @@ Use this section together with:
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
-- Investigate split-brain task state across persistence, in-memory runtime state, websocket deltas, browser board state, and client-side cache/restore behavior. Roadmap context: [docs/refactor-roadmap-context.md#5-split-brain-task-state](./refactor-roadmap-context.md#5-split-brain-task-state)
-- Reduce manual broadcast choreography by making post-mutation effects easier to express through stronger domain-event or post-mutation boundaries. Roadmap context: [docs/refactor-roadmap-context.md#6-manual-broadcast-choreography--domain-event-boundaries](./refactor-roadmap-context.md#6-manual-broadcast-choreography--domain-event-boundaries)
-- Reduce app-shell integration gravity so cross-feature wiring stops re-centralizing at top-level composition surfaces. Roadmap context: [docs/refactor-roadmap-context.md#7-app-shell-integration-gravity](./refactor-roadmap-context.md#7-app-shell-integration-gravity)
-- Narrow broad provider/context surfaces, especially where project-, git-, or interaction-related providers currently expose mixed-domain ownership. Roadmap context: [docs/refactor-roadmap-context.md#8-broad-provider--context-surfaces](./refactor-roadmap-context.md#8-broad-provider--context-surfaces)
+- Investigate split-brain task state across persistence, in-memory runtime state, websocket deltas, browser board state, and client-side cache/restore behavior. Roadmap context: [docs/refactor-roadmap-context.md#4-split-brain-task-state](./refactor-roadmap-context.md#4-split-brain-task-state)
+- Reduce manual broadcast choreography by making post-mutation effects easier to express through stronger domain-event or post-mutation boundaries. Roadmap context: [docs/refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries](./refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries)
+- Reduce app-shell integration gravity so cross-feature wiring stops re-centralizing at top-level composition surfaces. Roadmap context: [docs/refactor-roadmap-context.md#6-app-shell-integration-gravity](./refactor-roadmap-context.md#6-app-shell-integration-gravity)
+- Narrow broad provider/context surfaces, especially where project-, git-, or interaction-related providers currently expose mixed-domain ownership. Roadmap context: [docs/refactor-roadmap-context.md#7-broad-provider--context-surfaces](./refactor-roadmap-context.md#7-broad-provider--context-surfaces)
 
 ## Standalone desktop app (Electron/Tauri)
 
@@ -199,7 +198,7 @@ Four phases to make the frontend navigable like a C#/Angular solution — featur
 
 - ~~**Phase 1**~~ — Sort 15 orphan hooks into domain subdirectories (`hooks/app/`, `hooks/debug/`, `hooks/settings/`, and existing dirs). Pure file moves. Done.
 - ~~**Phase 2**~~ — Group 48 root-level components into feature directories (`components/board/`, `components/task/`, `components/git/`, `components/app/`, `components/terminal/`, `components/debug/`). Pure file moves. Done.
-- **Phase 3** — Finish the remaining oversized component decompositions, targeting ~400 lines max where the structure still supports it. Done on this branch: `project-navigation-panel.tsx` (679L → 74L), `top-bar.tsx` (624L → 176L), and `git-view` (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels). Remaining planned work: `board-card.tsx` (521L), `task-create-dialog.tsx` (544L), `branch-selector-popover.tsx` (698L), and `card-detail-view.tsx` (585L). Roadmap context: [docs/refactor-roadmap-context.md#9-remaining-workflow-heavy-ui-surfaces](./refactor-roadmap-context.md#9-remaining-workflow-heavy-ui-surfaces)
+- **Phase 3** — Finish the remaining oversized component decompositions, targeting ~400 lines max where the structure still supports it. Done on this branch: `project-navigation-panel.tsx` (679L → 74L), `top-bar.tsx` (624L → 176L), and `git-view` (757L → 255L view + 343L hook + 88L domain module + 132L CompareBar + 36L empty panels). Remaining planned work: `board-card.tsx` (521L), `task-create-dialog.tsx` (544L), `branch-selector-popover.tsx` (698L), and `card-detail-view.tsx` (585L). Roadmap context: [docs/refactor-roadmap-context.md#8-remaining-workflow-heavy-ui-surfaces](./refactor-roadmap-context.md#8-remaining-workflow-heavy-ui-surfaces)
 - ~~**Phase 4**~~ — Add `index.ts` barrel exports to all feature directories in both `components/` and `hooks/`. Done.
 
 ## Readability refactoring roadmap (C#-style navigability) — completed

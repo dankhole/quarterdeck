@@ -113,4 +113,41 @@ describe("RuntimeStateMessageBatcher", () => {
 		expect(onDebugLogBatch).toHaveBeenCalledOnce();
 		expect(onDebugLogBatch).toHaveBeenCalledWith([createLogEntry("2"), createLogEntry("3")]);
 	});
+
+	it("drops queued task-session updates when a project is disposed before flush", async () => {
+		let onSummary: ((summary: RuntimeTaskSessionSummary) => void) | null = null;
+		const onTaskSessionBatch = vi.fn();
+		const onTaskNotificationBatch = vi.fn();
+		const onProjectsRefreshRequested = vi.fn();
+		const unsubscribe = vi.fn();
+		const batcher = new RuntimeStateMessageBatcher({
+			hasClients: () => true,
+			onTaskSessionBatch,
+			onTaskNotificationBatch,
+			onProjectsRefreshRequested,
+			onDebugLogBatch: vi.fn(),
+		});
+
+		batcher.trackTerminalManager("project-1", {
+			store: {
+				onChange: (listener: (summary: RuntimeTaskSessionSummary) => void) => {
+					onSummary = listener;
+					return unsubscribe;
+				},
+			},
+		} as unknown as TerminalSessionManager);
+
+		if (!onSummary) {
+			throw new Error("Expected onChange listener to be registered.");
+		}
+		(onSummary as (summary: RuntimeTaskSessionSummary) => void)(createSummary("task-1", 1));
+
+		batcher.disposeProject("project-1");
+		await vi.advanceTimersByTimeAsync(150);
+
+		expect(unsubscribe).toHaveBeenCalledOnce();
+		expect(onTaskSessionBatch).not.toHaveBeenCalled();
+		expect(onTaskNotificationBatch).not.toHaveBeenCalled();
+		expect(onProjectsRefreshRequested).not.toHaveBeenCalled();
+	});
 });

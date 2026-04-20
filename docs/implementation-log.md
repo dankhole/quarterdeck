@@ -2,6 +2,18 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: clarify runtime-state message semantics vs batching policy (2026-04-20)
+
+**Commit:** `39c93240`
+
+**What:** Refactored `src/server/runtime-state-message-batcher.ts` so task-session event meaning is described separately from the batching/timer policy that coalesces outgoing websocket work. The file now composes a concrete task-session event delivery layer with dedicated task-session and debug-log batch queues instead of hiding all task-session side effects inside one flush method.
+
+**Why:** The previous version was still behaviorally correct, but it was getting harder to explain without jumping straight into timer behavior. One `flushSummaries()` path owned three distinct semantic consequences of a task-session change: the active-project `task_sessions_updated` stream, cross-project `task_notification` delivery, and project-summary refreshes via `projects_updated`. That made batching read like the source of truth instead of a delivery policy layered on top of clearer runtime events.
+
+**How:** Added `RuntimeStateTaskSessionEventDelivery` to make the task-session consequences explicit and responsibility-driven: deliver the project-scoped session delta, deliver the notification delta, and request a projects refresh for the same project. Added `RuntimeTaskSessionBatchQueue` to own only per-project latest-summary-wins queueing, timer lifecycle, flush orchestration, and disposal. Added `RuntimeDebugLogBatchQueue` to isolate the existing debug-log batching rules and client gate from the task-session path. Kept `RuntimeStateMessageBatcher` as the composition root that subscribes to terminal-manager summary updates and routes them into the right queue. Added a unit test proving that disposing a project before flush drops its queued task-session updates instead of leaking delayed notifications or project refreshes after removal. For doc hygiene, removed the completed batcher item from `docs/todo.md`, updated the active optimization/roadmap docs so they no longer present the batcher as queued work, and fixed the remaining roadmap anchor links. Re-ran focused runtime-state batching tests, websocket integration tests for streaming/project refresh behavior, the frontend audible notification unit test, and `npm run typecheck`.
+
+**Files touched:** `src/server/runtime-state-message-batcher.ts`, `test/runtime/server/runtime-state-message-batcher.test.ts`, `docs/todo.md`, `docs/optimization-shaped-architecture-followups.md`, `docs/refactor-roadmap-context.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: base branch resolution bugs (2026-04-20)
 
 **What:** Fixed three related issues with default base branch detection: `develop` auto-resolving over `main`, `detectGitDefaultBranch` reporting a non-existent local branch, and `defaultBaseRef` being global instead of per-project.

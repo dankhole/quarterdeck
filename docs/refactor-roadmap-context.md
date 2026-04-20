@@ -17,25 +17,24 @@ Use this document when:
 Execution tracking note:
 
 - `docs/todo.md` remains the source of truth for active work.
-- Every refactor listed here should have a corresponding todo item.
+- Every active refactor listed here should have a corresponding todo item.
 
 ## Recommended Order
 
 1. Project metadata monitor follow-ups
 2. Project sync plus board cache restore
-3. Runtime state message batcher
-4. Frontend runtime state stream store
-5. Split-brain task state
-6. Manual broadcast choreography / domain-event boundaries
-7. App-shell integration gravity
-8. Broad provider/context surfaces
-9. Remaining workflow-heavy UI surfaces
+3. Frontend runtime state stream store
+4. Split-brain task state
+5. Manual broadcast choreography / domain-event boundaries
+6. App-shell integration gravity
+7. Broad provider/context surfaces
+8. Remaining workflow-heavy UI surfaces
 
 That sequence is deliberate:
 
-- 1 through 4 continue the active optimization-shaped cleanup work.
-- 5 and 6 address the two biggest remaining correctness/ownership problems in the design roadmap.
-- 7 through 9 reduce the architectural pressure that keeps re-centralizing behavior in large UI surfaces and broad providers.
+- 1 through 3 continue the active optimization-shaped cleanup work.
+- 4 and 5 address the two biggest remaining correctness/ownership problems in the design roadmap.
+- 6 through 8 reduce the architectural pressure that keeps re-centralizing behavior in large UI surfaces and broad providers.
 
 ## 1. Project Metadata Monitor Follow-ups
 
@@ -117,40 +116,7 @@ Key invariants:
 - project switching should still feel fast
 - switch cancellation / stale request protection must remain intact
 
-## 3. Runtime State Message Batcher
-
-Primary files:
-
-- `src/server/runtime-state-message-batcher.ts`
-- `src/server/runtime-state-hub.ts`
-- `src/server/runtime-state-messages.ts`
-
-Current smell:
-
-- batching is no longer just an efficiency detail; it affects when project refreshes happen, when notifications fire, and how runtime stream behavior is perceived
-
-Why it matters:
-
-- this is the server-side half of the stream/store cleanup
-- if the boundary between “event meaning” and “delivery policy” stays blurry, every new runtime event risks inheriting ad hoc timing behavior
-
-What “good” looks like:
-
-- event semantics are obvious before batching policy enters the conversation
-- the batcher reads as a delivery/coalescing layer, not a behavior-defining coordinator
-- it is easier to add a new runtime event without cargo-culting unrelated batching logic
-
-Suggested first slice:
-
-- inventory which behaviors are true domain semantics versus batching artifacts
-- separate “queue event” from “request follow-up refresh” paths more explicitly
-- make timer ownership and flush conditions easier to inspect in isolation
-
-Key risk:
-
-- it is easy to preserve performance while subtly changing notification timing or stream ordering; tests need to lock down the user-visible semantics, not just the helper behavior
-
-## 4. Frontend Runtime State Stream Store
+## 3. Frontend Runtime State Stream Store
 
 Primary files:
 
@@ -185,7 +151,7 @@ Key invariants:
 - initial snapshot handling must remain compatible with the server stream contract
 - reconnect behavior cannot regress into duplicate state application or missed deltas
 
-## 5. Split-brain Task State
+## 4. Split-brain Task State
 
 Primary files:
 
@@ -225,7 +191,7 @@ Key risk:
 
 - a large rewrite here would be dangerous; this should start as an ownership clarification pass, not a big-bang refactor
 
-## 6. Manual Broadcast Choreography / Domain-event Boundaries
+## 5. Manual Broadcast Choreography / Domain-event Boundaries
 
 Primary files:
 
@@ -258,7 +224,7 @@ Key risk:
 
 - over-abstracting this too early can create a generic event system that is harder to reason about than the existing manual calls
 
-## 7. App-shell Integration Gravity
+## 6. App-shell Integration Gravity
 
 Primary files:
 
@@ -290,7 +256,7 @@ Key risk:
 
 - it is easy to replace one broad top-level file with many tiny pass-through components/hooks that do not improve ownership at all
 
-## 8. Broad Provider / Context Surfaces
+## 7. Broad Provider / Context Surfaces
 
 Primary files:
 
@@ -322,7 +288,7 @@ Key risk:
 
 - over-fragmenting providers can make app composition noisy; narrower ownership matters more than the raw count of contexts
 
-## 9. Remaining Workflow-heavy UI Surfaces
+## 8. Remaining Workflow-heavy UI Surfaces
 
 Primary files:
 

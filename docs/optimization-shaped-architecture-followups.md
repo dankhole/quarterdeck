@@ -105,33 +105,7 @@ Healthy direction:
 - preserve the useful backpressure and restore behavior
 - make the bridge easier to explain in terms of connection ownership first, policy second
 
-### 4. Runtime state message batcher
-
-Primary file:
-
-- `src/server/runtime-state-message-batcher.ts`
-
-Simple job:
-
-- coalesce outgoing runtime updates
-
-What it also became:
-
-- part of notification timing
-- part of project-refresh timing
-- part of stream semantics
-
-Why it deserves follow-up:
-
-- batching is not just an efficiency detail; it helps shape behavior
-- that can be okay, but it should be more explicit
-
-Healthy direction:
-
-- preserve batching
-- make the boundary between “event meaning” and “delivery policy” easier to see
-
-### 5. Frontend runtime state stream store
+### 4. Frontend runtime state stream store
 
 Primary file:
 

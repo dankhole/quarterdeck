@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: clarify runtime-state message semantics vs batching policy
+
+- Refactored `src/server/runtime-state-message-batcher.ts` into explicit task-session event delivery plus dedicated task-session and debug-log batch queues, so the meaning of a runtime event is easier to inspect before the timer/coalescing policy.
+- Preserved the existing websocket behavior: `task_sessions_updated`, `task_notification`, and project-summary refreshes still flush together on the existing task-session batch window, and debug log batching still uses its existing client-gated window.
+- Added regression coverage for disposing a project while task-session updates are still queued, alongside targeted runtime-state and websocket integration validation.
+
 ### Fix: base branch resolution bugs
 
 - Removed `develop` from the hard-coded candidate list in `resolveBaseRefForBranch` — it was winning over `main` in repos that have both, since it's often a closer ancestor. Users who want develop-based workflows set `defaultBaseRef` in project config.
