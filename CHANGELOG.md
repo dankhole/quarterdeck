@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fix: base ref dropdown loads branches independently
+
+- Fixed the top bar base-ref dropdown showing an empty branch list on first open — it now triggers its own branch fetch via `requestBranches()` instead of relying on the main branch pill popover having been opened first.
+- Added a loading spinner to the base-ref dropdown while branches are being fetched.
+- Fixed stale branches from a previous project appearing after project switch — `useTrpcQuery` now clears cached data when the query becomes disabled.
+- Added background fill and padding to the base-ref trigger button so it's readable when active.
+
 ### Refactor: tighten project metadata monitor mutation ownership and freshness
 
 - Moved project-metadata writes behind `ProjectMetadataController` commit semantics so `ProjectMetadataRefresher` now loads results and asks the controller to apply them instead of mutating the shared project entry directly.

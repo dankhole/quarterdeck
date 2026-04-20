@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: base ref dropdown loads branches independently (2026-04-20)
+
+**What:** Fixed the top bar base-ref dropdown opening empty and added loading state, stale-data clearing on project switch, and trigger button styling.
+
+**Why:** `BaseRefLabel` consumed `git.topbarBranchActions.branches`, but only the `BranchSelectorPopover` (branch pill) called `setBranchPopoverOpen(true)` which enabled the `getGitRefs` query. Opening the base-ref dropdown without first opening the branch pill left the query disabled and the dropdown empty. Additionally, `useTrpcQuery` never cleared cached data when the query became disabled, so stale branches from a previous project persisted across switches. The trigger button also lacked background/padding, making it unreadable against the dark top bar.
+
+**How:** Added an `isRefsRequested` flag to `useBranchActions` that stays true once any consumer requests branches. `wrappedSetBranchPopoverOpen` sets it on open (existing path), and a new `requestBranches()` callback sets it independently (new path for BaseRefLabel). The query's `enabled` check now uses `(isBranchPopoverOpen || isRefsRequested) && projectId !== null`, so either popover triggers and keeps the query hot. Exposed `isLoadingBranches` and `refetchBranches` from the hook. In `BaseRefLabel`, `handleOpen` calls `requestBranches()` on open, the dropdown shows a `<Spinner>` when `isLoadingBranches && !branches`, and the trigger button uses `cn()` with conditional `bg-surface-2` when open. In `useTrpcQuery`, the disabled-path effect now clears `data`, `isError`, and `error` (previously only cleared `isLoading`), preventing stale data from surviving across project switches.
+
+**Files touched:** `web-ui/src/hooks/git/use-branch-actions.ts`, `web-ui/src/components/app/connected-top-bar.tsx`, `web-ui/src/runtime/use-trpc-query.ts`, `web-ui/src/components/task/card-detail-view.test.tsx`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: tighten project metadata monitor mutation ownership and freshness (2026-04-20)
 
 **What:** Finished the remaining post-refactor `project-metadata-monitor` follow-up work by moving metadata application behind controller-owned commit semantics and making task metadata writes freshness-aware so stale full refreshes cannot overwrite newer targeted task refreshes.

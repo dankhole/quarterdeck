@@ -261,12 +261,6 @@ When an agent switches branches inside a task worktree, the metadata monitor cal
 
 **Key files:** `src/workdir/git-utils.ts` (`resolveBaseRefForBranch`), `src/server/project-metadata-monitor.ts` (`checkForBranchChanges`), `web-ui/src/hooks/board/use-task-base-ref-sync.ts`, `src/core/task-board-mutations.ts` (validation), `web-ui/src/components/app/connected-top-bar.tsx` (base ref pill UI).
 
-## Top bar base ref dropdown should load branches on first open
-
-The task base-ref picker in the top bar can open empty until another branch dropdown has already been opened in the session. Opening the top bar base-ref picker should trigger branch loading itself and show a loading indicator instead of a blank/no-results state.
-
-This appears to be a frontend branch-picker bug, not a `project-metadata-monitor` issue: the top bar base-ref popover in `connected-top-bar.tsx` reads `git.topbarBranchActions.branches`, but unlike `BranchSelectorPopover` it does not trigger the lazy `getGitRefs` query when opened. Also note that task creation/edit uses a different project-wide branch source (`projectGit.branches` via `useTaskBranchOptions`), so the fix should keep those two branch-list paths straight.
-
 ## Search modals: live preview pane
 
 Add a VS Code-style peek preview to the search modals — when a result is highlighted (keyboard or hover), show a read-only preview of the file content alongside the result list, centered on the matched line. Avoids full navigation for scanning multiple matches. Could be a side panel within the overlay or an expandable inline preview.

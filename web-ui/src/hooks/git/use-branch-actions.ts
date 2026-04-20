@@ -46,6 +46,9 @@ export interface UseBranchActionsResult {
 	isBranchPopoverOpen: boolean;
 	setBranchPopoverOpen: (open: boolean) => void;
 	branches: RuntimeGitRef[] | null;
+	isLoadingBranches: boolean;
+	requestBranches: () => void;
+	refetchBranches: () => Promise<unknown>;
 	currentBranch: string | null;
 	worktreeBranches: Map<string, string>;
 	checkoutDialogState: CheckoutDialogState;
@@ -98,11 +101,21 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	} = options;
 
 	const [isBranchPopoverOpen, setBranchPopoverOpen] = useState(false);
+	const [isRefsRequested, setIsRefsRequested] = useState(false);
 	const [checkoutDialogState, setCheckoutDialogState] = useState<CheckoutDialogState>({ type: "closed" });
 	const stashAndCheckoutGuard = useLoadingGuard();
 	const isStashingAndCheckingOut = stashAndCheckoutGuard.isLoading;
 
-	// Fetch git refs when popover opens
+	const wrappedSetBranchPopoverOpen = useCallback((open: boolean) => {
+		setBranchPopoverOpen(open);
+		if (open) setIsRefsRequested(true);
+	}, []);
+
+	const requestBranches = useCallback(() => {
+		setIsRefsRequested(true);
+	}, []);
+
+	// Fetch git refs when any branch popover opens (main popover or base ref dropdown)
 	const refsQueryFn = useCallback(async () => {
 		if (!projectId) {
 			throw new Error("Missing project.");
@@ -117,7 +130,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 	}, [projectId, taskId, baseRef]);
 
 	const refsQuery = useTrpcQuery<RuntimeGitRefsResponse>({
-		enabled: isBranchPopoverOpen && projectId !== null,
+		enabled: (isBranchPopoverOpen || isRefsRequested) && projectId !== null,
 		queryFn: refsQueryFn,
 	});
 
@@ -454,8 +467,11 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 
 	return {
 		isBranchPopoverOpen,
-		setBranchPopoverOpen,
+		setBranchPopoverOpen: wrappedSetBranchPopoverOpen,
 		branches,
+		isLoadingBranches: refsQuery.isLoading,
+		requestBranches,
+		refetchBranches: refsQuery.refetch,
 		currentBranch,
 		worktreeBranches,
 		checkoutDialogState,

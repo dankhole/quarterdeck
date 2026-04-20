@@ -4,6 +4,7 @@ import { type ReactElement, useCallback, useMemo, useRef, useState } from "react
 import { TopBar } from "@/components/app/top-bar";
 import { BranchPillTrigger, BranchSelectorPopover } from "@/components/git/panels/branch-selector-popover";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useBoardContext } from "@/providers/board-provider";
@@ -18,11 +19,15 @@ function BaseRefLabel({
 	card,
 	behindBaseCount,
 	branches,
+	isLoadingBranches,
+	requestBranches,
 	onUpdateBaseRef,
 }: {
 	card: BoardCard;
 	behindBaseCount: number | null | undefined;
 	branches: RuntimeGitRef[] | null;
+	isLoadingBranches: boolean;
+	requestBranches: () => void;
 	onUpdateBaseRef: (taskId: string, baseRef: string, pinned: boolean) => void;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
@@ -35,10 +40,11 @@ function BaseRefLabel({
 			if (open) {
 				setFilter("");
 				setPinned(card.baseRefPinned === true);
+				requestBranches();
 			}
 			setIsOpen(open);
 		},
-		[card.baseRefPinned],
+		[card.baseRefPinned, requestBranches],
 	);
 
 	const handleSelect = useCallback(
@@ -67,7 +73,12 @@ function BaseRefLabel({
 			<RadixPopover.Trigger asChild>
 				<button
 					type="button"
-					className="text-xs text-text-tertiary whitespace-nowrap hover:text-text-secondary cursor-pointer flex items-center gap-1"
+					className={cn(
+						"text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 px-1.5 py-0.5 rounded",
+						isOpen
+							? "bg-surface-2 text-text-secondary"
+							: "text-text-tertiary hover:text-text-secondary hover:bg-surface-2",
+					)}
 				>
 					{card.baseRefPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
 					from <span className="font-mono">{card.baseRef}</span>
@@ -103,7 +114,12 @@ function BaseRefLabel({
 							/>
 						</div>
 						<div className="max-h-48 overflow-y-auto py-1">
-							{filteredBranches.length === 0 ? (
+							{isLoadingBranches && !branches ? (
+								<div className="flex items-center justify-center gap-1.5 px-3 py-3">
+									<Spinner size={12} />
+									<span className="text-xs text-text-tertiary">Loading branches...</span>
+								</div>
+							) : filteredBranches.length === 0 ? (
 								<div className="px-3 py-2 text-xs text-text-quaternary">No matching branches</div>
 							) : (
 								filteredBranches.map((ref) => (
@@ -276,6 +292,8 @@ export function ConnectedTopBar({
 								card={selectedCard.card}
 								behindBaseCount={selectedTaskWorktreeSnapshot?.behindBaseCount}
 								branches={git.topbarBranchActions.branches}
+								isLoadingBranches={git.topbarBranchActions.isLoadingBranches}
+								requestBranches={git.topbarBranchActions.requestBranches}
 								onUpdateBaseRef={handleUpdateBaseRef}
 							/>
 						) : null}

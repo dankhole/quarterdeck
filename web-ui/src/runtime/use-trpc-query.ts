@@ -80,7 +80,10 @@ export function useTrpcQuery<TData>(options: UseTrpcQueryOptions<TData>): UseTrp
 	useEffect(() => {
 		if (!enabled) {
 			requestIdRef.current += 1;
+			setData(null);
 			setIsLoading(false);
+			setIsError(false);
+			setError(null);
 			return;
 		}
 		void runQuery();
