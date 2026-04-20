@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: clarify authoritative project sync vs cached board restore
+
+- Refactored `web-ui/src/hooks/project/use-project-sync.ts` so authoritative runtime project-state application is now explicit and cache restore is tracked as a subordinate display policy instead of mutating the same revision model that drives persistence gating.
+- Updated `web-ui/src/runtime/project-board-cache.ts` to store the authoritative revision a cached board was last aligned with, making it clearer that a restored board can be shown optimistically without being treated as authoritative for persistence.
+- Added project-sync regression coverage for cached restore confirmation and stale previous-project updates during switches, alongside updated pure-domain tests for the authoritative board-application policy.
+
 ### Fix: terminal scroll-to-bottom on task load/untrash
 
 - Fixed a race condition where the terminal would not scroll to the bottom when a task was first loaded (most noticeable after untrashing). The ResizeObserver could consume the `pendingScrollToBottom` flag before the reveal animation frame fired, leaving the terminal visible at the wrong scroll position.

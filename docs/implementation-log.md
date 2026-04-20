@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: clarify authoritative project sync vs cached board restore (2026-04-20)
+
+**What:** Refactored `use-project-sync` and `project-board-cache` so there is one explicit authoritative project-state apply path, while cached board restore is handled as a clearly subordinate switch/display policy. Added regression coverage for cached restore confirmation and stale previous-project updates during a switch.
+
+**Why:** The prior hook mixed together authoritative runtime project state, cache restore, hydration rules, request invalidation, and persistence gating tightly enough that the board cache was shaping the sync architecture instead of remaining an optional speedup. In particular, cache restore mutated the same revision/version tracking that authoritative updates use, which made it hard to audit when the UI was merely showing cached data versus when it had re-entered authoritative mode.
+
+**How:** Updated `web-ui/src/runtime/project-board-cache.ts` to store `authoritativeRevision`, documenting that the cached board may include local UI changes while only the revision remains authoritative. Expanded `web-ui/src/hooks/project/project-sync.ts` with an explicit `resolveAuthoritativeBoardAction()` policy that distinguishes between hydrating from the server, confirming a matching cached board, and skipping a redundant re-hydration. Reworked `web-ui/src/hooks/project/use-project-sync.ts` to track an authoritative version separately from cached-restore state, keep `projectRevision` null while a cached board is displayed, reject old-project streamed updates after a switch reset targets a new project, and only re-enable persistence after authoritative project state arrives. Updated `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, and `web-ui/src/runtime/project-board-cache.test.ts`, removed the completed todo item from `docs/todo.md`, and added the changelog entry.
+
+**Files touched:** `web-ui/src/hooks/project/use-project-sync.ts`, `web-ui/src/hooks/project/project-sync.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/runtime/project-board-cache.ts`, `web-ui/src/runtime/project-board-cache.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: terminal scroll-to-bottom on task load/untrash (2026-04-20)
 
 **What:** Fixed a race condition where the agent terminal would not scroll to the bottom when a task was first loaded, most noticeable on untrash.

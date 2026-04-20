@@ -41,6 +41,11 @@ export interface ProjectVersion {
 	revision: number | null;
 }
 
+export interface CachedProjectBoardRestore {
+	projectId: string;
+	authoritativeRevision: number;
+}
+
 /**
  * Determine whether an incoming project state update should be applied,
  * based on the current version tracking state.
@@ -63,18 +68,32 @@ export function shouldApplyProjectUpdate(
 }
 
 /**
- * Determine whether the board data should be replaced from the incoming
- * project state (full hydration), or whether only sessions should be
- * merged. Board hydration happens on:
- * - First load for a project (different project ID)
- * - Revision change (someone else saved while we weren't looking)
+ * Decide how the authoritative board should affect the currently displayed UI.
+ *
+ * - `"hydrate"`: replace the displayed board with the authoritative board
+ * - `"confirm_cache"`: keep the currently displayed cached board, but promote
+ *   the project back to authoritative mode because the server confirmed the
+ *   cached revision
+ * - `"skip"`: keep the current board because we already have this exact
+ *   authoritative revision applied
  */
-export function shouldHydrateBoard(
+export function resolveAuthoritativeBoardAction(
 	currentVersion: ProjectVersion,
 	currentProjectId: string | null,
 	incomingRevision: number,
-): boolean {
+	cachedRestore: CachedProjectBoardRestore | null,
+): "hydrate" | "confirm_cache" | "skip" {
 	const isSameProject = currentVersion.projectId === currentProjectId;
 	const currentRevision = isSameProject ? currentVersion.revision : null;
-	return !isSameProject || currentRevision !== incomingRevision;
+	if (isSameProject && currentRevision !== null) {
+		return currentRevision === incomingRevision ? "skip" : "hydrate";
+	}
+	if (
+		currentProjectId &&
+		cachedRestore?.projectId === currentProjectId &&
+		cachedRestore.authoritativeRevision === incomingRevision
+	) {
+		return "confirm_cache";
+	}
+	return "hydrate";
 }

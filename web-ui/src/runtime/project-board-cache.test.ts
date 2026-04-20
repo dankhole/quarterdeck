@@ -16,7 +16,7 @@ function createEntry(
 	return {
 		board: { columns: [], dependencies: [] } as BoardData,
 		sessions: {},
-		revision: 1,
+		authoritativeRevision: 1,
 		projectPath: "/test",
 		projectGit: null,
 		...overrides,
@@ -30,12 +30,12 @@ afterEach(() => {
 
 describe("project-board-cache", () => {
 	it("stashes and restores a board", () => {
-		const entry = createEntry({ revision: 5 });
+		const entry = createEntry({ authoritativeRevision: 5 });
 		stashProjectBoard("proj-1", entry);
 
 		const restored = restoreProjectBoard("proj-1");
 		expect(restored).not.toBeNull();
-		expect(restored!.revision).toBe(5);
+		expect(restored!.authoritativeRevision).toBe(5);
 		expect(restored!.projectPath).toBe("/test");
 	});
 
@@ -44,7 +44,7 @@ describe("project-board-cache", () => {
 	});
 
 	it("skips stash when revision is null", () => {
-		stashProjectBoard("proj-1", createEntry({ revision: null as unknown as number }));
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: null as unknown as number }));
 		expect(restoreProjectBoard("proj-1")).toBeNull();
 	});
 
@@ -67,10 +67,10 @@ describe("project-board-cache", () => {
 	it("evicts oldest when exceeding max entries", () => {
 		vi.useFakeTimers();
 		for (let i = 0; i < 10; i++) {
-			stashProjectBoard(`proj-${i}`, createEntry({ revision: i }));
+			stashProjectBoard(`proj-${i}`, createEntry({ authoritativeRevision: i }));
 			vi.advanceTimersByTime(10);
 		}
-		stashProjectBoard("proj-overflow", createEntry({ revision: 99 }));
+		stashProjectBoard("proj-overflow", createEntry({ authoritativeRevision: 99 }));
 
 		expect(restoreProjectBoard("proj-0")).toBeNull();
 		expect(restoreProjectBoard("proj-1")).not.toBeNull();
@@ -79,12 +79,20 @@ describe("project-board-cache", () => {
 	});
 
 	it("updateProjectBoardCache only updates existing entries", () => {
-		updateProjectBoardCache("proj-1", createEntry({ revision: 10 }));
+		updateProjectBoardCache("proj-1", createEntry({ authoritativeRevision: 10 }));
 		expect(restoreProjectBoard("proj-1")).toBeNull();
 
-		stashProjectBoard("proj-1", createEntry({ revision: 1 }));
-		updateProjectBoardCache("proj-1", createEntry({ revision: 10 }));
-		expect(restoreProjectBoard("proj-1")!.revision).toBe(10);
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: 1 }));
+		updateProjectBoardCache("proj-1", createEntry({ authoritativeRevision: 10 }));
+		expect(restoreProjectBoard("proj-1")!.authoritativeRevision).toBe(10);
+	});
+
+	it("updateProjectBoardCache rejects null authoritative revisions", () => {
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: 1 }));
+
+		updateProjectBoardCache("proj-1", createEntry({ authoritativeRevision: null as unknown as number }));
+
+		expect(restoreProjectBoard("proj-1")!.authoritativeRevision).toBe(1);
 	});
 
 	it("invalidateProjectBoardCache removes a specific entry", () => {
@@ -106,8 +114,8 @@ describe("project-board-cache", () => {
 	});
 
 	it("overwrites existing entry on re-stash", () => {
-		stashProjectBoard("proj-1", createEntry({ revision: 1 }));
-		stashProjectBoard("proj-1", createEntry({ revision: 2 }));
-		expect(restoreProjectBoard("proj-1")!.revision).toBe(2);
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: 1 }));
+		stashProjectBoard("proj-1", createEntry({ authoritativeRevision: 2 }));
+		expect(restoreProjectBoard("proj-1")!.authoritativeRevision).toBe(2);
 	});
 });

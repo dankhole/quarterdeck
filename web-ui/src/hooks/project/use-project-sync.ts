@@ -12,10 +12,11 @@ import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 import {
+	type CachedProjectBoardRestore,
 	mergeTaskSessionSummaries,
 	type ProjectVersion,
+	resolveAuthoritativeBoardAction,
 	shouldApplyProjectUpdate,
-	shouldHydrateBoard,
 } from "./project-sync";
 
 interface UseProjectSyncInput {
@@ -63,19 +64,21 @@ export function useProjectSync({
 	const [projectHydrationNonce, setProjectHydrationNonce] = useState(0);
 	const [isProjectStateRefreshing, setIsProjectStateRefreshing] = useState(false);
 	const [isServedFromBoardCache, setIsServedFromBoardCache] = useState(false);
-	const projectVersionRef = useRef<ProjectVersion>({
+	const authoritativeProjectVersionRef = useRef<ProjectVersion>({
 		projectId: null,
 		revision: null,
 	});
+	const cachedBoardRestoreRef = useRef<CachedProjectBoardRestore | null>(null);
+	const syncTargetProjectIdRef = useRef<string | null>(currentProjectId);
 	const projectRefreshRequestIdRef = useRef(0);
 
 	const isProjectMetadataPending = currentProjectId !== null && appliedProjectId !== currentProjectId;
 
 	useEffect(() => {
-		if (projectVersionRef.current.projectId !== currentProjectId) {
+		if (authoritativeProjectVersionRef.current.projectId !== currentProjectId) {
 			return;
 		}
-		projectVersionRef.current = {
+		authoritativeProjectVersionRef.current = {
 			projectId: currentProjectId,
 			revision: projectRevision,
 		};
@@ -84,6 +87,8 @@ export function useProjectSync({
 	const applyProjectState = useCallback(
 		(nextProjectState: RuntimeProjectStateResponse | null) => {
 			if (!nextProjectState) {
+				syncTargetProjectIdRef.current = null;
+				cachedBoardRestoreRef.current = null;
 				setCanPersistProjectState(false);
 				setProjectPath(null);
 				setStoreProjectPath(null);
@@ -93,14 +98,21 @@ export function useProjectSync({
 				setSessions({});
 				setProjectRevision(null);
 				setIsServedFromBoardCache(false);
-				projectVersionRef.current = {
-					projectId: currentProjectId,
+				authoritativeProjectVersionRef.current = {
+					projectId: null,
 					revision: null,
 				};
 				return;
 			}
+			if (currentProjectId !== syncTargetProjectIdRef.current) {
+				return;
+			}
 			if (
-				shouldApplyProjectUpdate(projectVersionRef.current, currentProjectId, nextProjectState.revision) === "skip"
+				shouldApplyProjectUpdate(
+					authoritativeProjectVersionRef.current,
+					currentProjectId,
+					nextProjectState.revision,
+				) === "skip"
 			) {
 				return;
 			}
@@ -112,15 +124,23 @@ export function useProjectSync({
 				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
 			});
 			const normalizedBoard = normalizeBoardData(nextProjectState.board) ?? createInitialBoardData();
-			if (shouldHydrateBoard(projectVersionRef.current, currentProjectId, nextProjectState.revision)) {
+			const boardAction = resolveAuthoritativeBoardAction(
+				authoritativeProjectVersionRef.current,
+				currentProjectId,
+				nextProjectState.revision,
+				cachedBoardRestoreRef.current,
+			);
+			if (boardAction === "hydrate") {
 				setBoard(normalizedBoard);
 				setProjectHydrationNonce((current) => current + 1);
 			}
 			setProjectRevision(nextProjectState.revision);
-			projectVersionRef.current = {
+			authoritativeProjectVersionRef.current = {
 				projectId: currentProjectId,
 				revision: nextProjectState.revision,
 			};
+			syncTargetProjectIdRef.current = currentProjectId;
+			cachedBoardRestoreRef.current = null;
 			setAppliedProjectId(currentProjectId);
 			setCanPersistProjectState(true);
 			setIsServedFromBoardCache(false);
@@ -128,7 +148,7 @@ export function useProjectSync({
 				updateProjectBoardCache(currentProjectId, {
 					board: normalizedBoard,
 					sessions: nextProjectState.sessions ?? {},
-					revision: nextProjectState.revision,
+					authoritativeRevision: nextProjectState.revision,
 					projectPath: nextProjectState.repoPath,
 					projectGit: nextProjectState.git,
 				});
@@ -149,7 +169,7 @@ export function useProjectSync({
 			const refreshed = await fetchProjectState(requestedProjectId);
 			if (
 				projectRefreshRequestIdRef.current !== requestId ||
-				projectVersionRef.current.projectId !== requestedProjectId
+				syncTargetProjectIdRef.current !== requestedProjectId
 			) {
 				return;
 			}
@@ -157,7 +177,7 @@ export function useProjectSync({
 		} catch (error) {
 			if (
 				projectRefreshRequestIdRef.current !== requestId ||
-				projectVersionRef.current.projectId !== requestedProjectId
+				syncTargetProjectIdRef.current !== requestedProjectId
 			) {
 				return;
 			}
@@ -172,43 +192,49 @@ export function useProjectSync({
 
 	const resetProjectSyncState = useCallback(
 		(targetProjectId?: string | null) => {
-			const prevProjectId = projectVersionRef.current.projectId;
-			const prevRevision = projectVersionRef.current.revision;
+			const prevProjectId = authoritativeProjectVersionRef.current.projectId;
+			const prevRevision = authoritativeProjectVersionRef.current.revision;
 			if (prevProjectId && prevRevision != null) {
 				stashProjectBoard(prevProjectId, {
 					board: boardRef.current,
 					sessions: sessionsRef.current,
-					revision: prevRevision,
+					authoritativeRevision: prevRevision,
 					projectPath: projectPath,
 					projectGit: projectGit,
 				});
 			}
 
+			const restoreId = targetProjectId ?? currentProjectId;
+			syncTargetProjectIdRef.current = restoreId;
+			authoritativeProjectVersionRef.current = {
+				projectId: restoreId,
+				revision: null,
+			};
+			cachedBoardRestoreRef.current = null;
 			projectRefreshRequestIdRef.current += 1;
 			setCanPersistProjectState(false);
 			setIsProjectStateRefreshing(false);
 			setAppliedProjectId(null);
+			setProjectRevision(null);
 
-			const restoreId = targetProjectId ?? currentProjectId;
 			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
-			if (cached) {
+			if (cached && restoreId) {
 				setBoard(cached.board);
 				setSessions(cached.sessions);
-				setProjectRevision(cached.revision);
 				setProjectPath(cached.projectPath);
 				setStoreProjectPath(cached.projectPath);
 				setProjectGit(cached.projectGit);
-				projectVersionRef.current = {
+				cachedBoardRestoreRef.current = {
 					projectId: restoreId,
-					revision: cached.revision,
+					authoritativeRevision: cached.authoritativeRevision,
 				};
 				setIsServedFromBoardCache(true);
 			} else {
-				setProjectRevision(null);
-				projectVersionRef.current = {
-					projectId: currentProjectId,
-					revision: null,
-				};
+				setBoard(createInitialBoardData());
+				setSessions({});
+				setProjectPath(null);
+				setStoreProjectPath(null);
+				setProjectGit(null);
 				setIsServedFromBoardCache(false);
 			}
 		},

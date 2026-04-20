@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
+	type CachedProjectBoardRestore,
 	mergeTaskSessionSummaries,
 	type ProjectVersion,
+	resolveAuthoritativeBoardAction,
 	shouldApplyProjectUpdate,
-	shouldHydrateBoard,
 } from "./project-sync";
 
 // ---------------------------------------------------------------------------
@@ -119,31 +120,41 @@ describe("shouldApplyProjectUpdate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// shouldHydrateBoard
+// resolveAuthoritativeBoardAction
 // ---------------------------------------------------------------------------
 
-describe("shouldHydrateBoard", () => {
-	it("returns true when switching projects", () => {
+describe("resolveAuthoritativeBoardAction", () => {
+	it("hydrates when switching projects without a matching cache restore", () => {
 		const version: ProjectVersion = { projectId: "proj-1", revision: 5 };
 
-		expect(shouldHydrateBoard(version, "proj-2", 1)).toBe(true);
+		expect(resolveAuthoritativeBoardAction(version, "proj-2", 1, null)).toBe("hydrate");
 	});
 
-	it("returns true when revision changes within same project", () => {
+	it("hydrates when revision changes within the same project", () => {
 		const version: ProjectVersion = { projectId: "proj-1", revision: 5 };
 
-		expect(shouldHydrateBoard(version, "proj-1", 6)).toBe(true);
+		expect(resolveAuthoritativeBoardAction(version, "proj-1", 6, null)).toBe("hydrate");
 	});
 
-	it("returns false when revision is unchanged within same project", () => {
+	it("skips hydration when the same authoritative revision is already applied", () => {
 		const version: ProjectVersion = { projectId: "proj-1", revision: 5 };
 
-		expect(shouldHydrateBoard(version, "proj-1", 5)).toBe(false);
+		expect(resolveAuthoritativeBoardAction(version, "proj-1", 5, null)).toBe("skip");
 	});
 
-	it("returns true on first load (null revision)", () => {
+	it("confirms a cached restore when the server sends the same revision", () => {
+		const version: ProjectVersion = { projectId: "proj-1", revision: null };
+		const cachedRestore: CachedProjectBoardRestore = {
+			projectId: "proj-1",
+			authoritativeRevision: 7,
+		};
+
+		expect(resolveAuthoritativeBoardAction(version, "proj-1", 7, cachedRestore)).toBe("confirm_cache");
+	});
+
+	it("hydrates on first load when there is no matching cached restore", () => {
 		const version: ProjectVersion = { projectId: "proj-1", revision: null };
 
-		expect(shouldHydrateBoard(version, "proj-1", 1)).toBe(true);
+		expect(resolveAuthoritativeBoardAction(version, "proj-1", 1, null)).toBe("hydrate");
 	});
 });
