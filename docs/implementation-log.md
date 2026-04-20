@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Docs: flesh out next-wave refactor roadmap context (2026-04-19)
+
+**What:** Added a roadmap-context document for the current next 9 refactors and wired each one into `docs/todo.md` so the active queue is no longer split between a few detailed briefs and several high-level roadmap rankings.
+
+**Why:** The repo had enough context to rank the next refactors, but not enough consistently written context for a fresh agent to pick up the broader design-roadmap items without reconstructing the story from chat, changelog history, or vague one-line todo entries. The goal here was not to create full implementation briefs for every item, but to give each queued refactor a stable home with primary files, current smell, desired outcome, first-slice guidance, and key risks.
+
+**How:** Added `docs/refactor-roadmap-context.md` with sections for: project metadata monitor follow-ups, project sync plus board cache restore, runtime state message batcher, frontend runtime state stream store, split-brain task state, manual broadcast choreography/domain-event boundaries, app-shell integration gravity, broad provider/context surfaces, and the remaining workflow-heavy UI surfaces. Updated `docs/todo.md` so each of those items now links directly to either an existing detailed doc or the new roadmap-context sections. Updated `docs/README.md` so the new context doc appears in the refactor docs map, and added a short changelog entry for the planning/docs work.
+
+**Files touched:** `docs/refactor-roadmap-context.md`, `docs/todo.md`, `docs/README.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Docs: capture project metadata monitor post-refactor follow-ups (2026-04-19)
 
 **Commit:** `(uncommitted in worktree)`

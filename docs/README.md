@@ -19,8 +19,9 @@ If you are new to the codebase, read these in order:
 5. [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md) for the self-contained project metadata monitor refactor brief and target design.
 6. [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md) for the remaining post-refactor ownership and refresh-concurrency follow-ups in the metadata monitor.
 7. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
-8. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
-9. [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md) for the current non-terminal subsystems showing the same design smell.
+8. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current next-wave refactor queue with enough pickup context for fresh agents.
+9. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+10. [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md) for the current non-terminal subsystems showing the same design smell.
 
 ## Refactor Docs Map
 
@@ -36,6 +37,7 @@ Use this map when you are planning or evaluating refactor work.
 - [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md): self-contained project metadata monitor refactor planning brief.
 - [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md): remaining post-refactor ownership and refresh-concurrency follow-ups for the metadata monitor.
 - [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md): self-contained websocket bridge refactor planning brief.
+- [`refactor-roadmap-context.md`](./refactor-roadmap-context.md): next-wave refactor ordering plus pickup context for items that do not yet have full implementation briefs.
 
 ### Live architecture and implementation guidance
 

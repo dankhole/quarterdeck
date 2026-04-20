@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Docs: flesh out next-wave refactor roadmap context
+
+- Added `docs/refactor-roadmap-context.md`, a structured pickup guide for the current next 9 refactors after the recent terminal websocket bridge and project metadata monitor work.
+- Linked the roadmap context from `docs/todo.md` and `docs/README.md`, and added concrete todo items for the broader design-roadmap work that previously existed only as high-level architectural ranking.
+
 ### Docs: capture project metadata monitor post-refactor follow-ups
 
 - Added `docs/project-metadata-monitor-followups.md` to record the two remaining metadata-monitor follow-ups that surfaced after the refactor: shared mutable `ProjectMetadataEntry` coupling and `refreshProject()` vs per-task refresh overwrite races.
