@@ -127,7 +127,7 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 	});
 
 	// --- useTaskBranchOptions ---
-	const { createTaskBranchOptions, defaultTaskBranchRef, isConfigDefaultBaseRef } = useTaskBranchOptions({
+	const { createTaskBranchOptions, defaultTaskBranchRef } = useTaskBranchOptions({
 		projectGit,
 		configDefaultBaseRef,
 	});
@@ -151,7 +151,6 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 		currentProjectId,
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
-		isConfigDefaultBaseRef,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});

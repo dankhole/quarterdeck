@@ -8,6 +8,22 @@
 - Made snapshot-vs-delta behavior explicit in the extracted store: preloaded state, initial snapshots, project-state refreshes, task-session deltas, and monotonic notification memory now live behind named helpers with focused unit coverage.
 - Preserved current project/runtime sync behavior by keeping the stream contract intact and re-validating targeted runtime-stream and `use-project-sync` coverage plus frontend/backend typecheck.
 
+### Fix: isolate pinned base ref to the active project
+
+- Removed the `defaultBaseRef` fallback from project config to global config in `src/config/runtime-config-normalizers.ts`, so a stale or leftover global value can no longer leak a pinned base ref from one project into another.
+- Preserved the intended no-pin behavior: when a project has no explicit `defaultBaseRef`, the frontend still falls back to per-project git default-branch detection instead of inheriting another project’s pin.
+
+### Refactor: finish the remaining workflow-heavy UI surface cleanup
+
+- Refactored `web-ui/src/components/task/task-create-dialog.tsx` into a clearer presentation shell by moving create-flow orchestration into `web-ui/src/hooks/board/use-task-create-dialog.ts` and a companion pure domain module `web-ui/src/hooks/board/task-create-dialog.ts`.
+- Refactored `web-ui/src/components/git/panels/branch-selector-popover.tsx` into a slimmer popover shell by moving ref filtering, pinned/unpinned section resolution, and close-and-act orchestration into `web-ui/src/hooks/git/use-branch-selector-popover.ts` plus the pure companion module `web-ui/src/hooks/git/branch-selector-popover.ts`.
+- Refactored `web-ui/src/components/task/card-detail-view.tsx` into a clearer composition boundary by extracting task-detail orchestration into `web-ui/src/hooks/board/use-card-detail-view.ts`, moving pure derivation logic into `web-ui/src/hooks/board/card-detail-view.ts`, and splitting the large render body into `task-detail-main-content.tsx` and `task-branch-dialogs.tsx`.
+- Refactored `web-ui/src/components/board/board-card.tsx` so card rendering no longer owns as much interaction/derived-state policy directly; those responsibilities now live in `web-ui/src/hooks/board/use-board-card.ts` and `web-ui/src/hooks/board/board-card.ts`.
+- Extracted create/edit draft reset and save/create board mutations from `web-ui/src/hooks/board/use-task-editor.ts` into the pure companion module `web-ui/src/hooks/board/task-editor-drafts.ts`, with focused regression coverage for the new pure workflow helpers.
+- Removed the `Start in plan mode` control and create-path wiring from `web-ui/src/components/task/task-create-dialog.tsx`, so dialog-created tasks now always use the standard start flow while edit-mode plan-mode behavior remains unchanged.
+- Updated task creation base-ref reset behavior so the create dialog always returns to the resolved project default base ref after create/cancel/reopen instead of remembering the last branch used in that project.
+- Followed up on review feedback by moving the pure board-card display helpers out of `components/`, fixing a stale default-branch capture in `use-task-editor.ts`, stabilizing `use-branch-selector-popover.ts` action handlers, and tightening a redundant status-badge null branch in `board-card.tsx`.
+
 ### Refactor: reduce app-shell integration gravity around git history and edit-start flow
 
 - Moved git-history ownership into `GitProvider`, so top-level app composition no longer threads raw git-history state/setters across `App.tsx`, `GitProvider`, and `InteractionsProvider`.

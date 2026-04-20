@@ -56,6 +56,36 @@ describe.sequential("runtime-config persistence", () => {
 		}
 	});
 
+	it("does not inherit a stale global defaultBaseRef into project-scoped config", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
+			"quarterdeck-home-runtime-config-project-base-ref-isolation-",
+		);
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"quarterdeck-project-runtime-config-project-base-ref-isolation-",
+		);
+
+		try {
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(join(runtimeConfigDir, "config.json"), JSON.stringify({ defaultBaseRef: "main" }), "utf8");
+
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const stateWithoutProjectPin = await loadRuntimeConfig(tempProject);
+				expect(stateWithoutProjectPin.defaultBaseRef).toBe("");
+
+				await updateRuntimeConfig(tempProject, null, {
+					defaultBaseRef: "master",
+				});
+
+				const stateWithProjectPin = await loadRuntimeConfig(tempProject);
+				expect(stateWithProjectPin.defaultBaseRef).toBe("master");
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
 	it("save omits default keys when they were not previously set", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-omit-defaults-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(

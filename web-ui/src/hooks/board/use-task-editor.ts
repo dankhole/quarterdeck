@@ -1,23 +1,23 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
+import { isBranchRefValid, isPlanModeDisabledByAutoReview } from "@/hooks/board/task-editor";
 import {
-	isBranchRefValid,
-	isPlanModeDisabledByAutoReview,
-	isTaskSaveValid,
-	resolveDefaultBranchRef,
-	resolveEffectiveBaseRef,
-} from "@/hooks/board/task-editor";
+	createEmptyTaskEditDraft,
+	createResetTaskCreateDraft,
+	createTaskEditDraft,
+	createTaskOnBoard,
+	createTasksOnBoard,
+	saveEditedTaskToBoard,
+} from "@/hooks/board/task-editor-drafts";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
+import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
 import {
 	normalizeStoredTaskAutoReviewMode,
 	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
-	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/utils/app-utils";
 import { slugifyBranchName } from "@/utils/branch-utils";
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
@@ -28,8 +28,6 @@ interface UseTaskEditorInput {
 	currentProjectId: string | null;
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef: string;
-	/** When true, the default base ref was set via config — overrides last-used-branch memory. */
-	isConfigDefaultBaseRef?: boolean;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 }
@@ -48,13 +46,10 @@ export interface UseTaskEditorResult {
 	setNewTaskPrompt: Dispatch<SetStateAction<string>>;
 	newTaskImages: TaskImage[];
 	setNewTaskImages: Dispatch<SetStateAction<TaskImage[]>>;
-	newTaskStartInPlanMode: boolean;
-	setNewTaskStartInPlanMode: Dispatch<SetStateAction<boolean>>;
 	newTaskAutoReviewEnabled: boolean;
 	setNewTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
 	newTaskAutoReviewMode: TaskAutoReviewMode;
 	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
-	isNewTaskStartInPlanModeDisabled: boolean;
 	newTaskUseWorktree: boolean;
 	setNewTaskUseWorktree: Dispatch<SetStateAction<boolean>>;
 	createFeatureBranch: boolean;
@@ -96,18 +91,12 @@ export function useTaskEditor({
 	currentProjectId,
 	createTaskBranchOptions,
 	defaultTaskBranchRef,
-	isConfigDefaultBaseRef,
 	setSelectedTaskId,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
-	const configOverridesDefault = isConfigDefaultBaseRef === true;
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
-	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useBooleanLocalStorageValue(
-		TASK_START_IN_PLAN_MODE_STORAGE_KEY,
-		false,
-	);
 	const [newTaskAutoReviewEnabled, setNewTaskAutoReviewEnabled] = useBooleanLocalStorageValue(
 		TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
 		false,
@@ -120,12 +109,7 @@ export function useTaskEditor({
 	const [newTaskUseWorktree, setNewTaskUseWorktree] = useState(true);
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
-	const isNewTaskStartInPlanModeDisabled = isPlanModeDisabledByAutoReview(
-		newTaskAutoReviewEnabled,
-		newTaskAutoReviewMode,
-	);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
-	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskImages, setEditTaskImages] = useState<TaskImage[]>([]);
@@ -138,23 +122,7 @@ export function useTaskEditor({
 	);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
-	const lastCreatedTaskBranchRef = useMemo(() => {
-		if (!currentProjectId) {
-			return null;
-		}
-		return lastCreatedTaskBranchByProjectId[currentProjectId] ?? null;
-	}, [currentProjectId, lastCreatedTaskBranchByProjectId]);
-
-	const resolvedDefaultTaskBranchRef = useMemo(
-		() =>
-			resolveDefaultBranchRef(
-				defaultTaskBranchRef,
-				configOverridesDefault,
-				lastCreatedTaskBranchRef,
-				createTaskBranchOptions,
-			),
-		[configOverridesDefault, createTaskBranchOptions, defaultTaskBranchRef, lastCreatedTaskBranchRef],
-	);
+	const resolvedDefaultTaskBranchRef = defaultTaskBranchRef;
 
 	useEffect(() => {
 		if (isBranchRefValid(newTaskBranchRef, createTaskBranchOptions)) {
@@ -182,13 +150,6 @@ export function useTaskEditor({
 			setBranchName("");
 		}
 	}, [newTaskUseWorktree, createFeatureBranch]);
-
-	useEffect(() => {
-		if (!isNewTaskStartInPlanModeDisabled || !newTaskStartInPlanMode) {
-			return;
-		}
-		setNewTaskStartInPlanMode(false);
-	}, [isNewTaskStartInPlanModeDisabled, newTaskStartInPlanMode, setNewTaskStartInPlanMode]);
 
 	useEffect(() => {
 		if (!isEditTaskStartInPlanModeDisabled || !editTaskStartInPlanMode) {
@@ -254,21 +215,22 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
-		setCreateFeatureBranch(false);
-		setBranchName("");
-		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
+		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
+		setBranchName(resetCreateDraft.branchName);
+		setNewTaskBranchRef(resetCreateDraft.branchRef);
 		setIsInlineTaskCreateOpen(true);
 	}, [resolvedDefaultTaskBranchRef]);
 
 	const handleCancelCreateTask = useCallback(() => {
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
 		setIsInlineTaskCreateOpen(false);
-		setNewTaskPrompt("");
-		setNewTaskImages([]);
-		setNewTaskUseWorktree(true);
-		setCreateFeatureBranch(false);
-		setBranchName("");
-
-		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
+		setNewTaskPrompt(resetCreateDraft.prompt);
+		setNewTaskImages(resetCreateDraft.images);
+		setNewTaskUseWorktree(resetCreateDraft.useWorktree);
+		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
+		setBranchName(resetCreateDraft.branchName);
+		setNewTaskBranchRef(resetCreateDraft.branchRef);
 	}, [resolvedDefaultTaskBranchRef]);
 
 	const handleOpenEditTask = useCallback(
@@ -279,59 +241,55 @@ export function useTaskEditor({
 			setIsInlineTaskCreateOpen(false);
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
-			const taskPrompt = task.prompt.trim();
-			setEditingTaskId(task.id);
-			setEditTaskPrompt(taskPrompt);
-			setEditTaskImages(task.images ? task.images.map((image) => ({ ...image })) : []);
-			setEditTaskStartInPlanMode(task.startInPlanMode);
-			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
-			setEditTaskAutoReviewMode(resolveTaskAutoReviewMode(task.autoReviewMode));
-			const fallbackBranch = task.baseRef || resolvedDefaultTaskBranchRef;
-			setEditTaskBranchRef(fallbackBranch);
+			const editDraft = createTaskEditDraft(task, resolvedDefaultTaskBranchRef);
+			setEditingTaskId(editDraft.editingTaskId);
+			setEditTaskPrompt(editDraft.prompt);
+			setEditTaskImages(editDraft.images);
+			setEditTaskStartInPlanMode(editDraft.startInPlanMode);
+			setEditTaskAutoReviewEnabled(editDraft.autoReviewEnabled);
+			setEditTaskAutoReviewMode(editDraft.autoReviewMode);
+			setEditTaskBranchRef(editDraft.branchRef);
 		},
 		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
 	);
 
 	const handleCancelEditTask = useCallback(() => {
-		setEditingTaskId(null);
-		setEditTaskPrompt("");
-		setEditTaskStartInPlanMode(false);
-		setEditTaskAutoReviewEnabled(false);
-		setEditTaskAutoReviewMode("commit");
-		setEditTaskImages([]);
-		setEditTaskBranchRef("");
+		const emptyEditDraft = createEmptyTaskEditDraft();
+		setEditingTaskId(emptyEditDraft.editingTaskId);
+		setEditTaskPrompt(emptyEditDraft.prompt);
+		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
+		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
+		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
+		setEditTaskImages(emptyEditDraft.images);
+		setEditTaskBranchRef(emptyEditDraft.branchRef);
 	}, []);
 
 	const handleSaveEditedTask = useCallback((): string | null => {
-		if (!editingTaskId) {
-			return null;
-		}
-		if (!isTaskSaveValid(editTaskPrompt, editTaskBranchRef, resolvedDefaultTaskBranchRef)) {
-			return null;
-		}
-
-		const prompt = editTaskPrompt.trim();
-		const baseRef = resolveEffectiveBaseRef(editTaskBranchRef, resolvedDefaultTaskBranchRef);
-		const savedTaskId = editingTaskId;
-
-		setBoard((currentBoard) => {
-			const updated = updateTask(currentBoard, savedTaskId, {
-				prompt,
-				startInPlanMode: editTaskStartInPlanMode,
-				autoReviewEnabled: editTaskAutoReviewEnabled,
-				autoReviewMode: editTaskAutoReviewMode,
-				images: editTaskImages,
-				baseRef,
-			});
-			return updated.updated ? updated.board : currentBoard;
+		const { board: nextBoard, savedTaskId } = saveEditedTaskToBoard({
+			board,
+			editingTaskId,
+			prompt: editTaskPrompt,
+			startInPlanMode: editTaskStartInPlanMode,
+			autoReviewEnabled: editTaskAutoReviewEnabled,
+			autoReviewMode: editTaskAutoReviewMode,
+			images: editTaskImages,
+			branchRef: editTaskBranchRef,
+			defaultBranchRef: resolvedDefaultTaskBranchRef,
 		});
-		setEditingTaskId(null);
-		setEditTaskPrompt("");
-		setEditTaskAutoReviewEnabled(false);
-		setEditTaskAutoReviewMode("commit");
-		setEditTaskImages([]);
+		if (!savedTaskId) {
+			return null;
+		}
+		setBoard(nextBoard);
+		const emptyEditDraft = createEmptyTaskEditDraft();
+		setEditingTaskId(emptyEditDraft.editingTaskId);
+		setEditTaskPrompt(emptyEditDraft.prompt);
+		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
+		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
+		setEditTaskImages(emptyEditDraft.images);
+		setEditTaskBranchRef(emptyEditDraft.branchRef);
 		return savedTaskId;
 	}, [
+		board,
 		editTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		editTaskBranchRef,
@@ -353,50 +311,44 @@ export function useTaskEditor({
 
 	const handleCreateTask = useCallback(
 		(options?: CreateTaskOptions): string | null => {
-			if (!isTaskSaveValid(newTaskPrompt, newTaskBranchRef, resolvedDefaultTaskBranchRef)) {
-				return null;
-			}
-			const prompt = newTaskPrompt.trim();
-			const baseRef = resolveEffectiveBaseRef(newTaskBranchRef, resolvedDefaultTaskBranchRef);
-			const created = addTaskToColumnWithResult(board, "backlog", {
-				prompt,
-				startInPlanMode: newTaskStartInPlanMode,
+			const { board: nextBoard, createdTaskId } = createTaskOnBoard({
+				board,
+				prompt: newTaskPrompt,
+				startInPlanMode: false,
 				autoReviewEnabled: newTaskAutoReviewEnabled,
 				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
-				baseRef,
+				branchRef: newTaskBranchRef,
+				defaultBranchRef: resolvedDefaultTaskBranchRef,
 				useWorktree: newTaskUseWorktree,
-				branchName: createFeatureBranch && branchName ? branchName : undefined,
+				branchName,
+				createFeatureBranch,
 			});
-			setBoard(created.board);
-			if (currentProjectId) {
-				setLastCreatedTaskBranchByProjectId((current) => ({
-					...current,
-					[currentProjectId]: baseRef,
-				}));
+			if (!createdTaskId) {
+				return null;
 			}
-			setNewTaskPrompt("");
-			setNewTaskImages([]);
-			setNewTaskUseWorktree(true);
-			setBranchName("");
-
-			setNewTaskBranchRef(baseRef);
+			setBoard(nextBoard);
+			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
+			setNewTaskPrompt(resetCreateDraft.prompt);
+			setNewTaskImages(resetCreateDraft.images);
+			setNewTaskUseWorktree(resetCreateDraft.useWorktree);
+			setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
+			setBranchName(resetCreateDraft.branchName);
+			setNewTaskBranchRef(resetCreateDraft.branchRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
 			}
-			return created.task.id;
+			return createdTaskId;
 		},
 		[
 			board,
 			branchName,
 			createFeatureBranch,
-			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
-			newTaskStartInPlanMode,
 			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
@@ -405,40 +357,28 @@ export function useTaskEditor({
 
 	const handleCreateTasks = useCallback(
 		(prompts: string[], options?: CreateTaskOptions): string[] => {
-			const validPrompts = prompts.map((p) => p.trim()).filter(Boolean);
-			if (validPrompts.length === 0) {
+			const { board: nextBoard, createdTaskIds } = createTasksOnBoard({
+				board,
+				prompts,
+				startInPlanMode: false,
+				autoReviewEnabled: newTaskAutoReviewEnabled,
+				autoReviewMode: newTaskAutoReviewMode,
+				images: newTaskImages,
+				branchRef: newTaskBranchRef,
+				defaultBranchRef: resolvedDefaultTaskBranchRef,
+				useWorktree: newTaskUseWorktree,
+			});
+			if (createdTaskIds.length === 0) {
 				return [];
 			}
-			const baseRef = resolveEffectiveBaseRef(newTaskBranchRef, resolvedDefaultTaskBranchRef);
-			if (!baseRef) {
-				return [];
-			}
-			const createdTaskIds: string[] = [];
-			let updatedBoard = board;
-			for (const prompt of validPrompts) {
-				const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
-					prompt,
-					startInPlanMode: newTaskStartInPlanMode,
-					autoReviewEnabled: newTaskAutoReviewEnabled,
-					autoReviewMode: newTaskAutoReviewMode,
-					images: newTaskImages,
-					baseRef,
-					useWorktree: newTaskUseWorktree,
-				});
-				updatedBoard = created.board;
-				createdTaskIds.push(created.task.id);
-			}
-			setBoard(updatedBoard);
-			if (currentProjectId) {
-				setLastCreatedTaskBranchByProjectId((current) => ({
-					...current,
-					[currentProjectId]: baseRef,
-				}));
-			}
-			setNewTaskPrompt("");
-			setNewTaskImages([]);
-			setNewTaskUseWorktree(true);
-			setNewTaskBranchRef(baseRef);
+			setBoard(nextBoard);
+			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
+			setNewTaskPrompt(resetCreateDraft.prompt);
+			setNewTaskImages(resetCreateDraft.images);
+			setNewTaskUseWorktree(resetCreateDraft.useWorktree);
+			setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
+			setBranchName(resetCreateDraft.branchName);
+			setNewTaskBranchRef(resetCreateDraft.branchRef);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
 			}
@@ -446,12 +386,10 @@ export function useTaskEditor({
 		},
 		[
 			board,
-			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskImages,
-			newTaskStartInPlanMode,
 			newTaskUseWorktree,
 			resolvedDefaultTaskBranchRef,
 			setBoard,
@@ -460,17 +398,19 @@ export function useTaskEditor({
 
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
-		setEditingTaskId(null);
-		setEditTaskPrompt("");
-		setEditTaskStartInPlanMode(false);
-		setEditTaskAutoReviewEnabled(false);
-		setEditTaskAutoReviewMode("commit");
-		setEditTaskImages([]);
-		setEditTaskBranchRef("");
-		setNewTaskImages([]);
-		setCreateFeatureBranch(false);
-		setBranchName("");
-	}, []);
+		const emptyEditDraft = createEmptyTaskEditDraft();
+		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef);
+		setEditingTaskId(emptyEditDraft.editingTaskId);
+		setEditTaskPrompt(emptyEditDraft.prompt);
+		setEditTaskStartInPlanMode(emptyEditDraft.startInPlanMode);
+		setEditTaskAutoReviewEnabled(emptyEditDraft.autoReviewEnabled);
+		setEditTaskAutoReviewMode(emptyEditDraft.autoReviewMode);
+		setEditTaskImages(emptyEditDraft.images);
+		setEditTaskBranchRef(emptyEditDraft.branchRef);
+		setNewTaskImages(resetCreateDraft.images);
+		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
+		setBranchName(resetCreateDraft.branchName);
+	}, [resolvedDefaultTaskBranchRef]);
 
 	return {
 		isInlineTaskCreateOpen,
@@ -478,13 +418,10 @@ export function useTaskEditor({
 		setNewTaskPrompt,
 		newTaskImages,
 		setNewTaskImages,
-		newTaskStartInPlanMode,
-		setNewTaskStartInPlanMode,
 		newTaskAutoReviewEnabled,
 		setNewTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
-		isNewTaskStartInPlanModeDisabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,

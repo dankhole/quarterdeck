@@ -13,28 +13,19 @@ import {
 	Sparkles,
 } from "lucide-react";
 import type { Dispatch, ReactElement, SetStateAction } from "react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
+import { useId } from "react";
 
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
-import {
-	ButtonShortcut,
-	DEFAULT_PRIMARY_START_ACTION,
-	DIALOG_STYLE,
-	normalizeStoredTaskCreateStartAction,
-	parseListItems,
-	type TaskCreateStartAction,
-} from "@/components/task/task-create-dialog-utils";
+import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { LocalStorageKey } from "@/storage/local-storage-store";
+import { useTaskCreateDialog } from "@/hooks/board/use-task-create-dialog";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
-import { useRawLocalStorageValue } from "@/utils/react-use";
 
 export function TaskCreateDialog({
 	open,
@@ -48,11 +39,8 @@ export function TaskCreateDialog({
 	onCreateMultiple,
 	onCreateAndStartMultiple,
 	onCreateStartAndOpen,
-	startInPlanMode,
-	onStartInPlanModeChange,
 	autoReviewEnabled,
 	onAutoReviewEnabledChange,
-	startInPlanModeDisabled = false,
 	useWorktree,
 	onUseWorktreeChange,
 	createFeatureBranch,
@@ -81,11 +69,8 @@ export function TaskCreateDialog({
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateStartAndOpen?: (options?: { keepDialogOpen?: boolean }) => string | null;
-	startInPlanMode: boolean;
-	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
 	onAutoReviewEnabledChange: (value: boolean) => void;
-	startInPlanModeDisabled?: boolean;
 	useWorktree: boolean;
 	onUseWorktreeChange: (value: boolean) => void;
 	createFeatureBranch: boolean;
@@ -103,159 +88,44 @@ export function TaskCreateDialog({
 	defaultBaseRef?: string;
 	onSetDefaultBaseRef?: (value: string | null) => void;
 }): ReactElement {
-	const [mode, setMode] = useState<"single" | "multi">("single");
-	const [createMore, setCreateMore] = useState(false);
-	const [composerResetKey, setComposerResetKey] = useState(0);
-	const [taskPrompts, setTaskPrompts] = useState<string[]>([]);
-	const startInPlanModeId = useId();
 	const useWorktreeId = useId();
 	const createFeatureBranchId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
-	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
-		LocalStorageKey.TaskCreatePrimaryStartAction,
-		DEFAULT_PRIMARY_START_ACTION,
-		normalizeStoredTaskCreateStartAction,
-	);
-
-	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
-	const validTaskCount = useMemo(() => taskPrompts.filter((p) => p.trim()).length, [taskPrompts]);
-	const effectivePrimaryStartAction =
-		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
-	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
-
-	useEffect(() => {
-		if (!open) {
-			setMode("single");
-			setCreateMore(false);
-			setComposerResetKey(0);
-			setTaskPrompts([]);
-		}
-	}, [open]);
-
-	const handleSplitIntoTasks = useCallback(() => {
-		setTaskPrompts(detectedItems);
-		setMode("multi");
-	}, [detectedItems]);
-
-	const handleBackToSingle = useCallback(() => {
-		const joined = taskPrompts
-			.filter((p) => p.trim())
-			.map((p, i) => `${i + 1}. ${p}`)
-			.join("\n");
-		onPromptChange(joined);
-		setMode("single");
-		setTaskPrompts([]);
-	}, [taskPrompts, onPromptChange]);
-
-	const getValidPrompts = useCallback(() => {
-		return taskPrompts.filter((p) => p.trim());
-	}, [taskPrompts]);
-
-	const resetForCreateMore = useCallback(() => {
-		onPromptChange("");
-		onImagesChange([]);
-		setMode("single");
-		setTaskPrompts([]);
-		setComposerResetKey((current) => current + 1);
-	}, [onImagesChange, onPromptChange]);
-
-	const handleCreateSingle = useCallback(() => {
-		const createdTaskId = onCreate({ keepDialogOpen: createMore });
-		if (createMore && createdTaskId) {
-			resetForCreateMore();
-		}
-	}, [createMore, onCreate, resetForCreateMore]);
-
-	const handleCreateAndStartSingle = useCallback(() => {
-		const createdTaskId = onCreateAndStart?.({ keepDialogOpen: createMore });
-		if (createMore && createdTaskId) {
-			resetForCreateMore();
-		}
-	}, [createMore, onCreateAndStart, resetForCreateMore]);
-
-	const handleCreateStartAndOpenSingle = useCallback(() => {
-		const createdTaskId = onCreateStartAndOpen?.({ keepDialogOpen: createMore });
-		if (createMore && createdTaskId) {
-			resetForCreateMore();
-		}
-	}, [createMore, onCreateStartAndOpen, resetForCreateMore]);
-
-	const handleRunSingleStartAction = useCallback(
-		(action: TaskCreateStartAction) => {
-			setPrimaryStartAction(action);
-			if (action === "start_and_open") {
-				handleCreateStartAndOpenSingle();
-				return;
-			}
-			handleCreateAndStartSingle();
-		},
-		[handleCreateAndStartSingle, handleCreateStartAndOpenSingle, setPrimaryStartAction],
-	);
-
-	const handleCreateAll = useCallback(() => {
-		const validPrompts = getValidPrompts();
-		if (validPrompts.length === 0) {
-			return;
-		}
-		const createdTaskIds = onCreateMultiple(validPrompts, { keepDialogOpen: createMore });
-		if (createMore && createdTaskIds.length > 0) {
-			resetForCreateMore();
-		}
-	}, [createMore, getValidPrompts, onCreateMultiple, resetForCreateMore]);
-
-	const handleCreateAndStartAll = useCallback(() => {
-		const validPrompts = getValidPrompts();
-		if (validPrompts.length === 0) {
-			return;
-		}
-		const createdTaskIds = onCreateAndStartMultiple?.(validPrompts, { keepDialogOpen: createMore }) ?? [];
-		if (createMore && createdTaskIds.length > 0) {
-			resetForCreateMore();
-		}
-	}, [createMore, getValidPrompts, onCreateAndStartMultiple, resetForCreateMore]);
-
-	useHotkeys(
-		"mod+enter, mod+shift+enter, mod+alt+enter",
-		(event) => {
-			if (mode === "multi") {
-				if (event.altKey) {
-					handleCreateAll();
-					return;
-				}
-				handleCreateAndStartAll();
-				return;
-			}
-			if (event.altKey) {
-				handleCreateSingle();
-				return;
-			}
-			if (event.shiftKey) {
-				handleRunSingleStartAction("start_and_open");
-				return;
-			}
-			handleRunSingleStartAction("start");
-		},
-		{
-			enabled: open,
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			ignoreEventWhen: (event) => {
-				if (!event.defaultPrevented) return false;
-				const tag = (event.target as HTMLElement).tagName?.toLowerCase();
-				return tag === "textarea" || tag === "input";
-			},
-			preventDefault: true,
-		},
-		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateSingle, handleRunSingleStartAction],
-	);
-
-	const dialogTitle = mode === "multi" ? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}` : "New task";
-	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
-	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
-	const primaryStartIncludesShift = effectivePrimaryStartAction === "start_and_open";
-	const secondaryStartLabel = secondaryStartAction === "start" ? "Start task" : "Start and open";
-	const secondaryStartIncludesShift = secondaryStartAction === "start_and_open";
+	const {
+		mode,
+		createMore,
+		setCreateMore,
+		composerResetKey,
+		taskPrompts,
+		setTaskPrompts,
+		detectedItems,
+		validTaskCount,
+		dialogTitle,
+		taskCountLabel,
+		primaryStartAction,
+		primaryStartLabel,
+		primaryStartIncludesShift,
+		secondaryStartAction,
+		secondaryStartLabel,
+		secondaryStartIncludesShift,
+		handleSplitIntoTasks,
+		handleBackToSingle,
+		handleCreateSingle,
+		handleRunSingleStartAction,
+		handleCreateAll,
+		handleCreateAndStartAll,
+	} = useTaskCreateDialog({
+		open,
+		prompt,
+		onPromptChange,
+		onImagesChange,
+		onCreate,
+		onCreateAndStart,
+		onCreateMultiple,
+		onCreateAndStartMultiple,
+		onCreateStartAndOpen,
+	});
 
 	return (
 		<Dialog
@@ -316,24 +186,6 @@ export function TaskCreateDialog({
 				)}
 
 				<div className="flex flex-col gap-2.5 mt-4 pt-4 border-t border-border">
-					<label
-						htmlFor={startInPlanModeId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-					>
-						<RadixCheckbox.Root
-							id={startInPlanModeId}
-							checked={startInPlanMode}
-							onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
-							disabled={startInPlanModeDisabled}
-							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-						>
-							<RadixCheckbox.Indicator>
-								<Check size={10} className="text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
-						Start in plan mode
-					</label>
-
 					<div className={!useWorktree ? "opacity-40" : undefined}>
 						<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 						<BranchSelectDropdown

@@ -13,25 +13,6 @@ export function isPlanModeDisabledByAutoReview(
 }
 
 /**
- * Resolve the effective default branch ref for a new task, considering
- * config overrides and last-used-branch memory.
- */
-export function resolveDefaultBranchRef(
-	defaultTaskBranchRef: string,
-	configOverridesDefault: boolean,
-	lastCreatedTaskBranch: string | null,
-	availableBranches: Array<{ value: string }>,
-): string {
-	if (configOverridesDefault) {
-		return defaultTaskBranchRef;
-	}
-	if (lastCreatedTaskBranch && availableBranches.some((option) => option.value === lastCreatedTaskBranch)) {
-		return lastCreatedTaskBranch;
-	}
-	return defaultTaskBranchRef;
-}
-
-/**
  * Check whether a branch ref value is still valid against the current
  * set of available branch options.
  */

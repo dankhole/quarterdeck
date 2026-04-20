@@ -2,6 +2,41 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Follow-up: tighten workflow-heavy UI surface review cleanup (2026-04-20)
+
+**Commit:** `7147b656`
+
+**What:** Addressed the small review follow-ups on the rebuilt workflow-heavy UI surface branch by removing a hooks-to-components layering leak, fixing a stale create-dialog reset capture, stabilizing branch-selector handler references, and simplifying an unreachable status-badge null branch.
+
+**Why:** The rebuilt branch was functionally correct, but review surfaced a few polish-level issues that were worth closing before merge: `web-ui/src/hooks/board/board-card.ts` still imported pure helper functions from `@/components/board`, `resetTaskEditorState()` captured an outdated default branch if project defaults changed during the session, `use-branch-selector-popover.ts` recreated its action handlers on every render, and `board-card.tsx` still carried a defensive `statusTagStyle` null branch in a path that already guaranteed the value existed.
+
+**How:**
+- Moved the pure board-card display helpers into `web-ui/src/utils/board-card-display.ts`, updated both `board-card.ts` and `board-card.tsx` to import from the utility path, and deleted the old component-local helper file.
+- Updated `web-ui/src/hooks/board/use-task-editor.ts` so `resetTaskEditorState()` depends on the current resolved default branch instead of holding a stale closure over the initial value.
+- Updated `web-ui/src/hooks/git/use-branch-selector-popover.ts` to memoize the returned branch action handlers individually rather than recreating them inline in the return object.
+- Simplified the review-card status badge class resolution in `web-ui/src/components/board/board-card.tsx` to match the existing `showStatusBadge` invariant, and added a short comment in `task-detail-main-content.tsx` clarifying why that extracted template component still takes a broad prop surface.
+- Re-ran focused board/task/git web-ui tests and `npm run web:typecheck`.
+
+**Files touched:** `web-ui/src/components/board/board-card.tsx`, `web-ui/src/components/task/task-detail-main-content.tsx`, `web-ui/src/hooks/board/board-card.ts`, `web-ui/src/hooks/board/use-task-editor.ts`, `web-ui/src/hooks/git/use-branch-selector-popover.ts`, `web-ui/src/utils/board-card-display.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Rebuild: finish workflow-heavy UI cleanup on top of main's runtime stream split (2026-04-20)
+
+**Commit:** `fcc40468`
+
+**What:** Rebuilt the remaining workflow-heavy UI surface cleanup on a fresh branch off `main`, keeping `main`’s runtime stream architecture split intact while reapplying the board/task/git UI refactors, the pinned base-ref isolation fix, and the two create-dialog behavior changes.
+
+**Why:** The original feature branch had grown a conflicting runtime stream consolidation while `main` independently landed the opposite refactor (`runtime-state-stream-store.ts` plus `runtime-state-stream-transport.ts`). Rebasing that branch directly would have forced a large semantic conflict in a hot runtime path. Rebuilding on top of `main` let the branch keep the newer runtime architecture while still landing the intended UI ownership improvements and task-creation behavior fixes.
+
+**How:**
+- Reapplied the non-runtime refactor files from the earlier branch onto a fresh branch created from local `main`, leaving `web-ui/src/runtime/*` and `web-ui/src/utils/session-summary-utils*` on `main`’s newer split-stream versions.
+- Brought over the project-scoped `defaultBaseRef` fix in `src/config/runtime-config-normalizers.ts` plus its regression coverage in `test/runtime/config/config-persistence.test.ts`, so pinned base refs no longer leak across projects.
+- Reapplied the remaining workflow-heavy UI surface refactors: `task-create-dialog.tsx` now composes over `use-task-create-dialog.ts` and `task-create-dialog.ts`; `branch-selector-popover.tsx` composes over `use-branch-selector-popover.ts` and `branch-selector-popover.ts`; `card-detail-view.tsx` composes over `use-card-detail-view.ts`, `card-detail-view.ts`, `task-detail-main-content.tsx`, and `task-branch-dialogs.tsx`; and `board-card.tsx` composes over `use-board-card.ts` and `board-card.ts`.
+- Reapplied the task-editor extraction into `web-ui/src/hooks/board/task-editor-drafts.ts`, keeping create/edit draft reset and board mutation rules in a pure TS companion module with focused tests.
+- Preserved the two create-dialog behavior changes from the earlier branch: removed the `Start in plan mode` control and create-path wiring from `TaskCreateDialog`, and changed the base-ref dropdown to reset to the resolved project default instead of remembering the last used branch.
+- Updated `docs/todo.md` so Phase 3 now reflects the completed workflow-heavy UI cleanup on this rebuilt branch while leaving the runtime-stream split work tracked through `main`’s own history.
+
+**Files touched:** `src/config/runtime-config-normalizers.ts`, `test/runtime/config/config-persistence.test.ts`, `web-ui/src/components/app/app-dialogs.tsx`, `web-ui/src/components/board/board-card.tsx`, `web-ui/src/components/git/panels/branch-selector-popover.tsx`, `web-ui/src/components/task/card-detail-view.tsx`, `web-ui/src/components/task/card-detail-view.test.tsx`, `web-ui/src/components/task/task-branch-dialogs.tsx`, `web-ui/src/components/task/task-create-dialog.tsx`, `web-ui/src/components/task/task-create-dialog.test.tsx`, `web-ui/src/components/task/task-detail-main-content.tsx`, `web-ui/src/hooks/board/board-card.ts`, `web-ui/src/hooks/board/card-detail-view.ts`, `web-ui/src/hooks/board/task-create-dialog.ts`, `web-ui/src/hooks/board/task-create-dialog.test.ts`, `web-ui/src/hooks/board/task-editor-drafts.ts`, `web-ui/src/hooks/board/task-editor-drafts.test.ts`, `web-ui/src/hooks/board/task-editor.ts`, `web-ui/src/hooks/board/task-editor.test.ts`, `web-ui/src/hooks/board/use-board-card.ts`, `web-ui/src/hooks/board/use-card-detail-view.ts`, `web-ui/src/hooks/board/use-task-create-dialog.ts`, `web-ui/src/hooks/board/use-task-editor.ts`, `web-ui/src/hooks/board/use-task-editor.test.tsx`, `web-ui/src/hooks/git/branch-selector-popover.ts`, `web-ui/src/hooks/git/branch-selector-popover.test.ts`, `web-ui/src/hooks/git/use-branch-selector-popover.ts`, `web-ui/src/providers/board-provider.tsx`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: separate runtime stream state application from transport policy (2026-04-20)
 
 **Commit:** `ce9cfcb6`

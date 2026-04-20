@@ -1,33 +1,20 @@
 import { Draggable, type DraggableProvided, type DraggableStateSnapshot } from "@hello-pangea/dnd";
 import { AlertCircle, GitBranch, Pencil, Pin, PinOff, RotateCw } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BoardCardActions } from "@/components/board/board-card-actions";
-import {
-	CARD_TEXT_COLOR,
-	getCardHoverTooltip,
-	getRunningActivityLabel,
-	shortenBranchName,
-} from "@/components/board/board-card-display";
 import { InlineTitleEditor } from "@/components/task/inline-title-editor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
+import { useBoardCard } from "@/hooks/board/use-board-card";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { getProjectPath, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
-import { getTaskAutoReviewCancelButtonLabel } from "@/types";
-import {
-	describeSessionState,
-	getSessionStatusBadgeStyle,
-	getSessionStatusTooltip,
-	statusBadgeColors,
-} from "@/utils/session-status";
-import { truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { CARD_TEXT_COLOR } from "@/utils/board-card-display";
+import { statusBadgeColors } from "@/utils/session-status";
 
-export { getCardHoverTooltip } from "@/components/board/board-card-display";
+export { getCardHoverTooltip } from "@/utils/board-card-display";
 
 const stopEvent = (event: MouseEvent<HTMLElement>) => {
 	event.preventDefault();
@@ -103,85 +90,44 @@ export function BoardCard({
 	isDependencyLinking?: boolean;
 	draggable?: boolean;
 }): React.ReactElement {
-	const [isHovered, setIsHovered] = useState(false);
-	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const [isEditingTitle, setIsEditingTitle] = useState(false);
-
-	const openTitleEditor = useCallback(() => setIsEditingTitle(true), []);
-	const closeTitleEditor = useCallback(() => setIsEditingTitle(false), []);
-
-	const reviewWorktreeSnapshot = useTaskWorktreeSnapshotValue(card.id);
-	const isTrashCard = columnId === "trash";
-	const isCardInteractive = !isTrashCard;
-
-	const isSharedCheckout = useMemo(() => {
-		const wsPath = getProjectPath();
-		if (reviewWorktreeSnapshot?.path && wsPath) {
-			return reviewWorktreeSnapshot.path === wsPath;
-		}
-		return card.useWorktree === false;
-	}, [reviewWorktreeSnapshot?.path, card.useWorktree]);
-
-	const isCwdDiverged = useMemo(() => {
-		if (!sessionSummary?.projectPath || !reviewWorktreeSnapshot?.path) return false;
-		if (sessionSummary.state !== "running" && sessionSummary.state !== "awaiting_review") return false;
-		return sessionSummary.projectPath !== reviewWorktreeSnapshot.path;
-	}, [sessionSummary?.projectPath, sessionSummary?.state, reviewWorktreeSnapshot?.path]);
-
-	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
-
-	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
-	const statusTagStyle = sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
-	const statusTooltip = sessionSummary ? getSessionStatusTooltip(sessionSummary) : null;
-	const showStatusBadge = statusLabel && statusTagStyle && columnId !== "backlog" && !isTrashCard;
-
-	const runningActivity = useMemo(() => getRunningActivityLabel(sessionSummary), [sessionSummary]);
-	const cardHoverTooltip = useMemo(() => getCardHoverTooltip(sessionSummary), [sessionSummary]);
-
-	const latestSummaryText = sessionSummary?.displaySummary ?? null;
-
-	const isSummaryVisibleOnCard = showSummaryOnCards && !!latestSummaryText;
-	const effectiveTooltip = isSummaryVisibleOnCard ? null : cardHoverTooltip;
-
-	const isSessionDead =
-		!sessionSummary ||
-		sessionSummary.state === "idle" ||
-		sessionSummary.state === "failed" ||
-		sessionSummary.state === "interrupted" ||
-		(sessionSummary.state === "awaiting_review" && sessionSummary.reviewReason === "error");
-
-	const [isRestartDelayElapsed, setIsRestartDelayElapsed] = useState(false);
-	useEffect(() => {
-		if (!isSessionDead) {
-			setIsRestartDelayElapsed(false);
-			return;
-		}
-		const timer = setTimeout(() => setIsRestartDelayElapsed(true), 1_000);
-		return () => clearTimeout(timer);
-	}, [isSessionDead]);
-
-	const isSessionRestartable =
-		(columnId === "in_progress" || columnId === "review") && isSessionDead && isRestartDelayElapsed;
-
-	const statusMarker =
-		columnId === "in_progress" ? (isSessionRestartable && onRestartSession ? "restart" : "spinner") : null;
-	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const effectiveBranch =
-		reviewWorktreeSnapshot?.branch ?? (reviewWorktreeSnapshot?.isDetached ? null : card.branch) ?? null;
-	const reviewBranchLabel = effectiveBranch
-		? shortenBranchName(effectiveBranch)
-		: (reviewWorktreeSnapshot?.headCommit?.slice(0, 8) ?? null);
-	const reviewChangeSummary = reviewWorktreeSnapshot
-		? reviewWorktreeSnapshot.changedFiles == null
-			? null
-			: {
-					filesLabel: `${reviewWorktreeSnapshot.changedFiles} ${reviewWorktreeSnapshot.changedFiles === 1 ? "file" : "files"}`,
-					additions: reviewWorktreeSnapshot.additions ?? 0,
-					deletions: reviewWorktreeSnapshot.deletions ?? 0,
-				}
-		: null;
-	const cancelAutomaticActionLabel =
-		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+	const {
+		reviewWorktreeSnapshot,
+		isHovered,
+		setIsHovered,
+		hoverTimerRef,
+		isEditingTitle,
+		openTitleEditor,
+		closeTitleEditor,
+		isTrashCard,
+		isCardInteractive,
+		isSharedCheckout,
+		isCwdDiverged,
+		displayTitle,
+		statusLabel,
+		statusTagStyle,
+		statusTooltip,
+		showStatusBadge,
+		runningActivity,
+		latestSummaryText,
+		effectiveTooltip,
+		isSessionDead,
+		isSessionRestartable,
+		statusMarker,
+		showProjectStatus,
+		effectiveBranch,
+		reviewBranchLabel,
+		reviewChangeSummary,
+		cancelAutomaticActionLabel,
+		showUncommittedChangesIndicator,
+	} = useBoardCard({
+		card,
+		columnId,
+		sessionSummary,
+		showSummaryOnCards,
+		uncommittedChangesOnCardsEnabled,
+		onRestartSession,
+	});
+	const statusBadgeClass = isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle!];
 
 	const renderShell = (provided?: DraggableProvided, snapshot?: DraggableStateSnapshot) => {
 		const isDragging = snapshot?.isDragging ?? false;
@@ -318,10 +264,7 @@ export function BoardCard({
 									<AlertCircle size={12} className="shrink-0 text-status-orange" />
 								</Tooltip>
 							) : null}
-							{uncommittedChangesOnCardsEnabled &&
-							showProjectStatus &&
-							!isTrashCard &&
-							(reviewWorktreeSnapshot?.changedFiles ?? 0) > 0 ? (
+							{showUncommittedChangesIndicator ? (
 								<Tooltip
 									content={`${reviewWorktreeSnapshot!.changedFiles} uncommitted change${reviewWorktreeSnapshot!.changedFiles === 1 ? "" : "s"}`}
 								>
@@ -429,7 +372,7 @@ export function BoardCard({
 									<span
 										className={cn(
 											"inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
-											isTrashCard ? "bg-surface-3 text-text-tertiary" : statusBadgeColors[statusTagStyle],
+											statusBadgeClass,
 										)}
 									>
 										{statusLabel}

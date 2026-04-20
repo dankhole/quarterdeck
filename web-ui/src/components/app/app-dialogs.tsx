@@ -54,11 +54,8 @@ export function AppDialogs({
 		setNewTaskPrompt,
 		newTaskImages,
 		setNewTaskImages,
-		newTaskStartInPlanMode,
-		setNewTaskStartInPlanMode,
 		newTaskAutoReviewEnabled,
 		setNewTaskAutoReviewEnabled,
-		isNewTaskStartInPlanModeDisabled,
 		newTaskUseWorktree,
 		setNewTaskUseWorktree,
 		createFeatureBranch,
@@ -109,9 +106,6 @@ export function AppDialogs({
 				onCreateStartAndOpen={interactions.handleCreateStartAndOpenTask}
 				onCreateMultiple={handleCreateTasks}
 				onCreateAndStartMultiple={interactions.handleCreateAndStartTasks}
-				startInPlanMode={newTaskStartInPlanMode}
-				onStartInPlanModeChange={setNewTaskStartInPlanMode}
-				startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
 				autoReviewEnabled={newTaskAutoReviewEnabled}
 				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 				useWorktree={newTaskUseWorktree}

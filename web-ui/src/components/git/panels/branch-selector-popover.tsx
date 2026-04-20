@@ -1,6 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as RadixPopover from "@radix-ui/react-popover";
-import { Fzf } from "fzf";
 import {
 	ArrowDown,
 	ArrowUp,
@@ -21,10 +20,11 @@ import {
 	Search,
 	Trash2,
 } from "lucide-react";
-import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
+import { forwardRef, useRef } from "react";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/git/panels/context-menu-utils";
 import { cn } from "@/components/ui/cn";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
+import { useBranchSelectorPopover } from "@/hooks/git/use-branch-selector-popover";
 import type { RuntimeGitRef } from "@/runtime/types";
 
 /**
@@ -96,140 +96,43 @@ export function BranchSelectorPopover({
 	disableContextMenu,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
-	const [query, setQuery] = useState("");
-	const inputRef = useRef<HTMLInputElement>(null);
-	const pinnedSet = useMemo(() => new Set(pinnedBranches ?? []), [pinnedBranches]);
-
-	const detachedRef = useMemo(() => (branches ?? []).find((ref) => ref.type === "detached"), [branches]);
-	const localBranches = useMemo(() => (branches ?? []).filter((ref) => ref.type === "branch"), [branches]);
-	const remoteBranches = useMemo(() => (branches ?? []).filter((ref) => ref.type === "remote"), [branches]);
-
-	const fzfLocal = useMemo(() => new Fzf(localBranches, { selector: (ref) => ref.name }), [localBranches]);
-	const fzfRemote = useMemo(() => new Fzf(remoteBranches, { selector: (ref) => ref.name }), [remoteBranches]);
-
-	const filteredLocal = useMemo(
-		() => (query.trim() ? fzfLocal.find(query).map((r) => r.item) : localBranches),
-		[query, fzfLocal, localBranches],
-	);
-	const filteredRemote = useMemo(
-		() => (query.trim() ? fzfRemote.find(query).map((r) => r.item) : remoteBranches),
-		[query, fzfRemote, remoteBranches],
-	);
-
-	// Split local branches into pinned (shown first) and unpinned
-	const pinnedLocal = useMemo(
-		() => (pinnedSet.size > 0 ? filteredLocal.filter((ref) => pinnedSet.has(ref.name)) : []),
-		[filteredLocal, pinnedSet],
-	);
-	const unpinnedLocal = useMemo(
-		() => (pinnedSet.size > 0 ? filteredLocal.filter((ref) => !pinnedSet.has(ref.name)) : filteredLocal),
-		[filteredLocal, pinnedSet],
-	);
-
-	const handleSelectBranch = useCallback(
-		(branchName: string) => {
-			onSelectBranchView(branchName);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onSelectBranchView, onOpenChange],
-	);
-
-	const handleCheckout = useCallback(
-		(branchName: string) => {
-			onCheckoutBranch?.(branchName);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onCheckoutBranch, onOpenChange],
-	);
-
-	const handleCompare = useCallback(
-		(branchName: string) => {
-			onCompareWithBranch?.(branchName);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onCompareWithBranch, onOpenChange],
-	);
-
-	const handleMerge = useCallback(
-		(branchName: string) => {
-			onMergeBranch?.(branchName);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onMergeBranch, onOpenChange],
-	);
-
-	const handleCreateBranch = useCallback(
-		(sourceRef: string) => {
-			onCreateBranch?.(sourceRef);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onCreateBranch, onOpenChange],
-	);
-
-	const handleRebase = useCallback(
-		(onto: string) => {
-			onRebaseBranch?.(onto);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onRebaseBranch, onOpenChange],
-	);
-
-	const handleRename = useCallback(
-		(branchName: string) => {
-			onRenameBranch?.(branchName);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onRenameBranch, onOpenChange],
-	);
-
-	const handleReset = useCallback(
-		(ref: string) => {
-			onResetToRef?.(ref);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onResetToRef, onOpenChange],
-	);
-
-	const handlePull = useCallback(
-		(branch: string) => {
-			onPull?.(branch);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onPull, onOpenChange],
-	);
-
-	const handlePush = useCallback(
-		(branch: string) => {
-			onPush?.(branch);
-			onOpenChange(false);
-			setQuery("");
-		},
-		[onPush, onOpenChange],
-	);
-
-	const closePopover = useCallback(() => {
-		onOpenChange(false);
-		setQuery("");
-	}, [onOpenChange]);
-
-	const handleOpenChange = useCallback(
-		(open: boolean) => {
-			onOpenChange(open);
-			if (!open) {
-				setQuery("");
-			}
-		},
-		[onOpenChange],
-	);
+	const {
+		query,
+		setQuery,
+		inputRef,
+		detachedRef,
+		pinnedLocal,
+		unpinnedLocal,
+		filteredRemote,
+		closePopover,
+		handleOpenChange,
+		handleSelectBranch,
+		handleCheckout,
+		handleCompare,
+		handleMerge,
+		handleCreateBranch,
+		handleDeleteBranch,
+		handleRebase,
+		handleRename,
+		handleReset,
+		handlePull,
+		handlePush,
+	} = useBranchSelectorPopover({
+		branches,
+		pinnedBranches,
+		onOpenChange,
+		onSelectBranchView,
+		onCheckoutBranch,
+		onCompareWithBranch,
+		onMergeBranch,
+		onCreateBranch,
+		onDeleteBranch,
+		onRebaseBranch,
+		onRenameBranch,
+		onResetToRef,
+		onPull,
+		onPush,
+	});
 
 	return (
 		<RadixPopover.Root open={isOpen} onOpenChange={handleOpenChange}>
@@ -339,7 +242,7 @@ export function BranchSelectorPopover({
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
-										onDeleteBranch={onDeleteBranch}
+										onDeleteBranch={onDeleteBranch ? handleDeleteBranch : undefined}
 										onRebase={onRebaseBranch ? handleRebase : undefined}
 										onRename={onRenameBranch ? handleRename : undefined}
 										onReset={onResetToRef ? handleReset : undefined}
@@ -368,7 +271,7 @@ export function BranchSelectorPopover({
 										onCompare={onCompareWithBranch ? handleCompare : undefined}
 										onMerge={onMergeBranch ? handleMerge : undefined}
 										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
-										onDeleteBranch={onDeleteBranch}
+										onDeleteBranch={onDeleteBranch ? handleDeleteBranch : undefined}
 										onRebase={onRebaseBranch ? handleRebase : undefined}
 										onRename={onRenameBranch ? handleRename : undefined}
 										onReset={onResetToRef ? handleReset : undefined}

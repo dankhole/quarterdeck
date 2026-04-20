@@ -290,8 +290,7 @@ export function toRuntimeConfigState({
 	pinnedBranches?: string[];
 }): RuntimeConfigState {
 	const fields = normalizeGlobalConfigFields(globalConfig as Record<string, unknown> | null);
-	const rawDefaultBaseRef =
-		projectConfig?.defaultBaseRef ?? (globalConfig as Record<string, unknown> | null)?.defaultBaseRef;
+	const rawDefaultBaseRef = projectConfig?.defaultBaseRef;
 	return {
 		...fields,
 		globalConfigPath,

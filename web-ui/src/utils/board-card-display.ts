@@ -77,7 +77,6 @@ function resolveToolCallLabel(
 	return parsed.toolInputSummary ? `${parsed.toolName}(${parsed.toolInputSummary})` : parsed.toolName;
 }
 
-/** Tooltip content for card hover: displaySummary if available, fallback text otherwise. */
 export function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefined): string | null {
 	if (!summary) {
 		return null;
@@ -95,7 +94,6 @@ export function getCardHoverTooltip(summary: RuntimeTaskSessionSummary | undefin
 	return null;
 }
 
-/** Short activity label for running cards (e.g. "Reading src/auth.ts"). */
 export function getRunningActivityLabel(summary: RuntimeTaskSessionSummary | undefined): string | null {
 	if (!summary || summary.state !== "running") {
 		return null;
