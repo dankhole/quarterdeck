@@ -3,6 +3,7 @@ import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
 	applyAuthoritativeProjectBoard,
+	applyAuthoritativeProjectState,
 	type CachedProjectBoardRestore,
 	type ProjectVersion,
 	reconcileAuthoritativeTaskSessionSummaries,
@@ -32,6 +33,25 @@ function makeSession(taskId: string, startedAt: number | null, updatedAt: number
 		conversationSummaries: [],
 		displaySummary: null,
 		displaySummaryGeneratedAt: null,
+	};
+}
+
+function createProjectState(
+	revision: number,
+	board = createInitialBoardData(),
+	sessions: Record<string, RuntimeTaskSessionSummary> = {},
+) {
+	return {
+		repoPath: "/tmp/project-a",
+		statePath: "/tmp/project-a/.quarterdeck",
+		git: {
+			currentBranch: "main",
+			defaultBranch: "main",
+			branches: ["main"],
+		},
+		board,
+		sessions,
+		revision,
 	};
 }
 
@@ -174,5 +194,141 @@ describe("applyAuthoritativeProjectBoard", () => {
 
 		expect(result.board).toBe(board);
 		expect(result.shouldSkipPersistOnHydration).toBe(true);
+	});
+});
+
+describe("applyAuthoritativeProjectState", () => {
+	it("derives sessions and board projection from the same current local snapshot", () => {
+		const currentBoard = createInitialBoardData();
+		const reviewColumn = currentBoard.columns.find((column) => column.id === "review");
+		if (!reviewColumn) {
+			throw new Error("Missing review column.");
+		}
+		reviewColumn.cards.push({
+			id: "task-1",
+			title: null,
+			prompt: "Prompt",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			baseRef: "main",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+		const incomingBoard = createInitialBoardData();
+		const inProgressColumn = incomingBoard.columns.find((column) => column.id === "in_progress");
+		if (!inProgressColumn) {
+			throw new Error("Missing in-progress column.");
+		}
+		inProgressColumn.cards.push({
+			id: "task-1",
+			title: null,
+			prompt: "Prompt",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			baseRef: "main",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+
+		const result = applyAuthoritativeProjectState({
+			currentState: {
+				board: currentBoard,
+				sessions: {
+					"task-1": {
+						...makeSession("task-1", 200, 200),
+						state: "awaiting_review",
+						reviewReason: "hook",
+					},
+				},
+			},
+			currentVersion: { projectId: "proj-1", revision: 1 },
+			currentProjectId: "proj-1",
+			incomingProjectState: createProjectState(2, incomingBoard, {
+				"task-1": {
+					...makeSession("task-1", 100, 100),
+					state: "running",
+				},
+			}),
+			cachedRestore: null,
+		});
+
+		expect(result).not.toBeNull();
+		expect(result?.nextState.sessions["task-1"]?.state).toBe("awaiting_review");
+		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
+		expect(result?.shouldBumpHydrationNonce).toBe(true);
+	});
+
+	it("confirms a cached board without hydrating when runtime projection already matches", () => {
+		const result = applyAuthoritativeProjectState({
+			currentState: {
+				board: createInitialBoardData(),
+				sessions: {},
+			},
+			currentVersion: { projectId: "proj-1", revision: null },
+			currentProjectId: "proj-1",
+			incomingProjectState: createProjectState(3),
+			cachedRestore: {
+				projectId: "proj-1",
+				authoritativeRevision: 3,
+			},
+		});
+
+		expect(result).not.toBeNull();
+		expect(result?.boardAction).toBe("confirm_cache");
+		expect(result?.shouldBumpHydrationNonce).toBe(false);
+		expect(result?.shouldSkipPersistOnHydration).toBe(true);
+	});
+
+	it("re-projects a same-revision cached board when authoritative runtime truth changes work-column placement", () => {
+		const cachedBoard = createInitialBoardData();
+		const inProgressColumn = cachedBoard.columns.find((column) => column.id === "in_progress");
+		if (!inProgressColumn) {
+			throw new Error("Missing in-progress column.");
+		}
+		inProgressColumn.cards.push({
+			id: "task-1",
+			title: null,
+			prompt: "Prompt",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			baseRef: "main",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+
+		const result = applyAuthoritativeProjectState({
+			currentState: {
+				board: cachedBoard,
+				sessions: {
+					"task-1": {
+						...makeSession("task-1", 100, 100),
+						state: "running",
+					},
+				},
+			},
+			currentVersion: { projectId: "proj-1", revision: null },
+			currentProjectId: "proj-1",
+			incomingProjectState: createProjectState(3, createInitialBoardData(), {
+				"task-1": {
+					...makeSession("task-1", 200, 200),
+					state: "awaiting_review",
+					reviewReason: "hook",
+				},
+			}),
+			cachedRestore: {
+				projectId: "proj-1",
+				authoritativeRevision: 3,
+			},
+		});
+
+		expect(result).not.toBeNull();
+		expect(result?.boardAction).toBe("confirm_cache");
+		expect(result?.shouldBumpHydrationNonce).toBe(true);
+		expect(result?.nextState.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(result?.nextState.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
 	});
 });

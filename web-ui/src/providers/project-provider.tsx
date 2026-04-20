@@ -148,16 +148,22 @@ export function useProjectContext(): ProjectContextValue {
 //
 // Props bridge values that are owned above the provider tree:
 // - onProjectSwitchStart: cleanup callback defined in App
-// - setBoard/setSessions/setCanPersistProjectState: board-level state setters
-//   needed by useProjectSync (temporary — will clean up with BoardProvider)
+// - projectBoardSessionsRef/setProjectBoardSessions/setCanPersistProjectState:
+//   app-shell-owned state seam needed by useProjectSync
 // ---------------------------------------------------------------------------
 
 export interface ProjectProviderProps {
 	onProjectSwitchStart: () => void;
-	boardRef: MutableRefObject<BoardData>;
-	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
-	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
+	projectBoardSessionsRef: MutableRefObject<{
+		board: BoardData;
+		sessions: Record<string, RuntimeTaskSessionSummary>;
+	}>;
+	setProjectBoardSessions: Dispatch<
+		SetStateAction<{
+			board: BoardData;
+			sessions: Record<string, RuntimeTaskSessionSummary>;
+		}>
+	>;
 	canPersistProjectState: boolean;
 	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
@@ -165,10 +171,8 @@ export interface ProjectProviderProps {
 
 export function ProjectProvider({
 	onProjectSwitchStart,
-	boardRef,
-	sessionsRef,
-	setBoard,
-	setSessions,
+	projectBoardSessionsRef,
+	setProjectBoardSessions,
 	canPersistProjectState,
 	setCanPersistProjectState,
 	children,
@@ -262,10 +266,8 @@ export function ProjectProvider({
 		hasNoProjects,
 		hasReceivedSnapshot,
 		isDocumentVisible,
-		boardRef,
-		sessionsRef,
-		setBoard,
-		setSessions,
+		projectBoardSessionsRef,
+		setProjectBoardSessions,
 		setCanPersistProjectState,
 	});
 

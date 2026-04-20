@@ -66,6 +66,12 @@ The main split-brain seam is where those two frontend stores meet:
   - `in_progress` → `review` when session state is `awaiting_review`
   - `review` → `in_progress` when session state is `running`
 - That projection happens both on live session deltas and when authoritative project state is hydrated after reconnect/project switch, so the UI does not depend on a later repair effect to land cards in the right work column.
+- When authoritative project state is applied, the browser now computes **one atomic apply result** from:
+  - the latest queued local board+sessions state
+  - the incoming authoritative project snapshot/refresh
+  - the current revision/cache-confirmation context
+- In code, that browser-side entry point lives at `web-ui/src/hooks/project/project-sync.ts` as `applyAuthoritativeProjectState(...)`.
+- That single apply result drives session reconciliation, board projection, hydration skip-persist policy, revision confirmation, and board-cache updates together. The browser should not reconcile sessions from one snapshot and then project/cache/revise from another.
 - If the projection changes the hydrated board, that projected board should still persist through the normal UI save path. Otherwise the browser would display the runtime-correct column while `board.json` stays behind.
 - Cached board/session restore is subordinate to authoritative project state. Once the server sends authoritative project state after reconnect/project switch/restart, the browser adopts that exact authoritative session keyset (dropping tasks the server no longer reports) and then reapplies the work-column projection.
 

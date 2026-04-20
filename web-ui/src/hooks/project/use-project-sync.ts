@@ -5,19 +5,15 @@ import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import { restoreProjectBoard, stashProjectBoard, updateProjectBoardCache } from "@/runtime/project-board-cache";
 import { fetchProjectState } from "@/runtime/project-state-query";
-import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
-import { normalizeBoardData } from "@/state/board-state";
+import type { RuntimeGitRepositoryInfo, RuntimeProjectStateResponse } from "@/runtime/types";
 import { setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
-import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 import {
-	applyAuthoritativeProjectBoard,
+	applyAuthoritativeProjectState,
 	type CachedProjectBoardRestore,
+	type ProjectBoardSessionsState,
 	type ProjectVersion,
-	reconcileAuthoritativeTaskSessionSummaries,
-	resolveAuthoritativeBoardAction,
-	shouldApplyProjectUpdate,
 } from "./project-sync";
 
 interface UseProjectSyncInput {
@@ -26,10 +22,8 @@ interface UseProjectSyncInput {
 	hasNoProjects: boolean;
 	hasReceivedSnapshot: boolean;
 	isDocumentVisible: boolean;
-	boardRef: MutableRefObject<BoardData>;
-	sessionsRef: MutableRefObject<Record<string, RuntimeTaskSessionSummary>>;
-	setBoard: Dispatch<SetStateAction<BoardData>>;
-	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
+	projectBoardSessionsRef: MutableRefObject<ProjectBoardSessionsState>;
+	setProjectBoardSessions: Dispatch<SetStateAction<ProjectBoardSessionsState>>;
 	setCanPersistProjectState: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -58,10 +52,8 @@ export function useProjectSync({
 	hasNoProjects,
 	hasReceivedSnapshot,
 	isDocumentVisible,
-	boardRef,
-	sessionsRef,
-	setBoard,
-	setSessions,
+	projectBoardSessionsRef,
+	setProjectBoardSessions,
 	setCanPersistProjectState,
 }: UseProjectSyncInput): UseProjectSyncResult {
 	const [projectPath, setProjectPath] = useState<string | null>(null);
@@ -104,8 +96,10 @@ export function useProjectSync({
 				setStoreProjectPath(null);
 				setProjectGit(null);
 				setAppliedProjectId(null);
-				setBoard(createInitialBoardData());
-				setSessions({});
+				setProjectBoardSessions({
+					board: createInitialBoardData(),
+					sessions: {},
+				});
 				setProjectRevision(null);
 				setProjectHydrationState((current) => ({
 					nonce: current.nonce,
@@ -121,41 +115,28 @@ export function useProjectSync({
 			if (currentProjectId !== syncTargetProjectIdRef.current) {
 				return;
 			}
-			if (
-				shouldApplyProjectUpdate(
-					authoritativeProjectVersionRef.current,
-					currentProjectId,
-					nextProjectState.revision,
-				) === "skip"
-			) {
-				return;
-			}
 			setProjectPath(nextProjectState.repoPath);
 			setStoreProjectPath(nextProjectState.repoPath);
 			setProjectGit(nextProjectState.git);
-			const incomingSessions = nextProjectState.sessions ?? {};
-			const reconciledSessions = reconcileAuthoritativeTaskSessionSummaries(sessionsRef.current, incomingSessions);
-			setSessions(reconciledSessions);
-			const normalizedBoard = normalizeBoardData(nextProjectState.board) ?? createInitialBoardData();
-			const authoritativeBoard = applyAuthoritativeProjectBoard(normalizedBoard, reconciledSessions);
-			const currentProjectedBoard = applyAuthoritativeProjectBoard(boardRef.current, reconciledSessions);
-			const boardAction = resolveAuthoritativeBoardAction(
-				authoritativeProjectVersionRef.current,
+			// Authoritative project state enters the browser through exactly one
+			// atomic apply seam. Do not split session reconciliation, board
+			// projection, hydration policy, or cache/revision updates back into
+			// separate snapshots here.
+			const applyResult = applyAuthoritativeProjectState({
+				currentState: projectBoardSessionsRef.current,
+				currentVersion: authoritativeProjectVersionRef.current,
 				currentProjectId,
-				nextProjectState.revision,
-				cachedBoardRestoreRef.current,
-			);
-			if (boardAction === "hydrate") {
-				setBoard(authoritativeBoard.board);
+				incomingProjectState: nextProjectState,
+				cachedRestore: cachedBoardRestoreRef.current,
+			});
+			if (!applyResult) {
+				return;
+			}
+			setProjectBoardSessions(applyResult.nextState);
+			if (applyResult.shouldBumpHydrationNonce) {
 				setProjectHydrationState((current) => ({
 					nonce: current.nonce + 1,
-					shouldSkipPersistOnHydration: authoritativeBoard.shouldSkipPersistOnHydration,
-				}));
-			} else if (!currentProjectedBoard.shouldSkipPersistOnHydration) {
-				setBoard(currentProjectedBoard.board);
-				setProjectHydrationState((current) => ({
-					nonce: current.nonce + 1,
-					shouldSkipPersistOnHydration: currentProjectedBoard.shouldSkipPersistOnHydration,
+					shouldSkipPersistOnHydration: applyResult.shouldSkipPersistOnHydration,
 				}));
 			}
 			setProjectRevision(nextProjectState.revision);
@@ -170,15 +151,15 @@ export function useProjectSync({
 			setIsServedFromBoardCache(false);
 			if (currentProjectId) {
 				updateProjectBoardCache(currentProjectId, {
-					board: boardAction === "hydrate" ? authoritativeBoard.board : currentProjectedBoard.board,
-					sessions: reconciledSessions,
+					board: applyResult.boardForCache,
+					sessions: applyResult.nextState.sessions,
 					authoritativeRevision: nextProjectState.revision,
 					projectPath: nextProjectState.repoPath,
 					projectGit: nextProjectState.git,
 				});
 			}
 		},
-		[currentProjectId, setBoard, setCanPersistProjectState, setSessions],
+		[currentProjectId, setCanPersistProjectState, setProjectBoardSessions],
 	);
 
 	const refreshProjectState = useCallback(async () => {
@@ -220,8 +201,8 @@ export function useProjectSync({
 			const prevRevision = authoritativeProjectVersionRef.current.revision;
 			if (prevProjectId && prevRevision != null) {
 				stashProjectBoard(prevProjectId, {
-					board: boardRef.current,
-					sessions: sessionsRef.current,
+					board: projectBoardSessionsRef.current.board,
+					sessions: projectBoardSessionsRef.current.sessions,
 					authoritativeRevision: prevRevision,
 					projectPath: projectPath,
 					projectGit: projectGit,
@@ -247,8 +228,10 @@ export function useProjectSync({
 
 			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
 			if (cached && restoreId) {
-				setBoard(cached.board);
-				setSessions(cached.sessions);
+				setProjectBoardSessions({
+					board: cached.board,
+					sessions: cached.sessions,
+				});
 				setProjectPath(cached.projectPath);
 				setStoreProjectPath(cached.projectPath);
 				setProjectGit(cached.projectGit);
@@ -258,24 +241,17 @@ export function useProjectSync({
 				};
 				setIsServedFromBoardCache(true);
 			} else {
-				setBoard(createInitialBoardData());
-				setSessions({});
+				setProjectBoardSessions({
+					board: createInitialBoardData(),
+					sessions: {},
+				});
 				setProjectPath(null);
 				setStoreProjectPath(null);
 				setProjectGit(null);
 				setIsServedFromBoardCache(false);
 			}
 		},
-		[
-			boardRef,
-			currentProjectId,
-			sessionsRef,
-			setBoard,
-			setCanPersistProjectState,
-			setSessions,
-			projectGit,
-			projectPath,
-		],
+		[currentProjectId, setCanPersistProjectState, setProjectBoardSessions, projectGit, projectPath],
 	);
 
 	useEffect(() => {

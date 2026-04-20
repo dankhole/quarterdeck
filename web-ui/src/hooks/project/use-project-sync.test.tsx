@@ -1,7 +1,8 @@
-import { act, useEffect, useRef, useState } from "react";
+import { act, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
+import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useProjectSync } from "@/hooks/project/use-project-sync";
 import { clearProjectBoardCache, stashProjectBoard } from "@/runtime/project-board-cache";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -209,13 +210,22 @@ function HookHarness({
 	isDocumentVisible?: boolean;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
-	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [projectBoardSessions, setProjectBoardSessionsState] = useState<ProjectBoardSessionsState>(() => ({
+		board: createInitialBoardData(),
+		sessions: {},
+	}));
 	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
-	const boardRef = useRef(board);
-	boardRef.current = board;
-	const sessionsRef = useRef(sessions);
-	sessionsRef.current = sessions;
+	const projectBoardSessionsRef = useRef(projectBoardSessions);
+	const { board, sessions } = projectBoardSessions;
+
+	const setProjectBoardSessions = useCallback(
+		(nextState: ProjectBoardSessionsState | ((current: ProjectBoardSessionsState) => ProjectBoardSessionsState)) => {
+			const resolved = typeof nextState === "function" ? nextState(projectBoardSessionsRef.current) : nextState;
+			projectBoardSessionsRef.current = resolved;
+			setProjectBoardSessionsState(resolved);
+		},
+		[],
+	);
 	const {
 		refreshProjectState,
 		resetProjectSyncState,
@@ -228,10 +238,8 @@ function HookHarness({
 		hasNoProjects: false,
 		hasReceivedSnapshot,
 		isDocumentVisible,
-		boardRef,
-		sessionsRef,
-		setBoard,
-		setSessions,
+		projectBoardSessionsRef,
+		setProjectBoardSessions,
 		setCanPersistProjectState,
 	});
 
@@ -460,9 +468,7 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
 		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
 		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
-		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
-			"task-1",
-		);
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
 		expect(authoritativeSnapshot.projectRevision).toBe(3);
 		expect(authoritativeSnapshot.shouldSkipPersistOnHydration).toBe(false);
 	});

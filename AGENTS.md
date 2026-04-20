@@ -60,6 +60,11 @@ Board state single-writer rule
 - When the browser UI is connected, the UI is the **single writer** of board state via `saveProjectState` (optimistic concurrency with `expectedRevision`). Server code must **never** write board state directly — doing so bumps the server-side revision and causes the UI's next persist to hit a `ProjectStateConflictError`, surfacing a disruptive "Project changed elsewhere" toast.
 - Instead of writing board state from the server, send a lightweight WebSocket message (via `RuntimeStateHub.broadcast*`) with just the data the UI needs, and let the UI apply it to its local board + persist through its normal debounced cycle. See `task_title_updated` and `task_working_directory_updated` as reference patterns.
 - The board/session join point is easy to miss: authoritative project hydrate in `web-ui` must apply the server-owned runtime session projection for the `in_progress` ⇄ `review` work columns before the UI decides whether to skip the next persist. If the projection changes the hydrated board, treat it as a client-owned reconciliation that should persist through the normal UI save path; otherwise `board.json` stays stale even though the runtime truth moved the card.
+- In `web-ui/src/hooks/project/project-sync.ts`, `applyAuthoritativeProjectState(...)` is the single browser-side entry point for authoritative project state. Do not re-split that pipeline in `use-project-sync.ts` or nearby code:
+  - authoritative session reconciliation must use the latest local session state
+  - board projection must use the reconciled session set, not raw snapshot sessions
+  - same-revision cache confirmation can still require board reprojection when runtime session truth changed
+  - hydration flags, cache updates, and revision/persistence re-entry should all come from that one apply result
 - `project.saveState` is intentionally **board-only** on the public/browser side. Runtime session truth must come from the server-owned terminal/session store, not from browser payloads or cached board restore data. If a test or shutdown path needs to seed/persist sessions directly, use the low-level state writer (`src/state/saveProjectState`) and point it at the actual runtime state root (`$HOME/.quarterdeck` or `QUARTERDECK_STATE_HOME`), not the browser API.
 
 Completing a feature or fix (release hygiene)

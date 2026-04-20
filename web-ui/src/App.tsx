@@ -2,7 +2,7 @@
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
 
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	AlreadyOpenFallback,
@@ -29,6 +29,7 @@ import {
 } from "@/hooks/app";
 import { usePromptShortcuts } from "@/hooks/board";
 import { useProjectUiState } from "@/hooks/project";
+import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useShortcutActions } from "@/hooks/settings";
 import { useTerminalConfigSync } from "@/hooks/terminal";
 import { BoardProvider, useBoardContext } from "@/providers/board-provider";
@@ -97,13 +98,42 @@ export default function App(): ReactElement {
 }
 
 function AppInner(): ReactElement {
-	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
-	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [projectBoardSessions, setProjectBoardSessionsState] = useState<ProjectBoardSessionsState>(() => ({
+		board: createInitialBoardData(),
+		sessions: {},
+	}));
 	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
-	const boardRef = useRef(board);
-	boardRef.current = board;
-	const sessionsRef = useRef(sessions);
-	sessionsRef.current = sessions;
+	const projectBoardSessionsRef = useRef(projectBoardSessions);
+	const { board, sessions } = projectBoardSessions;
+
+	const setProjectBoardSessions = useCallback((nextState: SetStateAction<ProjectBoardSessionsState>) => {
+		const resolved = typeof nextState === "function" ? nextState(projectBoardSessionsRef.current) : nextState;
+		// Keep the shared board+sessions ref in lockstep with queued React
+		// state so authoritative project apply reads the latest local state
+		// instead of stale render-time snapshots.
+		projectBoardSessionsRef.current = resolved;
+		setProjectBoardSessionsState(resolved);
+	}, []);
+
+	const setBoard = useCallback(
+		(nextBoard: SetStateAction<BoardData>) => {
+			setProjectBoardSessions((current) => ({
+				...current,
+				board: typeof nextBoard === "function" ? nextBoard(current.board) : nextBoard,
+			}));
+		},
+		[setProjectBoardSessions],
+	);
+
+	const setSessions = useCallback(
+		(nextSessions: SetStateAction<Record<string, RuntimeTaskSessionSummary>>) => {
+			setProjectBoardSessions((current) => ({
+				...current,
+				sessions: typeof nextSessions === "function" ? nextSessions(current.sessions) : nextSessions,
+			}));
+		},
+		[setProjectBoardSessions],
+	);
 
 	const searchOverlayResetRef = useRef<() => void>(() => {});
 
@@ -115,10 +145,8 @@ function AppInner(): ReactElement {
 	return (
 		<ProjectProvider
 			onProjectSwitchStart={handleProjectSwitchStart}
-			boardRef={boardRef}
-			sessionsRef={sessionsRef}
-			setBoard={setBoard}
-			setSessions={setSessions}
+			projectBoardSessionsRef={projectBoardSessionsRef}
+			setProjectBoardSessions={setProjectBoardSessions}
 			canPersistProjectState={canPersistProjectState}
 			setCanPersistProjectState={setCanPersistProjectState}
 		>

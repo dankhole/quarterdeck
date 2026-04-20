@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fix: make authoritative project sync apply from one atomic board/session snapshot
+
+- Reworked `web-ui/src/hooks/project/use-project-sync.ts` so authoritative project-state application no longer reconciles sessions from one snapshot and projects board state from another. The hook now computes one authoritative apply result from the latest queued local board+sessions state, then uses that single result for board projection, session reconciliation, hydration flags, cache updates, and revision/persistence re-entry.
+- Added `applyAuthoritativeProjectState()` in `web-ui/src/hooks/project/project-sync.ts` as the explicit browser-side entry point for authoritative project state. This preserves the split-brain refactor’s ownership model: the browser still owns durable board state, the server still owns runtime session truth, and the browser still projects runtime truth onto the `in_progress`/`review` boundary without reintroducing broad repair behavior.
+- Moved the app shell onto a shared `board + sessions` state seam for project sync so `use-project-sync` can read the latest queued local state instead of stale refs. This keeps authoritative replacement, delta merge, and local reset/delete paths distinct instead of letting them overlap accidentally under timing pressure.
+- Added focused regression coverage for the new authoritative apply helper and the updated hook path, then revalidated project sync, runtime stream, persistence, reconnect, and restart coverage.
+- Followed up on review by removing the redundant outer revision guard in `use-project-sync.ts`, dropping the duplicated `reconciledSessions` field from the authoritative apply result, trimming unnecessary ref dependencies, and adding direct coverage for the `confirm_cache` + session-driven reprojection case.
+
 ## [0.10.0] — 2026-04-20
 
 ### Refactor: make the task-state ownership join point explicit
