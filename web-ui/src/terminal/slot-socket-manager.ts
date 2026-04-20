@@ -235,6 +235,7 @@ export class SlotSocketManager {
 			return false;
 		}
 		log.info(`slot ${this.slotId} requesting restore from server`);
+		this.restoreCompleted = false;
 		this.sendControl({ type: "request_restore" });
 		return true;
 	}

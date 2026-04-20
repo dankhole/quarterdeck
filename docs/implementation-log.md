@@ -55,6 +55,16 @@
 
 **Files touched:** `web-ui/src/hooks/project/use-project-sync.ts`, `web-ui/src/hooks/project/project-sync.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/runtime/project-board-cache.ts`, `web-ui/src/runtime/project-board-cache.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
 
+## Fix: terminal scroll-before-visible on task switch (2026-04-20)
+
+**What:** Fixed terminal revealing at the wrong scroll position when switching back to a previously-viewed task (PREVIOUS/READY/PRELOADING pool slots).
+
+**Why:** When `acquireForTask` reuses an existing non-ACTIVE slot, it calls `requestRestore()` to get a fresh server snapshot. But `restoreCompleted` stayed `true`, so the subsequent `show()` in `usePersistentTerminalSession` saw `restoreCompleted: true` and immediately ran `scheduleRevealAfterLayout` — exposing the stale buffer at whatever scroll position it held, before the fresh snapshot could arrive and `finalizeRestorePresentation` could run its proper `scrollToBottom()` + reveal sequence.
+
+**How:** Added `this.restoreCompleted = false` in `SlotSocketManager.requestRestore()` before sending the `request_restore` control message. This makes `show()` defer reveal (same path as initial connect), and the existing `markRestoreCompleted()` → `finalizeRestorePresentation` flow handles the proper bottom-scroll reveal once the snapshot arrives. Side benefit: also prevents redundant `requestRestore()` calls while one is already in-flight.
+
+**Files touched:** `web-ui/src/terminal/slot-socket-manager.ts`.
+
 ## Fix: terminal scroll-to-bottom on task load/untrash (2026-04-20)
 
 **What:** Fixed a race condition where the agent terminal would not scroll to the bottom when a task was first loaded, most noticeable on untrash.

@@ -31,6 +31,10 @@
 - Updated `web-ui/src/runtime/project-board-cache.ts` to store the authoritative revision a cached board was last aligned with, making it clearer that a restored board can be shown optimistically without being treated as authoritative for persistence.
 - Added project-sync regression coverage for cached restore confirmation and stale previous-project updates during switches, alongside updated pure-domain tests for the authoritative board-application policy.
 
+### Fix: terminal scroll-before-visible on task switch
+
+- Fixed terminal revealing stale buffer at wrong scroll position when switching back to a previously-viewed task. `requestRestore()` now clears `restoreCompleted` so `show()` defers reveal until the fresh snapshot arrives with proper bottom-scroll positioning.
+
 ### Fix: terminal scroll-to-bottom on task load/untrash
 
 - Fixed a race condition where the terminal would not scroll to the bottom when a task was first loaded (most noticeable after untrashing). The ResizeObserver could consume the `pendingScrollToBottom` flag before the reveal animation frame fired, leaving the terminal visible at the wrong scroll position.
