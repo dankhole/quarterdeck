@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	startRuntimeStateStreamTransport,
-	type RuntimeStateStreamTransport,
-} from "@/runtime/runtime-state-stream-transport";
+import { startRuntimeStateStreamTransport } from "@/runtime/runtime-state-stream-transport";
 
 class FakeWebSocket {
 	static instances: FakeWebSocket[] = [];

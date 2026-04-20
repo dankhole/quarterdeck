@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: resolve all lint warnings and flaky integration test
+
+- Replaced 11 non-null assertions (`!`) across `statusline.ts`, `session-summary-store.ts`, `terminal-protocol-filter.ts`, `get-workdir-changes.ts`, and `git-stash.ts` with safe alternatives (`as` narrowing after guards, `?? fallback` for regex captures).
+- Removed unused `RuntimeStateStreamTransport` type import from `runtime-state-stream-transport.test.ts`.
+- Fixed flaky `task-command-exit.integration.test.ts` — the "join existing server" CLI path relied on Node's natural event-loop drain after the `open` package spawned a browser subprocess, but under parallel test load the subprocess Promise listeners kept the loop alive past the 8-second timeout. Changed the terminal early-return to an explicit `process.exit(0)`.
+
 ### Fix: make authoritative project sync apply from one atomic board/session snapshot
 
 - Reworked `web-ui/src/hooks/project/use-project-sync.ts` so authoritative project-state application no longer reconciles sessions from one snapshot and projects board state from another. The hook now computes one authoritative apply result from the latest queued local board+sessions state, then uses that single result for board projection, session reconciliation, hydration flags, cache updates, and revision/persistence re-entry.

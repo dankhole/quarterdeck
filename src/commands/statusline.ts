@@ -236,7 +236,7 @@ function getMacBattery(): BatteryInfo | null {
 		if (!percentMatch) {
 			return null;
 		}
-		const percent = Number.parseInt(percentMatch[1]!, 10);
+		const percent = Number.parseInt(percentMatch[1] ?? "0", 10);
 		const charging = result.includes("AC Power") || result.includes("charging");
 		return { percent, charging };
 	} catch {

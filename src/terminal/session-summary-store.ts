@@ -310,8 +310,8 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		// Retention: count limit first (max 5), then character cap (max 2000).
 		// Always retain the first entry (index 0 in array) and the latest (just appended).
 		if (entries.length > 5) {
-			const first = entries[0]!;
-			const latest = entries[entries.length - 1]!;
+			const first = entries[0] as (typeof entries)[number];
+			const latest = entries[entries.length - 1] as (typeof entries)[number];
 			// Drop oldest non-first entries until count <= 5.
 			const middle = entries.slice(1, -1);
 			const keep = 5 - 2; // slots for first + latest

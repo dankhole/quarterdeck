@@ -601,7 +601,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			isAddressInUseError(error) &&
 			(await tryOpenExistingServer({ noOpen: options.noOpen, shouldAutoOpenBrowser }))
 		) {
-			return;
+			process.exit(0);
 		}
 		throw error;
 	}

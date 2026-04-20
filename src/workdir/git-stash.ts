@@ -71,14 +71,14 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
 		const parts = line.split("\x1f");
 		if (parts.length < 3) continue;
 
-		const refName = parts[0]!;
-		const subject = parts[1]!;
-		const dateStr = parts[2]!;
+		const refName = parts[0] as string;
+		const subject = parts[1] as string;
+		const dateStr = parts[2] as string;
 
 		// Extract index from stash@{N}
 		const indexMatch = refName.match(/^stash@\{(\d+)\}$/);
 		if (!indexMatch) continue;
-		const index = Number.parseInt(indexMatch[1]!, 10);
+		const index = Number.parseInt(indexMatch[1] ?? "0", 10);
 
 		// Extract branch and message from subject.
 		// Format: "On <branch>: <message>" or "WIP on <branch>: <hash> <commit-msg>"
@@ -86,8 +86,8 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
 		let message: string = subject;
 		const subjectMatch = subject.match(/^(?:On|WIP on) ([^:]+):\s*(.*)$/);
 		if (subjectMatch) {
-			branch = subjectMatch[1]!;
-			message = subjectMatch[2]!;
+			branch = subjectMatch[1] ?? "";
+			message = subjectMatch[2] ?? "";
 		}
 
 		entries.push({ index, message, branch, date: dateStr });

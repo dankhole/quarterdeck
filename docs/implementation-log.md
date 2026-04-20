@@ -2,6 +2,19 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix lint warnings and flaky integration test (2026-04-20)
+
+**What:** Resolved all 12 Biome lint warnings (11 `noNonNullAssertion`, 1 `noUnusedImports`) and fixed the flaky `task-command-exit.integration.test.ts` that failed under parallel test load.
+
+**Why:** The lint warnings were all `style/noNonNullAssertion` on array/regex indexing that was already guarded by prior checks — safe at runtime but flagged by the linter. The test flake had a deeper cause: when a second CLI invocation detects an existing server (EADDRINUSE), it opens a browser tab via the `open` package and then `return`s from `runMainCommand`. The caller `run()` only calls `process.exit()` for non-launch invocations, so launch invocations relied on Node's natural event-loop drain. Under parallel load, the `open` package's spawned subprocess and its Promise error listeners kept the loop alive past the 8-second `waitForExit` timeout, causing `didExit` to be `false`.
+
+**How:**
+- Replaced `!` assertions with `as` type narrowing (where a length/match guard makes the value guaranteed) or `?? fallback` (for regex capture groups and parsed values) across `src/commands/statusline.ts`, `src/terminal/session-summary-store.ts`, `src/terminal/terminal-protocol-filter.ts`, `src/workdir/get-workdir-changes.ts`, `src/workdir/git-stash.ts`.
+- Removed unused `RuntimeStateStreamTransport` type import from `web-ui/src/runtime/runtime-state-stream-transport.test.ts`.
+- Changed the EADDRINUSE early-return in `src/cli.ts` (`runMainCommand`, line 604) from `return` to `process.exit(0)` — this is a terminal path where the CLI successfully handed off to an existing server and has no remaining work.
+
+**Files touched:** `src/cli.ts`, `src/commands/statusline.ts`, `src/terminal/session-summary-store.ts`, `src/terminal/terminal-protocol-filter.ts`, `src/workdir/get-workdir-changes.ts`, `src/workdir/git-stash.ts`, `web-ui/src/runtime/runtime-state-stream-transport.test.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Follow-up: tighten authoritative apply review nits and cache-reprojection coverage (2026-04-20)
 
 **Commit:** `(uncommitted in worktree)`
