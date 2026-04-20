@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	areSoundsSuppressed,
 	deriveColumn,
@@ -241,6 +241,15 @@ describe("areSoundsSuppressed", () => {
 describe("isEventSuppressedForProject", () => {
 	const suppress = { permission: false, review: true, failure: false };
 
+	beforeEach(() => {
+		vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+		vi.spyOn(document, "hasFocus").mockReturnValue(true);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("returns false when no current project", () => {
 		expect(isEventSuppressedForProject("review", suppress, "proj-a", null)).toBe(false);
 	});
@@ -259,5 +268,10 @@ describe("isEventSuppressedForProject", () => {
 
 	it("returns false when task project is undefined", () => {
 		expect(isEventSuppressedForProject("review", suppress, undefined, "proj-a")).toBe(false);
+	});
+
+	it("returns false when tab is not visible even if event would be suppressed", () => {
+		vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+		expect(isEventSuppressedForProject("review", suppress, "proj-a", "proj-a")).toBe(false);
 	});
 });

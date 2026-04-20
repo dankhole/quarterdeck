@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fix: "Mute focused project" suppresses sounds even when tab/browser is unfocused
+
+- Per-project sound suppression (`isEventSuppressedForProject`) now checks tab visibility before suppressing — if the user isn't looking at the board, the "currently viewed project" concept doesn't apply and sounds play normally.
+
 ### Fix: base ref dropdown loads branches independently
 
 - Fixed the top bar base-ref dropdown showing an empty branch list on first open — it now triggers its own branch fetch via `requestBranches()` instead of relying on the main branch pill popover having been opened first.

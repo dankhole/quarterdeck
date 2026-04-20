@@ -74,7 +74,9 @@ export function areSoundsSuppressed(enabled: boolean, onlyWhenHidden: boolean): 
 
 /**
  * Determines whether a specific sound event should be suppressed
- * for a task in the current project.
+ * for a task in the current project. Only suppresses when the tab
+ * is visible — if the user isn't looking at the board, the "currently
+ * viewed project" concept doesn't apply.
  */
 export function isEventSuppressedForProject(
 	eventType: AudibleNotificationEventType,
@@ -82,6 +84,7 @@ export function isEventSuppressedForProject(
 	taskWorktreeId: string | undefined,
 	currentProjectId: string | null,
 ): boolean {
+	if (!isTabVisible()) return false;
 	if (currentProjectId == null) return false;
 	return suppressConfig[eventType] && taskWorktreeId === currentProjectId;
 }

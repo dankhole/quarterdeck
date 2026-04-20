@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: "Mute focused project" plays sounds when tab/browser is unfocused (2026-04-20)
+
+**What:** The "Mute focused project" per-event toggle now only suppresses sounds when the user is actually looking at the board. When the tab is hidden or the browser loses focus, per-project suppression is bypassed and sounds play normally.
+
+**Why:** The suppression was unconditional — it checked whether the task belonged to the currently selected project, but didn't consider whether the user was actually viewing it. If a user switched to another app or tab, they'd miss notifications for the project they were working on, defeating the purpose of audible notifications.
+
+**How:** Added an `isTabVisible()` early-return in `isEventSuppressedForProject()`. When the tab is hidden or unfocused, the function returns `false` (not suppressed) immediately, letting the sound play. Removed the redundant caller-side `isTabVisible()` guard in `fireSound` so visibility logic lives in one place. Updated the unit tests to mock tab visibility state (jsdom defaults to hidden/unfocused) and added a dedicated integration test verifying sounds play for a suppressed-project task when the tab is hidden.
+
+**Files touched:** `web-ui/src/hooks/notifications/audible-notifications.ts`, `web-ui/src/hooks/notifications/audible-notifications.test.ts`, `web-ui/src/hooks/notifications/audible-notifications-suppress.test.tsx`, `web-ui/src/hooks/notifications/use-audible-notifications.ts`.
+
 ## Fix: base ref dropdown loads branches independently (2026-04-20)
 
 **What:** Fixed the top bar base-ref dropdown opening empty and added loading state, stale-data clearing on project switch, and trigger button styling.

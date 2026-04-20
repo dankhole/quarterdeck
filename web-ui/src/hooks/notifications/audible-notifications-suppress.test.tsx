@@ -27,6 +27,7 @@ describe("useAudibleNotifications — suppress current project", () => {
 		playMock.mockReset();
 		ensureContextMock.mockReset();
 		harness = setupTestHarness();
+		// Per-project suppression only applies when tab is visible.
 		vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
 		vi.spyOn(document, "hasFocus").mockReturnValue(true);
 	});
@@ -213,5 +214,51 @@ describe("useAudibleNotifications — suppress current project", () => {
 		harness.flushSettleWindow();
 		expect(playMock).toHaveBeenCalledTimes(1);
 		expect(playMock).toHaveBeenCalledWith("review", 0.7);
+	});
+
+	it("does not suppress current-project when tab is hidden (user not looking)", async () => {
+		vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+		vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+		const props: HookProps = {
+			...defaultProps(),
+			audibleNotificationsOnlyWhenHidden: false,
+			audibleNotificationSuppressCurrentProject: {
+				permission: true,
+				review: true,
+				failure: true,
+			},
+			currentProjectId: "project-a",
+			notificationProjectIds: { "task-1": "project-a" },
+		};
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({ taskId: "task-1", state: "running", reviewReason: null }),
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			harness.root.render(
+				<HookHarness
+					{...props}
+					notificationSessions={{
+						"task-1": createMockSession({
+							taskId: "task-1",
+							state: "awaiting_review",
+							reviewReason: "error",
+						}),
+					}}
+				/>,
+			);
+		});
+
+		harness.flushSettleWindow();
+		expect(playMock).toHaveBeenCalledWith("failure", 0.7);
 	});
 });
