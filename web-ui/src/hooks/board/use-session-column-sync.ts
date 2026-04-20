@@ -1,8 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef } from "react";
 
+import { resolveSessionColumnProjectionMove } from "@/hooks/board/session-column-sync";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { getTaskColumnId, moveTaskToColumn } from "@/state/board-state";
+import { moveTaskToColumn } from "@/state/board-state";
 import type { BoardColumnId, BoardData } from "@/types";
 
 interface UseSessionColumnSyncInput {
@@ -44,29 +45,22 @@ export function useSessionColumnSync({
 				if (previous && previous.updatedAt > summary.updatedAt) {
 					continue;
 				}
-				const columnId = getTaskColumnId(nextBoard, summary.taskId);
-				if (summary.state === "awaiting_review" && columnId === "in_progress") {
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review", { insertAtTop: true });
-					if (moved.moved) {
-						nextBoard = moved.board;
-					}
+				const move = resolveSessionColumnProjectionMove(nextBoard, summary);
+				if (!move) {
 					continue;
 				}
-				if (summary.state === "running" && columnId === "review") {
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
-						skipKickoff: true,
-					});
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress", { insertAtTop: true });
-					if (moved.moved) {
-						nextBoard = moved.board;
-					}
+				const programmaticMoveAttempt = tryProgrammaticCardMove(
+					move.taskId,
+					move.fromColumnId,
+					move.toColumnId,
+					move.skipKickoff ? { skipKickoff: true } : undefined,
+				);
+				if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+					continue;
+				}
+				const moved = moveTaskToColumn(nextBoard, move.taskId, move.toColumnId, { insertAtTop: true });
+				if (moved.moved) {
+					nextBoard = moved.board;
 				}
 			}
 			previousSessionsRef.current = { ...sessions };

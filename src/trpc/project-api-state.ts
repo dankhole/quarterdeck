@@ -68,10 +68,14 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 					projectScope.projectId,
 					projectScope.projectPath,
 				);
-				for (const summary of terminalManager.store.listSummaries()) {
-					input.sessions[summary.taskId] = summary;
-				}
-				const response = await saveProjectState(projectScope.projectPath, input);
+				const authoritativeSessions = Object.fromEntries(
+					terminalManager.store.listSummaries().map((summary) => [summary.taskId, summary]),
+				);
+				const response = await saveProjectState(projectScope.projectPath, {
+					board: input.board,
+					sessions: authoritativeSessions,
+					expectedRevision: input.expectedRevision,
+				});
 				ctx.broadcastStateUpdate(projectScope);
 				void ctx.deps.broadcaster.broadcastRuntimeProjectsUpdated(projectScope.projectId);
 

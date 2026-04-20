@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
+	applyAuthoritativeProjectBoard,
 	type CachedProjectBoardRestore,
-	mergeTaskSessionSummaries,
 	type ProjectVersion,
+	reconcileAuthoritativeTaskSessionSummaries,
 	resolveAuthoritativeBoardAction,
 	shouldApplyProjectUpdate,
 } from "./project-sync";
@@ -33,53 +35,27 @@ function makeSession(taskId: string, startedAt: number | null, updatedAt: number
 	};
 }
 
-// ---------------------------------------------------------------------------
-// mergeTaskSessionSummaries
-// ---------------------------------------------------------------------------
-
-describe("mergeTaskSessionSummaries", () => {
-	it("adds new sessions not present in current", () => {
-		const current: Record<string, RuntimeTaskSessionSummary> = {};
-		const next = { "task-1": makeSession("task-1", 100, 100) };
-
-		const result = mergeTaskSessionSummaries(current, next);
-
-		expect(result["task-1"]?.taskId).toBe("task-1");
-	});
-
-	it("keeps newer current session over older incoming one", () => {
-		const current = { "task-1": makeSession("task-1", 200, 200) };
-		const next = { "task-1": makeSession("task-1", 100, 100) };
-
-		const result = mergeTaskSessionSummaries(current, next);
-
-		expect(result["task-1"]?.startedAt).toBe(200);
-	});
-
-	it("replaces older current session with newer incoming one", () => {
-		const current = { "task-1": makeSession("task-1", 100, 100) };
-		const next = { "task-1": makeSession("task-1", 200, 200) };
-
-		const result = mergeTaskSessionSummaries(current, next);
-
-		expect(result["task-1"]?.startedAt).toBe(200);
-	});
-
-	it("preserves unrelated sessions in current", () => {
+describe("reconcileAuthoritativeTaskSessionSummaries", () => {
+	it("drops sessions missing from the incoming authoritative project state", () => {
 		const current = {
 			"task-1": makeSession("task-1", 100, 100),
 			"task-2": makeSession("task-2", 150, 150),
 		};
 		const next = { "task-1": makeSession("task-1", 200, 200) };
 
-		const result = mergeTaskSessionSummaries(current, next);
+		const result = reconcileAuthoritativeTaskSessionSummaries(current, next);
 
-		expect(result["task-2"]?.taskId).toBe("task-2");
 		expect(result["task-1"]?.startedAt).toBe(200);
+		expect(result["task-2"]).toBeUndefined();
 	});
 
-	it("handles empty inputs", () => {
-		expect(mergeTaskSessionSummaries({}, {})).toEqual({});
+	it("keeps the newer overlapping summary when the authoritative update replays older data", () => {
+		const current = { "task-1": makeSession("task-1", 200, 200) };
+		const next = { "task-1": makeSession("task-1", 100, 100) };
+
+		const result = reconcileAuthoritativeTaskSessionSummaries(current, next);
+
+		expect(result["task-1"]?.startedAt).toBe(200);
 	});
 });
 
@@ -156,5 +132,47 @@ describe("resolveAuthoritativeBoardAction", () => {
 		const version: ProjectVersion = { projectId: "proj-1", revision: null };
 
 		expect(resolveAuthoritativeBoardAction(version, "proj-1", 1, null)).toBe("hydrate");
+	});
+});
+
+describe("applyAuthoritativeProjectBoard", () => {
+	it("projects runtime-owned work-column placement onto the hydrated board", () => {
+		const board = createInitialBoardData();
+		const inProgressColumn = board.columns.find((column) => column.id === "in_progress");
+		if (!inProgressColumn) {
+			throw new Error("Missing in-progress column.");
+		}
+		inProgressColumn.cards.push({
+			id: "task-1",
+			title: null,
+			prompt: "Prompt",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			baseRef: "main",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+
+		const result = applyAuthoritativeProjectBoard(board, {
+			"task-1": {
+				...makeSession("task-1", 100, 100),
+				state: "awaiting_review",
+				reviewReason: "hook",
+			},
+		});
+
+		expect(result.shouldSkipPersistOnHydration).toBe(false);
+		expect(result.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(result.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
+	});
+
+	it("skips persistence when authoritative hydrate already matches runtime projection", () => {
+		const board = createInitialBoardData();
+
+		const result = applyAuthoritativeProjectBoard(board, {});
+
+		expect(result.board).toBe(board);
+		expect(result.shouldSkipPersistOnHydration).toBe(true);
 	});
 });

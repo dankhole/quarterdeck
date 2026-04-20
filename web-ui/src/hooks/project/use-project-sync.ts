@@ -12,9 +12,10 @@ import type { BoardData } from "@/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 import {
+	applyAuthoritativeProjectBoard,
 	type CachedProjectBoardRestore,
-	mergeTaskSessionSummaries,
 	type ProjectVersion,
+	reconcileAuthoritativeTaskSessionSummaries,
 	resolveAuthoritativeBoardAction,
 	shouldApplyProjectUpdate,
 } from "./project-sync";
@@ -38,11 +39,17 @@ interface UseProjectSyncResult {
 	projectRevision: number | null;
 	setProjectRevision: Dispatch<SetStateAction<number | null>>;
 	projectHydrationNonce: number;
+	shouldSkipPersistOnHydration: boolean;
 	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
+}
+
+interface ProjectHydrationState {
+	nonce: number;
+	shouldSkipPersistOnHydration: boolean;
 }
 
 export function useProjectSync({
@@ -61,7 +68,10 @@ export function useProjectSync({
 	const [projectGit, setProjectGit] = useState<RuntimeGitRepositoryInfo | null>(null);
 	const [appliedProjectId, setAppliedProjectId] = useState<string | null>(null);
 	const [projectRevision, setProjectRevision] = useState<number | null>(null);
-	const [projectHydrationNonce, setProjectHydrationNonce] = useState(0);
+	const [projectHydrationState, setProjectHydrationState] = useState<ProjectHydrationState>({
+		nonce: 0,
+		shouldSkipPersistOnHydration: true,
+	});
 	const [isProjectStateRefreshing, setIsProjectStateRefreshing] = useState(false);
 	const [isServedFromBoardCache, setIsServedFromBoardCache] = useState(false);
 	const authoritativeProjectVersionRef = useRef<ProjectVersion>({
@@ -97,6 +107,10 @@ export function useProjectSync({
 				setBoard(createInitialBoardData());
 				setSessions({});
 				setProjectRevision(null);
+				setProjectHydrationState((current) => ({
+					nonce: current.nonce,
+					shouldSkipPersistOnHydration: true,
+				}));
 				setIsServedFromBoardCache(false);
 				authoritativeProjectVersionRef.current = {
 					projectId: null,
@@ -119,11 +133,12 @@ export function useProjectSync({
 			setProjectPath(nextProjectState.repoPath);
 			setStoreProjectPath(nextProjectState.repoPath);
 			setProjectGit(nextProjectState.git);
-			setSessions((currentSessions) => {
-				const incomingSessions = nextProjectState.sessions ?? {};
-				return mergeTaskSessionSummaries(currentSessions, incomingSessions);
-			});
+			const incomingSessions = nextProjectState.sessions ?? {};
+			const reconciledSessions = reconcileAuthoritativeTaskSessionSummaries(sessionsRef.current, incomingSessions);
+			setSessions(reconciledSessions);
 			const normalizedBoard = normalizeBoardData(nextProjectState.board) ?? createInitialBoardData();
+			const authoritativeBoard = applyAuthoritativeProjectBoard(normalizedBoard, reconciledSessions);
+			const currentProjectedBoard = applyAuthoritativeProjectBoard(boardRef.current, reconciledSessions);
 			const boardAction = resolveAuthoritativeBoardAction(
 				authoritativeProjectVersionRef.current,
 				currentProjectId,
@@ -131,8 +146,17 @@ export function useProjectSync({
 				cachedBoardRestoreRef.current,
 			);
 			if (boardAction === "hydrate") {
-				setBoard(normalizedBoard);
-				setProjectHydrationNonce((current) => current + 1);
+				setBoard(authoritativeBoard.board);
+				setProjectHydrationState((current) => ({
+					nonce: current.nonce + 1,
+					shouldSkipPersistOnHydration: authoritativeBoard.shouldSkipPersistOnHydration,
+				}));
+			} else if (!currentProjectedBoard.shouldSkipPersistOnHydration) {
+				setBoard(currentProjectedBoard.board);
+				setProjectHydrationState((current) => ({
+					nonce: current.nonce + 1,
+					shouldSkipPersistOnHydration: currentProjectedBoard.shouldSkipPersistOnHydration,
+				}));
 			}
 			setProjectRevision(nextProjectState.revision);
 			authoritativeProjectVersionRef.current = {
@@ -146,8 +170,8 @@ export function useProjectSync({
 			setIsServedFromBoardCache(false);
 			if (currentProjectId) {
 				updateProjectBoardCache(currentProjectId, {
-					board: normalizedBoard,
-					sessions: nextProjectState.sessions ?? {},
+					board: boardAction === "hydrate" ? authoritativeBoard.board : currentProjectedBoard.board,
+					sessions: reconciledSessions,
 					authoritativeRevision: nextProjectState.revision,
 					projectPath: nextProjectState.repoPath,
 					projectGit: nextProjectState.git,
@@ -216,6 +240,10 @@ export function useProjectSync({
 			setIsProjectStateRefreshing(false);
 			setAppliedProjectId(null);
 			setProjectRevision(null);
+			setProjectHydrationState((current) => ({
+				nonce: current.nonce,
+				shouldSkipPersistOnHydration: true,
+			}));
 
 			const cached = restoreId ? restoreProjectBoard(restoreId) : null;
 			if (cached && restoreId) {
@@ -273,7 +301,8 @@ export function useProjectSync({
 		projectGit,
 		projectRevision,
 		setProjectRevision,
-		projectHydrationNonce,
+		projectHydrationNonce: projectHydrationState.nonce,
+		shouldSkipPersistOnHydration: projectHydrationState.shouldSkipPersistOnHydration,
 		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,

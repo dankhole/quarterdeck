@@ -5,14 +5,60 @@ import { describe, expect, it } from "vitest";
 
 import type {
 	RuntimeProjectStateResponse,
+	RuntimeTaskSessionSummary,
 	RuntimeTaskWorktreeInfoResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
+import { saveProjectState } from "../../src/state";
 import { createBoard, createReviewBoard } from "../utilities/board-factory";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir";
 import { requestJson } from "../utilities/trpc-request";
+
+async function withStateHomeOverride<T>(stateHome: string, run: () => Promise<T>): Promise<T> {
+	const previousStateHome = process.env.QUARTERDECK_STATE_HOME;
+	// This only scopes the in-process low-level state writer to the same
+	// runtime-state root the spawned test server uses under HOME/.quarterdeck.
+	process.env.QUARTERDECK_STATE_HOME = join(stateHome, ".quarterdeck");
+	try {
+		return await run();
+	} finally {
+		if (previousStateHome === undefined) {
+			delete process.env.QUARTERDECK_STATE_HOME;
+		} else {
+			process.env.QUARTERDECK_STATE_HOME = previousStateHome;
+		}
+	}
+}
+
+function createPersistedReviewSession(
+	taskId: string,
+	projectPath: string,
+	now: number,
+	reviewReason: "exit" | "hook",
+): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: "awaiting_review",
+		agentId: "codex",
+		projectPath,
+		pid: null,
+		startedAt: now - 2_000,
+		updatedAt: now,
+		lastOutputAt: now,
+		reviewReason,
+		exitCode: reviewReason === "exit" ? 0 : null,
+		lastHookAt: null,
+		latestHookActivity: null,
+		stalledSince: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+		conversationSummaries: [],
+		displaySummary: null,
+		displaySummaryGeneratedAt: null,
+	};
+}
 
 describe.sequential("server restart integration", () => {
 	it("preserves existing task worktree when base ref advances", async () => {
@@ -63,7 +109,6 @@ describe.sequential("server restart integration", () => {
 				projectId,
 				payload: {
 					board,
-					sessions: stateResponse.payload.sessions,
 					expectedRevision: stateResponse.payload.revision,
 				},
 			});
@@ -163,33 +208,28 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const seedResponse = await requestJson<RuntimeProjectStateResponse>({
+			const boardSeedResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.saveState",
 				type: "mutation",
 				projectId,
 				payload: {
 					board: createReviewBoard(taskId, taskTitle),
-					sessions: {
-						[taskId]: {
-							taskId,
-							state: "awaiting_review",
-							agentId: "codex",
-							projectPath: projectPath,
-							pid: null,
-							startedAt: now - 2_000,
-							updatedAt: now,
-							lastOutputAt: now,
-							reviewReason: "exit",
-							exitCode: 0,
-							lastHookAt: null,
-							latestHookActivity: null,
-						},
-					},
 					expectedRevision: currentState.payload.revision,
 				},
 			});
-			expect(seedResponse.status).toBe(200);
+			expect(boardSeedResponse.status).toBe(200);
+
+			const seedResponse = await withStateHomeOverride(tempHome, async () =>
+				await saveProjectState(projectPath, {
+					board: boardSeedResponse.payload.board,
+					sessions: {
+						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
+					},
+					expectedRevision: boardSeedResponse.payload.revision,
+				}),
+			);
+			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
 			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.getTaskContext",
@@ -283,33 +323,28 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(currentState.status).toBe(200);
 
-			const seedResponse = await requestJson<RuntimeProjectStateResponse>({
+			const boardSeedResponse = await requestJson<RuntimeProjectStateResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,
 				procedure: "project.saveState",
 				type: "mutation",
 				projectId,
 				payload: {
 					board: createReviewBoard(taskId, taskTitle),
-					sessions: {
-						[taskId]: {
-							taskId,
-							state: "awaiting_review",
-							agentId: "codex",
-							projectPath: projectPath,
-							pid: null,
-							startedAt: now - 2_000,
-							updatedAt: now,
-							lastOutputAt: now,
-							reviewReason: "hook",
-							exitCode: null,
-							lastHookAt: null,
-							latestHookActivity: null,
-						},
-					},
 					expectedRevision: currentState.payload.revision,
 				},
 			});
-			expect(seedResponse.status).toBe(200);
+			expect(boardSeedResponse.status).toBe(200);
+
+			const seedResponse = await withStateHomeOverride(tempHome, async () =>
+				await saveProjectState(projectPath, {
+					board: boardSeedResponse.payload.board,
+					sessions: {
+						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
+					},
+					expectedRevision: boardSeedResponse.payload.revision,
+				}),
+			);
+			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
 
 			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
 				baseUrl: `http://127.0.0.1:${firstPort}`,

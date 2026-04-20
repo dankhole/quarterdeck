@@ -6,30 +6,18 @@
  * state, effects, and async fetching.
  */
 
+import { projectBoardWithSessionColumns } from "@/hooks/board/session-column-sync";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { selectNewestTaskSessionSummary } from "@/utils/session-summary-utils";
+import type { BoardData } from "@/types";
+import {
+	reconcileAuthoritativeTaskSessionSummaryMap,
+} from "@/utils/session-summary-utils";
 
-// ---------------------------------------------------------------------------
-// Session merging
-// ---------------------------------------------------------------------------
-
-/**
- * Merge incoming task session summaries into the current set, keeping the
- * newest summary for each task (by startedAt timestamp). This prevents
- * stale session replays from overwriting newer running sessions.
- */
-export function mergeTaskSessionSummaries(
+export function reconcileAuthoritativeTaskSessionSummaries(
 	currentSessions: Record<string, RuntimeTaskSessionSummary>,
 	nextSessions: Record<string, RuntimeTaskSessionSummary>,
 ): Record<string, RuntimeTaskSessionSummary> {
-	const merged = { ...currentSessions };
-	for (const [taskId, summary] of Object.entries(nextSessions)) {
-		const newest = selectNewestTaskSessionSummary(merged[taskId] ?? null, summary);
-		if (newest) {
-			merged[taskId] = newest;
-		}
-	}
-	return merged;
+	return reconcileAuthoritativeTaskSessionSummaryMap(currentSessions, nextSessions);
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +32,11 @@ export interface ProjectVersion {
 export interface CachedProjectBoardRestore {
 	projectId: string;
 	authoritativeRevision: number;
+}
+
+export interface AuthoritativeProjectBoardApplyResult {
+	board: BoardData;
+	shouldSkipPersistOnHydration: boolean;
 }
 
 /**
@@ -73,9 +66,11 @@ export function shouldApplyProjectUpdate(
  * - `"hydrate"`: replace the displayed board with the authoritative board
  * - `"confirm_cache"`: keep the currently displayed cached board, but promote
  *   the project back to authoritative mode because the server confirmed the
- *   cached revision
+ *   cached revision. The caller may still need to re-project runtime session
+ *   truth onto the currently displayed board.
  * - `"skip"`: keep the current board because we already have this exact
- *   authoritative revision applied
+ *   authoritative revision applied. The caller may still need to re-project
+ *   runtime session truth onto the currently displayed board.
  */
 export function resolveAuthoritativeBoardAction(
 	currentVersion: ProjectVersion,
@@ -96,4 +91,15 @@ export function resolveAuthoritativeBoardAction(
 		return "confirm_cache";
 	}
 	return "hydrate";
+}
+
+export function applyAuthoritativeProjectBoard(
+	board: BoardData,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): AuthoritativeProjectBoardApplyResult {
+	const projected = projectBoardWithSessionColumns(board, Object.values(sessions));
+	return {
+		board: projected.board,
+		shouldSkipPersistOnHydration: !projected.changed,
+	};
 }

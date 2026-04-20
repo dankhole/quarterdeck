@@ -112,6 +112,7 @@ export interface ProjectContextValue {
 	projectRevision: number | null;
 	setProjectRevision: Dispatch<SetStateAction<number | null>>;
 	projectHydrationNonce: number;
+	shouldSkipPersistOnHydration: boolean;
 	isProjectStateRefreshing: boolean;
 	isProjectMetadataPending: boolean;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
@@ -249,6 +250,7 @@ export function ProjectProvider({
 		projectRevision,
 		setProjectRevision,
 		projectHydrationNonce,
+		shouldSkipPersistOnHydration,
 		isProjectStateRefreshing,
 		isProjectMetadataPending,
 		isServedFromBoardCache,
@@ -426,6 +428,7 @@ export function ProjectProvider({
 			projectRevision,
 			setProjectRevision,
 			projectHydrationNonce,
+			shouldSkipPersistOnHydration,
 			isProjectStateRefreshing,
 			isProjectMetadataPending,
 			resetProjectSyncState,
@@ -504,6 +507,7 @@ export function ProjectProvider({
 			projectRevision,
 			setProjectRevision,
 			projectHydrationNonce,
+			shouldSkipPersistOnHydration,
 			isProjectStateRefreshing,
 			isProjectMetadataPending,
 			resetProjectSyncState,

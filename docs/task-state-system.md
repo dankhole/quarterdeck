@@ -33,7 +33,7 @@ This matters because the review reason determines what the UI badge says ("Compl
 
 ### Server-side persistence (disk)
 
-Three JSON files per workspace, in `.quarterdeck/workspaces/<id>/`:
+Three JSON files per project, in `.quarterdeck/projects/<id>/`:
 
 | File | Contents |
 |------|----------|
@@ -41,11 +41,11 @@ Three JSON files per workspace, in `.quarterdeck/workspaces/<id>/`:
 | `sessions.json` | Map of taskId → `RuntimeTaskSessionSummary` (state, reviewReason, pid, timestamps, etc.) |
 | `meta.json` | A `revision` counter + `lastUpdated` timestamp for optimistic concurrency |
 
-Writes are protected by a file-system lock and atomic file operations. The revision counter prevents concurrent writers from clobbering each other — the UI sends `expectedRevision` with every save, and the server rejects if it doesn't match.
+Writes are protected by a file-system lock and atomic file operations. The revision counter prevents concurrent writers from clobbering each other — the UI sends `expectedRevision` with every board save, and the server rejects if it doesn't match.
 
 ### Server-side in-memory (runtime)
 
-`InMemorySessionSummaryStore` (`src/terminal/session-summary-store.ts`) holds a `Map<taskId, RuntimeTaskSessionSummary>`. All state machine transitions happen here first, then get persisted. It has a listener system — anything that mutates a summary notifies all registered listeners, which triggers WebSocket broadcasts to connected clients.
+`InMemorySessionSummaryStore` (`src/terminal/session-summary-store.ts`) holds a `Map<taskId, RuntimeTaskSessionSummary>`. All state machine transitions happen here first, then get persisted. It has a listener system — anything that mutates a summary notifies all registered listeners, which triggers WebSocket broadcasts to connected clients. Public browser saves do not send sessions back; when the server persists project state on behalf of the browser, it snapshots sessions from this store.
 
 ### Frontend state
 
@@ -53,7 +53,27 @@ Two separate stores:
 
 1. **Board state** — a custom Immer-based reducer in `web-ui/src/state/board-state.ts`. This holds the column structure and card positions. It's the "single writer" of board.json — the UI is the only thing that persists board changes (the server never writes board.json directly to avoid revision conflicts).
 
-2. **Session summaries** — received via WebSocket and merged into local state. The frontend never mutates these — it only reads them to render badges and trigger column moves.
+2. **Session summaries** — received via WebSocket and read in the browser. Live `task_sessions_updated` deltas merge incrementally, but authoritative project snapshots/refreshes replace the browser's session keyset by task ID (while still preferring a newer overlapping summary if a stale snapshot replays older data). The frontend never authors session truth.
+
+### The ownership join point
+
+The main split-brain seam is where those two frontend stores meet:
+
+- **Persisted board state remains browser-owned** as the durable layout that gets written back to `board.json`.
+- **Runtime session state remains server-owned** as the authoritative source for whether a live task is currently running or waiting for review.
+- The public/browser `project.saveState` contract is therefore **board-only** (`board` + `expectedRevision`). Session persistence comes from server-owned runtime state, not from browser payloads.
+- The browser intentionally **projects runtime truth onto the board only for the work-column boundary**:
+  - `in_progress` → `review` when session state is `awaiting_review`
+  - `review` → `in_progress` when session state is `running`
+- That projection happens both on live session deltas and when authoritative project state is hydrated after reconnect/project switch, so the UI does not depend on a later repair effect to land cards in the right work column.
+- If the projection changes the hydrated board, that projected board should still persist through the normal UI save path. Otherwise the browser would display the runtime-correct column while `board.json` stays behind.
+- Cached board/session restore is subordinate to authoritative project state. Once the server sends authoritative project state after reconnect/project switch/restart, the browser adopts that exact authoritative session keyset (dropping tasks the server no longer reports) and then reapplies the work-column projection.
+
+That means the answer to “what is authoritative for this task right now?” is:
+
+- **Session lifecycle / running-vs-review truth:** server
+- **Durable board layout:** browser
+- **Displayed column between `in_progress` and `review` for live tasks:** browser-owned projection of server-owned runtime truth
 
 ---
 
@@ -105,7 +125,7 @@ Frontend receives in useRuntimeStateStream()
     │
     ▼
 runtime-stream-dispatch.ts routes to handler
-    │  (merges session summaries into local state)
+    │  (applies authoritative snapshots vs delta merges explicitly)
     │
     ▼
 useSessionColumnSync() detects state change
@@ -138,7 +158,7 @@ There are exactly three hook events:
 | `to_in_progress` | Agent resumed working | `awaiting_review` → `running` |
 | `activity` | Informational (progress metadata, tool usage) | No state change |
 
-Every hook call carries two environment variables that identify the task: `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_WORKSPACE_ID`. These are injected into the agent's process environment when Quarterdeck spawns it.
+Every hook call carries two environment variables that identify the task: `QUARTERDECK_HOOK_TASK_ID` and `QUARTERDECK_HOOK_PROJECT_ID`. These are injected into the agent's process environment when Quarterdeck spawns it.
 
 The challenge is that different agents have completely different extensibility models, so the plumbing that connects an agent to these hook commands is agent-specific. Claude and Codex take very different approaches.
 

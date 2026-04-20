@@ -101,7 +101,6 @@ describe.sequential("state streaming integration", () => {
 				projectId: projectBId,
 				payload: {
 					board: createBoard("Realtime Task"),
-					sessions: currentProjectBState.payload.sessions,
 					expectedRevision: previousRevision,
 				},
 			});
@@ -278,7 +277,6 @@ describe.sequential("state streaming integration", () => {
 				projectId,
 				payload: {
 					board,
-					sessions: stateResponse.payload.sessions,
 					expectedRevision: stateResponse.payload.revision,
 				},
 			});

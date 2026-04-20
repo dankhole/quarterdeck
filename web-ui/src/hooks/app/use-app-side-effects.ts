@@ -149,10 +149,10 @@ export function useAppSideEffects({
 
 	useProjectPersistence({
 		board: board.board,
-		sessions: board.sessions,
 		currentProjectId: project.currentProjectId,
 		projectRevision: project.projectRevision,
 		hydrationNonce: project.projectHydrationNonce,
+		shouldSkipPersistOnHydration: project.shouldSkipPersistOnHydration,
 		canPersistProjectState: project.canPersistProjectState,
 		isDocumentVisible: project.isDocumentVisible,
 		isProjectStateRefreshing: project.isProjectStateRefreshing,

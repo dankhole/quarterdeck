@@ -14,28 +14,92 @@ vi.mock("@/runtime/project-state-query", () => ({
 }));
 
 function createBoard(taskId: string): BoardData {
+	return createBoardInColumn("backlog", taskId);
+}
+
+function createBoardInColumn(columnId: "backlog" | "in_progress" | "review" | "trash", taskId: string): BoardData {
 	return {
 		columns: [
 			{
 				id: "backlog",
 				title: "Backlog",
-				cards: [
-					{
-						id: taskId,
-						title: null,
-						prompt: `Prompt ${taskId}`,
-						startInPlanMode: false,
-						autoReviewEnabled: false,
-						autoReviewMode: "commit",
-						baseRef: "main",
-						createdAt: 1,
-						updatedAt: 1,
-					},
-				],
+				cards:
+					columnId === "backlog"
+						? [
+								{
+									id: taskId,
+									title: null,
+									prompt: `Prompt ${taskId}`,
+									startInPlanMode: false,
+									autoReviewEnabled: false,
+									autoReviewMode: "commit",
+									baseRef: "main",
+									createdAt: 1,
+									updatedAt: 1,
+								},
+							]
+						: [],
 			},
-			{ id: "in_progress", title: "In Progress", cards: [] },
-			{ id: "review", title: "Review", cards: [] },
-			{ id: "trash", title: "Trash", cards: [] },
+			{
+				id: "in_progress",
+				title: "In Progress",
+				cards:
+					columnId === "in_progress"
+						? [
+								{
+									id: taskId,
+									title: null,
+									prompt: `Prompt ${taskId}`,
+									startInPlanMode: false,
+									autoReviewEnabled: false,
+									autoReviewMode: "commit",
+									baseRef: "main",
+									createdAt: 1,
+									updatedAt: 1,
+								},
+							]
+						: [],
+			},
+			{
+				id: "review",
+				title: "Review",
+				cards:
+					columnId === "review"
+						? [
+								{
+									id: taskId,
+									title: null,
+									prompt: `Prompt ${taskId}`,
+									startInPlanMode: false,
+									autoReviewEnabled: false,
+									autoReviewMode: "commit",
+									baseRef: "main",
+									createdAt: 1,
+									updatedAt: 1,
+								},
+							]
+						: [],
+			},
+			{
+				id: "trash",
+				title: "Trash",
+				cards:
+					columnId === "trash"
+						? [
+								{
+									id: taskId,
+									title: null,
+									prompt: `Prompt ${taskId}`,
+									startInPlanMode: false,
+									autoReviewEnabled: false,
+									autoReviewMode: "commit",
+									baseRef: "main",
+									createdAt: 1,
+									updatedAt: 1,
+								},
+							]
+						: [],
+			},
 		],
 		dependencies: [],
 	};
@@ -121,6 +185,7 @@ interface HookSnapshot {
 	canPersistProjectState: boolean;
 	projectRevision: number | null;
 	isServedFromBoardCache: boolean;
+	shouldSkipPersistOnHydration: boolean;
 	refreshProjectState: () => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 }
@@ -151,7 +216,13 @@ function HookHarness({
 	boardRef.current = board;
 	const sessionsRef = useRef(sessions);
 	sessionsRef.current = sessions;
-	const { refreshProjectState, resetProjectSyncState, projectRevision, isServedFromBoardCache } = useProjectSync({
+	const {
+		refreshProjectState,
+		resetProjectSyncState,
+		projectRevision,
+		isServedFromBoardCache,
+		shouldSkipPersistOnHydration,
+	} = useProjectSync({
 		currentProjectId,
 		streamedProjectState,
 		hasNoProjects: false,
@@ -171,6 +242,7 @@ function HookHarness({
 			canPersistProjectState,
 			projectRevision,
 			isServedFromBoardCache,
+			shouldSkipPersistOnHydration,
 			refreshProjectState,
 			resetProjectSyncState,
 		});
@@ -324,6 +396,77 @@ describe("useProjectSync", () => {
 		expect(authoritativeSnapshot.isServedFromBoardCache).toBe(false);
 	});
 
+	it("re-projects a restored cached board when same-revision authoritative sessions disagree", async () => {
+		stashProjectBoard("project-b", {
+			board: createBoardInColumn("in_progress", "task-1"),
+			sessions: {
+				"task-1": createSessionSummary("task-1", 1000, null),
+			},
+			authoritativeRevision: 3,
+			projectPath: "/tmp/project-b",
+			projectGit: {
+				currentBranch: "main",
+				defaultBranch: "main",
+				branches: ["main"],
+			},
+		});
+
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+
+		await act(async () => {
+			initialSnapshot.resetProjectSyncState("project-b");
+		});
+
+		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
+		const cachedSnapshot: HookSnapshot = latestSnapshot;
+		expect(cachedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards[0]?.id).toBe("task-1");
+		expect(cachedSnapshot.projectRevision).toBeNull();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={{
+						...createProjectState("task-1", 3),
+						repoPath: "/tmp/project-b",
+						statePath: "/tmp/project-b/.quarterdeck",
+						board: createBoardInColumn("in_progress", "task-1"),
+						sessions: {
+							"task-1": createSessionSummary("task-1", 2000, "Ready for review"),
+						},
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
+		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(authoritativeSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+			"task-1",
+		);
+		expect(authoritativeSnapshot.projectRevision).toBe(3);
+		expect(authoritativeSnapshot.shouldSkipPersistOnHydration).toBe(false);
+	});
+
 	it("ignores streamed project state for the previous project after a switch reset targets a new project", async () => {
 		stashProjectBoard("project-b", {
 			board: createBoard("cached-task"),
@@ -377,7 +520,7 @@ describe("useProjectSync", () => {
 		expect(snapshot.canPersistProjectState).toBe(false);
 	});
 
-	it("preserves newer in-memory task session summaries when refreshed project state lacks them", async () => {
+	it("clears task sessions missing from refreshed authoritative project state", async () => {
 		const existingSummary = createSessionSummary("task-1", 1000, "All done");
 		fetchProjectStateMock.mockResolvedValue(createProjectState("persisted-task", 2));
 
@@ -406,21 +549,85 @@ describe("useProjectSync", () => {
 
 		assertSnapshot(latestSnapshot, "Expected a hook snapshot after refresh.");
 		const refreshedSnapshot: HookSnapshot = latestSnapshot;
-		expect(refreshedSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
+		expect(refreshedSnapshot.sessions["task-1"]).toBeUndefined();
 	});
 
-	it("does not let an older streamed session summary overwrite a newer in-memory one", async () => {
-		const newerRunningSummary = createSessionSummary("task-1", 2000, null);
-		const staleInterruptedSummary = createSessionSummary("task-1", 1000, "Stale output");
+	it("drops cached-restore session entries once authoritative project state arrives without them", async () => {
+		stashProjectBoard("project-b", {
+			board: createBoard("cached-task"),
+			sessions: {
+				"task-1": createSessionSummary("task-1", 1000, "Cached review"),
+			},
+			authoritativeRevision: 3,
+			projectPath: "/tmp/project-b",
+			projectGit: {
+				currentBranch: "main",
+				defaultBranch: "main",
+				branches: ["main"],
+			},
+		});
 
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createProjectStateWithSessions("persisted-task", 1, {
-						"task-1": newerRunningSummary,
-					})}
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("persisted-task", 1)}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+
+		await act(async () => {
+			initialSnapshot.resetProjectSyncState("project-b");
+		});
+
+		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
+		const cachedSnapshot: HookSnapshot = latestSnapshot;
+		expect(cachedSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("Cached review");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={{
+						...createProjectState("authoritative-task", 3),
+						repoPath: "/tmp/project-b",
+						statePath: "/tmp/project-b/.quarterdeck",
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected an authoritative hook snapshot.");
+		const authoritativeSnapshot: HookSnapshot = latestSnapshot;
+		expect(authoritativeSnapshot.sessions["task-1"]).toBeUndefined();
+	});
+
+	it("does not let an older streamed session summary mis-project the board against a newer in-memory one", async () => {
+		const newerReviewSummary = createSessionSummary("task-1", 2000, "Ready for review");
+		const staleRunningSummary = createSessionSummary("task-1", 1000, null);
+
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={{
+						...createProjectStateWithSessions("task-1", 1, {
+							"task-1": newerReviewSummary,
+						}),
+						board: createBoardInColumn("review", "task-1"),
+					}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -431,14 +638,18 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
 		const initialSnapshot: HookSnapshot = latestSnapshot;
 		expect(initialSnapshot.sessions["task-1"]?.updatedAt).toBe(2000);
-		expect(initialSnapshot.sessions["task-1"]?.state).toBe("running");
+		expect(initialSnapshot.sessions["task-1"]?.state).toBe("awaiting_review");
+		expect(initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={createProjectStateWithSessions("persisted-task", 2, {
-						"task-1": staleInterruptedSummary,
-					})}
+					streamedProjectState={{
+						...createProjectStateWithSessions("task-1", 2, {
+							"task-1": staleRunningSummary,
+						}),
+						board: createBoardInColumn("in_progress", "task-1"),
+					}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -449,7 +660,9 @@ describe("useProjectSync", () => {
 		assertSnapshot(latestSnapshot, "Expected a hook snapshot after rerender.");
 		const rerenderedSnapshot: HookSnapshot = latestSnapshot;
 		expect(rerenderedSnapshot.sessions["task-1"]?.updatedAt).toBe(2000);
-		expect(rerenderedSnapshot.sessions["task-1"]?.state).toBe("running");
+		expect(rerenderedSnapshot.sessions["task-1"]?.state).toBe("awaiting_review");
+		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(rerenderedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
 	});
 
 	it("does not refresh project state before the initial runtime snapshot resolves", async () => {
@@ -470,5 +683,33 @@ describe("useProjectSync", () => {
 
 		expect(fetchProjectStateMock).not.toHaveBeenCalled();
 		expect(latestSnapshot).not.toBeNull();
+	});
+
+	it("projects runtime-owned work-column placement during authoritative hydrate", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={{
+						...createProjectState("task-1", 1),
+						board: createBoardInColumn("in_progress", "task-1"),
+						sessions: {
+							"task-1": createSessionSummary("task-1", 1000, "Ready for review"),
+						},
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		assertSnapshot(latestSnapshot, "Expected a projected hook snapshot.");
+		const snapshot: HookSnapshot = latestSnapshot;
+		expect(snapshot.board.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+		expect(snapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
+		expect(snapshot.canPersistProjectState).toBe(true);
+		expect(snapshot.shouldSkipPersistOnHydration).toBe(false);
 	});
 });

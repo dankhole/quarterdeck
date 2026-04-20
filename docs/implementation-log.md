@@ -2,6 +2,60 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Follow-up: fix review-found hydrate/session projection regressions (2026-04-20)
+
+**Commit:** `(uncommitted in worktree)`
+
+**What:** Fixed the two review-found regressions in the split-brain task-state refactor: hydrate-time board projection now uses the reconciled authoritative session set rather than the raw incoming snapshot sessions, and same-revision authoritative updates now still re-project the currently displayed board when runtime session truth disagrees with the cached/current work-column placement.
+
+**Why:** The first refactor correctly made authoritative project snapshots replace the browser session keyset, but `useProjectSync()` still projected the board from `nextProjectState.sessions` before reconciliation. That left a hole where a stale refresh could preserve the newer session summary in state while moving the board back to the wrong work column. Separately, the existing `confirm_cache`/`skip` logic still treated equal board revisions as “no board work needed,” which stopped being true once session-driven work-column truth lived outside the board revision counter.
+
+**How:**
+- Updated `web-ui/src/hooks/project/use-project-sync.ts` to compute `reconciledSessions` once from `sessionsRef.current`, use that same set for `setSessions()`, hydrate-time authoritative board projection, and cache updates, and re-project the currently displayed board for `confirm_cache` / same-revision `skip` cases when runtime session truth changes work-column placement.
+- Replaced the separate `projectHydrationNonce` / `shouldSkipPersistOnHydration` state updates in `use-project-sync.ts` with a single `projectHydrationState` object so the persistence gate sees the nonce and skip policy as one atomic hydration update.
+- Removed the now-dead `mergeTaskSessionSummaries()` helper from `project-sync.ts`, renamed the runtime stream helper to `reconcileProjectStateSessions()` to match its authoritative semantics, and added a clarifying comment to the in-process test-only `withStateHomeOverride()` helper in `server-restart.integration.test.ts`.
+- Added regression coverage proving that stale authoritative snapshots no longer move cards against newer in-memory session truth, and that same-revision cache confirmation still reapplies runtime-owned work-column projection.
+
+**Files touched:** `web-ui/src/hooks/project/project-sync.ts`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/runtime/runtime-state-stream-store.ts`, `test/integration/server-restart.integration.test.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Refactor: complete the split-brain task-state ownership cleanup (2026-04-20)
+
+**Commit:** `(uncommitted in worktree)`
+
+**What:** Completed the remaining split-brain task-state refactor by making the public/browser save path board-only, moving authoritative session persistence fully behind the server-owned terminal/session store, and tightening authoritative project-state application so reconnect/project-switch/restart flows drop stale cached/browser-only sessions instead of letting them linger as competing truth.
+
+**Why:** After the first slice, the board/session join point for `in_progress` ⇄ `review` was explicit, but two important ownership leaks remained. First, the browser still round-tripped `sessions` through the public `project.saveState` API even though runtime session truth is server-owned. Second, authoritative project snapshots still merged session maps like deltas, which let cached restore or stale browser memory keep task sessions alive after the server stopped reporting them. Those behaviors preserved the split-brain ambiguity during reconnect, restart, and project switching.
+
+**How:**
+- Narrowed `src/core/api/project-state.ts` so the public `RuntimeProjectStateSaveRequest` contains only `board` plus `expectedRevision`, documenting that browser saves are for board truth only.
+- Split the low-level persisted writer in `src/state/project-state.ts` from the public browser contract by giving the internal `saveProjectState()` path its own schema that still accepts `sessions` for shutdown/tests/server-owned persistence.
+- Updated `src/trpc/project-api-state.ts` so `project.saveState` snapshots authoritative sessions from `TerminalSessionManager.store.listSummaries()` before persisting, instead of trusting browser-provided session payloads.
+- Updated `web-ui/src/runtime/use-project-persistence.ts` and `web-ui/src/hooks/app/use-app-side-effects.ts` so browser persistence no longer sends `sessions`.
+- Added explicit session-map ownership helpers in `web-ui/src/utils/session-summary-utils.ts`, then used them in both `web-ui/src/runtime/runtime-state-stream-store.ts` and `web-ui/src/hooks/project/use-project-sync.ts` so authoritative project snapshots replace the browser session keyset by task ID while live deltas still merge incrementally.
+- Updated restart/integration coverage to seed board state through the public API and server-owned session state through the low-level state writer, including the non-obvious `$HOME/.quarterdeck` / `QUARTERDECK_STATE_HOME` alignment required for direct persistence in spawned-server tests.
+- Added focused regression coverage in `test/runtime/trpc/project-api-state.test.ts`, `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `test/integration/state-streaming.integration.test.ts`, and `test/integration/server-restart.integration.test.ts`.
+
+**Files touched:** `AGENTS.md`, `src/core/api/project-state.ts`, `src/state/project-state.ts`, `src/trpc/project-api-state.ts`, `web-ui/src/hooks/app/use-app-side-effects.ts`, `web-ui/src/hooks/project/project-sync.ts`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/runtime/runtime-state-stream-store.ts`, `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/runtime/use-project-persistence.ts`, `web-ui/src/runtime/use-project-persistence.test.tsx`, `web-ui/src/utils/session-summary-utils.ts`, `web-ui/src/utils/session-summary-utils.test.ts`, `test/runtime/trpc/project-api-state.test.ts`, `test/integration/state-streaming.integration.test.ts`, `test/integration/server-restart.integration.test.ts`, `docs/task-state-system.md`, `docs/refactor-roadmap-context.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Refactor: make the split-brain task-state join point explicit (2026-04-20)
+
+**Commit:** `(uncommitted in worktree)`
+
+**What:** Landed a narrow first slice of the split-brain task-state refactor by making the browser/server ownership join point explicit for work-column placement. Authoritative project hydrate now applies the server-owned runtime session projection for `in_progress` ⇄ `review` before the board is exposed to the rest of the UI, and the project-persistence gate now distinguishes between pure hydrations that should not echo back to disk and hydration-time runtime reconciliations that must persist through the normal UI save path.
+
+**Why:** The previous behavior worked, but the ownership boundary was implicit. `useProjectSync` hydrated the persisted board first, then `useSessionColumnSync` repaired it later based on runtime session summaries. That meant correctness depended on effect ordering and made it hard to answer whether a mismatched `in_progress`/`review` card was authoritative persisted state, server runtime truth, or just a temporarily stale browser view. The new slice keeps the current semantics while replacing that incidental repair path with an explicit contract.
+
+**How:**
+- Added `web-ui/src/hooks/board/session-column-sync.ts`, a pure module that owns the browser-side projection rules for runtime session state onto the board’s work columns, plus unit coverage in `session-column-sync.test.ts`.
+- Updated `web-ui/src/hooks/board/use-session-column-sync.ts` to consume the pure projection module instead of re-encoding the move rules inline.
+- Extended `web-ui/src/hooks/project/project-sync.ts` with `applyAuthoritativeProjectBoard()`, which projects server-owned runtime session truth onto the normalized board during authoritative hydrate and reports whether the next persistence cycle should be skipped.
+- Updated `web-ui/src/hooks/project/use-project-sync.ts` to hydrate the projected board, carry the new `shouldSkipPersistOnHydration` policy, and cache the projected board instead of relying on a later repair pass.
+- Updated `web-ui/src/runtime/use-project-persistence.ts` so hydration-time runtime projection reconciliations still persist through the normal UI single-writer path, while pure authoritative hydrations continue to skip the immediate save and preserve optimistic-concurrency behavior.
+- Added focused regression coverage in `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, and `web-ui/src/runtime/use-project-persistence.test.tsx`.
+- Recorded the new ownership boundary in `docs/task-state-system.md`, narrowed the active todo item in `docs/todo.md` to the next split-brain phase, and added the high-signal implementation note to `AGENTS.md`.
+
+**Files touched:** `AGENTS.md`, `web-ui/src/hooks/board/session-column-sync.ts`, `web-ui/src/hooks/board/session-column-sync.test.ts`, `web-ui/src/hooks/board/use-session-column-sync.ts`, `web-ui/src/hooks/project/project-sync.ts`, `web-ui/src/hooks/project/project-sync.test.ts`, `web-ui/src/hooks/project/use-project-sync.ts`, `web-ui/src/hooks/project/use-project-sync.test.tsx`, `web-ui/src/runtime/use-project-persistence.ts`, `web-ui/src/runtime/use-project-persistence.test.tsx`, `web-ui/src/hooks/app/use-app-side-effects.ts`, `web-ui/src/providers/project-provider.tsx`, `docs/task-state-system.md`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Follow-up: tighten workflow-heavy UI surface review cleanup (2026-04-20)
 
 **Commit:** `7147b656`

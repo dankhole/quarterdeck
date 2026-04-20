@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Refactor: make the task-state ownership join point explicit
+
+- Added an explicit browser-side runtime-session projection for the `in_progress` ⇄ `review` work-column boundary, so authoritative project hydrate no longer depends on a later repair effect to reconcile board placement with server-owned session state.
+- Updated project hydration persistence gating so a pure authoritative hydrate still skips the next save, while a hydrate that needed runtime-owned column projection persists that reconciliation through the normal single-writer UI path.
+- Added focused regression coverage for the pure projection rules, authoritative project sync hydrate behavior, and the project-persistence gate that protects optimistic-concurrency semantics.
+- Narrowed the public persistence contract so browser `project.saveState` calls now persist only board truth; the server snapshots authoritative sessions from the terminal/session store when it writes project state, eliminating the browser round-trip of `sessions`.
+- Tightened reconnect/project-switch behavior so authoritative project snapshots replace the browser's session keyset by task ID, dropping stale cached/browser-only sessions while still tolerating older replays for the same task, and added restart/stream/trpc regression coverage around the new ownership boundary.
+- Followed up on review by projecting hydrated boards from the reconciled authoritative session set instead of raw snapshot sessions, re-projecting same-revision cached/current boards when runtime session truth disagrees, and atomically pairing hydration nonce updates with the skip-persist flag.
+
 ### Refactor: separate runtime stream state application from transport policy
 
 - Refactored `web-ui/src/runtime/use-runtime-state-stream.ts` into a thinner composition hook over `runtime-state-stream-store.ts`, `runtime-stream-dispatch.ts`, and `runtime-state-stream-transport.ts`, so the core “receive runtime messages and apply them” path is easier to identify without reading reconnect/preload policy inline.

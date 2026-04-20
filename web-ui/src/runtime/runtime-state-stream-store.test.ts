@@ -102,6 +102,41 @@ describe("runtimeStateStreamReducer", () => {
 		expect(nextState.notificationMemory.sessions["task-1"]?.updatedAt).toBe(200);
 	});
 
+	it("drops stale tasks missing from a later authoritative project snapshot", () => {
+		const preloadedProjectState = createProjectState(3, {
+			"task-1": createSessionSummary("task-1", 200),
+			"task-2": createSessionSummary("task-2", 150),
+		});
+		const preloadedState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
+			type: "requested_project_changed",
+			preloadedProjectState,
+			requestedProjectId: "project-a",
+		});
+
+		const nextState = runtimeStateStreamReducer(preloadedState, {
+			type: "snapshot",
+			payload: {
+				type: "snapshot",
+				currentProjectId: "project-a",
+				projects: [
+					{
+						id: "project-a",
+						path: "/tmp/project-a",
+						name: "Project A",
+						taskCounts: { backlog: 0, in_progress: 1, review: 0, trash: 0 },
+					},
+				],
+				projectState: createProjectState(4, {
+					"task-1": createSessionSummary("task-1", 100),
+				}),
+				projectMetadata: null,
+			},
+		});
+
+		expect(nextState.projectState?.sessions["task-1"]?.updatedAt).toBe(200);
+		expect(nextState.projectState?.sessions["task-2"]).toBeUndefined();
+	});
+
 	it("merges later task-session deltas and keeps notification memory monotonic", () => {
 		const snapshotState = runtimeStateStreamReducer(createInitialRuntimeStateStreamStore("project-a"), {
 			type: "snapshot",

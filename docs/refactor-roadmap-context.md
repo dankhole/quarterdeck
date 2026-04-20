@@ -153,6 +153,10 @@ Key invariants:
 
 ## 4. Split-brain Task State
 
+Status:
+
+- Completed on 2026-04-20 via the explicit hydrate-time `in_progress`/`review` projection, board-only public persistence contract, server-owned session persistence, and authoritative snapshot-vs-delta session reconciliation. See `docs/task-state-system.md`, `CHANGELOG.md`, and `docs/implementation-log.md` for the landed contract.
+
 Primary files:
 
 - `src/state/project-state-index.ts`
@@ -166,7 +170,7 @@ Supporting doc:
 
 - `docs/task-state-system.md`
 
-Current smell:
+Historical smell:
 
 - task truth is still spread across persistence, in-memory runtime state, websocket deltas, browser board state, and client-side restore/cache behavior
 
@@ -181,15 +185,10 @@ What “good” looks like:
 - automatic column motion, session state, and persisted board state follow a clearer contract
 - fewer repair/reconciliation paths are needed because fewer ambiguous overlaps exist
 
-Suggested first slice:
+Outcome:
 
-- do a scoped investigation brief before implementation
-- map the current write paths and repair paths explicitly
-- identify where browser-owned board state and server-owned session truth intentionally meet and where they are only coincidentally synchronized
-
-Key risk:
-
-- a large rewrite here would be dangerous; this should start as an ownership clarification pass, not a big-bang refactor
+- browser-owned board truth and server-owned session truth now meet at an explicit, narrow join point
+- reconnect/project-switch/restart no longer rely on browser `sessions` payloads or stale cached session maps as competing authorities
 
 ## 5. Manual Broadcast Choreography / Domain-event Boundaries
 

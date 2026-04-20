@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectStateConflictError } from "@/runtime/project-state-query";
-import type {
-	RuntimeProjectStateResponse,
-	RuntimeProjectStateSaveRequest,
-	RuntimeTaskSessionSummary,
-} from "@/runtime/types";
+import type { RuntimeProjectStateResponse, RuntimeProjectStateSaveRequest } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
 const PROJECT_STATE_PERSIST_DEBOUNCE_MS = 120;
 
 export interface UseProjectPersistenceParams {
 	board: BoardData;
-	sessions: Record<string, RuntimeTaskSessionSummary>;
 	currentProjectId: string | null;
 	projectRevision: number | null;
 	hydrationNonce: number;
+	shouldSkipPersistOnHydration: boolean;
 	canPersistProjectState: boolean;
 	isDocumentVisible: boolean;
 	isProjectStateRefreshing: boolean;
@@ -29,10 +25,10 @@ export interface UseProjectPersistenceParams {
 
 export function useProjectPersistence({
 	board,
-	sessions,
 	currentProjectId,
 	projectRevision,
 	hydrationNonce,
+	shouldSkipPersistOnHydration,
 	canPersistProjectState,
 	isDocumentVisible,
 	isProjectStateRefreshing,
@@ -48,7 +44,6 @@ export function useProjectPersistence({
 	const persistInFlightRef = useRef(false);
 	const persistQueuedRef = useRef(false);
 	const currentProjectIdRef = useRef<string | null>(currentProjectId);
-	const sessionsRef = useRef(sessions);
 	const lastPersistedBoardRef = useRef<BoardData | null>(null);
 	const lastPersistedProjectIdRef = useRef<string | null>(null);
 
@@ -61,18 +56,14 @@ export function useProjectPersistence({
 	}, [currentProjectId]);
 
 	useEffect(() => {
-		sessionsRef.current = sessions;
-	}, [sessions]);
-
-	useEffect(() => {
 		if (latestHydrationNonceRef.current === hydrationNonce) {
 			return;
 		}
 		latestHydrationNonceRef.current = hydrationNonce;
-		skipNextPersistRef.current = true;
+		skipNextPersistRef.current = shouldSkipPersistOnHydration;
 		lastPersistedProjectIdRef.current = currentProjectId;
-		lastPersistedBoardRef.current = board;
-	}, [board, currentProjectId, hydrationNonce]);
+		lastPersistedBoardRef.current = shouldSkipPersistOnHydration ? board : null;
+	}, [board, currentProjectId, hydrationNonce, shouldSkipPersistOnHydration]);
 
 	useEffect(() => {
 		if (!canPersistProjectState || !isDocumentVisible || isProjectStateRefreshing || projectRevision == null) {
@@ -102,7 +93,6 @@ export function useProjectPersistence({
 			}
 			const payload: RuntimeProjectStateSaveRequest = {
 				board,
-				sessions: sessionsRef.current,
 				expectedRevision: projectRevision,
 			};
 			void (async () => {

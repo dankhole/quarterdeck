@@ -1,13 +1,13 @@
 import { rm } from "node:fs/promises";
+import { z } from "zod";
 
 import type {
 	RuntimeBoardData,
 	RuntimeGitRepositoryInfo,
 	RuntimeProjectStateResponse,
-	RuntimeProjectStateSaveRequest,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { runtimeProjectStateSaveRequestSchema } from "../core";
+import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
 import { lockedFileSystem } from "../fs";
 import {
 	ensureProjectEntry,
@@ -56,6 +56,18 @@ export interface RuntimeProjectContext {
 
 export interface LoadProjectContextOptions {
 	autoCreateIfMissing?: boolean;
+}
+
+const persistedProjectStateSaveRequestSchema = z.object({
+	board: runtimeBoardDataSchema,
+	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
+	expectedRevision: z.number().int().nonnegative().optional(),
+});
+
+interface PersistedProjectStateSaveRequest {
+	board: RuntimeBoardData;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
+	expectedRevision?: number;
 }
 
 function toProjectStateResponse(
@@ -161,9 +173,9 @@ export async function loadProjectState(cwd: string): Promise<RuntimeProjectState
 
 export async function saveProjectState(
 	cwd: string,
-	payload: RuntimeProjectStateSaveRequest,
+	payload: PersistedProjectStateSaveRequest,
 ): Promise<RuntimeProjectStateResponse> {
-	const parsedPayload = parseProjectStateSavePayload(payload, runtimeProjectStateSaveRequestSchema);
+	const parsedPayload = parseProjectStateSavePayload(payload, persistedProjectStateSaveRequestSchema);
 	const context = await loadProjectContext(cwd);
 	return await lockedFileSystem.withLock(getProjectDirectoryLockRequest(context.projectId), async () => {
 		const metaPath = getProjectMetaPath(context.projectId);

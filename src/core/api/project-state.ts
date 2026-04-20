@@ -57,9 +57,10 @@ export const runtimeProjectStateResponseSchema = z.object({
 });
 export type RuntimeProjectStateResponse = z.infer<typeof runtimeProjectStateResponseSchema>;
 
+// Browser-owned persistence only saves board truth. Runtime session truth is
+// server-owned and persisted from the terminal/session store.
 export const runtimeProjectStateSaveRequestSchema = z.object({
 	board: runtimeBoardDataSchema,
-	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
 	expectedRevision: z.number().int().nonnegative().optional(),
 });
 export type RuntimeProjectStateSaveRequest = z.infer<typeof runtimeProjectStateSaveRequestSchema>;

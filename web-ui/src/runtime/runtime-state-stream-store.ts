@@ -8,7 +8,10 @@ import type {
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
-import { selectNewestTaskSessionSummary } from "@/utils/session-summary-utils";
+import {
+	mergeTaskSessionSummaryMap,
+	reconcileAuthoritativeTaskSessionSummaryMap,
+} from "@/utils/session-summary-utils";
 
 const DEBUG_LOG_ENTRIES_MAX = 500;
 
@@ -89,25 +92,18 @@ function mergeTaskSessionSummaries(
 		return currentSessions;
 	}
 
-	const nextSessions = { ...currentSessions };
-	for (const summary of summaries) {
-		const newest = selectNewestTaskSessionSummary(nextSessions[summary.taskId] ?? null, summary);
-		if (newest) {
-			nextSessions[summary.taskId] = newest;
-		}
-	}
-	return nextSessions;
+	return mergeTaskSessionSummaryMap(currentSessions, summaries);
 }
 
-function mergeProjectStateSessions(
+function reconcileProjectStateSessions(
 	currentProjectState: RuntimeProjectStateResponse | null,
 	incomingProjectState: RuntimeProjectStateResponse,
 ): RuntimeProjectStateResponse {
 	return {
 		...incomingProjectState,
-		sessions: mergeTaskSessionSummaries(
+		sessions: reconcileAuthoritativeTaskSessionSummaryMap(
 			currentProjectState?.sessions ?? {},
-			Object.values(incomingProjectState.sessions ?? {}),
+			incomingProjectState.sessions ?? {},
 		),
 	};
 }
@@ -191,7 +187,7 @@ function applySnapshot(
 	payload: RuntimeStateStreamSnapshotMessage,
 ): RuntimeStateStreamStore {
 	const nextProjectState = payload.projectState
-		? mergeProjectStateSessions(state.projectState, payload.projectState)
+		? reconcileProjectStateSessions(state.projectState, payload.projectState)
 		: null;
 
 	return {
@@ -299,7 +295,7 @@ export function runtimeStateStreamReducer(
 	if (action.type === "project_state_updated") {
 		return {
 			...state,
-			projectState: mergeProjectStateSessions(state.projectState, action.projectState),
+			projectState: reconcileProjectStateSessions(state.projectState, action.projectState),
 		};
 	}
 	if (action.type === "task_sessions_updated") {

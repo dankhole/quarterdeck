@@ -23,9 +23,12 @@ Use this section together with:
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
-- Investigate split-brain task state across persistence, in-memory runtime state, websocket deltas, browser board state, and client-side cache/restore behavior. Roadmap context: [docs/refactor-roadmap-context.md#4-split-brain-task-state](./refactor-roadmap-context.md#4-split-brain-task-state)
 - Reduce manual broadcast choreography by making post-mutation effects easier to express through stronger domain-event or post-mutation boundaries. Roadmap context: [docs/refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries](./refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries)
 - Narrow broad provider/context surfaces, especially where project-, git-, or interaction-related providers currently expose mixed-domain ownership. Roadmap context: [docs/refactor-roadmap-context.md#7-broad-provider--context-surfaces](./refactor-roadmap-context.md#7-broad-provider--context-surfaces)
+
+## Test maintenance
+
+- Deduplicate repeated task/session test fixture factories into a small shared test helper layer so runtime/session shape changes stop requiring near-identical updates across many test files.
 
 ## Standalone desktop app (Electron/Tauri)
 
