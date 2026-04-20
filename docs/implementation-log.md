@@ -2,6 +2,24 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: separate runtime stream state application from transport policy (2026-04-20)
+
+**Commit:** `ce9cfcb6`
+
+**What:** Refactored the frontend runtime stream ingress so `web-ui/src/runtime/use-runtime-state-stream.ts` now reads primarily as composition around three clearer responsibilities: runtime state application, message-to-action resolution, and websocket transport/reconnect policy.
+
+**Why:** The previous hook was correct but hard to explain because preload seeding, reconnect timing, snapshot merge rules, message filtering, and notification memory all lived in one reducer-plus-effect surface. That made transport policy feel central to state ownership instead of reading like optional policy around a core “receive runtime stream message and apply it” path. This pass keeps the stream contract intact while making the ownership boundary easier to audit and extend.
+
+**How:**
+- Added `web-ui/src/runtime/runtime-state-stream-store.ts` as the pure state-application module. It now owns the reducer, the snapshot/delta merge rules for project state, monotonic notification-memory bookkeeping, and reducer action types shared by the runtime stream ingress path.
+- Replaced the imperative websocket-side dispatch map with a pure resolver in `web-ui/src/runtime/runtime-stream-dispatch.ts`. It now turns each `RuntimeStateStreamMessage` into explicit reducer actions plus any reconnect instruction, making project-scoped filtering and `projects_updated` reconnect behavior easier to reason about without hidden side effects.
+- Added `web-ui/src/runtime/runtime-state-stream-transport.ts` to isolate websocket connection lifecycle, reconnect backoff, and project-switch reconnection policy from reducer/store ownership.
+- Rewrote `web-ui/src/runtime/use-runtime-state-stream.ts` as a thin composition hook that seeds requested-project preload state, starts the transport, routes incoming messages through the pure resolver, and applies the resulting actions to the extracted store.
+- Added focused regression coverage in `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/runtime/runtime-stream-dispatch.test.ts`, and `web-ui/src/runtime/runtime-state-stream-transport.test.ts` to lock in preload seeding, snapshot-vs-delta merge behavior, notification-memory monotonicity, inactive-project filtering, project-switch reconnect decisions, and reconnect scheduling.
+- Re-ran targeted validation with `npm --prefix web-ui run test -- src/runtime/runtime-state-stream-store.test.ts src/runtime/runtime-stream-dispatch.test.ts src/runtime/runtime-state-stream-transport.test.ts src/hooks/project/use-project-sync.test.tsx`, `npm --prefix web-ui run typecheck`, and `npm run typecheck`.
+
+**Files touched:** `web-ui/src/runtime/use-runtime-state-stream.ts`, `web-ui/src/runtime/runtime-state-stream-store.ts`, `web-ui/src/runtime/runtime-stream-dispatch.ts`, `web-ui/src/runtime/runtime-state-stream-transport.ts`, `web-ui/src/runtime/runtime-state-stream-store.test.ts`, `web-ui/src/runtime/runtime-stream-dispatch.test.ts`, `web-ui/src/runtime/runtime-state-stream-transport.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Follow-up: tighten app-shell refactor timing semantics (2026-04-20)
 
 **What:** Tightened the first app-shell gravity refactor pass so project-switch cleanup and git-history closure happen before paint, and so the edited-task auto-start effect no longer re-evaluates on every board change.

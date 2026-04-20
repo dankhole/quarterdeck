@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: separate runtime stream state application from transport policy
+
+- Refactored `web-ui/src/runtime/use-runtime-state-stream.ts` into a thinner composition hook over `runtime-state-stream-store.ts`, `runtime-stream-dispatch.ts`, and `runtime-state-stream-transport.ts`, so the core “receive runtime messages and apply them” path is easier to identify without reading reconnect/preload policy inline.
+- Made snapshot-vs-delta behavior explicit in the extracted store: preloaded state, initial snapshots, project-state refreshes, task-session deltas, and monotonic notification memory now live behind named helpers with focused unit coverage.
+- Preserved current project/runtime sync behavior by keeping the stream contract intact and re-validating targeted runtime-stream and `use-project-sync` coverage plus frontend/backend typecheck.
+
 ### Refactor: reduce app-shell integration gravity around git history and edit-start flow
 
 - Moved git-history ownership into `GitProvider`, so top-level app composition no longer threads raw git-history state/setters across `App.tsx`, `GitProvider`, and `InteractionsProvider`.

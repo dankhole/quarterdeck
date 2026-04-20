@@ -10,5 +10,5 @@ export function selectNewestTaskSessionSummary(
 	if (!right) {
 		return left;
 	}
-	return left.updatedAt >= right.updatedAt ? left : right;
+	return left.updatedAt > right.updatedAt ? left : right;
 }

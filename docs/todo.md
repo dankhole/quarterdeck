@@ -13,8 +13,6 @@ Use this section together with:
 
 These items all share the same architectural smell: a subsystem started with a simple core job, then accumulated enough clever optimization/recovery behavior that the optimization began to shape the design.
 
-- Reassess `web-ui/src/runtime/use-runtime-state-stream.ts` so preload, reconnect, snapshot merging, and notification memory are easier to separate from the core “receive runtime stream and update state” responsibility. Roadmap context: [docs/refactor-roadmap-context.md#3-frontend-runtime-state-stream-store](./refactor-roadmap-context.md#3-frontend-runtime-state-stream-store)
-
 ## Architecture follow-ups from the design roadmap
 
 Use this section together with:
