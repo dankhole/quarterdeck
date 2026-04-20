@@ -189,29 +189,32 @@ export function buildProjectMetadataSnapshot(entry: ProjectMetadataEntry): Runti
 	};
 }
 
-export async function loadHomeGitMetadata(entry: ProjectMetadataEntry): Promise<CachedHomeGitMetadata> {
+export async function loadHomeGitMetadata(
+	projectPath: string,
+	currentHomeGit: CachedHomeGitMetadata,
+): Promise<CachedHomeGitMetadata> {
 	try {
 		const [probe, currentStashCount] = await Promise.all([
-			probeGitWorkdirState(entry.projectPath),
-			stashCount(entry.projectPath),
+			probeGitWorkdirState(projectPath),
+			stashCount(projectPath),
 		]);
-		const stashCountChanged = currentStashCount !== entry.homeGit.stashCount;
-		if (entry.homeGit.stateToken === probe.stateToken) {
+		const stashCountChanged = currentStashCount !== currentHomeGit.stashCount;
+		if (currentHomeGit.stateToken === probe.stateToken) {
 			if (stashCountChanged) {
 				return {
-					...entry.homeGit,
+					...currentHomeGit,
 					stashCount: currentStashCount,
 					stateVersion: Date.now(),
 				};
 			}
-			return entry.homeGit;
+			return currentHomeGit;
 		}
-		const summary = await getGitSyncSummary(entry.projectPath, { probe });
-		const detected = await detectActiveConflict(entry.projectPath);
+		const summary = await getGitSyncSummary(projectPath, { probe });
+		const detected = await detectActiveConflict(projectPath);
 		let conflictState: RuntimeConflictState | null = null;
 		if (detected) {
-			const conflictedFiles = await getConflictedFiles(entry.projectPath);
-			const autoMergedFiles = await computeAutoMergedFiles(entry.projectPath, conflictedFiles);
+			const conflictedFiles = await getConflictedFiles(projectPath);
+			const autoMergedFiles = await computeAutoMergedFiles(projectPath, conflictedFiles);
 			conflictState = {
 				operation: detected.operation,
 				sourceBranch: detected.sourceBranch,
@@ -229,7 +232,7 @@ export async function loadHomeGitMetadata(entry: ProjectMetadataEntry): Promise<
 			stateVersion: Date.now(),
 		};
 	} catch {
-		return entry.homeGit;
+		return currentHomeGit;
 	}
 }
 

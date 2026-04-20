@@ -4,7 +4,6 @@ import type { RuntimeBoardData, RuntimeGitSyncSummary } from "../../../src/core"
 import type {
 	CachedHomeGitMetadata,
 	CachedTaskWorktreeMetadata,
-	ProjectMetadataEntry,
 	TrackedTaskWorktree,
 } from "../../../src/server/project-metadata-loaders";
 import { createProjectMetadataMonitor } from "../../../src/server/project-metadata-monitor";
@@ -95,11 +94,15 @@ function createGitSummary(branch: string): RuntimeGitSyncSummary {
 
 let versionCounter = 1;
 
-function createHomeMetadata(entry: ProjectMetadataEntry, branch: string): CachedHomeGitMetadata {
+function createHomeMetadata(
+	_projectPath: string,
+	branch: string,
+	currentHomeGit?: Pick<CachedHomeGitMetadata, "stashCount">,
+): CachedHomeGitMetadata {
 	return {
 		summary: createGitSummary(branch),
 		conflictState: null,
-		stashCount: entry.homeGit.stashCount,
+		stashCount: currentHomeGit?.stashCount ?? 0,
 		stateToken: `home:${branch}:${versionCounter}`,
 		stateVersion: versionCounter++,
 	};
@@ -165,9 +168,11 @@ describe("ProjectMetadataMonitor", () => {
 		workdirMocks.resolveBaseRefForBranch.mockReset();
 		workdirMocks.runGit.mockReset();
 
-		loaderMocks.loadHomeGitMetadata.mockImplementation(async (entry: ProjectMetadataEntry) => {
-			return createHomeMetadata(entry, `home-${entry.projectPath}`);
-		});
+		loaderMocks.loadHomeGitMetadata.mockImplementation(
+			async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+				return createHomeMetadata(projectPath, `home-${projectPath}`, currentHomeGit);
+			},
+		);
 		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
 			async (_projectPath: string, task: TrackedTaskWorktree) => {
 				return createTaskMetadata(task);
@@ -202,19 +207,24 @@ describe("ProjectMetadataMonitor", () => {
 
 		onMetadataUpdated.mockClear();
 		const blockedRefresh = createDeferred<CachedHomeGitMetadata>();
-		let blockedEntry: ProjectMetadataEntry | null = null;
-		loaderMocks.loadHomeGitMetadata.mockImplementation(async (entry: ProjectMetadataEntry) => {
-			if (entry.projectPath === "/repo-a") {
-				blockedEntry = entry;
-				return await blockedRefresh.promise;
-			}
-			return createHomeMetadata(entry, "home-/repo-b-refresh");
-		});
+		let blockedProjectPath: string | null = null;
+		let blockedHomeGit: CachedHomeGitMetadata | null = null;
+		loaderMocks.loadHomeGitMetadata.mockImplementation(
+			async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+				if (projectPath === "/repo-a") {
+					blockedProjectPath = projectPath;
+					blockedHomeGit = currentHomeGit;
+					return await blockedRefresh.promise;
+				}
+				return createHomeMetadata(projectPath, "home-/repo-b-refresh", currentHomeGit);
+			},
+		);
 
 		monitor.requestHomeRefresh("project-a");
 		monitor.requestHomeRefresh("project-b");
 		await vi.waitFor(() => {
-			expect(blockedEntry).not.toBeNull();
+			expect(blockedProjectPath).toBe("/repo-a");
+			expect(blockedHomeGit).not.toBeNull();
 			expect(onMetadataUpdated).toHaveBeenCalledWith(
 				"project-b",
 				expect.objectContaining({
@@ -223,10 +233,10 @@ describe("ProjectMetadataMonitor", () => {
 			);
 		});
 
-		if (!blockedEntry) {
-			throw new Error("Expected the blocked project entry to be captured.");
+		if (!blockedProjectPath || !blockedHomeGit) {
+			throw new Error("Expected the blocked home refresh to be captured.");
 		}
-		blockedRefresh.resolve(createHomeMetadata(blockedEntry, "home-/repo-a-refresh"));
+		blockedRefresh.resolve(createHomeMetadata(blockedProjectPath, "home-/repo-a-refresh", blockedHomeGit));
 		await vi.waitFor(() => {
 			expect(onMetadataUpdated).toHaveBeenCalledWith(
 				"project-a",
@@ -276,6 +286,155 @@ describe("ProjectMetadataMonitor", () => {
 
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(probeCounts.get("task-2")).toBe(1);
+
+		monitor.close();
+	});
+
+	it("keeps newer targeted task refresh metadata when a full refresh resolves later", async () => {
+		const onMetadataUpdated = vi.fn();
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated,
+		});
+		const board = createBoard([{ taskId: "task-1", columnId: "in_progress" }]);
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board,
+			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
+		});
+
+		const staleFullRefresh = createDeferred<CachedTaskWorktreeMetadata>();
+		let sawBlockedFullRefresh = false;
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree, current: CachedTaskWorktreeMetadata | null) => {
+				if (task.taskId !== "task-1") {
+					return createTaskMetadata(task);
+				}
+				if (current?.stateToken === null) {
+					return createTaskMetadata(task, {
+						branch: "feature/task-1-targeted",
+						changedFiles: 7,
+					});
+				}
+				sawBlockedFullRefresh = true;
+				return await staleFullRefresh.promise;
+			},
+		);
+
+		onMetadataUpdated.mockClear();
+		const fullRefreshPromise = monitor.updateProjectState({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board,
+		});
+		await vi.waitFor(() => {
+			expect(sawBlockedFullRefresh).toBe(true);
+		});
+
+		monitor.requestTaskRefresh("project-1", "task-1");
+		await vi.waitFor(() => {
+			expect(onMetadataUpdated).toHaveBeenCalledWith(
+				"project-1",
+				expect.objectContaining({
+					taskWorktrees: [
+						expect.objectContaining({
+							taskId: "task-1",
+							branch: "feature/task-1-targeted",
+							changedFiles: 7,
+						}),
+					],
+				}),
+			);
+		});
+
+		staleFullRefresh.resolve(
+			createTaskMetadata(
+				{
+					taskId: "task-1",
+					baseRef: "main",
+					workingDirectory: "/worktrees/task-1",
+				},
+				{
+					branch: "feature/task-1-stale",
+					changedFiles: 1,
+				},
+			),
+		);
+		const finalSnapshot = await fullRefreshPromise;
+		expect(finalSnapshot.taskWorktrees).toEqual([
+			expect.objectContaining({
+				taskId: "task-1",
+				branch: "feature/task-1-targeted",
+				changedFiles: 7,
+			}),
+		]);
+
+		monitor.close();
+	});
+
+	it("reruns a full refresh when tracked tasks change mid-flight", async () => {
+		const monitor = createProjectMetadataMonitor({
+			onMetadataUpdated: vi.fn(),
+		});
+		const boardOne = createBoard([{ taskId: "task-1", columnId: "in_progress" }]);
+		const boardTwo = createBoard([
+			{ taskId: "task-1", columnId: "in_progress" },
+			{ taskId: "task-2", columnId: "review" },
+		]);
+
+		await monitor.connectProject({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: boardOne,
+			pollIntervals: { focusedTaskPollMs: 2_000, backgroundTaskPollMs: 5_000, homeRepoPollMs: 10_000 },
+		});
+
+		const blockedTaskOneRefresh = createDeferred<CachedTaskWorktreeMetadata>();
+		let sawBlockedPass = false;
+		let taskTwoLoadCount = 0;
+		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
+			async (_projectPath: string, task: TrackedTaskWorktree) => {
+				if (task.taskId === "task-1" && !sawBlockedPass) {
+					sawBlockedPass = true;
+					return await blockedTaskOneRefresh.promise;
+				}
+				if (task.taskId === "task-2") {
+					taskTwoLoadCount += 1;
+				}
+				return createTaskMetadata(task);
+			},
+		);
+
+		const firstUpdatePromise = monitor.updateProjectState({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: boardOne,
+		});
+		await vi.waitFor(() => {
+			expect(sawBlockedPass).toBe(true);
+		});
+
+		const secondUpdatePromise = monitor.updateProjectState({
+			projectId: "project-1",
+			projectPath: "/repo-1",
+			board: boardTwo,
+		});
+
+		blockedTaskOneRefresh.resolve(
+			createTaskMetadata({
+				taskId: "task-1",
+				baseRef: "main",
+				workingDirectory: "/worktrees/task-1",
+			}),
+		);
+
+		const firstSnapshot = await firstUpdatePromise;
+		const secondSnapshot = await secondUpdatePromise;
+
+		expect(taskTwoLoadCount).toBe(1);
+		expect(firstSnapshot.taskWorktrees.map((task) => task.taskId)).toEqual(["task-1", "task-2"]);
+		expect(secondSnapshot.taskWorktrees.map((task) => task.taskId)).toEqual(["task-1", "task-2"]);
 
 		monitor.close();
 	});
@@ -345,10 +504,12 @@ describe("ProjectMetadataMonitor", () => {
 
 		const seenHomeStateTokens: Array<string | null> = [];
 		const refreshedTasks: string[] = [];
-		loaderMocks.loadHomeGitMetadata.mockImplementation(async (entry: ProjectMetadataEntry) => {
-			seenHomeStateTokens.push(entry.homeGit.stateToken);
-			return createHomeMetadata(entry, `home-${seenHomeStateTokens.length}`);
-		});
+		loaderMocks.loadHomeGitMetadata.mockImplementation(
+			async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+				seenHomeStateTokens.push(currentHomeGit.stateToken);
+				return createHomeMetadata(projectPath, `home-${seenHomeStateTokens.length}`, currentHomeGit);
+			},
+		);
 		loaderMocks.loadTaskWorktreeMetadata.mockImplementation(
 			async (_projectPath: string, task: TrackedTaskWorktree) => {
 				refreshedTasks.push(task.taskId);

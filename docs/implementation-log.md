@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Refactor: tighten project metadata monitor mutation ownership and freshness (2026-04-20)
+
+**What:** Finished the remaining post-refactor `project-metadata-monitor` follow-up work by moving metadata application behind controller-owned commit semantics and making task metadata writes freshness-aware so stale full refreshes cannot overwrite newer targeted task refreshes.
+
+**Why:** The previous split into controller/refresher/poller/fetch-policy made two remaining design problems easier to see: `ProjectMetadataRefresher` still mutated the shared `ProjectMetadataEntry` directly, and `refreshProject()` could snapshot task metadata, load results asynchronously, then replace the whole task metadata map after a focused/manual task refresh had already committed newer data for one task. That left the runtime depending on incidental “last async writer wins” behavior instead of an explicit freshness rule.
+
+**How:** Kept the existing public monitor API and shared `p-limit(3)` probe concurrency cap, but changed the refresh boundary so `ProjectMetadataRefresher` reads project state through controller-supplied getters and commits results through controller-owned `commitHomeGit` / `commitTaskMetadata` callbacks instead of mutating `entry.homeGit` and `entry.taskMetadataByTaskId` itself. Narrowed `loadHomeGitMetadata()` so it takes `projectPath` plus the current cached home metadata, which let invalidation stay local to the refresh attempt instead of mutating shared state before the load. Added per-task freshness counters in `ProjectMetadataController`; targeted task refreshes capture the current task freshness and bump it when they successfully commit, while full refreshes capture each task's freshness at refresh start and only apply a loaded task result if that task's freshness is unchanged when the commit is attempted. `updateTrackedState()` now also bumps task freshness when a tracked task's `baseRef` or `workingDirectory` changes, so in-flight refreshes loaded against stale task identity do not overwrite newer task descriptors. Added a focused monitor regression test that forces `refreshProject()` and `requestTaskRefresh()` to interleave and proves the newer targeted task metadata survives when the stale full refresh resolves later. Re-ran the targeted monitor test suite, the runtime stream integration test that covers project metadata streaming behavior, `npm run typecheck`, and a changed-files Biome check.
+
+**Files touched:** `src/server/project-metadata-controller.ts`, `src/server/project-metadata-refresher.ts`, `src/server/project-metadata-loaders.ts`, `test/runtime/server/project-metadata-monitor.test.ts`, `test/integration/state-streaming.integration.test.ts`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: clarify authoritative project sync vs cached board restore (2026-04-20)
 
 **What:** Refactored `use-project-sync` and `project-board-cache` so there is one explicit authoritative project-state apply path, while cached board restore is handled as a clearly subordinate switch/display policy. Added regression coverage for cached restore confirmation and stale previous-project updates during a switch.
@@ -18,7 +28,7 @@
 
 **Why:** `scheduleRevealAfterLayout` uses a double-`requestAnimationFrame` to defer its final fit + reveal. Between the moment `pendingScrollToBottom` was armed (in `finalizeRestorePresentation` or `show()`) and the rAF callback, the ResizeObserver could fire — consuming the flag. When the rAF finally ran, it called `fit()` (potentially reshaping the terminal) but skipped `scrollToBottom()` because the flag was already cleared. The terminal then became visible at the wrong scroll position.
 
-**How:** Made `scheduleRevealAfterLayout` unconditionally call `terminal.scrollToBottom()` before `domHost.reveal()`. This method is only invoked at "present content to the user" transitions (initial restore or task switch), so unconditional scroll is always correct. Removed the now-dead non-initial-fit `pendingScrollToBottom` block from `SlotResizeManager`'s ResizeObserver callback. The initial-fit fast-path remains for flicker prevention (it fires one frame earlier than the rAF reveal).
+**How:** Made `scheduleRevealAfterLayout` unconditionally call `terminal.scrollToBottom()` before `domHost.reveal()`. This method is only invoked at “present content to the user” transitions (initial restore or task switch), so unconditional scroll is always correct. Removed the now-dead non-initial-fit `pendingScrollToBottom` block from `SlotResizeManager`'s ResizeObserver callback. The initial-fit fast-path remains for flicker prevention (it fires one frame earlier than the rAF reveal).
 
 **Files touched:** `web-ui/src/terminal/terminal-viewport.ts`, `web-ui/src/terminal/slot-resize-manager.ts`.
 

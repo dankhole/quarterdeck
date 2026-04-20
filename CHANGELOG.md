@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Refactor: tighten project metadata monitor mutation ownership and freshness
+
+- Moved project-metadata writes behind `ProjectMetadataController` commit semantics so `ProjectMetadataRefresher` now loads results and asks the controller to apply them instead of mutating the shared project entry directly.
+- Made task metadata commits freshness-aware: a full-project refresh now applies a task result only if that task has not received a newer targeted/identity-changing write since the full refresh began, preventing stale full-refresh results from overwriting newer focused/manual task metadata.
+- Kept the runtime stream contract, focused/background refresh behavior, branch/base-ref follow-ups, disconnect-driven churn shutdown, and shared `p-limit(3)` git probe cap intact while adding direct regression coverage for the stale overwrite race in `test/runtime/server/project-metadata-monitor.test.ts`.
+
 ### Refactor: clarify authoritative project sync vs cached board restore
 
 - Refactored `web-ui/src/hooks/project/use-project-sync.ts` so authoritative runtime project-state application is now explicit and cache restore is tracked as a subordinate display policy instead of mutating the same revision model that drives persistence gating.

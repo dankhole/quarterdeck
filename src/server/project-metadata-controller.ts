@@ -1,10 +1,12 @@
 import type { RuntimeBoardData, RuntimeProjectMetadata } from "../core";
 import {
 	buildProjectMetadataSnapshot,
+	type CachedTaskWorktreeMetadata,
 	collectTrackedTasks,
 	createProjectEntry,
 	type ProjectMetadataEntry,
 	type ProjectMetadataPollIntervals,
+	type TrackedTaskWorktree,
 } from "./project-metadata-loaders";
 import { ProjectMetadataPoller } from "./project-metadata-poller";
 import { ProjectMetadataRefresher } from "./project-metadata-refresher";
@@ -21,6 +23,8 @@ export interface CreateProjectMetadataControllerDependencies {
 
 export class ProjectMetadataController {
 	private readonly entry: ProjectMetadataEntry;
+	private readonly taskMetadataFreshness = new Map<string, number>();
+	private nextTaskMetadataFreshness = 1;
 	private readonly refresher: ProjectMetadataRefresher;
 	private readonly poller: ProjectMetadataPoller;
 	private readonly remoteFetchPolicy: ProjectMetadataRemoteFetchPolicy;
@@ -29,11 +33,22 @@ export class ProjectMetadataController {
 		this.entry = createProjectEntry(deps.projectPath);
 		this.refresher = new ProjectMetadataRefresher({
 			projectId: deps.projectId,
-			entry: this.entry,
 			limitTaskProbe: deps.limitTaskProbe,
 			onMetadataUpdated: deps.onMetadataUpdated,
 			onTaskBaseRefChanged: deps.onTaskBaseRefChanged,
 			getProjectDefaultBaseRef: deps.getProjectDefaultBaseRef,
+			getSnapshot: () => buildProjectMetadataSnapshot(this.entry),
+			getProjectPath: () => this.entry.projectPath,
+			getTrackedTasks: () => [...this.entry.trackedTasks],
+			getTrackedTask: (taskId) => this.getTrackedTask(taskId),
+			getFocusedTaskId: () => this.entry.focusedTaskId,
+			getHomeGit: () => this.entry.homeGit,
+			getTaskMetadata: (taskId) => this.entry.taskMetadataByTaskId.get(taskId) ?? null,
+			getTaskFreshness: (taskId) => this.taskMetadataFreshness.get(taskId) ?? 0,
+			commitHomeGit: (next) => {
+				this.entry.homeGit = next;
+			},
+			commitTaskMetadata: (taskId, next, options) => this.commitTaskMetadata(taskId, next, options),
 		});
 		this.poller = new ProjectMetadataPoller({
 			getPollIntervals: () => this.entry.pollIntervals,
@@ -126,7 +141,37 @@ export class ProjectMetadataController {
 		this.remoteFetchPolicy.stop();
 	}
 
+	private getTrackedTask(taskId: string): TrackedTaskWorktree | null {
+		return this.entry.trackedTasks.find((task) => task.taskId === taskId) ?? null;
+	}
+
+	private commitTaskMetadata(
+		taskId: string,
+		next: CachedTaskWorktreeMetadata,
+		options: { expectedVersion: number; bumpVersion: boolean },
+	): { applied: boolean; previous: CachedTaskWorktreeMetadata | null } {
+		const task = this.getTrackedTask(taskId);
+		const previous = this.entry.taskMetadataByTaskId.get(taskId) ?? null;
+		if (!task) {
+			return { applied: false, previous };
+		}
+		const currentFreshness = this.taskMetadataFreshness.get(taskId) ?? 0;
+		if (currentFreshness !== options.expectedVersion) {
+			return { applied: false, previous };
+		}
+		this.entry.taskMetadataByTaskId.set(taskId, next);
+		if (options.bumpVersion) {
+			this.taskMetadataFreshness.set(taskId, this.nextTaskMetadataFreshness++);
+		}
+		return { applied: true, previous };
+	}
+
+	private bumpTaskMetadataFreshness(taskId: string): void {
+		this.taskMetadataFreshness.set(taskId, this.nextTaskMetadataFreshness++);
+	}
+
 	private updateTrackedState(projectPath: string, board: RuntimeBoardData): void {
+		const previousTrackedTasks = new Map(this.entry.trackedTasks.map((task) => [task.taskId, task] as const));
 		this.entry.projectPath = projectPath;
 		this.entry.trackedTasks = collectTrackedTasks(board);
 
@@ -134,6 +179,20 @@ export class ProjectMetadataController {
 		this.entry.taskMetadataByTaskId = new Map(
 			Array.from(this.entry.taskMetadataByTaskId.entries()).filter(([taskId]) => trackedTaskIds.has(taskId)),
 		);
+		for (const taskId of Array.from(this.taskMetadataFreshness.keys())) {
+			if (!trackedTaskIds.has(taskId)) {
+				this.taskMetadataFreshness.delete(taskId);
+			}
+		}
+		for (const task of this.entry.trackedTasks) {
+			const previous = previousTrackedTasks.get(task.taskId);
+			if (!previous) {
+				continue;
+			}
+			if (previous.baseRef !== task.baseRef || previous.workingDirectory !== task.workingDirectory) {
+				this.bumpTaskMetadataFreshness(task.taskId);
+			}
+		}
 		if (this.entry.focusedTaskId && !trackedTaskIds.has(this.entry.focusedTaskId)) {
 			this.entry.focusedTaskId = null;
 		}

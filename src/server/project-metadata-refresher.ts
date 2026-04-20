@@ -2,11 +2,10 @@ import type { RuntimeProjectMetadata } from "../core";
 import { resolveBaseRefForBranch } from "../workdir";
 import {
 	areProjectMetadataEqual,
-	buildProjectMetadataSnapshot,
+	type CachedHomeGitMetadata,
 	type CachedTaskWorktreeMetadata,
 	loadHomeGitMetadata,
 	loadTaskWorktreeMetadata,
-	type ProjectMetadataEntry,
 	type TrackedTaskWorktree,
 } from "./project-metadata-loaders";
 
@@ -16,17 +15,38 @@ interface QueuedRefreshState {
 	invalidate: boolean;
 }
 
+interface QueuedFullRefreshState {
+	promise: Promise<RuntimeProjectMetadata> | null;
+	rerun: boolean;
+}
+
 export interface CreateProjectMetadataRefresherDependencies {
 	projectId: string;
-	entry: ProjectMetadataEntry;
 	limitTaskProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
 	getProjectDefaultBaseRef?: (projectId: string) => string;
+	getSnapshot: () => RuntimeProjectMetadata;
+	getProjectPath: () => string;
+	getTrackedTasks: () => TrackedTaskWorktree[];
+	getTrackedTask: (taskId: string) => TrackedTaskWorktree | null;
+	getFocusedTaskId: () => string | null;
+	getHomeGit: () => CachedHomeGitMetadata;
+	getTaskMetadata: (taskId: string) => CachedTaskWorktreeMetadata | null;
+	getTaskFreshness: (taskId: string) => number;
+	commitHomeGit: (next: CachedHomeGitMetadata) => void;
+	commitTaskMetadata: (
+		taskId: string,
+		next: CachedTaskWorktreeMetadata,
+		options: { expectedVersion: number; bumpVersion: boolean },
+	) => { applied: boolean; previous: CachedTaskWorktreeMetadata | null };
 }
 
 export class ProjectMetadataRefresher {
-	private fullRefreshPromise: Promise<RuntimeProjectMetadata> | null = null;
+	private readonly fullRefreshState: QueuedFullRefreshState = {
+		promise: null,
+		rerun: false,
+	};
 	private backgroundRefreshPromise: Promise<void> | null = null;
 	private readonly homeRefreshState: QueuedRefreshState = {
 		promise: null,
@@ -38,65 +58,40 @@ export class ProjectMetadataRefresher {
 	constructor(private readonly deps: CreateProjectMetadataRefresherDependencies) {}
 
 	get snapshot(): RuntimeProjectMetadata {
-		return buildProjectMetadataSnapshot(this.deps.entry);
-	}
-
-	invalidateHome(): void {
-		this.deps.entry.homeGit.stateToken = null;
+		return this.deps.getSnapshot();
 	}
 
 	async refreshProject(): Promise<RuntimeProjectMetadata> {
-		if (this.fullRefreshPromise) {
-			return await this.fullRefreshPromise;
+		if (this.fullRefreshState.promise) {
+			this.fullRefreshState.rerun = true;
+			return await this.fullRefreshState.promise;
 		}
 
-		this.fullRefreshPromise = (async () => {
-			const previousSnapshot = this.snapshot;
-			const previousTaskMetadata = new Map(this.deps.entry.taskMetadataByTaskId);
-			this.deps.entry.homeGit = await loadHomeGitMetadata(this.deps.entry);
-
-			const nextTaskEntries = await Promise.all(
-				this.deps.entry.trackedTasks.map((task) =>
-					this.deps.limitTaskProbe(async () => {
-						const previousCached = previousTaskMetadata.get(task.taskId) ?? null;
-						const next = await loadTaskWorktreeMetadata(this.deps.entry.projectPath, task, previousCached);
-						return next ? ([task.taskId, next, previousCached] as const) : null;
-					}),
-				),
-			);
-
-			const nextTaskMetadata = new Map<string, CachedTaskWorktreeMetadata>();
-			for (const result of nextTaskEntries) {
-				if (!result) {
-					continue;
-				}
-				const [taskId, next, previousCached] = result;
-				nextTaskMetadata.set(taskId, next);
-				void this.checkForBranchChanges(taskId, previousCached, next);
-			}
-			this.deps.entry.taskMetadataByTaskId = nextTaskMetadata;
-
-			const nextSnapshot = this.snapshot;
-			if (!areProjectMetadataEqual(previousSnapshot, nextSnapshot)) {
-				this.deps.onMetadataUpdated(this.deps.projectId, nextSnapshot);
-			}
-			return nextSnapshot;
+		this.fullRefreshState.promise = (async () => {
+			let latestSnapshot = this.snapshot;
+			do {
+				this.fullRefreshState.rerun = false;
+				latestSnapshot = await this.performFullRefresh();
+			} while (this.fullRefreshState.rerun);
+			return latestSnapshot;
 		})().finally(() => {
-			this.fullRefreshPromise = null;
+			this.fullRefreshState.promise = null;
 		});
 
-		return await this.fullRefreshPromise;
+		return await this.fullRefreshState.promise;
 	}
 
 	async refreshHome(options?: { invalidate?: boolean }): Promise<void> {
 		await this.runQueuedRefresh(
 			this.homeRefreshState,
 			async (invalidate) => {
-				if (invalidate) {
-					this.invalidateHome();
-				}
 				const previousSnapshot = this.snapshot;
-				this.deps.entry.homeGit = await loadHomeGitMetadata(this.deps.entry);
+				const currentHomeGit = this.deps.getHomeGit();
+				const nextHomeGit = await loadHomeGitMetadata(
+					this.deps.getProjectPath(),
+					invalidate ? { ...currentHomeGit, stateToken: null } : currentHomeGit,
+				);
+				this.deps.commitHomeGit(nextHomeGit);
 				this.broadcastIfChanged(previousSnapshot);
 			},
 			options?.invalidate ?? false,
@@ -104,7 +99,7 @@ export class ProjectMetadataRefresher {
 	}
 
 	async refreshFocusedTask(options?: { invalidate?: boolean }): Promise<void> {
-		const focusedTaskId = this.deps.entry.focusedTaskId;
+		const focusedTaskId = this.deps.getFocusedTaskId();
 		if (!focusedTaskId) {
 			return;
 		}
@@ -115,8 +110,10 @@ export class ProjectMetadataRefresher {
 		if (this.backgroundRefreshPromise) {
 			return await this.backgroundRefreshPromise;
 		}
-		const taskIds = this.deps.entry.trackedTasks
-			.filter((task) => task.taskId !== this.deps.entry.focusedTaskId)
+		const focusedTaskId = this.deps.getFocusedTaskId();
+		const taskIds = this.deps
+			.getTrackedTasks()
+			.filter((task) => task.taskId !== focusedTaskId)
 			.map((task) => task.taskId);
 		if (taskIds.length === 0) {
 			return;
@@ -131,7 +128,7 @@ export class ProjectMetadataRefresher {
 	}
 
 	async refreshTask(taskId: string, options?: { invalidate?: boolean }): Promise<void> {
-		if (!this.findTrackedTask(taskId)) {
+		if (!this.deps.getTrackedTask(taskId)) {
 			return;
 		}
 		const refreshState = this.getTaskRefreshState(taskId);
@@ -145,28 +142,83 @@ export class ProjectMetadataRefresher {
 	}
 
 	private async performTaskRefresh(taskId: string, invalidate: boolean): Promise<void> {
-		const task = this.findTrackedTask(taskId);
+		const task = this.deps.getTrackedTask(taskId);
 		if (!task) {
 			return;
 		}
 
 		const previousSnapshot = this.snapshot;
-		let previousCached = this.deps.entry.taskMetadataByTaskId.get(taskId) ?? null;
-		if (invalidate && previousCached) {
-			previousCached = { ...previousCached, stateToken: null };
-			this.deps.entry.taskMetadataByTaskId.set(taskId, previousCached);
-		}
+		const previousCached = this.deps.getTaskMetadata(taskId);
+		const refreshInput = invalidate && previousCached ? { ...previousCached, stateToken: null } : previousCached;
+		const expectedVersion = this.deps.getTaskFreshness(taskId);
 
 		const next = await this.deps.limitTaskProbe(async () => {
-			return await loadTaskWorktreeMetadata(this.deps.entry.projectPath, task, previousCached);
+			return await loadTaskWorktreeMetadata(this.deps.getProjectPath(), task, refreshInput);
 		});
 		if (!next) {
 			return;
 		}
 
-		this.deps.entry.taskMetadataByTaskId.set(taskId, next);
-		await this.checkForBranchChanges(taskId, previousCached, next);
+		const commit = this.deps.commitTaskMetadata(taskId, next, {
+			expectedVersion,
+			bumpVersion: true,
+		});
+		if (!commit.applied) {
+			return;
+		}
+		await this.checkForBranchChanges(taskId, commit.previous, next);
 		this.broadcastIfChanged(previousSnapshot);
+	}
+
+	private async performFullRefresh(): Promise<RuntimeProjectMetadata> {
+		const previousSnapshot = this.snapshot;
+		const trackedTasks = this.deps.getTrackedTasks();
+		const projectPath = this.deps.getProjectPath();
+		const previousTaskMetadata = new Map(
+			trackedTasks.map((task) => [task.taskId, this.deps.getTaskMetadata(task.taskId)] as const),
+		);
+		const taskFreshnessByTaskId = new Map(
+			trackedTasks.map((task) => [task.taskId, this.deps.getTaskFreshness(task.taskId)] as const),
+		);
+		const nextHomeGit = await loadHomeGitMetadata(projectPath, this.deps.getHomeGit());
+		// Home git intentionally stays last-writer-wins: it is one project-wide value,
+		// so the targeted-vs-full stale-overwrite problem we guard for tasks does not
+		// apply in the same per-entity way here.
+		this.deps.commitHomeGit(nextHomeGit);
+
+		const nextTaskEntries = await Promise.all(
+			trackedTasks.map((task) =>
+				this.deps.limitTaskProbe(async () => {
+					const previousCached = previousTaskMetadata.get(task.taskId) ?? null;
+					// This cache input is captured once per refresh pass. A targeted refresh may
+					// commit newer metadata while this load is in flight, which can cost us a
+					// cache-hit and extra git work. We accept that probe-efficiency tradeoff so
+					// the controller freshness gate can stay the single source of commit truth.
+					const next = await loadTaskWorktreeMetadata(projectPath, task, previousCached);
+					return next ? ([task.taskId, next] as const) : null;
+				}),
+			),
+		);
+
+		for (const result of nextTaskEntries) {
+			if (!result) {
+				continue;
+			}
+			const [taskId, next] = result;
+			const commit = this.deps.commitTaskMetadata(taskId, next, {
+				expectedVersion: taskFreshnessByTaskId.get(taskId) ?? 0,
+				bumpVersion: false,
+			});
+			if (commit.applied) {
+				void this.checkForBranchChanges(taskId, commit.previous, next);
+			}
+		}
+
+		const nextSnapshot = this.snapshot;
+		if (!areProjectMetadataEqual(previousSnapshot, nextSnapshot)) {
+			this.deps.onMetadataUpdated(this.deps.projectId, nextSnapshot);
+		}
+		return nextSnapshot;
 	}
 
 	private async checkForBranchChanges(
@@ -186,7 +238,7 @@ export class ProjectMetadataRefresher {
 			return;
 		}
 
-		const task = this.findTrackedTask(taskId);
+		const task = this.deps.getTrackedTask(taskId);
 		if (!task) {
 			return;
 		}
@@ -203,10 +255,6 @@ export class ProjectMetadataRefresher {
 		if (!areProjectMetadataEqual(previousSnapshot, nextSnapshot)) {
 			this.deps.onMetadataUpdated(this.deps.projectId, nextSnapshot);
 		}
-	}
-
-	private findTrackedTask(taskId: string): TrackedTaskWorktree | null {
-		return this.deps.entry.trackedTasks.find((task) => task.taskId === taskId) ?? null;
 	}
 
 	private getTaskRefreshState(taskId: string): QueuedRefreshState {
