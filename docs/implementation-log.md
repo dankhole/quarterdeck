@@ -2,6 +2,19 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: base branch resolution bugs (2026-04-20)
+
+**What:** Fixed three related issues with default base branch detection: `develop` auto-resolving over `main`, `detectGitDefaultBranch` reporting a non-existent local branch, and `defaultBaseRef` being global instead of per-project.
+
+**Why:** In repos with both `main` and `develop`, `resolveBaseRefForBranch` always included `develop` in the candidate set and picked the closest ancestor by commit distance — which is typically `develop` for feature branches forked from it. This meant even when the user pinned `main` as their default, auto-resolution on branch changes could override it with `develop`. Separately, `detectGitDefaultBranch` trusted `origin/HEAD` without checking if the target existed as a local branch, so repos with only remote tracking refs could report `main` as the default even when no local `main` branch existed. Finally, `defaultBaseRef` was stored in the global config file, so setting it in one project would affect all projects.
+
+**How:**
+- Removed `"develop"` from the well-known candidate array in `resolveBaseRefForBranch`. Users who want develop-based resolution set `defaultBaseRef` in project config, which is still added to candidates.
+- Added `branches.includes(normalized)` guard in `detectGitDefaultBranch` so `origin/HEAD` targets that don't exist locally fall through to the `main`/`master`/first-branch fallback.
+- Moved `defaultBaseRef` out of `GLOBAL_CONFIG_FIELDS` (which writes to `~/.quarterdeck/config.json`) and into `RuntimeProjectConfigFileShape` (which writes to `<project>/.quarterdeck/config.json`). Updated `toRuntimeConfigState` to read from project config first with a global-config fallback for migration. Updated `writeRuntimeProjectConfigFile`, `applyConfigUpdates`, `saveRuntimeConfig`, `buildRuntimeConfigResponse`, `createRuntimeConfigStateFromValues`, `toGlobalRuntimeConfigState`, and `CONFIG_DEFAULTS` to route the field through the project-config path alongside `shortcuts`.
+
+**Files touched:** `src/workdir/git-utils.ts`, `src/state/project-state-utils.ts`, `src/config/global-config-fields.ts`, `src/config/runtime-config-normalizers.ts`, `src/config/runtime-config-persistence.ts`, `src/config/runtime-config.ts`, `src/config/agent-registry.ts`, `src/config/config-defaults.ts`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Fix: "Mute focused project" plays sounds when tab/browser is unfocused (2026-04-20)
 
 **What:** The "Mute focused project" per-event toggle now only suppresses sounds when the user is actually looking at the board. When the tab is hidden or the browser loses focus, per-project suppression is bypassed and sounds play normally.

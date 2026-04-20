@@ -396,7 +396,7 @@ export async function resolveBaseRefForBranch(
 	if (projectDefaultBaseRef) {
 		candidates.add(projectDefaultBaseRef);
 	}
-	for (const name of ["main", "master", "develop"]) {
+	for (const name of ["main", "master"]) {
 		candidates.add(name);
 	}
 	// Don't consider the current branch as its own base

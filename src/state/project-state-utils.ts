@@ -124,7 +124,7 @@ function detectGitDefaultBranch(repoPath: string, branches: string[]): string | 
 	const remoteHead = runGitSync(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
 	if (remoteHead) {
 		const normalized = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : remoteHead;
-		if (normalized) {
+		if (normalized && branches.includes(normalized)) {
 			return normalized;
 		}
 	}

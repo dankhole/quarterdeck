@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: base branch resolution bugs
+
+- Removed `develop` from the hard-coded candidate list in `resolveBaseRefForBranch` — it was winning over `main` in repos that have both, since it's often a closer ancestor. Users who want develop-based workflows set `defaultBaseRef` in project config.
+- Fixed `detectGitDefaultBranch` returning a branch name from `origin/HEAD` even when that branch doesn't exist locally — now falls through to the `main`/`master`/first-branch fallback.
+- Moved `defaultBaseRef` from global config (`~/.quarterdeck/config.json`) to per-project config (`.quarterdeck/config.json` in the project dir) so each project gets its own default base branch. Reads from global config as fallback for migration.
+
 ### Fix: "Mute focused project" suppresses sounds even when tab/browser is unfocused
 
 - Per-project sound suppression (`isEventSuppressedForProject`) now checks tab visibility before suppressing — if the user isn't looking at the board, the "currently viewed project" concept doesn't apply and sounds play normally.

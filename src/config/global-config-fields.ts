@@ -77,10 +77,6 @@ function volumeField(defaultValue: number): ConfigField<number> {
 	return { defaultValue, normalize: normalizeVolume };
 }
 
-function stringField(defaultValue: string): ConfigField<string> {
-	return { defaultValue, normalize: normalizeString };
-}
-
 function pollField(defaultValue: number): ConfigField<number> {
 	return { defaultValue, normalize: normalizePollInterval };
 }
@@ -131,7 +127,6 @@ export const GLOBAL_CONFIG_FIELDS = {
 	showRunningTaskEmergencyActions: boolField(false),
 	eventLogEnabled: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
-	defaultBaseRef: stringField(""),
 	backupIntervalMinutes: numField(30),
 } as const;
 

@@ -106,6 +106,9 @@ async function applyConfigUpdates({
 		: current.audibleNotificationSuppressCurrentProject;
 	const nextShortcuts = projectConfigPath ? (updates.shortcuts ?? current.shortcuts) : current.shortcuts;
 	const nextPinnedBranches = projectId ? (updates.pinnedBranches ?? current.pinnedBranches) : current.pinnedBranches;
+	const nextDefaultBaseRef = projectConfigPath
+		? (updates.defaultBaseRef ?? current.defaultBaseRef)
+		: current.defaultBaseRef;
 	const nextPromptShortcuts = updates.promptShortcuts ?? current.promptShortcuts;
 	const nextHiddenDefaults = updates.hiddenDefaultPromptShortcuts ?? current.hiddenDefaultPromptShortcuts;
 	const pinnedBranchesChanged =
@@ -130,6 +133,7 @@ async function applyConfigUpdates({
 		nextAudibleNotificationSuppressCurrentProject.failure !==
 			current.audibleNotificationSuppressCurrentProject.failure ||
 		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts)) ||
+		nextDefaultBaseRef !== current.defaultBaseRef ||
 		pinnedBranchesChanged;
 
 	if (!hasChanges) {
@@ -151,6 +155,7 @@ async function applyConfigUpdates({
 	if (projectConfigPath !== null) {
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
 			shortcuts: nextShortcuts,
+			defaultBaseRef: nextDefaultBaseRef,
 		});
 	}
 	if (pinnedBranchesChanged && projectId !== null) {
@@ -166,6 +171,7 @@ async function applyConfigUpdates({
 		audibleNotificationSuppressCurrentProject: nextAudibleNotificationSuppressCurrentProject,
 		shortcuts: nextShortcuts,
 		pinnedBranches: nextPinnedBranches,
+		defaultBaseRef: nextDefaultBaseRef,
 		promptShortcuts: nextPromptShortcuts,
 		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
 	});
@@ -206,15 +212,16 @@ export async function saveRuntimeConfig(
 		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
+		defaultBaseRef: string;
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
 	},
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(cwd, projectId), async () => {
-		const { shortcuts, pinnedBranches, ...globalFields } = config;
+		const { shortcuts, pinnedBranches, defaultBaseRef, ...globalFields } = config;
 		await writeRuntimeGlobalConfigFile(globalConfigPath, globalFields);
-		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts });
+		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts, defaultBaseRef });
 		if (projectId) {
 			await writePinnedBranchesFile(projectId, pinnedBranches);
 		}

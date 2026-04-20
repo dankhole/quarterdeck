@@ -41,6 +41,7 @@ export interface RuntimeGlobalConfigFileShape extends Partial<GlobalConfigFieldV
 
 export interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
+	defaultBaseRef?: string;
 }
 
 // --- Resolved config state ---
@@ -54,6 +55,7 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 	shortcuts: RuntimeProjectShortcut[];
 	pinnedBranches: string[];
+	defaultBaseRef: string;
 	promptShortcuts: PromptShortcut[];
 	hiddenDefaultPromptShortcuts: string[];
 	commitPromptTemplate: string;
@@ -73,6 +75,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	audibleNotificationSuppressCurrentProject?: AudibleNotificationEventsShape;
 	shortcuts?: RuntimeProjectShortcut[];
 	pinnedBranches?: string[];
+	defaultBaseRef?: string;
 	promptShortcuts?: PromptShortcut[];
 	hiddenDefaultPromptShortcuts?: string[];
 	commitPromptTemplate?: string;
@@ -95,6 +98,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	audibleNotificationSuppressCurrentProject: { ...DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT },
 	shortcuts: [],
 	pinnedBranches: [],
+	defaultBaseRef: "",
 	promptShortcuts: [],
 	hiddenDefaultPromptShortcuts: [],
 	commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -286,6 +290,8 @@ export function toRuntimeConfigState({
 	pinnedBranches?: string[];
 }): RuntimeConfigState {
 	const fields = normalizeGlobalConfigFields(globalConfig as Record<string, unknown> | null);
+	const rawDefaultBaseRef =
+		projectConfig?.defaultBaseRef ?? (globalConfig as Record<string, unknown> | null)?.defaultBaseRef;
 	return {
 		...fields,
 		globalConfigPath,
@@ -298,6 +304,7 @@ export function toRuntimeConfigState({
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 		pinnedBranches: normalizePinnedBranches(pinnedBranches),
+		defaultBaseRef: typeof rawDefaultBaseRef === "string" ? rawDefaultBaseRef.trim() : "",
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(globalConfig?.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(
 			globalConfig?.promptShortcuts,
@@ -328,6 +335,7 @@ export function createRuntimeConfigStateFromValues(
 		audibleNotificationSuppressCurrentProject: AudibleNotificationSuppressCurrentProject;
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
+		defaultBaseRef: string;
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
 	},
@@ -345,6 +353,7 @@ export function createRuntimeConfigStateFromValues(
 		),
 		shortcuts: normalizeShortcuts(input.shortcuts),
 		pinnedBranches: normalizePinnedBranches(input.pinnedBranches),
+		defaultBaseRef: typeof input.defaultBaseRef === "string" ? input.defaultBaseRef.trim() : "",
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
 		commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
@@ -367,6 +376,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		audibleNotificationSuppressCurrentProject: current.audibleNotificationSuppressCurrentProject,
 		shortcuts: [],
 		pinnedBranches: [],
+		defaultBaseRef: "",
 		promptShortcuts: current.promptShortcuts,
 		hiddenDefaultPromptShortcuts: current.hiddenDefaultPromptShortcuts,
 	});

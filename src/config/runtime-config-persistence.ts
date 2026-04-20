@@ -281,16 +281,17 @@ export async function writeRuntimeGlobalConfigFile(
 
 export async function writeRuntimeProjectConfigFile(
 	configPath: string | null,
-	config: { shortcuts: RuntimeProjectShortcut[] },
+	config: { shortcuts: RuntimeProjectShortcut[]; defaultBaseRef?: string },
 ): Promise<void> {
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
+	const normalizedBaseRef = typeof config.defaultBaseRef === "string" ? config.defaultBaseRef.trim() : "";
 	if (!configPath) {
 		if (normalizedShortcuts.length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
 		}
 		return;
 	}
-	if (normalizedShortcuts.length === 0) {
+	if (normalizedShortcuts.length === 0 && !normalizedBaseRef) {
 		await rm(configPath, { force: true });
 		try {
 			await rm(dirname(configPath));
@@ -299,7 +300,13 @@ export async function writeRuntimeProjectConfigFile(
 		}
 		return;
 	}
-	const payload: RuntimeProjectConfigFileShape = { shortcuts: normalizedShortcuts };
+	const payload: RuntimeProjectConfigFileShape = {};
+	if (normalizedShortcuts.length > 0) {
+		payload.shortcuts = normalizedShortcuts;
+	}
+	if (normalizedBaseRef) {
+		payload.defaultBaseRef = normalizedBaseRef;
+	}
 	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
 		lock: null,
 	});
