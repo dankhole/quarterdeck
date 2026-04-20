@@ -20,9 +20,6 @@ export interface UseAppDialogsResult {
 /**
  * Manages open/close state for top-level dialogs that don't belong to a
  * specific feature hook (settings, prompt shortcut editor, task create dialog).
- *
- * Note: clear-trash dialog state is owned by App and passed through DialogProvider
- * because it must be available to useBoardInteractions above the provider tree.
  */
 export function useAppDialogs({ handleCancelCreateTask }: UseAppDialogsInput): UseAppDialogsResult {
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);

@@ -17,7 +17,6 @@ import type { ProjectContextValue } from "@/providers/project-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
 import { saveProjectState } from "@/runtime/project-state-query";
 import { useProjectPersistence } from "@/runtime/use-project-persistence";
-import { findCardSelection } from "@/state/board-state";
 import { useAppHotkeys } from "./use-app-hotkeys";
 import { useEscapeHandler } from "./use-escape-handler";
 
@@ -28,8 +27,6 @@ interface UseAppSideEffectsInput {
 	terminal: TerminalContextValue;
 	interactions: InteractionsContextValue;
 	dialog: DialogContextValue;
-	pendingTaskStartAfterEditId: string | null;
-	clearPendingTaskStartAfterEditId: () => void;
 	serverMutationInFlightRef: MutableRefObject<boolean>;
 	handleToggleFileFinder: () => void;
 	handleToggleTextSearch: () => void;
@@ -42,8 +39,6 @@ export function useAppSideEffects({
 	terminal,
 	interactions,
 	dialog,
-	pendingTaskStartAfterEditId,
-	clearPendingTaskStartAfterEditId,
 	serverMutationInFlightRef,
 	handleToggleFileFinder,
 	handleToggleTextSearch,
@@ -85,7 +80,7 @@ export function useAppSideEffects({
 		currentProjectId: project.currentProjectId,
 		navigationCurrentProjectId: project.navigationCurrentProjectId,
 		isProjectSwitching: project.isProjectSwitching,
-		resetTaskEditorState: board.taskEditor.resetTaskEditorState,
+		resetBoardUiState: board.resetBoardUiState,
 		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen as Dispatch<SetStateAction<boolean>>,
 		resetGitActionState: git.resetGitActionState,
 		resetProjectNavigationState: project.resetProjectNavigationState,
@@ -127,7 +122,7 @@ export function useAppSideEffects({
 
 	useEscapeHandler({
 		isGitHistoryOpen: git.isGitHistoryOpen,
-		setIsGitHistoryOpen: git.setIsGitHistoryOpen,
+		closeGitHistory: git.closeGitHistory,
 		selectedCard: board.selectedCard,
 		setSelectedTaskId: board.setSelectedTaskId,
 	});
@@ -166,17 +161,4 @@ export function useAppSideEffects({
 		onProjectRevisionChange: project.setProjectRevision,
 		onProjectStateConflict: handleProjectStateConflict,
 	});
-
-	useEffect(() => {
-		if (!pendingTaskStartAfterEditId) return;
-		const selection = findCardSelection(board.board, pendingTaskStartAfterEditId);
-		if (!selection || selection.column.id !== "backlog") return;
-		interactions.handleStartTaskFromBoard(pendingTaskStartAfterEditId);
-		clearPendingTaskStartAfterEditId();
-	}, [
-		board.board,
-		clearPendingTaskStartAfterEditId,
-		interactions.handleStartTaskFromBoard,
-		pendingTaskStartAfterEditId,
-	]);
 }

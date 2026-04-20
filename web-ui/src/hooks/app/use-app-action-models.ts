@@ -215,8 +215,8 @@ export function useAppActionModels({
 
 	const handleBack = useCallback(() => {
 		board.setSelectedTaskId(null);
-		git.setIsGitHistoryOpen(false);
-	}, [board.setSelectedTaskId, git.setIsGitHistoryOpen]);
+		git.closeGitHistory();
+	}, [board.setSelectedTaskId, git.closeGitHistory]);
 
 	const detailSession = board.selectedCard
 		? (board.sessions[board.selectedCard.card.id] ?? createIdleTaskSession(board.selectedCard.card.id))

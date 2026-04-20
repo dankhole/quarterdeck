@@ -2,6 +2,36 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Follow-up: tighten app-shell refactor timing semantics (2026-04-20)
+
+**What:** Tightened the first app-shell gravity refactor pass so project-switch cleanup and git-history closure happen before paint, and so the edited-task auto-start effect no longer re-evaluates on every board change.
+
+**Why:** The first pass moved ownership to the right providers, but two small follow-up concerns remained: project-switch cleanup and git-history close were happening in normal effects, which meant the state reset could lag by one render before paint, and the `InteractionsProvider` effect that consumes `pendingTaskStartAfterEditId` was still depending on whole-board churn through `handleStartTaskFromBoard`. Neither was a correctness bug in practice, but both were worth tightening while the refactor context was still fresh.
+
+**How:**
+- Updated `web-ui/src/providers/git-provider.tsx` to use `useLayoutEffect` for project-switch-driven git-history closure and to make `closeGitHistory()` explicitly depend on the stable React state setter.
+- Updated `web-ui/src/hooks/project/use-project-switch-cleanup.ts` so the board UI reset path and current-project transient reset path both run in `useLayoutEffect`, preserving the provider-owned reset seam while avoiding a post-paint cleanup frame.
+- Updated `web-ui/src/providers/interactions-provider.tsx` to derive `pendingEditedTaskColumnId` from the pending edited task and the current board, then trigger the auto-start effect only when that specific task reaches backlog. The effect now calls `handleStartTask()` directly for the single edited task instead of depending on `handleStartTaskFromBoard`, so it no longer re-runs on unrelated board updates.
+
+**Files touched:** `web-ui/src/providers/git-provider.tsx`, `web-ui/src/hooks/project/use-project-switch-cleanup.ts`, `web-ui/src/providers/interactions-provider.tsx`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
+## Refactor: reduce app-shell integration gravity around git history and edit-start flow (2026-04-20)
+
+**What:** Reduced the amount of cross-feature wiring that still re-centralized in `web-ui/src/App.tsx` after the provider migration by moving git-history ownership into `GitProvider`, moving edited-task auto-start deferral into the board/interactions seam, and replacing app-level task-editor reset reach-through with a board-owned reset API.
+
+**Why:** The provider split improved the app shell, but two integration paths were still pulling unrelated ownership back up to the top-level composition surface: git-history state lived in `App.tsx` even though only git/layout consumers owned its meaning, and the “save edited task then start it” workflow depended on app-owned pending state plus a top-level side-effect that re-entered board interactions later. That kept `App.tsx` attractive as the place to add “just one more” cross-provider wire and made project-switch cleanup rely on ref plumbing instead of provider-owned seams.
+
+**How:**
+- Moved `isGitHistoryOpen` into `web-ui/src/providers/git-provider.tsx`, added provider-owned `openGitHistory()` / `closeGitHistory()` actions, and kept the existing navigation behavior through `useGitNavigation`. `GitProvider` now also closes git history itself when project switching starts, so `App.tsx` no longer has to own or pass that state. Updated downstream consumers in `use-app-action-models.ts`, `use-app-side-effects.ts`, `use-escape-handler.ts`, and `use-board-interactions.ts` to use the owned close action instead of a raw state setter.
+- Updated `web-ui/src/providers/interactions-provider.tsx` so it consumes `GitContext` directly rather than taking a shell-threaded `setIsGitHistoryOpen` prop. This removes one of the explicit “stuck prop” seams called out in the current architecture smell.
+- Added `pendingTaskStartAfterEditId`, `clearPendingTaskStartAfterEditId()`, and `resetBoardUiState()` to `web-ui/src/providers/board-provider.tsx`. `useTaskEditor` still queues “start after edit,” but that pending state is now board-owned rather than app-owned.
+- Moved consumption of the pending edit-start state into `InteractionsProvider`, next to `useTaskStartActions`, so the provider that already owns start workflow now decides when an edited backlog task is ready to auto-start. Removed the corresponding cross-provider effect from `web-ui/src/hooks/app/use-app-side-effects.ts`.
+- Updated `web-ui/src/hooks/project/use-project-switch-cleanup.ts` to call `resetBoardUiState()` instead of reaching through to task-editor internals, keeping project-switch cleanup aligned with provider-owned reset boundaries.
+- Simplified `web-ui/src/App.tsx` so it no longer owns git-history state, edited-task pending-start state, or the task-editor reset ref. After the change, the top-level composition surface is closer to a true shell: provider composition, top-level rendering, and shell-local search-overlay reset behavior.
+- Updated focused tests in `web-ui/src/hooks/board/use-board-interactions.test.tsx` and `web-ui/src/components/task/card-detail-view.test.tsx` for the narrowed provider/context surfaces.
+
+**Files touched:** `web-ui/src/App.tsx`, `web-ui/src/providers/board-provider.tsx`, `web-ui/src/providers/git-provider.tsx`, `web-ui/src/providers/interactions-provider.tsx`, `web-ui/src/hooks/board/use-board-interactions.ts`, `web-ui/src/hooks/project/use-project-switch-cleanup.ts`, `web-ui/src/hooks/app/use-app-side-effects.ts`, `web-ui/src/hooks/app/use-app-action-models.ts`, `web-ui/src/hooks/app/use-escape-handler.ts`, `web-ui/src/hooks/git/use-git-navigation.ts`, `web-ui/src/hooks/app/use-app-dialogs.ts`, `web-ui/src/hooks/board/use-board-interactions.test.tsx`, `web-ui/src/components/task/card-detail-view.test.tsx`, `docs/todo.md`, `CHANGELOG.md`, `docs/implementation-log.md`.
+
 ## Refactor: clarify runtime-state message semantics vs batching policy (2026-04-20)
 
 **Commit:** `39c93240`

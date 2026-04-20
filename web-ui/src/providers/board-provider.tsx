@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useCallback, useContext, useEffect, useMemo } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { type UseTaskEditorResult, useTaskEditor, useTaskSessions } from "@/hooks/board";
 import { useTaskBranchOptions } from "@/hooks/git";
 import { useDetailTaskNavigation } from "@/hooks/project";
@@ -46,6 +46,9 @@ export interface BoardContextValue {
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleCancelCreateTask: () => void;
+	resetBoardUiState: () => void;
+	pendingTaskStartAfterEditId: string | null;
+	clearPendingTaskStartAfterEditId: () => void;
 
 	// --- Task branch options ---
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
@@ -75,20 +78,10 @@ interface BoardProviderProps {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	setPendingTaskStartAfterEditId: Dispatch<SetStateAction<string | null>>;
-	taskEditorResetRef: React.MutableRefObject<() => void>;
 	children: ReactNode;
 }
 
-export function BoardProvider({
-	board,
-	setBoard,
-	sessions,
-	setSessions,
-	setPendingTaskStartAfterEditId,
-	taskEditorResetRef,
-	children,
-}: BoardProviderProps): ReactNode {
+export function BoardProvider({ board, setBoard, sessions, setSessions, children }: BoardProviderProps): ReactNode {
 	const {
 		currentProjectId,
 		projects,
@@ -111,6 +104,7 @@ export function BoardProvider({
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingProjectSnapshot = currentProjectId !== null && streamedProjectState === null;
+	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 
 	// --- useTaskSessions ---
 	const {
@@ -146,6 +140,10 @@ export function BoardProvider({
 		[setPendingTaskStartAfterEditId],
 	);
 
+	const clearPendingTaskStartAfterEditId = useCallback(() => {
+		setPendingTaskStartAfterEditId(null);
+	}, []);
+
 	// --- useTaskEditor ---
 	const taskEditor = useTaskEditor({
 		board,
@@ -159,9 +157,9 @@ export function BoardProvider({
 	});
 	const { handleCreateTask, handleCreateTasks, resetTaskEditorState, handleCancelCreateTask } = taskEditor;
 
-	// --- taskEditorResetRef sync ---
-	useEffect(() => {
-		taskEditorResetRef.current = resetTaskEditorState;
+	const resetBoardUiState = useCallback(() => {
+		resetTaskEditorState();
+		setPendingTaskStartAfterEditId(null);
 	}, [resetTaskEditorState]);
 
 	// --- Context value ---
@@ -185,6 +183,9 @@ export function BoardProvider({
 			handleCreateTask,
 			handleCreateTasks,
 			handleCancelCreateTask,
+			resetBoardUiState,
+			pendingTaskStartAfterEditId,
+			clearPendingTaskStartAfterEditId,
 			createTaskBranchOptions,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,
@@ -207,6 +208,9 @@ export function BoardProvider({
 			handleCreateTask,
 			handleCreateTasks,
 			handleCancelCreateTask,
+			resetBoardUiState,
+			pendingTaskStartAfterEditId,
+			clearPendingTaskStartAfterEditId,
 			createTaskBranchOptions,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,

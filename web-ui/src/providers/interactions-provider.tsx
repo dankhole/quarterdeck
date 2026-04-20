@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import {
 	type UseBoardInteractionsResult,
@@ -8,7 +8,9 @@ import {
 	useTaskStartActions,
 } from "@/hooks/board";
 import { useBoardContext } from "@/providers/board-provider";
+import { useGitContext } from "@/providers/git-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { findCardSelection } from "@/state/board-state";
 
 // ---------------------------------------------------------------------------
 // Context value — board interactions: drag/drop, trash workflow, task
@@ -77,12 +79,10 @@ export function useInteractionsContext(): InteractionsContextValue {
 // ---------------------------------------------------------------------------
 
 export interface InteractionsProviderProps {
-	/** Stuck prop — closes git history on task select. */
-	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
 }
 
-export function InteractionsProvider({ setIsGitHistoryOpen, children }: InteractionsProviderProps): ReactNode {
+export function InteractionsProvider({ children }: InteractionsProviderProps): ReactNode {
 	const {
 		board,
 		setBoard,
@@ -98,9 +98,12 @@ export function InteractionsProvider({ setIsGitHistoryOpen, children }: Interact
 		cleanupTaskWorktree,
 		handleCreateTask,
 		handleCreateTasks,
+		pendingTaskStartAfterEditId,
+		clearPendingTaskStartAfterEditId,
 	} = useBoardContext();
 
 	const { currentProjectId, showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectContext();
+	const { closeGitHistory } = useGitContext();
 
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 
@@ -137,7 +140,7 @@ export function InteractionsProvider({ setIsGitHistoryOpen, children }: Interact
 		currentProjectId,
 		setSelectedTaskId,
 		setIsClearTrashDialogOpen,
-		setIsGitHistoryOpen,
+		closeGitHistory,
 		stopTaskSession,
 		cleanupTaskWorktree,
 		ensureTaskWorktree,
@@ -161,6 +164,21 @@ export function InteractionsProvider({ setIsGitHistoryOpen, children }: Interact
 		handleStartAllBacklogTasks,
 		setSelectedTaskId,
 	});
+
+	const pendingEditedTaskColumnId = useMemo(() => {
+		if (!pendingTaskStartAfterEditId) {
+			return null;
+		}
+		return findCardSelection(board, pendingTaskStartAfterEditId)?.column.id ?? null;
+	}, [board, pendingTaskStartAfterEditId]);
+
+	useEffect(() => {
+		if (!pendingTaskStartAfterEditId || pendingEditedTaskColumnId !== "backlog") {
+			return;
+		}
+		handleStartTask(pendingTaskStartAfterEditId);
+		clearPendingTaskStartAfterEditId();
+	}, [clearPendingTaskStartAfterEditId, handleStartTask, pendingEditedTaskColumnId, pendingTaskStartAfterEditId]);
 
 	const value = useMemo<InteractionsContextValue>(
 		() => ({

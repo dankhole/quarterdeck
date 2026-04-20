@@ -66,9 +66,6 @@ function LayoutResetBridge({ resetToDefaults }: { resetToDefaults: () => void })
 // ---------------------------------------------------------------------------
 
 interface AppContentProps {
-	// pendingTaskStartAfterEditId state (owned by App for project-switch reset)
-	pendingTaskStartAfterEditId: string | null;
-	clearPendingTaskStartAfterEditId: () => void;
 	searchOverlayResetRef: React.MutableRefObject<() => void>;
 }
 
@@ -103,9 +100,6 @@ function AppInner(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [canPersistProjectState, setCanPersistProjectState] = useState(false);
-	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
-	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
-	const taskEditorResetRef = useRef<() => void>(() => {});
 	const boardRef = useRef(board);
 	boardRef.current = board;
 	const sessionsRef = useRef(sessions);
@@ -115,9 +109,6 @@ function AppInner(): ReactElement {
 
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistProjectState(false);
-		setIsGitHistoryOpen(false);
-		setPendingTaskStartAfterEditId(null);
-		taskEditorResetRef.current();
 		searchOverlayResetRef.current();
 	}, []);
 
@@ -132,23 +123,12 @@ function AppInner(): ReactElement {
 			setCanPersistProjectState={setCanPersistProjectState}
 		>
 			<AppEarlyBailout>
-				<BoardProvider
-					board={board}
-					setBoard={setBoard}
-					sessions={sessions}
-					setSessions={setSessions}
-					setPendingTaskStartAfterEditId={setPendingTaskStartAfterEditId}
-					taskEditorResetRef={taskEditorResetRef}
-				>
-					<GitProvider isGitHistoryOpen={isGitHistoryOpen} setIsGitHistoryOpen={setIsGitHistoryOpen}>
+				<BoardProvider board={board} setBoard={setBoard} sessions={sessions} setSessions={setSessions}>
+					<GitProvider>
 						<TerminalProvider>
-							<InteractionsProvider setIsGitHistoryOpen={setIsGitHistoryOpen}>
+							<InteractionsProvider>
 								<DialogProvider>
-									<AppContent
-										pendingTaskStartAfterEditId={pendingTaskStartAfterEditId}
-										clearPendingTaskStartAfterEditId={() => setPendingTaskStartAfterEditId(null)}
-										searchOverlayResetRef={searchOverlayResetRef}
-									/>
+									<AppContent searchOverlayResetRef={searchOverlayResetRef} />
 								</DialogProvider>
 							</InteractionsProvider>
 						</TerminalProvider>
@@ -164,11 +144,7 @@ function AppInner(): ReactElement {
 // Reads from the 6 contexts, runs side-effect hooks, renders all JSX.
 // ---------------------------------------------------------------------------
 
-function AppContent({
-	pendingTaskStartAfterEditId,
-	clearPendingTaskStartAfterEditId,
-	searchOverlayResetRef,
-}: AppContentProps): ReactElement {
+function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const project = useProjectContext();
 	const boardContext = useBoardContext();
 	const {
@@ -263,8 +239,6 @@ function AppContent({
 		terminal,
 		interactions,
 		dialog,
-		pendingTaskStartAfterEditId,
-		clearPendingTaskStartAfterEditId,
 		serverMutationInFlightRef,
 		handleToggleFileFinder,
 		handleToggleTextSearch,

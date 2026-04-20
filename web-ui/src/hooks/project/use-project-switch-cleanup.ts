@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { resetProjectMetadataStore } from "@/stores/project-metadata-store";
 import { disposeAllDedicatedTerminalsForProject, releaseAll } from "@/terminal/terminal-pool";
 
@@ -7,7 +7,7 @@ interface UseProjectSwitchCleanupInput {
 	currentProjectId: string | null;
 	navigationCurrentProjectId: string | null;
 	isProjectSwitching: boolean;
-	resetTaskEditorState: () => void;
+	resetBoardUiState: () => void;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	resetGitActionState: () => void;
 	resetProjectNavigationState: () => void;
@@ -23,7 +23,7 @@ export function useProjectSwitchCleanup({
 	currentProjectId,
 	navigationCurrentProjectId,
 	isProjectSwitching,
-	resetTaskEditorState,
+	resetBoardUiState,
 	setIsClearTrashDialogOpen,
 	resetGitActionState,
 	resetProjectNavigationState,
@@ -61,16 +61,16 @@ export function useProjectSwitchCleanup({
 	}, [isProjectSwitching, navigationCurrentProjectId, resetProjectSyncState]);
 
 	// Reset task editor state when switching projects.
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!isProjectSwitching) {
 			return;
 		}
-		resetTaskEditorState();
-	}, [isProjectSwitching, resetTaskEditorState]);
+		resetBoardUiState();
+	}, [isProjectSwitching, resetBoardUiState]);
 
 	// Reset all transient state when the current project changes.
-	useEffect(() => {
-		resetTaskEditorState();
+	useLayoutEffect(() => {
+		resetBoardUiState();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();
 		resetProjectNavigationState();
@@ -79,7 +79,7 @@ export function useProjectSwitchCleanup({
 		currentProjectId,
 		resetGitActionState,
 		resetProjectNavigationState,
-		resetTaskEditorState,
+		resetBoardUiState,
 		resetTerminalPanelsState,
 		setIsClearTrashDialogOpen,
 	]);

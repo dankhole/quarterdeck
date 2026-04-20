@@ -106,7 +106,7 @@ function HookHarness({
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [, setSelectedTaskId] = useState<string | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
-	const [, setIsGitHistoryOpen] = useState(false);
+	const closeGitHistory = () => {};
 
 	const actions = useBoardInteractions({
 		board,
@@ -118,7 +118,7 @@ function HookHarness({
 		currentProjectId: "project-1",
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		setIsClearTrashDialogOpen,
-		setIsGitHistoryOpen,
+		closeGitHistory,
 		stopTaskSession: stopTaskSession ?? NOOP_STOP_SESSION,
 		cleanupTaskWorktree: NOOP_CLEANUP_WORKTREE,
 		ensureTaskWorktree,

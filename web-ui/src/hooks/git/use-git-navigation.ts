@@ -28,9 +28,6 @@ interface UseGitNavigationResult {
 /**
  * Manages git view navigation: compare navigation, file navigation, and the
  * auto-switch effect that opens the git main view when git history is toggled on.
- *
- * Note: `isGitHistoryOpen` state stays in App.tsx because it's referenced by
- * callbacks declared before `useCardDetailLayout` provides `setMainView`.
  */
 export function useGitNavigation({
 	isGitHistoryOpen,

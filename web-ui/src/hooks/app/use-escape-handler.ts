@@ -1,11 +1,10 @@
-import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 import type { CardSelection } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
 interface UseEscapeHandlerInput {
 	isGitHistoryOpen: boolean;
-	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
+	closeGitHistory: () => void;
 	selectedCard: CardSelection | null;
 	setSelectedTaskId: (id: string | null) => void;
 }
@@ -17,7 +16,7 @@ interface UseEscapeHandlerInput {
  */
 export function useEscapeHandler({
 	isGitHistoryOpen,
-	setIsGitHistoryOpen,
+	closeGitHistory,
 	selectedCard,
 	setSelectedTaskId,
 }: UseEscapeHandlerInput): void {
@@ -30,7 +29,7 @@ export function useEscapeHandler({
 			// 1. Git history open → close it (home or task context)
 			if (isGitHistoryOpen) {
 				event.preventDefault();
-				setIsGitHistoryOpen(false);
+				closeGitHistory();
 				return;
 			}
 
@@ -46,7 +45,7 @@ export function useEscapeHandler({
 				return;
 			}
 		},
-		[isGitHistoryOpen, selectedCard, setIsGitHistoryOpen, setSelectedTaskId],
+		[closeGitHistory, isGitHistoryOpen, selectedCard, setSelectedTaskId],
 	);
 	useWindowEvent("keydown", handleEscapeKeydown);
 }

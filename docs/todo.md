@@ -27,7 +27,6 @@ These items are broader ownership-boundary refactors that do not yet need full i
 
 - Investigate split-brain task state across persistence, in-memory runtime state, websocket deltas, browser board state, and client-side cache/restore behavior. Roadmap context: [docs/refactor-roadmap-context.md#4-split-brain-task-state](./refactor-roadmap-context.md#4-split-brain-task-state)
 - Reduce manual broadcast choreography by making post-mutation effects easier to express through stronger domain-event or post-mutation boundaries. Roadmap context: [docs/refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries](./refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries)
-- Reduce app-shell integration gravity so cross-feature wiring stops re-centralizing at top-level composition surfaces. Roadmap context: [docs/refactor-roadmap-context.md#6-app-shell-integration-gravity](./refactor-roadmap-context.md#6-app-shell-integration-gravity)
 - Narrow broad provider/context surfaces, especially where project-, git-, or interaction-related providers currently expose mixed-domain ownership. Roadmap context: [docs/refactor-roadmap-context.md#7-broad-provider--context-surfaces](./refactor-roadmap-context.md#7-broad-provider--context-surfaces)
 
 ## Standalone desktop app (Electron/Tauri)

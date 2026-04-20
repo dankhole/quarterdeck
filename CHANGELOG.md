@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Refactor: reduce app-shell integration gravity around git history and edit-start flow
+
+- Moved git-history ownership into `GitProvider`, so top-level app composition no longer threads raw git-history state/setters across `App.tsx`, `GitProvider`, and `InteractionsProvider`.
+- Moved “save edited task, then auto-start it once it lands back in backlog” ownership into the board/interactions seam: `BoardProvider` now owns the pending edit-start state and `InteractionsProvider` consumes it where task-start workflow already lives.
+- Replaced top-level task-editor reset reach-through with a board-owned `resetBoardUiState()` seam, making project-switch cleanup read more like provider reset choreography and less like app-shell ref plumbing.
+- Tightened the follow-up timing/ownership semantics by making project-switch cleanup and git-history closure run in layout effects before paint, and by narrowing the edited-task auto-start effect to track only the pending task's column instead of every board change.
+
 ### Refactor: clarify runtime-state message semantics vs batching policy
 
 - Refactored `src/server/runtime-state-message-batcher.ts` into explicit task-session event delivery plus dedicated task-session and debug-log batch queues, so the meaning of a runtime event is easier to inspect before the timer/coalescing policy.

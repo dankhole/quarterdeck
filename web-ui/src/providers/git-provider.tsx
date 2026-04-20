@@ -1,5 +1,5 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useCallback, useContext, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { UseGitHistoryDataResult } from "@/components/git/history";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
@@ -66,8 +66,9 @@ export interface GitContextValue {
 
 	// --- Git history toggle ---
 	isGitHistoryOpen: boolean;
-	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	handleToggleGitHistory: () => void;
+	openGitHistory: () => void;
+	closeGitHistory: () => void;
 
 	// --- useGitNavigation ---
 	pendingCompareNavigation: GitViewCompareNavigation | null;
@@ -131,12 +132,10 @@ export function useGitContext(): GitContextValue {
 const topbarBranchViewNoop = (_ref: string) => {};
 
 interface GitProviderProps {
-	isGitHistoryOpen: boolean;
-	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	children: ReactNode;
 }
 
-export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }: GitProviderProps): ReactNode {
+export function GitProvider({ children }: GitProviderProps): ReactNode {
 	const {
 		currentProjectId,
 		runtimeProjectConfig,
@@ -146,6 +145,7 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		isProjectSwitching,
 		refreshProjectState,
 	} = useProjectContext();
+	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 
 	const { board, selectedCard, selectedTaskId, setSelectedTaskId, sendTaskSessionInput, fetchTaskWorktreeInfo } =
 		useBoardContext();
@@ -249,6 +249,21 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 		setIsGitHistoryOpen((current) => !current);
 	}, [hasNoProjects, setIsGitHistoryOpen]);
 
+	const openGitHistory = useCallback(() => {
+		if (hasNoProjects) return;
+		setIsGitHistoryOpen(true);
+	}, [hasNoProjects]);
+
+	const closeGitHistory = useCallback(() => {
+		setIsGitHistoryOpen(false);
+	}, [setIsGitHistoryOpen]);
+
+	useLayoutEffect(() => {
+		if (isProjectSwitching) {
+			setIsGitHistoryOpen(false);
+		}
+	}, [isProjectSwitching, setIsGitHistoryOpen]);
+
 	// --- useCardDetailLayout ---
 	const {
 		mainView,
@@ -300,8 +315,9 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 			onStashAndRetry,
 			isStashAndRetryingPull,
 			isGitHistoryOpen,
-			setIsGitHistoryOpen,
 			handleToggleGitHistory,
+			openGitHistory,
+			closeGitHistory,
 			pendingCompareNavigation,
 			pendingFileNavigation,
 			openGitCompare,
@@ -347,8 +363,9 @@ export function GitProvider({ isGitHistoryOpen, setIsGitHistoryOpen, children }:
 			onStashAndRetry,
 			isStashAndRetryingPull,
 			isGitHistoryOpen,
-			setIsGitHistoryOpen,
 			handleToggleGitHistory,
+			openGitHistory,
+			closeGitHistory,
 			pendingCompareNavigation,
 			pendingFileNavigation,
 			openGitCompare,

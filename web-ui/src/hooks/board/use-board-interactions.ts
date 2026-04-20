@@ -35,7 +35,7 @@ interface UseBoardInteractionsInput {
 	currentProjectId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
-	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
+	closeGitHistory: () => void;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 	cleanupTaskWorktree: (taskId: string) => Promise<unknown>;
 	ensureTaskWorktree: UseTaskSessionsResult["ensureTaskWorktree"];
@@ -82,7 +82,7 @@ export function useBoardInteractions({
 	currentProjectId,
 	setSelectedTaskId,
 	setIsClearTrashDialogOpen,
-	setIsGitHistoryOpen,
+	closeGitHistory,
 	stopTaskSession,
 	cleanupTaskWorktree,
 	ensureTaskWorktree,
@@ -235,9 +235,9 @@ export function useBoardInteractions({
 				return;
 			}
 			setSelectedTaskId(taskId);
-			setIsGitHistoryOpen(false);
+			closeGitHistory();
 		},
-		[board, setIsGitHistoryOpen, setSelectedTaskId],
+		[board, closeGitHistory, setSelectedTaskId],
 	);
 
 	const handleRestartTaskSession = useCallback(
