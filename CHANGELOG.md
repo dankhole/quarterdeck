@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: terminal scroll-to-bottom on task load/untrash
+
+- Fixed a race condition where the terminal would not scroll to the bottom when a task was first loaded (most noticeable after untrashing). The ResizeObserver could consume the `pendingScrollToBottom` flag before the reveal animation frame fired, leaving the terminal visible at the wrong scroll position.
+- Removed a now-redundant non-initial-fit scroll block from the ResizeObserver callback in `SlotResizeManager`.
+
 ### Docs: flesh out next-wave refactor roadmap context
 
 - Added `docs/refactor-roadmap-context.md`, a structured pickup guide for the current next 9 refactors after the recent terminal websocket bridge and project metadata monitor work.

@@ -2,6 +2,16 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: terminal scroll-to-bottom on task load/untrash (2026-04-20)
+
+**What:** Fixed a race condition where the agent terminal would not scroll to the bottom when a task was first loaded, most noticeable on untrash.
+
+**Why:** `scheduleRevealAfterLayout` uses a double-`requestAnimationFrame` to defer its final fit + reveal. Between the moment `pendingScrollToBottom` was armed (in `finalizeRestorePresentation` or `show()`) and the rAF callback, the ResizeObserver could fire — consuming the flag. When the rAF finally ran, it called `fit()` (potentially reshaping the terminal) but skipped `scrollToBottom()` because the flag was already cleared. The terminal then became visible at the wrong scroll position.
+
+**How:** Made `scheduleRevealAfterLayout` unconditionally call `terminal.scrollToBottom()` before `domHost.reveal()`. This method is only invoked at "present content to the user" transitions (initial restore or task switch), so unconditional scroll is always correct. Removed the now-dead non-initial-fit `pendingScrollToBottom` block from `SlotResizeManager`'s ResizeObserver callback. The initial-fit fast-path remains for flicker prevention (it fires one frame earlier than the rAF reveal).
+
+**Files touched:** `web-ui/src/terminal/terminal-viewport.ts`, `web-ui/src/terminal/slot-resize-manager.ts`.
+
 ## Docs: flesh out next-wave refactor roadmap context (2026-04-19)
 
 **What:** Added a roadmap-context document for the current next 9 refactors and wired each one into `docs/todo.md` so the active queue is no longer split between a few detailed briefs and several high-level roadmap rankings.

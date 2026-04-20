@@ -99,13 +99,6 @@ export class SlotResizeManager {
 				this.request();
 				return;
 			}
-			// When pendingScrollToBottom is armed, fit + scroll synchronously
-			// in the same frame so the user never sees wrong scroll position.
-			if (this._pendingScrollToBottom) {
-				this.fitAddon.fit();
-				this.terminal.scrollToBottom();
-				this._pendingScrollToBottom = false;
-			}
 			if (this.resizeTimer !== null) {
 				clearTimeout(this.resizeTimer);
 			}

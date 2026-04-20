@@ -177,10 +177,8 @@ export class TerminalViewport {
 					return;
 				}
 				this.resizer.request();
-				if (this.resizer.pendingScrollToBottom) {
-					this.terminal.scrollToBottom();
-					this.resizer.pendingScrollToBottom = false;
-				}
+				this.terminal.scrollToBottom();
+				this.resizer.pendingScrollToBottom = false;
 				this.domHost.reveal();
 				if (options.autoFocus) {
 					this.terminal.focus();
