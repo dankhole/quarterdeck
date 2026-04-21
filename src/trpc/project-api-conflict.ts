@@ -13,6 +13,7 @@ import {
 } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
 import { EMPTY_GIT_SUMMARY, errorMessage, type ProjectApiContext, resolveWorkingDir } from "./project-api-shared";
+import { createProjectStateUpdatedEffects } from "./runtime-mutation-effects";
 
 type ConflictOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -58,7 +59,7 @@ export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
 					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
 				);
 				const result = await gitResolveConflictFile(cwd, input.path, input.resolution);
-				if (result.ok) ctx.broadcastStateUpdate(projectScope);
+				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {
 				return { ok: false, error: errorMessage(error) };
@@ -72,7 +73,7 @@ export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
 					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
 				);
 				const response = await continueMergeOrRebase(cwd);
-				ctx.broadcastStateUpdate(projectScope);
+				ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return response;
 			} catch (error) {
 				return {
@@ -92,7 +93,7 @@ export function createConflictOps(ctx: ProjectApiContext): ConflictOps {
 					input.taskId ? { taskId: input.taskId, baseRef: "" } : null,
 				);
 				const response = await abortMergeOrRebase(cwd);
-				ctx.broadcastStateUpdate(projectScope);
+				ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return response;
 			} catch (error) {
 				return {

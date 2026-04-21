@@ -13,6 +13,7 @@ import type {
 } from "../core";
 import { Disposable, getLogLevel, getRecentLogEntries, onLogEntry, toDisposable } from "../core";
 import type { TerminalSessionManager } from "../terminal";
+import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { createProjectMetadataMonitor, type ProjectMetadataPollIntervals } from "./project-metadata-monitor";
 import type { ProjectRegistry } from "./project-registry";
 import { RuntimeStateClientRegistry } from "./runtime-state-client-registry";
@@ -105,7 +106,14 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 				this.clients.broadcastToProject(projectId, buildProjectMetadataUpdatedMessage(projectId, projectMetadata));
 			},
 			onTaskBaseRefChanged: (projectId, taskId, newBaseRef) => {
-				this.broadcastTaskBaseRefUpdated(projectId, taskId, newBaseRef);
+				void applyRuntimeMutationEffects(
+					this,
+					createTaskBaseRefUpdatedEffects({
+						projectId,
+						taskId,
+						baseRef: newBaseRef,
+					}),
+				);
 			},
 			getProjectDefaultBaseRef: () => {
 				return this.deps.projectRegistry.getActiveRuntimeConfig().defaultBaseRef ?? "";

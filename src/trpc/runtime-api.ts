@@ -74,8 +74,8 @@ class RuntimeApiImpl implements RuntimeApi {
 
 	// ── Debug / utility ───────────────────────────────────────────────────
 
-	setLogLevel(level: "debug" | "info" | "warn" | "error") {
-		return handleSetLogLevel(level, this.deps);
+	async setLogLevel(level: "debug" | "info" | "warn" | "error") {
+		return await handleSetLogLevel(level, this.deps);
 	}
 
 	async flagTaskForDebug(projectScope: RuntimeTrpcProjectScope, input: { taskId: string; note?: string }) {

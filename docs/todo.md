@@ -18,7 +18,6 @@ Use this section together with:
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
-- Reduce manual broadcast choreography by making post-mutation effects easier to express through stronger domain-event or post-mutation boundaries. Roadmap context: [docs/refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries](./refactor-roadmap-context.md#5-manual-broadcast-choreography--domain-event-boundaries)
 - Narrow broad provider/context surfaces, especially where project-, git-, or interaction-related providers currently expose mixed-domain ownership. Roadmap context: [docs/refactor-roadmap-context.md#7-broad-provider--context-surfaces](./refactor-roadmap-context.md#7-broad-provider--context-surfaces)
 
 ## Test maintenance

@@ -20,6 +20,7 @@ import {
 import type { TerminalSessionManager } from "../terminal";
 import { deleteTaskWorktree, ensureInitialCommit, initializeGitRepository } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
+import { applyRuntimeMutationEffects, createProjectsUpdatedEffects } from "./runtime-mutation-effects";
 
 interface DisposeProjectOptions {
 	stopTerminalSessions?: boolean;
@@ -104,7 +105,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					await deps.projects.setActiveProject(context.projectId, context.repoPath);
 				}
 				const taskCounts = await deps.data.summarizeProjectTaskCounts(context.projectId, context.repoPath);
-				void deps.broadcaster.broadcastRuntimeProjectsUpdated(context.projectId);
+				void applyRuntimeMutationEffects(deps.broadcaster, createProjectsUpdatedEffects(context.projectId));
 				return {
 					ok: true,
 					project: deps.data.createProjectSummary({
@@ -167,7 +168,10 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						deps.projects.clearActiveProject();
 					}
 				}
-				void deps.broadcaster.broadcastRuntimeProjectsUpdated(deps.projects.getActiveProjectId());
+				void applyRuntimeMutationEffects(
+					deps.broadcaster,
+					createProjectsUpdatedEffects(deps.projects.getActiveProjectId()),
+				);
 				if (taskIdsToCleanup.size > 0) {
 					const cleanupTaskIds = Array.from(taskIdsToCleanup);
 					void (async () => {
@@ -227,7 +231,10 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			try {
 				const body = parseProjectReorderRequest(input);
 				await updateProjectOrder(body.projectOrder);
-				void deps.broadcaster.broadcastRuntimeProjectsUpdated(deps.projects.getActiveProjectId());
+				void applyRuntimeMutationEffects(
+					deps.broadcaster,
+					createProjectsUpdatedEffects(deps.projects.getActiveProjectId()),
+				);
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

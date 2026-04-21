@@ -9,8 +9,12 @@ import type {
 	RuntimeGitMergeResponse,
 	RuntimeWorkdirChangesMode,
 } from "../core";
+import { createTaggedLogger } from "../core";
 import { loadProjectState } from "../state";
 import { isMissingTaskWorktreeError, resolveTaskWorkingDirectory } from "../workdir";
+import { applyRuntimeMutationEffects } from "./runtime-mutation-effects";
+
+const log = createTaggedLogger("project-api-effects");
 
 // ── Dependencies ────────────────────────────────────────────────────────────────
 
@@ -32,24 +36,20 @@ export interface CreateProjectApiDependencies {
 
 export interface ProjectApiContext {
 	deps: CreateProjectApiDependencies;
-	broadcastStateUpdate: (scope: { projectId: string; projectPath: string }) => void;
-	refreshGitMetadata: (scope: { projectId: string }, taskScope: { taskId: string; baseRef: string } | null) => void;
+	applyEffects: (effects: Parameters<typeof applyRuntimeMutationEffects>[1]) => void;
 }
 
 export function createProjectApiContext(deps: CreateProjectApiDependencies): ProjectApiContext {
-	const broadcastStateUpdate = (scope: { projectId: string; projectPath: string }) => {
-		void deps.broadcaster.broadcastRuntimeProjectStateUpdated(scope.projectId, scope.projectPath);
+	const applyEffects = (effects: Parameters<typeof applyRuntimeMutationEffects>[1]) => {
+		void applyRuntimeMutationEffects(deps.broadcaster, effects).catch((error) => {
+			log.error("Failed to deliver project mutation effects", {
+				error: errorMessage(error),
+				effectTypes: effects.map((effect) => effect.type),
+			});
+		});
 	};
 
-	const refreshGitMetadata = (scope: { projectId: string }, taskScope: { taskId: string; baseRef: string } | null) => {
-		if (taskScope) {
-			deps.broadcaster.requestTaskRefresh(scope.projectId, taskScope.taskId);
-		} else {
-			deps.broadcaster.requestHomeRefresh(scope.projectId);
-		}
-	};
-
-	return { deps, broadcastStateUpdate, refreshGitMetadata };
+	return { deps, applyEffects };
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────────

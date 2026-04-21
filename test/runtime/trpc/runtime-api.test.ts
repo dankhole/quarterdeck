@@ -471,7 +471,8 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 			stopTaskSessionAndWaitForExit: vi.fn(async () => createSummary()),
 			startTaskSession: vi.fn(async () => createSummary()),
 		};
-		const api = createRuntimeApi(createDeps(terminalManager));
+		const deps = createDeps(terminalManager);
+		const api = createRuntimeApi(deps);
 
 		const result = await api.migrateTaskWorkingDirectory(defaultScope, {
 			taskId: "task-1",
@@ -484,6 +485,12 @@ describe("createRuntimeApi migrateTaskWorkingDirectory", () => {
 		expect(taskWorktreeMocks.captureTaskPatch).toHaveBeenCalled();
 		expect(taskWorktreeMocks.ensureTaskWorktreeIfDoesntExist).toHaveBeenCalled();
 		expect(taskWorktreeMocks.applyTaskPatch).toHaveBeenCalledWith("/tmp/patches/task-1.patch", "/tmp/worktree");
+		expect(deps.broadcaster.broadcastTaskWorkingDirectoryUpdated).toHaveBeenCalledWith(
+			"project-1",
+			"task-1",
+			"/tmp/worktree",
+			true,
+		);
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({ cwd: "/tmp/worktree", resumeConversation: false }),
 		);

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Refactor: make non-batched backend mutation effects explicit
+
+- Added `src/trpc/runtime-mutation-effects.ts`, a narrow post-mutation effects layer that lets backend mutations declare concrete follow-up consequences such as project-state refreshes, project summary refreshes, task review signals, git metadata invalidation, lightweight task sync messages, and config/debug delivery effects without hand-assembling those calls inline.
+- Moved the main project/task mutation family onto that pattern: board saves, task-title updates, git/staging/conflict mutations, project add/remove/reorder, hook-driven session transitions, task working-directory migration, metadata-driven base-ref sync, and log-level/poll-interval fanout now emit explicit effect sets instead of scattered follow-up broadcaster calls.
+- Preserved the existing runtime stream contracts and board single-writer rule: board saves still fan out `project_state_updated` plus `projects_updated`, review hooks still emit `task_ready_for_review`, task migrations still send `task_working_directory_updated`, task/home git refreshes still flow through the metadata monitor rather than server-side board persistence, and config updates still reach the metadata/debug stream paths through the same runtime broadcaster.
+- Added focused regression coverage for the new effect layer plus the migrated hook/runtime/config mutation paths, and revalidated targeted runtime/project streaming coverage with typecheck.
+
 ### Docs: consolidate refactor tracking docs
 
 - Folded `optimization-shaped-architecture-followups.md` and `project-metadata-monitor-followups.md` into their parent docs (`refactor-roadmap-context.md` and `project-metadata-monitor-refactor-brief.md`).

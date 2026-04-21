@@ -26,23 +26,22 @@ Backlog note:
 
 ## Current Active Order
 
-1. Manual broadcast choreography / domain-event boundaries
-2. Broad provider / context surfaces
-3. Task-detail layout / composition follow-up
-4. Notification / project-scoping ownership
-5. Notification / indicator state model
-6. Project / worktree identity normalization
-7. Branch / base-ref UX state model
-8. File browser + diff viewer data pipeline
-9. Terminal session manager / lifecycle boundaries
-10. Orphan cleanup / reconciliation boundary
-11. Shared LLM client abstraction
+1. Broad provider / context surfaces
+2. Task-detail layout / composition follow-up
+3. Notification / project-scoping ownership
+4. Notification / indicator state model
+5. Project / worktree identity normalization
+6. Branch / base-ref UX state model
+7. File browser + diff viewer data pipeline
+8. Terminal session manager / lifecycle boundaries
+9. Orphan cleanup / reconciliation boundary
+10. Shared LLM client abstraction
 
 That sequence is deliberate:
 
-- 1 and 2 are the only current active architectural refactors in `docs/todo.md`.
-- 3 through 8 are the most concrete next backlog items once those active items settle.
-- 9 through 11 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
+- 1 is now the only current active architectural refactor in `docs/todo.md`.
+- 2 through 7 are the most concrete next backlog items once that active item settles.
+- 8 through 10 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
 
 In other words: yes, this order is intentional. It is sequenced by dependency and leverage, not just by how interesting each item sounds in isolation.
 
@@ -68,6 +67,7 @@ If a subsystem is hard to explain without leading with timers, cache states, bat
 
 These landed recently enough that they are still useful context for what remains:
 
+- Manual broadcast choreography / post-mutation effects
 - Project metadata monitor follow-ups
 - Project sync plus board cache restore
 - Frontend runtime state stream store
@@ -244,7 +244,7 @@ Outcome:
 
 Status:
 
-- Active. This is the top remaining architectural refactor in `docs/todo.md`.
+- Completed on 2026-04-21 via the explicit post-mutation effects layer in `src/trpc/runtime-mutation-effects.ts`. See `CHANGELOG.md` and `docs/implementation-log.md` for the landed first slice.
 
 Primary files:
 
@@ -254,28 +254,22 @@ Primary files:
 
 Historical smell:
 
-- many mutations are correct only because the developer remembered which follow-up websocket messages, refreshes, or lightweight notifications to send afterward
+- many mutations were correct only because the developer remembered which follow-up websocket messages, refreshes, or lightweight notifications to send afterward
 
-Why it matters:
+Why it mattered:
 
-- correctness is protected by convention more than by structure
+- correctness was protected by convention more than by structure
 - this is the second-highest weakness in the design roadmap
 
-What “good” looks like:
+Outcome:
 
-- mutation consequences are easier to audit
-- fewer paths depend on “and also remember to broadcast X”
-- domain events or structured mutation-result handling make downstream effects more explicit
+- non-batched project/task mutation flows now express their follow-up semantics through a narrow post-mutation effects layer instead of scattered inline broadcaster choreography
+- the session-summary batcher remains the owner of batched session/notification/project-summary delivery, while the new effect layer covers the mutation paths that previously bypassed that structure
+- project-state refreshes, project-summary refreshes, task review signals, git metadata invalidations, task title sync, and task working-directory sync now have one auditable delivery path in `src/trpc/runtime-mutation-effects.ts`
 
-Suggested first slice:
+Remaining follow-up worth watching:
 
-- inventory a few representative mutation flows end to end
-- identify common families of follow-up behavior
-- decide whether the right answer is explicit domain events, structured mutation result objects, or a smaller centralized post-mutation coordinator
-
-Key risk:
-
-- over-abstracting this too early can create a generic event system that is harder to reason about than the existing manual calls
+- the first slice established the pattern for the main project/task mutation family, but other mutation-heavy runtime paths should still prefer this effect model instead of reintroducing ad hoc broadcaster sequences
 
 ## 6. App-shell Integration Gravity
 

@@ -21,6 +21,7 @@ import {
 	type ProjectApiContext,
 	resolveWorkingDir,
 } from "./project-api-shared";
+import { createGitMetadataRefreshEffects, createProjectStateUpdatedEffects } from "./runtime-mutation-effects";
 
 type GitOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -67,7 +68,11 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitCheckoutAction({ cwd: taskCwd, branch: body.branch });
 					if (response.ok) {
-						ctx.deps.broadcaster.requestTaskRefresh(projectScope.projectId, input.taskId);
+						ctx.applyEffects(
+							createGitMetadataRefreshEffects(projectScope, {
+								taskId: input.taskId,
+							}),
+						);
 					}
 					return response;
 				}
@@ -83,7 +88,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					cwd: projectScope.projectPath,
 					branch: body.branch,
 				});
-				if (response.ok) ctx.broadcastStateUpdate(projectScope);
+				if (response.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return response;
 			} catch (error) {
 				return createGitBranchErrorResponse(error);
@@ -105,7 +110,11 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitMergeAction({ cwd: taskCwd, branch: branchToMerge });
 					if (response.ok || response.conflictState) {
-						ctx.deps.broadcaster.requestTaskRefresh(projectScope.projectId, input.taskId);
+						ctx.applyEffects(
+							createGitMetadataRefreshEffects(projectScope, {
+								taskId: input.taskId,
+							}),
+						);
 					}
 					return response;
 				}
@@ -118,7 +127,9 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					);
 				}
 				const response = await runGitMergeAction({ cwd: projectScope.projectPath, branch: branchToMerge });
-				if (response.ok || response.conflictState) ctx.broadcastStateUpdate(projectScope);
+				if (response.ok || response.conflictState) {
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return response;
 			} catch (error) {
 				return createGitBranchErrorResponse(error);
@@ -146,7 +157,11 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await runGitRebaseAction({ cwd: taskCwd, onto: ontoRef });
 					if (response.ok || response.conflictState) {
-						ctx.deps.broadcaster.requestTaskRefresh(projectScope.projectId, input.taskId);
+						ctx.applyEffects(
+							createGitMetadataRefreshEffects(projectScope, {
+								taskId: input.taskId,
+							}),
+						);
 					}
 					return response;
 				}
@@ -161,7 +176,9 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					};
 				}
 				const response = await runGitRebaseAction({ cwd: projectScope.projectPath, onto: ontoRef });
-				if (response.ok || response.conflictState) ctx.broadcastStateUpdate(projectScope);
+				if (response.ok || response.conflictState) {
+					ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
+				}
 				return response;
 			} catch (error) {
 				return {
@@ -195,7 +212,11 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					});
 					const response = await resetToRef({ cwd: taskCwd, ref: targetRef });
 					if (response.ok) {
-						ctx.deps.broadcaster.requestTaskRefresh(projectScope.projectId, input.taskId);
+						ctx.applyEffects(
+							createGitMetadataRefreshEffects(projectScope, {
+								taskId: input.taskId,
+							}),
+						);
 					}
 					return response;
 				}
@@ -210,7 +231,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					};
 				}
 				const response = await resetToRef({ cwd: projectScope.projectPath, ref: targetRef });
-				if (response.ok) ctx.broadcastStateUpdate(projectScope);
+				if (response.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return response;
 			} catch (error) {
 				return {
@@ -234,7 +255,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					commitHash: input.commitHash,
 					targetBranch: input.targetBranch,
 				});
-				if (result.ok) ctx.broadcastStateUpdate(projectScope);
+				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {
 				return {
@@ -254,7 +275,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					branchName: input.branchName,
 					startRef: input.startRef,
 				});
-				if (result.ok) ctx.broadcastStateUpdate(projectScope);
+				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {
 				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
@@ -267,7 +288,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					cwd: projectScope.projectPath,
 					branchName: input.branchName,
 				});
-				if (result.ok) ctx.broadcastStateUpdate(projectScope);
+				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {
 				return { ok: false as const, branchName: input.branchName, error: errorMessage(error) };
@@ -281,7 +302,7 @@ export function createGitOps(ctx: ProjectApiContext): GitOps {
 					oldName: input.oldName,
 					newName: input.newName,
 				});
-				if (result.ok) ctx.broadcastStateUpdate(projectScope);
+				if (result.ok) ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
 				return result;
 			} catch (error) {
 				return { ok: false as const, oldName: input.oldName, newName: input.newName, error: errorMessage(error) };

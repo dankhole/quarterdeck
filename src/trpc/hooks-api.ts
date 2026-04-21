@@ -15,6 +15,7 @@ import { canReturnToRunning, isPermissionActivity } from "../terminal";
 import { DISPLAY_SUMMARY_MAX_LENGTH } from "../title";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router";
+import { applyRuntimeMutationEffects, createHookTransitionEffects } from "./runtime-mutation-effects";
 
 const log = createTaggedLogger("hooks");
 
@@ -248,10 +249,16 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				// triggered retries while the state transition has already succeeded.
 				// The checkpoint fires in the background and applies via store.update
 				// which triggers onChange listeners for downstream consumers.
-				void deps.broadcaster.broadcastRuntimeProjectStateUpdated(projectId, projectPath);
+				void applyRuntimeMutationEffects(
+					deps.broadcaster,
+					createHookTransitionEffects({
+						projectId,
+						projectPath,
+						taskId,
+						event,
+					}),
+				);
 				if (event === "to_review") {
-					deps.broadcaster.broadcastTaskReadyForReview(projectId, taskId);
-
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 					const checkpointCwd = transitionedSummary.projectPath ?? projectPath;
 					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;

@@ -4,6 +4,12 @@ import { buildRuntimeConfigResponse, updateGlobalRuntimeConfig, updateRuntimeCon
 import type { IRuntimeBroadcaster, IRuntimeConfigProvider } from "../../core";
 import { type LogLevel, parseRuntimeConfigSaveRequest, setEventLogEnabled, setLogLevel } from "../../core";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
+import {
+	applyRuntimeMutationEffects,
+	createLogLevelBroadcastEffects,
+	createPollIntervalsUpdatedEffects,
+	type RuntimeMutationEffect,
+} from "../runtime-mutation-effects";
 
 export interface SaveConfigDeps {
 	config: IRuntimeConfigProvider;
@@ -36,15 +42,19 @@ export async function handleSaveConfig(
 	if (!projectScope) {
 		deps.config.setActiveRuntimeConfig(nextRuntimeConfig);
 	}
+	const effects: RuntimeMutationEffect[] = [];
 	if (projectScope) {
-		deps.broadcaster.setPollIntervals(projectScope.projectId, {
-			focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
-			backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
-			homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
-		});
+		effects.push(
+			...createPollIntervalsUpdatedEffects(projectScope.projectId, {
+				focusedTaskPollMs: nextRuntimeConfig.focusedTaskPollMs,
+				backgroundTaskPollMs: nextRuntimeConfig.backgroundTaskPollMs,
+				homeRepoPollMs: nextRuntimeConfig.homeRepoPollMs,
+			}),
+		);
 	}
 	setEventLogEnabled(nextRuntimeConfig.eventLogEnabled);
 	setLogLevel(nextRuntimeConfig.logLevel as LogLevel);
-	deps.broadcaster.broadcastLogLevel(nextRuntimeConfig.logLevel as LogLevel);
+	effects.push(...createLogLevelBroadcastEffects(nextRuntimeConfig.logLevel as LogLevel));
+	await applyRuntimeMutationEffects(deps.broadcaster, effects);
 	return buildRuntimeConfigResponse(nextRuntimeConfig);
 }

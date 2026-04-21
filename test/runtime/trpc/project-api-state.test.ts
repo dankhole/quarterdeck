@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
+import { createBoardStateSavedEffects } from "../../../src/trpc/runtime-mutation-effects";
 
 const stateMocks = vi.hoisted(() => ({
 	saveProjectState: vi.fn(),
@@ -113,8 +114,7 @@ describe("createStateOps.saveState", () => {
 				listSummaries: vi.fn(() => [summary]),
 			},
 		}));
-		const broadcastStateUpdate = vi.fn();
-		const broadcastRuntimeProjectsUpdated = vi.fn(async () => undefined);
+		const applyEffects = vi.fn();
 
 		const stateOps = createStateOps({
 			deps: {
@@ -125,7 +125,7 @@ describe("createStateOps.saveState", () => {
 				},
 				broadcaster: {
 					broadcastRuntimeProjectStateUpdated: vi.fn(),
-					broadcastRuntimeProjectsUpdated,
+					broadcastRuntimeProjectsUpdated: vi.fn(async () => undefined),
 					broadcastTaskTitleUpdated: vi.fn(),
 					setFocusedTask: vi.fn(),
 					requestTaskRefresh: vi.fn(),
@@ -135,8 +135,7 @@ describe("createStateOps.saveState", () => {
 					buildProjectStateSnapshot: vi.fn(),
 				},
 			},
-			broadcastStateUpdate,
-			refreshGitMetadata: vi.fn(),
+			applyEffects,
 		} satisfies ProjectApiContext);
 
 		await stateOps.saveState(
@@ -158,10 +157,11 @@ describe("createStateOps.saveState", () => {
 			},
 			expectedRevision: 1,
 		});
-		expect(broadcastStateUpdate).toHaveBeenCalledWith({
-			projectId: "project-a",
-			projectPath: "/tmp/project-a",
-		});
-		expect(broadcastRuntimeProjectsUpdated).toHaveBeenCalledWith("project-a");
+		expect(applyEffects).toHaveBeenCalledWith(
+			createBoardStateSavedEffects({
+				projectId: "project-a",
+				projectPath: "/tmp/project-a",
+			}),
+		);
 	});
 });

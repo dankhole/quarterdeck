@@ -59,4 +59,33 @@ describe("createHooksApi — transitions", () => {
 			conversationSummaryText: null,
 		});
 	});
+
+	it("emits the structured review follow-up broadcasts on to_review transitions", async () => {
+		const manager = createMockManager({
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
+			applyTurnCheckpoint: vi.fn(),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+		const broadcaster = {
+			broadcastRuntimeProjectStateUpdated: vi.fn(async () => undefined),
+			broadcastTaskReadyForReview: vi.fn(),
+		};
+
+		const api = createTestApi(manager, { broadcaster });
+
+		const response = await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_review",
+		});
+
+		expect(response).toEqual({ ok: true });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(broadcaster.broadcastRuntimeProjectStateUpdated).toHaveBeenCalledWith("project-1", "/tmp/repo");
+		expect(broadcaster.broadcastTaskReadyForReview).toHaveBeenCalledWith("project-1", "task-1");
+	});
 });

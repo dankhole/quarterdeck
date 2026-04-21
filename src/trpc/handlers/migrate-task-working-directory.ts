@@ -15,6 +15,7 @@ import {
 	resolveTaskCwd,
 } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
+import { applyRuntimeMutationEffects, createTaskWorkingDirectoryUpdatedEffects } from "../runtime-mutation-effects";
 
 export interface MigrateTaskWorkingDirectoryDeps {
 	config: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
@@ -197,11 +198,14 @@ export async function handleMigrateTaskWorkingDirectory(
 		// to the board and persists through its normal single-writer cycle.
 		try {
 			log("broadcasting workingDirectory update", newWorkingDirectory);
-			deps.broadcaster.broadcastTaskWorkingDirectoryUpdated(
-				projectScope.projectId,
-				input.taskId,
-				newWorkingDirectory,
-				input.direction === "isolate",
+			await applyRuntimeMutationEffects(
+				deps.broadcaster,
+				createTaskWorkingDirectoryUpdatedEffects({
+					projectId: projectScope.projectId,
+					taskId: input.taskId,
+					workingDirectory: newWorkingDirectory,
+					useWorktree: input.direction === "isolate",
+				}),
 			);
 
 			// Only restart the session if it was running before migration.
