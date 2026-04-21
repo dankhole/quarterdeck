@@ -15,13 +15,10 @@ import { withTemporaryEnv } from "./runtime-config-helpers";
 describe.sequential("prompt shortcuts config persistence", () => {
 	it("returns default prompt shortcuts when none configured", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-default-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-prompt-shortcuts-default-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.promptShortcuts).toHaveLength(2);
 				expect(state.promptShortcuts[0]?.label).toBe("Commit");
 				expect(state.promptShortcuts[0]?.prompt).toContain("commit your working changes");
@@ -29,27 +26,23 @@ describe.sequential("prompt shortcuts config persistence", () => {
 				expect(state.promptShortcuts[1]?.prompt).toContain("commit-tree");
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("persists and loads prompt shortcuts", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-persist-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-prompt-shortcuts-persist-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(null);
 				const customShortcuts = [
 					{ label: "Ship", prompt: "push to main" },
 					{ label: "Fix", prompt: "fix the bug" },
 				];
-				await updateRuntimeConfig(tempProject, null, { promptShortcuts: customShortcuts });
+				await updateRuntimeConfig(null, { promptShortcuts: customShortcuts });
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.promptShortcuts).toHaveLength(4);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Ship");
 				expect(reloaded.promptShortcuts[0]?.prompt).toBe("push to main");
@@ -63,20 +56,16 @@ describe.sequential("prompt shortcuts config persistence", () => {
 				expect(globalConfig.promptShortcuts).toHaveLength(2);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("filters invalid prompt shortcuts", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-invalid-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-prompt-shortcuts-invalid-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(null);
 				const configPath = join(tempHome, ".quarterdeck", "config.json");
 				writeFileSync(
 					configPath,
@@ -89,36 +78,31 @@ describe.sequential("prompt shortcuts config persistence", () => {
 					}),
 				);
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.promptShortcuts).toHaveLength(3);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Good");
 				expect(reloaded.promptShortcuts[1]?.label).toBe("Commit");
 				expect(reloaded.promptShortcuts[2]?.label).toBe("Squash Merge");
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("falls back to defaults when all shortcuts are invalid", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-prompt-shortcuts-all-invalid-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-prompt-shortcuts-all-invalid-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(null);
 				const configPath = join(tempHome, ".quarterdeck", "config.json");
 				writeFileSync(configPath, JSON.stringify({ promptShortcuts: [{ label: "", prompt: "" }] }));
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.promptShortcuts).toHaveLength(2);
 				expect(reloaded.promptShortcuts[0]?.label).toBe("Commit");
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});

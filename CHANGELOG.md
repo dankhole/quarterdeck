@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: stop leaving artifacts in the target repo
+
+- Moved project config from `{repo}/.quarterdeck/config.json` to `~/.quarterdeck/projects/{projectId}/config.json` — Quarterdeck no longer creates or writes to any directory inside the user's repo (only `.git/` internal state remains, which is already untracked).
+- Added one-time startup migration that moves existing project configs from the old repo-local path to the state home, then cleans up the empty `.quarterdeck/` directory.
+- Removed the repo-local `.quarterdeck/` directory from Phase 2 lock cleanup targets.
+
 ### Fix: base ref selector popover transparency and pinned branch ordering
 
 - Fixed the base ref branch selector popover in the top bar using a non-existent `bg-bg-secondary` background class, making the dropdown see-through after selection. Changed to `bg-surface-1` to match the main branch selector popover.

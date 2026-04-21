@@ -131,7 +131,7 @@ async function cleanupNamedStaleLockArtifacts(
  * Resolve cleanup targets for a single project repository.
  *
  * Returns both:
- * - Quarterdeck-owned directories (broad scan) — e.g. `{project}/.quarterdeck/`
+ * - Quarterdeck-owned directories (broad scan)
  * - Named targets in shared directories — e.g. the worktree setup lock in `.git/`
  */
 async function getProjectCleanupTargets(repoPath: string): Promise<{
@@ -140,10 +140,6 @@ async function getProjectCleanupTargets(repoPath: string): Promise<{
 }> {
 	const ownedDirectories: string[] = [];
 	const namedTargets: NamedCleanupTarget[] = [];
-
-	// Project config lock: {project}/.quarterdeck/config.json.lock
-	// This directory is Quarterdeck-owned, so broad scan is safe.
-	ownedDirectories.push(join(repoPath, ".quarterdeck"));
 
 	// Task worktree setup lock: {repo}/.git/quarterdeck-task-worktree-setup.lock
 	// The .git/ directory is shared with git — only remove our named artifact.
@@ -166,7 +162,7 @@ async function getProjectCleanupTargets(repoPath: string): Promise<{
  * after phase 1 has cleaned the `~/.quarterdeck/` hierarchy.
  *
  * Handles two kinds of directories:
- * - Quarterdeck-owned dirs (e.g. `{project}/.quarterdeck/`) — broad artifact scan
+ * - Quarterdeck-owned dirs — broad artifact scan
  * - Shared dirs (e.g. `.git/`) — only removes specific named Quarterdeck artifacts
  *
  * Also cleans stale git index.lock files from per-worktree git directories,

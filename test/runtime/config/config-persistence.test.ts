@@ -13,17 +13,17 @@ import { createTempDir } from "../../utilities/temp-dir";
 import { createDefaultSavePayload, withTemporaryEnv } from "./runtime-config-helpers";
 
 describe.sequential("runtime-config persistence", () => {
-	it("treats the home directory as global-only config scope", async () => {
+	it("treats null projectId as global-only config scope", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-home-scope-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const state = await loadRuntimeConfig(tempHome);
+				const state = await loadRuntimeConfig(null);
 				expect(state.globalConfigPath).toBe(join(tempHome, ".quarterdeck", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
 
-				const updated = await updateRuntimeConfig(tempHome, null, {
+				const updated = await updateRuntimeConfig(null, {
 					selectedAgentId: "codex",
 				});
 				expect(updated.selectedAgentId).toBe("codex");
@@ -60,50 +60,44 @@ describe.sequential("runtime-config persistence", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-project-base-ref-isolation-",
 		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-project-base-ref-isolation-",
-		);
+		const projectId = "test-project";
 
 		try {
 			const runtimeConfigDir = join(tempHome, ".quarterdeck");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(join(runtimeConfigDir, "config.json"), JSON.stringify({ defaultBaseRef: "main" }), "utf8");
+			mkdirSync(join(runtimeConfigDir, "projects", projectId), { recursive: true });
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const stateWithoutProjectPin = await loadRuntimeConfig(tempProject);
+				const stateWithoutProjectPin = await loadRuntimeConfig(projectId);
 				expect(stateWithoutProjectPin.defaultBaseRef).toBe("");
 
-				await updateRuntimeConfig(tempProject, null, {
+				await updateRuntimeConfig(projectId, {
 					defaultBaseRef: "master",
 				});
 
-				const stateWithProjectPin = await loadRuntimeConfig(tempProject);
+				const stateWithProjectPin = await loadRuntimeConfig(projectId);
 				expect(stateWithProjectPin.defaultBaseRef).toBe("master");
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("save omits default keys when they were not previously set", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-omit-defaults-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-omit-defaults-",
-		);
+		const projectId = "test-project";
 
 		try {
 			const runtimeConfigDir = join(tempHome, ".quarterdeck");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(join(runtimeConfigDir, "config.json"), "{}", "utf8");
+			const projectDir = join(runtimeConfigDir, "projects", projectId);
+			mkdirSync(projectDir, { recursive: true });
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
-				await saveRuntimeConfig(
-					tempProject,
-					null,
-					createDefaultSavePayload() as Parameters<typeof saveRuntimeConfig>[2],
-				);
+				await loadRuntimeConfig(projectId);
+				await saveRuntimeConfig(projectId, createDefaultSavePayload() as Parameters<typeof saveRuntimeConfig>[1]);
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
@@ -113,87 +107,79 @@ describe.sequential("runtime-config persistence", () => {
 				expect(globalPayload.selectedAgentId).toBeUndefined();
 				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
-				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
+				expect(existsSync(join(projectDir, "config.json"))).toBe(false);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("removes an existing empty project config file when no shortcuts are saved", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-cleanup-empty-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-cleanup-empty-",
-		);
+		const projectId = "test-project";
 
 		try {
-			const runtimeProjectConfigDir = join(tempProject, ".quarterdeck");
-			mkdirSync(runtimeProjectConfigDir, { recursive: true });
-			writeFileSync(join(runtimeProjectConfigDir, "config.json"), "{}", "utf8");
+			const runtimeConfigDir = join(tempHome, ".quarterdeck");
+			const projectDir = join(runtimeConfigDir, "projects", projectId);
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(join(projectDir, "config.json"), "{}", "utf8");
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
-					tempProject,
-					null,
+					projectId,
 					createDefaultSavePayload({
 						selectedAgentId: "codex",
 						agentAutonomousModeEnabled: true,
-					}) as Parameters<typeof saveRuntimeConfig>[2],
+					}) as Parameters<typeof saveRuntimeConfig>[1],
 				);
 
-				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
+				expect(existsSync(join(projectDir, "config.json"))).toBe(false);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("removes the project config file when the last shortcut is deleted", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-remove-last-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-remove-last-",
-		);
+		const projectId = "test-project";
 
 		try {
+			const projectDir = join(tempHome, ".quarterdeck", "projects", projectId);
+			mkdirSync(projectDir, { recursive: true });
+
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
-					tempProject,
-					null,
+					projectId,
 					createDefaultSavePayload({
 						selectedAgentId: "codex",
 						agentAutonomousModeEnabled: true,
 						shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
-					}) as Parameters<typeof saveRuntimeConfig>[2],
+					}) as Parameters<typeof saveRuntimeConfig>[1],
 				);
-				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(true);
+				expect(existsSync(join(projectDir, "config.json"))).toBe(true);
 
-				await updateRuntimeConfig(tempProject, null, {
+				await updateRuntimeConfig(projectId, {
 					shortcuts: [],
 				});
 
-				expect(existsSync(join(tempProject, ".quarterdeck", "config.json"))).toBe(false);
+				expect(existsSync(join(projectDir, "config.json"))).toBe(false);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("updateRuntimeConfig supports partial updates", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-partial-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-partial-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(null);
 
-				const updated = await updateRuntimeConfig(tempProject, null, {
+				const updated = await updateRuntimeConfig(null, {
 					selectedAgentId: "codex",
 				});
 				expect(updated.selectedAgentId).toBe("codex");
@@ -210,7 +196,6 @@ describe.sequential("runtime-config persistence", () => {
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -219,13 +204,10 @@ describe.sequential("runtime-config persistence", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-autonomous-enabled-",
 		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-autonomous-enabled-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const updated = await updateRuntimeConfig(tempProject, null, {
+				const updated = await updateRuntimeConfig(null, {
 					agentAutonomousModeEnabled: true,
 				});
 				expect(updated.agentAutonomousModeEnabled).toBe(true);
@@ -235,30 +217,26 @@ describe.sequential("runtime-config persistence", () => {
 				};
 				expect(globalPayload.agentAutonomousModeEnabled).toBe(true);
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.agentAutonomousModeEnabled).toBe(true);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("preserves concurrent config updates across processes", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-concurrent-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-concurrent-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await loadRuntimeConfig(tempProject);
+				await loadRuntimeConfig(null);
 
 				const [selectedAgentState, autonomousModeState] = await Promise.all([
-					updateRuntimeConfig(tempProject, null, {
+					updateRuntimeConfig(null, {
 						selectedAgentId: "codex",
 					}),
-					updateRuntimeConfig(tempProject, null, {
+					updateRuntimeConfig(null, {
 						agentAutonomousModeEnabled: false,
 					}),
 				]);
@@ -266,12 +244,11 @@ describe.sequential("runtime-config persistence", () => {
 				expect(selectedAgentState.selectedAgentId).toBe("codex");
 				expect(autonomousModeState.agentAutonomousModeEnabled).toBe(false);
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.selectedAgentId).toBe("codex");
 				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});

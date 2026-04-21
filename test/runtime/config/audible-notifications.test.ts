@@ -12,13 +12,10 @@ describe.sequential("audible notification config", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-defaults-",
 		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-audible-defaults-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.audibleNotificationsEnabled).toBe(true);
 				expect(state.audibleNotificationVolume).toBe(0.7);
 				expect(state.audibleNotificationEvents).toEqual({
@@ -28,7 +25,6 @@ describe.sequential("audible notification config", () => {
 				});
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -37,13 +33,10 @@ describe.sequential("audible notification config", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-roundtrip-",
 		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-audible-roundtrip-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const updated = await updateRuntimeConfig(tempProject, null, {
+				const updated = await updateRuntimeConfig(null, {
 					audibleNotificationsEnabled: false,
 					audibleNotificationVolume: 0.3,
 					audibleNotificationEvents: { permission: false, review: true, failure: false },
@@ -56,7 +49,7 @@ describe.sequential("audible notification config", () => {
 					failure: false,
 				});
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.audibleNotificationsEnabled).toBe(false);
 				expect(reloaded.audibleNotificationVolume).toBe(0.3);
 				expect(reloaded.audibleNotificationEvents).toEqual({
@@ -66,7 +59,6 @@ describe.sequential("audible notification config", () => {
 				});
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -74,9 +66,6 @@ describe.sequential("audible notification config", () => {
 	it("merges partial audible notification events with defaults", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-partial-",
-		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-audible-partial-",
 		);
 
 		try {
@@ -89,13 +78,12 @@ describe.sequential("audible notification config", () => {
 			);
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.audibleNotificationEvents.permission).toBe(false);
 				expect(state.audibleNotificationEvents.review).toBe(true);
 				expect(state.audibleNotificationEvents.failure).toBe(true);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -103,9 +91,6 @@ describe.sequential("audible notification config", () => {
 	it("handles missing audible fields in existing config gracefully", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-backcompat-",
-		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-audible-backcompat-",
 		);
 
 		try {
@@ -118,7 +103,7 @@ describe.sequential("audible notification config", () => {
 			);
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.audibleNotificationsEnabled).toBe(true);
 				expect(state.audibleNotificationVolume).toBe(0.7);
 				expect(state.audibleNotificationEvents).toEqual({
@@ -128,7 +113,6 @@ describe.sequential("audible notification config", () => {
 				});
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -137,29 +121,25 @@ describe.sequential("audible notification config", () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-preserve-",
 		);
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-audible-preserve-",
-		);
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
-				await updateRuntimeConfig(tempProject, null, { selectedAgentId: "codex" });
+				await updateRuntimeConfig(null, { selectedAgentId: "codex" });
 
-				const afterAgentChange = await loadRuntimeConfig(tempProject);
+				const afterAgentChange = await loadRuntimeConfig(null);
 				expect(afterAgentChange.selectedAgentId).toBe("codex");
 
-				await updateRuntimeConfig(tempProject, null, {
+				await updateRuntimeConfig(null, {
 					audibleNotificationsEnabled: false,
 					audibleNotificationVolume: 0.4,
 				});
 
-				const reloaded = await loadRuntimeConfig(tempProject);
+				const reloaded = await loadRuntimeConfig(null);
 				expect(reloaded.selectedAgentId).toBe("codex");
 				expect(reloaded.audibleNotificationsEnabled).toBe(false);
 				expect(reloaded.audibleNotificationVolume).toBe(0.4);
 			});
 		} finally {
-			cleanupProject();
 			cleanupHome();
 		}
 	});

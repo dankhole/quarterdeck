@@ -370,6 +370,7 @@ async function loadRuntimeStartupModules() {
 		{ initEventLog, setEventLogEnabled },
 		{ setLogLevel },
 		{ createBackup, startPeriodicBackups, stopPeriodicBackups },
+		{ migrateLegacyProjectConfig },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -383,6 +384,7 @@ async function loadRuntimeStartupModules() {
 		import("./core/event-log.js"),
 		import("./core/runtime-logger.js"),
 		import("./state/state-backup.js"),
+		import("./config/index.js"),
 	]);
 
 	return {
@@ -397,6 +399,7 @@ async function loadRuntimeStartupModules() {
 		cleanupGlobalStaleLockArtifacts,
 		cleanupProjectStaleLockArtifacts,
 		listProjectIndexEntries,
+		migrateLegacyProjectConfig,
 		initEventLog,
 		setEventLogEnabled,
 		setLogLevel,
@@ -418,12 +421,18 @@ async function runRuntimeStartupCleanup(
 
 	// Phase 2: Clean stale lock artifacts from per-project directories.
 	// Read the project index (now safe after phase 1 cleaned its lock files)
-	// to discover project repo paths, then clean their .git/ and .quarterdeck/ dirs.
+	// to discover project repo paths, then clean their .git/ dirs.
 	try {
 		const indexEntries = await modules.listProjectIndexEntries();
 		const projectPaths = indexEntries.map((entry) => entry.repoPath);
 		if (projectPaths.length > 0) {
 			await modules.cleanupProjectStaleLockArtifacts(projectPaths, warn);
+		}
+		if (indexEntries.length > 0) {
+			const migrated = await modules.migrateLegacyProjectConfig(indexEntries);
+			if (migrated > 0) {
+				warn(`Migrated project config for ${migrated} project(s) from repo .quarterdeck/ to state home.`);
+			}
 		}
 	} catch {
 		// Project index may not exist yet on first run — safe to skip.

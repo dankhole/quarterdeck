@@ -2,6 +2,42 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Relocate project config out of target repo (2026-04-21)
+
+Quarterdeck was dropping a `.quarterdeck/` directory inside the user's target repo to store per-project config (shortcuts, defaultBaseRef). Moved this to the existing state home at `~/.quarterdeck/projects/{projectId}/config.json`, where all other project state (board, sessions, meta, pinned branches) already lives.
+
+**What changed:**
+
+- `getRuntimeProjectConfigPath` now takes `projectId` instead of `cwd` and resolves via `getProjectDirectoryPath(projectId)`.
+- `resolveRuntimeConfigPaths` takes `projectId: string | null` instead of `cwd: string | null`, eliminating the `homedir()` comparison that was needed to distinguish global-only scope.
+- `loadRuntimeConfig`, `saveRuntimeConfig`, and `updateRuntimeConfig` all dropped their `cwd` parameter — they now take only `projectId` (plus config/updates).
+- Added `getLegacyProjectConfigPath(cwd)` for migration reads and `migrateLegacyProjectConfig(entries)` for one-time startup migration.
+- Lock cleanup Phase 2 no longer scans `{project}/.quarterdeck/` as an owned directory — the config now lives in the global state home which Phase 1 already covers.
+- `writeRuntimeProjectConfigFile` no longer tries to `rmdir(dirname(configPath))` on empty config, since the parent directory is now shared with other project state files.
+- Startup calls `migrateLegacyProjectConfig` after loading the project index to move existing configs and clean up old directories.
+
+**Why:** Tools should not leave artifacts in the repos they operate on. The `.quarterdeck/` directory was the only Quarterdeck-owned directory inside the target repo. The remaining `.git/` artifacts (worktree setup lock, info/exclude managed block) are appropriate for `.git/` internals and were not changed.
+
+**Files touched:**
+
+- `src/config/runtime-config-persistence.ts` — path resolution, migration, write cleanup
+- `src/config/runtime-config.ts` — public API signature changes
+- `src/config/index.ts` — barrel export updates
+- `src/state/index.ts` — added `getProjectDirectoryPath` export
+- `src/server/project-registry.ts` — updated all `loadRuntimeConfig` call sites and deps type
+- `src/trpc/handlers/save-config.ts` — updated `updateRuntimeConfig` call
+- `src/fs/lock-cleanup.ts` — removed repo-local `.quarterdeck/` from Phase 2 targets
+- `src/cli.ts` — wired migration into startup cleanup
+- `test/runtime/config/config-persistence.test.ts` — adapted to new signatures
+- `test/runtime/config/pinned-branches.test.ts` — adapted to new signatures
+- `test/runtime/config/audible-notifications.test.ts` — adapted to new signatures
+- `test/runtime/config/agent-selection.test.ts` — adapted to new signatures
+- `test/runtime/config/prompt-shortcuts.test.ts` — adapted to new signatures
+- `test/runtime/lock-cleanup.test.ts` — updated Phase 2 expectations
+- `web-ui/src/test-utils/runtime-config-factory.ts` — updated fixture path
+
+**Commit hash:** Pending.
+
 ## Base ref selector popover fix (2026-04-21)
 
 **What changed:**
@@ -17,7 +53,7 @@
 - `CHANGELOG.md`
 - `docs/implementation-log.md`
 
-**Commit hash:** Pending.
+**Commit hash:** `11cdc4eb`.
 
 ## Provider/runtime review follow-up (2026-04-21)
 

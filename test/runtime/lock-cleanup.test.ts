@@ -128,7 +128,7 @@ describe("cleanupProjectStaleLockArtifacts (phase 2)", () => {
 		mockProjectRepo.cleanup();
 	});
 
-	it("removes stale artifacts from project .quarterdeck/ directory (broad scan)", async () => {
+	it("does not scan project .quarterdeck/ directory (project config lives in state home)", async () => {
 		const projectQdDir = join(mockProjectRepo.path, ".quarterdeck");
 		mkdirSync(projectQdDir);
 		writeFileSync(join(projectQdDir, "config.json"), "{}");
@@ -137,7 +137,7 @@ describe("cleanupProjectStaleLockArtifacts (phase 2)", () => {
 
 		await cleanupProjectStaleLockArtifacts([mockProjectRepo.path]);
 
-		expect(readdirSync(projectQdDir).sort()).toEqual(["config.json"]);
+		expect(readdirSync(projectQdDir).sort()).toEqual(["config.json", "config.json.lock", "config.json.tmp.1.2.uuid"]);
 	});
 
 	it("removes the stale quarterdeck worktree setup lock from .git/ directory", async () => {
@@ -210,17 +210,11 @@ describe("cleanupProjectStaleLockArtifacts (phase 2)", () => {
 		mkdirSync(gitDir);
 		createStaleDir(gitDir, "quarterdeck-task-worktree-setup.lock");
 
-		const projectQdDir = join(mockProjectRepo.path, ".quarterdeck");
-		mkdirSync(projectQdDir);
-		createStaleDir(projectQdDir, "config.json.lock");
-
 		const warnings: string[] = [];
 		await cleanupProjectStaleLockArtifacts([mockProjectRepo.path], (msg) => warnings.push(msg));
 
-		expect(warnings).toHaveLength(2);
-		const joined = warnings.join("\n");
-		expect(joined).toContain("quarterdeck-task-worktree-setup.lock");
-		expect(joined).toContain("config.json.lock");
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("quarterdeck-task-worktree-setup.lock");
 	});
 
 	it("handles empty project list", async () => {

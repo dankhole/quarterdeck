@@ -33,7 +33,7 @@ export interface ProjectRegistryScope {
 export interface CreateProjectRegistryDependencies {
 	cwd: string;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
-	loadRuntimeConfig: (cwd: string, projectId?: string | null) => Promise<RuntimeConfigState>;
+	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
 	hasGitRepository: (path: string) => boolean;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
@@ -185,9 +185,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	let activeProjectId: string | null = initialProject?.projectId ?? indexedProject?.projectId ?? null;
 	let activeProjectPath: string | null = initialProject?.repoPath ?? indexedProject?.repoPath ?? null;
 	let globalRuntimeConfig = await deps.loadGlobalRuntimeConfig();
-	let activeRuntimeConfig = activeProjectPath
-		? await deps.loadRuntimeConfig(activeProjectPath, activeProjectId)
-		: globalRuntimeConfig;
+	let activeRuntimeConfig = activeProjectPath ? await deps.loadRuntimeConfig(activeProjectId) : globalRuntimeConfig;
 	const projectPathsById = new Map<string, string>(
 		activeProjectId && activeProjectPath ? [[activeProjectId, activeProjectPath]] : [],
 	);
@@ -253,7 +251,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		activeProjectPath = repoPath;
 		rememberProject(projectId, repoPath);
 		await ensureTerminalManagerForProject(projectId, repoPath);
-		activeRuntimeConfig = await deps.loadRuntimeConfig(repoPath, projectId);
+		activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
 		globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
 	};
 
@@ -452,7 +450,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		} catch {
 			return 0;
 		}
-		const runtimeConfig = await deps.loadRuntimeConfig(projectPath, projectId);
+		const runtimeConfig = await deps.loadRuntimeConfig(projectId);
 		const resolved = resolveAgentCommand(runtimeConfig);
 		if (!resolved) {
 			return 0;
@@ -524,7 +522,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			if (scope.projectId === activeProjectId) {
 				return activeRuntimeConfig;
 			}
-			return await deps.loadRuntimeConfig(scope.projectPath, scope.projectId);
+			return await deps.loadRuntimeConfig(scope.projectId);
 		},
 		getTerminalManagerForProject,
 		ensureTerminalManagerForProject,

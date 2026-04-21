@@ -19,10 +19,12 @@ export {
 } from "./config-defaults";
 export {
 	DEFAULT_RUNTIME_CONFIG_STATE,
+	getLegacyProjectConfigPath,
 	getRuntimeGlobalConfigPath,
 	getRuntimeProjectConfigPath,
 	loadGlobalRuntimeConfig,
 	loadRuntimeConfig,
+	migrateLegacyProjectConfig,
 	normalizeHiddenDefaultPromptShortcuts,
 	normalizePromptShortcuts,
 	pickBestInstalledAgentIdFromDetected,

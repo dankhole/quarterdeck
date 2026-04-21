@@ -14,6 +14,7 @@ export {
 	updateProjectOrder,
 } from "./project-state";
 export {
+	getProjectDirectoryPath,
 	getProjectPinnedBranchesPath,
 	getProjectsRootPath,
 	getRuntimeHomePath,

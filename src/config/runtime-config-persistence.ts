@@ -1,11 +1,10 @@
 // File I/O, path resolution, and locking for runtime config.
 // Depends on normalizers for pure transformations.
-import { readFile, rm } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { readFile, rm, rmdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { type LockRequest, lockedFileSystem } from "../fs";
-import { getProjectPinnedBranchesPath, getRuntimeHomePath } from "../state";
+import { getProjectDirectoryPath, getProjectPinnedBranchesPath, getRuntimeHomePath } from "../state";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
 import {
 	DEFAULT_AUDIBLE_NOTIFICATION_EVENTS,
@@ -46,27 +45,22 @@ export function getRuntimeGlobalConfigPath(): string {
 	return join(getRuntimeHomePath(), CONFIG_FILENAME);
 }
 
-export function getRuntimeProjectConfigPath(cwd: string): string {
+export function getRuntimeProjectConfigPath(projectId: string): string {
+	return join(getProjectDirectoryPath(projectId), CONFIG_FILENAME);
+}
+
+/**
+ * Legacy project config path inside the target repo. Used only for one-time
+ * migration from the old `{repo}/.quarterdeck/config.json` location to the
+ * state-home path.
+ */
+export function getLegacyProjectConfigPath(cwd: string): string {
 	return join(resolve(cwd), ".quarterdeck", CONFIG_FILENAME);
 }
 
-function normalizePathForComparison(path: string): string {
-	const normalized = resolve(path).replaceAll("\\", "/");
-	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
-
-export function resolveRuntimeConfigPaths(cwd: string | null): RuntimeConfigPaths {
+export function resolveRuntimeConfigPaths(projectId: string | null): RuntimeConfigPaths {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
-	if (cwd === null) {
-		return {
-			globalConfigPath,
-			projectConfigPath: null,
-		};
-	}
-
-	const normalizedCwd = normalizePathForComparison(cwd);
-	const normalizedHome = normalizePathForComparison(homedir());
-	if (normalizedCwd === normalizedHome) {
+	if (projectId === null) {
 		return {
 			globalConfigPath,
 			projectConfigPath: null,
@@ -75,12 +69,12 @@ export function resolveRuntimeConfigPaths(cwd: string | null): RuntimeConfigPath
 
 	return {
 		globalConfigPath,
-		projectConfigPath: getRuntimeProjectConfigPath(cwd),
+		projectConfigPath: getRuntimeProjectConfigPath(projectId),
 	};
 }
 
-export function getRuntimeConfigLockRequests(cwd: string | null, projectId?: string | null): LockRequest[] {
-	const paths = resolveRuntimeConfigPaths(cwd);
+export function getRuntimeConfigLockRequests(projectId?: string | null): LockRequest[] {
+	const paths = resolveRuntimeConfigPaths(projectId ?? null);
 	const requests: LockRequest[] = [
 		{
 			path: paths.globalConfigPath,
@@ -293,11 +287,6 @@ export async function writeRuntimeProjectConfigFile(
 	}
 	if (normalizedShortcuts.length === 0 && !normalizedBaseRef) {
 		await rm(configPath, { force: true });
-		try {
-			await rm(dirname(configPath));
-		} catch {
-			// Ignore missing or non-empty project config directories.
-		}
 		return;
 	}
 	const payload: RuntimeProjectConfigFileShape = {};
@@ -312,6 +301,45 @@ export async function writeRuntimeProjectConfigFile(
 	});
 }
 
+// --- Legacy migration ---
+
+/**
+ * Migrate project config from the old `{repo}/.quarterdeck/config.json`
+ * location to the state-home path (`~/.quarterdeck/projects/{id}/config.json`).
+ * Runs once per project at startup. Cleans up the old file and directory after
+ * a successful migration.
+ */
+export async function migrateLegacyProjectConfig(
+	entries: Array<{ projectId: string; repoPath: string }>,
+): Promise<number> {
+	let migrated = 0;
+	for (const { projectId, repoPath } of entries) {
+		try {
+			const newPath = getRuntimeProjectConfigPath(projectId);
+			const existing = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(newPath);
+			if (existing !== null) {
+				continue;
+			}
+			const legacyPath = getLegacyProjectConfigPath(repoPath);
+			const legacy = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(legacyPath);
+			if (legacy === null) {
+				continue;
+			}
+			await lockedFileSystem.writeJsonFileAtomic(newPath, legacy, { lock: null });
+			await rm(legacyPath, { force: true });
+			try {
+				await rmdir(resolve(repoPath, ".quarterdeck"));
+			} catch {
+				// Directory not empty or already gone — fine.
+			}
+			migrated++;
+		} catch {
+			// Best-effort migration — skip failures.
+		}
+	}
+	return migrated;
+}
+
 // --- Composite read helpers ---
 
 export interface RuntimeConfigFiles {
@@ -321,8 +349,8 @@ export interface RuntimeConfigFiles {
 	projectConfig: RuntimeProjectConfigFileShape | null;
 }
 
-export async function readRuntimeConfigFiles(cwd: string | null): Promise<RuntimeConfigFiles> {
-	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(cwd);
+export async function readRuntimeConfigFiles(projectId: string | null): Promise<RuntimeConfigFiles> {
+	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(projectId);
 	return {
 		globalConfigPath,
 		projectConfigPath,

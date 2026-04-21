@@ -32,7 +32,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	debugModeEnabled: false,
 	effectiveCommand: "claude",
 	globalConfigPath: "/tmp/global-config.json",
-	projectConfigPath: "/tmp/project/.quarterdeck/config.json",
+	projectConfigPath: "/tmp/.quarterdeck/projects/test-project/config.json",
 	readyForReviewNotificationsEnabled: CONFIG_DEFAULTS.readyForReviewNotificationsEnabled,
 	shellAutoRestartEnabled: CONFIG_DEFAULTS.shellAutoRestartEnabled,
 	showTrashWorktreeNotice: CONFIG_DEFAULTS.showTrashWorktreeNotice,

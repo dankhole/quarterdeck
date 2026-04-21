@@ -251,7 +251,7 @@ All hooks migrated out of the monolithic App component into 6 focused providers 
 
 ## Revisit periodic orphaned entity cleanup
 
-Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees, leftover `.quarterdeck/` artifacts) may need a separate sweep.
+Review and improve the periodic cleanup of orphaned entities — stale worktrees, abandoned sessions, dangling state references — that accumulate over time. Session reconciliation (`session-reconciliation.ts`) runs every 10 seconds for process/session state, but broader orphan cleanup (worktrees without tasks, tasks referencing deleted worktrees) may need a separate sweep.
 
 **Broader refactor context:** [docs/refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary](./refactor-roadmap-context.md#13-orphan-cleanup--reconciliation-boundary)
 

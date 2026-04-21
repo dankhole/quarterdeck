@@ -19,7 +19,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 			return;
 		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-runtime-config-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-");
 
 		try {
@@ -30,7 +29,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				process.env.SHELL = "/definitely-not-a-shell";
 				const isolatedPath = `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
-					const state = await loadRuntimeConfig(tempProject);
+					const state = await loadRuntimeConfig(null);
 					expect(state.selectedAgentId).toBe("codex");
 					const persisted = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
@@ -41,7 +40,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					expect(persisted.agentAutonomousModeEnabled).toBeUndefined();
 					expect(persisted.readyForReviewNotificationsEnabled).toBeUndefined();
 
-					const reloadedState = await loadRuntimeConfig(tempProject);
+					const reloadedState = await loadRuntimeConfig(null);
 					expect(reloadedState.selectedAgentId).toBe("codex");
 				});
 			} finally {
@@ -53,7 +52,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 			}
 		} finally {
 			cleanupBin();
-			cleanupProject();
 			cleanupHome();
 		}
 	});
@@ -63,9 +61,6 @@ describe.sequential("runtime-config auto agent selection", () => {
 			return;
 		}
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-default-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-default-",
-		);
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-default-");
 
 		try {
@@ -73,7 +68,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 			try {
 				process.env.SHELL = "/definitely-not-a-shell";
 				await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
-					const state = await loadRuntimeConfig(tempProject);
+					const state = await loadRuntimeConfig(null);
 					expect(state.selectedAgentId).toBe("claude");
 					expect(existsSync(join(tempHome, ".quarterdeck", "config.json"))).toBe(false);
 				});
@@ -86,14 +81,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 			}
 		} finally {
 			cleanupBin();
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("normalizes unsupported configured agents to the default launch agent", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-set-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("quarterdeck-project-runtime-config-set-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-set-");
 
 		try {
@@ -109,21 +102,17 @@ describe.sequential("runtime-config auto agent selection", () => {
 			);
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.selectedAgentId).toBe("claude");
 			});
 		} finally {
 			cleanupBin();
-			cleanupProject();
 			cleanupHome();
 		}
 	});
 
 	it("does not auto-select when global config file already exists without selected agent", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-existing-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"quarterdeck-project-runtime-config-existing-",
-		);
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-existing-");
 
 		try {
@@ -138,12 +127,11 @@ describe.sequential("runtime-config auto agent selection", () => {
 			);
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
-				const state = await loadRuntimeConfig(tempProject);
+				const state = await loadRuntimeConfig(null);
 				expect(state.selectedAgentId).toBe("claude");
 			});
 		} finally {
 			cleanupBin();
-			cleanupProject();
 			cleanupHome();
 		}
 	});

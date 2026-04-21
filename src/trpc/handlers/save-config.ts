@@ -25,7 +25,7 @@ export async function handleSaveConfig(
 	const parsed = parseRuntimeConfigSaveRequest(input);
 	let nextRuntimeConfig: RuntimeConfigState;
 	if (projectScope) {
-		nextRuntimeConfig = await updateRuntimeConfig(projectScope.projectPath, projectScope.projectId, parsed);
+		nextRuntimeConfig = await updateRuntimeConfig(projectScope.projectId, parsed);
 	} else {
 		const activeRuntimeConfig = deps.config.getActiveRuntimeConfig();
 		if (!activeRuntimeConfig) {
