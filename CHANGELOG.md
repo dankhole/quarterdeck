@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix: base ref selector popover transparency and pinned branch ordering
+
+- Fixed the base ref branch selector popover in the top bar using a non-existent `bg-bg-secondary` background class, making the dropdown see-through after selection. Changed to `bg-surface-1` to match the main branch selector popover.
+- Added pinned branch support to the base ref selector — branches pinned via the main branch popover now sort to the top of the base ref dropdown list.
+
 ### Refactor: separate surface navigation from git provider ownership
 
 - Added `web-ui/src/providers/surface-navigation-provider.tsx`, a dedicated UI-surface seam that owns main-view/sidebar selection, git-history visibility, and cross-surface compare/file navigation instead of leaving those concerns inside `GitProvider`.

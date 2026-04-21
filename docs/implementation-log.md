@@ -2,6 +2,23 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Base ref selector popover fix (2026-04-21)
+
+**What changed:**
+
+- Fixed the `BaseRefLabel` popover content background class from `bg-bg-secondary` (non-existent, resolved to transparent) to `bg-surface-1`, matching the main `BranchSelectorPopover`.
+- Added `pinnedBranches` prop to `BaseRefLabel` and wired it from `projectRuntime.pinnedBranches`. The filtered branch list now sorts pinned branches to the top, consistent with the main branch selector's pinned section.
+
+**Why:** The base ref dropdown was see-through after opening because `bg-bg-secondary` isn't a defined color token. Pinned branches were also ignored in this dropdown even though the main branch popover supports them.
+
+**Files touched:**
+
+- `web-ui/src/components/app/connected-top-bar.tsx`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending.
+
 ## Provider/runtime review follow-up (2026-04-21)
 
 Applied the small correctness/polish fixes that came out of review on the provider-context ownership refactor, and recorded the intentionally deferred architectural follow-ups in the roadmap instead of quietly expanding scope.

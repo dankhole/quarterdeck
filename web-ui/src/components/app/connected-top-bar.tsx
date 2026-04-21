@@ -24,6 +24,7 @@ function BaseRefLabel({
 	isLoadingBranches,
 	requestBranches,
 	onUpdateBaseRef,
+	pinnedBranches,
 }: {
 	card: BoardCard;
 	behindBaseCount: number | null | undefined;
@@ -31,6 +32,7 @@ function BaseRefLabel({
 	isLoadingBranches: boolean;
 	requestBranches: () => void;
 	onUpdateBaseRef: (taskId: string, baseRef: string, pinned: boolean) => void;
+	pinnedBranches: string[];
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [filter, setFilter] = useState("");
@@ -64,11 +66,18 @@ function BaseRefLabel({
 		return branches.filter((ref) => ref.type === "branch");
 	}, [branches]);
 
+	const pinnedSet = useMemo(() => new Set(pinnedBranches), [pinnedBranches]);
+
 	const filteredBranches = useMemo(() => {
-		if (!filter) return localBranches;
-		const lower = filter.toLowerCase();
-		return localBranches.filter((ref) => ref.name.toLowerCase().includes(lower));
-	}, [localBranches, filter]);
+		const base = filter
+			? localBranches.filter((ref) => ref.name.toLowerCase().includes(filter.toLowerCase()))
+			: localBranches;
+		return [...base].sort((a, b) => {
+			const ap = pinnedSet.has(a.name) ? 0 : 1;
+			const bp = pinnedSet.has(b.name) ? 0 : 1;
+			return ap - bp;
+		});
+	}, [localBranches, filter, pinnedSet]);
 
 	return (
 		<RadixPopover.Root open={isOpen} onOpenChange={handleOpen}>
@@ -94,7 +103,7 @@ function BaseRefLabel({
 					side="bottom"
 					align="start"
 					sideOffset={6}
-					className="z-50 rounded-md border border-border bg-bg-secondary shadow-lg w-56"
+					className="z-50 rounded-md border border-border bg-surface-1 shadow-lg w-56"
 					onOpenAutoFocus={(e) => {
 						e.preventDefault();
 						inputRef.current?.focus();
@@ -299,6 +308,7 @@ export function ConnectedTopBar({
 								isLoadingBranches={git.topbarBranchActions.isLoadingBranches}
 								requestBranches={git.topbarBranchActions.requestBranches}
 								onUpdateBaseRef={handleUpdateBaseRef}
+								pinnedBranches={projectRuntime.pinnedBranches}
 							/>
 						) : null}
 						<div className="flex">
