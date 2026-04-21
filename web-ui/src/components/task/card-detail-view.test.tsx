@@ -106,14 +106,29 @@ function createSelection(): CardSelection {
 
 /** Default new required props for CardDetailView */
 const newRequiredProps = {
-	mainView: "terminal" as const,
-	sidebar: "task_column" as const,
-	topBar: <div data-testid="top-bar" />,
-	sidePanelRatio: 0.25,
-	setSidePanelRatio: () => {},
-	skipTaskCheckoutConfirmation: false,
-	skipHomeCheckoutConfirmation: false,
-	onDeselectTask: () => {},
+	sessionSummary: null,
+	layoutProps: {
+		mainView: "terminal" as const,
+		sidebar: "task_column" as const,
+		topBar: <div data-testid="top-bar" />,
+		sidePanelRatio: 0.25,
+		setSidePanelRatio: () => {},
+	},
+	sidePanelProps: {
+		navigateToFile: () => {},
+		onCardSelect: () => {},
+	},
+	repositoryProps: {
+		skipTaskCheckoutConfirmation: false,
+		skipHomeCheckoutConfirmation: false,
+		onDeselectTask: () => {},
+	},
+	terminalProps: {
+		bottomTerminalOpen: false,
+		bottomTerminalTaskId: null,
+		bottomTerminalSummary: null,
+		onBottomTerminalClose: () => {},
+	},
 };
 
 function requireSidePanelSeparator(container: HTMLElement): HTMLElement {
@@ -445,17 +460,7 @@ describe("CardDetailView", () => {
 		await act(async () => {
 			renderWithProviders(
 				root,
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="project-1"
-					sessionSummary={null}
-					onCardSelect={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-					{...newRequiredProps}
-				/>,
+				<CardDetailView selection={createSelection()} currentProjectId="project-1" {...newRequiredProps} />,
 			);
 		});
 
@@ -473,14 +478,8 @@ describe("CardDetailView", () => {
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="project-1"
-					sessionSummary={null}
-					onCardSelect={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
 					{...newRequiredProps}
-					sidePanelRatio={0.3}
+					layoutProps={{ ...newRequiredProps.layoutProps, sidePanelRatio: 0.3 }}
 				/>,
 			);
 		});
@@ -498,14 +497,8 @@ describe("CardDetailView", () => {
 				<CardDetailView
 					selection={createSelection()}
 					currentProjectId="project-1"
-					sessionSummary={null}
-					onCardSelect={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
 					{...newRequiredProps}
-					setSidePanelRatio={setSidePanelRatio}
+					layoutProps={{ ...newRequiredProps.layoutProps, setSidePanelRatio }}
 				/>,
 			);
 		});

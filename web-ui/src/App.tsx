@@ -525,18 +525,28 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							selection={selectedCard}
 							currentProjectId={project.currentProjectId}
 							sessionSummary={detailSession}
-							onCardSelect={handleCardSelectWithFocus}
-							onCardDoubleClick={handleCardDoubleClick}
-							onCreateTask={handleOpenCreateTask}
-							onStartAllTasks={interactions.handleStartAllBacklogTasksFromBoard}
-							onClearTrash={interactions.handleOpenClearTrash}
-							editingTaskId={editingTaskId}
-							inlineTaskEditor={inlineTaskEditor}
-							onEditTask={(task) => {
-								handleOpenEditTask(task, { preserveDetailSelection: true });
+							layoutProps={{
+								mainView: navigation.mainView,
+								sidebar: navigation.sidebar,
+								topBar,
+								sidePanelRatio: navigation.sidePanelRatio,
+								setSidePanelRatio: navigation.setSidePanelRatio,
 							}}
-							gitHistoryPanel={
-								navigation.isGitHistoryOpen ? (
+							sidePanelProps={{
+								navigateToFile: navigation.navigateToFile,
+								onCardSelect: handleCardSelectWithFocus,
+								onCardDoubleClick: handleCardDoubleClick,
+								onCreateTask: handleOpenCreateTask,
+								onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
+								onClearTrash: interactions.handleOpenClearTrash,
+								editingTaskId,
+								inlineTaskEditor,
+								onEditTask: (task) => {
+									handleOpenEditTask(task, { preserveDetailSelection: true });
+								},
+							}}
+							repositoryProps={{
+								gitHistoryPanel: navigation.isGitHistoryOpen ? (
 									<GitHistoryView
 										projectId={project.currentProjectId}
 										gitHistory={git.gitHistory}
@@ -550,34 +560,31 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										taskScope={git.gitHistoryTaskScope}
 										skipCherryPickConfirmation={projectRuntime.skipCherryPickConfirmation}
 									/>
-								) : undefined
-							}
-							bottomTerminalOpen={terminal.isDetailTerminalOpen}
-							bottomTerminalTaskId={terminal.detailTerminalTaskId}
-							bottomTerminalSummary={terminal.detailTerminalSummary}
-							bottomTerminalSubtitle={terminal.detailTerminalSubtitle}
-							onBottomTerminalClose={terminal.closeDetailTerminal}
-							onBottomTerminalCollapse={terminal.collapseDetailTerminal}
-							bottomTerminalPaneHeight={terminal.detailTerminalPaneHeight}
-							onBottomTerminalPaneHeightChange={terminal.setDetailTerminalPaneHeight}
-							onBottomTerminalConnectionReady={terminal.markTerminalConnectionReady}
-							bottomTerminalAgentCommand={projectRuntime.agentCommand}
-							onBottomTerminalSendAgentCommand={terminal.handleSendAgentCommandToDetailTerminal}
-							isBottomTerminalExpanded={terminal.isDetailTerminalExpanded}
-							onBottomTerminalToggleExpand={terminal.handleToggleExpandDetailTerminal}
-							onBottomTerminalRestart={terminal.handleRestartDetailTerminal}
-							onBottomTerminalExit={terminal.handleShellExit}
-							mainView={navigation.mainView}
-							sidebar={navigation.sidebar}
-							topBar={topBar}
-							sidePanelRatio={navigation.sidePanelRatio}
-							setSidePanelRatio={navigation.setSidePanelRatio}
-							skipTaskCheckoutConfirmation={projectRuntime.skipTaskCheckoutConfirmation}
-							skipHomeCheckoutConfirmation={projectRuntime.skipHomeCheckoutConfirmation}
-							onSkipTaskCheckoutConfirmationChange={projectRuntime.handleSkipTaskCheckoutConfirmationChange}
-							onDeselectTask={() => setSelectedTaskId(null)}
-							pinnedBranches={projectRuntime.pinnedBranches}
-							onTogglePinBranch={projectRuntime.handleTogglePinBranch}
+								) : undefined,
+								pinnedBranches: projectRuntime.pinnedBranches,
+								onTogglePinBranch: projectRuntime.handleTogglePinBranch,
+								skipTaskCheckoutConfirmation: projectRuntime.skipTaskCheckoutConfirmation,
+								skipHomeCheckoutConfirmation: projectRuntime.skipHomeCheckoutConfirmation,
+								onSkipTaskCheckoutConfirmationChange: projectRuntime.handleSkipTaskCheckoutConfirmationChange,
+								onDeselectTask: () => setSelectedTaskId(null),
+							}}
+							terminalProps={{
+								bottomTerminalOpen: terminal.isDetailTerminalOpen,
+								bottomTerminalTaskId: terminal.detailTerminalTaskId,
+								bottomTerminalSummary: terminal.detailTerminalSummary,
+								bottomTerminalSubtitle: terminal.detailTerminalSubtitle,
+								onBottomTerminalClose: terminal.closeDetailTerminal,
+								onBottomTerminalCollapse: terminal.collapseDetailTerminal,
+								bottomTerminalPaneHeight: terminal.detailTerminalPaneHeight,
+								onBottomTerminalPaneHeightChange: terminal.setDetailTerminalPaneHeight,
+								onBottomTerminalConnectionReady: terminal.markTerminalConnectionReady,
+								bottomTerminalAgentCommand: projectRuntime.agentCommand,
+								onBottomTerminalSendAgentCommand: terminal.handleSendAgentCommandToDetailTerminal,
+								isBottomTerminalExpanded: terminal.isDetailTerminalExpanded,
+								onBottomTerminalToggleExpand: terminal.handleToggleExpandDetailTerminal,
+								onBottomTerminalRestart: terminal.handleRestartDetailTerminal,
+								onBottomTerminalExit: terminal.handleShellExit,
+							}}
 						/>
 					) : (
 						<HomeView

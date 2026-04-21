@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: narrow task-detail layout/composition ownership
+
+- Regrouped `CardDetailView` around owned task-detail sections (`layoutProps`, `sidePanelProps`, `repositoryProps`, and `terminalProps`) so the detail root coordinates the screen instead of acting like one broad dependency funnel.
+- Added `TaskDetailRepositorySurface` plus grouped `useCardDetailView()` output so the git/files half of task detail now owns its own composition seam: scope bar, branch pill/actions, git history slot, file navigation, and branch-driven repository flows are wired together without being mixed into the terminal shell.
+- Followed through on the remaining ownership seams by adding `TaskDetailSidePanelSurface` and `TaskDetailTerminalSurface`, so commit-vs-column side context and agent-terminal-plus-shell composition now live behind their own task-detail boundaries instead of staying inlined in the layout root.
+- Kept branch dialogs and detail behavior intact while simplifying `TaskDetailMainContent` into a clearer layout router, then added focused regression coverage for the repository, side-panel, and terminal surfaces and reran targeted task-detail/layout tests, `web-ui` typecheck, and `web-ui` build.
+- Tightened the follow-up contracts after review: the side panel now takes `navigateToFile` directly instead of importing a repository-state slice, `sessionSummary` now flows through an explicit shared detail prop instead of the terminal group, and `TaskDetailMainContent` now accepts only the specific layout/repository/terminal state it directly coordinates.
+
 ### Fix: stop leaving artifacts in the target repo
 
 - Moved project config from `{repo}/.quarterdeck/config.json` to `~/.quarterdeck/projects/{projectId}/config.json` — Quarterdeck no longer creates or writes to any directory inside the user's repo (only `.git/` internal state remains, which is already untracked).

@@ -26,20 +26,19 @@ Backlog note:
 
 ## Current Active Order
 
-1. Task-detail layout / composition follow-up
-2. Notification / project-scoping ownership
-3. Notification / indicator state model
-4. Project / worktree identity normalization
-5. Branch / base-ref UX state model
-6. File browser + diff viewer data pipeline
-7. Terminal session manager / lifecycle boundaries
-8. Orphan cleanup / reconciliation boundary
-9. Shared LLM client abstraction
+1. Notification / project-scoping ownership
+2. Notification / indicator state model
+3. Project / worktree identity normalization
+4. Branch / base-ref UX state model
+5. File browser + diff viewer data pipeline
+6. Terminal session manager / lifecycle boundaries
+7. Orphan cleanup / reconciliation boundary
+8. Shared LLM client abstraction
 
 That sequence is deliberate:
 
-- 1 through 6 are the most concrete next backlog items once the provider-surface cleanup landed.
-- 7 through 9 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
+- 1 through 5 are the most concrete next backlog items once the provider-surface and task-detail cleanup landed.
+- 6 through 8 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
 
 In other words: yes, this order is intentional. It is sequenced by dependency and leverage, not just by how interesting each item sounds in isolation.
 
@@ -66,6 +65,7 @@ If a subsystem is hard to explain without leading with timers, cache states, bat
 These landed recently enough that they are still useful context for what remains:
 
 - Broad provider / context surfaces
+- Task-detail layout / composition follow-up
 - Manual broadcast choreography / post-mutation effects
 - Project metadata monitor follow-ups
 - Project sync plus board cache restore
@@ -649,6 +649,10 @@ Key risk:
 
 ## 17. Task-detail Layout / Composition Follow-up
 
+Status:
+
+- Completed on 2026-04-21. See `CHANGELOG.md` and `docs/implementation-log.md` for the landed repository-surface ownership slice.
+
 Primary files:
 
 - `web-ui/src/components/task/card-detail-view.tsx`
@@ -679,6 +683,13 @@ Suggested first slice:
 - map the current `CardDetailView` prop surface into responsibility groups
 - separate true layout-root concerns from sub-panel-owned concerns
 - extract one coherent sub-panel boundary with a meaningfully narrower contract
+
+What this slice landed:
+
+- regrouped `CardDetailView` around owned section contracts (`layoutProps`, `sidePanelProps`, `repositoryProps`, `terminalProps`) instead of one flat screen-level prop funnel
+- added a repository-owned task-detail seam for git/files routing, scope bar + branch pill wiring, git history handoff, compare/file navigation, and diff-to-terminal actions
+- added owned side-panel and terminal seams so commit-vs-column context and agent-terminal-plus-shell composition no longer live inline in the layout root/router
+- simplified `TaskDetailMainContent` so it now reads primarily as a layout router coordinating the repository surface versus the terminal surface
 
 Key risk:
 

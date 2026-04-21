@@ -2,6 +2,73 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Task-detail composition review follow-up (2026-04-21)
+
+Applied the small contract-cleanup follow-up that came out of review on the task-detail composition refactor so the ownership seams read a little more honestly without changing behavior.
+
+**What changed:**
+
+- Updated `web-ui/src/components/task/task-detail-side-panel.tsx` so it no longer imports a `repositoryState` slice just to reach `navigateToFile`; that callback now comes directly through the side-panel contract in `task-detail-screen.ts`.
+- Stopped threading `sessionSummary` through `terminalProps`. It now flows through an explicit shared task-detail prop because both the repository-facing `GitView` path and the terminal surface need it.
+- Simplified `web-ui/src/components/task/task-detail-main-content.tsx` so it no longer accepts a grouped `detail` object it barely used. The component now takes explicit `layoutState`, `repositoryState`, and `terminalState` inputs and forwards each owned slice to the surface that needs it.
+- Updated the focused task-detail tests to match the refined contracts and reran the same targeted frontend task-detail suite plus `web-ui` typecheck and build.
+
+**Why:** The original refactor already improved the screen architecture, but review surfaced three small semantic mismatches in the new contracts. Fixing them keeps the ownership story cleaner without reopening the larger task-detail cleanup.
+
+**Files touched:**
+
+- `web-ui/src/App.tsx`
+- `web-ui/src/components/task/card-detail-view.tsx`
+- `web-ui/src/components/task/task-detail-main-content.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.tsx`
+- `web-ui/src/components/task/task-detail-screen.ts`
+- `web-ui/src/components/task/task-detail-side-panel.tsx`
+- `web-ui/src/components/task/card-detail-view.test.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.test.tsx`
+- `web-ui/src/components/task/task-detail-side-panel.test.tsx`
+- `web-ui/src/components/task/task-detail-terminal-surface.test.tsx`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending.
+
+## Task-detail layout/composition follow-up (2026-04-21)
+
+Landed the first architectural cleanup slice for the task-detail follow-up by narrowing the task-detail screen around owned sections instead of leaving `CardDetailView` and `TaskDetailMainContent` as one broad dependency funnel. Before this change, `CardDetailView` accepted a long flat list mixing layout state, side-panel callbacks, git/files scope concerns, branch-dialog wiring, and terminal-shell plumbing; `TaskDetailMainContent` still owned most of the old kitchen-sink git/files/template wiring. After this slice, the layout root reads more like a coordinator while the repository-facing half of task detail owns its own composition seam.
+
+**What changed:**
+
+- Added `web-ui/src/components/task/task-detail-screen.ts` to define the owned task-detail prop groups (`layoutProps`, `sidePanelProps`, `repositoryProps`, and `terminalProps`) and updated `web-ui/src/App.tsx` plus `web-ui/src/components/task/card-detail-view.tsx` to use those section contracts instead of one flat prop bag.
+- Reshaped `web-ui/src/hooks/board/use-card-detail-view.ts` so it now returns grouped task-detail state (`layout`, `sidePanel`, `repository`, `terminal`) rather than one undifferentiated result. This makes repository-specific wiring, terminal-specific wiring, and layout-specific refs/actions easier to consume independently.
+- Added `web-ui/src/components/task/task-detail-repository-surface.tsx`, a repository-owned task-detail boundary that now owns the git/files half of the screen: `GitView` vs `FilesView` routing, scope bar construction, branch pill wiring, branch actions, compare/file navigation plumbing, git history slot handoff, and the inline diff-to-terminal hooks all live there.
+- Added `web-ui/src/components/task/task-detail-side-panel.tsx`, which now owns the task-detail side seam for commit-vs-column context, resize-handle placement, and the narrow bridge between side-panel props and the repository/file-navigation seam.
+- Added `web-ui/src/components/task/task-detail-terminal-surface.tsx`, which now owns the terminal half of task detail: agent terminal setup, auto-review cancel affordance, and the bottom shell pane composition all moved out of `TaskDetailMainContent`.
+- Simplified `web-ui/src/components/task/task-detail-main-content.tsx` into a layout router: it keeps top-bar placement and conflict-banner visibility while delegating repository vs terminal composition to the owned seams.
+- Updated regression coverage in `web-ui/src/components/task/card-detail-view.test.tsx` for the regrouped screen contract and added focused tests for each new owned seam: `task-detail-repository-surface.test.tsx`, `task-detail-side-panel.test.tsx`, and `task-detail-terminal-surface.test.tsx`.
+- Reran targeted frontend coverage (`card-detail-view`, all three task-detail sub-surface tests, `column-context-panel`, and `surface-navigation-provider`) plus `npm run web:typecheck` and `npm --prefix web-ui run build`.
+
+**Why:** The earlier `0337d71c` cleanup moved workflow/state derivation out of `card-detail-view.tsx`, but the screen still read as one broad composition surface. This slice narrows the highest-churn part of task detail by giving the repository-facing sub-area clearer ownership without adding a new provider or scattering the same prop funnel across more JSX wrappers.
+
+**Files touched:**
+
+- `web-ui/src/App.tsx`
+- `web-ui/src/components/task/card-detail-view.tsx`
+- `web-ui/src/components/task/task-detail-main-content.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.tsx`
+- `web-ui/src/components/task/task-detail-side-panel.tsx`
+- `web-ui/src/components/task/task-detail-screen.ts`
+- `web-ui/src/components/task/task-detail-terminal-surface.tsx`
+- `web-ui/src/hooks/board/use-card-detail-view.ts`
+- `web-ui/src/components/task/card-detail-view.test.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.test.tsx`
+- `web-ui/src/components/task/task-detail-side-panel.test.tsx`
+- `web-ui/src/components/task/task-detail-terminal-surface.test.tsx`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/task-detail-layout-composition` (branch created from local `main` at `09225fa0`).
+
 ## Relocate project config out of target repo (2026-04-21)
 
 Quarterdeck was dropping a `.quarterdeck/` directory inside the user's target repo to store per-project config (shortcuts, defaultBaseRef). Moved this to the existing state home at `~/.quarterdeck/projects/{projectId}/config.json`, where all other project state (board, sessions, meta, pinned branches) already lives.

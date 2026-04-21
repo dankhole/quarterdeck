@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import {
@@ -11,6 +11,7 @@ import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useResizeDrag } from "@/resize/use-resize-drag";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useStableCardActions } from "@/state/card-actions-context";
 import {
 	useHomeGitSummaryValue,
@@ -30,6 +31,56 @@ interface UseCardDetailViewInput {
 	skipHomeCheckoutConfirmation: boolean;
 }
 
+export interface CardDetailViewLayoutState {
+	detailLayoutRef: RefObject<HTMLDivElement>;
+	mainRowRef: RefObject<HTMLDivElement>;
+	handleSidePanelSeparatorMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+	sidePanelPercent: string;
+	isTaskSidePanelOpen: boolean;
+}
+
+export interface CardDetailViewSidePanelState {
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
+}
+
+export interface CardDetailViewRepositoryState {
+	board: ReturnType<typeof useBoardContext>["board"];
+	taskWorktreeInfo: ReturnType<typeof useTaskWorktreeInfoValue>;
+	taskWorktreeSnapshot: ReturnType<typeof useTaskWorktreeSnapshotValue>;
+	homeGitSummary: ReturnType<typeof useHomeGitSummaryValue>;
+	taskScopeMode: ReturnType<typeof useScopeContext>["scopeMode"];
+	taskResolvedScope: ReturnType<typeof useScopeContext>["resolvedScope"];
+	taskReturnToContextual: ReturnType<typeof useScopeContext>["returnToContextual"];
+	taskBranchActions: ReturnType<typeof useBranchActions>;
+	fileBrowserData: ReturnType<typeof useFileBrowserData>;
+	pillBranchLabel: string | null;
+	isGitHistoryOpen: boolean;
+	onToggleGitHistory: () => void;
+	pendingCompareNavigation: ReturnType<typeof useSurfaceNavigationContext>["pendingCompareNavigation"];
+	onCompareNavigationConsumed: () => void;
+	onOpenGitCompare: ReturnType<typeof useSurfaceNavigationContext>["openGitCompare"];
+	pendingFileNavigation: ReturnType<typeof useSurfaceNavigationContext>["pendingFileNavigation"];
+	onFileNavigationConsumed: () => void;
+	navigateToFile: ReturnType<typeof useSurfaceNavigationContext>["navigateToFile"];
+	navigateToGitView: () => void;
+	runGitAction: ReturnType<typeof useGitContext>["runGitAction"];
+	handleAddToTerminal: (text: string) => Promise<void>;
+	handleSendToTerminal: (text: string) => Promise<void>;
+}
+
+export interface CardDetailViewTerminalState {
+	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
+	onCancelAutomaticTaskAction: ReturnType<typeof useStableCardActions>["onCancelAutomaticTaskAction"];
+	isTaskTerminalEnabled: boolean;
+}
+
+export interface UseCardDetailViewResult {
+	layout: CardDetailViewLayoutState;
+	sidePanel: CardDetailViewSidePanelState;
+	repository: CardDetailViewRepositoryState;
+	terminal: CardDetailViewTerminalState;
+}
+
 export function useCardDetailView({
 	selection,
 	currentProjectId,
@@ -38,7 +89,7 @@ export function useCardDetailView({
 	sidebar,
 	skipTaskCheckoutConfirmation,
 	skipHomeCheckoutConfirmation,
-}: UseCardDetailViewInput) {
+}: UseCardDetailViewInput): UseCardDetailViewResult {
 	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
 	const navigation = useSurfaceNavigationContext();
 	const { runGitAction } = useGitContext();
@@ -170,38 +221,44 @@ export function useCardDetailView({
 	);
 
 	return {
-		board,
-		taskSessions,
-		onSessionSummary,
-		onCancelAutomaticTaskAction,
-		detailLayoutRef,
-		mainRowRef,
-		handleSidePanelSeparatorMouseDown,
-		taskWorktreeInfo,
-		taskWorktreeSnapshot,
-		homeGitSummary,
-		taskScopeMode,
-		taskResolvedScope,
-		taskReturnToContextual,
-		taskBranchActions,
-		fileBrowserData,
-		pillBranchLabel,
-		handleAddToTerminal,
-		handleSendToTerminal,
-		sidePanelPercent: formatCardDetailSidePanelPercent(sidePanelRatio),
-		isTaskSidePanelOpen: sidebar === "task_column" || sidebar === "commit",
-		isTaskTerminalEnabled: selection.column.id === "in_progress" || selection.column.id === "review",
-		isGitHistoryOpen: navigation.isGitHistoryOpen,
-		onToggleGitHistory: navigation.handleToggleGitHistory,
-		pendingCompareNavigation: navigation.pendingCompareNavigation,
-		onCompareNavigationConsumed: navigation.clearPendingCompareNavigation,
-		onOpenGitCompare: navigation.openGitCompare,
-		pendingFileNavigation: navigation.pendingFileNavigation,
-		onFileNavigationConsumed: navigation.clearPendingFileNavigation,
-		navigateToFile: navigation.navigateToFile,
-		navigateToGitView: navigation.navigateToGitView,
-		runGitAction,
+		layout: {
+			detailLayoutRef,
+			mainRowRef,
+			handleSidePanelSeparatorMouseDown,
+			sidePanelPercent: formatCardDetailSidePanelPercent(sidePanelRatio),
+			isTaskSidePanelOpen: sidebar === "task_column" || sidebar === "commit",
+		},
+		sidePanel: {
+			taskSessions,
+		},
+		repository: {
+			board,
+			taskWorktreeInfo,
+			taskWorktreeSnapshot,
+			homeGitSummary,
+			taskScopeMode,
+			taskResolvedScope,
+			taskReturnToContextual,
+			taskBranchActions,
+			fileBrowserData,
+			pillBranchLabel,
+			isGitHistoryOpen: navigation.isGitHistoryOpen,
+			onToggleGitHistory: navigation.handleToggleGitHistory,
+			pendingCompareNavigation: navigation.pendingCompareNavigation,
+			onCompareNavigationConsumed: navigation.clearPendingCompareNavigation,
+			onOpenGitCompare: navigation.openGitCompare,
+			pendingFileNavigation: navigation.pendingFileNavigation,
+			onFileNavigationConsumed: navigation.clearPendingFileNavigation,
+			navigateToFile: navigation.navigateToFile,
+			navigateToGitView: navigation.navigateToGitView,
+			runGitAction,
+			handleAddToTerminal,
+			handleSendToTerminal,
+		},
+		terminal: {
+			onSessionSummary,
+			onCancelAutomaticTaskAction,
+			isTaskTerminalEnabled: selection.column.id === "in_progress" || selection.column.id === "review",
+		},
 	};
 }
-
-export type UseCardDetailViewResult = ReturnType<typeof useCardDetailView>;
