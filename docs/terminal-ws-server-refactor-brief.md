@@ -69,7 +69,7 @@ Related docs:
 
 - `docs/terminal-architecture-refactor-brief.md`
 - `docs/design-guardrails.md`
-- `docs/optimization-shaped-architecture-followups.md`
+- `docs/refactor-roadmap-context.md`
 - `docs/design-weaknesses-roadmap.md`
 
 ## What `ws-server.ts` Is Responsible For Today

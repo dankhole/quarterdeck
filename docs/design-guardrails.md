@@ -146,4 +146,4 @@ When working in those areas, prefer:
 
 - `docs/design-weaknesses-roadmap.md`
 - `docs/terminal-architecture-refactor-brief.md`
-- `docs/optimization-shaped-architecture-followups.md`
+- `docs/refactor-roadmap-context.md`

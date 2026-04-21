@@ -1,11 +1,10 @@
 # Refactor Roadmap Context
 
-Purpose: capture enough context for the current next-wave refactors that a fresh agent can pick one up without reconstructing the architectural story from chat history.
+Purpose: capture enough context for the current refactor queue and backlog that a fresh agent can pick the next item up without reconstructing the architectural story from chat history.
 
 This is intentionally lighter than the dedicated implementation briefs such as:
 
 - `docs/project-metadata-monitor-refactor-brief.md`
-- `docs/project-metadata-monitor-followups.md`
 - `docs/terminal-ws-server-refactor-brief.md`
 
 Use this document when:
@@ -19,24 +18,68 @@ Execution tracking note:
 - `docs/todo.md` remains the source of truth for active work.
 - Every active refactor listed here should have a corresponding todo item.
 
-## Recommended Order
+Backlog note:
 
-1. Project metadata monitor follow-ups
-2. Project sync plus board cache restore
-3. Frontend runtime state stream store
-4. Split-brain task state
-5. Manual broadcast choreography / domain-event boundaries
-6. App-shell integration gravity
-7. Broad provider/context surfaces
-8. Remaining workflow-heavy UI surfaces
+- The "Current active order" list below is the live refactor queue and should match `docs/todo.md`.
+- The numbered sections that follow include both active items and recently completed items that are still worth keeping as context.
+- The extended backlog later in this document captures additional code-validated refactor targets that are worth tracking, but are not at the very top of the current order.
+
+## Current Active Order
+
+1. Manual broadcast choreography / domain-event boundaries
+2. Broad provider / context surfaces
+3. Task-detail layout / composition follow-up
+4. Notification / project-scoping ownership
+5. Notification / indicator state model
+6. Project / worktree identity normalization
+7. Branch / base-ref UX state model
+8. File browser + diff viewer data pipeline
+9. Terminal session manager / lifecycle boundaries
+10. Orphan cleanup / reconciliation boundary
+11. Shared LLM client abstraction
 
 That sequence is deliberate:
 
-- 1 through 3 continue the active optimization-shaped cleanup work.
-- 4 and 5 address the two biggest remaining correctness/ownership problems in the design roadmap.
-- 6 through 8 reduce the architectural pressure that keeps re-centralizing behavior in large UI surfaces and broad providers.
+- 1 and 2 are the only current active architectural refactors in `docs/todo.md`.
+- 3 through 8 are the most concrete next backlog items once those active items settle.
+- 9 through 11 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
+
+In other words: yes, this order is intentional. It is sequenced by dependency and leverage, not just by how interesting each item sounds in isolation.
+
+## Optimization-shaped Refactors Recently Closed Out
+
+Quarterdeck has had a repeating pattern where a subsystem starts with a simple job, then gains enough caching, polling, batching, reconnect, preload, or recovery behavior that the optimization starts to define the architecture.
+
+That pattern produced several of the recently completed refactors:
+
+- project metadata monitor
+- project sync plus board cache restore
+- terminal websocket bridge
+- frontend runtime state stream store
+
+The rule of thumb is:
+
+- keep the clever behavior if it materially helps UX or performance
+- but move that clever behavior behind a clearer policy boundary so the subsystem can still be explained in terms of ownership first
+
+If a subsystem is hard to explain without leading with timers, cache states, batching windows, or prioritization rules, it is probably becoming optimization-shaped.
+
+## Recently Completed Refactors
+
+These landed recently enough that they are still useful context for what remains:
+
+- Project metadata monitor follow-ups
+- Project sync plus board cache restore
+- Frontend runtime state stream store
+- Split-brain task state
+- App-shell integration gravity
+- Remaining workflow-heavy UI surfaces
 
 ## 1. Project Metadata Monitor Follow-ups
+
+Status:
+
+- Completed on 2026-04-20. See `CHANGELOG.md` and `docs/implementation-log.md` for the landed freshness/ownership follow-up.
 
 Primary files:
 
@@ -49,14 +92,13 @@ Primary files:
 Existing docs:
 
 - `docs/project-metadata-monitor-refactor-brief.md`
-- `docs/project-metadata-monitor-followups.md`
 
-What is left:
+What this follow-up closed out:
 
 - clarify mutation ownership around shared mutable `ProjectMetadataEntry`
 - make full-project refreshes and targeted task refreshes freshness-aware so stale full refreshes do not overwrite newer task results
 
-Why this is still near the top:
+Why it was worth doing:
 
 - the main refactor landed, but the remaining coupling is now easier to see
 - metadata correctness still influences branch pills, working-directory healing, and task/worktree status everywhere else in the app
@@ -80,6 +122,10 @@ Key risk:
 
 ## 2. Project Sync Plus Board Cache Restore
 
+Status:
+
+- Completed on 2026-04-20. See `CHANGELOG.md` and `docs/implementation-log.md` for the authoritative-sync vs cache-restore cleanup.
+
 Primary files:
 
 - `web-ui/src/hooks/project/use-project-sync.ts`
@@ -87,7 +133,7 @@ Primary files:
 - `web-ui/src/hooks/project/use-project-switch-cleanup.ts`
 - `web-ui/src/hooks/board/use-board-metadata-sync.ts`
 
-Current smell:
+Historical smell:
 
 - the hook that should simply apply authoritative project state also owns cache restore, stale-write protection, request invalidation, and hydration policy
 - the cache is no longer just an acceleration layer; it shapes how project switch behavior is explained
@@ -118,13 +164,17 @@ Key invariants:
 
 ## 3. Frontend Runtime State Stream Store
 
+Status:
+
+- Completed on 2026-04-20. See `CHANGELOG.md` and `docs/implementation-log.md` for the stream-store vs transport-policy split.
+
 Primary files:
 
 - `web-ui/src/runtime/use-runtime-state-stream.ts`
 - `web-ui/src/runtime/runtime-stream-dispatch.ts`
 - related runtime state stores / reducers used by the hook
 
-Current smell:
+Historical smell:
 
 - this store is doing more than “receive runtime messages and apply them”
 - preload handling, reconnect logic, snapshot merge policy, and notification memory all live close enough together that transport policy feels like part of state ownership
@@ -192,13 +242,17 @@ Outcome:
 
 ## 5. Manual Broadcast Choreography / Domain-event Boundaries
 
+Status:
+
+- Active. This is the top remaining architectural refactor in `docs/todo.md`.
+
 Primary files:
 
 - `src/server/runtime-state-hub.ts`
 - `src/trpc/*`
 - mutation-heavy runtime/server modules that currently need explicit follow-up broadcasts or refresh requests
 
-Current smell:
+Historical smell:
 
 - many mutations are correct only because the developer remembered which follow-up websocket messages, refreshes, or lightweight notifications to send afterward
 
@@ -225,13 +279,17 @@ Key risk:
 
 ## 6. App-shell Integration Gravity
 
+Status:
+
+- Completed on 2026-04-20. See `CHANGELOG.md` and `docs/implementation-log.md` for the provider-owned wiring cleanup around git history and edit-start flow.
+
 Primary files:
 
 - `web-ui/src/App.tsx`
 - `web-ui/src/AppContent.tsx` or current app-shell composition surfaces
 - top-level providers and app-facing orchestration hooks
 
-Current smell:
+Historical smell:
 
 - even after provider extraction, top-level orchestration remains the place where many cross-feature interactions meet
 - the app shell is healthier than it used to be, but it is still an attractive place to wire “just one more cross-cutting thing”
@@ -256,6 +314,10 @@ Key risk:
 - it is easy to replace one broad top-level file with many tiny pass-through components/hooks that do not improve ownership at all
 
 ## 7. Broad Provider / Context Surfaces
+
+Status:
+
+- Active. This is the second remaining architectural refactor in `docs/todo.md`.
 
 Primary files:
 
@@ -289,6 +351,10 @@ Key risk:
 
 ## 8. Remaining Workflow-heavy UI Surfaces
 
+Status:
+
+- Completed on 2026-04-20 as the broad decomposition pass. The remaining follow-up is narrower and is captured below as `17. Task-detail Layout / Composition Follow-up`.
+
 Primary files:
 
 - `web-ui/src/components/board/board-card.tsx`
@@ -321,12 +387,310 @@ Key risk:
 
 - pure file splitting without clarifying ownership creates more files without reducing architectural pressure
 
+## Extended Backlog
+
+These are still real refactor targets confirmed against implementation files, but they sit behind the active roadmap above.
+
+## 9. Terminal Session Manager / Lifecycle Boundaries
+
+Primary files:
+
+- `src/terminal/session-manager.ts`
+- `src/terminal/session-lifecycle.ts`
+- `src/terminal/session-summary-store.ts`
+- `src/terminal/session-reconciliation.ts`
+- `src/terminal/session-reconciliation-sweep.ts`
+
+Current smell:
+
+- `TerminalSessionManager` is much healthier than it used to be, but it still coordinates listener fanout, restart ownership, attach/restore behavior, spawn routing, input/output flow, stale recovery, and reconciliation timer lifecycle
+- session truth, process ownership, restart policy, and reconciliation policy still meet at one coordinator seam
+
+Why it matters:
+
+- recurring restart, interrupted-session, and restore bugs still naturally centralize here
+- the file reads more like a composed system now, but not yet like a pure composition root
+
+What “good” looks like:
+
+- session truth, process lifecycle, and reconciliation policy are easier to explain independently
+- the manager owns registry/wiring responsibilities more than indirect transition rules
+
+Suggested first slice:
+
+- inventory which transitions are true lifecycle rules vs orchestration glue
+- push one cohesive responsibility, likely restart/recovery orchestration or reconciliation action application, behind a clearer ownership seam
+
+Key risk:
+
+- splitting into more helper files without clarifying transition ownership would add indirection without improving lifecycle reasoning
+
+## 10. Project / Worktree Identity Normalization
+
+Primary files:
+
+- `src/server/project-metadata-controller.ts`
+- `src/server/project-metadata-refresher.ts`
+- `web-ui/src/hooks/board/use-board-metadata-sync.ts`
+- `web-ui/src/state/board-state.ts`
+- `web-ui/src/stores/project-metadata-store.ts`
+- `src/commands/statusline.ts`
+
+Current smell:
+
+- assigned worktree path, live agent cwd, displayed branch, displayed project folder, and shared-vs-isolated task state still blur together
+- task-scoped UI sometimes wants assigned worktree identity, while other surfaces want live execution identity, but the code does not model that distinction explicitly
+
+Why it matters:
+
+- recurring bugs around wrong branch pills, wrong folder labels, and stale “shared” indicators all point at the same missing identity layer
+
+What “good” looks like:
+
+- the code distinguishes project root path, assigned task worktree path, live agent cwd, and displayed task git identity explicitly
+- task-scoped UI can intentionally choose assigned identity vs live execution identity
+
+Suggested first slice:
+
+- define a small shared vocabulary for task path identity in metadata + UI layers
+- fix one end-to-end path, likely task-scoped branch/folder display, so it no longer relies on raw `cwd`
+
+Key risk:
+
+- forcing everything to use either assigned worktree or live cwd globally would erase a real distinction instead of modeling it
+
+## 11. Notification / Project-scoping Ownership
+
+Primary files:
+
+- `web-ui/src/runtime/runtime-state-stream-store.ts`
+- `web-ui/src/providers/project-provider.tsx`
+- `web-ui/src/hooks/project/use-project-navigation-panel.ts`
+- `web-ui/src/hooks/notifications/use-audible-notifications.ts`
+- `web-ui/src/hooks/notifications/use-review-ready-notifications.ts`
+
+Current smell:
+
+- notification state crosses project boundaries through broad global session and project-id maps
+- project-scoping rules are distributed across runtime ingress, provider state, sidebar aggregation, and playback suppression
+
+Why it matters:
+
+- bugs like the wrong yellow-dot state following a project switch strongly suggest the scoping model is still too implicit
+
+What “good” looks like:
+
+- notification ownership is easier to explain per project and per task
+- navigation badges, audible notifications, and review-ready memory stop depending on loosely related maps staying in sync
+
+Suggested first slice:
+
+- define the minimal notification projection the UI actually needs instead of passing broad runtime-session memory around
+- separate global notification memory from per-project derived indicators
+
+Key risk:
+
+- folding everything into one global notification store would make scoping even harder unless project boundaries are first-class in that model
+
+## 12. Shared LLM Client Abstraction
+
+Primary file:
+
+- `src/title/llm-client.ts`
+
+Current smell:
+
+- the shared helper client hardcodes Anthropic/Bedrock-style environment variables and a Bedrock Haiku default model
+- availability checks are based on one provider-specific env pair even though the app now supports more than one agent/runtime
+
+Why it matters:
+
+- titles, summaries, and lightweight helper generations are auxiliary UX that should not disappear when the primary agent changes
+
+What “good” looks like:
+
+- auxiliary LLM features choose provider/model through config rather than env-name assumptions
+- the shared client exposes a provider-neutral request shape and capability check
+
+Suggested first slice:
+
+- introduce a small config-driven provider descriptor for lightweight completions
+- preserve the current Bedrock path as one implementation, not the only model
+
+Key risk:
+
+- trying to solve full multi-provider agent launching and auxiliary LLM generation in one pass would broaden scope too far
+
+## 13. Orphan Cleanup / Reconciliation Boundary
+
+Primary files:
+
+- `src/terminal/session-reconciliation.ts`
+- `src/terminal/session-reconciliation-sweep.ts`
+- `src/fs/lock-cleanup.ts`
+
+Current smell:
+
+- session reconciliation and broader filesystem/worktree cleanup are adjacent but not clearly owned by one lifecycle model
+- some orphan cleanup is session-driven, some is periodic, and some lives in one-off repair paths
+
+Why it matters:
+
+- the current shape works, but it invites “just add another sweep here” fixes
+
+What “good” looks like:
+
+- process/session reconciliation and broader orphan cleanup are separate, named responsibilities
+- new stale artifact classes have an obvious home instead of getting attached to whichever timer already exists
+
+Suggested first slice:
+
+- document the cleanup taxonomy: session drift, process artifacts, filesystem locks, orphan worktrees, orphan state references
+- decide which classes belong on the session reconciliation timer vs a separate maintenance sweep
+
+Key risk:
+
+- centralizing all cleanup under one loop would make maintenance behavior harder to reason about and harder to test
+
+## 14. Notification / Indicator State Model
+
+Primary files:
+
+- `web-ui/src/utils/session-status.ts`
+- `src/terminal/session-reconciliation.ts`
+- `web-ui/src/hooks/project/use-project-navigation-panel.ts`
+- `web-ui/src/components/app/project-navigation-panel.tsx`
+
+Current smell:
+
+- the permission-request / needs-input concept is inferred from session summary hook metadata in more than one layer
+- visual indicators are coupled directly to low-level hook metadata shape and session summaries
+
+Why it matters:
+
+- small badge bugs can require reasoning across runtime summaries, hook payloads, and navigation-level aggregation
+
+What “good” looks like:
+
+- approval / review / failure / needs-input indicators have a clearer domain model
+- UI badges and dots consume a narrower, easier-to-test derived state
+
+Suggested first slice:
+
+- isolate the approval/needs-input derivation into one shared semantic layer or one clearly owned UI projection
+- use the yellow-dot project-switch bug as a validation case for the new boundary
+
+Key risk:
+
+- replacing summaries with an overly lossy “status enum” would hide useful detail; the goal is a clearer derived model, not less information
+
+## 15. Branch / Base-ref UX State Model
+
+Primary files:
+
+- `src/workdir/git-utils.ts`
+- `src/server/project-metadata-refresher.ts`
+- `web-ui/src/hooks/board/use-task-base-ref-sync.ts`
+- `web-ui/src/hooks/git/use-task-branch-options.ts`
+
+Current smell:
+
+- branch identity, default base branch, inferred base ref, pinned base ref, detached-head display, and integration-branch behavior still feel like separate fixes rather than one domain model
+
+Why it matters:
+
+- recurring base-ref bugs are usually symptoms of this missing model
+
+What “good” looks like:
+
+- the code distinguishes explicit user choice, inferred base ref, unresolved state, and detached-head display cleanly
+- top-bar/base-ref pills and branch-change sync rules consume the same model
+
+Suggested first slice:
+
+- formalize the “unresolved base ref” state instead of treating it as a skipped update
+- make one UI surface, likely the top-bar/base-ref pill, render directly from that clearer state model
+
+Key risk:
+
+- conflating task creation defaults with ongoing branch/base-ref synchronization would mix two related but distinct workflows
+
+## 16. File Browser + Diff Viewer Data Pipeline
+
+Primary files:
+
+- `src/trpc/project-api-changes.ts`
+- `web-ui/src/hooks/git/use-file-browser-data.ts`
+- `web-ui/src/components/git/files-view.tsx`
+- `web-ui/src/components/git/git-view.tsx`
+
+Current smell:
+
+- file tree state, diff loading, caching, scope identity, and transport timing are intertwined
+- it is not yet obvious which work should happen server-side, which should be cached, and which should stay view-local
+
+Why it matters:
+
+- the performance issues here are not just “needs optimization”; the data-flow boundary is still fuzzy
+
+What “good” looks like:
+
+- file tree listing, file-content loading, and diff loading are separable concerns
+- mutable-worktree vs fixed-ref browsing semantics are explicit
+
+Suggested first slice:
+
+- instrument the current data path for first-open tree load, file selection, and diff selection
+- separate scope resolution from content loading in the frontend hook layer
+
+Key risk:
+
+- optimizing one hot path locally without clarifying scope identity and transport boundaries would just move the lag to another interaction
+
+## 17. Task-detail Layout / Composition Follow-up
+
+Primary files:
+
+- `web-ui/src/components/task/card-detail-view.tsx`
+- `web-ui/src/components/task/task-detail-main-content.tsx`
+- `web-ui/src/components/task/task-branch-dialogs.tsx`
+- `web-ui/src/hooks/board/use-card-detail-view.ts`
+
+Current smell:
+
+- `0337d71c` improved logic ownership by moving workflow/state derivation out of `card-detail-view.tsx`
+- but `CardDetailView` still carries a very broad prop surface, and `TaskDetailMainContent` still holds most of the old template complexity
+- the remaining problem is now layout/composition ownership, not “one more hook extraction”
+
+Why it matters:
+
+- the task detail surface is still a high-churn screen where several semi-independent sub-areas meet
+- broad prop threading makes the whole screen feel like one dependency funnel
+- this is the clearest remaining example of “presentation shell got healthier, but the screen architecture is still too broad”
+
+What “good” looks like:
+
+- `CardDetailView` reads as a layout/composition root, not a broad dependency funnel
+- task-detail sub-areas own narrower seams, for example side context, git/files scope, terminal/detail layout, and branch/dialog concerns
+- the next person changing one panel does not need to mentally load the entire detail screen
+
+Suggested first slice:
+
+- map the current `CardDetailView` prop surface into responsibility groups
+- separate true layout-root concerns from sub-panel-owned concerns
+- extract one coherent sub-panel boundary with a meaningfully narrower contract
+
+Key risk:
+
+- splitting JSX without changing ownership will just recreate the same kitchen-sink screen across more files
+- adding a task-detail provider too early could create another broad context surface instead of a cleaner layout seam
+
 ## How To Use This Doc
 
 Use this document together with:
 
 - `docs/todo.md`
 - `docs/design-weaknesses-roadmap.md`
-- `docs/optimization-shaped-architecture-followups.md`
+- `docs/design-guardrails.md`
 
 Use a dedicated refactor brief when one exists. Use this roadmap context when the item is important enough to queue next, but not yet justified for a full implementation brief.

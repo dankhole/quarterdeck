@@ -17,11 +17,15 @@ If you are new to the codebase, read these in order:
 3. [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md) for the current ranked architectural risks and prevention priorities.
 4. [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md) for the self-contained terminal refactor brief and target design.
 5. [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md) for the self-contained project metadata monitor refactor brief and target design.
-6. [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md) for the remaining post-refactor ownership and refresh-concurrency follow-ups in the metadata monitor.
-7. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
-8. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current next-wave refactor queue with enough pickup context for fresh agents.
-9. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
-10. [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md) for the current non-terminal subsystems showing the same design smell.
+6. [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md) for the backend websocket-bridge refactor brief and target module split.
+7. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for the current refactor queue, recent completions, optimization-shaped cleanup context, and the extended code-validated refactor backlog.
+8. [`design-guardrails.md`](./design-guardrails.md) for reusable rules on adding clever features without letting optimization define the architecture.
+
+If you only need the current refactor state, start with:
+
+1. [`todo.md`](./todo.md) for the active backlog.
+2. [`refactor-roadmap-context.md`](./refactor-roadmap-context.md) for current ordering, backlog context, and links out to deeper briefs.
+3. The dedicated brief/follow-up linked from the roadmap item you are actually picking up.
 
 ## Refactor Docs Map
 
@@ -29,15 +33,14 @@ Use this map when you are planning or evaluating refactor work.
 
 ### Live planning and prioritization
 
+- Start here for current refactor status: [`todo.md`](./todo.md) + [`refactor-roadmap-context.md`](./refactor-roadmap-context.md).
 - [`todo.md`](./todo.md): active engineering backlog, including currently tracked refactor work.
 - [`design-weaknesses-roadmap.md`](./design-weaknesses-roadmap.md): ranked list of the biggest architectural weaknesses.
 - [`design-guardrails.md`](./design-guardrails.md): reusable design rules for preventing optimization-shaped architecture.
-- [`optimization-shaped-architecture-followups.md`](./optimization-shaped-architecture-followups.md): current non-terminal subsystems showing that same smell.
 - [`terminal-architecture-refactor-brief.md`](./terminal-architecture-refactor-brief.md): self-contained terminal refactor planning brief.
 - [`project-metadata-monitor-refactor-brief.md`](./project-metadata-monitor-refactor-brief.md): self-contained project metadata monitor refactor planning brief.
-- [`project-metadata-monitor-followups.md`](./project-metadata-monitor-followups.md): remaining post-refactor ownership and refresh-concurrency follow-ups for the metadata monitor.
 - [`terminal-ws-server-refactor-brief.md`](./terminal-ws-server-refactor-brief.md): self-contained websocket bridge refactor planning brief.
-- [`refactor-roadmap-context.md`](./refactor-roadmap-context.md): next-wave refactor ordering plus pickup context for items that do not yet have full implementation briefs.
+- [`refactor-roadmap-context.md`](./refactor-roadmap-context.md): current refactor ordering plus recent completions, optimization-shaped cleanup context, and the extended code-validated backlog for items that do not yet have full implementation briefs.
 
 ### Live architecture and implementation guidance
 

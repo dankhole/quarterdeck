@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Docs: consolidate refactor tracking docs
+
+- Folded `optimization-shaped-architecture-followups.md` and `project-metadata-monitor-followups.md` into their parent docs (`refactor-roadmap-context.md` and `project-metadata-monitor-refactor-brief.md`).
+- Expanded `refactor-roadmap-context.md` with status markers, recently completed list, and an extended backlog of 9 code-validated refactor targets.
+- Restructured `todo.md` with active/historical separation and cross-links to roadmap context.
+- Updated all cross-references in `docs/README.md`, `design-guardrails.md`, `design-weaknesses-roadmap.md`, and `terminal-ws-server-refactor-brief.md`.
+
 ## [0.10.0] — 2026-04-20
 
 ### Fix: resolve all lint warnings and flaky integration test

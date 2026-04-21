@@ -60,7 +60,7 @@ Related docs:
 
 - `docs/architecture.md`
 - `docs/design-weaknesses-roadmap.md`
-- `docs/optimization-shaped-architecture-followups.md`
+- `docs/refactor-roadmap-context.md`
 - `docs/implementation-log.md`
 
 ## Current Mental Model
@@ -338,3 +338,51 @@ The refactor is done when:
 - polling/fetch policy can be explained separately from metadata truth
 - runtime stream behavior remains intact
 - the code is easier to explain without leading with timers and fetch cadence
+
+## Post-landing Follow-ups
+
+The main refactor is landed. These are the two remaining follow-ups that became easier to see once the controller / refresher / poller / remote-fetch split was in place.
+
+### Follow-up 1: Shared Mutable `ProjectMetadataEntry` Coupling
+
+Current shape:
+
+- `ProjectMetadataController` owns the per-project lifecycle and creates the `ProjectMetadataEntry`
+- `ProjectMetadataRefresher` receives that same entry by reference and mutates it directly
+- the poller and remote-fetch policy trigger refresh work that also mutates the same entry indirectly through the refresher
+
+Why it is still soft:
+
+- the refresher is not yet a pure "load and return results" service
+- controller/refresher separation is visible, but state mutation ownership still depends on shared mutable entry discipline
+
+Healthy direction:
+
+- move toward `ProjectMetadataController` as the clear state owner
+- have the refresher return refresh results or state patches instead of freely mutating shared entry state
+
+### Follow-up 2: `refreshProject()` vs Per-task Refresh Overwrite Races
+
+Current shape:
+
+- full-project refreshes and targeted task refreshes can both write into `entry.taskMetadataByTaskId`
+- without explicit merge semantics, "last async writer wins" is not always "freshest task result wins"
+
+Typical race:
+
+1. `refreshProject()` starts and snapshots tracked tasks
+2. a focused/manual task refresh starts for one task
+3. the targeted task refresh finishes first and writes newer metadata
+4. the full refresh finishes later and overwrites that task with older data it loaded earlier
+
+Healthy direction:
+
+- make refresh result application explicit and freshness-aware
+- prefer "newer task result wins for that task" over "last writer wins for the whole map"
+
+Acceptance criteria for a future pass:
+
+- per-project metadata state has one clear mutation owner
+- refresher boundaries are easier to describe without caveats about shared mutable entry state
+- full refresh and targeted task refresh writes have an explicit freshness/merge rule
+- targeted tests cover at least one stale-overwrite scenario directly

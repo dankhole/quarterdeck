@@ -8,7 +8,7 @@ Related docs:
 
 - `docs/design-guardrails.md`
 - `docs/terminal-architecture-refactor-brief.md`
-- `docs/optimization-shaped-architecture-followups.md`
+- `docs/refactor-roadmap-context.md`
 - `docs/todo.md`
 
 Execution tracking note:
@@ -100,7 +100,7 @@ Why it matters:
 - features become difficult to explain simply
 - future changes preserve cleverness accidentally because they cannot isolate it
 
-See `docs/optimization-shaped-architecture-followups.md`.
+See `docs/refactor-roadmap-context.md`.
 
 ### 9. Hook/domain-module discipline is good but still vulnerable to regression
 
