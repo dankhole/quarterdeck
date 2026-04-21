@@ -8,8 +8,9 @@ import {
 	useTaskStartActions,
 } from "@/hooks/board";
 import { useBoardContext } from "@/providers/board-provider";
-import { useGitContext } from "@/providers/git-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { findCardSelection } from "@/state/board-state";
 
 // ---------------------------------------------------------------------------
@@ -102,8 +103,9 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		clearPendingTaskStartAfterEditId,
 	} = useBoardContext();
 
-	const { currentProjectId, showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectContext();
-	const { closeGitHistory } = useGitContext();
+	const { currentProjectId } = useProjectContext();
+	const { showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectRuntimeContext();
+	const { closeGitHistory } = useSurfaceNavigationContext();
 
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 

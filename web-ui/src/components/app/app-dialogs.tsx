@@ -25,6 +25,7 @@ import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import type { PromptShortcut } from "@/runtime/types";
 
 interface AppDialogsProps {
@@ -43,6 +44,7 @@ export function AppDialogs({
 	handleConfirmMigrate,
 }: AppDialogsProps): ReactElement {
 	const project = useProjectContext();
+	const projectRuntime = useProjectRuntimeContext();
 	const { createTaskBranchOptions, taskEditor } = useBoardContext();
 	const git = useGitContext();
 	const interactions = useInteractionsContext();
@@ -75,23 +77,23 @@ export function AppDialogs({
 			<DebugShelf />
 			<RuntimeSettingsDialog
 				open={dialog.isSettingsOpen}
-				projectId={project.settingsProjectId}
-				initialConfig={project.settingsRuntimeProjectConfig}
+				projectId={projectRuntime.settingsProjectId}
+				initialConfig={projectRuntime.settingsRuntimeProjectConfig}
 				initialSection={dialog.settingsInitialSection}
 				onOpenChange={(nextOpen) => {
 					dialog.setIsSettingsOpen(nextOpen);
 					if (!nextOpen) dialog.setSettingsInitialSection(null);
 				}}
 				onSaved={() => {
-					project.refreshRuntimeProjectConfig();
-					project.refreshSettingsRuntimeProjectConfig();
+					projectRuntime.refreshRuntimeProjectConfig();
+					projectRuntime.refreshSettingsRuntimeProjectConfig();
 				}}
 			/>
 			<PromptShortcutEditorDialog
 				open={dialog.promptShortcutEditorOpen}
 				onOpenChange={dialog.setPromptShortcutEditorOpen}
-				shortcuts={project.runtimeProjectConfig?.promptShortcuts ?? []}
-				hiddenDefaultPromptShortcuts={project.runtimeProjectConfig?.hiddenDefaultPromptShortcuts ?? []}
+				shortcuts={projectRuntime.runtimeProjectConfig?.promptShortcuts ?? []}
+				hiddenDefaultPromptShortcuts={projectRuntime.runtimeProjectConfig?.hiddenDefaultPromptShortcuts ?? []}
 				onSave={savePromptShortcuts}
 			/>
 			<TaskCreateDialog
@@ -117,13 +119,13 @@ export function AppDialogs({
 				onBranchNameEdit={handleBranchNameEdit}
 				onGenerateBranchName={generateBranchNameFromPrompt}
 				isGeneratingBranchName={isGeneratingBranchName}
-				isLlmGenerationDisabled={project.isLlmGenerationDisabled}
+				isLlmGenerationDisabled={projectRuntime.isLlmGenerationDisabled}
 				projectId={project.currentProjectId}
 				branchRef={newTaskBranchRef}
 				branchOptions={createTaskBranchOptions}
 				onBranchRefChange={setNewTaskBranchRef}
-				defaultBaseRef={project.configDefaultBaseRef}
-				onSetDefaultBaseRef={project.handleSetDefaultBaseRef}
+				defaultBaseRef={projectRuntime.configDefaultBaseRef}
+				onSetDefaultBaseRef={projectRuntime.handleSetDefaultBaseRef}
 			/>
 			<ClearTrashDialog
 				open={dialog.isClearTrashDialogOpen}
@@ -154,7 +156,7 @@ export function AppDialogs({
 				state={git.topbarBranchActions.checkoutDialogState}
 				onClose={git.topbarBranchActions.closeCheckoutDialog}
 				onConfirmCheckout={git.topbarBranchActions.handleConfirmCheckout}
-				onSkipTaskConfirmationChange={project.handleSkipTaskCheckoutConfirmationChange}
+				onSkipTaskConfirmationChange={projectRuntime.handleSkipTaskCheckoutConfirmationChange}
 				onStashAndCheckout={git.topbarBranchActions.handleStashAndCheckout}
 				isStashingAndCheckingOut={git.topbarBranchActions.isStashingAndCheckingOut}
 			/>

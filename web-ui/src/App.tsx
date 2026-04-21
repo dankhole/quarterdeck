@@ -37,6 +37,8 @@ import { DialogProvider, useDialogContext } from "@/providers/dialog-provider";
 import { GitProvider, useGitContext } from "@/providers/git-provider";
 import { InteractionsProvider, useInteractionsContext } from "@/providers/interactions-provider";
 import { ProjectProvider, useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { SurfaceNavigationProvider, useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { TerminalProvider, useTerminalContext } from "@/providers/terminal-provider";
 import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -76,7 +78,8 @@ interface AppContentProps {
 // ---------------------------------------------------------------------------
 
 function AppEarlyBailout({ children }: { children: ReactNode }): ReactNode {
-	const { isRuntimeDisconnected, isQuarterdeckAccessBlocked } = useProjectContext();
+	const { isRuntimeDisconnected } = useProjectContext();
+	const { isQuarterdeckAccessBlocked } = useProjectRuntimeContext();
 
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
@@ -152,15 +155,17 @@ function AppInner(): ReactElement {
 		>
 			<AppEarlyBailout>
 				<BoardProvider board={board} setBoard={setBoard} sessions={sessions} setSessions={setSessions}>
-					<GitProvider>
-						<TerminalProvider>
-							<InteractionsProvider>
-								<DialogProvider>
-									<AppContent searchOverlayResetRef={searchOverlayResetRef} />
-								</DialogProvider>
-							</InteractionsProvider>
-						</TerminalProvider>
-					</GitProvider>
+					<SurfaceNavigationProvider>
+						<GitProvider>
+							<TerminalProvider>
+								<InteractionsProvider>
+									<DialogProvider>
+										<AppContent searchOverlayResetRef={searchOverlayResetRef} />
+									</DialogProvider>
+								</InteractionsProvider>
+							</TerminalProvider>
+						</GitProvider>
+					</SurfaceNavigationProvider>
 				</BoardProvider>
 			</AppEarlyBailout>
 		</ProjectProvider>
@@ -169,11 +174,12 @@ function AppInner(): ReactElement {
 
 // ---------------------------------------------------------------------------
 // AppContent — inner component: rendered inside the provider tree.
-// Reads from the 6 contexts, runs side-effect hooks, renders all JSX.
+// Reads from the provider contexts, runs side-effect hooks, renders all JSX.
 // ---------------------------------------------------------------------------
 
 function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const project = useProjectContext();
+	const projectRuntime = useProjectRuntimeContext();
 	const boardContext = useBoardContext();
 	const {
 		board,
@@ -186,6 +192,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		isAwaitingProjectSnapshot,
 	} = boardContext;
 	const git = useGitContext();
+	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const interactions = useInteractionsContext();
 	const dialog = useDialogContext();
@@ -243,9 +250,9 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		(filePath: string, lineNumber?: number) => {
 			setIsFileFinderOpen(false);
 			setIsTextSearchOpen(false);
-			git.navigateToFile({ targetView: "files", filePath, lineNumber });
+			navigation.navigateToFile({ targetView: "files", filePath, lineNumber });
 		},
-		[git.navigateToFile],
+		[navigation.navigateToFile],
 	);
 
 	useEffect(() => {
@@ -258,12 +265,14 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	// --- Side-effect hooks ---
 
 	useTerminalConfigSync({
-		terminalFontWeight: project.terminalFontWeight,
+		terminalFontWeight: projectRuntime.terminalFontWeight,
 	});
 	useAppSideEffects({
 		project,
+		projectRuntime,
 		board: boardContext,
 		git,
+		navigation,
 		terminal,
 		interactions,
 		dialog,
@@ -275,9 +284,9 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
 			currentProjectId: project.currentProjectId,
-			selectedShortcutLabel: project.runtimeProjectConfig?.selectedShortcutLabel,
-			shortcuts: project.shortcuts,
-			refreshRuntimeProjectConfig: project.refreshRuntimeProjectConfig,
+			selectedShortcutLabel: projectRuntime.runtimeProjectConfig?.selectedShortcutLabel,
+			shortcuts: projectRuntime.shortcuts,
+			refreshRuntimeProjectConfig: projectRuntime.refreshRuntimeProjectConfig,
 			prepareTerminalForShortcut: terminal.prepareTerminalForShortcut,
 			prepareWaitForTerminalConnectionReady: terminal.prepareWaitForTerminalConnectionReady,
 			sendTaskSessionInput,
@@ -291,8 +300,8 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		savePromptShortcuts,
 	} = usePromptShortcuts({
 		currentProjectId: project.currentProjectId,
-		promptShortcuts: project.runtimeProjectConfig?.promptShortcuts ?? [],
-		refreshRuntimeConfig: project.refreshRuntimeProjectConfig,
+		promptShortcuts: projectRuntime.runtimeProjectConfig?.promptShortcuts ?? [],
+		refreshRuntimeConfig: projectRuntime.refreshRuntimeProjectConfig,
 		sendTaskSessionInput,
 	});
 
@@ -312,15 +321,16 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		detailSession,
 	} = useAppActionModels({
 		project,
+		projectRuntime,
 		board: boardContext,
-		git,
+		navigation,
 		interactions,
 		serverMutationInFlightRef,
 	});
 
 	const { sidebarAreaRef, homeSidePanelPercent, handleHomeSidePanelSeparatorMouseDown } = useHomeSidePanelResize({
-		sidePanelRatio: git.sidePanelRatio,
-		setSidePanelRatio: git.setSidePanelRatio,
+		sidePanelRatio: navigation.sidePanelRatio,
+		setSidePanelRatio: navigation.setSidePanelRatio,
 	});
 
 	const { navbarProjectPath, navbarProjectHint, navbarRuntimeHint, shouldHideProjectDependentTopBarActions } =
@@ -331,7 +341,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			projectPath: project.projectPath,
 			shouldUseNavigationPath: shouldUseNavigationPath,
 			navigationProjectPath: navigationProjectPath,
-			runtimeProjectConfig: project.runtimeProjectConfig,
+			runtimeProjectConfig: projectRuntime.runtimeProjectConfig,
 			hasNoProjects: project.hasNoProjects,
 			isProjectSwitching: project.isProjectSwitching,
 			isAwaitingProjectSnapshot: isAwaitingProjectSnapshot,
@@ -377,8 +387,8 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
-			defaultBaseRef={project.configDefaultBaseRef}
-			onSetDefaultBaseRef={project.handleSetDefaultBaseRef}
+			defaultBaseRef={projectRuntime.configDefaultBaseRef}
+			onSetDefaultBaseRef={projectRuntime.handleSetDefaultBaseRef}
 			mode="edit"
 			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>
@@ -410,23 +420,23 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 			<LayoutCustomizationsProvider
 				onResetBottomTerminalLayoutCustomizations={terminal.resetBottomTerminalLayoutCustomizations}
 			>
-				<LayoutResetBridge resetToDefaults={git.resetCardDetailLayoutToDefaults} />
+				<LayoutResetBridge resetToDefaults={navigation.resetSurfaceNavigationToDefaults} />
 				<div ref={sidebarAreaRef} className="flex h-[100svh] min-w-0 overflow-hidden">
 					{/* Sidebar toolbar + side panel */}
 					<>
 						<DetailToolbar
-							activeMainView={git.visualMainView}
-							activeSidebar={git.visualSidebar}
+							activeMainView={navigation.visualMainView}
+							activeSidebar={navigation.visualSidebar}
 							onMainViewChange={handleMainViewChange}
-							onSidebarChange={git.toggleSidebar}
-							sidebarPinned={git.sidebarPinned}
-							onToggleSidebarPinned={git.toggleSidebarPinned}
+							onSidebarChange={navigation.toggleSidebar}
+							sidebarPinned={navigation.sidebarPinned}
+							onToggleSidebarPinned={navigation.toggleSidebarPinned}
 							hasSelectedTask={selectedCard !== null}
 							gitBadgeColor={
 								selectedCard
 									? (selectedTaskWorktreeSnapshot?.changedFiles ?? 0) > 0
 										? "red"
-										: project.unmergedChangesIndicatorEnabled &&
+										: projectRuntime.unmergedChangesIndicatorEnabled &&
 												(selectedTaskWorktreeSnapshot?.hasUnmergedChanges ?? false)
 											? "blue"
 											: undefined
@@ -435,7 +445,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										: undefined
 							}
 							isBehindBase={
-								project.behindBaseIndicatorEnabled && selectedCard
+								projectRuntime.behindBaseIndicatorEnabled && selectedCard
 									? (selectedTaskWorktreeSnapshot?.behindBaseCount ?? 0) > 0
 									: false
 							}
@@ -443,7 +453,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							boardBadgeColor={selectedCard ? boardBadgeColor : undefined}
 						/>
 
-						{git.sidebar === "commit" && !selectedCard ? (
+						{navigation.sidebar === "commit" && !selectedCard ? (
 							<>
 								<div
 									style={{
@@ -459,7 +469,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										projectId={project.currentProjectId ?? ""}
 										taskId={null}
 										baseRef={null}
-										navigateToFile={git.navigateToFile}
+										navigateToFile={navigation.navigateToFile}
 									/>
 								</div>
 								<ResizeHandle
@@ -469,7 +479,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 									className="z-10"
 								/>
 							</>
-						) : git.sidebar === "projects" || (git.sidebar !== null && !selectedCard) ? (
+						) : navigation.sidebar === "projects" || (navigation.sidebar !== null && !selectedCard) ? (
 							<>
 								<div
 									style={{
@@ -526,7 +536,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								handleOpenEditTask(task, { preserveDetailSelection: true });
 							}}
 							gitHistoryPanel={
-								git.isGitHistoryOpen ? (
+								navigation.isGitHistoryOpen ? (
 									<GitHistoryView
 										projectId={project.currentProjectId}
 										gitHistory={git.gitHistory}
@@ -538,7 +548,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
 										onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 										taskScope={git.gitHistoryTaskScope}
-										skipCherryPickConfirmation={project.skipCherryPickConfirmation}
+										skipCherryPickConfirmation={projectRuntime.skipCherryPickConfirmation}
 									/>
 								) : undefined
 							}
@@ -551,23 +561,23 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							bottomTerminalPaneHeight={terminal.detailTerminalPaneHeight}
 							onBottomTerminalPaneHeightChange={terminal.setDetailTerminalPaneHeight}
 							onBottomTerminalConnectionReady={terminal.markTerminalConnectionReady}
-							bottomTerminalAgentCommand={project.agentCommand}
+							bottomTerminalAgentCommand={projectRuntime.agentCommand}
 							onBottomTerminalSendAgentCommand={terminal.handleSendAgentCommandToDetailTerminal}
 							isBottomTerminalExpanded={terminal.isDetailTerminalExpanded}
 							onBottomTerminalToggleExpand={terminal.handleToggleExpandDetailTerminal}
 							onBottomTerminalRestart={terminal.handleRestartDetailTerminal}
 							onBottomTerminalExit={terminal.handleShellExit}
-							mainView={git.mainView}
-							sidebar={git.sidebar}
+							mainView={navigation.mainView}
+							sidebar={navigation.sidebar}
 							topBar={topBar}
-							sidePanelRatio={git.sidePanelRatio}
-							setSidePanelRatio={git.setSidePanelRatio}
-							skipTaskCheckoutConfirmation={project.skipTaskCheckoutConfirmation}
-							skipHomeCheckoutConfirmation={project.skipHomeCheckoutConfirmation}
-							onSkipTaskCheckoutConfirmationChange={project.handleSkipTaskCheckoutConfirmationChange}
+							sidePanelRatio={navigation.sidePanelRatio}
+							setSidePanelRatio={navigation.setSidePanelRatio}
+							skipTaskCheckoutConfirmation={projectRuntime.skipTaskCheckoutConfirmation}
+							skipHomeCheckoutConfirmation={projectRuntime.skipHomeCheckoutConfirmation}
+							onSkipTaskCheckoutConfirmationChange={projectRuntime.handleSkipTaskCheckoutConfirmationChange}
 							onDeselectTask={() => setSelectedTaskId(null)}
-							pinnedBranches={project.pinnedBranches}
-							onTogglePinBranch={project.handleTogglePinBranch}
+							pinnedBranches={projectRuntime.pinnedBranches}
+							onTogglePinBranch={projectRuntime.handleTogglePinBranch}
 						/>
 					) : (
 						<HomeView

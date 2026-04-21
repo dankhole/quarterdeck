@@ -1,30 +1,14 @@
-import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { Dispatch, MutableRefObject, ReactNode, SetStateAction } from "react";
-import { createContext, useCallback, useContext, useMemo } from "react";
-import { showAppToast } from "@/components/app-toaster";
+import { createContext, useContext, useMemo } from "react";
 import { useDocumentVisibility } from "@/hooks/notifications";
-import {
-	type UseProjectNavigationResult,
-	type UseStartupOnboardingResult,
-	useProjectNavigation,
-	useProjectSync,
-	useQuarterdeckAccessGate,
-	useStartupOnboarding,
-} from "@/hooks/project";
-import { isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
-import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import type {
-	RuntimeConfigResponse,
-	RuntimeGitRepositoryInfo,
-	RuntimeProjectShortcut,
-	RuntimeTaskSessionSummary,
-} from "@/runtime/types";
-import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
+import { type UseProjectNavigationResult, useProjectNavigation, useProjectSync } from "@/hooks/project";
+import { ProjectRuntimeProvider } from "@/providers/project-runtime-provider";
+import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Context value — project-level state: navigation, runtime config, onboarding,
-// access gate, config-derived values, mutation callbacks, and project sync.
+// Context value — project-level state: navigation, runtime stream/project sync,
+// project selection, and persistence/hydration state.
 //
 // The value is constructed inside ProjectProvider, which owns all project-level
 // hooks. Child components read project state via useProjectContext().
@@ -62,47 +46,6 @@ export interface ProjectContextValue {
 	isInitializingGitProject: UseProjectNavigationResult["isInitializingGitProject"];
 	resetProjectNavigationState: UseProjectNavigationResult["resetProjectNavigationState"];
 
-	// --- Runtime project config (current project) ---
-	runtimeProjectConfig: RuntimeConfigResponse | null;
-	isRuntimeProjectConfigLoading: boolean;
-	refreshRuntimeProjectConfig: () => void;
-
-	// --- Runtime project config (settings scope — may differ during project switch) ---
-	settingsRuntimeProjectConfig: RuntimeConfigResponse | null;
-	refreshSettingsRuntimeProjectConfig: () => void;
-
-	// --- useStartupOnboarding ---
-	isStartupOnboardingDialogOpen: UseStartupOnboardingResult["isStartupOnboardingDialogOpen"];
-	handleOpenStartupOnboardingDialog: UseStartupOnboardingResult["handleOpenStartupOnboardingDialog"];
-	handleCloseStartupOnboardingDialog: UseStartupOnboardingResult["handleCloseStartupOnboardingDialog"];
-	handleSelectOnboardingAgent: UseStartupOnboardingResult["handleSelectOnboardingAgent"];
-
-	// --- useQuarterdeckAccessGate ---
-	isQuarterdeckAccessBlocked: boolean;
-
-	// --- Derived values from config ---
-	isTaskAgentReady: boolean | null;
-	settingsProjectId: string | null;
-	llmConfigured: boolean;
-	isLlmGenerationDisabled: boolean;
-	shortcuts: RuntimeProjectShortcut[];
-	selectedShortcutLabel: string | null;
-	skipTaskCheckoutConfirmation: boolean;
-	skipHomeCheckoutConfirmation: boolean;
-	skipCherryPickConfirmation: boolean;
-	pinnedBranches: string[];
-	showTrashWorktreeNotice: boolean;
-	unmergedChangesIndicatorEnabled: boolean;
-	behindBaseIndicatorEnabled: boolean;
-	audibleNotificationsEnabled: boolean;
-	audibleNotificationVolume: number;
-	audibleNotificationEvents: { permission: boolean; review: boolean; failure: boolean };
-	audibleNotificationsOnlyWhenHidden: boolean;
-	audibleNotificationSuppressCurrentProject: { permission: boolean; review: boolean; failure: boolean };
-	terminalFontWeight: number;
-	agentCommand: string | null;
-	configDefaultBaseRef: string;
-
 	// --- useProjectSync (subset exposed via context) ---
 	projectPath: string | null;
 	projectGit: RuntimeGitRepositoryInfo | null;
@@ -123,12 +66,6 @@ export interface ProjectContextValue {
 	// --- Board-level state bridged through for downstream consumers ---
 	canPersistProjectState: boolean;
 	isServedFromBoardCache: boolean;
-
-	// --- Config mutation callbacks ---
-	handleTogglePinBranch: (branchName: string) => void;
-	handleSkipTaskCheckoutConfirmationChange: (skip: boolean) => void;
-	handleSetDefaultBaseRef: (value: string | null) => Promise<void>;
-	saveTrashWorktreeNoticeDismissed: () => void;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -215,38 +152,6 @@ export function ProjectProvider({
 	// --- Document visibility ---
 	const isDocumentVisible = useDocumentVisibility();
 
-	// --- Runtime project config ---
-	const {
-		config: runtimeProjectConfig,
-		isLoading: isRuntimeProjectConfigLoading,
-		refresh: refreshRuntimeProjectConfig,
-	} = useRuntimeProjectConfig(currentProjectId);
-
-	const { isBlocked: isQuarterdeckAccessBlocked } = useQuarterdeckAccessGate({
-		projectId: currentProjectId,
-	});
-
-	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
-	const settingsProjectId = navigationCurrentProjectId ?? currentProjectId;
-
-	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
-		useRuntimeProjectConfig(settingsProjectId);
-
-	// --- Startup onboarding ---
-	const {
-		isStartupOnboardingDialogOpen,
-		handleOpenStartupOnboardingDialog,
-		handleCloseStartupOnboardingDialog,
-		handleSelectOnboardingAgent,
-	} = useStartupOnboarding({
-		currentProjectId,
-		runtimeProjectConfig,
-		isRuntimeProjectConfigLoading,
-		isTaskAgentReady,
-		refreshRuntimeProjectConfig,
-		refreshSettingsRuntimeProjectConfig,
-	});
-
 	// --- Project sync ---
 	const {
 		projectPath,
@@ -270,96 +175,6 @@ export function ProjectProvider({
 		setProjectBoardSessions,
 		setCanPersistProjectState,
 	});
-
-	// --- Derived config values ---
-	const llmConfigured = runtimeProjectConfig?.llmConfigured ?? false;
-	const isLlmGenerationDisabled = !llmConfigured;
-	const showTrashWorktreeNotice =
-		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
-	const unmergedChangesIndicatorEnabled =
-		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
-	const behindBaseIndicatorEnabled =
-		runtimeProjectConfig?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
-	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
-	const selectedShortcutLabel = useMemo(() => {
-		if (shortcuts.length === 0) {
-			return null;
-		}
-		const configured = runtimeProjectConfig?.selectedShortcutLabel ?? null;
-		if (configured && shortcuts.some((shortcut) => shortcut.label === configured)) {
-			return configured;
-		}
-		return shortcuts[0]?.label ?? null;
-	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
-	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
-	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
-	const skipCherryPickConfirmation = runtimeProjectConfig?.skipCherryPickConfirmation ?? false;
-	const pinnedBranches = runtimeProjectConfig?.pinnedBranches ?? [];
-	const audibleNotificationsEnabled =
-		runtimeProjectConfig?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
-	const audibleNotificationVolume =
-		runtimeProjectConfig?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume;
-	const audibleNotificationEvents =
-		runtimeProjectConfig?.audibleNotificationEvents ?? CONFIG_DEFAULTS.audibleNotificationEvents;
-	const audibleNotificationsOnlyWhenHidden =
-		runtimeProjectConfig?.audibleNotificationsOnlyWhenHidden ?? CONFIG_DEFAULTS.audibleNotificationsOnlyWhenHidden;
-	const audibleNotificationSuppressCurrentProject =
-		runtimeProjectConfig?.audibleNotificationSuppressCurrentProject ??
-		CONFIG_DEFAULTS.audibleNotificationSuppressCurrentProject;
-	const terminalFontWeight = runtimeProjectConfig?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight;
-	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
-	const configDefaultBaseRef = runtimeProjectConfig?.defaultBaseRef ?? "";
-
-	// --- Config mutation callbacks ---
-	const handleTogglePinBranch = useCallback(
-		(branchName: string) => {
-			if (!currentProjectId) return;
-			const current = runtimeProjectConfig?.pinnedBranches ?? [];
-			const next = current.includes(branchName) ? current.filter((b) => b !== branchName) : [...current, branchName];
-			void saveRuntimeConfig(currentProjectId, { pinnedBranches: next })
-				.then(() => {
-					refreshRuntimeProjectConfig();
-				})
-				.catch(() => {
-					showAppToast({ intent: "danger", message: "Failed to update pinned branches" });
-				});
-		},
-		[currentProjectId, runtimeProjectConfig?.pinnedBranches, refreshRuntimeProjectConfig],
-	);
-
-	const handleSkipTaskCheckoutConfirmationChange = useCallback(
-		(skip: boolean) => {
-			if (!currentProjectId) return;
-			void saveRuntimeConfig(currentProjectId, { skipTaskCheckoutConfirmation: skip }).then(() => {
-				refreshRuntimeProjectConfig();
-			});
-		},
-		[currentProjectId, refreshRuntimeProjectConfig],
-	);
-
-	const handleSetDefaultBaseRef = useCallback(
-		async (value: string | null) => {
-			const nextValue = value ?? "";
-			try {
-				await saveRuntimeConfig(currentProjectId, { defaultBaseRef: nextValue });
-				refreshRuntimeProjectConfig();
-				showAppToast({
-					intent: "success",
-					message: nextValue ? `Default base ref set to ${nextValue}` : "Default base ref cleared",
-					timeout: 2000,
-				});
-			} catch {
-				showAppToast({ intent: "danger", message: "Failed to update default base ref" });
-			}
-		},
-		[currentProjectId, refreshRuntimeProjectConfig],
-	);
-
-	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
-		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false }).then(() => {
-			refreshRuntimeProjectConfig();
-		});
-	}, [currentProjectId, refreshRuntimeProjectConfig]);
 
 	// --- Context value ---
 	const value = useMemo<ProjectContextValue>(
@@ -393,37 +208,6 @@ export function ProjectProvider({
 			pendingGitInitializationPath,
 			isInitializingGitProject,
 			resetProjectNavigationState,
-			runtimeProjectConfig,
-			isRuntimeProjectConfigLoading,
-			refreshRuntimeProjectConfig,
-			settingsRuntimeProjectConfig,
-			refreshSettingsRuntimeProjectConfig,
-			isStartupOnboardingDialogOpen,
-			handleOpenStartupOnboardingDialog,
-			handleCloseStartupOnboardingDialog,
-			handleSelectOnboardingAgent,
-			isQuarterdeckAccessBlocked,
-			isTaskAgentReady,
-			settingsProjectId,
-			llmConfigured,
-			isLlmGenerationDisabled,
-			shortcuts,
-			selectedShortcutLabel,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			skipCherryPickConfirmation,
-			pinnedBranches,
-			showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled,
-			behindBaseIndicatorEnabled,
-			audibleNotificationsEnabled,
-			audibleNotificationVolume,
-			audibleNotificationEvents,
-			audibleNotificationsOnlyWhenHidden,
-			audibleNotificationSuppressCurrentProject,
-			terminalFontWeight,
-			agentCommand,
-			configDefaultBaseRef,
 			projectPath,
 			projectGit,
 			refreshProjectState,
@@ -437,10 +221,6 @@ export function ProjectProvider({
 			isDocumentVisible,
 			canPersistProjectState,
 			isServedFromBoardCache,
-			handleTogglePinBranch,
-			handleSkipTaskCheckoutConfirmationChange,
-			handleSetDefaultBaseRef,
-			saveTrashWorktreeNoticeDismissed,
 		}),
 		[
 			currentProjectId,
@@ -472,37 +252,6 @@ export function ProjectProvider({
 			pendingGitInitializationPath,
 			isInitializingGitProject,
 			resetProjectNavigationState,
-			runtimeProjectConfig,
-			isRuntimeProjectConfigLoading,
-			refreshRuntimeProjectConfig,
-			settingsRuntimeProjectConfig,
-			refreshSettingsRuntimeProjectConfig,
-			isStartupOnboardingDialogOpen,
-			handleOpenStartupOnboardingDialog,
-			handleCloseStartupOnboardingDialog,
-			handleSelectOnboardingAgent,
-			isQuarterdeckAccessBlocked,
-			isTaskAgentReady,
-			settingsProjectId,
-			llmConfigured,
-			isLlmGenerationDisabled,
-			shortcuts,
-			selectedShortcutLabel,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			skipCherryPickConfirmation,
-			pinnedBranches,
-			showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled,
-			behindBaseIndicatorEnabled,
-			audibleNotificationsEnabled,
-			audibleNotificationVolume,
-			audibleNotificationEvents,
-			audibleNotificationsOnlyWhenHidden,
-			audibleNotificationSuppressCurrentProject,
-			terminalFontWeight,
-			agentCommand,
-			configDefaultBaseRef,
 			projectPath,
 			projectGit,
 			refreshProjectState,
@@ -516,12 +265,17 @@ export function ProjectProvider({
 			isDocumentVisible,
 			canPersistProjectState,
 			isServedFromBoardCache,
-			handleTogglePinBranch,
-			handleSkipTaskCheckoutConfirmationChange,
-			handleSetDefaultBaseRef,
-			saveTrashWorktreeNoticeDismissed,
 		],
 	);
 
-	return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
+	return (
+		<ProjectContext.Provider value={value}>
+			<ProjectRuntimeProvider
+				currentProjectId={currentProjectId}
+				navigationCurrentProjectId={navigationCurrentProjectId}
+			>
+				{children}
+			</ProjectRuntimeProvider>
+		</ProjectContext.Provider>
+	);
 }

@@ -11,6 +11,8 @@ import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import type { RuntimeGitSyncSummary } from "@/runtime/types";
@@ -37,16 +39,18 @@ export function HomeView({
 	homeGitSummary,
 }: HomeViewProps): ReactElement {
 	const project = useProjectContext();
+	const projectRuntime = useProjectRuntimeContext();
 	const { board, sessions, upsertSession, selectedTaskId } = useBoardContext();
 	const git = useGitContext();
+	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const interactions = useInteractionsContext();
 
 	return (
 		<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 			{topBar}
-			{git.mainView !== "git" && (
-				<ConflictBanner taskId={selectedTaskId} onNavigateToResolver={() => git.navigateToGitViewRef.current?.()} />
+			{navigation.mainView !== "git" && (
+				<ConflictBanner taskId={selectedTaskId} onNavigateToResolver={navigation.navigateToGitView} />
 			)}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
 				{shouldShowProjectLoadingState ? (
@@ -72,20 +76,20 @@ export function HomeView({
 				) : (
 					<div className="flex flex-1 flex-col min-h-0 min-w-0">
 						<div className="flex flex-1 min-h-0 min-w-0">
-							{git.mainView === "git" ? (
+							{navigation.mainView === "git" ? (
 								<GitView
 									currentProjectId={project.currentProjectId}
 									selectedCard={null}
 									sessionSummary={null}
 									homeGitSummary={homeGitSummary}
 									board={board}
-									pendingCompareNavigation={git.pendingCompareNavigation}
-									onCompareNavigationConsumed={git.clearPendingCompareNavigation}
-									pendingFileNavigation={git.pendingFileNavigation}
-									onFileNavigationConsumed={git.clearPendingFileNavigation}
-									navigateToFile={git.navigateToFile}
-									pinnedBranches={project.pinnedBranches}
-									onTogglePinBranch={project.handleTogglePinBranch}
+									pendingCompareNavigation={navigation.pendingCompareNavigation}
+									onCompareNavigationConsumed={navigation.clearPendingCompareNavigation}
+									pendingFileNavigation={navigation.pendingFileNavigation}
+									onFileNavigationConsumed={navigation.clearPendingFileNavigation}
+									navigateToFile={navigation.navigateToFile}
+									pinnedBranches={projectRuntime.pinnedBranches}
+									onTogglePinBranch={projectRuntime.handleTogglePinBranch}
 									branchStatusSlot={
 										homeGitSummary ? (
 											<GitBranchStatusControl
@@ -93,13 +97,13 @@ export function HomeView({
 												changedFiles={homeGitSummary.changedFiles ?? 0}
 												additions={homeGitSummary.additions ?? 0}
 												deletions={homeGitSummary.deletions ?? 0}
-												onToggleGitHistory={git.handleToggleGitHistory}
-												isGitHistoryOpen={git.isGitHistoryOpen}
+												onToggleGitHistory={navigation.handleToggleGitHistory}
+												isGitHistoryOpen={navigation.isGitHistoryOpen}
 											/>
 										) : undefined
 									}
 									gitHistoryPanel={
-										git.isGitHistoryOpen ? (
+										navigation.isGitHistoryOpen ? (
 											<GitHistoryView
 												projectId={project.currentProjectId}
 												gitHistory={git.gitHistory}
@@ -114,12 +118,12 @@ export function HomeView({
 												onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
 												onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 												taskScope={git.gitHistoryTaskScope}
-												skipCherryPickConfirmation={project.skipCherryPickConfirmation}
+												skipCherryPickConfirmation={projectRuntime.skipCherryPickConfirmation}
 											/>
 										) : undefined
 									}
 								/>
-							) : git.mainView === "files" ? (
+							) : navigation.mainView === "files" ? (
 								<FilesView
 									key={project.currentProjectId ?? "no-project"}
 									scopeBar={
@@ -143,7 +147,9 @@ export function HomeView({
 													worktreeBranches={git.fileBrowserBranchActions.worktreeBranches}
 													onSelectBranchView={git.fileBrowserBranchActions.handleSelectBranchView}
 													onCheckoutBranch={git.fileBrowserBranchActions.handleCheckoutBranch}
-													onCompareWithBranch={(branch) => git.openGitCompare({ targetRef: branch })}
+													onCompareWithBranch={(branch) =>
+														navigation.openGitCompare({ targetRef: branch })
+													}
 													onMergeBranch={git.fileBrowserBranchActions.handleMergeBranch}
 													onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
 													onDeleteBranch={git.fileBrowserBranchActions.handleDeleteBranch}
@@ -164,8 +170,8 @@ export function HomeView({
 																}
 															: undefined
 													}
-													pinnedBranches={project.pinnedBranches}
-													onTogglePinBranch={project.handleTogglePinBranch}
+													pinnedBranches={projectRuntime.pinnedBranches}
+													onTogglePinBranch={projectRuntime.handleTogglePinBranch}
 													disableContextMenu
 													trigger={
 														<BranchPillTrigger
@@ -202,8 +208,8 @@ export function HomeView({
 									}
 									fileBrowserData={git.homeFileBrowserData}
 									rootPath={project.projectPath}
-									pendingFileNavigation={git.pendingFileNavigation}
-									onFileNavigationConsumed={git.clearPendingFileNavigation}
+									pendingFileNavigation={navigation.pendingFileNavigation}
+									onFileNavigationConsumed={navigation.clearPendingFileNavigation}
 									scopeKey={`home-${project.currentProjectId ?? "no-project"}`}
 								/>
 							) : (
@@ -255,7 +261,7 @@ export function HomeView({
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 										onConnectionReady={terminal.markTerminalConnectionReady}
-										launchCommand={project.agentCommand}
+										launchCommand={projectRuntime.agentCommand}
 										onLaunchCommand={terminal.handleSendAgentCommandToHomeTerminal}
 										isExpanded={terminal.isHomeTerminalExpanded}
 										onToggleExpand={terminal.handleToggleExpandHomeTerminal}

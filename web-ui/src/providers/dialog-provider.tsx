@@ -7,6 +7,7 @@ import { type UseDebugLoggingResult, useDebugLogging, useDebugTools } from "@/ho
 import { useBoardContext } from "@/providers/board-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 
 // ---------------------------------------------------------------------------
 // Context value — dialog open/close state, debug tools, and debug logging.
@@ -67,6 +68,7 @@ export interface DialogProviderProps {
 
 export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 	const project = useProjectContext();
+	const projectRuntime = useProjectRuntimeContext();
 	const { handleCancelCreateTask } = useBoardContext();
 	const { isClearTrashDialogOpen, setIsClearTrashDialogOpen } = useInteractionsContext();
 
@@ -88,9 +90,9 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 		handleShowStartupOnboardingDialog,
 		handleDebugDialogOpenChange,
 	} = useDebugTools({
-		runtimeProjectConfig: project.runtimeProjectConfig,
-		settingsRuntimeProjectConfig: project.settingsRuntimeProjectConfig,
-		onOpenStartupOnboardingDialog: project.handleOpenStartupOnboardingDialog,
+		runtimeProjectConfig: projectRuntime.runtimeProjectConfig,
+		settingsRuntimeProjectConfig: projectRuntime.settingsRuntimeProjectConfig,
+		onOpenStartupOnboardingDialog: projectRuntime.handleOpenStartupOnboardingDialog,
 	});
 
 	const debugLogging = useDebugLogging({

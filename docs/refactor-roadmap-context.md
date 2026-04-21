@@ -26,22 +26,20 @@ Backlog note:
 
 ## Current Active Order
 
-1. Broad provider / context surfaces
-2. Task-detail layout / composition follow-up
-3. Notification / project-scoping ownership
-4. Notification / indicator state model
-5. Project / worktree identity normalization
-6. Branch / base-ref UX state model
-7. File browser + diff viewer data pipeline
-8. Terminal session manager / lifecycle boundaries
-9. Orphan cleanup / reconciliation boundary
-10. Shared LLM client abstraction
+1. Task-detail layout / composition follow-up
+2. Notification / project-scoping ownership
+3. Notification / indicator state model
+4. Project / worktree identity normalization
+5. Branch / base-ref UX state model
+6. File browser + diff viewer data pipeline
+7. Terminal session manager / lifecycle boundaries
+8. Orphan cleanup / reconciliation boundary
+9. Shared LLM client abstraction
 
 That sequence is deliberate:
 
-- 1 is now the only current active architectural refactor in `docs/todo.md`.
-- 2 through 7 are the most concrete next backlog items once that active item settles.
-- 8 through 10 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
+- 1 through 6 are the most concrete next backlog items once the provider-surface cleanup landed.
+- 7 through 9 are still important, but they are better treated as later-wave cleanup once the more user-visible ownership seams are clearer.
 
 In other words: yes, this order is intentional. It is sequenced by dependency and leverage, not just by how interesting each item sounds in isolation.
 
@@ -67,6 +65,7 @@ If a subsystem is hard to explain without leading with timers, cache states, bat
 
 These landed recently enough that they are still useful context for what remains:
 
+- Broad provider / context surfaces
 - Manual broadcast choreography / post-mutation effects
 - Project metadata monitor follow-ups
 - Project sync plus board cache restore
@@ -311,7 +310,7 @@ Key risk:
 
 Status:
 
-- Active. This is the second remaining architectural refactor in `docs/todo.md`.
+- Completed on 2026-04-21 as the first ownership-boundary narrowing pass. The main landed slice extracted surface/layout navigation out of `GitProvider` into `web-ui/src/providers/surface-navigation-provider.tsx`, so git action/state ownership is no longer mixed with toolbar/main-view/sidebar state, git-history visibility, and cross-surface compare/file navigation.
 
 Primary files:
 
@@ -333,11 +332,18 @@ What “good” looks like:
 - provider surfaces are narrower and map more clearly to domain ownership
 - consuming code asks for the smallest useful interface instead of a large mixed bag
 
-Suggested first slice:
+Outcome:
 
-- inventory the widest provider return shapes
-- identify where one provider is really exposing multiple sub-domains
-- split interfaces before splitting implementations where possible
+- git consumers now read layout/history/file-navigation state from a dedicated surface-navigation seam instead of from `GitContext`
+- project consumers now read runtime config/onboarding/access-gate concerns from `ProjectRuntimeContext` instead of from `ProjectContext`
+- `GitProvider` is materially narrower and easier to explain as git-domain ownership
+- `ProjectProvider` is materially narrower and easier to explain as navigation + sync ownership
+- the remaining provider/context cleanup can continue as smaller follow-on slices instead of one broad umbrella item
+
+Deferred follow-up notes:
+
+- `ProjectRuntimeContext` is still a broad runtime/config seam. That is acceptable for now because the ownership is domain-coherent, but if future churn or rerender pressure justifies another pass, the first candidate split is likely runtime-config data versus runtime-config mutation/actions, or settings-scope config versus onboarding/access-gate concerns.
+- `SurfaceNavigationProvider` still depends on `ProjectContext` and `BoardContext` for project-switch reset behavior and selected-task layout coordination. Keep that coupling under watch, but do not split it further unless a clearer ownership seam emerges than “make the provider rerender less.”
 
 Key risk:
 

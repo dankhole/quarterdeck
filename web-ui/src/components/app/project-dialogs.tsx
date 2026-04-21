@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { StartupOnboardingDialog } from "@/components/app/startup-onboarding-dialog";
 import { GitInitDialog } from "@/components/git/git-init-dialog";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 
 /**
  * Renders the startup onboarding and git-init dialogs, reading all state from
@@ -9,10 +10,12 @@ import { useProjectContext } from "@/providers/project-provider";
  */
 export function ProjectDialogs(): ReactElement {
 	const {
+		runtimeProjectConfig,
 		isStartupOnboardingDialogOpen,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
-		runtimeProjectConfig,
+	} = useProjectRuntimeContext();
+	const {
 		currentProjectId,
 		pendingGitInitializationPath,
 		isInitializingGitProject,

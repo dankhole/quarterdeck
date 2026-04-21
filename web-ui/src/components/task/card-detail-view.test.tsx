@@ -6,6 +6,7 @@ import { CardDetailView } from "@/components/task/card-detail-view";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardContext, type BoardContextValue } from "@/providers/board-provider";
 import { GitContext, type GitContextValue } from "@/providers/git-provider";
+import { SurfaceNavigationContext, type SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import { CardActionsProvider, type ReactiveCardState, type StableCardActions } from "@/state/card-actions-context";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
@@ -253,17 +254,6 @@ const noopGitContext: GitContextValue = {
 	runAutoReviewGitAction: async () => false,
 	onStashAndRetry: undefined,
 	isStashAndRetryingPull: false,
-	isGitHistoryOpen: false,
-	handleToggleGitHistory: () => {},
-	openGitHistory: () => {},
-	closeGitHistory: () => {},
-	pendingCompareNavigation: null,
-	pendingFileNavigation: null,
-	openGitCompare: () => {},
-	clearPendingCompareNavigation: () => {},
-	navigateToFile: () => {},
-	clearPendingFileNavigation: () => {},
-	navigateToGitView: () => {},
 	fileBrowserScopeMode: "contextual",
 	fileBrowserResolvedScope: null,
 	fileBrowserSwitchToHome: () => {},
@@ -363,6 +353,20 @@ const noopGitContext: GitContextValue = {
 		onCloseFile: () => {},
 		getFileContent: async () => null,
 	},
+};
+
+const noopSurfaceNavigationContext: SurfaceNavigationContextValue = {
+	isGitHistoryOpen: false,
+	handleToggleGitHistory: () => {},
+	openGitHistory: () => {},
+	closeGitHistory: () => {},
+	pendingCompareNavigation: null,
+	pendingFileNavigation: null,
+	openGitCompare: () => {},
+	clearPendingCompareNavigation: () => {},
+	navigateToFile: () => {},
+	clearPendingFileNavigation: () => {},
+	navigateToGitView: () => {},
 	mainView: "home",
 	sidebar: null,
 	setMainView: () => {},
@@ -373,18 +377,19 @@ const noopGitContext: GitContextValue = {
 	visualSidebar: null,
 	sidePanelRatio: 0.15,
 	setSidePanelRatio: () => {},
-	resetCardDetailLayoutToDefaults: () => {},
-	navigateToGitViewRef: { current: null },
+	resetSurfaceNavigationToDefaults: () => {},
 };
 
 function renderWithProviders(root: Root, ui: ReactNode): void {
 	root.render(
 		<BoardContext.Provider value={noopBoardContext}>
-			<GitContext.Provider value={noopGitContext}>
-				<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
-					<TooltipProvider>{ui}</TooltipProvider>
-				</CardActionsProvider>
-			</GitContext.Provider>
+			<SurfaceNavigationContext.Provider value={noopSurfaceNavigationContext}>
+				<GitContext.Provider value={noopGitContext}>
+					<CardActionsProvider stable={noopStableActions} reactive={noopReactiveState}>
+						<TooltipProvider>{ui}</TooltipProvider>
+					</CardActionsProvider>
+				</GitContext.Provider>
+			</SurfaceNavigationContext.Provider>
 		</BoardContext.Provider>,
 	);
 }

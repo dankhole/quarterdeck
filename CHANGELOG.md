@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Refactor: separate surface navigation from git provider ownership
+
+- Added `web-ui/src/providers/surface-navigation-provider.tsx`, a dedicated UI-surface seam that owns main-view/sidebar selection, git-history visibility, and cross-surface compare/file navigation instead of leaving those concerns inside `GitProvider`.
+- Narrowed `web-ui/src/providers/git-provider.tsx` so it now reads as git-domain ownership: git actions, git history data, file-browser scope, and branch actions remain there, while toolbar/layout state moved out to the new surface-navigation context.
+- Updated the highest-surface consumers (`App.tsx`, `home-view.tsx`, `connected-top-bar.tsx`, `use-card-detail-view.ts`, and interaction/app orchestration hooks) to depend on the clearer owned seam they actually use rather than pulling broad mixed-domain state from `GitContext`.
+- Added `web-ui/src/providers/project-runtime-provider.tsx`, a second follow-up seam that moves runtime config, onboarding/access-gate state, config-derived values, and config mutation callbacks out of `ProjectContext`, leaving the base project provider focused on navigation, runtime stream state, and project sync/persistence ownership.
+- Updated project-heavy consumers (`App.tsx`, dialog/project screens, board/git/terminal/interactions providers, and app orchestration hooks) to read project runtime/config concerns from `useProjectRuntimeContext()` instead of treating `ProjectContext` as a mixed-domain bag.
+- Added focused regression coverage for the new provider seam and the affected detail-layout consumer path, then reran targeted frontend tests plus `web-ui` typecheck.
+- Followed up on review with two small runtime-provider fixes: `handleSetDefaultBaseRef` now no-ops cleanly when no project is selected, and trash-worktree notice dismissal now reports failed config saves instead of failing silently.
+
 ### Refactor: make non-batched backend mutation effects explicit
 
 - Added `src/trpc/runtime-mutation-effects.ts`, a narrow post-mutation effects layer that lets backend mutations declare concrete follow-up consequences such as project-state refreshes, project summary refreshes, task review signals, git metadata invalidation, lightweight task sync messages, and config/debug delivery effects without hand-assembling those calls inline.

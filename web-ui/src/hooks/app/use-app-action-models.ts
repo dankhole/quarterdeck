@@ -5,9 +5,10 @@ import { showAppToast } from "@/components/app-toaster";
 import { useDisplaySummaryOnHover, useTitleActions } from "@/hooks/board";
 import { useMigrateTaskDialog } from "@/hooks/terminal";
 import type { BoardContextValue } from "@/providers/board-provider";
-import type { GitContextValue } from "@/providers/git-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type { ProjectContextValue } from "@/providers/project-provider";
+import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
+import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { toggleTaskPinned } from "@/state/board-state";
@@ -19,8 +20,9 @@ import { isApprovalState } from "@/utils/session-status";
 
 interface UseAppActionModelsInput {
 	project: ProjectContextValue;
+	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
-	git: GitContextValue;
+	navigation: SurfaceNavigationContextValue;
 	interactions: InteractionsContextValue;
 	serverMutationInFlightRef: MutableRefObject<boolean>;
 }
@@ -43,17 +45,18 @@ export interface UseAppActionModelsResult {
 
 export function useAppActionModels({
 	project,
+	projectRuntime,
 	board,
-	git,
+	navigation,
 	interactions,
 	serverMutationInFlightRef,
 }: UseAppActionModelsInput): UseAppActionModelsResult {
 	const terminalPrewarmPolicy = getTerminalPrewarmPolicy();
 	const handleRequestDisplaySummary = useDisplaySummaryOnHover(
 		project.currentProjectId,
-		project.runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
-		project.runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
-		project.llmConfigured,
+		projectRuntime.runtimeProjectConfig?.autoGenerateSummary ?? CONFIG_DEFAULTS.autoGenerateSummary,
+		projectRuntime.runtimeProjectConfig?.summaryStaleAfterSeconds ?? CONFIG_DEFAULTS.summaryStaleAfterSeconds,
+		projectRuntime.llmConfigured,
 	);
 
 	const handleTerminalWarmup = useCallback(
@@ -95,28 +98,28 @@ export function useAppActionModels({
 
 	const handleMainViewChange = useCallback(
 		(view: MainViewId) => {
-			git.setMainView(view, { setSelectedTaskId: board.setSelectedTaskId });
+			navigation.setMainView(view, { setSelectedTaskId: board.setSelectedTaskId });
 		},
-		[board.setSelectedTaskId, git.setMainView],
+		[board.setSelectedTaskId, navigation.setMainView],
 	);
 
 	const handleCardSelectWithFocus = useCallback(
 		(taskId: string) => {
 			interactions.handleCardSelect(taskId);
-			if (git.mainView === "terminal") {
+			if (navigation.mainView === "terminal") {
 				requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
 			}
 		},
-		[git.mainView, interactions.handleCardSelect],
+		[navigation.mainView, interactions.handleCardSelect],
 	);
 
 	const handleCardDoubleClick = useCallback(
 		(taskId: string) => {
 			interactions.handleCardSelect(taskId);
-			git.setMainView("terminal", { setSelectedTaskId: board.setSelectedTaskId });
+			navigation.setMainView("terminal", { setSelectedTaskId: board.setSelectedTaskId });
 			requestAnimationFrame(() => getTerminalController(taskId)?.focus?.());
 		},
-		[board.setSelectedTaskId, git.setMainView, interactions.handleCardSelect],
+		[board.setSelectedTaskId, navigation.setMainView, interactions.handleCardSelect],
 	);
 
 	const handleFlagForDebug = useCallback(
@@ -147,7 +150,7 @@ export function useAppActionModels({
 			onRequestDisplaySummary: handleRequestDisplaySummary,
 			onTerminalWarmup: handleTerminalWarmup,
 			onTerminalCancelWarmup: handleTerminalCancelWarmup,
-			onFlagForDebug: project.runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
+			onFlagForDebug: projectRuntime.runtimeProjectConfig?.eventLogEnabled ? handleFlagForDebug : undefined,
 		}),
 		[
 			handleFlagForDebug,
@@ -164,7 +167,7 @@ export function useAppActionModels({
 			interactions.handleRestartTaskSession,
 			interactions.handleRestoreTaskFromTrash,
 			interactions.handleStartTaskFromBoard,
-			project.runtimeProjectConfig?.eventLogEnabled,
+			projectRuntime.runtimeProjectConfig?.eventLogEnabled,
 		],
 	);
 
@@ -172,22 +175,23 @@ export function useAppActionModels({
 		() => ({
 			moveToTrashLoadingById: interactions.moveToTrashLoadingById ?? {},
 			migratingTaskId: migratingTaskId ?? null,
-			isLlmGenerationDisabled: project.isLlmGenerationDisabled,
-			showSummaryOnCards: project.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
+			isLlmGenerationDisabled: projectRuntime.isLlmGenerationDisabled,
+			showSummaryOnCards:
+				projectRuntime.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 			uncommittedChangesOnCardsEnabled:
-				project.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
+				projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
 				CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
 			showRunningTaskEmergencyActions:
-				project.runtimeProjectConfig?.showRunningTaskEmergencyActions ??
+				projectRuntime.runtimeProjectConfig?.showRunningTaskEmergencyActions ??
 				CONFIG_DEFAULTS.showRunningTaskEmergencyActions,
 		}),
 		[
 			interactions.moveToTrashLoadingById,
 			migratingTaskId,
-			project.isLlmGenerationDisabled,
-			project.runtimeProjectConfig?.showRunningTaskEmergencyActions,
-			project.runtimeProjectConfig?.showSummaryOnCards,
-			project.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
+			projectRuntime.isLlmGenerationDisabled,
+			projectRuntime.runtimeProjectConfig?.showRunningTaskEmergencyActions,
+			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
+			projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
 		],
 	);
 
@@ -215,8 +219,8 @@ export function useAppActionModels({
 
 	const handleBack = useCallback(() => {
 		board.setSelectedTaskId(null);
-		git.closeGitHistory();
-	}, [board.setSelectedTaskId, git.closeGitHistory]);
+		navigation.closeGitHistory();
+	}, [board.setSelectedTaskId, navigation.closeGitHistory]);
 
 	const detailSession = board.selectedCard
 		? (board.sessions[board.selectedCard.card.id] ?? createIdleTaskSession(board.selectedCard.card.id))

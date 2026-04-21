@@ -2,6 +2,100 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Provider/runtime review follow-up (2026-04-21)
+
+Applied the small correctness/polish fixes that came out of review on the provider-context ownership refactor, and recorded the intentionally deferred architectural follow-ups in the roadmap instead of quietly expanding scope.
+
+**What changed:**
+
+- Updated `web-ui/src/providers/project-runtime-provider.tsx` so `handleSetDefaultBaseRef(...)` now exits early when there is no active project instead of routing a nullable project id through the runtime-config save path.
+- Tightened the same provider’s `saveTrashWorktreeNoticeDismissed()` callback to match the surrounding runtime-config mutation handlers: it now skips when no project is selected and shows a danger toast if the config save fails instead of failing silently.
+- Expanded `web-ui/src/providers/project-runtime-provider.test.tsx` with focused coverage for both review follow-ups: no save when no project exists for default-base-ref updates, and visible error handling when trash-worktree notice dismissal fails.
+- Added a short “deferred follow-up notes” section under the completed provider/context roadmap item in `docs/refactor-roadmap-context.md` so the two lower-severity architectural observations stay visible without turning this review cleanup into another broad provider-splitting pass.
+
+**Why:** The review surfaced two small provider inconsistencies worth fixing immediately, plus two broader observations that are better handled as future ownership decisions than as opportunistic churn. This keeps the refactor branch tidy, addresses the real local quality gaps, and leaves a clear breadcrumb for the next architectural pass.
+
+**Files touched:**
+
+- `web-ui/src/providers/project-runtime-provider.tsx`
+- `web-ui/src/providers/project-runtime-provider.test.tsx`
+- `docs/refactor-roadmap-context.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/provider-context-surfaces`.
+
+## Project runtime/context follow-up slice (2026-04-21)
+
+Landed a second provider-narrowing follow-up on top of the earlier surface-navigation split by extracting runtime config ownership out of `ProjectContext` into `ProjectRuntimeProvider`. Before this change, `ProjectContext` still mixed project navigation/runtime-stream state with runtime config loading, onboarding/access gating, config-derived UI flags, and config mutation callbacks. After the split, the base project provider reads as navigation + sync ownership, while the new runtime provider owns config/onboarding/runtime setup concerns.
+
+**What changed:**
+
+- Added `web-ui/src/providers/project-runtime-provider.tsx`, which now owns both `useRuntimeProjectConfig(...)` scopes, `useQuarterdeckAccessGate(...)`, `useStartupOnboarding(...)`, config-derived values like `selectedShortcutLabel`, `agentCommand`, notification settings, checkout-confirmation toggles, and the related runtime-config mutation callbacks.
+- Narrowed `web-ui/src/providers/project-provider.tsx` so it now exposes project navigation, runtime stream state, project sync/persistence fields, hydrate/persist gates, and project metadata/session notification state without also acting as the runtime-config provider.
+- Updated the highest-leverage consumers to read the narrower seam they actually need: `App.tsx`, `home-view.tsx`, `connected-top-bar.tsx`, `app-dialogs.tsx`, `project-dialogs.tsx`, `dialog-provider.tsx`, `board-provider.tsx`, `git-provider.tsx`, `terminal-provider.tsx`, `interactions-provider.tsx`, `use-app-action-models.ts`, and `use-app-side-effects.ts` now separate base project ownership from runtime-config ownership.
+- Added `web-ui/src/providers/project-runtime-provider.test.tsx` to lock in the new seam’s settings-scope behavior and config-derived fallback behavior, then reran targeted frontend coverage (`project-runtime-provider`, `surface-navigation-provider`, `card-detail-view`, and `use-card-detail-layout`) plus both `web-ui` and repo-root typecheck.
+- Updated the roadmap context so the completed provider/context item now records both landed slices: surface/layout navigation moved out of `GitProvider`, and runtime config/onboarding moved out of `ProjectContext`.
+
+**Why:** The first pass removed the most obvious mixed-domain bag from `GitProvider`, but `ProjectContext` was still broad enough that ownership remained blurry for config-heavy consumers. This follow-up keeps composition ergonomic while making it much clearer which provider owns project navigation/sync versus project runtime/config concerns, which should make future provider-narrowing work smaller and less invasive.
+
+**Files touched:**
+
+- `web-ui/src/providers/project-runtime-provider.tsx`
+- `web-ui/src/providers/project-runtime-provider.test.tsx`
+- `web-ui/src/providers/project-provider.tsx`
+- `web-ui/src/providers/board-provider.tsx`
+- `web-ui/src/providers/git-provider.tsx`
+- `web-ui/src/providers/terminal-provider.tsx`
+- `web-ui/src/providers/dialog-provider.tsx`
+- `web-ui/src/providers/interactions-provider.tsx`
+- `web-ui/src/hooks/app/use-app-action-models.ts`
+- `web-ui/src/hooks/app/use-app-side-effects.ts`
+- `web-ui/src/components/app/app-dialogs.tsx`
+- `web-ui/src/components/app/project-dialogs.tsx`
+- `web-ui/src/components/app/home-view.tsx`
+- `web-ui/src/components/app/connected-top-bar.tsx`
+- `web-ui/src/App.tsx`
+- `CHANGELOG.md`
+- `docs/refactor-roadmap-context.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/provider-context-surfaces` (branch created from local `main` at `814ce825`).
+
+## Provider/context surface narrowing slice (2026-04-21)
+
+Landed the first production slice of the provider/context-surface roadmap item by extracting toolbar/layout navigation out of `GitProvider` into a dedicated `SurfaceNavigationProvider`. Before this change, `GitContext` mixed git-domain ownership with surface selection (`mainView`, `sidebar`), git-history visibility, and compare/file navigation. After the split, git consumers ask one context for git state and a different context for surface navigation, which makes ownership much easier to explain without pushing logic back up into `App.tsx`.
+
+**What changed:**
+
+- Added `web-ui/src/providers/surface-navigation-provider.tsx`, which now owns `useCardDetailLayout`, git-history open/close state, and `useGitNavigation`’s compare/file-routing helpers behind a dedicated `SurfaceNavigationContext`.
+- Narrowed `web-ui/src/providers/git-provider.tsx` so it now focuses on git actions/history data, file-browser scope, top-bar/file-browser branch actions, and the home file-browser data seam. Conflict navigation still works, but it now depends on the surface-navigation provider instead of a git-owned ref callback.
+- Updated the highest-surface consumers to read the narrower owned seam they actually need: `web-ui/src/App.tsx` now gets toolbar/sidebar/layout state from `useSurfaceNavigationContext()`, `web-ui/src/components/app/home-view.tsx` and `connected-top-bar.tsx` use the new surface navigation for view switching and compare/file routing, and `web-ui/src/hooks/app/use-app-action-models.ts`, `use-app-side-effects.ts`, and `web-ui/src/hooks/board/use-card-detail-view.ts` now separate layout/history navigation from git-domain actions.
+- Updated provider/consumer coverage by adding `web-ui/src/providers/surface-navigation-provider.test.tsx` and adapting `web-ui/src/components/task/card-detail-view.test.tsx` to the split seam, then reran targeted frontend tests (`surface-navigation-provider`, `card-detail-view`, and `use-card-detail-layout`) plus `npm --prefix web-ui run typecheck`.
+- Synced the roadmap bookkeeping by removing the completed active todo item and marking the provider/context-surface item as completed in `docs/refactor-roadmap-context.md`, while leaving the remaining narrower provider cleanup to future slices rather than one broad umbrella task.
+
+**Why:** The earlier provider migration successfully pulled state out of `App.tsx`, but `GitProvider` had started to regrow as a convenience bag that mixed real git ownership with top-level surface/layout concerns. Extracting a dedicated surface-navigation seam preserves ergonomic composition while making it much clearer which provider owns which responsibility, and gives later narrowing passes a concrete pattern to follow.
+
+**Files touched:**
+
+- `web-ui/src/providers/surface-navigation-provider.tsx`
+- `web-ui/src/providers/surface-navigation-provider.test.tsx`
+- `web-ui/src/providers/git-provider.tsx`
+- `web-ui/src/providers/interactions-provider.tsx`
+- `web-ui/src/hooks/app/use-app-action-models.ts`
+- `web-ui/src/hooks/app/use-app-side-effects.ts`
+- `web-ui/src/hooks/board/use-card-detail-view.ts`
+- `web-ui/src/components/app/home-view.tsx`
+- `web-ui/src/components/app/connected-top-bar.tsx`
+- `web-ui/src/components/task/card-detail-view.test.tsx`
+- `web-ui/src/App.tsx`
+- `docs/todo.md`
+- `docs/refactor-roadmap-context.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/provider-context-surfaces` (branch created from local `main` at `814ce825`).
+
 ## Manual broadcast choreography refactor slice (2026-04-21)
 
 Landed the first production slice of the “manual broadcast choreography” roadmap item by moving the main non-batched backend mutation paths onto an explicit post-mutation effects layer. Instead of leaving correctness to a remembered chain of `broadcast X`, `refresh Y`, and `notify Z` follow-up calls, these mutations now declare a narrow set of concrete effects and run them through one delivery helper.

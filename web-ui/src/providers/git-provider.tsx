@@ -1,11 +1,9 @@
 import type { ReactNode } from "react";
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 import type { UseGitHistoryDataResult } from "@/components/git/history";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import {
-	type FileNavigation,
-	type GitViewCompareNavigation,
 	type ResolvedScope,
 	type ScopeMode,
 	type UseBranchActionsResult,
@@ -13,12 +11,12 @@ import {
 	useBranchActions,
 	useFileBrowserData,
 	useGitActions,
-	useGitNavigation,
 	useScopeContext,
 } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
-import { type MainViewId, type SidebarId, useCardDetailLayout } from "@/resize/use-card-detail-layout";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import type { RuntimeGitSyncAction } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
@@ -27,8 +25,8 @@ import {
 } from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
-// Context value — git actions, git history, git navigation, scope context,
-// branch actions, file browser data, card detail layout, and git navigation.
+// Context value — git actions, git history data, scope context, branch
+// actions, and file browser data.
 //
 // The value is constructed by <GitProvider> and provided via
 // <GitContext.Provider>. Child components read git state via useGitContext().
@@ -64,21 +62,6 @@ export interface GitContextValue {
 	onStashAndRetry: (() => void) | undefined;
 	isStashAndRetryingPull: boolean;
 
-	// --- Git history toggle ---
-	isGitHistoryOpen: boolean;
-	handleToggleGitHistory: () => void;
-	openGitHistory: () => void;
-	closeGitHistory: () => void;
-
-	// --- useGitNavigation ---
-	pendingCompareNavigation: GitViewCompareNavigation | null;
-	pendingFileNavigation: FileNavigation | null;
-	openGitCompare: (navigation: GitViewCompareNavigation) => void;
-	clearPendingCompareNavigation: () => void;
-	navigateToFile: (nav: FileNavigation) => void;
-	clearPendingFileNavigation: () => void;
-	navigateToGitView: () => void;
-
 	// --- Home file browser scope context ---
 	fileBrowserScopeMode: ScopeMode;
 	fileBrowserResolvedScope: ResolvedScope | null;
@@ -96,22 +79,6 @@ export interface GitContextValue {
 
 	// --- useFileBrowserData ---
 	homeFileBrowserData: UseFileBrowserDataResult;
-
-	// --- useCardDetailLayout ---
-	mainView: MainViewId;
-	sidebar: SidebarId | null;
-	setMainView: (view: MainViewId, callbacks?: { setSelectedTaskId?: (id: string | null) => void }) => void;
-	toggleSidebar: (id: SidebarId) => void;
-	sidebarPinned: boolean;
-	toggleSidebarPinned: () => void;
-	visualMainView: MainViewId;
-	visualSidebar: SidebarId | null;
-	sidePanelRatio: number;
-	setSidePanelRatio: (ratio: number) => void;
-	resetCardDetailLayoutToDefaults: () => void;
-
-	// --- navigateToGitViewRef ---
-	navigateToGitViewRef: React.MutableRefObject<(() => void) | null>;
 }
 
 export const GitContext = createContext<GitContextValue | null>(null);
@@ -136,19 +103,12 @@ interface GitProviderProps {
 }
 
 export function GitProvider({ children }: GitProviderProps): ReactNode {
-	const {
-		currentProjectId,
-		runtimeProjectConfig,
-		skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation,
-		hasNoProjects,
-		isProjectSwitching,
-		refreshProjectState,
-	} = useProjectContext();
-	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const { currentProjectId, refreshProjectState } = useProjectContext();
+	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
+		useProjectRuntimeContext();
 
-	const { board, selectedCard, selectedTaskId, setSelectedTaskId, sendTaskSessionInput, fetchTaskWorktreeInfo } =
-		useBoardContext();
+	const { board, selectedCard, sendTaskSessionInput, fetchTaskWorktreeInfo } = useBoardContext();
+	const { isGitHistoryOpen, navigateToGitView } = useSurfaceNavigationContext();
 
 	// Store subscriptions — duplicate calls are cheap (useSyncExternalStore).
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
@@ -168,10 +128,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		currentProjectId,
 	});
 
-	// Ref-based callback: setMainView is declared later (useCardDetailLayout), but
-	// onConflictDetected fires asynchronously from a mutation, never during render.
-	const navigateToGitViewRef = useRef<(() => void) | null>(null);
-
 	// --- useBranchActions (file browser) ---
 	const fileBrowserBranchActions = useBranchActions({
 		projectId: currentProjectId,
@@ -181,7 +137,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		skipHomeCheckoutConfirmation,
 		skipTaskCheckoutConfirmation,
 		onCheckoutSuccess: fileBrowserReturnToContextual,
-		onConflictDetected: () => navigateToGitViewRef.current?.(),
+		onConflictDetected: navigateToGitView,
 	});
 
 	// --- useBranchActions (topbar) ---
@@ -196,7 +152,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		baseRef: selectedCard?.card.baseRef ?? null,
 		skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation,
-		onConflictDetected: () => navigateToGitViewRef.current?.(),
+		onConflictDetected: navigateToGitView,
 	});
 
 	// --- topbarBranchLabel ---
@@ -243,55 +199,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		refreshProjectState,
 	});
 
-	// --- handleToggleGitHistory ---
-	const handleToggleGitHistory = useCallback(() => {
-		if (hasNoProjects) return;
-		setIsGitHistoryOpen((current) => !current);
-	}, [hasNoProjects, setIsGitHistoryOpen]);
-
-	const openGitHistory = useCallback(() => {
-		if (hasNoProjects) return;
-		setIsGitHistoryOpen(true);
-	}, [hasNoProjects]);
-
-	const closeGitHistory = useCallback(() => {
-		setIsGitHistoryOpen(false);
-	}, [setIsGitHistoryOpen]);
-
-	useLayoutEffect(() => {
-		if (isProjectSwitching) {
-			setIsGitHistoryOpen(false);
-		}
-	}, [isProjectSwitching, setIsGitHistoryOpen]);
-
-	// --- useCardDetailLayout ---
-	const {
-		mainView,
-		sidebar,
-		setMainView,
-		toggleSidebar,
-		sidebarPinned,
-		toggleSidebarPinned,
-		visualMainView,
-		visualSidebar,
-		sidePanelRatio,
-		setSidePanelRatio,
-		resetToDefaults: resetCardDetailLayoutToDefaults,
-	} = useCardDetailLayout({ selectedTaskId, isProjectSwitching });
-
-	// --- useGitNavigation ---
-	const {
-		pendingCompareNavigation,
-		pendingFileNavigation,
-		openGitCompare,
-		clearPendingCompareNavigation,
-		navigateToFile,
-		clearPendingFileNavigation,
-		navigateToGitView,
-	} = useGitNavigation({ isGitHistoryOpen, setMainView, setSelectedTaskId });
-
-	navigateToGitViewRef.current = navigateToGitView;
-
 	// --- gitSyncTaskScope ---
 	const gitSyncTaskScope = useMemo(
 		() => (selectedCard ? { taskId: selectedCard.card.id, baseRef: selectedCard.card.baseRef } : undefined),
@@ -314,17 +221,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			runAutoReviewGitAction,
 			onStashAndRetry,
 			isStashAndRetryingPull,
-			isGitHistoryOpen,
-			handleToggleGitHistory,
-			openGitHistory,
-			closeGitHistory,
-			pendingCompareNavigation,
-			pendingFileNavigation,
-			openGitCompare,
-			clearPendingCompareNavigation,
-			navigateToFile,
-			clearPendingFileNavigation,
-			navigateToGitView,
 			fileBrowserScopeMode,
 			fileBrowserResolvedScope,
 			fileBrowserSwitchToHome,
@@ -335,18 +231,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			topbarBranchActions,
 			topbarBranchLabel,
 			homeFileBrowserData,
-			mainView,
-			sidebar,
-			setMainView,
-			toggleSidebar,
-			sidebarPinned,
-			toggleSidebarPinned,
-			visualMainView,
-			visualSidebar,
-			sidePanelRatio,
-			setSidePanelRatio,
-			resetCardDetailLayoutToDefaults,
-			navigateToGitViewRef,
 		}),
 		[
 			runningGitAction,
@@ -362,17 +246,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			runAutoReviewGitAction,
 			onStashAndRetry,
 			isStashAndRetryingPull,
-			isGitHistoryOpen,
-			handleToggleGitHistory,
-			openGitHistory,
-			closeGitHistory,
-			pendingCompareNavigation,
-			pendingFileNavigation,
-			openGitCompare,
-			clearPendingCompareNavigation,
-			navigateToFile,
-			clearPendingFileNavigation,
-			navigateToGitView,
 			fileBrowserScopeMode,
 			fileBrowserResolvedScope,
 			fileBrowserSwitchToHome,
@@ -383,18 +256,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			topbarBranchActions,
 			topbarBranchLabel,
 			homeFileBrowserData,
-			mainView,
-			sidebar,
-			setMainView,
-			toggleSidebar,
-			sidebarPinned,
-			toggleSidebarPinned,
-			visualMainView,
-			visualSidebar,
-			sidePanelRatio,
-			setSidePanelRatio,
-			resetCardDetailLayoutToDefaults,
-			// navigateToGitViewRef is a ref — stable identity, never triggers re-render.
 		],
 	);
 

@@ -4,6 +4,7 @@ import { type UseTaskEditorResult, useTaskEditor, useTaskSessions } from "@/hook
 import { useTaskBranchOptions } from "@/hooks/git";
 import { useDetailTaskNavigation } from "@/hooks/project";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { reconcileTaskWorkingDirectory } from "@/state/board-state";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
@@ -88,10 +89,10 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 		streamedProjectState,
 		hasReceivedSnapshot,
 		streamError,
-		configDefaultBaseRef,
 		projectPath,
 		projectGit,
 	} = useProjectContext();
+	const { configDefaultBaseRef } = useProjectRuntimeContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({

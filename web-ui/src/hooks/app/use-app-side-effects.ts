@@ -14,6 +14,8 @@ import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
 import type { InteractionsContextValue } from "@/providers/interactions-provider";
 import type { ProjectContextValue } from "@/providers/project-provider";
+import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
+import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
 import { saveProjectState } from "@/runtime/project-state-query";
 import { useProjectPersistence } from "@/runtime/use-project-persistence";
@@ -22,8 +24,10 @@ import { useEscapeHandler } from "./use-escape-handler";
 
 interface UseAppSideEffectsInput {
 	project: ProjectContextValue;
+	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
 	git: GitContextValue;
+	navigation: SurfaceNavigationContextValue;
 	terminal: TerminalContextValue;
 	interactions: InteractionsContextValue;
 	dialog: DialogContextValue;
@@ -34,8 +38,10 @@ interface UseAppSideEffectsInput {
 
 export function useAppSideEffects({
 	project,
+	projectRuntime,
 	board,
 	git,
+	navigation,
 	terminal,
 	interactions,
 	dialog,
@@ -58,11 +64,11 @@ export function useAppSideEffects({
 
 	useAudibleNotifications({
 		notificationSessions: project.notificationSessions,
-		audibleNotificationsEnabled: project.audibleNotificationsEnabled,
-		audibleNotificationVolume: project.audibleNotificationVolume,
-		audibleNotificationEvents: project.audibleNotificationEvents,
-		audibleNotificationsOnlyWhenHidden: project.audibleNotificationsOnlyWhenHidden,
-		audibleNotificationSuppressCurrentProject: project.audibleNotificationSuppressCurrentProject,
+		audibleNotificationsEnabled: projectRuntime.audibleNotificationsEnabled,
+		audibleNotificationVolume: projectRuntime.audibleNotificationVolume,
+		audibleNotificationEvents: projectRuntime.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: projectRuntime.audibleNotificationsOnlyWhenHidden,
+		audibleNotificationSuppressCurrentProject: projectRuntime.audibleNotificationSuppressCurrentProject,
 		notificationProjectIds: project.notificationProjectIds,
 		currentProjectId: project.currentProjectId,
 		suppressedTaskIds: trashTaskIdSet,
@@ -113,7 +119,7 @@ export function useAppSideEffects({
 		handleToggleExpandHomeTerminal: terminal.handleToggleExpandHomeTerminal,
 		handleOpenCreateTask: board.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
-		handleToggleGitHistory: git.handleToggleGitHistory,
+		handleToggleGitHistory: navigation.handleToggleGitHistory,
 		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,
 		handleToggleDebugLogPanel: dialog.debugLogging.toggleDebugLogPanel,
 		handleToggleFileFinder,
@@ -121,8 +127,8 @@ export function useAppSideEffects({
 	});
 
 	useEscapeHandler({
-		isGitHistoryOpen: git.isGitHistoryOpen,
-		closeGitHistory: git.closeGitHistory,
+		isGitHistoryOpen: navigation.isGitHistoryOpen,
+		closeGitHistory: navigation.closeGitHistory,
 		selectedCard: board.selectedCard,
 		setSelectedTaskId: board.setSelectedTaskId,
 	});

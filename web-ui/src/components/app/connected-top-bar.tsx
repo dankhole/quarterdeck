@@ -11,6 +11,8 @@ import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTerminalContext } from "@/providers/terminal-provider";
 import type { PromptShortcut, RuntimeGitRef, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
 import type { BoardCard, ReviewTaskWorktreeSnapshot } from "@/types";
@@ -198,8 +200,10 @@ export function ConnectedTopBar({
 	selectedTaskWorktreeSnapshot,
 }: ConnectedTopBarProps): ReactElement {
 	const project = useProjectContext();
+	const projectRuntime = useProjectRuntimeContext();
 	const { selectedCard, setBoard } = useBoardContext();
 	const git = useGitContext();
+	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
 	const dialog = useDialogContext();
 
@@ -240,13 +244,13 @@ export function ConnectedTopBar({
 			onOpenSettings={dialog.handleOpenSettings}
 			showDebugButton={dialog.debugModeEnabled}
 			onOpenDebugDialog={dialog.debugModeEnabled ? dialog.handleOpenDebugDialog : undefined}
-			shortcuts={project.shortcuts}
-			selectedShortcutLabel={project.selectedShortcutLabel}
+			shortcuts={projectRuntime.shortcuts}
+			selectedShortcutLabel={projectRuntime.selectedShortcutLabel}
 			onSelectShortcutLabel={handleSelectShortcutLabel}
 			runningShortcutLabel={runningShortcutLabel}
 			onRunShortcut={handleRunShortcut}
 			onCreateFirstShortcut={project.currentProjectId ? handleCreateShortcut : undefined}
-			promptShortcuts={project.runtimeProjectConfig?.promptShortcuts ?? []}
+			promptShortcuts={projectRuntime.runtimeProjectConfig?.promptShortcuts ?? []}
 			activePromptShortcut={activePromptShortcut}
 			onSelectPromptShortcutLabel={selectPromptShortcutLabel}
 			isPromptShortcutRunning={isPromptShortcutRunning}
@@ -264,7 +268,7 @@ export function ConnectedTopBar({
 							worktreeBranches={git.topbarBranchActions.worktreeBranches}
 							onSelectBranchView={git.topbarBranchActions.handleSelectBranchView}
 							onCheckoutBranch={git.topbarBranchActions.handleCheckoutBranch}
-							onCompareWithBranch={(branch) => git.openGitCompare({ targetRef: branch })}
+							onCompareWithBranch={(branch) => navigation.openGitCompare({ targetRef: branch })}
 							onMergeBranch={git.topbarBranchActions.handleMergeBranch}
 							onCreateBranch={git.topbarBranchActions.handleCreateBranchFrom}
 							onDeleteBranch={git.topbarBranchActions.handleDeleteBranch}
@@ -277,8 +281,8 @@ export function ConnectedTopBar({
 							onPush={(branch) => {
 								void git.runGitAction("push", git.gitSyncTaskScope ?? null, branch);
 							}}
-							pinnedBranches={project.pinnedBranches}
-							onTogglePinBranch={project.handleTogglePinBranch}
+							pinnedBranches={projectRuntime.pinnedBranches}
+							onTogglePinBranch={projectRuntime.handleTogglePinBranch}
 							trigger={
 								<BranchPillTrigger
 									label={git.topbarBranchLabel}

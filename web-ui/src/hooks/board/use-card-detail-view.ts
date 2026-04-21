@@ -9,6 +9,7 @@ import {
 import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
+import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { useStableCardActions } from "@/state/card-actions-context";
 import {
@@ -39,18 +40,8 @@ export function useCardDetailView({
 	skipHomeCheckoutConfirmation,
 }: UseCardDetailViewInput) {
 	const { board, sessions: taskSessions, upsertSession: onSessionSummary, sendTaskSessionInput } = useBoardContext();
-	const {
-		isGitHistoryOpen,
-		handleToggleGitHistory: onToggleGitHistory,
-		pendingCompareNavigation,
-		clearPendingCompareNavigation: onCompareNavigationConsumed,
-		openGitCompare: onOpenGitCompare,
-		pendingFileNavigation,
-		clearPendingFileNavigation: onFileNavigationConsumed,
-		navigateToFile,
-		navigateToGitView,
-		runGitAction,
-	} = useGitContext();
+	const navigation = useSurfaceNavigationContext();
+	const { runGitAction } = useGitContext();
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const { onCancelAutomaticTaskAction } = useStableCardActions();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -106,7 +97,7 @@ export function useCardDetailView({
 		taskId: selection.card.id,
 		baseRef: selection.card.baseRef,
 		onCheckoutSuccess: taskReturnToContextual,
-		onConflictDetected: navigateToGitView,
+		onConflictDetected: navigation.navigateToGitView,
 	});
 
 	const fileBrowserScope = useMemo(() => resolveCardDetailFileBrowserScope(taskResolvedScope), [taskResolvedScope]);
@@ -200,15 +191,15 @@ export function useCardDetailView({
 		sidePanelPercent: formatCardDetailSidePanelPercent(sidePanelRatio),
 		isTaskSidePanelOpen: sidebar === "task_column" || sidebar === "commit",
 		isTaskTerminalEnabled: selection.column.id === "in_progress" || selection.column.id === "review",
-		isGitHistoryOpen,
-		onToggleGitHistory,
-		pendingCompareNavigation,
-		onCompareNavigationConsumed,
-		onOpenGitCompare,
-		pendingFileNavigation,
-		onFileNavigationConsumed,
-		navigateToFile,
-		navigateToGitView,
+		isGitHistoryOpen: navigation.isGitHistoryOpen,
+		onToggleGitHistory: navigation.handleToggleGitHistory,
+		pendingCompareNavigation: navigation.pendingCompareNavigation,
+		onCompareNavigationConsumed: navigation.clearPendingCompareNavigation,
+		onOpenGitCompare: navigation.openGitCompare,
+		pendingFileNavigation: navigation.pendingFileNavigation,
+		onFileNavigationConsumed: navigation.clearPendingFileNavigation,
+		navigateToFile: navigation.navigateToFile,
+		navigateToGitView: navigation.navigateToGitView,
 		runGitAction,
 	};
 }

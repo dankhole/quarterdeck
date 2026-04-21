@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 import { type UseTerminalPanelsResult, useTerminalPanels } from "@/hooks/terminal";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
 	type UseTerminalConnectionReadyResult,
@@ -82,17 +83,9 @@ interface TerminalProviderProps {
 }
 
 export function TerminalProvider({ children }: TerminalProviderProps): ReactNode {
-	const {
-		currentProjectId,
-		projectGit,
-		configDefaultBaseRef,
-		agentCommand,
-		runtimeProjectConfig,
-		hasNoProjects,
-		projectPath,
-		projects,
-		navigationCurrentProjectId,
-	} = useProjectContext();
+	const { currentProjectId, projectGit, hasNoProjects, projectPath, projects, navigationCurrentProjectId } =
+		useProjectContext();
+	const { configDefaultBaseRef, agentCommand, runtimeProjectConfig } = useProjectRuntimeContext();
 
 	const { board, selectedCard, sessions, upsertSession, sendTaskSessionInput } = useBoardContext();
 
