@@ -2,11 +2,13 @@
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-04-20
+
 ### Fix: resolve all lint warnings and flaky integration test
 
 - Replaced 11 non-null assertions (`!`) across `statusline.ts`, `session-summary-store.ts`, `terminal-protocol-filter.ts`, `get-workdir-changes.ts`, and `git-stash.ts` with safe alternatives (`as` narrowing after guards, `?? fallback` for regex captures).
 - Removed unused `RuntimeStateStreamTransport` type import from `runtime-state-stream-transport.test.ts`.
-- Fixed flaky `task-command-exit.integration.test.ts` — the "join existing server" CLI path relied on Node's natural event-loop drain after the `open` package spawned a browser subprocess, but under parallel test load the subprocess Promise listeners kept the loop alive past the 8-second timeout. Changed the terminal early-return to an explicit `process.exit(0)`.
+- Fixed flaky `task-command-exit.integration.test.ts` — the "join existing server" CLI path relied on Node’s natural event-loop drain after the `open` package spawned a browser subprocess, but under parallel test load the subprocess Promise listeners kept the loop alive past the 8-second timeout. Changed the terminal early-return to an explicit `process.exit(0)`.
 
 ### Fix: make authoritative project sync apply from one atomic board/session snapshot
 
@@ -15,8 +17,6 @@
 - Moved the app shell onto a shared `board + sessions` state seam for project sync so `use-project-sync` can read the latest queued local state instead of stale refs. This keeps authoritative replacement, delta merge, and local reset/delete paths distinct instead of letting them overlap accidentally under timing pressure.
 - Added focused regression coverage for the new authoritative apply helper and the updated hook path, then revalidated project sync, runtime stream, persistence, reconnect, and restart coverage.
 - Followed up on review by removing the redundant outer revision guard in `use-project-sync.ts`, dropping the duplicated `reconciledSessions` field from the authoritative apply result, trimming unnecessary ref dependencies, and adding direct coverage for the `confirm_cache` + session-driven reprojection case.
-
-## [0.10.0] — 2026-04-20
 
 ### Refactor: make the task-state ownership join point explicit
 
