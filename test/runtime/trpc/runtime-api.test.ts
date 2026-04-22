@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
@@ -78,8 +79,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 import { createRuntimeApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -87,18 +87,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 function createCard(overrides: Partial<RuntimeBoardCard> = {}): RuntimeBoardCard {

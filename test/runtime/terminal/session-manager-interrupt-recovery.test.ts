@@ -15,6 +15,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -50,8 +51,7 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 }
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -59,19 +59,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 describe("TerminalSessionManager interrupt recovery", () => {

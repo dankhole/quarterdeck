@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { type UseRuntimeProjectConfigResult, useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
-import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
+import { createSelectedAgentRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
@@ -26,22 +26,9 @@ function createRuntimeConfigResponse(
 	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
 	shortcuts: RuntimeConfigResponse["shortcuts"],
 ): RuntimeConfigResponse {
-	return createTestRuntimeConfigResponse({
-		selectedAgentId,
+	return createSelectedAgentRuntimeConfigResponse(selectedAgentId, {
 		selectedShortcutLabel: shortcuts[0]?.label ?? null,
-		effectiveCommand: selectedAgentId,
-		detectedCommands: [selectedAgentId],
 		shortcuts,
-		agents: [
-			createTestAgentDef("claude", {
-				installed: selectedAgentId === "claude",
-				configured: selectedAgentId === "claude",
-			}),
-			createTestAgentDef("codex", {
-				installed: selectedAgentId === "codex",
-				configured: selectedAgentId === "codex",
-			}),
-		],
 	});
 }
 

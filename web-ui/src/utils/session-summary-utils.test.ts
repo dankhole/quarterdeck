@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
 	mergeTaskSessionSummaryMap,
 	reconcileAuthoritativeTaskSessionSummaryMap,
@@ -7,26 +8,16 @@ import {
 } from "@/utils/session-summary-utils";
 
 function createSessionSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
 		sessionLaunchPath: "/tmp/project-a",
-		pid: null,
 		startedAt: updatedAt - 10,
 		updatedAt,
 		lastOutputAt: updatedAt,
-		reviewReason: null,
-		exitCode: null,
 		lastHookAt: updatedAt,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 describe("selectNewestTaskSessionSummary", () => {

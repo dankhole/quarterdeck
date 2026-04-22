@@ -9,8 +9,9 @@ import {
 	saveRuntimeConfig,
 	updateRuntimeConfig,
 } from "../../../src/config";
+import { createDefaultRuntimeConfigSaveRequest } from "../../utilities/runtime-config-factory";
 import { createTempDir } from "../../utilities/temp-dir";
-import { createDefaultSavePayload, withTemporaryEnv } from "./runtime-config-helpers";
+import { withTemporaryEnv } from "./runtime-config-helpers";
 
 describe.sequential("runtime-config persistence", () => {
 	it("treats null projectId as global-only config scope", async () => {
@@ -97,7 +98,7 @@ describe.sequential("runtime-config persistence", () => {
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				await loadRuntimeConfig(projectId);
-				await saveRuntimeConfig(projectId, createDefaultSavePayload() as Parameters<typeof saveRuntimeConfig>[1]);
+				await saveRuntimeConfig(projectId, createDefaultRuntimeConfigSaveRequest());
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
@@ -128,10 +129,10 @@ describe.sequential("runtime-config persistence", () => {
 				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
 					projectId,
-					createDefaultSavePayload({
+					createDefaultRuntimeConfigSaveRequest({
 						selectedAgentId: "codex",
 						agentAutonomousModeEnabled: true,
-					}) as Parameters<typeof saveRuntimeConfig>[1],
+					}),
 				);
 
 				expect(existsSync(join(projectDir, "config.json"))).toBe(false);
@@ -153,11 +154,11 @@ describe.sequential("runtime-config persistence", () => {
 				await loadRuntimeConfig(projectId);
 				await saveRuntimeConfig(
 					projectId,
-					createDefaultSavePayload({
+					createDefaultRuntimeConfigSaveRequest({
 						selectedAgentId: "codex",
 						agentAutonomousModeEnabled: true,
 						shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
-					}) as Parameters<typeof saveRuntimeConfig>[1],
+					}),
 				);
 				expect(existsSync(join(projectDir, "config.json"))).toBe(true);
 

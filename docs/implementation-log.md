@@ -2,6 +2,141 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Merge main + fixture review follow-through (2026-04-22)
+
+Merged local `main` commit `0e12cc74` into `feature/test-fixture-dedup` instead of keeping the terminal session transition-controller reversal tangled into the earlier fixture-refactor history. This preserves the clean separation the review asked for: the production terminal lifecycle ownership change remains a dedicated mainline slice with its own tests and docs, while the fixture refactor branch stays about centralizing test defaults. The follow-through in this commit also tightened the new shared task-session factory API so `latestHookActivity` overrides read like the two real test intents: no hook activity vs an explicit hook activity override.
+
+**What changed:**
+
+- Merged local `main`, keeping the dedicated `SessionTransitionController` seam and the focused coverage in [`test/runtime/terminal/session-transition-controller.test.ts`](./../test/runtime/terminal/session-transition-controller.test.ts) instead of leaving that production refactor buried inside the fixture commits.
+- Resolved the release-hygiene file conflicts in [`CHANGELOG.md`](./../CHANGELOG.md), [`docs/implementation-log.md`](./implementation-log.md), and [`docs/todo.md`](./todo.md) so the fixture work and the terminal lifecycle boundary work each remain documented as their own change.
+- Simplified `latestHookActivity` resolution in both shared task-session factory modules:
+  - [`test/utilities/task-session-factory.ts`](./../test/utilities/task-session-factory.ts)
+  - [`web-ui/src/test-utils/task-session-factory.ts`](./../web-ui/src/test-utils/task-session-factory.ts)
+  The factories now use one local `resolvedLatestHookActivity` value instead of a nested ternary, which keeps the override contract obvious without changing behavior.
+
+**Why:** The review feedback was right that the earlier fixture commit read like it also owned a meaningful production-code revert. Merging `main` restores that production boundary as a separately documented change, brings back the focused transition-side-effect tests, and leaves this branch with only the small shared-fixture readability tweak it actually still owned.
+
+**Files touched:**
+
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+- `docs/todo.md`
+- `test/utilities/task-session-factory.ts`
+- `web-ui/src/test-utils/task-session-factory.ts`
+- merge carried forward the terminal transition seam from local `main`, including:
+  - `AGENTS.md`
+  - `src/terminal/session-input-pipeline.ts`
+  - `src/terminal/session-interrupt-recovery.ts`
+  - `src/terminal/session-lifecycle.ts`
+  - `src/terminal/session-manager.ts`
+  - `src/terminal/session-output-pipeline.ts`
+  - `src/terminal/session-reconciliation-sweep.ts`
+  - `src/terminal/session-transition-controller.ts`
+  - `test/runtime/terminal/session-transition-controller.test.ts`
+
+**Validation:**
+
+- `npm test -- --run test/runtime/server/runtime-state-message-batcher.test.ts test/runtime/core/task-indicators.test.ts test/runtime/terminal/session-manager.test.ts test/runtime/terminal/session-manager-interrupt-recovery.test.ts test/runtime/terminal/session-state-machine.test.ts test/runtime/terminal/session-reconciliation.test.ts test/runtime/terminal/session-transition-controller.test.ts test/runtime/terminal/ws-server.test.ts test/runtime/trpc/runtime-api.test.ts test/runtime/trpc/project-api-state.test.ts test/runtime/trpc/project-api-changes.test.ts test/runtime/shutdown-coordinator-timeout.test.ts test/integration/project-state.integration.test.ts test/integration/shutdown-coordinator.integration.test.ts`
+  - ran outside the sandbox because `ws-server.test.ts` needs localhost bind access; result: 14 files / 195 tests passed
+- `npm --prefix web-ui test -- --run src/utils/session-status.test.ts src/utils/session-summary-utils.test.ts src/runtime/runtime-state-stream-store.test.ts src/hooks/project/project-sync.test.ts src/hooks/project/use-project-sync.test.tsx src/hooks/notifications/project-notifications.test.ts src/hooks/board/session-column-sync.test.ts src/hooks/terminal/use-terminal-panels.test.tsx src/components/board/board-card.test.tsx`
+  - result: 9 files / 105 tests passed
+  - note: jsdom still logs the existing `HTMLCanvasElement.prototype.getContext` warnings from xterm/webgl imports, but the tests passed
+- `npm run typecheck`
+- `npm run web:typecheck`
+
+**Commit hash:** Pending merge follow-through commit on `feature/test-fixture-dedup` after merging local `main` commit `0e12cc74`.
+
+## Task/session fixture helper layer follow-through (2026-04-22)
+
+Extended the earlier config-fixture cleanup into the broader task/session test fixture layer. The important shift in this pass is that runtime/session shape defaults no longer live as near-identical little `createSummary(...)` objects spread across terminal tests, project sync tests, websocket tests, and integration tests. Instead, there is now one shared task/session fixture entry point per test environment, and the remaining local helper functions mostly express test intent by wrapping those shared builders with just the overrides that matter for that file.
+
+**What changed:**
+
+- Added [`test/utilities/task-session-factory.ts`](./../test/utilities/task-session-factory.ts) as the runtime/integration-side shared session helper module. It now provides:
+  - `createTestTaskSessionSummary(...)`
+  - `createTestTaskHookActivity(...)`
+  The helper centralizes the full `RuntimeTaskSessionSummary` shape, including the newer session fields like `mode`, `warningMessage`, turn checkpoints, conversation summaries, and display summary metadata.
+- Added [`web-ui/src/test-utils/task-session-factory.ts`](./../web-ui/src/test-utils/task-session-factory.ts) as the browser-side shared fixture module. It provides:
+  - `createTestTaskSessionSummary(...)`
+  - `createTestTaskHookActivity(...)`
+  - `createTestProjectStateResponse(...)`
+  This keeps runtime-state-stream, project-sync, status/indicator, and component tests aligned on one browser-facing session/project-state shape.
+- Updated [`web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`](./../web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx) so its `createMockSession(...)` now delegates to the shared browser session helper rather than maintaining a parallel task-summary object locally.
+- Migrated the highest-churn runtime-side session tests to the shared helper layer:
+  - terminal/session lifecycle and reconciliation coverage in:
+    - [`test/runtime/terminal/session-manager.test.ts`](./../test/runtime/terminal/session-manager.test.ts)
+    - [`test/runtime/terminal/session-manager-interrupt-recovery.test.ts`](./../test/runtime/terminal/session-manager-interrupt-recovery.test.ts)
+    - [`test/runtime/terminal/session-state-machine.test.ts`](./../test/runtime/terminal/session-state-machine.test.ts)
+    - [`test/runtime/terminal/session-reconciliation.test.ts`](./../test/runtime/terminal/session-reconciliation.test.ts)
+    - [`test/runtime/terminal/ws-server.test.ts`](./../test/runtime/terminal/ws-server.test.ts)
+  - runtime stream / API / state persistence coverage in:
+    - [`test/runtime/server/runtime-state-message-batcher.test.ts`](./../test/runtime/server/runtime-state-message-batcher.test.ts)
+    - [`test/runtime/core/task-indicators.test.ts`](./../test/runtime/core/task-indicators.test.ts)
+    - [`test/runtime/trpc/runtime-api.test.ts`](./../test/runtime/trpc/runtime-api.test.ts)
+    - [`test/runtime/trpc/project-api-state.test.ts`](./../test/runtime/trpc/project-api-state.test.ts)
+    - [`test/runtime/trpc/project-api-changes.test.ts`](./../test/runtime/trpc/project-api-changes.test.ts)
+    - [`test/runtime/shutdown-coordinator-timeout.test.ts`](./../test/runtime/shutdown-coordinator-timeout.test.ts)
+  - integration state/shutdown coverage in:
+    - [`test/integration/project-state.integration.test.ts`](./../test/integration/project-state.integration.test.ts)
+    - [`test/integration/shutdown-coordinator.integration.test.ts`](./../test/integration/shutdown-coordinator.integration.test.ts)
+- Migrated the highest-churn web-ui-side session/project-state tests to the shared helper layer:
+  - [`web-ui/src/utils/session-status.test.ts`](./../web-ui/src/utils/session-status.test.ts)
+  - [`web-ui/src/utils/session-summary-utils.test.ts`](./../web-ui/src/utils/session-summary-utils.test.ts)
+  - [`web-ui/src/runtime/runtime-state-stream-store.test.ts`](./../web-ui/src/runtime/runtime-state-stream-store.test.ts)
+  - [`web-ui/src/hooks/project/project-sync.test.ts`](./../web-ui/src/hooks/project/project-sync.test.ts)
+  - [`web-ui/src/hooks/project/use-project-sync.test.tsx`](./../web-ui/src/hooks/project/use-project-sync.test.tsx)
+  - [`web-ui/src/hooks/notifications/project-notifications.test.ts`](./../web-ui/src/hooks/notifications/project-notifications.test.ts)
+  - [`web-ui/src/hooks/board/session-column-sync.test.ts`](./../web-ui/src/hooks/board/session-column-sync.test.ts)
+  - [`web-ui/src/hooks/terminal/use-terminal-panels.test.tsx`](./../web-ui/src/hooks/terminal/use-terminal-panels.test.tsx)
+  - [`web-ui/src/components/board/board-card.test.tsx`](./../web-ui/src/components/board/board-card.test.tsx)
+- Removed the active `docs/todo.md` task-maintenance item because the shared helper layer this backlog item called for now exists in both environments. Some tests still keep small local wrapper helpers, but those wrappers now sit on top of the shared factories instead of re-declaring the full session shape.
+
+**Why:** The earlier config fixture cleanup fixed one major conflict hotspot, but session-shape churn was still noisy because many tests each owned their own copy of the `RuntimeTaskSessionSummary` default object. That meant adding a field like `warningMessage`, turn checkpoints, or session-launch metadata still scattered changes across a long tail of test files. This pass centralizes that shape without forcing every test to become unreadably abstract: the shared helper owns the boring defaults, and local wrappers still keep per-file meaning explicit.
+
+**Validation:**
+
+- `npm test -- --run test/runtime/server/runtime-state-message-batcher.test.ts test/runtime/core/task-indicators.test.ts test/runtime/terminal/session-manager.test.ts test/runtime/terminal/session-manager-interrupt-recovery.test.ts test/runtime/terminal/session-state-machine.test.ts test/runtime/terminal/session-reconciliation.test.ts test/runtime/terminal/ws-server.test.ts test/runtime/trpc/runtime-api.test.ts test/runtime/trpc/project-api-state.test.ts test/runtime/trpc/project-api-changes.test.ts test/runtime/shutdown-coordinator-timeout.test.ts test/integration/project-state.integration.test.ts test/integration/shutdown-coordinator.integration.test.ts`
+  - rerun outside the sandbox because `ws-server.test.ts` needs localhost bind access; result: 13 files / 191 tests passed
+- `npm --prefix web-ui test -- --run src/utils/session-status.test.ts src/utils/session-summary-utils.test.ts src/runtime/runtime-state-stream-store.test.ts src/hooks/project/project-sync.test.ts src/hooks/project/use-project-sync.test.tsx src/hooks/notifications/project-notifications.test.ts src/hooks/board/session-column-sync.test.ts src/hooks/terminal/use-terminal-panels.test.tsx src/components/board/board-card.test.tsx`
+  - result: 9 files / 105 tests passed
+  - note: jsdom still logs the existing `HTMLCanvasElement.prototype.getContext` warnings from xterm/webgl imports, but the tests passed
+- `npm run typecheck`
+- `npm run web:typecheck`
+
+**Files touched:**
+
+- `test/utilities/task-session-factory.ts`
+- `web-ui/src/test-utils/task-session-factory.ts`
+- `web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`
+- `test/runtime/server/runtime-state-message-batcher.test.ts`
+- `test/runtime/core/task-indicators.test.ts`
+- `test/runtime/terminal/session-manager.test.ts`
+- `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`
+- `test/runtime/terminal/session-state-machine.test.ts`
+- `test/runtime/terminal/session-reconciliation.test.ts`
+- `test/runtime/terminal/ws-server.test.ts`
+- `test/runtime/trpc/runtime-api.test.ts`
+- `test/runtime/trpc/project-api-state.test.ts`
+- `test/runtime/trpc/project-api-changes.test.ts`
+- `test/runtime/shutdown-coordinator-timeout.test.ts`
+- `test/integration/project-state.integration.test.ts`
+- `test/integration/shutdown-coordinator.integration.test.ts`
+- `web-ui/src/utils/session-status.test.ts`
+- `web-ui/src/utils/session-summary-utils.test.ts`
+- `web-ui/src/runtime/runtime-state-stream-store.test.ts`
+- `web-ui/src/hooks/project/project-sync.test.ts`
+- `web-ui/src/hooks/project/use-project-sync.test.tsx`
+- `web-ui/src/hooks/notifications/project-notifications.test.ts`
+- `web-ui/src/hooks/board/session-column-sync.test.ts`
+- `web-ui/src/hooks/terminal/use-terminal-panels.test.tsx`
+- `web-ui/src/components/board/board-card.test.tsx`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/test-fixture-dedup` (head before this follow-through: `d3318531`).
+
 ## Terminal session transition ownership seam (2026-04-22)
 
 Narrowed the backend terminal/session refactor to one real lifecycle boundary: `TerminalSessionManager` no longer owns the process-side consequences of session state-machine transitions as an implicit private behavior. Before this pass, restart handling, interrupt recovery, reconciliation, PTY input/output transition detection, and active-listener summary fanout all depended on the manager's private `applySessionEventWithSideEffects(...)` seam. That made the manager more than a registry/wiring root: it was also the hidden owner of transition-policy side effects. This slice extracts that responsibility into a dedicated terminal-layer collaborator so the ownership story is clearer: `SessionSummaryStore` owns session truth, `TerminalSessionManager` owns process entry registry/wiring, and `SessionTransitionController` owns what extra process-side cleanup/fanout happens when a transition event is applied.
@@ -51,6 +186,57 @@ Narrowed the backend terminal/session refactor to one real lifecycle boundary: `
 - `docs/implementation-log.md`
 
 **Commit hash:** Pending commit on `feature/terminal-session-lifecycle-boundaries` (branched from local `main` at `ce6e95ac7f4e46478ecb0ef5ea4036ef8eae5d58`).
+
+## Runtime config fixture dedup + shared factory cleanup (2026-04-22)
+
+Centralized the highest-churn runtime config test fixtures so config-shape changes stop scattering across runtime persistence tests, web-ui runtime-config tests, and notification harness helpers. This pass intentionally keeps separate helpers for the runtime and web-ui environments, because they exercise different shapes (`RuntimeConfigState`/save payloads vs `RuntimeConfigResponse`), but it makes each environment’s default path explicit and reusable. The main goal was practical churn reduction rather than a “universal magic fixture”: boring defaults live in one place, while tests still override agent setup, shortcuts, audible settings, and project-specific behavior inline when that context matters.
+
+**What changed:**
+
+- Reworked [`test/utilities/runtime-config-factory.ts`](./../test/utilities/runtime-config-factory.ts) into the canonical runtime-side config fixture module:
+  - added `createDefaultMockConfig(...)` as the shared builder for resolved `RuntimeConfigState`
+  - added `createDefaultRuntimeConfigSaveRequest(...)` for persistence/save-path tests
+  - kept `createTestRuntimeConfigState` as a compatibility alias
+  - clone-copied nested arrays/objects so tests do not accidentally share mutable defaults across cases
+  - allowed partial nested overrides for the audible notification config blocks while keeping the rest of the type surface strict
+- Removed the duplicated 30+ field save payload literal from [`test/runtime/config/runtime-config-helpers.ts`](./../test/runtime/config/runtime-config-helpers.ts) and moved [`test/runtime/config/config-persistence.test.ts`](./../test/runtime/config/config-persistence.test.ts) onto the shared runtime builder. This is the main runtime-side conflict reduction: adding a config field no longer requires updating that parallel payload object.
+- Reworked [`web-ui/src/test-utils/runtime-config-factory.ts`](./../web-ui/src/test-utils/runtime-config-factory.ts) into the canonical web-ui config fixture module:
+  - deep-cloned nested response fields instead of returning shallow shared arrays/objects
+  - added `createSelectedAgentRuntimeConfigResponse(...)` for the recurring “selected agent drives effective command + installed/configured agent list” pattern
+  - added `createTestAudibleNotificationConfig(...)` so notification-oriented tests can pull the config slice they need from the shared runtime-config defaults instead of rebuilding that shape locally
+- Updated the most duplicated/representative web-ui tests to use the shared helpers instead of local config-response builders:
+  - [`web-ui/src/runtime/use-runtime-config.test.tsx`](./../web-ui/src/runtime/use-runtime-config.test.tsx)
+  - [`web-ui/src/runtime/use-runtime-project-config.test.tsx`](./../web-ui/src/runtime/use-runtime-project-config.test.tsx)
+  - [`web-ui/src/runtime/native-agent.test.ts`](./../web-ui/src/runtime/native-agent.test.ts)
+  - [`web-ui/src/hooks/project/use-startup-onboarding.test.tsx`](./../web-ui/src/hooks/project/use-startup-onboarding.test.tsx)
+- Updated [`web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`](./../web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx) to derive its config-shaped defaults from the shared web-ui helper instead of a hand-maintained inline object, while preserving its intentionally different harness default that does **not** suppress current-project sounds unless a test asks for that explicitly.
+- Updated [`docs/todo.md`](./todo.md) to reflect the remaining fixture-cleanup scope accurately: runtime-config fixtures are centralized now, but the broader task/session fixture dedup work is still open.
+- Recorded the user-visible summary in [`CHANGELOG.md`](./../CHANGELOG.md).
+
+**Why:** The repo already had two useful fixture entry points, but persistence tests still maintained a second full save payload, notification tests carried their own config-shaped defaults, and several web-ui tests wrapped the shared factory just to reproduce the same agent-selection setup. That left config-field additions noisy and conflict-prone. Centralizing the common config shape per environment reduces that churn without erasing the special setup that makes individual tests readable.
+
+**Files touched:**
+
+- `test/utilities/runtime-config-factory.ts`
+- `test/runtime/config/runtime-config-helpers.ts`
+- `test/runtime/config/config-persistence.test.ts`
+- `web-ui/src/test-utils/runtime-config-factory.ts`
+- `web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`
+- `web-ui/src/runtime/use-runtime-config.test.tsx`
+- `web-ui/src/runtime/use-runtime-project-config.test.tsx`
+- `web-ui/src/runtime/native-agent.test.ts`
+- `web-ui/src/hooks/project/use-startup-onboarding.test.tsx`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Validation:**
+
+- `npm test -- --run test/runtime/config web-ui/src/runtime/use-runtime-config.test.tsx web-ui/src/runtime/use-runtime-project-config.test.tsx web-ui/src/runtime/native-agent.test.ts web-ui/src/hooks/project/use-startup-onboarding.test.tsx web-ui/src/hooks/notifications web-ui/src/components/settings/runtime-settings-dialog.test.tsx web-ui/src/hooks/settings/settings-form.test.ts`
+- `npm run typecheck`
+- `npm run web:typecheck`
+
+**Commit hash:** Pending commit on `feature/test-fixture-dedup` (branched from local `main` at `ce6e95ac`).
 
 ## Project/worktree identity normalization contract + UI slice (2026-04-22)
 

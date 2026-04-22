@@ -2,27 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { deriveTaskIndicatorState, isPermissionActivity } from "../../../src/core";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
-		state: "idle",
-		agentId: null,
-		sessionLaunchPath: null,
-		pid: null,
-		startedAt: null,
+	return createTestTaskSessionSummary({
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 describe("isPermissionActivity", () => {
@@ -81,16 +67,11 @@ describe("deriveTaskIndicatorState", () => {
 			makeSummary({
 				state: "awaiting_review",
 				reviewReason: "hook",
-				latestHookActivity: {
+				latestHookActivity: createTestTaskHookActivity({
 					hookEventName: "PermissionRequest",
 					notificationType: "permission_prompt",
-					activityText: null,
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: null,
 					source: "claude",
-					conversationSummaryText: null,
-				},
+				}),
 			}),
 		);
 
@@ -105,16 +86,11 @@ describe("deriveTaskIndicatorState", () => {
 			makeSummary({
 				state: "awaiting_review",
 				reviewReason: "hook",
-				latestHookActivity: {
-					hookEventName: null,
+				latestHookActivity: createTestTaskHookActivity({
 					notificationType: "permission.asked",
 					activityText: "Waiting for approval",
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: null,
 					source: "codex",
-					conversationSummaryText: null,
-				},
+				}),
 			}),
 		);
 
@@ -128,16 +104,12 @@ describe("deriveTaskIndicatorState", () => {
 			makeSummary({
 				state: "awaiting_review",
 				reviewReason: "hook",
-				latestHookActivity: {
+				latestHookActivity: createTestTaskHookActivity({
 					hookEventName: "Stop",
-					notificationType: null,
 					activityText: "Final: Done",
-					toolName: null,
-					toolInputSummary: null,
 					finalMessage: "Done",
 					source: "claude",
-					conversationSummaryText: null,
-				},
+				}),
 			}),
 		);
 

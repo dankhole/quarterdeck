@@ -9,12 +9,13 @@ import { WebSocket } from "ws";
 import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core";
 import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionService } from "../../../src/terminal";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const TASK_ID = "task-1";
 const PROJECT_ID = "project-1";
 
 function createSummary(taskId = TASK_ID): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
@@ -23,15 +24,7 @@ function createSummary(taskId = TASK_ID): RuntimeTaskSessionSummary {
 		startedAt: 1,
 		updatedAt: 1,
 		lastOutputAt: 1,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function rawDataToBuffer(data: RawData): Buffer {

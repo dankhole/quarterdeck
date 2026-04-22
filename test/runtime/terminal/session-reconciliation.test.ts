@@ -13,10 +13,10 @@ import {
 	reduceSessionTransition,
 	STALLED_HOOK_THRESHOLD_MS,
 } from "../../../src/terminal";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -24,19 +24,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 function createEntry(
@@ -58,31 +47,24 @@ function createEntry(
 }
 
 function permissionActivity(overrides: Partial<RuntimeTaskHookActivity> = {}): RuntimeTaskHookActivity {
-	return {
+	return createTestTaskHookActivity({
 		hookEventName: "PermissionRequest",
-		notificationType: null,
 		activityText: "Waiting for approval",
-		toolName: null,
-		toolInputSummary: null,
-		finalMessage: null,
 		source: "claude",
-		conversationSummaryText: null,
 		...overrides,
-	};
+	});
 }
 
 function toolActivity(overrides: Partial<RuntimeTaskHookActivity> = {}): RuntimeTaskHookActivity {
-	return {
+	return createTestTaskHookActivity({
 		hookEventName: "ToolUse",
 		notificationType: "tool_use",
 		activityText: "Running bash",
 		toolName: "bash",
 		toolInputSummary: "ls -la",
-		finalMessage: null,
 		source: "claude",
-		conversationSummaryText: null,
 		...overrides,
-	};
+	});
 }
 
 // ── isPermissionActivity ──────────────────────────────────────────────────

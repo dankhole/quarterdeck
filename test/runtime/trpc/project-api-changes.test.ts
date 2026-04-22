@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary, RuntimeWorkdirChangesResponse } from "../../../src/core";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -121,8 +122,7 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 import { createProjectApi } from "../../../src/trpc";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -130,18 +130,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 function createChangesResponse(): RuntimeWorkdirChangesResponse {

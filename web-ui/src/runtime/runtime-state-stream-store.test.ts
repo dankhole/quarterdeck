@@ -2,46 +2,30 @@ import { describe, expect, it } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import { createInitialRuntimeStateStreamStore, runtimeStateStreamReducer } from "@/runtime/runtime-state-stream-store";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestProjectStateResponse, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 function createSessionSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
 		sessionLaunchPath: "/tmp/project-a",
-		pid: null,
 		startedAt: updatedAt - 10,
 		updatedAt,
 		lastOutputAt: updatedAt,
-		reviewReason: null,
-		exitCode: null,
 		lastHookAt: updatedAt,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function createProjectState(
 	revision: number,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
 ): RuntimeProjectStateResponse {
-	return {
-		repoPath: "/tmp/project-a",
-		statePath: "/tmp/project-a/.quarterdeck",
-		git: {
-			currentBranch: "main",
-			defaultBranch: "main",
-			branches: ["main"],
-		},
+	return createTestProjectStateResponse({
 		board: createInitialBoardData(),
 		sessions,
 		revision,
-	};
+	});
 }
 
 describe("runtimeStateStreamReducer", () => {

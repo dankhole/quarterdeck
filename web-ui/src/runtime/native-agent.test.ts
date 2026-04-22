@@ -1,33 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/native-agent";
-import type { RuntimeConfigResponse } from "@/runtime/types";
-import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
-
-function createRuntimeConfigResponse(
-	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
-	overrides?: Partial<RuntimeConfigResponse>,
-): RuntimeConfigResponse {
-	return createTestRuntimeConfigResponse({
-		selectedAgentId,
-		effectiveCommand: selectedAgentId,
-		detectedCommands: ["claude", "codex"],
-		...overrides,
-	});
-}
+import { createSelectedAgentRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 describe("native-agent helpers", () => {
 	it("treats selected agent as task-ready when agent is installed", () => {
-		expect(isTaskAgentSetupSatisfied(createRuntimeConfigResponse("claude"))).toBe(true);
+		expect(
+			isTaskAgentSetupSatisfied(
+				createSelectedAgentRuntimeConfigResponse("claude", {
+					detectedCommands: ["claude", "codex"],
+				}),
+			),
+		).toBe(true);
 		expect(isTaskAgentSetupSatisfied(null)).toBeNull();
 	});
 
 	it("does not show the navbar setup hint when agent is configured", () => {
-		expect(getTaskAgentNavbarHint(createRuntimeConfigResponse("claude"))).toBeUndefined();
+		expect(
+			getTaskAgentNavbarHint(
+				createSelectedAgentRuntimeConfigResponse("claude", {
+					detectedCommands: ["claude", "codex"],
+				}),
+			),
+		).toBeUndefined();
 	});
 
 	it("shows the navbar setup hint when no task agent path is ready", () => {
-		const config = createRuntimeConfigResponse("claude", {
+		const config = createSelectedAgentRuntimeConfigResponse("claude", {
+			detectedCommands: ["claude", "codex"],
 			agents: [
 				{
 					id: "claude",
@@ -49,7 +49,9 @@ describe("native-agent helpers", () => {
 	});
 
 	it("returns false when no launch-supported agents are available", () => {
-		const config = createRuntimeConfigResponse("claude");
+		const config = createSelectedAgentRuntimeConfigResponse("claude", {
+			detectedCommands: ["claude", "codex"],
+		});
 		config.agents = [];
 		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
 	});

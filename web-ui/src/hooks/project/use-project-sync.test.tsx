@@ -6,6 +6,11 @@ import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useProjectSync } from "@/hooks/project/use-project-sync";
 import { clearProjectBoardCache, stashProjectBoard } from "@/runtime/project-board-cache";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	createTestProjectStateResponse,
+	createTestTaskHookActivity,
+	createTestTaskSessionSummary,
+} from "@/test-utils/task-session-factory";
 import type { BoardData } from "@/types";
 
 const fetchProjectStateMock = vi.hoisted(() => vi.fn());
@@ -107,18 +112,11 @@ function createBoardInColumn(columnId: "backlog" | "in_progress" | "review" | "t
 }
 
 function createProjectState(taskId: string, revision: number): RuntimeProjectStateResponse {
-	return {
-		repoPath: "/tmp/project-a",
-		statePath: "/tmp/project-a/.quarterdeck",
-		git: {
-			currentBranch: "main",
-			defaultBranch: "main",
-			branches: ["main"],
-		},
+	return createTestProjectStateResponse({
 		board: createBoard(taskId),
 		sessions: {},
 		revision,
-	};
+	});
 }
 
 function createSessionSummary(
@@ -126,12 +124,11 @@ function createSessionSummary(
 	updatedAt: number,
 	finalMessage: string | null,
 ): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: finalMessage ? "awaiting_review" : "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/project-a",
-		pid: null,
 		startedAt: updatedAt - 100,
 		updatedAt,
 		lastOutputAt: updatedAt,
@@ -139,24 +136,14 @@ function createSessionSummary(
 		exitCode: null,
 		lastHookAt: updatedAt,
 		latestHookActivity: finalMessage
-			? {
+			? createTestTaskHookActivity({
 					activityText: `Final: ${finalMessage}`,
-					toolName: null,
-					toolInputSummary: null,
 					finalMessage,
 					hookEventName: "agent_end",
-					notificationType: null,
-					conversationSummaryText: null,
 					source: "hook",
-				}
+				})
 			: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function createProjectStateWithSessions(
@@ -164,10 +151,10 @@ function createProjectStateWithSessions(
 	revision: number,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
 ): RuntimeProjectStateResponse {
-	return {
+	return createTestProjectStateResponse({
 		...createProjectState(taskId, revision),
 		sessions,
-	};
+	});
 }
 
 function createDeferred<T>() {

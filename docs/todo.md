@@ -18,10 +18,6 @@ Use this section together with:
 
 These items are broader ownership-boundary refactors that do not yet need full implementation briefs, but they need enough written context that a fresh agent can pick them up without rediscovering the problem from scratch.
 
-## Test maintenance
-
-- Deduplicate repeated task/session test fixture factories into a small shared test helper layer so runtime/session shape changes stop requiring near-identical updates across many test files.
-
 ## Additional code-validated refactor backlog
 
 Use this section together with:

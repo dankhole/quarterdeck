@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core";
 import { shutdownRuntimeServer } from "../../src/server";
 import type { TerminalSessionManager } from "../../src/terminal";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 
 vi.mock("../../src/state/project-state.js", () => ({
 	loadProjectState: vi.fn(),
@@ -39,24 +40,18 @@ function createBoard(inProgressTaskIds: string[]): RuntimeBoardData {
 }
 
 function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
-	const summaries: RuntimeTaskSessionSummary[] = taskIds.map((taskId) => ({
-		taskId,
-		state: "running" as const,
-		agentId: "codex",
-		sessionLaunchPath: `/tmp/${taskId}`,
-		pid: 1234,
-		startedAt: Date.now(),
-		updatedAt: Date.now(),
-		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	}));
+	const summaries: RuntimeTaskSessionSummary[] = taskIds.map((taskId) =>
+		createTestTaskSessionSummary({
+			taskId,
+			state: "running",
+			agentId: "codex",
+			sessionLaunchPath: `/tmp/${taskId}`,
+			pid: 1234,
+			startedAt: Date.now(),
+			updatedAt: Date.now(),
+			lastOutputAt: Date.now(),
+		}),
+	);
 	return {
 		stopReconciliation: vi.fn(),
 		markInterruptedAndStopAll: vi.fn().mockReturnValue(summaries),

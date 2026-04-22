@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 import { projectBoardWithSessionColumns, resolveSessionColumnProjectionMove } from "./session-column-sync";
 
@@ -29,26 +30,15 @@ function createBoardWithTask(columnId: "backlog" | "in_progress" | "review" | "t
 }
 
 function createSummary(taskId: string, state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state,
 		agentId: "codex",
 		sessionLaunchPath: "/tmp/project",
-		pid: null,
 		startedAt: 1,
 		updatedAt: 2,
-		lastOutputAt: null,
 		reviewReason: state === "awaiting_review" ? "hook" : null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 describe("resolveSessionColumnProjectionMove", () => {

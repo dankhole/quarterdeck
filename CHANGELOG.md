@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Refactor: deduplicate config and task/session test fixtures
+
+- Replaced the hand-maintained runtime config save-payload fixture in `test/runtime/config/runtime-config-helpers.ts` with typed shared builders in `test/utilities/runtime-config-factory.ts`, so most config-shape changes now update one runtime helper instead of a copied 30+ field object.
+- Expanded the runtime fixture helper to expose both `createDefaultMockConfig(...)` for resolved `RuntimeConfigState` and `createDefaultRuntimeConfigSaveRequest(...)` for persistence tests, with clone-safe nested defaults and ergonomic field overrides.
+- Expanded `web-ui/src/test-utils/runtime-config-factory.ts` with clone-safe config-response builders plus focused helpers for selected-agent scenarios and audible-notification config slices, then moved notification/runtime onboarding tests onto those shared builders instead of local config-shaped wrappers.
+- Added dedicated shared task/session fixture helpers in `test/utilities/task-session-factory.ts` and `web-ui/src/test-utils/task-session-factory.ts`, covering task session summaries, hook activity defaults, and web-ui project-state responses so runtime/session shape changes no longer require near-identical edits across terminal, project-sync, notification, websocket, and integration test files.
+- Migrated the high-churn runtime and web-ui session tests onto those shared helpers, including terminal/session state machine coverage, runtime API and project API tests, runtime state stream and project sync tests, board-card and terminal panel tests, plus shutdown/project-state integration coverage.
+- Clarified `latestHookActivity` override handling in the shared task-session factories so the default/null-vs-object behavior stays obvious while keeping per-test overrides ergonomic.
+- Preserved test intent by keeping environment-specific defaults explicit where they matter, including the audible-notification harness’s “do not suppress current-project sounds by default” behavior, while still centralizing the boring config shape in one helper per test environment.
+
 ### Refactor: narrow terminal session lifecycle transition ownership
 
 - Added `src/terminal/session-transition-controller.ts` as the terminal-layer owner for session state-machine side effects and active-listener summary fanout, so `TerminalSessionManager` no longer hides that lifecycle policy behind a private callback.

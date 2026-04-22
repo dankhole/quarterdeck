@@ -5,29 +5,16 @@ import {
 } from "@/hooks/notifications/project-notifications";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 function createSummary(taskId: string, overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
-		state: "idle",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/repo",
-		pid: null,
-		startedAt: null,
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 function createNotificationProjects(): RuntimeProjectNotificationStateMap {
@@ -37,16 +24,10 @@ function createNotificationProjects(): RuntimeProjectNotificationStateMap {
 				"task-a-review": createSummary("task-a-review", {
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: {
+					latestHookActivity: createTestTaskHookActivity({
 						hookEventName: "PermissionRequest",
 						notificationType: "permission.asked",
-						activityText: null,
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
-						source: null,
-						conversationSummaryText: null,
-					},
+					}),
 				}),
 				"task-a-running": createSummary("task-a-running", { state: "running" }),
 			},
@@ -56,16 +37,9 @@ function createNotificationProjects(): RuntimeProjectNotificationStateMap {
 				"task-b-review": createSummary("task-b-review", {
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: {
-						hookEventName: null,
-						notificationType: null,
+					latestHookActivity: createTestTaskHookActivity({
 						activityText: "Waiting for approval",
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
-						source: null,
-						conversationSummaryText: null,
-					},
+					}),
 				}),
 			},
 		},

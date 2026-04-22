@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTerminalPanels } from "@/hooks/terminal/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { CardSelection } from "@/types";
 
 const startShellSessionMutateMock = vi.hoisted(() => vi.fn());
@@ -64,7 +65,7 @@ function createSelection(taskId: string): CardSelection {
 }
 
 function createSummary(taskId: string): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
@@ -72,16 +73,7 @@ function createSummary(taskId: string): RuntimeTaskSessionSummary {
 		pid: 123,
 		startedAt: 1,
 		updatedAt: 1,
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 async function flushPromises(): Promise<void> {

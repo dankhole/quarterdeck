@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestProjectStateResponse, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
 	applyAuthoritativeProjectBoard,
 	applyAuthoritativeProjectState,
@@ -16,24 +17,14 @@ import {
 // ---------------------------------------------------------------------------
 
 function makeSession(taskId: string, startedAt: number | null, updatedAt: number): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "idle",
 		agentId: "claude",
 		sessionLaunchPath: `/tmp/${taskId}`,
-		pid: null,
 		startedAt,
 		updatedAt,
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function createProjectState(
@@ -41,18 +32,11 @@ function createProjectState(
 	board = createInitialBoardData(),
 	sessions: Record<string, RuntimeTaskSessionSummary> = {},
 ) {
-	return {
-		repoPath: "/tmp/project-a",
-		statePath: "/tmp/project-a/.quarterdeck",
-		git: {
-			currentBranch: "main",
-			defaultBranch: "main",
-			branches: ["main"],
-		},
+	return createTestProjectStateResponse({
 		board,
 		sessions,
 		revision,
-	};
+	});
 }
 
 describe("reconcileAuthoritativeTaskSessionSummaries", () => {

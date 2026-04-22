@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createTestManager(): TerminalSessionManager {
 	return new TerminalSessionManager(new InMemorySessionSummaryStore());
 }
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -18,16 +18,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 describe("TerminalSessionManager", () => {

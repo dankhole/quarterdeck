@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { type UseRuntimeConfigResult, useRuntimeConfig } from "@/runtime/use-runtime-config";
-import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
+import { createSelectedAgentRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 
 const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
@@ -14,24 +14,6 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 }));
 
 type HookSnapshot = UseRuntimeConfigResult;
-
-function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
-	return createTestRuntimeConfigResponse({
-		selectedAgentId,
-		effectiveCommand: selectedAgentId,
-		detectedCommands: [selectedAgentId],
-		agents: [
-			createTestAgentDef("claude", {
-				installed: selectedAgentId === "claude",
-				configured: selectedAgentId === "claude",
-			}),
-			createTestAgentDef("codex", {
-				installed: selectedAgentId === "codex",
-				configured: selectedAgentId === "codex",
-			}),
-		],
-	});
-}
 
 function HookHarness({
 	open,
@@ -82,8 +64,8 @@ describe("useRuntimeConfig", () => {
 	});
 
 	it("seeds the dialog with initial config and refreshes when opened", async () => {
-		const initialConfig = createRuntimeConfigResponse("claude");
-		const refreshedConfig = createRuntimeConfigResponse("codex");
+		const initialConfig = createSelectedAgentRuntimeConfigResponse("claude");
+		const refreshedConfig = createSelectedAgentRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock.mockResolvedValue(refreshedConfig);
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -131,7 +113,7 @@ describe("useRuntimeConfig", () => {
 	});
 
 	it("fetches runtime config without a selected project when the dialog opens", async () => {
-		const startupConfig = createRuntimeConfigResponse("codex");
+		const startupConfig = createSelectedAgentRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock.mockResolvedValue(startupConfig);
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -158,7 +140,7 @@ describe("useRuntimeConfig", () => {
 	});
 
 	it("retries once after an initial load error while settings stay open", async () => {
-		const startupConfig = createRuntimeConfigResponse("codex");
+		const startupConfig = createSelectedAgentRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock.mockRejectedValueOnce(new Error("Runtime not ready."));
 		fetchRuntimeConfigMock.mockResolvedValueOnce(startupConfig);
 		let latestSnapshot: HookSnapshot | null = null;
@@ -189,8 +171,8 @@ describe("useRuntimeConfig", () => {
 	});
 
 	it("retries once again after project changes", async () => {
-		const projectConfig = createRuntimeConfigResponse("claude");
-		const globalConfig = createRuntimeConfigResponse("codex");
+		const projectConfig = createSelectedAgentRuntimeConfigResponse("claude");
+		const globalConfig = createSelectedAgentRuntimeConfigResponse("codex");
 		fetchRuntimeConfigMock
 			.mockRejectedValueOnce(new Error("Project runtime not ready."))
 			.mockResolvedValueOnce(projectConfig)

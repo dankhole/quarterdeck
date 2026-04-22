@@ -25,6 +25,48 @@ export function createTestAgentDef(
 	};
 }
 
+type RuntimeConfigResponseOverrides = Omit<
+	Partial<RuntimeConfigResponse>,
+	| "audibleNotificationEvents"
+	| "audibleNotificationSuppressCurrentProject"
+	| "agents"
+	| "shortcuts"
+	| "pinnedBranches"
+	| "promptShortcuts"
+	| "hiddenDefaultPromptShortcuts"
+	| "detectedCommands"
+> & {
+	audibleNotificationEvents?: Partial<RuntimeConfigResponse["audibleNotificationEvents"]>;
+	audibleNotificationSuppressCurrentProject?: Partial<
+		RuntimeConfigResponse["audibleNotificationSuppressCurrentProject"]
+	>;
+	agents?: RuntimeConfigResponse["agents"];
+	shortcuts?: RuntimeConfigResponse["shortcuts"];
+	pinnedBranches?: RuntimeConfigResponse["pinnedBranches"];
+	promptShortcuts?: RuntimeConfigResponse["promptShortcuts"];
+	hiddenDefaultPromptShortcuts?: RuntimeConfigResponse["hiddenDefaultPromptShortcuts"];
+	detectedCommands?: RuntimeConfigResponse["detectedCommands"];
+};
+
+export type TestAudibleNotificationConfig = Pick<
+	RuntimeConfigResponse,
+	| "audibleNotificationsEnabled"
+	| "audibleNotificationVolume"
+	| "audibleNotificationEvents"
+	| "audibleNotificationsOnlyWhenHidden"
+	| "audibleNotificationSuppressCurrentProject"
+>;
+
+type TestAudibleNotificationConfigOverrides = Omit<
+	Partial<TestAudibleNotificationConfig>,
+	"audibleNotificationEvents" | "audibleNotificationSuppressCurrentProject"
+> & {
+	audibleNotificationEvents?: Partial<TestAudibleNotificationConfig["audibleNotificationEvents"]>;
+	audibleNotificationSuppressCurrentProject?: Partial<
+		TestAudibleNotificationConfig["audibleNotificationSuppressCurrentProject"]
+	>;
+};
+
 const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	selectedAgentId: CONFIG_DEFAULTS.selectedAgentId,
 	selectedShortcutLabel: null,
@@ -78,6 +120,98 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	llmConfigured: false,
 };
 
-export function createTestRuntimeConfigResponse(overrides: Partial<RuntimeConfigResponse> = {}): RuntimeConfigResponse {
-	return { ...DEFAULT_RUNTIME_CONFIG_RESPONSE, ...overrides };
+function cloneAgentDefs(agents: RuntimeConfigResponse["agents"]): RuntimeConfigResponse["agents"] {
+	return agents.map((agent) => ({
+		...agent,
+		defaultArgs: [...agent.defaultArgs],
+	}));
+}
+
+function cloneProjectShortcuts(shortcuts: RuntimeConfigResponse["shortcuts"]): RuntimeConfigResponse["shortcuts"] {
+	return shortcuts.map((shortcut) => ({ ...shortcut }));
+}
+
+function clonePromptShortcuts(
+	promptShortcuts: RuntimeConfigResponse["promptShortcuts"],
+): RuntimeConfigResponse["promptShortcuts"] {
+	return promptShortcuts.map((shortcut) => ({ ...shortcut }));
+}
+
+export function createTestRuntimeConfigResponse(overrides: RuntimeConfigResponseOverrides = {}): RuntimeConfigResponse {
+	const selectedAgentId = overrides.selectedAgentId ?? DEFAULT_RUNTIME_CONFIG_RESPONSE.selectedAgentId;
+
+	return {
+		...DEFAULT_RUNTIME_CONFIG_RESPONSE,
+		...overrides,
+		selectedAgentId,
+		effectiveCommand: overrides.effectiveCommand ?? selectedAgentId,
+		audibleNotificationEvents: {
+			...DEFAULT_RUNTIME_CONFIG_RESPONSE.audibleNotificationEvents,
+			...overrides.audibleNotificationEvents,
+		},
+		audibleNotificationSuppressCurrentProject: {
+			...DEFAULT_RUNTIME_CONFIG_RESPONSE.audibleNotificationSuppressCurrentProject,
+			...overrides.audibleNotificationSuppressCurrentProject,
+		},
+		detectedCommands: overrides.detectedCommands
+			? [...overrides.detectedCommands]
+			: [...DEFAULT_RUNTIME_CONFIG_RESPONSE.detectedCommands],
+		agents: overrides.agents
+			? cloneAgentDefs(overrides.agents)
+			: cloneAgentDefs(DEFAULT_RUNTIME_CONFIG_RESPONSE.agents),
+		shortcuts: overrides.shortcuts
+			? cloneProjectShortcuts(overrides.shortcuts)
+			: cloneProjectShortcuts(DEFAULT_RUNTIME_CONFIG_RESPONSE.shortcuts),
+		pinnedBranches: overrides.pinnedBranches
+			? [...overrides.pinnedBranches]
+			: [...DEFAULT_RUNTIME_CONFIG_RESPONSE.pinnedBranches],
+		promptShortcuts: overrides.promptShortcuts
+			? clonePromptShortcuts(overrides.promptShortcuts)
+			: clonePromptShortcuts(DEFAULT_RUNTIME_CONFIG_RESPONSE.promptShortcuts),
+		hiddenDefaultPromptShortcuts: overrides.hiddenDefaultPromptShortcuts
+			? [...overrides.hiddenDefaultPromptShortcuts]
+			: [...DEFAULT_RUNTIME_CONFIG_RESPONSE.hiddenDefaultPromptShortcuts],
+	};
+}
+
+export function createSelectedAgentRuntimeConfigResponse(
+	selectedAgentId: RuntimeConfigResponse["selectedAgentId"],
+	overrides: RuntimeConfigResponseOverrides = {},
+): RuntimeConfigResponse {
+	return createTestRuntimeConfigResponse({
+		selectedAgentId,
+		effectiveCommand: selectedAgentId,
+		detectedCommands: [selectedAgentId],
+		agents: [
+			createTestAgentDef("claude", {
+				installed: selectedAgentId === "claude",
+				configured: selectedAgentId === "claude",
+			}),
+			createTestAgentDef("codex", {
+				installed: selectedAgentId === "codex",
+				configured: selectedAgentId === "codex",
+			}),
+		],
+		...overrides,
+	});
+}
+
+export function createTestAudibleNotificationConfig(
+	overrides: TestAudibleNotificationConfigOverrides = {},
+): TestAudibleNotificationConfig {
+	const config = createTestRuntimeConfigResponse();
+	return {
+		audibleNotificationsEnabled: overrides.audibleNotificationsEnabled ?? config.audibleNotificationsEnabled,
+		audibleNotificationVolume: overrides.audibleNotificationVolume ?? config.audibleNotificationVolume,
+		audibleNotificationEvents: {
+			...config.audibleNotificationEvents,
+			...overrides.audibleNotificationEvents,
+		},
+		audibleNotificationsOnlyWhenHidden:
+			overrides.audibleNotificationsOnlyWhenHidden ?? config.audibleNotificationsOnlyWhenHidden,
+		audibleNotificationSuppressCurrentProject: {
+			...config.audibleNotificationSuppressCurrentProject,
+			...overrides.audibleNotificationSuppressCurrentProject,
+		},
+	};
 }

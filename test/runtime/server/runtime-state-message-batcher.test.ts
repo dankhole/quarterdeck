@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LogEntry, RuntimeTaskSessionSummary } from "../../../src/core";
 import { RuntimeStateMessageBatcher } from "../../../src/server/runtime-state-message-batcher";
 import type { TerminalSessionManager } from "../../../src/terminal";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
 		agentId: "codex",
@@ -14,15 +15,7 @@ function createSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSum
 		startedAt: 1,
 		updatedAt,
 		lastOutputAt: updatedAt,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function createLogEntry(id: string): LogEntry {

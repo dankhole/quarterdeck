@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type UseStartupOnboardingResult, useStartupOnboarding } from "@/hooks/project/use-startup-onboarding";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { createTestAgentDef, createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
+import { createSelectedAgentRuntimeConfigResponse, createTestAgentDef } from "@/test-utils/runtime-config-factory";
 
 const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
@@ -16,9 +16,7 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 type HookSnapshot = UseStartupOnboardingResult;
 
 function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
-	return createTestRuntimeConfigResponse({
-		selectedAgentId,
-		effectiveCommand: selectedAgentId,
+	return createSelectedAgentRuntimeConfigResponse(selectedAgentId, {
 		globalConfigPath: "/tmp/.quarterdeck/config.json",
 		detectedCommands: ["codex"],
 		agents: [

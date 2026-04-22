@@ -5,68 +5,56 @@ import { vi } from "vitest";
 import { useAudibleNotifications } from "@/hooks/notifications/use-audible-notifications";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	createTestAudibleNotificationConfig,
+	type TestAudibleNotificationConfig,
+} from "@/test-utils/runtime-config-factory";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 export function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
-		state: "idle",
+	return createTestTaskSessionSummary({
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/repo",
-		pid: null,
-		startedAt: null,
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
-export interface HookProps {
+export interface HookProps extends TestAudibleNotificationConfig {
 	notificationProjects?: RuntimeProjectNotificationStateMap;
 	notificationSessions?: Record<string, RuntimeTaskSessionSummary>;
-	audibleNotificationsEnabled: boolean;
-	audibleNotificationVolume: number;
-	audibleNotificationEvents: {
-		permission: boolean;
-		review: boolean;
-		failure: boolean;
-	};
-	audibleNotificationsOnlyWhenHidden: boolean;
-	audibleNotificationSuppressCurrentProject: {
-		permission: boolean;
-		review: boolean;
-		failure: boolean;
-	};
 	notificationProjectIds?: Record<string, string>;
 	currentProjectId: string | null;
 }
 
-export function defaultProps(): HookProps {
-	return {
-		notificationProjects: {},
-		audibleNotificationsEnabled: true,
-		audibleNotificationVolume: 0.7,
-		audibleNotificationEvents: {
-			permission: true,
-			review: true,
-			failure: true,
-		},
-		audibleNotificationsOnlyWhenHidden: true,
+type HookPropsOverrides = Omit<
+	Partial<HookProps>,
+	"audibleNotificationEvents" | "audibleNotificationSuppressCurrentProject"
+> & {
+	audibleNotificationEvents?: Partial<HookProps["audibleNotificationEvents"]>;
+	audibleNotificationSuppressCurrentProject?: Partial<HookProps["audibleNotificationSuppressCurrentProject"]>;
+};
+
+export function defaultProps(overrides: HookPropsOverrides = {}): HookProps {
+	const config = createTestAudibleNotificationConfig({
+		audibleNotificationsEnabled: overrides.audibleNotificationsEnabled,
+		audibleNotificationVolume: overrides.audibleNotificationVolume,
+		audibleNotificationEvents: overrides.audibleNotificationEvents,
+		audibleNotificationsOnlyWhenHidden: overrides.audibleNotificationsOnlyWhenHidden,
 		audibleNotificationSuppressCurrentProject: {
 			permission: false,
 			review: false,
 			failure: false,
+			...overrides.audibleNotificationSuppressCurrentProject,
 		},
-		currentProjectId: null,
+	});
+
+	return {
+		notificationProjects: overrides.notificationProjects ?? {},
+		notificationSessions: overrides.notificationSessions,
+		notificationProjectIds: overrides.notificationProjectIds,
+		currentProjectId: overrides.currentProjectId ?? null,
+		...config,
 	};
 }
 

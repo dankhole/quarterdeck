@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
 	describeSessionState,
 	getSessionStatusBadgeStyle,
@@ -8,25 +9,10 @@ import {
 } from "./session-status";
 
 function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
-		state: "idle",
-		agentId: null,
-		sessionLaunchPath: null,
-		pid: null,
-		startedAt: null,
+	return createTestTaskSessionSummary({
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 describe("describeSessionState", () => {
@@ -58,16 +44,9 @@ describe("describeSessionState", () => {
 				makeSummary({
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: {
-						activityText: null,
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
+					latestHookActivity: createTestTaskHookActivity({
 						hookEventName: "permissionRequest",
-						notificationType: null,
-						source: null,
-						conversationSummaryText: null,
-					},
+					}),
 				}),
 			),
 		).toBe("Waiting for approval");
@@ -147,16 +126,9 @@ describe("getSessionStatusBadgeStyle", () => {
 				makeSummary({
 					state: "awaiting_review",
 					reviewReason: "hook",
-					latestHookActivity: {
-						activityText: null,
-						toolName: null,
-						toolInputSummary: null,
-						finalMessage: null,
+					latestHookActivity: createTestTaskHookActivity({
 						hookEventName: "permissionRequest",
-						notificationType: null,
-						source: null,
-						conversationSummaryText: null,
-					},
+					}),
 				}),
 			),
 		).toBe("needs_input");

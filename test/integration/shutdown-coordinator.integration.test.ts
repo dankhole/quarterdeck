@@ -8,6 +8,7 @@ import { shutdownRuntimeServer } from "../../src/server";
 import { loadProjectState, saveProjectState } from "../../src/state";
 import type { TerminalSessionManager } from "../../src/terminal";
 import { initGitRepository } from "../utilities/git-env";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 function createCard(taskId: string) {
@@ -43,7 +44,7 @@ function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): Run
 }
 
 function createSession(taskId: string, state: "running" | "awaiting_review" | "idle"): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state,
 		agentId: "codex",
@@ -53,14 +54,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 		updatedAt: Date.now(),
 		lastOutputAt: state === "idle" ? null : Date.now(),
 		reviewReason: state === "awaiting_review" ? "hook" : null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 describe.sequential("shutdown coordinator integration", () => {

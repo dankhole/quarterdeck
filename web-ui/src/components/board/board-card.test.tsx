@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { createTestTaskHookActivity, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { ReviewTaskWorktreeSnapshot } from "@/types";
 
 let mockWorktreeSnapshot: ReviewTaskWorktreeSnapshot | undefined;
@@ -59,27 +60,17 @@ function createSummary(
 	state: RuntimeTaskSessionSummary["state"],
 	overrides?: Partial<RuntimeTaskSessionSummary>,
 ): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId: "task-1",
 		state,
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
-		pid: null,
 		startedAt: 1,
 		updatedAt: 1,
 		lastOutputAt: 1,
-		reviewReason: null,
-		exitCode: null,
 		lastHookAt: 1,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
 		...overrides,
-	};
+	});
 }
 
 function Harness(): React.ReactElement {
@@ -198,35 +189,23 @@ describe("BoardCard", () => {
 						card={createCard()}
 						index={0}
 						columnId="in_progress"
-						sessionSummary={{
+						sessionSummary={createTestTaskSessionSummary({
 							taskId: "task-1",
 							state: "running",
 							agentId: "claude",
 							sessionLaunchPath: "/tmp/worktree",
-							pid: null,
 							startedAt: Date.now(),
 							updatedAt: Date.now(),
 							lastOutputAt: Date.now(),
-							reviewReason: null,
-							exitCode: null,
 							lastHookAt: Date.now(),
-							latestHookActivity: {
+							latestHookActivity: createTestTaskHookActivity({
 								activityText: "Using Read",
 								toolName: "Read",
 								toolInputSummary: "src/index.ts",
-								finalMessage: null,
 								hookEventName: "tool_call",
-								notificationType: null,
-								conversationSummaryText: null,
 								source: "hook",
-							},
-							stalledSince: null,
-							latestTurnCheckpoint: null,
-							previousTurnCheckpoint: null,
-							conversationSummaries: [],
-							displaySummary: null,
-							displaySummaryGeneratedAt: null,
-						}}
+							}),
+						})}
 					/>
 				</Providers>,
 			);

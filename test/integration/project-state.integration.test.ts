@@ -15,6 +15,7 @@ import {
 	saveProjectState,
 } from "../../src/state";
 import { initGitRepository } from "../utilities/git-env";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 function createBoard(title: string): RuntimeBoardData {
@@ -44,24 +45,11 @@ function createBoard(title: string): RuntimeBoardData {
 }
 
 function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "idle",
-		agentId: null,
-		sessionLaunchPath: null,
-		pid: null,
-		startedAt: null,
 		updatedAt: Date.now(),
-		lastOutputAt: null,
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 describe.sequential("project-state integration", () => {

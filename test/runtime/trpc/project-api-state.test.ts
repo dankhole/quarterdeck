@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
 import { createBoardStateSavedEffects } from "../../../src/trpc/runtime-mutation-effects";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const stateMocks = vi.hoisted(() => ({
 	saveProjectState: vi.fn(),
@@ -61,7 +62,7 @@ function createBoard(): RuntimeBoardData {
 }
 
 function createSummary(taskId: string): RuntimeTaskSessionSummary {
-	return {
+	return createTestTaskSessionSummary({
 		taskId,
 		state: "awaiting_review",
 		agentId: "codex",
@@ -71,16 +72,7 @@ function createSummary(taskId: string): RuntimeTaskSessionSummary {
 		updatedAt: 200,
 		lastOutputAt: 200,
 		reviewReason: "hook",
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-	};
+	});
 }
 
 function createSavedState(board: RuntimeBoardData): RuntimeProjectStateResponse {

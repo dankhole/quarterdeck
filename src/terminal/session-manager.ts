@@ -34,8 +34,8 @@ import {
 import { disableOutputOscIntercept, processTaskSessionOutput } from "./session-output-pipeline";
 import { createReconciliationTimer, type ReconciliationTimer } from "./session-reconciliation-sweep";
 import type { SessionSummaryStore } from "./session-summary-store";
-import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
 import { SessionTransitionController } from "./session-transition-controller";
+import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
 
 export type { StartShellSessionRequest, StartTaskSessionRequest };
 

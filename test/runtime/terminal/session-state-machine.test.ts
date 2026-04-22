@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { canReturnToRunning, reduceSessionTransition } from "../../../src/terminal";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
-	return {
-		taskId: "task-1",
+	return createTestTaskSessionSummary({
 		state: "running",
 		agentId: "claude",
 		sessionLaunchPath: "/tmp/worktree",
@@ -13,19 +13,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		reviewReason: null,
-		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
-		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
-		warningMessage: null,
-		latestTurnCheckpoint: null,
-		previousTurnCheckpoint: null,
 		...overrides,
-	};
+	});
 }
 
 describe("canReturnToRunning", () => {
