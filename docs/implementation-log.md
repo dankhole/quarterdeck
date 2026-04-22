@@ -2,6 +2,22 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Fix: React infinite re-render loop crash (2026-04-21)
+
+Fixed a "Maximum update depth exceeded" (React error #185) that crashed the app on load. The bug was introduced by `f261083f` (refactor: extract task-editor provider from board provider).
+
+**Root cause:** `TaskEditorProvider.resetTaskEditorWorkflow` was wrapped in `useCallback([taskEditor])`, but `useTaskEditor()` returns a fresh object every render, so the callback got a new identity on every render. That unstable reference was passed through context into `useProjectSwitchCleanup`, which used it in `useLayoutEffect` dependency arrays. The layout effects called `resetTaskEditorWorkflow()` (setting state), which triggered a re-render, which produced a new `resetTaskEditorWorkflow`, which re-fired the layout effects — infinite synchronous loop.
+
+The Radix `composeRefs` / `YC` frames in the minified stack trace were a red herring — React happened to hit the update depth limit while processing Radix ref composition, but the actual loop was in the provider/effect chain.
+
+**What changed:**
+
+- `web-ui/src/providers/task-editor-provider.tsx`: Destructured `resetTaskEditorState` from the `taskEditor` object and used that stable callback as the sole dependency for `resetTaskEditorWorkflow`, instead of depending on the whole `taskEditor` object.
+- `web-ui/src/providers/board-provider.tsx`: Wrapped the inline `onWorkingDirectoryResolved` callback in `useCallback([setBoard, projectPath])` so `startTaskSession` (which depends on it via `useTaskSessions`) keeps a stable reference. This was a latent instability masked by other churn before the provider split.
+- `web-ui/src/providers/task-editor-provider.test.tsx`: Added a regression test asserting `resetTaskEditorWorkflow` identity stays stable across re-renders when `useTaskEditor` returns a new object.
+
+**Why:** The provider-split refactor was correct in ownership terms, but the new `resetTaskEditorWorkflow` callback captured the entire `taskEditor` return value as a dependency instead of just the stable `resetTaskEditorState` member. Before the split, this callback lived inside `BoardProvider` where the context value was already changing for other reasons (task editor state, branch options), so the instability was masked. After extraction, the remaining `BoardContext` deps became stable enough that the unstable callback became the dominant source of context-value churn and triggered the loop.
+
 ## Notification/indicator semantic model refactor (2026-04-21)
 
 Landed the notification/indicator refactor pass by introducing one shared semantic derivation layer for UI-facing task state meaning instead of letting several consumers independently decode raw session summary and hook metadata. Before this change, permission/approval state, review-ready state, needs-input/attention, and failure semantics were inferred in parallel from `reviewReason`, `latestHookActivity.notificationType`, `hookEventName`, and even fallback activity text. That duplication made it easy for Claude/Codex differences to leak upward and for notification, badge, and auto-review behavior to drift apart. After this slice, the raw signals still arrive through the existing session summary model, but the meaning those signals imply is normalized once in the runtime contract and then reused by UI consumers.

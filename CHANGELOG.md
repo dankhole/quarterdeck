@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fix: React "Maximum update depth exceeded" crash on app load
+
+- Stabilized `resetTaskEditorWorkflow` in `TaskEditorProvider` by depending on the stable `resetTaskEditorState` callback instead of the whole `taskEditor` object, which changed identity every render and caused an infinite loop through `useProjectSwitchCleanup` layout effects.
+- Stabilized the inline `onWorkingDirectoryResolved` callback in `BoardProvider` with `useCallback` so `startTaskSession` (which depends on it) keeps a stable reference across renders.
+- Added a regression test verifying `resetTaskEditorWorkflow` reference stability across re-renders.
+
 ### Refactor: share notification/indicator semantics across UI consumers
 
 - Added `src/core/api/task-indicators.ts` as the shared semantic layer for approval-required, review-ready, needs-input, failure, completed, stalled, and interrupted indicator meaning, so Claude and Codex raw hook signals normalize into one runtime-contract model before UI consumers interpret them.

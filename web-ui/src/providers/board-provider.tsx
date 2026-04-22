@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useCallback, useContext, useMemo } from "react";
 import { useTaskSessions } from "@/hooks/board";
 import { useDetailTaskNavigation } from "@/hooks/project";
 import { useProjectContext } from "@/providers/project-provider";
@@ -85,6 +85,16 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 	const isAwaitingProjectSnapshot = currentProjectId !== null && streamedProjectState === null;
 
 	// --- useTaskSessions ---
+	const handleWorkingDirectoryResolved = useCallback(
+		(taskId: string, workingDirectory: string) => {
+			setBoard((current) => {
+				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, projectPath);
+				return result.updated ? result.board : current;
+			});
+		},
+		[setBoard, projectPath],
+	);
+
 	const {
 		upsertSession,
 		ensureTaskWorktree,
@@ -96,12 +106,7 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
-		onWorkingDirectoryResolved: (taskId, workingDirectory) => {
-			setBoard((current) => {
-				const result = reconcileTaskWorkingDirectory(current, taskId, workingDirectory, projectPath);
-				return result.updated ? result.board : current;
-			});
-		},
+		onWorkingDirectoryResolved: handleWorkingDirectoryResolved,
 	});
 
 	// --- Context value ---

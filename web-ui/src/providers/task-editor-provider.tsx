@@ -63,10 +63,12 @@ export function TaskEditorProvider({ children }: TaskEditorProviderProps): React
 		queueTaskStartAfterEdit,
 	});
 
+	const { resetTaskEditorState } = taskEditor;
+
 	const resetTaskEditorWorkflow = useCallback(() => {
-		taskEditor.resetTaskEditorState();
+		resetTaskEditorState();
 		setPendingTaskStartAfterEditId(null);
-	}, [taskEditor]);
+	}, [resetTaskEditorState]);
 
 	const value = useMemo<TaskEditorContextValue>(
 		() => ({

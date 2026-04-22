@@ -198,4 +198,28 @@ describe("TaskEditorProvider", () => {
 		expect(mockResetTaskEditorState).toHaveBeenCalledTimes(1);
 		expect(latestValue.pendingTaskStartAfterEditId).toBeNull();
 	});
+
+	it("keeps resetTaskEditorWorkflow stable when the task editor object rerenders", () => {
+		const mockResetTaskEditorState = vi.fn();
+		const mockHandleOpenCreateTask = vi.fn();
+
+		mockUseTaskBranchOptions.mockReturnValue({
+			createTaskBranchOptions: [{ value: "main", label: "main" }],
+			defaultTaskBranchRef: "main",
+			isConfigDefaultBaseRef: true,
+		});
+		mockUseTaskEditor.mockImplementation(() => ({
+			handleCancelCreateTask: () => {},
+			resetTaskEditorState: mockResetTaskEditorState,
+			handleOpenCreateTask: mockHandleOpenCreateTask,
+		}));
+
+		renderProvider();
+		const firstResetTaskEditorWorkflow = latestValue.resetTaskEditorWorkflow;
+
+		renderProvider();
+
+		expect(mockUseTaskEditor).toHaveBeenCalledTimes(2);
+		expect(latestValue.resetTaskEditorWorkflow).toBe(firstResetTaskEditorWorkflow);
+	});
 });
