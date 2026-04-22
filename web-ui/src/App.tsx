@@ -39,6 +39,7 @@ import { InteractionsProvider, useInteractionsContext } from "@/providers/intera
 import { ProjectProvider, useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { SurfaceNavigationProvider, useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
+import { TaskEditorProvider, useTaskEditorContext } from "@/providers/task-editor-provider";
 import { TerminalProvider, useTerminalContext } from "@/providers/terminal-provider";
 import { LayoutCustomizationsProvider, useLayoutResetEffect } from "@/resize/layout-customizations";
 import { ResizeHandle } from "@/resize/resize-handle";
@@ -155,17 +156,19 @@ function AppInner(): ReactElement {
 		>
 			<AppEarlyBailout>
 				<BoardProvider board={board} setBoard={setBoard} sessions={sessions} setSessions={setSessions}>
-					<SurfaceNavigationProvider>
-						<GitProvider>
-							<TerminalProvider>
-								<InteractionsProvider>
-									<DialogProvider>
-										<AppContent searchOverlayResetRef={searchOverlayResetRef} />
-									</DialogProvider>
-								</InteractionsProvider>
-							</TerminalProvider>
-						</GitProvider>
-					</SurfaceNavigationProvider>
+					<TaskEditorProvider>
+						<SurfaceNavigationProvider>
+							<GitProvider>
+								<TerminalProvider>
+									<InteractionsProvider>
+										<DialogProvider>
+											<AppContent searchOverlayResetRef={searchOverlayResetRef} />
+										</DialogProvider>
+									</InteractionsProvider>
+								</TerminalProvider>
+							</GitProvider>
+						</SurfaceNavigationProvider>
+					</TaskEditorProvider>
 				</BoardProvider>
 			</AppEarlyBailout>
 		</ProjectProvider>
@@ -181,16 +184,10 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const project = useProjectContext();
 	const projectRuntime = useProjectRuntimeContext();
 	const boardContext = useBoardContext();
-	const {
-		board,
-		selectedTaskId,
-		selectedCard,
-		setSelectedTaskId,
-		sendTaskSessionInput,
-		taskEditor,
-		createTaskBranchOptions,
-		isAwaitingProjectSnapshot,
-	} = boardContext;
+	const taskEditorContext = useTaskEditorContext();
+	const { board, selectedTaskId, selectedCard, setSelectedTaskId, sendTaskSessionInput, isAwaitingProjectSnapshot } =
+		boardContext;
+	const { taskEditor, createTaskBranchOptions } = taskEditorContext;
 	const git = useGitContext();
 	const navigation = useSurfaceNavigationContext();
 	const terminal = useTerminalContext();
@@ -271,6 +268,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		project,
 		projectRuntime,
 		board: boardContext,
+		taskEditor: taskEditorContext,
 		git,
 		navigation,
 		terminal,

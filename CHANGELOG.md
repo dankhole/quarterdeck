@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Refactor: narrow board provider ownership around task editing
+
+- Added `web-ui/src/providers/task-editor-provider.tsx`, a dedicated task-editing seam that owns task create/edit state, branch-option derivation, and the edit-save-to-start bridge instead of exposing those workflows through `BoardContext`.
+- Narrowed `web-ui/src/providers/board-provider.tsx` so it now reads as board/selection/session ownership: board state, selected-task state, runtime task-session actions, and board-loading flags stay there, while task-editor workflow moved to the new context.
+- Updated the highest-surface consumers (`App.tsx`, `app-dialogs.tsx`, `dialog-provider.tsx`, `interactions-provider.tsx`, and `use-app-side-effects.ts`) to depend on the narrower task-editor seam they actually use rather than pulling mixed board-plus-editor state from `useBoardContext()`.
+- Clarified project-switch cleanup at the seam boundary by replacing the board-owned `resetBoardUiState()` reach-through with a task-editor-owned `resetTaskEditorWorkflow()` reset path.
+- Added focused regression coverage for the new provider seam and reran targeted frontend tests (`task-editor-provider`, `use-task-editor`, and `card-detail-view`) plus `web-ui` typecheck.
+
 ### Refactor: narrow task-detail layout/composition ownership
 
 - Regrouped `CardDetailView` around owned task-detail sections (`layoutProps`, `sidePanelProps`, `repositoryProps`, and `terminalProps`) so the detail root coordinates the screen instead of acting like one broad dependency funnel.

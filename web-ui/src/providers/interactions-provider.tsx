@@ -11,6 +11,7 @@ import { useBoardContext } from "@/providers/board-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
+import { useTaskEditorContext } from "@/providers/task-editor-provider";
 import { findCardSelection } from "@/state/board-state";
 
 // ---------------------------------------------------------------------------
@@ -97,11 +98,9 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		startTaskSession,
 		fetchTaskWorktreeInfo,
 		cleanupTaskWorktree,
-		handleCreateTask,
-		handleCreateTasks,
-		pendingTaskStartAfterEditId,
-		clearPendingTaskStartAfterEditId,
 	} = useBoardContext();
+	const { taskEditor, pendingTaskStartAfterEditId, clearPendingTaskStartAfterEditId } = useTaskEditorContext();
+	const { handleCreateTask, handleCreateTasks } = taskEditor;
 
 	const { currentProjectId } = useProjectContext();
 	const { showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectRuntimeContext();

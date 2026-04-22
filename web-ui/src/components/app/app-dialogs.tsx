@@ -20,12 +20,12 @@ import {
 	TaskTrashWarningDialog,
 } from "@/components/task";
 import type { MigrateDirection } from "@/hooks/terminal/use-migrate-working-directory";
-import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useTaskEditorContext } from "@/providers/task-editor-provider";
 import type { PromptShortcut } from "@/runtime/types";
 
 interface AppDialogsProps {
@@ -45,7 +45,7 @@ export function AppDialogs({
 }: AppDialogsProps): ReactElement {
 	const project = useProjectContext();
 	const projectRuntime = useProjectRuntimeContext();
-	const { createTaskBranchOptions, taskEditor } = useBoardContext();
+	const { createTaskBranchOptions, taskEditor } = useTaskEditorContext();
 	const git = useGitContext();
 	const interactions = useInteractionsContext();
 	const dialog = useDialogContext();

@@ -7,7 +7,7 @@ interface UseProjectSwitchCleanupInput {
 	currentProjectId: string | null;
 	navigationCurrentProjectId: string | null;
 	isProjectSwitching: boolean;
-	resetBoardUiState: () => void;
+	resetTaskEditorWorkflow: () => void;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	resetGitActionState: () => void;
 	resetProjectNavigationState: () => void;
@@ -23,7 +23,7 @@ export function useProjectSwitchCleanup({
 	currentProjectId,
 	navigationCurrentProjectId,
 	isProjectSwitching,
-	resetBoardUiState,
+	resetTaskEditorWorkflow,
 	setIsClearTrashDialogOpen,
 	resetGitActionState,
 	resetProjectNavigationState,
@@ -65,12 +65,12 @@ export function useProjectSwitchCleanup({
 		if (!isProjectSwitching) {
 			return;
 		}
-		resetBoardUiState();
-	}, [isProjectSwitching, resetBoardUiState]);
+		resetTaskEditorWorkflow();
+	}, [isProjectSwitching, resetTaskEditorWorkflow]);
 
 	// Reset all transient state when the current project changes.
 	useLayoutEffect(() => {
-		resetBoardUiState();
+		resetTaskEditorWorkflow();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();
 		resetProjectNavigationState();
@@ -79,7 +79,7 @@ export function useProjectSwitchCleanup({
 		currentProjectId,
 		resetGitActionState,
 		resetProjectNavigationState,
-		resetBoardUiState,
+		resetTaskEditorWorkflow,
 		resetTerminalPanelsState,
 		setIsClearTrashDialogOpen,
 	]);

@@ -2,6 +2,38 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Board/task-editor provider ownership follow-up (2026-04-21)
+
+Landed the next provider-narrowing follow-up by extracting task editing out of `BoardProvider` into a dedicated `TaskEditorProvider`. Before this change, `BoardContext` mixed core board/selection/session ownership with task create/edit dialog state, branch-option derivation, and the “save edit, then auto-start once it lands back in backlog” bridge. After the split, `BoardProvider` reads as board + selection + task-session ownership, while the new task-editor seam owns task editing as its own coherent workflow.
+
+**What changed:**
+
+- Added `web-ui/src/providers/task-editor-provider.tsx`, which now owns `useTaskBranchOptions(...)`, `useTaskEditor(...)`, the pending edit-start bridge, and the reset helper for task-editor workflow state.
+- Narrowed `web-ui/src/providers/board-provider.tsx` so it now exposes board state, selected-task state, runtime task-session actions, and board-loading flags without also acting as the task-editor provider.
+- Updated the highest-leverage consumers to read the narrower ownership seam they actually use: `web-ui/src/App.tsx`, `web-ui/src/components/app/app-dialogs.tsx`, `web-ui/src/providers/dialog-provider.tsx`, `web-ui/src/providers/interactions-provider.tsx`, and `web-ui/src/hooks/app/use-app-side-effects.ts` now depend on `useTaskEditorContext()` for task-editing workflow concerns instead of treating `BoardContext` as a convenience bag.
+- Clarified project-switch cleanup in `web-ui/src/hooks/project/use-project-switch-cleanup.ts` by replacing the board-owned `resetBoardUiState()` reach-through with the task-editor-owned `resetTaskEditorWorkflow()` seam.
+- Added `web-ui/src/providers/task-editor-provider.test.tsx` to lock in the new seam’s branch-option wiring and edit-start reset behavior, updated `web-ui/src/components/task/card-detail-view.test.tsx` to match the narrowed board context, and reran targeted frontend coverage (`task-editor-provider`, `use-task-editor`, and `card-detail-view`) plus `npm run web:typecheck`.
+
+**Why:** Of the remaining broad provider seams, `BoardProvider` had the clearest real subdomain hiding inside it. Task editing already had its own state machine, branch-option derivation, and consumer set, so pulling that workflow into a dedicated provider makes ownership easier to explain without fragmenting the rest of board/session behavior into tiny contexts.
+
+**Files touched:**
+
+- `web-ui/src/App.tsx`
+- `web-ui/src/components/app/app-dialogs.tsx`
+- `web-ui/src/components/task/card-detail-view.test.tsx`
+- `web-ui/src/hooks/app/use-app-side-effects.ts`
+- `web-ui/src/hooks/project/use-project-switch-cleanup.ts`
+- `web-ui/src/providers/board-provider.tsx`
+- `web-ui/src/providers/dialog-provider.tsx`
+- `web-ui/src/providers/interactions-provider.tsx`
+- `web-ui/src/providers/task-editor-provider.tsx`
+- `web-ui/src/providers/task-editor-provider.test.tsx`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
+**Commit hash:** Pending commit on `feature/provider-ownership-followups` (branch created from local `main` at `fdc45c00`).
+
 ## Task-detail composition review follow-up (2026-04-21)
 
 Applied the small contract-cleanup follow-up that came out of review on the task-detail composition refactor so the ownership seams read a little more honestly without changing behavior.

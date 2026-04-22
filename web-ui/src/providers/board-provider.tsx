@@ -1,18 +1,16 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { type UseTaskEditorResult, useTaskEditor, useTaskSessions } from "@/hooks/board";
-import { useTaskBranchOptions } from "@/hooks/git";
+import { createContext, useContext, useMemo } from "react";
+import { useTaskSessions } from "@/hooks/board";
 import { useDetailTaskNavigation } from "@/hooks/project";
 import { useProjectContext } from "@/providers/project-provider";
-import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { reconcileTaskWorkingDirectory } from "@/state/board-state";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardData, CardSelection } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Context value — board data, task sessions, task selection, task editor,
-// branch options, and derived loading flags.
+// Context value — board data, task sessions, task selection, and derived
+// loading flags.
 // ---------------------------------------------------------------------------
 
 export interface BoardContextValue {
@@ -42,18 +40,6 @@ export interface BoardContextValue {
 	) => Promise<{ ok: boolean; message?: string }>;
 	stopTaskSession: (taskId: string, options?: { waitForExit?: boolean }) => Promise<void>;
 
-	// --- Task editor ---
-	taskEditor: UseTaskEditorResult;
-	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
-	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
-	handleCancelCreateTask: () => void;
-	resetBoardUiState: () => void;
-	pendingTaskStartAfterEditId: string | null;
-	clearPendingTaskStartAfterEditId: () => void;
-
-	// --- Task branch options ---
-	createTaskBranchOptions: Array<{ value: string; label: string }>;
-
 	// --- Derived loading flags ---
 	isInitialRuntimeLoad: boolean;
 	isAwaitingProjectSnapshot: boolean;
@@ -70,8 +56,8 @@ export function useBoardContext(): BoardContextValue {
 }
 
 // ---------------------------------------------------------------------------
-// BoardProvider — runs board-scoped hooks (task navigation, task sessions,
-// task editor, branch options) and provides BoardContext.
+// BoardProvider — runs board-scoped hooks (task navigation, task sessions)
+// and provides BoardContext.
 // ---------------------------------------------------------------------------
 
 interface BoardProviderProps {
@@ -83,16 +69,8 @@ interface BoardProviderProps {
 }
 
 export function BoardProvider({ board, setBoard, sessions, setSessions, children }: BoardProviderProps): ReactNode {
-	const {
-		currentProjectId,
-		projects,
-		streamedProjectState,
-		hasReceivedSnapshot,
-		streamError,
-		projectPath,
-		projectGit,
-	} = useProjectContext();
-	const { configDefaultBaseRef } = useProjectRuntimeContext();
+	const { currentProjectId, projects, streamedProjectState, hasReceivedSnapshot, streamError, projectPath } =
+		useProjectContext();
 
 	// --- useDetailTaskNavigation ---
 	const { selectedTaskId, selectedCard, setSelectedTaskId } = useDetailTaskNavigation({
@@ -105,7 +83,6 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingProjectSnapshot = currentProjectId !== null && streamedProjectState === null;
-	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 
 	// --- useTaskSessions ---
 	const {
@@ -127,41 +104,6 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 		},
 	});
 
-	// --- useTaskBranchOptions ---
-	const { createTaskBranchOptions, defaultTaskBranchRef } = useTaskBranchOptions({
-		projectGit,
-		configDefaultBaseRef,
-	});
-
-	// --- queueTaskStartAfterEdit ---
-	const queueTaskStartAfterEdit = useCallback(
-		(taskId: string) => {
-			setPendingTaskStartAfterEditId(taskId);
-		},
-		[setPendingTaskStartAfterEditId],
-	);
-
-	const clearPendingTaskStartAfterEditId = useCallback(() => {
-		setPendingTaskStartAfterEditId(null);
-	}, []);
-
-	// --- useTaskEditor ---
-	const taskEditor = useTaskEditor({
-		board,
-		setBoard,
-		currentProjectId,
-		createTaskBranchOptions,
-		defaultTaskBranchRef,
-		setSelectedTaskId,
-		queueTaskStartAfterEdit,
-	});
-	const { handleCreateTask, handleCreateTasks, resetTaskEditorState, handleCancelCreateTask } = taskEditor;
-
-	const resetBoardUiState = useCallback(() => {
-		resetTaskEditorState();
-		setPendingTaskStartAfterEditId(null);
-	}, [resetTaskEditorState]);
-
 	// --- Context value ---
 	const value = useMemo<BoardContextValue>(
 		() => ({
@@ -179,14 +121,6 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
 			stopTaskSession,
-			taskEditor,
-			handleCreateTask,
-			handleCreateTasks,
-			handleCancelCreateTask,
-			resetBoardUiState,
-			pendingTaskStartAfterEditId,
-			clearPendingTaskStartAfterEditId,
-			createTaskBranchOptions,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,
 		}),
@@ -204,14 +138,6 @@ export function BoardProvider({ board, setBoard, sessions, setSessions, children
 			fetchTaskWorktreeInfo,
 			sendTaskSessionInput,
 			stopTaskSession,
-			taskEditor,
-			handleCreateTask,
-			handleCreateTasks,
-			handleCancelCreateTask,
-			resetBoardUiState,
-			pendingTaskStartAfterEditId,
-			clearPendingTaskStartAfterEditId,
-			createTaskBranchOptions,
 			isInitialRuntimeLoad,
 			isAwaitingProjectSnapshot,
 		],

@@ -16,6 +16,7 @@ import type { InteractionsContextValue } from "@/providers/interactions-provider
 import type { ProjectContextValue } from "@/providers/project-provider";
 import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import type { SurfaceNavigationContextValue } from "@/providers/surface-navigation-provider";
+import type { TaskEditorContextValue } from "@/providers/task-editor-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
 import { saveProjectState } from "@/runtime/project-state-query";
 import { useProjectPersistence } from "@/runtime/use-project-persistence";
@@ -26,6 +27,7 @@ interface UseAppSideEffectsInput {
 	project: ProjectContextValue;
 	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
+	taskEditor: TaskEditorContextValue;
 	git: GitContextValue;
 	navigation: SurfaceNavigationContextValue;
 	terminal: TerminalContextValue;
@@ -40,6 +42,7 @@ export function useAppSideEffects({
 	project,
 	projectRuntime,
 	board,
+	taskEditor,
 	git,
 	navigation,
 	terminal,
@@ -86,7 +89,7 @@ export function useAppSideEffects({
 		currentProjectId: project.currentProjectId,
 		navigationCurrentProjectId: project.navigationCurrentProjectId,
 		isProjectSwitching: project.isProjectSwitching,
-		resetBoardUiState: board.resetBoardUiState,
+		resetTaskEditorWorkflow: taskEditor.resetTaskEditorWorkflow,
 		setIsClearTrashDialogOpen: dialog.setIsClearTrashDialogOpen as Dispatch<SetStateAction<boolean>>,
 		resetGitActionState: git.resetGitActionState,
 		resetProjectNavigationState: project.resetProjectNavigationState,
@@ -117,7 +120,7 @@ export function useAppSideEffects({
 		handleToggleHomeTerminal: terminal.handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal: terminal.handleToggleExpandDetailTerminal,
 		handleToggleExpandHomeTerminal: terminal.handleToggleExpandHomeTerminal,
-		handleOpenCreateTask: board.taskEditor.handleOpenCreateTask,
+		handleOpenCreateTask: taskEditor.taskEditor.handleOpenCreateTask,
 		handleOpenSettings: dialog.handleOpenSettings,
 		handleToggleGitHistory: navigation.handleToggleGitHistory,
 		onStartAllTasks: interactions.handleStartAllBacklogTasksFromBoard,

@@ -4,10 +4,10 @@ import { createContext, useContext, useMemo } from "react";
 import type { RuntimeSettingsSection } from "@/components/settings";
 import { useAppDialogs } from "@/hooks/app";
 import { type UseDebugLoggingResult, useDebugLogging, useDebugTools } from "@/hooks/debug";
-import { useBoardContext } from "@/providers/board-provider";
 import { useInteractionsContext } from "@/providers/interactions-provider";
 import { useProjectContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
+import { useTaskEditorContext } from "@/providers/task-editor-provider";
 
 // ---------------------------------------------------------------------------
 // Context value — dialog open/close state, debug tools, and debug logging.
@@ -69,7 +69,7 @@ export interface DialogProviderProps {
 export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 	const project = useProjectContext();
 	const projectRuntime = useProjectRuntimeContext();
-	const { handleCancelCreateTask } = useBoardContext();
+	const { taskEditor } = useTaskEditorContext();
 	const { isClearTrashDialogOpen, setIsClearTrashDialogOpen } = useInteractionsContext();
 
 	const {
@@ -81,7 +81,7 @@ export function DialogProvider({ children }: DialogProviderProps): ReactNode {
 		setPromptShortcutEditorOpen,
 		handleOpenSettings,
 		handleCreateDialogOpenChange,
-	} = useAppDialogs({ handleCancelCreateTask });
+	} = useAppDialogs({ handleCancelCreateTask: taskEditor.handleCancelCreateTask });
 
 	const {
 		debugModeEnabled,
