@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { getTaskAgentNavbarHint } from "@/runtime/native-agent";
 import type { RuntimeConfigResponse, RuntimeTaskWorktreeInfoResponse } from "@/runtime/types";
 import type { CardSelection, ReviewTaskWorktreeSnapshot } from "@/types";
+import { resolveTaskIdentity } from "@/utils/task-identity";
 
 interface UseNavbarStateInput {
 	selectedCard: CardSelection | null;
@@ -49,8 +50,21 @@ export function useNavbarState({
 		});
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
+	const selectedTaskIdentity = useMemo(
+		() =>
+			selectedCard
+				? resolveTaskIdentity({
+						projectRootPath: projectPath,
+						card: selectedCard.card,
+						worktreeInfo: selectedTaskWorktreeInfo,
+						worktreeSnapshot: selectedTaskWorktreeSnapshot,
+					})
+				: null,
+		[selectedCard, projectPath, selectedTaskWorktreeInfo, selectedTaskWorktreeSnapshot],
+	);
+
 	const activeProjectPath = selectedCard
-		? (selectedTaskWorktreeInfo?.path ?? selectedTaskWorktreeSnapshot?.path ?? projectPath ?? undefined)
+		? (selectedTaskIdentity?.assignedPath ?? projectPath ?? undefined)
 		: shouldUseNavigationPath
 			? (navigationProjectPath ?? undefined)
 			: (projectPath ?? undefined);

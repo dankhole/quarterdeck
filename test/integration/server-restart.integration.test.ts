@@ -34,7 +34,7 @@ async function withStateHomeOverride<T>(stateHome: string, run: () => Promise<T>
 
 function createPersistedReviewSession(
 	taskId: string,
-	projectPath: string,
+	sessionLaunchPath: string,
 	now: number,
 	reviewReason: "exit" | "hook",
 ): RuntimeTaskSessionSummary {
@@ -42,7 +42,7 @@ function createPersistedReviewSession(
 		taskId,
 		state: "awaiting_review",
 		agentId: "codex",
-		projectPath,
+		sessionLaunchPath,
 		pid: null,
 		startedAt: now - 2_000,
 		updatedAt: now,
@@ -220,14 +220,16 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(boardSeedResponse.status).toBe(200);
 
-			const seedResponse = await withStateHomeOverride(tempHome, async () =>
-				await saveProjectState(projectPath, {
-					board: boardSeedResponse.payload.board,
-					sessions: {
-						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
-					},
-					expectedRevision: boardSeedResponse.payload.revision,
-				}),
+			const seedResponse = await withStateHomeOverride(
+				tempHome,
+				async () =>
+					await saveProjectState(projectPath, {
+						board: boardSeedResponse.payload.board,
+						sessions: {
+							[taskId]: createPersistedReviewSession(taskId, projectPath, now, "exit"),
+						},
+						expectedRevision: boardSeedResponse.payload.revision,
+					}),
 			);
 			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
 			const taskWorktreeInfo = await requestJson<RuntimeTaskWorktreeInfoResponse>({
@@ -335,14 +337,16 @@ describe.sequential("server restart integration", () => {
 			});
 			expect(boardSeedResponse.status).toBe(200);
 
-			const seedResponse = await withStateHomeOverride(tempHome, async () =>
-				await saveProjectState(projectPath, {
-					board: boardSeedResponse.payload.board,
-					sessions: {
-						[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
-					},
-					expectedRevision: boardSeedResponse.payload.revision,
-				}),
+			const seedResponse = await withStateHomeOverride(
+				tempHome,
+				async () =>
+					await saveProjectState(projectPath, {
+						board: boardSeedResponse.payload.board,
+						sessions: {
+							[taskId]: createPersistedReviewSession(taskId, projectPath, now, "hook"),
+						},
+						expectedRevision: boardSeedResponse.payload.revision,
+					}),
 			);
 			expect(seedResponse.revision).toBe(boardSeedResponse.payload.revision + 1);
 

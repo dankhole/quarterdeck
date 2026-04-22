@@ -6,6 +6,7 @@ import { useTrpcQuery } from "@/runtime/use-trpc-query";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { useTaskWorktreeInfoValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
+import { resolveTaskIdentity } from "@/utils/task-identity";
 
 export interface GitViewCompareNavigation {
 	sourceRef?: string;
@@ -54,9 +55,10 @@ export function useGitViewCompare({
 	// Default refs based on context
 	const defaultSourceRef = useMemo(() => {
 		if (selectedCard) {
-			// Task context: the task's worktree branch, falling back to headCommit for
-			// headless (detached HEAD) worktrees, then to the card-level branch.
-			return taskWorktreeInfo?.branch ?? taskWorktreeInfo?.headCommit ?? selectedCard.card.branch ?? null;
+			return resolveTaskIdentity({
+				card: selectedCard.card,
+				worktreeInfo: taskWorktreeInfo,
+			}).displayBranchLabel;
 		}
 		return homeGitSummary?.currentBranch ?? null;
 	}, [selectedCard, taskWorktreeInfo, homeGitSummary]);

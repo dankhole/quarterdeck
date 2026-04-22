@@ -260,7 +260,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				);
 				if (event === "to_review") {
 					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
-					const checkpointCwd = transitionedSummary.projectPath ?? projectPath;
+					const checkpointCwd = transitionedSummary.sessionLaunchPath ?? projectPath;
 					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
 					void (async () => {
 						try {

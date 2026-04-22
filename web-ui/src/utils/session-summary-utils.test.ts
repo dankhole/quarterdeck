@@ -11,7 +11,7 @@ function createSessionSummary(taskId: string, updatedAt: number): RuntimeTaskSes
 		taskId,
 		state: "running",
 		agentId: "codex",
-		projectPath: "/tmp/project-a",
+		sessionLaunchPath: "/tmp/project-a",
 		pid: null,
 		startedAt: updatedAt - 10,
 		updatedAt,
@@ -84,10 +84,7 @@ describe("reconcileAuthoritativeTaskSessionSummaryMap", () => {
 		const current = createSessionSummary("task-1", 200);
 		const incoming = createSessionSummary("task-1", 100);
 
-		const reconciled = reconcileAuthoritativeTaskSessionSummaryMap(
-			{ "task-1": current },
-			{ "task-1": incoming },
-		);
+		const reconciled = reconcileAuthoritativeTaskSessionSummaryMap({ "task-1": current }, { "task-1": incoming });
 
 		expect(reconciled["task-1"]).toBe(current);
 	});

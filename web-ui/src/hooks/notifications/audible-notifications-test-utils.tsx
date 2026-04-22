@@ -11,7 +11,7 @@ export function createMockSession(overrides: Partial<RuntimeTaskSessionSummary> 
 		taskId: "task-1",
 		state: "idle",
 		agentId: "claude",
-		projectPath: "/tmp/repo",
+		sessionLaunchPath: "/tmp/repo",
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

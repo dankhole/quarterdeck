@@ -11,7 +11,7 @@ function createSummary(taskId: string, overrides: Partial<RuntimeTaskSessionSumm
 		taskId,
 		state: "idle",
 		agentId: "claude",
-		projectPath: "/tmp/repo",
+		sessionLaunchPath: "/tmp/repo",
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

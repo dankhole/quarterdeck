@@ -69,7 +69,7 @@ describe("TerminalSessionManager shell sessions", () => {
 		expect(result.state).toBe("running");
 		expect(result.agentId).toBeNull();
 		expect(result.pid).toBe(111);
-		expect(result.projectPath).toBe("/tmp/project");
+		expect(result.sessionLaunchPath).toBe("/tmp/project");
 	});
 
 	it("delivers output data to attached listeners", async () => {

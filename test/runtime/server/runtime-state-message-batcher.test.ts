@@ -9,7 +9,7 @@ function createSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSum
 		taskId,
 		state: "running",
 		agentId: "codex",
-		projectPath: "/tmp/worktree",
+		sessionLaunchPath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: 1,
 		updatedAt,

@@ -2,9 +2,17 @@
 
 ## [Unreleased]
 
+### Refactor: normalize session launch path vs assigned task identity
+
+- Added `web-ui/src/utils/task-identity.ts`, a shared task-identity model that explicitly separates project root, assigned task path, assigned git identity, shared-vs-isolated assignment, and the session launch path used for divergence warnings.
+- Renamed the shared runtime session-summary field from ambiguous `projectPath` semantics to explicit `sessionLaunchPath` in `src/core/api/task-session.ts`, and kept persisted-session compatibility by accepting legacy `projectPath` when reading older `sessions.json` records.
+- Switched task-scoped branch/folder consumers (`board-card`, top-bar/navbar state, task-detail repository surfaces, card-detail branch pill logic, and git compare defaults) to use that shared vocabulary instead of ad hoc `workingDirectory` / `projectPath` / branch fallback chains.
+- Preserved the useful “agent started somewhere unexpected” warning while tightening its meaning: the UI now treats `RuntimeTaskSessionSummary.sessionLaunchPath` as a session launch path, not as a true live cwd signal, and keeps that separate from assigned worktree identity.
+- Updated runtime/frontend tests and helpers across session persistence, restart hydration, hooks checkpoint capture, shell-session summaries, board/task-detail identity display, and notification/session utilities; reran targeted `web-ui` tests, targeted runtime/integration tests, `npm run web:typecheck`, and `npm run typecheck`.
+
 ### Feature: agent terminal row multiplier
 
-- Added "Agent row multiplier" setting (Settings > Terminal) that inflates the PTY row count reported to agent processes, so agents render more content per turn and produce denser scrollback. Default: 5×. Set to 1 if the agent UI looks broken.
+- Added “Agent row multiplier” setting (Settings > Terminal) that inflates the PTY row count reported to agent processes, so agents render more content per turn and produce denser scrollback. Default: 5×. Set to 1 if the agent UI looks broken.
 - Shell terminals are unaffected — only task agent sessions apply the multiplier.
 
 ### Fix: React "Maximum update depth exceeded" crash on app load

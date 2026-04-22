@@ -23,6 +23,7 @@ import {
 	useTaskWorktreeInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
+import { resolveTaskIdentity } from "@/utils/task-identity";
 
 // ---------------------------------------------------------------------------
 // Context value — git actions, git history data, scope context, branch
@@ -158,12 +159,14 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 	// --- topbarBranchLabel ---
 	const topbarBranchLabel = useMemo(() => {
 		if (selectedCard) {
-			if (selectedTaskWorktreeInfo?.branch) return selectedTaskWorktreeInfo.branch;
-			if (selectedTaskWorktreeInfo?.isDetached) return selectedTaskWorktreeInfo.headCommit?.substring(0, 7) ?? null;
-			return selectedCard.card.branch ?? selectedTaskWorktreeInfo?.headCommit?.substring(0, 7) ?? null;
+			return resolveTaskIdentity({
+				card: selectedCard.card,
+				worktreeInfo: selectedTaskWorktreeInfo,
+				worktreeSnapshot: selectedTaskWorktreeSnapshot,
+			}).displayBranchLabel;
 		}
 		return homeGitSummary?.currentBranch ?? null;
-	}, [selectedCard, selectedTaskWorktreeInfo, homeGitSummary]);
+	}, [selectedCard, selectedTaskWorktreeInfo, selectedTaskWorktreeSnapshot, homeGitSummary]);
 
 	// --- useFileBrowserData ---
 	const homeFileBrowserData = useFileBrowserData({

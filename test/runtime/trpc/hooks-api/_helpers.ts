@@ -17,7 +17,7 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		taskId: "task-1",
 		state: "running",
 		agentId: "claude",
-		projectPath: "/tmp/worktree",
+		sessionLaunchPath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),

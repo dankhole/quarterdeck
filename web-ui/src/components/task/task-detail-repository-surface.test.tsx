@@ -21,9 +21,9 @@ vi.mock("@/components/app/top-bar", () => ({
 }));
 
 vi.mock("@/components/git", () => ({
-	GitView: (props: object) => {
+	GitView: ({ branchStatusSlot, ...props }: { branchStatusSlot?: ReactNode }) => {
 		mockGitView(props);
-		return <div data-testid="git-view" />;
+		return <div data-testid="git-view">{branchStatusSlot}</div>;
 	},
 	FilesView: ({ scopeBar, ...props }: { scopeBar: ReactNode }) => {
 		mockFilesView(props);
@@ -262,5 +262,69 @@ describe("TaskDetailRepositorySurface", () => {
 				scopeKey: "task-1-contextual",
 			}),
 		);
+	});
+
+	it("uses assigned metadata identity for detached task file roots", async () => {
+		const selection = createSelection();
+		const repositoryState = createRepositoryState();
+		repositoryState.taskWorktreeInfo = {
+			taskId: selection.card.id,
+			path: "/tmp/assigned-worktree",
+			exists: true,
+			baseRef: selection.card.baseRef,
+			branch: null,
+			isDetached: true,
+			headCommit: "deadbeef12345678",
+		};
+
+		await act(async () => {
+			root.render(
+				<TaskDetailRepositorySurface
+					detailLayout={createLayoutState()}
+					repositoryState={repositoryState}
+					repositoryProps={createRepositoryProps()}
+					selection={selection}
+					currentProjectId="project-1"
+					sessionSummary={null}
+					mainView="files"
+				/>,
+			);
+		});
+
+		expect(mockFilesView).toHaveBeenCalledWith(
+			expect.objectContaining({
+				rootPath: "/tmp/assigned-worktree",
+			}),
+		);
+	});
+
+	it("uses assigned metadata identity for detached git branch labels", async () => {
+		const selection = createSelection();
+		const repositoryState = createRepositoryState();
+		repositoryState.taskWorktreeInfo = {
+			taskId: selection.card.id,
+			path: "/tmp/assigned-worktree",
+			exists: true,
+			baseRef: selection.card.baseRef,
+			branch: null,
+			isDetached: true,
+			headCommit: "deadbeef12345678",
+		};
+
+		await act(async () => {
+			root.render(
+				<TaskDetailRepositorySurface
+					detailLayout={createLayoutState()}
+					repositoryState={repositoryState}
+					repositoryProps={createRepositoryProps()}
+					selection={selection}
+					currentProjectId="project-1"
+					sessionSummary={null}
+					mainView="git"
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="git-branch-status"]')?.textContent).toContain("deadbeef");
 	});
 });

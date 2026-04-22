@@ -130,7 +130,7 @@ function createSessionSummary(
 		taskId,
 		state: finalMessage ? "awaiting_review" : "running",
 		agentId: "claude",
-		projectPath: "/tmp/project-a",
+		sessionLaunchPath: "/tmp/project-a",
 		pid: null,
 		startedAt: updatedAt - 100,
 		updatedAt,

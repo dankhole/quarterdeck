@@ -157,7 +157,7 @@ export async function spawnTaskSession(
 		deps.updateStore(request.taskId, {
 			state: "failed",
 			agentId: request.agentId,
-			projectPath: request.cwd,
+			sessionLaunchPath: request.cwd,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,
@@ -199,7 +199,7 @@ export async function spawnTaskSession(
 	const summary = deps.updateStore(request.taskId, {
 		state: request.awaitReview ? "awaiting_review" : "running",
 		agentId: request.agentId,
-		projectPath: request.cwd,
+		sessionLaunchPath: request.cwd,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,
@@ -382,7 +382,7 @@ export async function spawnShellSession(
 		deps.updateStore(request.taskId, {
 			state: "failed",
 			agentId: null,
-			projectPath: request.cwd,
+			sessionLaunchPath: request.cwd,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,
@@ -412,7 +412,7 @@ export async function spawnShellSession(
 	const summary = deps.updateStore(request.taskId, {
 		state: "running",
 		agentId: null,
-		projectPath: request.cwd,
+		sessionLaunchPath: request.cwd,
 		pid: session.pid,
 		startedAt: Date.now(),
 		lastOutputAt: null,

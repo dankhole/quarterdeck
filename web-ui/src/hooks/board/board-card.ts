@@ -3,6 +3,7 @@ import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/typ
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { getCardHoverTooltip, getRunningActivityLabel, shortenBranchName } from "@/utils/board-card-display";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
+import { resolveTaskIdentity } from "@/utils/task-identity";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 export function isBoardCardSessionDead(sessionSummary?: RuntimeTaskSessionSummary): boolean {
@@ -38,15 +39,16 @@ export function resolveBoardCardViewModel({
 }) {
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
-	const isSharedCheckout =
-		reviewWorktreeSnapshot?.path && workspacePath
-			? reviewWorktreeSnapshot.path === workspacePath
-			: card.useWorktree === false;
-	const isCwdDiverged =
-		Boolean(sessionSummary?.projectPath) &&
-		Boolean(reviewWorktreeSnapshot?.path) &&
+	const taskIdentity = resolveTaskIdentity({
+		projectRootPath: workspacePath,
+		card,
+		worktreeSnapshot: reviewWorktreeSnapshot ?? null,
+		sessionSummary: sessionSummary ?? null,
+	});
+	const isSharedCheckout = taskIdentity.isAssignedShared;
+	const isSessionPathDiverged =
 		(sessionSummary?.state === "running" || sessionSummary?.state === "awaiting_review") &&
-		sessionSummary.projectPath !== reviewWorktreeSnapshot?.path;
+		taskIdentity.isSessionLaunchDiverged;
 	const displayTitle = card.title || truncateTaskPromptLabel(card.prompt);
 	const statusLabel = sessionSummary ? describeSessionState(sessionSummary) : null;
 	const statusTagStyle = sessionSummary ? getSessionStatusBadgeStyle(sessionSummary) : null;
@@ -65,11 +67,10 @@ export function resolveBoardCardViewModel({
 		hasRestartSessionHandler;
 	const statusMarker = columnId === "in_progress" ? (isSessionRestartable ? "restart" : "spinner") : null;
 	const showProjectStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const effectiveBranch =
-		reviewWorktreeSnapshot?.branch ?? (reviewWorktreeSnapshot?.isDetached ? null : card.branch) ?? null;
-	const reviewBranchLabel = effectiveBranch
-		? shortenBranchName(effectiveBranch)
-		: (reviewWorktreeSnapshot?.headCommit?.slice(0, 8) ?? null);
+	const reviewBranchLabel = taskIdentity.displayBranchLabel
+		? shortenBranchName(taskIdentity.displayBranchLabel)
+		: null;
+	const reviewBranchTooltip = taskIdentity.assignedBranch ?? reviewBranchLabel;
 	const reviewChangeSummary =
 		reviewWorktreeSnapshot?.changedFiles == null
 			? null
@@ -90,7 +91,7 @@ export function resolveBoardCardViewModel({
 		isTrashCard,
 		isCardInteractive,
 		isSharedCheckout,
-		isCwdDiverged,
+		isSessionPathDiverged,
 		displayTitle,
 		statusLabel,
 		statusTagStyle,
@@ -104,8 +105,8 @@ export function resolveBoardCardViewModel({
 		isSessionRestartable,
 		statusMarker,
 		showProjectStatus,
-		effectiveBranch,
 		reviewBranchLabel,
+		reviewBranchTooltip,
 		reviewChangeSummary,
 		cancelAutomaticActionLabel,
 		showUncommittedChangesIndicator,

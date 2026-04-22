@@ -49,7 +49,7 @@ export async function handleStartTaskSession(
 		}
 
 		// workingDirectory is persisted by the client after the response
-		// arrives (via summary.projectPath). This avoids a dual-writer
+		// arrives (via summary.sessionLaunchPath). This avoids a dual-writer
 		// race where the server bumps the revision while the client's
 		// persist debounce is in flight.
 

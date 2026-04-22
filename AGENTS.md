@@ -66,6 +66,11 @@ Board state single-writer rule
   - same-revision cache confirmation can still require board reprojection when runtime session truth changed
   - hydration flags, cache updates, and revision/persistence re-entry should all come from that one apply result
 - `project.saveState` is intentionally **board-only** on the public/browser side. Runtime session truth must come from the server-owned terminal/session store, not from browser payloads or cached board restore data. If a test or shutdown path needs to seed/persist sessions directly, use the low-level state writer (`src/state/saveProjectState`) and point it at the actual runtime state root (`$HOME/.quarterdeck` or `QUARTERDECK_STATE_HOME`), not the browser API.
+- Task identity has multiple path concepts that are easy to blur:
+  - project root path (`projectPath` in project-level state/providers)
+  - assigned task identity path (`taskWorktreeInfo.path` / task metadata snapshot path)
+  - session launch path (`RuntimeTaskSessionSummary.sessionLaunchPath`)
+  `RuntimeTaskSessionSummary.sessionLaunchPath` is **not** a continuously updated live cwd stream. It is the path the current agent session was launched in. The shared schema still accepts legacy persisted `projectPath` when reading old `sessions.json`, but new code should speak `sessionLaunchPath` and use it for divergence/restart hints, not as the authoritative source for task branch/folder/shared-vs-isolated display.
 
 Completing a feature or fix (release hygiene)
 - When a todo item is done, **all three files must be updated in the same commit or PR**:

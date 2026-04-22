@@ -43,7 +43,7 @@ function createTerminalManagerStub(taskIds: string[]): TerminalSessionManager {
 		taskId,
 		state: "running" as const,
 		agentId: "codex",
-		projectPath: `/tmp/${taskId}`,
+		sessionLaunchPath: `/tmp/${taskId}`,
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),

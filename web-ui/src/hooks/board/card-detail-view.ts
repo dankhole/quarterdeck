@@ -1,5 +1,4 @@
 import type { ResolvedScope } from "@/hooks/git";
-
 export function formatCardDetailSidePanelPercent(sidePanelRatio: number): string {
 	return `${(sidePanelRatio * 100).toFixed(1)}%`;
 }
@@ -30,25 +29,13 @@ export function resolveCardDetailFileBrowserScope(resolvedScope: ResolvedScope |
 
 export function resolveCardDetailBranchPillLabel({
 	resolvedScope,
-	branch,
-	isDetached,
-	headCommit,
-	fallbackBranch,
+	displayBranchLabel,
 }: {
 	resolvedScope: ResolvedScope | null;
-	branch: string | null | undefined;
-	isDetached: boolean | undefined;
-	headCommit: string | null | undefined;
-	fallbackBranch: string | null | undefined;
+	displayBranchLabel: string | null | undefined;
 }): string | null {
 	if (resolvedScope?.type === "branch_view") {
 		return resolvedScope.ref;
 	}
-	if (branch) {
-		return branch;
-	}
-	if (isDetached) {
-		return headCommit?.substring(0, 7) ?? null;
-	}
-	return fallbackBranch ?? headCommit?.substring(0, 7) ?? null;
+	return displayBranchLabel ?? null;
 }

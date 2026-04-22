@@ -71,7 +71,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		taskId,
 		state: "idle",
 		agentId: null,
-		projectPath: null,
+		sessionLaunchPath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: now(),
@@ -406,7 +406,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		// when a task is restored from trash.
 		return this.update(taskId, {
 			state: "idle",
-			projectPath: null,
+			sessionLaunchPath: null,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,

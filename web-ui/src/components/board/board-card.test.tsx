@@ -63,7 +63,7 @@ function createSummary(
 		taskId: "task-1",
 		state,
 		agentId: "claude",
-		projectPath: "/tmp/worktree",
+		sessionLaunchPath: "/tmp/worktree",
 		pid: null,
 		startedAt: 1,
 		updatedAt: 1,
@@ -202,7 +202,7 @@ describe("BoardCard", () => {
 							taskId: "task-1",
 							state: "running",
 							agentId: "claude",
-							projectPath: "/tmp/worktree",
+							sessionLaunchPath: "/tmp/worktree",
 							pid: null,
 							startedAt: Date.now(),
 							updatedAt: Date.now(),
@@ -308,7 +308,7 @@ describe("BoardCard", () => {
 							taskId: "task-1",
 							state: "running",
 							agentId: "claude",
-							projectPath: "/tmp/worktree",
+							sessionLaunchPath: "/tmp/worktree",
 							pid: null,
 							startedAt: Date.now(),
 							updatedAt: Date.now(),
@@ -529,6 +529,34 @@ describe("BoardCard", () => {
 				);
 			});
 			expect(container.textContent).toContain("deadbeef");
+		});
+
+		it("keeps assigned isolation separate from session launch drift", async () => {
+			mockWorktreeSnapshot = createSnapshot({
+				path: "/mock/project/.quarterdeck/worktrees/task-1",
+				branch: "feature/assigned",
+			});
+			await act(async () => {
+				root.render(
+					<Providers>
+						<BoardCard
+							card={createCard({
+								branch: "feature/stale",
+								useWorktree: true,
+								workingDirectory: "/mock/project/.quarterdeck/worktrees/task-1",
+							})}
+							index={0}
+							columnId="in_progress"
+							sessionSummary={createSummary("running", {
+								sessionLaunchPath: "/mock/project",
+							})}
+						/>
+					</Providers>,
+				);
+			});
+
+			expect(container.textContent).not.toContain("Shared");
+			expect(container.querySelector("svg.text-status-orange")).not.toBeNull();
 		});
 	});
 

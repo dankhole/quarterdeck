@@ -48,7 +48,7 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 		taskId,
 		state: "idle",
 		agentId: null,
-		projectPath: null,
+		sessionLaunchPath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
+import { createInitialRuntimeStateStreamStore, runtimeStateStreamReducer } from "@/runtime/runtime-state-stream-store";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
-import {
-	createInitialRuntimeStateStreamStore,
-	runtimeStateStreamReducer,
-} from "@/runtime/runtime-state-stream-store";
 
 function createSessionSummary(taskId: string, updatedAt: number): RuntimeTaskSessionSummary {
 	return {
 		taskId,
 		state: "running",
 		agentId: "codex",
-		projectPath: "/tmp/project-a",
+		sessionLaunchPath: "/tmp/project-a",
 		pid: null,
 		startedAt: updatedAt - 10,
 		updatedAt,

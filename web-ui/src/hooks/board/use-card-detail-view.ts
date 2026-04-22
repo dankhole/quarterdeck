@@ -20,6 +20,7 @@ import {
 } from "@/stores/project-metadata-store";
 import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { CardSelection } from "@/types";
+import { resolveTaskIdentity } from "@/utils/task-identity";
 
 interface UseCardDetailViewInput {
 	selection: CardSelection;
@@ -124,6 +125,15 @@ export function useCardDetailView({
 	const taskWorktreeInfo = useTaskWorktreeInfoValue(selection.card.id, selection.card.baseRef);
 	const taskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selection.card.id);
 	const homeGitSummary = useHomeGitSummaryValue();
+	const taskIdentity = useMemo(
+		() =>
+			resolveTaskIdentity({
+				card: selection.card,
+				worktreeInfo: taskWorktreeInfo,
+				worktreeSnapshot: taskWorktreeSnapshot,
+			}),
+		[selection.card, taskWorktreeInfo, taskWorktreeSnapshot],
+	);
 
 	const {
 		scopeMode: taskScopeMode,
@@ -141,7 +151,7 @@ export function useCardDetailView({
 		board,
 		selectBranchView: taskSelectBranchView,
 		homeGitSummary,
-		taskBranch: taskWorktreeInfo?.branch ?? selection.card.branch ?? null,
+		taskBranch: taskIdentity.assignedBranch,
 		taskChangedFiles: taskWorktreeSnapshot?.changedFiles ?? 0,
 		skipTaskCheckoutConfirmation,
 		skipHomeCheckoutConfirmation,
@@ -164,18 +174,9 @@ export function useCardDetailView({
 		() =>
 			resolveCardDetailBranchPillLabel({
 				resolvedScope: taskResolvedScope,
-				branch: taskWorktreeInfo?.branch,
-				isDetached: taskWorktreeInfo?.isDetached,
-				headCommit: taskWorktreeInfo?.headCommit,
-				fallbackBranch: selection.card.branch,
+				displayBranchLabel: taskIdentity.displayBranchLabel,
 			}),
-		[
-			selection.card.branch,
-			taskResolvedScope,
-			taskWorktreeInfo?.branch,
-			taskWorktreeInfo?.headCommit,
-			taskWorktreeInfo?.isDetached,
-		],
+		[taskIdentity.displayBranchLabel, taskResolvedScope],
 	);
 
 	const taskId = selection.card.id;

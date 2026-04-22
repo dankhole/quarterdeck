@@ -33,7 +33,7 @@ function createSummary(taskId: string, state: RuntimeTaskSessionSummary["state"]
 		taskId,
 		state,
 		agentId: "codex",
-		projectPath: "/tmp/project",
+		sessionLaunchPath: "/tmp/project",
 		pid: null,
 		startedAt: 1,
 		updatedAt: 2,

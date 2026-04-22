@@ -101,7 +101,7 @@ export function BoardCard({
 		isTrashCard,
 		isCardInteractive,
 		isSharedCheckout,
-		isCwdDiverged,
+		isSessionPathDiverged,
 		displayTitle,
 		statusLabel,
 		statusTagStyle,
@@ -114,8 +114,8 @@ export function BoardCard({
 		isSessionRestartable,
 		statusMarker,
 		showProjectStatus,
-		effectiveBranch,
 		reviewBranchLabel,
+		reviewBranchTooltip,
 		reviewChangeSummary,
 		cancelAutomaticActionLabel,
 		showUncommittedChangesIndicator,
@@ -259,8 +259,8 @@ export function BoardCard({
 									</span>
 								</Tooltip>
 							) : null}
-							{isCwdDiverged ? (
-								<Tooltip content="Agent session is running in a different directory than expected. Restart the task to fix.">
+							{isSessionPathDiverged ? (
+								<Tooltip content="Agent session was launched from a different directory than this task's assigned identity. Restart the task to realign it.">
 									<AlertCircle size={12} className="shrink-0 text-status-orange" />
 								</Tooltip>
 							) : null}
@@ -389,7 +389,7 @@ export function BoardCard({
 							</div>
 						) : null}
 						{showProjectStatus && reviewBranchLabel ? (
-							<TruncateTooltip content={effectiveBranch ?? reviewBranchLabel} side="top">
+							<TruncateTooltip content={reviewBranchTooltip ?? reviewBranchLabel} side="top">
 								<p
 									className="font-mono kb-line-clamp-1"
 									style={{

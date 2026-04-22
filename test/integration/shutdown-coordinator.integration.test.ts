@@ -47,7 +47,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 		taskId,
 		state,
 		agentId: "codex",
-		projectPath: `/tmp/${taskId}`,
+		sessionLaunchPath: `/tmp/${taskId}`,
 		pid: state === "idle" ? null : 1234,
 		startedAt: state === "idle" ? null : Date.now() - 1_000,
 		updatedAt: Date.now(),

@@ -8,7 +8,7 @@ function makeSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runtim
 		taskId: "task-1",
 		state: "idle",
 		agentId: null,
-		projectPath: null,
+		sessionLaunchPath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: Date.now(),

@@ -175,8 +175,8 @@ export function useTaskSessions({
 				upsertSession(payload.summary);
 				// The server resolves the working directory but no longer persists
 				// it — the client caches it on the card through its normal persist.
-				if (payload.summary.projectPath) {
-					onWorkingDirectoryResolved?.(task.id, payload.summary.projectPath);
+				if (payload.summary.sessionLaunchPath) {
+					onWorkingDirectoryResolved?.(task.id, payload.summary.sessionLaunchPath);
 				}
 				return { ok: true };
 			} catch (error) {

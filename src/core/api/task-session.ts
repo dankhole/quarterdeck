@@ -42,12 +42,15 @@ export const runtimeTaskTurnCheckpointSchema = z.object({
 });
 export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
 
-export const runtimeTaskSessionSummarySchema = z.object({
+const runtimeTaskSessionSummaryWireSchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
 	mode: runtimeTaskSessionModeSchema.nullable().optional(),
 	agentId: runtimeAgentIdSchema.nullable(),
-	projectPath: z.string().nullable(),
+	// `projectPath` is accepted here as a temporary load-time migration path for
+	// older local sessions.json snapshots written before the rename.
+	projectPath: z.string().nullable().optional(),
+	sessionLaunchPath: z.string().nullable().optional(),
 	pid: z.number().nullable(),
 	startedAt: z.number().nullable(),
 	updatedAt: z.number(),
@@ -64,6 +67,13 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	displaySummary: z.string().nullable().default(null),
 	displaySummaryGeneratedAt: z.number().nullable().default(null),
 });
+
+export const runtimeTaskSessionSummarySchema = runtimeTaskSessionSummaryWireSchema.transform(
+	({ projectPath: legacyProjectPath, sessionLaunchPath, ...summary }) => ({
+		...summary,
+		sessionLaunchPath: sessionLaunchPath ?? legacyProjectPath ?? null,
+	}),
+);
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
 export const runtimeTaskSessionStartRequestSchema = z.object({

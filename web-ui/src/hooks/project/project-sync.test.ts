@@ -20,7 +20,7 @@ function makeSession(taskId: string, startedAt: number | null, updatedAt: number
 		taskId,
 		state: "idle",
 		agentId: "claude",
-		projectPath: `/tmp/${taskId}`,
+		sessionLaunchPath: `/tmp/${taskId}`,
 		pid: null,
 		startedAt,
 		updatedAt,

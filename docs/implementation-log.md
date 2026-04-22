@@ -2,9 +2,113 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Project/worktree identity normalization contract + UI slice (2026-04-22)
+
+Expanded the project/worktree identity refactor from an initial `web-ui` display cleanup into a shared runtime-contract normalization pass. The key clarification is now explicit in both the contract and the UI vocabulary: Quarterdeck has a project root path, an assigned task path/git identity, and a session launch path, and those are not interchangeable. This pass keeps the useful session-location signal while stopping the runtime/session API from pretending it is generic “project path” identity. It also intentionally does **not** invent a fake live-cwd field; there is still no authoritative continuously streamed runtime-location signal for task agents.
+
+**What changed:**
+
+- Added `web-ui/src/utils/task-identity.ts` plus focused unit coverage in `web-ui/src/utils/task-identity.test.ts`. That module now normalizes task identity into explicit fields:
+  - `projectRootPath`
+  - `assignedPath`
+  - `assignedBranch`
+  - `assignedHeadCommit`
+  - `assignedIsDetached`
+  - `displayBranchLabel`
+  - `isAssignedShared`
+  - `sessionLaunchPath`
+  - `isSessionLaunchShared`
+  - `isSessionLaunchDiverged`
+- Renamed the shared runtime session-summary field to `RuntimeTaskSessionSummary.sessionLaunchPath` in `src/core/api/task-session.ts`. The schema still accepts legacy persisted `projectPath` when loading older `sessions.json` files, so restart/persistence flows remain compatible while new code speaks the clearer vocabulary.
+- Updated terminal/runtime plumbing to use the renamed field consistently:
+  - `src/terminal/session-summary-store.ts`
+  - `src/terminal/session-lifecycle.ts`
+  - `src/trpc/handlers/start-task-session.ts`
+  - `src/trpc/hooks-api.ts`
+  - `web-ui/src/hooks/board/use-task-sessions.ts`
+- Explicitly documented the important caveat that `RuntimeTaskSessionSummary.sessionLaunchPath` is not a continuously updated live cwd; it is the path the current agent session was launched in. The helper keeps that signal available for “this session started somewhere unexpected” warnings without letting it masquerade as assigned task identity.
+- Switched `web-ui/src/hooks/board/board-card.ts` and `web-ui/src/components/board/board-card.tsx` to use the shared task-identity model for:
+  - branch display fallback
+  - shared-vs-isolated assignment badge
+  - session-path divergence warning
+  This is the clearest place where the old conflation showed up: a task can still be intentionally assigned to an isolated worktree even if the running session was launched from the home repo. The UI now models those as separate facts instead of one ambiguous “shared” state.
+- Switched task-scoped branch/folder consumers to the same shared vocabulary:
+  - `web-ui/src/providers/git-provider.tsx` top-bar branch label
+  - `web-ui/src/hooks/app/use-navbar-state.ts` task folder path selection
+  - `web-ui/src/hooks/board/use-card-detail-view.ts` task branch actions + branch-pill derivation
+  - `web-ui/src/components/task/task-detail-repository-surface.tsx` task git/files branch display and file-browser root path
+  - `web-ui/src/hooks/git/use-git-view-compare.ts` default task compare source ref
+- Added regression coverage in:
+  - `web-ui/src/components/board/board-card.test.tsx`
+  - `web-ui/src/components/task/task-detail-repository-surface.test.tsx`
+  - `web-ui/src/utils/task-identity.test.ts`
+- Updated the broader runtime/frontend fixture surface so shared session-summary vocabulary is consistent in persistence, restart, shutdown, hook, notification, board-sync, and terminal tests/helpers rather than leaving the old field name hidden in factories.
+- Verified the slice with:
+  - `npm --prefix web-ui run test -- --run src/utils/task-identity.test.ts src/components/board/board-card.test.tsx src/components/task/task-detail-repository-surface.test.tsx`
+  - `npm test -- --run test/runtime/trpc/runtime-api.test.ts test/runtime/trpc/project-api-state.test.ts test/runtime/trpc/project-api-changes.test.ts test/runtime/terminal/session-manager-shell.test.ts test/integration/project-state.integration.test.ts test/integration/server-restart.integration.test.ts test/runtime/core/task-indicators.test.ts test/runtime/trpc/hooks-api/permission-guard.test.ts`
+  - `npm run web:typecheck`
+  - `npm run typecheck`
+
+**Why:** The user-facing bugs around wrong task branch pills, wrong task folder display, and confusing “shared” state were symptoms of the same modeling problem: code across the runtime and UI was not always choosing intentionally between assigned identity and session location. Renaming the shared session field removes one of the worst vocabulary traps, and the task-scoped UI now uses the assigned-vs-session distinction intentionally. This pass still does not rewrite every metadata consumer or add a true live-cwd stream, but it establishes the shared vocabulary and an end-to-end pattern for future slices.
+
+**Files touched:**
+
+- `AGENTS.md`
+- `src/core/api/task-session.ts`
+- `src/terminal/session-lifecycle.ts`
+- `src/terminal/session-summary-store.ts`
+- `src/trpc/handlers/start-task-session.ts`
+- `src/trpc/hooks-api.ts`
+- `test/integration/project-state.integration.test.ts`
+- `test/integration/server-restart.integration.test.ts`
+- `test/integration/shutdown-coordinator.integration.test.ts`
+- `test/runtime/core/task-indicators.test.ts`
+- `test/runtime/server/runtime-state-message-batcher.test.ts`
+- `test/runtime/shutdown-coordinator-timeout.test.ts`
+- `test/runtime/terminal/session-manager-interrupt-recovery.test.ts`
+- `test/runtime/terminal/session-manager-reconciliation.test.ts`
+- `test/runtime/terminal/session-manager-shell.test.ts`
+- `test/runtime/terminal/session-manager.test.ts`
+- `test/runtime/terminal/session-reconciliation.test.ts`
+- `test/runtime/terminal/session-state-machine.test.ts`
+- `test/runtime/terminal/ws-server.test.ts`
+- `test/runtime/trpc/hooks-api/_helpers.ts`
+- `test/runtime/trpc/project-api-changes.test.ts`
+- `test/runtime/trpc/project-api-state.test.ts`
+- `test/runtime/trpc/runtime-api.test.ts`
+- `web-ui/src/components/board/board-card.test.tsx`
+- `web-ui/src/components/board/board-card.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.test.tsx`
+- `web-ui/src/components/task/task-detail-repository-surface.tsx`
+- `web-ui/src/hooks/app/use-navbar-state.ts`
+- `web-ui/src/hooks/board/board-card.ts`
+- `web-ui/src/hooks/board/card-detail-view.ts`
+- `web-ui/src/hooks/board/session-column-sync.test.ts`
+- `web-ui/src/hooks/board/use-review-auto-actions.test.tsx`
+- `web-ui/src/hooks/board/use-task-sessions.test.tsx`
+- `web-ui/src/hooks/board/use-task-sessions.ts`
+- `web-ui/src/hooks/board/use-card-detail-view.ts`
+- `web-ui/src/hooks/git/use-git-view-compare.ts`
+- `web-ui/src/hooks/notifications/audible-notifications-test-utils.tsx`
+- `web-ui/src/hooks/notifications/audible-notifications.test.ts`
+- `web-ui/src/hooks/notifications/project-notifications.test.ts`
+- `web-ui/src/hooks/project/project-sync.test.ts`
+- `web-ui/src/hooks/project/use-project-sync.test.tsx`
+- `web-ui/src/hooks/terminal/use-terminal-panels.test.tsx`
+- `web-ui/src/providers/git-provider.tsx`
+- `web-ui/src/runtime/runtime-state-stream-store.test.ts`
+- `web-ui/src/utils/app-utils.tsx`
+- `web-ui/src/utils/session-status.test.ts`
+- `web-ui/src/utils/session-summary-utils.test.ts`
+- `web-ui/src/utils/task-identity.test.ts`
+- `web-ui/src/utils/task-identity.ts`
+- `docs/todo.md`
+- `CHANGELOG.md`
+- `docs/implementation-log.md`
+
 ## Feature: agent terminal row multiplier config field (2026-04-22)
 
-Added a user-facing `agentTerminalRowMultiplier` config field (default 5, range 1–20) that inflates the PTY row count reported to agent processes. The browser xterm.js viewport stays at its real pixel-derived height, but the PTY process believes the terminal is N× taller, causing agents to emit more content per "screen" before pausing or paginating.
+Added a user-facing `agentTerminalRowMultiplier` config field (default 5, range 1–20) that inflates the PTY row count reported to agent processes. The browser xterm.js viewport stays at its real pixel-derived height, but the PTY process believes the terminal is N× taller, causing agents to emit more content per “screen” before pausing or paginating.
 
 **What changed:**
 
@@ -14,7 +118,7 @@ Added a user-facing `agentTerminalRowMultiplier` config field (default 5, range 
 - `src/terminal/session-lifecycle.ts`: `spawnTaskSession` reads `request.agentTerminalRowMultiplier` and applies it to the normalized rows. Passes the multiplier into `createActiveProcessState`. `spawnShellSession` is unchanged.
 - `src/terminal/session-manager.ts`: `resize()` reads the multiplier from the active session state instead of hardcoding.
 - `src/trpc/handlers/start-task-session.ts`, `src/trpc/handlers/migrate-task-working-directory.ts`, `src/server/project-registry.ts`: Thread the config field into `startTaskSession` requests.
-- `web-ui/src/components/settings/display-sections.tsx`: Refactored `FontWeightInput` into a generic `NumericSettingsInput` and added an "Agent row multiplier" control in the Terminal section.
+- `web-ui/src/components/settings/display-sections.tsx`: Refactored `FontWeightInput` into a generic `NumericSettingsInput` and added an “Agent row multiplier” control in the Terminal section.
 - `web-ui/src/hooks/settings/settings-form.ts`: Added `agentTerminalRowMultiplier` to `SettingsFormValues` and `resolveInitialValues`.
 - `web-ui/src/test-utils/runtime-config-factory.ts`: Added field to test factory.
 - `test/runtime/terminal/session-manager.test.ts`: Updated existing resize test and added a new test for the multiplier.
