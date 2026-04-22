@@ -488,6 +488,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					statuslineEnabled: runtimeConfig.statuslineEnabled,
 					worktreeAddParentGitDir: runtimeConfig.worktreeAddParentGitDir,
 					worktreeAddQuarterdeckDir: runtimeConfig.worktreeAddQuarterdeckDir,
+					agentTerminalRowMultiplier: runtimeConfig.agentTerminalRowMultiplier,
 				})
 				.catch((error) => {
 					const message = error instanceof Error ? error.message : String(error);

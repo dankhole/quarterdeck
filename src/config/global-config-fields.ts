@@ -128,6 +128,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	eventLogEnabled: boolField(false),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	backupIntervalMinutes: numField(30),
+	agentTerminalRowMultiplier: numField(5),
 } as const;
 
 // --- Derived types ---

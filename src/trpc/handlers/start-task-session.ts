@@ -93,6 +93,7 @@ export async function handleStartTaskSession(
 			worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 			worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
 			worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
+			agentTerminalRowMultiplier: scopedRuntimeConfig.agentTerminalRowMultiplier,
 			env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		});
 

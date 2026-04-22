@@ -30,6 +30,7 @@ export interface ActiveProcessState {
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
 	interruptRecoveryTimer: NodeJS.Timeout | null;
+	agentTerminalRowMultiplier: number;
 }
 
 export interface ProcessEntry {
@@ -69,6 +70,7 @@ export interface StartTaskSessionRequest {
 	worktreeAddParentGitDir?: boolean;
 	worktreeAddQuarterdeckDir?: boolean;
 	worktreeSystemPromptTemplate?: string;
+	agentTerminalRowMultiplier?: number;
 }
 
 export interface StartShellSessionRequest {
@@ -184,6 +186,7 @@ export interface CreateActiveProcessStateOptions {
 	rows: number;
 	willAutoTrust: boolean;
 	launch?: PreparedAgentLaunch;
+	agentTerminalRowMultiplier?: number;
 }
 
 export function createActiveProcessState(opts: CreateActiveProcessStateOptions): ActiveProcessState {
@@ -205,6 +208,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,
 		interruptRecoveryTimer: null,
+		agentTerminalRowMultiplier: opts.agentTerminalRowMultiplier ?? 1,
 	};
 }
 

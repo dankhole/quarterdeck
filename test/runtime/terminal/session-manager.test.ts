@@ -458,6 +458,7 @@ describe("TerminalSessionManager", () => {
 				},
 				cols: 80,
 				rows: 24,
+				agentTerminalRowMultiplier: 1,
 			},
 			terminalStateMirror: {
 				resize: resizeMirrorSpy,
@@ -475,6 +476,38 @@ describe("TerminalSessionManager", () => {
 		expect(resized).toBe(true);
 		expect(resizeSpy).toHaveBeenCalledWith(100, 30, 1200, 720);
 		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
+	});
+
+	it("applies agentTerminalRowMultiplier to resize rows", () => {
+		const manager = createTestManager();
+		const resizeSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
+		const entry = {
+			taskId: "task-resize-mult",
+			active: {
+				session: {
+					resize: resizeSpy,
+				},
+				cols: 80,
+				rows: 24,
+				agentTerminalRowMultiplier: 5,
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-resize-mult", entry);
+
+		const resized = manager.resize("task-resize-mult", 100, 30);
+		expect(resized).toBe(true);
+		expect(resizeSpy).toHaveBeenCalledWith(100, 150, undefined, undefined);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 150);
 	});
 
 	it("returns the latest terminal restore snapshot when available", async () => {

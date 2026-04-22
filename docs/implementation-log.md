@@ -2,6 +2,25 @@
 
 > Prior entries in `docs/implementation-archive/`: `implementation-log-through-0.10.0.md`, `implementation-log-through-0.9.4.md`, `implementation-log-through-2026-04-15.md`, `implementation-log-through-2026-04-12.md`.
 
+## Feature: agent terminal row multiplier config field (2026-04-22)
+
+Added a user-facing `agentTerminalRowMultiplier` config field (default 5, range 1–20) that inflates the PTY row count reported to agent processes. The browser xterm.js viewport stays at its real pixel-derived height, but the PTY process believes the terminal is N× taller, causing agents to emit more content per "screen" before pausing or paginating.
+
+**What changed:**
+
+- `src/config/global-config-fields.ts`: Added `agentTerminalRowMultiplier` to the field registry (default 5, `numField`).
+- `src/core/api/config.ts`: Added `z.number()` to the response schema and `z.number().min(1).max(20).optional()` to the save request schema.
+- `src/terminal/session-manager-types.ts`: Added `agentTerminalRowMultiplier` to `StartTaskSessionRequest`, `ActiveProcessState`, and `CreateActiveProcessStateOptions` so the multiplier is stored per-session and available during resize.
+- `src/terminal/session-lifecycle.ts`: `spawnTaskSession` reads `request.agentTerminalRowMultiplier` and applies it to the normalized rows. Passes the multiplier into `createActiveProcessState`. `spawnShellSession` is unchanged.
+- `src/terminal/session-manager.ts`: `resize()` reads the multiplier from the active session state instead of hardcoding.
+- `src/trpc/handlers/start-task-session.ts`, `src/trpc/handlers/migrate-task-working-directory.ts`, `src/server/project-registry.ts`: Thread the config field into `startTaskSession` requests.
+- `web-ui/src/components/settings/display-sections.tsx`: Refactored `FontWeightInput` into a generic `NumericSettingsInput` and added an "Agent row multiplier" control in the Terminal section.
+- `web-ui/src/hooks/settings/settings-form.ts`: Added `agentTerminalRowMultiplier` to `SettingsFormValues` and `resolveInitialValues`.
+- `web-ui/src/test-utils/runtime-config-factory.ts`: Added field to test factory.
+- `test/runtime/terminal/session-manager.test.ts`: Updated existing resize test and added a new test for the multiplier.
+
+**Why:** Agent output in Quarterdeck is primarily consumed via scrollback, not a live fixed-height TUI. Inflating the PTY height makes agents (Claude Code, Codex) render significantly more content per turn. Making it a config field lets users tune it or set to 1 if the TUI looks broken.
+
 ## Fix: React infinite re-render loop crash (2026-04-21)
 
 Fixed a "Maximum update depth exceeded" (React error #185) that crashed the app on load. The bug was introduced by `f261083f` (refactor: extract task-editor provider from board provider).

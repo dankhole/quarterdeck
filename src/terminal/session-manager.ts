@@ -206,7 +206,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return false;
 		}
 		const safeCols = Math.max(1, Math.floor(cols));
-		const safeRows = Math.max(1, Math.floor(rows));
+		const safeRows = Math.max(1, Math.floor(rows)) * entry.active.agentTerminalRowMultiplier;
 		const safePixelWidth = Number.isFinite(pixelWidth ?? Number.NaN) ? Math.floor(pixelWidth as number) : undefined;
 		const safePixelHeight = Number.isFinite(pixelHeight ?? Number.NaN)
 			? Math.floor(pixelHeight as number)

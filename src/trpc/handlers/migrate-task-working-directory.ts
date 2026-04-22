@@ -124,6 +124,7 @@ export async function handleMigrateTaskWorkingDirectory(
 				worktreeAddParentGitDir: scopedRuntimeConfig.worktreeAddParentGitDir,
 				worktreeAddQuarterdeckDir: scopedRuntimeConfig.worktreeAddQuarterdeckDir,
 				worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
+				agentTerminalRowMultiplier: scopedRuntimeConfig.agentTerminalRowMultiplier,
 				env: card.baseRef ? { QUARTERDECK_BASE_REF: card.baseRef } : undefined,
 			};
 		};

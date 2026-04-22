@@ -74,6 +74,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	backupIntervalMinutes: CONFIG_DEFAULTS.backupIntervalMinutes,
+	agentTerminalRowMultiplier: CONFIG_DEFAULTS.agentTerminalRowMultiplier,
 	llmConfigured: false,
 };
 

@@ -65,7 +65,8 @@ export async function spawnTaskSession(
 	entry.pendingSessionStart = true;
 
 	const cols = normalizeDimension(request.cols, 120);
-	const rows = normalizeDimension(request.rows, 40);
+	const rowMultiplier = Math.max(1, Math.floor(request.agentTerminalRowMultiplier ?? 1));
+	const rows = normalizeDimension(request.rows, 40) * rowMultiplier;
 	let terminalStateMirror: TerminalStateMirror;
 	let launch: PreparedAgentLaunch;
 	try {
@@ -181,7 +182,14 @@ export async function spawnTaskSession(
 		pid: session.pid,
 	});
 
-	entry.active = createActiveProcessState({ session, cols, rows, willAutoTrust, launch });
+	entry.active = createActiveProcessState({
+		session,
+		cols,
+		rows,
+		willAutoTrust,
+		launch,
+		agentTerminalRowMultiplier: rowMultiplier,
+	});
 	entry.pendingSessionStart = false;
 	entry.terminalStateMirror = terminalStateMirror;
 	if (!hasLiveOutputListener(entry)) {

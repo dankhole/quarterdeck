@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Feature: agent terminal row multiplier
+
+- Added "Agent row multiplier" setting (Settings > Terminal) that inflates the PTY row count reported to agent processes, so agents render more content per turn and produce denser scrollback. Default: 5×. Set to 1 if the agent UI looks broken.
+- Shell terminals are unaffected — only task agent sessions apply the multiplier.
+
 ### Fix: React "Maximum update depth exceeded" crash on app load
 
 - Stabilized `resetTaskEditorWorkflow` in `TaskEditorProvider` by depending on the stable `resetTaskEditorState` callback instead of the whole `taskEditor` object, which changed identity every render and caused an infinite loop through `useProjectSwitchCleanup` layout effects.

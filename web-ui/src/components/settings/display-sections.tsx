@@ -251,19 +251,26 @@ function NotificationEventRow({
 // Terminal
 // ---------------------------------------------------------------------------
 
-function FontWeightInput({
+function NumericSettingsInput({
+	id,
+	label,
 	value,
 	onChange,
 	disabled,
+	min,
+	max,
 }: {
+	id: string;
+	label: string;
 	value: number;
 	onChange: (v: number) => void;
 	disabled: boolean;
+	min: number;
+	max: number;
 }) {
 	const [draft, setDraft] = useState(String(value));
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	// Sync draft when value changes externally (e.g. config load)
 	useEffect(() => {
 		if (document.activeElement !== inputRef.current) {
 			setDraft(String(value));
@@ -272,23 +279,22 @@ function FontWeightInput({
 
 	const commit = () => {
 		const parsed = Number(draft);
-		if (Number.isFinite(parsed) && parsed >= 100 && parsed <= 900) {
+		if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
 			onChange(parsed);
 			setDraft(String(parsed));
 		} else {
-			// Revert to current value on invalid input
 			setDraft(String(value));
 		}
 	};
 
 	return (
 		<div className="flex items-center justify-between gap-3 mt-3">
-			<label htmlFor="terminal-font-weight" className="text-text-primary text-[13px] shrink-0">
-				Font weight
+			<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
+				{label}
 			</label>
 			<input
 				ref={inputRef}
-				id="terminal-font-weight"
+				id={id}
 				type="text"
 				inputMode="numeric"
 				value={draft}
@@ -318,13 +324,30 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				label="Auto-restart shell terminals on unexpected exit"
 				description="When enabled, shell terminals that crash or exit unexpectedly will automatically restart."
 			/>
-			<FontWeightInput
+			<NumericSettingsInput
+				id="terminal-font-weight"
+				label="Font weight"
 				value={fields.terminalFontWeight}
 				onChange={(v) => setField("terminalFontWeight", v)}
 				disabled={disabled}
+				min={100}
+				max={900}
 			/>
 			<p className="text-text-secondary text-[13px] mt-1 mb-0">
 				CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+			</p>
+			<NumericSettingsInput
+				id="agent-terminal-row-multiplier"
+				label="Agent row multiplier"
+				value={fields.agentTerminalRowMultiplier}
+				onChange={(v) => setField("agentTerminalRowMultiplier", v)}
+				disabled={disabled}
+				min={1}
+				max={20}
+			/>
+			<p className="text-text-secondary text-[13px] mt-1 mb-0">
+				Tells the agent the terminal is this many times taller than it actually is, so it renders more content per
+				turn. Set to 1 if the agent UI looks broken. Applies to new sessions only.
 			</p>
 			<Button
 				size="sm"
