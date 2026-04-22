@@ -346,8 +346,8 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				max={20}
 			/>
 			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Tells the agent the terminal is this many times taller than it actually is, so it renders more content per
-				turn. Set to 1 if the agent UI looks broken. Applies to new sessions only.
+				Makes agents output more content before pausing, so you can scroll back and see more of what they did. Set
+				to 1 if the agent UI looks broken. Applies to new sessions only.
 			</p>
 			<Button
 				size="sm"
